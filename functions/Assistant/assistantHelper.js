@@ -7057,6 +7057,141 @@ async function executeToolNatively(
             }
         }
 
+        case 'get_route_info': {
+            console.log('🗺️ GET_ROUTE_INFO TOOL: Computing route', {
+                origin: toolArgs.origin,
+                destination: toolArgs.destination,
+                travel_mode: toolArgs.travel_mode,
+            })
+
+            const origin = typeof toolArgs.origin === 'string' ? toolArgs.origin.trim() : ''
+            const destination = typeof toolArgs.destination === 'string' ? toolArgs.destination.trim() : ''
+
+            if (!origin || !destination) {
+                return {
+                    success: false,
+                    error: 'Both an origin and a destination are required.',
+                }
+            }
+
+            const envFunctions = getCachedEnvFunctions()
+            const googleMapsApiKey = envFunctions.GOOGLE_MAPS_API_KEY
+
+            if (!googleMapsApiKey || googleMapsApiKey === '' || googleMapsApiKey.startsWith('your_')) {
+                return {
+                    success: false,
+                    error: 'Route lookup is not configured. GOOGLE_MAPS_API_KEY is missing.',
+                }
+            }
+
+            // Map our friendly travel modes to the Google Routes API travelMode enum.
+            const TRAVEL_MODE_MAP = {
+                drive: 'DRIVE',
+                walk: 'WALK',
+                bicycle: 'BICYCLE',
+                transit: 'TRANSIT',
+            }
+            const requestedMode = (toolArgs.travel_mode || 'drive').toLowerCase()
+            const travelMode = TRAVEL_MODE_MAP[requestedMode] || 'DRIVE'
+
+            // A "latitude,longitude" string becomes a Routes API location; everything else is treated as an address.
+            const buildWaypoint = value => {
+                const coordinateMatch = value.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/)
+                if (coordinateMatch) {
+                    return {
+                        location: {
+                            latLng: {
+                                latitude: parseFloat(coordinateMatch[1]),
+                                longitude: parseFloat(coordinateMatch[2]),
+                            },
+                        },
+                    }
+                }
+                return { address: value }
+            }
+
+            try {
+                const requestBody = {
+                    origin: buildWaypoint(origin),
+                    destination: buildWaypoint(destination),
+                    travelMode,
+                    units: 'METRIC',
+                }
+                // routingPreference is only valid for DRIVE/BICYCLE/TWO_WHEELER (not WALK/TRANSIT).
+                if (travelMode === 'DRIVE' || travelMode === 'BICYCLE') {
+                    requestBody.routingPreference = 'TRAFFIC_AWARE'
+                }
+
+                const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Goog-Api-Key': googleMapsApiKey,
+                        'X-Goog-FieldMask':
+                            'routes.distanceMeters,routes.duration,routes.description,routes.legs.startLocation,routes.legs.endLocation',
+                    },
+                    body: JSON.stringify(requestBody),
+                })
+
+                const data = await response.json()
+
+                if (!response.ok) {
+                    const apiMessage = data && data.error && data.error.message ? data.error.message : null
+                    console.error('🗺️ GET_ROUTE_INFO TOOL: Routes API error', {
+                        status: response.status,
+                        apiMessage,
+                    })
+                    return {
+                        success: false,
+                        error: `Route lookup failed: ${apiMessage || `HTTP ${response.status}`}`,
+                    }
+                }
+
+                const route = data.routes && data.routes[0]
+                if (!route) {
+                    return {
+                        success: false,
+                        error: `No ${requestedMode} route was found between "${origin}" and "${destination}".`,
+                    }
+                }
+
+                const distanceMeters = route.distanceMeters || 0
+                const distanceKm = Math.round((distanceMeters / 1000) * 10) / 10
+                const distanceMiles = Math.round((distanceMeters / 1609.344) * 10) / 10
+
+                // Google returns duration as a string like "1234s".
+                const durationSeconds = route.duration ? parseInt(String(route.duration).replace('s', ''), 10) : 0
+                const durationMinutes = Math.round(durationSeconds / 60)
+
+                console.log('🗺️ GET_ROUTE_INFO TOOL: Route computed', {
+                    distanceKm,
+                    durationMinutes,
+                    travelMode,
+                })
+
+                return {
+                    success: true,
+                    origin,
+                    destination,
+                    travel_mode: requestedMode,
+                    distance_meters: distanceMeters,
+                    distance_km: distanceKm,
+                    distance_miles: distanceMiles,
+                    duration_seconds: durationSeconds,
+                    duration_minutes: durationMinutes,
+                    route_description: route.description || null,
+                }
+            } catch (error) {
+                console.error('🗺️ GET_ROUTE_INFO TOOL: Lookup failed', {
+                    error: error.message,
+                })
+                return {
+                    success: false,
+                    error: `Route lookup failed: ${error.message}`,
+                }
+            }
+        }
+
         case 'search_gmail': {
             console.log('📧 SEARCH_GMAIL TOOL: Starting Gmail search', {
                 query: toolArgs.query,

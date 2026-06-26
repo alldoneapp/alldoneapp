@@ -35,6 +35,7 @@ export const TOOL_OPTIONS = [
     { key: 'delete_calendar_event', labelKey: 'Delete Calendar event' },
     { key: 'get_notes', labelKey: 'Get notes' },
     { key: 'web_search', labelKey: 'Search the internet' },
+    { key: 'get_route_info', labelKey: 'Check distance and route between locations' },
     { key: 'execute_task_in_vm', labelKey: 'Run task in a VM' },
     { key: 'external_tools', labelKey: 'Use external app tools' },
     { key: 'mcp_servers', labelKey: 'Use connected MCP servers' },

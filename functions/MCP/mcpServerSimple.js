@@ -4,6 +4,89 @@ const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
 const { getEnvironmentConfig } = require('./config/environments.js')
 
+// ---------------------------------------------------------------------------
+// Native assistant tool delegation
+//
+// The MCP server intentionally does NOT reimplement Alldone's tool logic. Every
+// tool that also exists as an internal AI-assistant tool is dispatched through
+// the canonical executeToolNatively() switch in
+// functions/Assistant/assistantHelper.js, so MCP clients get exactly the same
+// behaviour (project routing, recurrence, task/note moves, feeds, image
+// handling, etc.) as the in-app assistant. MCP is user-scoped (there is no
+// assistant), so we pass assistantId = null and executeToolNatively attributes
+// any tool-generated feeds to the user directly (see getAssistantFeedUserForTool).
+//
+// Tools that require an assistant/thread context (talk_to_assistant,
+// external_tool_*, mcp_*, execute_task_in_vm, compact_thread_context,
+// load_skill) or that mutate assistant/project/user configuration
+// (update_assistant_settings, update_heartbeat_settings,
+// update_project_description, update_user_description) are deliberately NOT
+// exposed over MCP.
+// ---------------------------------------------------------------------------
+const MCP_DELEGATED_ASSISTANT_TOOLS = [
+    // Tasks
+    'create_task',
+    'update_task',
+    'get_tasks',
+    'get_focus_task',
+    // Notes
+    'create_note',
+    'update_note',
+    'get_notes',
+    // Contacts
+    'update_contact',
+    'get_contacts',
+    // Cross-entity reads
+    'search',
+    'get_chats',
+    'get_user_projects',
+    'get_updates',
+    // Goals / project insights
+    'get_goals',
+    'get_project_okrs',
+    'get_project_happiness',
+    // User memory
+    'update_user_memory',
+    // Web / maps
+    'web_search',
+    'get_route_info',
+    // Chat attachments
+    'get_chat_attachment',
+    'list_recent_chat_media',
+    // Gmail
+    'search_gmail',
+    'get_gmail_attachment',
+    'create_gmail_draft',
+    'create_gmail_reply_draft',
+    'update_gmail_draft',
+    'update_gmail_email',
+    // Calendar
+    'find_calendar_availability',
+    'search_calendar_events',
+    'create_calendar_event',
+    'update_calendar_event',
+    'delete_calendar_event',
+]
+
+const MCP_DELEGATED_ASSISTANT_TOOL_SET = new Set(MCP_DELEGATED_ASSISTANT_TOOLS)
+
+// MCP-only tools that have no internal-assistant equivalent. These keep their
+// dedicated handlers on the server class and are appended to tools/list.
+const MCP_NATIVE_ONLY_TOOL_SCHEMAS = [
+    {
+        name: 'delete_authentication_data',
+        description:
+            'Delete all OAuth 2.0 authentication data for the current user (revokes all Bearer tokens and sessions)',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+    },
+    {
+        name: 'get_current_user_info',
+        description:
+            'Get information about the currently authenticated user (requires OAuth 2.0 Bearer token authentication)',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+    },
+]
+
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
     const normalizeBaseUrl = url => {
@@ -602,530 +685,6 @@ class AlldoneSimpleMCPServer {
         }
     }
 
-    async createTask(args, request) {
-        const { name, description, dueDate, alertEnabled, projectId: specifiedProjectId, projectName } = args
-
-        // Get authenticated user automatically from client session
-        const userId = await this.getAuthenticatedUserForClient(request)
-
-        const db = admin.firestore()
-
-        // Determine projectId with three-level fallback:
-        // 1. Explicit projectId (highest priority)
-        // 2. Project name resolution (if name provided)
-        // 3. User's default project
-        let projectId = specifiedProjectId
-
-        // Project name resolution (if name provided but no ID)
-        if (!projectId && projectName) {
-            const { ProjectService } = require('../shared/ProjectService')
-            const projectService = new ProjectService({ database: db })
-            await projectService.initialize()
-
-            const projects = await projectService.getUserProjects(userId, {
-                includeArchived: false,
-                includeCommunity: false,
-            })
-
-            // Case-insensitive partial match
-            const matchingProject = projects.find(
-                p => p.name && p.name.toLowerCase().includes(projectName.toLowerCase())
-            )
-
-            if (matchingProject) {
-                projectId = matchingProject.id
-                console.log('📝 CREATE_TASK: Resolved project name to ID', {
-                    projectName,
-                    projectId: matchingProject.id,
-                    projectFullName: matchingProject.name,
-                })
-            } else {
-                throw new Error(`Project not found: "${projectName}"`)
-            }
-        }
-
-        // Fallback to user's default project
-        if (!projectId) {
-            projectId = await this.getUserDefaultProject(userId)
-        }
-
-        if (!projectId) {
-            throw new Error(
-                'No project specified and no default project found. Please specify a projectId, projectName, or set a default project.'
-            )
-        }
-
-        // Get user data for feed creation and timezone
-        const { UserHelper } = require('../shared/UserHelper')
-        const feedUser = await UserHelper.getFeedUserData(db, userId)
-
-        // Get user's timezone for date parsing (normalize across possible fields)
-        const userDoc = await db.collection('users').doc(userId).get()
-        const userData = userDoc.data()
-        let timezoneOffset = 0
-        try {
-            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
-            const rawTz =
-                (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
-                (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
-                (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
-                (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
-            const normalized = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
-            timezoneOffset = typeof normalized === 'number' ? normalized : timezoneOffset
-        } catch (_) {}
-
-        console.log('📝 CREATE_TASK: User timezone info', {
-            userId,
-            timezoneOffset,
-            hasTimezone: !!userData?.timezone,
-        })
-
-        // Handle dueDate with timezone conversion if it's a string
-        let processedDueDate = dueDate
-        if (dueDate && typeof dueDate === 'string') {
-            console.log('📝 CREATE_TASK: Processing dueDate ISO string with timezone', {
-                originalDueDate: dueDate,
-                timezoneOffset,
-            })
-
-            // Respect embedded timezone if present; otherwise interpret as user's local time
-            const parsed = moment.parseZone(dueDate)
-            if (parsed && parsed.isValid() && parsed.utcOffset() !== 0 && /[zZ]|[+-]\d{2}:?\d{2}$/.test(dueDate)) {
-                processedDueDate = parsed.valueOf()
-            } else {
-                // Interpret provided local clock time in user's timezone and convert to UTC ms
-                processedDueDate = moment(dueDate).utcOffset(timezoneOffset, true).valueOf()
-            }
-
-            console.log('📝 CREATE_TASK: Converted dueDate', {
-                from: dueDate,
-                to: processedDueDate,
-                asDate: new Date(processedDueDate).toISOString(),
-            })
-        }
-
-        // Validate alert requirements
-        if (alertEnabled && !processedDueDate) {
-            throw new Error('Cannot enable alert without setting a due date/reminder time')
-        }
-
-        // Initialize TaskService if not already done
-        if (!this.taskService) {
-            const { TaskService } = require('../shared/TaskService')
-            this.taskService = new TaskService({
-                database: db,
-                moment: moment,
-                idGenerator: () => db.collection('_').doc().id,
-                enableFeeds: true,
-                enableValidation: true,
-                isCloudFunction: true,
-            })
-            await this.taskService.initialize()
-        }
-
-        try {
-            // Create task using unified service
-            const result = await this.taskService.createAndPersistTask(
-                {
-                    name,
-                    description,
-                    dueDate: processedDueDate,
-                    userId,
-                    projectId,
-                    isPrivate: false, // Default to public for MCP-created tasks
-                    feedUser,
-                },
-                {
-                    userId,
-                    projectId,
-                    // We could add project permission validation here
-                }
-            )
-
-            // Handle alert if alertEnabled is true
-            if (alertEnabled && processedDueDate) {
-                console.log('📝 CREATE_TASK: Enabling alert', {
-                    taskId: result.taskId,
-                    dueDate: processedDueDate,
-                })
-
-                const { setTaskAlertCloud } = require('../shared/AlertService')
-
-                // Convert UTC timestamp to moment with user's timezone for setTaskAlert
-                const alertMoment = moment(processedDueDate).utcOffset(timezoneOffset)
-
-                console.log('📝 CREATE_TASK: Calling setTaskAlert', {
-                    taskId: result.taskId,
-                    projectId,
-                    alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
-                })
-
-                // Update alert server-side (Cloud)
-                await setTaskAlertCloud(projectId, result.taskId, true, alertMoment, {
-                    ...result.task,
-                    dueDate: processedDueDate,
-                })
-
-                console.log('📝 CREATE_TASK: Alert enabled successfully')
-            }
-
-            return {
-                success: result.success,
-                taskId: result.taskId,
-                message: result.message,
-                task: result.task,
-            }
-        } catch (error) {
-            console.error('Error creating task:', error)
-            throw new Error(`Failed to create task: ${error.message}`)
-        }
-    }
-
-    async updateTask(args, request) {
-        // Get authenticated user automatically from client session
-        const userId = await this.getAuthenticatedUserForClient(request)
-        const db = admin.firestore()
-
-        // Initialize TaskUpdateService if not already done
-        if (!this.taskUpdateService) {
-            const TaskUpdateService = require('../shared/TaskUpdateService')
-            this.taskUpdateService = new TaskUpdateService({
-                database: db,
-                moment: moment,
-                isCloudFunction: true,
-            })
-            await this.taskUpdateService.initialize()
-        }
-
-        // Use shared service for find and update
-        // args contains: taskId, taskName, projectId, projectName, completed, focus, name, description, dueDate, alertEnabled, estimation, updateAll
-        return await this.taskUpdateService.findAndUpdateTask(
-            userId,
-            args, // searchCriteria (includes projectId for filtering)
-            args, // updateFields (includes estimation, completed, focus, etc.)
-            {
-                autoSelectOnHighConfidence: true,
-                highConfidenceThreshold: 800,
-                dominanceMargin: 300,
-                maxOptionsToShow: 5,
-                updateAll: args.updateAll || false, // Enable bulk update if requested
-            }
-        )
-    }
-
-    async getTasks(args, request) {
-        const {
-            projectId: specifiedProjectId,
-            allProjects = false,
-            includeArchived = false,
-            includeCommunity = false,
-            status = 'open',
-
-            date,
-            includeSubtasks = false,
-            parentId = null,
-        } = args
-
-        // Get authenticated user from header
-        const userId = await this.getAuthenticatedUserForClient(request)
-        const db = admin.firestore()
-
-        // Initialize TaskRetrievalService if not already done
-        if (!this.taskRetrievalService) {
-            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
-            this.taskRetrievalService = new TaskRetrievalService({
-                database: db,
-                moment: moment,
-                isCloudFunction: true,
-            })
-            await this.taskRetrievalService.initialize()
-        }
-
-        const TaskRetrievalServiceClass = this.taskRetrievalService.constructor
-
-        try {
-            if (allProjects) {
-                console.log(`🌐 Cross-project task query for user ${userId}`, {
-                    includeArchived,
-                    includeCommunity,
-                    status,
-                })
-
-                // Get user data for timezone
-                const userDoc = await db.collection('users').doc(userId).get()
-                if (!userDoc.exists) {
-                    throw new Error('User not found')
-                }
-
-                const userData = userDoc.data()
-                const timezoneOffset = TaskRetrievalServiceClass.normalizeTimezoneOffset(userData?.timezone)
-
-                // Use shared ProjectService for consistent filtering
-                if (!this.projectService) {
-                    const { ProjectService } = require('../shared/ProjectService')
-                    this.projectService = new ProjectService({ database: db })
-                    await this.projectService.initialize()
-                }
-
-                const projects = await this.projectService.getUserProjects(userId, {
-                    includeArchived,
-                    includeCommunity,
-                    activeOnly: true,
-                })
-
-                const accessibleProjectIds = projects.map(p => p.id)
-                const projectsData = projects.reduce((acc, project) => {
-                    acc[project.id] = { name: project.name, description: project.description }
-                    return acc
-                }, {})
-
-                // Log project counts for debugging
-                const regularCount = projects.filter(p => p.projectType === 'regular').length
-                const archivedCount = projects.filter(p => p.projectType === 'archived').length
-                const templateCount = projects.filter(p => p.projectType === 'template').length
-                const guideCount = projects.filter(p => p.projectType === 'guide').length
-
-                console.log(
-                    `📊 Project filtering: ${regularCount} regular, ${archivedCount} archived, ${templateCount} template, ${guideCount} guide`
-                )
-                console.log(`🎯 Selected ${accessibleProjectIds.length} projects for query`)
-                console.log(`🔐 ${accessibleProjectIds.length} projects accessible after permission check`)
-
-                if (accessibleProjectIds.length === 0) {
-                    return {
-                        success: true,
-                        tasks: [],
-                        subtasksByParent: {},
-                        count: 0,
-                        totalAcrossProjects: 0,
-                        projectSummary: {},
-                        queriedProjects: [],
-                        message: 'No projects match the specified criteria',
-                        query: {
-                            limit,
-                            hasMore: false,
-                        },
-                        timezoneOffset,
-                    }
-                }
-
-                // Read user's customization for per-project cap
-                const numberTodayTasksSetting = userDoc.exists ? userDoc.data().numberTodayTasks : undefined
-                const perProjectLimit = typeof numberTodayTasksSetting === 'number' ? numberTodayTasksSetting : 10
-
-                // Use TaskRetrievalService multi-project method
-                const result = await this.taskRetrievalService.getTasksFromMultipleProjects(
-                    {
-                        userId,
-                        status,
-                        date,
-                        includeSubtasks,
-                        parentId,
-
-                        userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
-                        // Return only minimal fields for each task
-                        selectMinimalFields: true,
-                        perProjectLimit: 1000,
-                        limit: 1000,
-                        timezoneOffset,
-                    },
-                    accessibleProjectIds,
-                    projectsData
-                )
-
-                if (result.tasks && Array.isArray(result.tasks)) {
-                    result.tasks = result.tasks.slice(0, 1000)
-                }
-
-                return {
-                    ...result,
-                    crossProjectQuery: true,
-                    projectFilters: {
-                        includeArchived,
-                        includeCommunity,
-                        totalRegularProjects: regularCount,
-                        totalArchivedProjects: archivedCount,
-                        totalCommunityProjects: templateCount + guideCount,
-                    },
-                }
-            } else {
-                // Single project mode (existing behavior)
-                const projectId = specifiedProjectId || (await this.getUserDefaultProject(userId))
-                if (!projectId) {
-                    throw new Error(
-                        'No project specified and no default project found. Please specify a projectId or set a default project.'
-                    )
-                }
-
-                const userDoc = await db.collection('users').doc(userId).get()
-                const userData = userDoc.exists ? userDoc.data() : {}
-                const timezoneOffset = TaskRetrievalServiceClass.normalizeTimezoneOffset(userData?.timezone)
-
-                // Verify user has access to project
-                const projectDoc = await db.collection('projects').doc(projectId).get()
-                if (!projectDoc.exists) {
-                    throw new Error('Project not found')
-                }
-
-                const projectData = projectDoc.data()
-                const userIds = projectData.userIds || []
-                if (!userIds.includes(userId)) {
-                    throw new Error('User does not have access to this project')
-                }
-
-                // Read user's customization for per-project cap
-                const numberTodayTasksSetting = userDoc.exists ? userDoc.data().numberTodayTasks : undefined
-                const perProjectLimit = typeof numberTodayTasksSetting === 'number' ? numberTodayTasksSetting : 10
-
-                // Use TaskRetrievalService to get tasks from single project
-                const result = await this.taskRetrievalService.getTasksWithValidation({
-                    projectId,
-                    userId,
-                    status,
-                    date,
-                    includeSubtasks,
-                    parentId,
-
-                    userPermissions: [FEED_PUBLIC_FOR_ALL, userId],
-                    // Return only minimal fields for each task
-                    selectMinimalFields: true,
-                    perProjectLimit: 1000,
-                    limit: 1000,
-                    projectName: projectData.name,
-                    timezoneOffset,
-                })
-
-                return {
-                    ...result,
-                    crossProjectQuery: false,
-                }
-            }
-        } catch (error) {
-            console.error('Error getting tasks:', error)
-            throw new Error(`Failed to get tasks: ${error.message}`)
-        }
-    }
-
-    async getChats(args, request) {
-        const userId = await this.getAuthenticatedUserForClient(request)
-        const db = admin.firestore()
-
-        const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
-        const userDoc = await db.collection('users').doc(userId).get()
-        if (!userDoc.exists) {
-            throw new Error('User not found')
-        }
-
-        const userData = userDoc.data()
-        const rawTz =
-            (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
-            (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
-            (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
-            (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
-        const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
-
-        console.log('💬 MCP GET_CHATS request:', {
-            userId,
-            projectId: args.projectId || null,
-            projectName: args.projectName || null,
-            types: Array.isArray(args.types) ? args.types : null,
-            date: args.date || null,
-            limit: args.limit || null,
-            normalizedTimezoneOffset: timezoneOffset,
-        })
-
-        try {
-            if (!this.chatRetrievalService) {
-                const { ChatRetrievalService } = require('../shared/ChatRetrievalService')
-                this.chatRetrievalService = new ChatRetrievalService({
-                    database: db,
-                    moment: moment,
-                    isCloudFunction: true,
-                })
-                await this.chatRetrievalService.initialize()
-            }
-
-            const result = await this.chatRetrievalService.getChats({
-                userId,
-                projectId: args.projectId || '',
-                projectName: args.projectName || '',
-                types: args.types,
-                date: args.date || null,
-                limit: args.limit,
-                timezoneOffset,
-            })
-
-            return {
-                success: true,
-                chats: result.chats,
-                count: result.count,
-                appliedFilters: result.appliedFilters,
-            }
-        } catch (error) {
-            console.error('Error getting chats:', error)
-            throw new Error(`Failed to get chats: ${error.message}`)
-        }
-    }
-
-    async getContacts(args, request) {
-        const userId = await this.getAuthenticatedUserForClient(request)
-        const db = admin.firestore()
-
-        const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
-        const userDoc = await db.collection('users').doc(userId).get()
-        if (!userDoc.exists) {
-            throw new Error('User not found')
-        }
-
-        const userData = userDoc.data()
-        const rawTz =
-            (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
-            (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
-            (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
-            (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
-        const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
-
-        console.log('👥 MCP GET_CONTACTS request:', {
-            userId,
-            projectId: args.projectId || null,
-            projectName: args.projectName || null,
-            date: args.date || null,
-            limit: args.limit || null,
-            normalizedTimezoneOffset: timezoneOffset,
-        })
-
-        try {
-            if (!this.contactRetrievalService) {
-                const { ContactRetrievalService } = require('../shared/ContactRetrievalService')
-                this.contactRetrievalService = new ContactRetrievalService({
-                    database: db,
-                    moment: moment,
-                    isCloudFunction: true,
-                })
-                await this.contactRetrievalService.initialize()
-            }
-
-            const result = await this.contactRetrievalService.getContacts({
-                userId,
-                projectId: args.projectId || '',
-                projectName: args.projectName || '',
-                date: args.date || null,
-                limit: args.limit,
-                timezoneOffset,
-            })
-
-            return {
-                success: true,
-                contacts: result.contacts,
-                count: result.count,
-                appliedFilters: result.appliedFilters,
-            }
-        } catch (error) {
-            console.error('Error getting contacts:', error)
-            throw new Error(`Failed to get contacts: ${error.message}`)
-        }
-    }
-
     async getUserProjects(args, request) {
         // Get authenticated user automatically from client session
         const userId = await this.getAuthenticatedUserForClient(request)
@@ -1334,665 +893,111 @@ class AlldoneSimpleMCPServer {
         }
     }
 
-    async getFocusTask(args, request) {
-        const { projectId, forceNew = false } = args
-
-        // Get authenticated user automatically from client session
+    /**
+     * Dispatch a tool that also exists as an internal AI-assistant tool through the
+     * canonical executeToolNatively() switch in functions/Assistant/assistantHelper.js
+     * so MCP behaviour stays in lock-step with the in-app assistant (project routing,
+     * recurrence, task/note moves, feeds, etc.). MCP is user-scoped, so there is no
+     * assistant: we pass assistantId = null and executeToolNatively attributes any
+     * tool-generated feeds to the user directly (see getAssistantFeedUserForTool).
+     */
+    async executeDelegatedAssistantTool(name, args, request) {
         const userId = await this.getAuthenticatedUserForClient(request)
-        const db = admin.firestore()
+        const { executeToolNatively } = require('../Assistant/assistantHelper')
 
-        // Get user's timezone for proper date/time calculations
-        const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
-        const userDoc = await db.collection('users').doc(userId).get()
-        const userData = userDoc.exists ? userDoc.data() : {}
-        const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(userData?.timezone)
+        const toolArgs = args && typeof args === 'object' ? { ...args } : {}
 
-        console.log('📝 GET_FOCUS_TASK: User timezone info', {
-            userId,
-            timezoneOffset,
-            hasTimezone: !!userData?.timezone,
-        })
+        // Resolve the "context" project the same way the in-app assistant always
+        // supplies one (its thread's project): explicit id, then a project-name
+        // match, then the user's default project.
+        const contextProjectId = await this.resolveDelegatedToolProjectId(userId, toolArgs)
 
-        // Initialize FocusTaskService if not already done
-        if (!this.focusTaskService) {
-            const { FocusTaskService } = require('../shared/FocusTaskService')
-            this.focusTaskService = new FocusTaskService({
-                database: db,
-                moment: moment,
-                isCloudFunction: true,
-            })
-            await this.focusTaskService.initialize()
+        // create_task's project resolver falls back to looking up an assistant doc in
+        // the candidate project, which never exists for an assistant-less MCP caller.
+        // When the client supplied neither a projectId nor a projectName, pin the
+        // resolved context project as an explicit projectId so the resolver
+        // short-circuits instead of throwing.
+        if (
+            name === 'create_task' &&
+            contextProjectId &&
+            !this.hasNonEmptyString(toolArgs.projectId) &&
+            !this.hasNonEmptyString(toolArgs.projectName)
+        ) {
+            toolArgs.projectId = contextProjectId
         }
 
-        try {
-            // Get focus task (current or new, with optional forceNew)
-            const result = await this.focusTaskService.getFocusTask(userId, projectId, {
-                selectMinimalFields: true,
-                forceNew: forceNew,
-                timezoneOffset: timezoneOffset,
-            })
+        const runtimeContext = await this.buildDelegatedToolRuntimeContext(userId)
 
-            return {
-                success: result.success,
-                focusTask: result.focusTask,
-                wasNewTaskSet: result.wasNewTaskSet,
-                message: result.message,
-            }
-        } catch (error) {
-            console.error('Error getting focus task:', error)
-            throw new Error(`Failed to get focus task: ${error.message}`)
-        }
+        return await executeToolNatively(name, toolArgs, contextProjectId, null, userId, {}, runtimeContext)
     }
 
-    async createNote(args, request) {
-        const { title, content, projectId: specifiedProjectId } = args
-
-        // Get authenticated user automatically from client session
-        const userId = await this.getAuthenticatedUserForClient(request)
-
-        // Use specified project or fall back to user's default project
-        const projectId = specifiedProjectId || (await this.getUserDefaultProject(userId))
-        if (!projectId) {
-            throw new Error(
-                'No project specified and no default project found. Please specify a projectId or set a default project.'
-            )
-        }
-
-        const db = admin.firestore()
-
-        // Get user data for feed creation using shared helper
-        const { UserHelper } = require('../shared/UserHelper')
-        const feedUser = await UserHelper.getFeedUserData(db, userId)
-
-        // Initialize NoteService if not already done
-        if (!this.noteService) {
-            const { NoteService } = require('../shared/NoteService')
-            this.noteService = new NoteService({
-                database: db,
-                moment: moment,
-                idGenerator: () => db.collection('_').doc().id,
-                enableFeeds: true,
-                enableValidation: true,
-                isCloudFunction: true,
-            })
-            await this.noteService.initialize()
-        }
-
-        try {
-            // Create note using unified service
-            const result = await this.noteService.createAndPersistNote(
-                {
-                    title,
-                    content,
-                    userId,
-                    projectId,
-                    isPrivate: false, // Default to public for MCP-created notes
-                    feedUser,
-                },
-                {
-                    userId,
-                    projectId,
-                    // We could add project permission validation here
-                }
-            )
-
-            return {
-                success: result.success,
-                noteId: result.noteId,
-                message: result.message,
-                note: result.note,
-            }
-        } catch (error) {
-            console.error('Error creating note:', error)
-            throw new Error(`Failed to create note: ${error.message}`)
-        }
+    hasNonEmptyString(value) {
+        return typeof value === 'string' && value.trim().length > 0
     }
 
-    async search(args, request) {
-        // Validate and normalize arguments
-        // Handle case where query might be nested incorrectly (e.g., {query: {query: "...", type: "notes"}})
-        let query, type, projectId, dateRange
-
-        if (args && typeof args === 'object') {
-            // Check if query is nested incorrectly
-            if (args.query && typeof args.query === 'object' && args.query.query) {
-                console.warn('⚠️ Detected nested query structure, extracting:', {
-                    received: args,
-                    extracting: args.query,
-                })
-                // Extract from nested structure
-                query = args.query.query
-                type = args.query.type || args.type || 'all'
-                projectId = args.query.projectId || args.projectId
-                dateRange = args.query.dateRange || args.dateRange
-            } else {
-                // Normal structure
-                query = args.query
-                type = args.type || 'all'
-                projectId = args.projectId
-                dateRange = args.dateRange
-            }
-        } else {
-            throw new Error('Invalid arguments: args must be an object')
+    /**
+     * Resolve a concrete context project id for a delegated tool call:
+     * explicit projectId -> project-name match -> user's default project -> null.
+     */
+    async resolveDelegatedToolProjectId(userId, toolArgs) {
+        if (this.hasNonEmptyString(toolArgs.projectId)) {
+            return toolArgs.projectId.trim()
         }
 
-        // Validate query is a string
-        if (!query || typeof query !== 'string') {
-            console.error('❌ Invalid query parameter:', {
-                query,
-                queryType: typeof query,
-                args,
-            })
-            throw new Error(
-                `Invalid query parameter: expected a string, got ${typeof query}. Query: ${JSON.stringify(query)}`
-            )
-        }
-
-        // Normalize type
-        type = type || 'all'
-
-        console.log('🔍 MCP Search request:', {
-            query: query.substring(0, 100),
-            type,
-            projectId,
-            dateRange,
-            queryLength: query.length,
-        })
-
-        // Get authenticated user automatically from client session
-        const userId = await this.getAuthenticatedUserForClient(request)
-
-        const db = admin.firestore()
-
-        try {
-            // Initialize SearchService if not already done
-            if (!this.searchService) {
-                const { SearchService } = require('../shared/SearchService')
-                this.searchService = new SearchService({
-                    database: db,
-                    moment: moment,
-                    enableAlgolia: true,
-                    enableNoteContent: true,
-                    enableDateParsing: true,
-                    isCloudFunction: true,
-                })
-                await this.searchService.initialize()
-            }
-
-            // Execute search using unified service
-            const result = await this.searchService.search(userId, {
-                query,
-                type,
-                projectId,
-                dateRange,
-            })
-
-            return {
-                success: true,
-                query: result.query,
-                parsedQuery: result.parsedQuery,
-                results: result.results,
-                totalResults: result.totalResults,
-                searchedProjects: result.searchedProjects,
-                message:
-                    result.totalResults > 0
-                        ? `Found ${result.totalResults} results across ${result.searchedProjects.length} projects`
-                        : 'No results found',
-            }
-        } catch (error) {
-            console.error('❌ Error performing search:', {
-                error: error.message,
-                stack: error.stack,
-                query,
-                type,
-                userId,
-            })
-            throw new Error(`Failed to perform search: ${error.message}`)
-        }
-    }
-
-    async getNotes(args, request) {
-        const userId = await this.getAuthenticatedUserForClient(request)
-        const db = admin.firestore()
-
-        try {
-            // Single note by ID
-            if (args.noteId) {
-                if (!args.projectId) {
-                    throw new Error('projectId is required when fetching a note by noteId.')
-                }
-
-                if (!this.searchService) {
-                    const { SearchService } = require('../shared/SearchService')
-                    this.searchService = new SearchService({
-                        database: db,
-                        moment: moment,
-                        enableAlgolia: true,
-                        enableNoteContent: true,
-                        enableDateParsing: true,
-                        isCloudFunction: true,
-                    })
-                    await this.searchService.initialize()
-                }
-
-                const result = await this.searchService.getNote(userId, args.noteId, args.projectId)
-
-                return {
-                    success: true,
-                    note: result,
-                    message: `Retrieved note "${result.title}" (${result.metadata.wordCount} words)`,
-                }
-            }
-
-            // List multiple notes with optional date/project filters
-            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
-            const userDoc = await db.collection('users').doc(userId).get()
-            if (!userDoc.exists) {
-                throw new Error('User not found')
-            }
-
-            const userData = userDoc.data()
-            const rawTz =
-                (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
-                (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
-                (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
-                (typeof userData?.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
-            const timezoneOffset = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
-
-            let storageBucket = null
+        if (this.hasNonEmptyString(toolArgs.projectName)) {
             try {
-                const firebaseProjectId = admin.app().options.projectId
-                if (firebaseProjectId === 'alldonealeph') storageBucket = 'notescontentprod'
-                else if (firebaseProjectId === 'alldonestaging') storageBucket = 'notescontentstaging'
-            } catch (e) {}
-
-            if (!this.noteRetrievalService) {
-                const { NoteRetrievalService } = require('../shared/NoteRetrievalService')
-                this.noteRetrievalService = new NoteRetrievalService({
-                    database: db,
-                    moment: moment,
-                    isCloudFunction: true,
-                    storageBucket: storageBucket,
+                const { ProjectService } = require('../shared/ProjectService')
+                const projectService = new ProjectService({ database: admin.firestore() })
+                await projectService.initialize()
+                const projects = await projectService.getUserProjects(userId, {
+                    includeArchived: false,
+                    includeCommunity: false,
                 })
-                await this.noteRetrievalService.initialize()
+                const wanted = toolArgs.projectName.trim().toLowerCase()
+                const match =
+                    projects.find(p => p.name && p.name.toLowerCase() === wanted) ||
+                    projects.find(p => p.name && p.name.toLowerCase().includes(wanted))
+                if (match) return match.id
+            } catch (error) {
+                console.warn('MCP: failed to resolve projectName for delegated tool', error && error.message)
             }
+        }
 
-            const result = await this.noteRetrievalService.getNotes({
-                userId,
-                projectId: args.projectId || '',
-                projectName: args.projectName || '',
-                date: args.date || null,
-                limit: args.limit,
-                timezoneOffset,
-            })
+        return await this.getUserDefaultProject(userId)
+    }
 
-            return {
-                success: true,
-                notes: result.notes,
-                count: result.count,
-                appliedFilters: result.appliedFilters,
-            }
+    /**
+     * Build the runtime context passed to executeToolNatively for MCP calls. The
+     * native data tools mostly read the user's timezone from the user doc
+     * themselves, but a few (date parsing, VM jobs) read it from here, so we
+     * normalise it once and tag the call as coming from the MCP channel.
+     */
+    async buildDelegatedToolRuntimeContext(userId) {
+        const db = admin.firestore()
+        let userTimezoneOffset = null
+        let language = ''
+        try {
+            const userDoc = await db.collection('users').doc(userId).get()
+            const userData = userDoc.exists ? userDoc.data() || {} : {}
+            const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
+            const rawTz =
+                (typeof userData.timezone !== 'undefined' ? userData.timezone : null) ??
+                (typeof userData.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+                (typeof userData.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+                (typeof userData.preferredTimezone !== 'undefined' ? userData.preferredTimezone : null)
+            const normalized = TaskRetrievalService.normalizeTimezoneOffset(rawTz)
+            if (typeof normalized === 'number') userTimezoneOffset = normalized
+            language = userData.language || userData.locale || ''
         } catch (error) {
-            console.error('Error getting notes:', error)
-            throw new Error(`Failed to get notes: ${error.message}`)
+            console.warn('MCP: failed to resolve user runtime context', error && error.message)
         }
-    }
-
-    async updateNote(args, request) {
-        const { content, title } = args
-        const contactId = typeof args.contactId === 'string' ? args.contactId.trim() : ''
-        const contactName = typeof args.contactName === 'string' ? args.contactName.trim() : ''
-        const contactEmail = typeof args.contactEmail === 'string' ? args.contactEmail.trim() : ''
-        const hasContactTarget = !!(contactId || contactName || contactEmail)
-
-        // Get authenticated user automatically from client session
-        const userId = await this.getAuthenticatedUserForClient(request)
-        const db = admin.firestore()
-
-        let currentNote
-        let currentProjectId
-        let currentProjectName
-        let searchResult = null
-        let contactResolution = null
-
-        if (hasContactTarget) {
-            const {
-                resolveContactNoteTarget,
-                resolveProjectForContactNote,
-            } = require('../shared/contactNoteTargetHelper')
-            const { updateContactFields } = require('../shared/contactUpdateHelper')
-            const { normalizeEmailAddress } = require('../Email/emailChannelHelpers')
-            const resolvedProject = await resolveProjectForContactNote({
-                db,
-                userId,
-                projectId: args.projectId || '',
-                projectName: args.projectName || '',
-            })
-            const projectId = resolvedProject?.id || (await this.getUserDefaultProject(userId))
-            const projectName = resolvedProject?.name || projectId
-            if (!projectId) {
-                throw new Error('projectId is required for contact note updates when no default project exists.')
-            }
-
-            const { UserHelper } = require('../shared/UserHelper')
-            const feedUser = await UserHelper.getFeedUserData(db, userId)
-            if (!this.noteService) {
-                const { NoteService } = require('../shared/NoteService')
-                this.noteService = new NoteService({
-                    database: db,
-                    moment: moment,
-                    idGenerator: () => db.collection('_').doc().id,
-                    enableFeeds: true,
-                    enableValidation: true,
-                    isCloudFunction: true,
-                })
-                await this.noteService.initialize()
-            }
-
-            const resolvedContactNote = await resolveContactNoteTarget({
-                db,
-                noteService: this.noteService,
-                feedUser,
-                userId,
-                projectId,
-                contactId,
-                contactName,
-                contactEmail,
-                createIfMissing: args.createIfMissing !== false,
-            })
-
-            contactResolution = resolvedContactNote
-            if (!contactResolution.success) {
-                if (
-                    contactResolution.error === 'MULTIPLE_CONTACT_MATCHES' ||
-                    contactResolution.error === 'NO_CONTACT_MATCH'
-                ) {
-                    return {
-                        success: false,
-                        message: contactResolution.message,
-                        matches: contactResolution.matches || [],
-                        totalMatches: contactResolution.totalMatches || 0,
-                    }
-                }
-                throw new Error(contactResolution.message)
-            }
-
-            const shouldBackfillEmail =
-                ['exact_name', 'fuzzy_name'].includes(contactResolution.matchType) &&
-                !!normalizeEmailAddress(contactEmail) &&
-                !normalizeEmailAddress(contactResolution.contact?.email)
-            if (shouldBackfillEmail) {
-                const updateResult = await updateContactFields({
-                    db,
-                    projectId,
-                    contact: contactResolution.contact,
-                    userId,
-                    feedUser,
-                    updates: { email: contactEmail },
-                })
-                contactResolution = {
-                    ...contactResolution,
-                    contact: updateResult.contact,
-                    emailBackfilled: updateResult.updated,
-                }
-            }
-
-            currentNote = contactResolution.note
-            currentProjectId = contactResolution.projectId
-            currentProjectName = projectName
-        } else {
-            searchResult = await this.findTargetNoteForUpdate(
-                {
-                    noteTitle: args.noteTitle,
-                    noteId: args.noteId,
-                    projectName: args.projectName,
-                    projectId: args.projectId,
-                },
-                userId,
-                db
-            )
-
-            if (!searchResult.success) {
-                if (searchResult.error === 'NO_MATCHES') {
-                    throw new Error(searchResult.message)
-                } else if (searchResult.error === 'MULTIPLE_MATCHES') {
-                    return {
-                        success: false,
-                        message: searchResult.message,
-                        confidence: searchResult.confidence,
-                        reasoning: searchResult.reasoning,
-                        matches: searchResult.matches,
-                        totalMatches: searchResult.totalMatches,
-                    }
-                } else {
-                    throw new Error(searchResult.message)
-                }
-            }
-
-            currentNote = searchResult.selectedNote
-            currentProjectId = searchResult.projectId
-            currentProjectName = searchResult.projectName
-        }
-
-        const updateResult = await this.performNoteUpdate(
-            currentNote,
-            currentProjectId,
-            currentProjectName,
-            {
-                content,
-                title,
-                mode: args.mode,
-                edits: args.edits,
-            },
-            userId,
-            db
-        )
-
-        if (!updateResult.success) {
-            return updateResult
-        }
-
-        if (searchResult?.isAutoSelected) {
-            updateResult.searchInfo = {
-                confidence: searchResult.confidence,
-                reasoning: searchResult.reasoning,
-                alternativeMatches: searchResult.alternativeMatches?.length || 0,
-            }
-            updateResult.message += ` (${searchResult.reasoning})`
-        }
-
-        if (contactResolution?.contact) {
-            updateResult.contact = {
-                contactId: contactResolution.contact.uid,
-                displayName: contactResolution.contact.displayName || '',
-                email: contactResolution.contact.email || '',
-                created: !!contactResolution.contactCreated,
-                noteCreated: !!contactResolution.noteCreated,
-                matchType: contactResolution.matchType || null,
-                matchScore: typeof contactResolution.matchScore === 'number' ? contactResolution.matchScore : null,
-                autoPicked: !!contactResolution.autoPicked,
-                emailBackfilled: !!contactResolution.emailBackfilled,
-            }
-        }
-
-        return updateResult
-    }
-
-    async updateContact(args, request) {
-        const contactId = typeof args.contactId === 'string' ? args.contactId.trim() : ''
-        const contactName = typeof args.contactName === 'string' ? args.contactName.trim() : ''
-        const contactEmail = typeof args.contactEmail === 'string' ? args.contactEmail.trim() : ''
-        const nextEmail = typeof args.email === 'string' ? args.email.trim() : ''
-
-        if (!nextEmail) {
-            throw new Error('email is required for update_contact.')
-        }
-
-        const userId = await this.getAuthenticatedUserForClient(request)
-        const db = admin.firestore()
-        const { resolveContactTarget, resolveProjectForContactNote } = require('../shared/contactNoteTargetHelper')
-        const { updateContactFields } = require('../shared/contactUpdateHelper')
-        const resolvedProject = await resolveProjectForContactNote({
-            db,
-            userId,
-            projectId: args.projectId || '',
-            projectName: args.projectName || '',
-        })
-        const projectId = resolvedProject?.id || (await this.getUserDefaultProject(userId))
-        const projectName = resolvedProject?.name || projectId
-        if (!projectId) {
-            throw new Error('projectId is required for contact updates when no default project exists.')
-        }
-
-        const contactResolution = await resolveContactTarget({
-            db,
-            projectId,
-            userId,
-            contactId,
-            contactName,
-            contactEmail,
-            createIfMissing: args.createIfMissing === true,
-        })
-
-        if (!contactResolution.success) {
-            return {
-                success: false,
-                message: contactResolution.message,
-                matches: contactResolution.matches || [],
-                totalMatches: contactResolution.totalMatches || 0,
-            }
-        }
-
-        const { UserHelper } = require('../shared/UserHelper')
-        const feedUser = await UserHelper.getFeedUserData(db, userId)
-        const updateResult = await updateContactFields({
-            db,
-            projectId,
-            contact: contactResolution.contact,
-            userId,
-            feedUser,
-            updates: { email: nextEmail },
-        })
 
         return {
-            success: true,
-            message: `Contact "${
-                updateResult.contact.displayName || 'Untitled'
-            }" updated successfully in project "${projectName}"`,
-            project: { id: projectId, name: projectName },
-            changes: updateResult.changes,
-            contact: {
-                contactId: updateResult.contact.uid,
-                displayName: updateResult.contact.displayName || '',
-                email: updateResult.contact.email || '',
-                created: !!contactResolution.contactCreated,
-                updated: !!updateResult.updated,
-                matchType: contactResolution.matchType || null,
-                matchScore: typeof contactResolution.matchScore === 'number' ? contactResolution.matchScore : null,
-                autoPicked: !!contactResolution.autoPicked,
-            },
-        }
-    }
-
-    /**
-     * Find target note using enhanced search with confidence-based auto-selection
-     */
-    async findTargetNoteForUpdate(searchCriteria, userId, db) {
-        // Initialize SearchService if not already done
-        if (!this.searchService) {
-            const { SearchService } = require('../shared/SearchService')
-            this.searchService = new SearchService({
-                database: db,
-                moment: moment,
-                enableAlgolia: true,
-                enableNoteContent: true,
-                enableDateParsing: true,
-                isCloudFunction: true,
-            })
-            await this.searchService.initialize()
-        }
-
-        return await this.searchService.findNoteForUpdateWithResults(userId, searchCriteria)
-    }
-
-    /**
-     * Perform the actual note update
-     */
-    async performNoteUpdate(currentNote, currentProjectId, currentProjectName, updateFields, userId, db) {
-        const { content, title, mode, edits } = updateFields
-
-        // Initialize NoteService for consistent update logic and feed generation
-        if (!this.noteService) {
-            const { NoteService } = require('../shared/NoteService')
-            this.noteService = new NoteService({
-                database: db,
-                moment: moment,
-                idGenerator: () => db.collection('_').doc().id,
-                enableFeeds: true,
-                enableValidation: false, // Skip validation since we already validated
-                isCloudFunction: true,
-            })
-            await this.noteService.initialize()
-        }
-
-        // Get user data for feed creation using shared helper
-        const { UserHelper } = require('../shared/UserHelper')
-        const feedUser = await UserHelper.getFeedUserData(db, userId)
-
-        try {
-            console.log('MCP: Using NoteService for note update with feed generation')
-            // Use NoteService for update with proper feed generation
-            const result = await this.noteService.updateAndPersistNote({
-                noteId: currentNote.id,
-                projectId: currentProjectId,
-                currentNote: currentNote,
-                content: content,
-                title: title,
-                mode: mode,
-                edits: edits,
-                feedUser: feedUser,
-            })
-
-            if (!result.success) {
-                return {
-                    success: false,
-                    noteId: currentNote.id,
-                    message: result.message,
-                    error: result.error,
-                    failedEditIndex: result.failedEditIndex,
-                    note: result.updatedNote || { id: currentNote.id, ...currentNote },
-                    project: { id: currentProjectId, name: currentProjectName },
-                    changes: result.changes || [],
-                }
-            }
-
-            console.log('Note updated via NoteService:', {
-                noteId: currentNote.id,
-                projectId: currentProjectId,
-                changes: result.changes,
-                feedGenerated: !!result.feedData,
-                persisted: result.persisted,
-            })
-
-            // Build success message showing what changed
-            const changes = result.changes || []
-            let message = `Note "${currentNote.title || 'Untitled'}" updated successfully`
-            if (changes.length > 0) {
-                message += ` (${changes.join(', ')})`
-            }
-            message += ` in project "${currentProjectName}"`
-
-            return {
-                success: true,
-                noteId: currentNote.id,
-                message,
-                note: result.updatedNote || { id: currentNote.id, ...currentNote },
-                project: { id: currentProjectId, name: currentProjectName },
-                changes: changes,
-            }
-        } catch (error) {
-            console.error('NoteService update failed:', error)
-            throw new Error(`Failed to update note: ${error.message}`)
+            sourceChannel: 'mcp',
+            userTimezoneOffset,
+            language,
+            objectType: null,
+            objectId: null,
         }
     }
 
@@ -2865,559 +1870,18 @@ class AlldoneSimpleMCPServer {
 
             // Handle tools/list
             if (request.method === 'tools/list') {
+                const { getToolSchemas } = require('../Assistant/toolSchemas')
+                // Derive the MCP tool definitions from the same schema source the
+                // in-app assistant uses (functions/Assistant/toolSchemas.js) so the two
+                // surfaces can never drift. MCP-only tools are appended afterwards.
+                const delegatedTools = getToolSchemas(MCP_DELEGATED_ASSISTANT_TOOLS).map(schema => ({
+                    name: schema.function.name,
+                    description: schema.function.description,
+                    inputSchema: schema.function.parameters,
+                }))
+
                 const tools = {
-                    tools: [
-                        {
-                            name: 'create_task',
-                            description:
-                                'Create a new task in the current project. Use a concise task name; very long names are automatically abbreviated by the server. Requires OAuth 2.0 Bearer token authentication.',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    name: {
-                                        type: 'string',
-                                        description:
-                                            'Task name (required). Use a concise title; very long names are automatically abbreviated by the server.',
-                                    },
-                                    description: {
-                                        type: 'string',
-                                        description: 'Task description (optional)',
-                                    },
-                                    dueDate: {
-                                        oneOf: [
-                                            {
-                                                type: 'number',
-                                                description: 'Due date as timestamp (optional)',
-                                            },
-                                            {
-                                                type: 'string',
-                                                description:
-                                                    'Natural language or ISO date/time (e.g., "today 4pm", "tomorrow 16:00", "2025-01-01T16:00")',
-                                            },
-                                        ],
-                                    },
-                                    alertEnabled: {
-                                        type: 'boolean',
-                                        description: 'Enable reminder/alert at the due date (optional)',
-                                    },
-                                    projectId: {
-                                        type: 'string',
-                                        description: 'Project ID (optional, uses user default project if not provided)',
-                                    },
-                                },
-                                required: ['name'],
-                            },
-                        },
-                        {
-                            name: 'update_task',
-                            description:
-                                'Update an existing task or multiple tasks at once using flexible search criteria. Supports bulk updates for today and overdue tasks (max 100). Requires OAuth 2.0 Bearer token authentication.',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    taskId: {
-                                        type: 'string',
-                                        description: 'Task ID to update (optional, for direct lookup)',
-                                    },
-                                    taskName: {
-                                        type: 'string',
-                                        description: 'Full or partial task name to search (optional)',
-                                    },
-                                    projectName: {
-                                        type: 'string',
-                                        description: 'Full or partial project name to search (optional)',
-                                    },
-                                    projectId: {
-                                        type: 'string',
-                                        description:
-                                            'Project ID to search within (optional). For bulk updates (updateAll=true), this limits updates to only tasks in this project.',
-                                    },
-                                    name: {
-                                        type: 'string',
-                                        description: 'New task name (optional)',
-                                    },
-                                    description: {
-                                        type: 'string',
-                                        description: 'New task description (optional)',
-                                    },
-                                    dueDate: {
-                                        oneOf: [
-                                            {
-                                                type: 'number',
-                                                description: 'New due date as timestamp (optional)',
-                                            },
-                                            {
-                                                type: 'string',
-                                                description:
-                                                    'Natural language or ISO date/time (e.g., "today 4pm", "tomorrow 16:00", "2025-01-01T16:00")',
-                                            },
-                                        ],
-                                    },
-                                    completed: {
-                                        type: 'boolean',
-                                        description: 'Mark task as complete/incomplete (optional)',
-                                    },
-                                    parentId: {
-                                        type: 'string',
-                                        description:
-                                            'Set parent task ID for subtasks (optional, null to remove parent)',
-                                    },
-                                    userId: {
-                                        type: 'string',
-                                        description: 'Reassign task to different user (optional)',
-                                    },
-                                    focus: {
-                                        type: 'boolean',
-                                        description:
-                                            'Set to true to mark this task as your focus task, or false to clear it (optional)',
-                                    },
-                                    alertEnabled: {
-                                        type: 'boolean',
-                                        description: 'Enable or disable reminder/alert at the due date (optional)',
-                                    },
-                                    estimation: {
-                                        type: 'number',
-                                        description:
-                                            'Task estimation in minutes (optional). Common values: 15 (15min), 30 (30min), 60 (1 hour), 120 (2 hours), 240 (4 hours), 480 (8 hours), 960 (16 hours). Use this when the user wants to estimate how long a task will take.',
-                                    },
-                                    updateAll: {
-                                        type: 'boolean',
-                                        description:
-                                            'Set to true to update all matching tasks (only today + overdue tasks, max 100). If projectId is provided, updates only tasks in that project. If no projectId, updates across all projects. Use for bulk operations like "mark all today tasks as done", "set estimation to 1h for all overdue tasks", or "complete all tasks in Project X".',
-                                    },
-                                },
-                                required: [],
-                            },
-                        },
-                        {
-                            name: 'create_note',
-                            description:
-                                'Create a new note in the current project (requires OAuth 2.0 Bearer token authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    title: {
-                                        type: 'string',
-                                        description: 'Note title (required)',
-                                    },
-                                    content: {
-                                        type: 'string',
-                                        description:
-                                            'Note content (optional, supports markdown formatting like # headers, **bold**, *italic*, lists, etc. Will create default template if not provided)',
-                                    },
-                                    projectId: {
-                                        type: 'string',
-                                        description: 'Project ID (optional, uses user default project if not provided)',
-                                    },
-                                },
-                                required: ['title'],
-                            },
-                        },
-                        {
-                            name: 'search',
-                            description:
-                                'Search across all content types with keywords (requires OAuth 2.0 Bearer token authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    query: {
-                                        type: 'string',
-                                        description: 'Search query in keywords',
-                                    },
-                                    type: {
-                                        type: 'string',
-                                        enum: ['all', 'tasks', 'notes', 'goals', 'contacts', 'chats', 'assistants'],
-                                        description: 'Content type to search (default: all)',
-                                    },
-                                    projectId: {
-                                        type: 'string',
-                                        description: 'Limit search to specific project (optional)',
-                                    },
-                                    dateRange: {
-                                        type: 'string',
-                                        description:
-                                            'Time filter (e.g., "last week", "yesterday", "this month") (optional)',
-                                    },
-                                },
-                                required: ['query'],
-                            },
-                        },
-                        {
-                            name: 'get_notes',
-                            description:
-                                'Retrieve notes. Fetch a single note by ID (returns full content) or list multiple notes filtered by date and project (requires OAuth 2.0 Bearer token authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    noteId: {
-                                        type: 'string',
-                                        description:
-                                            'Optional: specific note ID to retrieve. When provided, projectId is also required.',
-                                    },
-                                    projectId: {
-                                        type: 'string',
-                                        description:
-                                            'Optional: scope to a specific project by ID. Required when noteId is provided.',
-                                    },
-                                    projectName: {
-                                        type: 'string',
-                                        description: 'Optional: scope to a specific project by name.',
-                                    },
-                                    date: {
-                                        type: 'string',
-                                        description:
-                                            'Optional: filter notes by last-edited date. Supports: "today", "yesterday", "last week", "last 7 days", "this month", "YYYY-MM-DD", or "YYYY-MM-DD to YYYY-MM-DD".',
-                                    },
-                                    allProjects: {
-                                        type: 'boolean',
-                                        description:
-                                            'If true, retrieves notes from all accessible projects. Defaults to true when no projectId/projectName is given.',
-                                    },
-                                    limit: {
-                                        type: 'number',
-                                        description:
-                                            'Optional: maximum number of notes to return when listing. Default is 50, max 500.',
-                                    },
-                                },
-                                required: [],
-                            },
-                        },
-                        {
-                            name: 'update_note',
-                            description:
-                                'Update an existing note. Defaults to prepending new content with a date stamp. Use mode "patch" with deterministic edits to safely replace exact text, replace a section, or insert before/after an exact anchor. Patch mode refuses missing or ambiguous anchors and does not support full-note replacement (requires OAuth 2.0 Bearer token authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    noteId: {
-                                        type: 'string',
-                                        description: 'Note ID to update (optional, for direct lookup)',
-                                    },
-                                    noteTitle: {
-                                        type: 'string',
-                                        description: 'Full or partial note title to search (optional)',
-                                    },
-                                    contactId: {
-                                        type: 'string',
-                                        description: 'Target the note linked to this contact ID (optional)',
-                                    },
-                                    contactName: {
-                                        type: 'string',
-                                        description: 'Target the note linked to this contact name (optional)',
-                                    },
-                                    contactEmail: {
-                                        type: 'string',
-                                        description: 'Target the note linked to this contact email (optional)',
-                                    },
-                                    projectName: {
-                                        type: 'string',
-                                        description: 'Full or partial project name to search (optional)',
-                                    },
-                                    projectId: {
-                                        type: 'string',
-                                        description: 'Project ID to search within (optional)',
-                                    },
-                                    content: {
-                                        type: 'string',
-                                        description:
-                                            'New content to prepend to the note with date stamp when mode is omitted or "prepend". Do not use this for mode "patch"; use edits instead.',
-                                    },
-                                    title: {
-                                        type: 'string',
-                                        description: 'Update the note title (optional)',
-                                    },
-                                    mode: {
-                                        type: 'string',
-                                        enum: ['prepend', 'patch'],
-                                        description:
-                                            'Optional update mode. Defaults to "prepend". Use "patch" for exact, safe partial rewrites using edits.',
-                                    },
-                                    edits: {
-                                        type: 'array',
-                                        description:
-                                            'Required when mode is "patch". Edits are applied in order and the whole patch is rejected if any edit has a missing or ambiguous anchor.',
-                                        items: {
-                                            type: 'object',
-                                            properties: {
-                                                type: {
-                                                    type: 'string',
-                                                    enum: [
-                                                        'replace_text',
-                                                        'replace_section',
-                                                        'insert_before',
-                                                        'insert_after',
-                                                    ],
-                                                    description: 'Patch operation type.',
-                                                },
-                                                find: {
-                                                    type: 'string',
-                                                    description:
-                                                        'Exact text to replace for replace_text, or an exact anchor alternative for insert_before/insert_after.',
-                                                },
-                                                replaceWith: {
-                                                    type: 'string',
-                                                    description: 'Replacement text for replace_text.',
-                                                },
-                                                heading: {
-                                                    type: 'string',
-                                                    description:
-                                                        'Exact section heading for replace_section. The backend replaces content under this heading until the next heading.',
-                                                },
-                                                content: {
-                                                    type: 'string',
-                                                    description:
-                                                        'Replacement content for replace_section, or inserted content for insert_before/insert_after.',
-                                                },
-                                                anchor: {
-                                                    type: 'string',
-                                                    description: 'Exact anchor text for insert_before or insert_after.',
-                                                },
-                                                occurrence: {
-                                                    type: 'number',
-                                                    description:
-                                                        'Optional 1-based occurrence to use when exact text or anchor appears multiple times. Omit only when the match is unique.',
-                                                },
-                                            },
-                                            required: ['type'],
-                                        },
-                                    },
-                                    createIfMissing: {
-                                        type: 'boolean',
-                                        description:
-                                            'For contact-targeted updates, auto-create the contact and/or linked note when missing (optional, default true)',
-                                    },
-                                },
-                                required: [],
-                            },
-                        },
-                        {
-                            name: 'update_contact',
-                            description:
-                                'Update an existing contact by ID, email, or name within a project. Uses the same resolution logic as contact-targeted update_note, including fuzzy same-project name matching when exact ID, email, or name matching does not find a contact (requires OAuth 2.0 Bearer token authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    contactId: {
-                                        type: 'string',
-                                        description: 'Target this contact ID directly (optional)',
-                                    },
-                                    contactName: {
-                                        type: 'string',
-                                        description:
-                                            'Target a contact by exact or fuzzy display name within the resolved project (optional)',
-                                    },
-                                    contactEmail: {
-                                        type: 'string',
-                                        description:
-                                            'Target a contact by exact email or provide an email to backfill onto a same-project name match when the matched contact has no email yet (optional)',
-                                    },
-                                    projectName: {
-                                        type: 'string',
-                                        description: 'Full or partial project name to search (optional)',
-                                    },
-                                    projectId: {
-                                        type: 'string',
-                                        description: 'Project ID to search within (optional)',
-                                    },
-                                    email: {
-                                        type: 'string',
-                                        description: 'New email address to store on the matched contact',
-                                    },
-                                    createIfMissing: {
-                                        type: 'boolean',
-                                        description:
-                                            'Auto-create the contact when no match exists (optional, default false)',
-                                    },
-                                },
-                                required: ['email'],
-                            },
-                        },
-                        {
-                            name: 'get_tasks',
-                            description:
-                                'Get tasks from a project with advanced filtering and subtask support (requires authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    projectId: {
-                                        type: 'string',
-                                        description: 'Project ID (optional, uses user default project if not provided)',
-                                    },
-                                    allProjects: {
-                                        type: 'boolean',
-                                        description:
-                                            'Get tasks from all accessible projects (default: false). When true, ignores projectId parameter.',
-                                    },
-                                    includeArchived: {
-                                        type: 'boolean',
-                                        description:
-                                            'Include archived projects when using allProjects (default: false)',
-                                    },
-                                    includeCommunity: {
-                                        type: 'boolean',
-                                        description:
-                                            'Include community/template/guide projects when using allProjects (default: false)',
-                                    },
-                                    status: {
-                                        type: 'string',
-                                        enum: ['open', 'done', 'all'],
-                                        description:
-                                            'Task status filter (default: open). When used with "date", status "all" returns open tasks filtered by due date plus done tasks filtered by completion date.',
-                                    },
-                                    date: {
-                                        type: 'string',
-                                        description:
-                                            'Date filter in YYYY-MM-DD format or relative keywords like "today", "yesterday", "tomorrow", "this_week", "last_week", "last 7 days", or "next 7 days". For open tasks: filters due dates ("today" also includes overdue). For done tasks: filters completion dates. Default: "today".',
-                                    },
-                                    includeSubtasks: {
-                                        type: 'boolean',
-                                        description: 'Include subtasks in results (default: false)',
-                                    },
-                                    parentId: {
-                                        type: 'string',
-                                        description:
-                                            'Get subtasks for specific parent task ID (requires includeSubtasks: true)',
-                                    },
-                                },
-                                required: [],
-                            },
-                        },
-                        {
-                            name: 'get_chats',
-                            description:
-                                'Get recent chat threads across accessible projects with filters for project, chat type, and timeframe (requires authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    projectId: {
-                                        type: 'string',
-                                        description: 'Optional project ID to limit the chat query',
-                                    },
-                                    projectName: {
-                                        type: 'string',
-                                        description: 'Optional exact or partial project name to limit the chat query',
-                                    },
-                                    types: {
-                                        type: 'array',
-                                        items: {
-                                            type: 'string',
-                                            enum: [
-                                                'topics',
-                                                'tasks',
-                                                'notes',
-                                                'contacts',
-                                                'goals',
-                                                'skills',
-                                                'assistants',
-                                            ],
-                                        },
-                                        description: 'Optional list of chat types to include (default: ["topics"])',
-                                    },
-                                    date: {
-                                        type: 'string',
-                                        description:
-                                            'Optional last-activity timeframe such as "last week", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD"',
-                                    },
-                                    limit: {
-                                        type: 'number',
-                                        description:
-                                            'Optional global maximum number of chat threads to return (default: 10, max: 100)',
-                                    },
-                                },
-                                required: [],
-                            },
-                        },
-                        {
-                            name: 'get_contacts',
-                            description:
-                                'Get contacts from a specific accessible project or, by default, across all accessible active projects. The optional date filter applies to contact last edit time (requires authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    projectId: {
-                                        type: 'string',
-                                        description: 'Optional project ID to limit the contact query',
-                                    },
-                                    projectName: {
-                                        type: 'string',
-                                        description:
-                                            'Optional exact or partial project name to limit the contact query',
-                                    },
-                                    date: {
-                                        type: 'string',
-                                        description:
-                                            'Optional last-edit timeframe such as "last week", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD"',
-                                    },
-                                    limit: {
-                                        type: 'number',
-                                        description:
-                                            'Optional global maximum number of contacts to return (default: 100, max: 1000)',
-                                    },
-                                },
-                                required: [],
-                            },
-                        },
-                        {
-                            name: 'get_user_projects',
-                            description:
-                                'Get list of projects accessible to authenticated user (requires OAuth 2.0 Bearer token authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    includeArchived: {
-                                        type: 'boolean',
-                                        description: 'Include archived projects (default: false)',
-                                    },
-                                    includeCommunity: {
-                                        type: 'boolean',
-                                        description: 'Include community/template/guide projects (default: false)',
-                                    },
-                                },
-                                required: [],
-                            },
-                        },
-                        {
-                            name: 'get_focus_task',
-                            description:
-                                'Get the current focus task for the user, or find and set a new one if none exists. Can optionally force finding a different task. (requires OAuth 2.0 Bearer token authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {
-                                    projectId: {
-                                        type: 'string',
-                                        description:
-                                            'Project context for finding new focus task (optional, omit to search across all projects)',
-                                    },
-                                    forceNew: {
-                                        type: 'boolean',
-                                        description:
-                                            'Force finding a new/different focus task, skipping the currently set focus task. Useful for "what should I work on next?" If no alternative task exists, returns current focus task with a message.',
-                                    },
-                                },
-                                required: [],
-                            },
-                        },
-                        {
-                            name: 'delete_authentication_data',
-                            description:
-                                'Delete all OAuth 2.0 authentication data for the current user (revokes all Bearer tokens and sessions)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {},
-                                required: [],
-                            },
-                        },
-                        {
-                            name: 'get_current_user_info',
-                            description:
-                                'Get information about the currently authenticated user (requires OAuth 2.0 Bearer token authentication)',
-                            inputSchema: {
-                                type: 'object',
-                                properties: {},
-                                required: [],
-                            },
-                        },
-                    ],
+                    tools: [...delegatedTools, ...MCP_NATIVE_ONLY_TOOL_SCHEMAS],
                 }
                 return {
                     jsonrpc: '2.0',
@@ -3462,52 +1926,21 @@ class AlldoneSimpleMCPServer {
 
                 try {
                     let result
-                    switch (name) {
-                        case 'create_task':
-                            result = await this.createTask(args, httpReq)
-                            break
-                        case 'update_task':
-                            result = await this.updateTask(args, httpReq)
-                            break
-                        case 'create_note':
-                            result = await this.createNote(args, httpReq)
-                            break
-                        case 'search':
-                            result = await this.search(args, httpReq)
-                            break
-                        case 'get_note':
-                        case 'get_notes':
-                            result = await this.getNotes(args, httpReq)
-                            break
-                        case 'update_note':
-                            result = await this.updateNote(args, httpReq)
-                            break
-                        case 'update_contact':
-                            result = await this.updateContact(args, httpReq)
-                            break
-                        case 'get_tasks':
-                            result = await this.getTasks(args, httpReq)
-                            break
-                        case 'get_chats':
-                            result = await this.getChats(args, httpReq)
-                            break
-                        case 'get_contacts':
-                            result = await this.getContacts(args, httpReq)
-                            break
-                        case 'get_user_projects':
-                            result = await this.getUserProjects(args, httpReq)
-                            break
-                        case 'get_focus_task':
-                            result = await this.getFocusTask(args, httpReq)
-                            break
-                        case 'delete_authentication_data':
-                            result = await this.deleteAuthenticationData(args, httpReq)
-                            break
-                        case 'get_current_user_info':
-                            result = await this.getCurrentUserInfo(args, httpReq)
-                            break
-                        default:
-                            throw new Error(`Unknown tool: ${name}`)
+                    // Backward-compat alias retained from the previous MCP surface.
+                    const toolName = name === 'get_note' ? 'get_notes' : name
+                    if (MCP_DELEGATED_ASSISTANT_TOOL_SET.has(toolName)) {
+                        result = await this.executeDelegatedAssistantTool(toolName, args, httpReq)
+                    } else {
+                        switch (toolName) {
+                            case 'delete_authentication_data':
+                                result = await this.deleteAuthenticationData(args, httpReq)
+                                break
+                            case 'get_current_user_info':
+                                result = await this.getCurrentUserInfo(args, httpReq)
+                                break
+                            default:
+                                throw new Error(`Unknown tool: ${name}`)
+                        }
                     }
 
                     return {

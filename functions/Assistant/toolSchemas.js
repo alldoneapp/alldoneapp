@@ -1163,6 +1163,35 @@ const toolSchemas = {
         },
     },
 
+    get_route_info: {
+        type: 'function',
+        function: {
+            name: 'get_route_info',
+            description:
+                'Get the travel distance, estimated travel time, and route summary between two locations using Google Maps. Use this when the user asks how far apart two places are, how long it takes to get from one place to another, or for directions between an origin and a destination. Accepts plain addresses, place names, or "latitude,longitude" coordinates.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    origin: {
+                        type: 'string',
+                        description:
+                            'The starting location. A street address, place name, or "latitude,longitude" pair (e.g. "Berlin Hauptbahnhof", "1600 Amphitheatre Pkwy, Mountain View, CA", or "52.5251,13.3694").',
+                    },
+                    destination: {
+                        type: 'string',
+                        description: 'The ending location. A street address, place name, or "latitude,longitude" pair.',
+                    },
+                    travel_mode: {
+                        type: 'string',
+                        enum: ['drive', 'walk', 'bicycle', 'transit'],
+                        description: 'How to travel between the locations. Defaults to "drive".',
+                    },
+                },
+                required: ['origin', 'destination'],
+            },
+        },
+    },
+
     search_gmail: {
         type: 'function',
         function: {

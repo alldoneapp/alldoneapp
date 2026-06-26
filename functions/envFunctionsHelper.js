@@ -129,6 +129,7 @@ const getEnvFunctions = () => {
                     PHONE_CALLS_ENABLED: envJson.PHONE_CALLS_ENABLED || '',
                     BROWSER_CALLS_ENABLED: envJson.BROWSER_CALLS_ENABLED || '',
                     WHATSAPP_CALL_MAX_DURATION_SECONDS: envJson.WHATSAPP_CALL_MAX_DURATION_SECONDS || '',
+                    GOOGLE_MAPS_API_KEY: envJson.GOOGLE_MAPS_API_KEY || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -278,6 +279,7 @@ const getEnvFunctions = () => {
         'PHONE_CALLS_ENABLED',
         'BROWSER_CALLS_ENABLED',
         'WHATSAPP_CALL_MAX_DURATION_SECONDS',
+        'GOOGLE_MAPS_API_KEY',
     ].forEach(key => {
         if (!envFunctions[key]) envFunctions[key] = process.env[key] || ''
     })
