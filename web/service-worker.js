@@ -1,5 +1,5 @@
 // Version identifier - increment to force service worker update
-const SW_VERSION = 'v1.7'
+const SW_VERSION = 'v1.8'
 
 self.addEventListener('install', function (event) {
     // Perform install steps
@@ -46,7 +46,16 @@ self.addEventListener('fetch', function (event) {
         event.request.url.includes('googleusercontent.com') ||
         event.request.url.includes('doubleclick.net') ||
         event.request.url.includes('giphy.com') ||
-        event.request.url.includes('/googleOAuthCallback')
+        event.request.url.includes('/googleOAuthCallback') ||
+        // MCP server + OAuth endpoints respond with redirects (e.g. /authorize ->
+        // login page). Intercepting a top-level navigation here turns the 302 into
+        // an opaque-redirect response (status 0), which the logic below would
+        // mistranslate into a synthetic 404 and break the MCP OAuth flow. Let the
+        // browser handle these natively, exactly like /googleOAuthCallback.
+        event.request.url.includes('/mcpServer') ||
+        event.request.url.includes('/mcpOAuthCallback') ||
+        event.request.url.includes('/mcpClientOAuthCallback') ||
+        event.request.url.includes('/.well-known/oauth')
     ) {
         return
     }
