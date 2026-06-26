@@ -1168,7 +1168,7 @@ const toolSchemas = {
         function: {
             name: 'get_route_info',
             description:
-                'Get the travel distance, estimated travel time, and route summary between two locations using Google Maps. Use this when the user asks how far apart two places are, how long it takes to get from one place to another, or for directions between an origin and a destination. Accepts plain addresses, place names, or "latitude,longitude" coordinates.',
+                'Get the travel distance, estimated travel time, and route summary between two locations using Google Maps. Use this when the user asks how far apart two places are, how long it takes to get from one place to another, or for directions between an origin and a destination. When travel_mode is "transit", the response also includes a step-by-step public transport plan (which bus/train/subway line to take, the departure and arrival stops, departure/arrival times, number of stops, and walking segments). Accepts plain addresses, place names, or "latitude,longitude" coordinates.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1184,7 +1184,8 @@ const toolSchemas = {
                     travel_mode: {
                         type: 'string',
                         enum: ['drive', 'walk', 'bicycle', 'transit'],
-                        description: 'How to travel between the locations. Defaults to "drive".',
+                        description:
+                            'How to travel between the locations. Defaults to "drive". Use "transit" when the user asks about public transport, which bus/train/subway to take, or how to get somewhere without a car.',
                     },
                 },
                 required: ['origin', 'destination'],

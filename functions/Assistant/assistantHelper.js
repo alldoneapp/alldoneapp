@@ -7122,13 +7122,23 @@ async function executeToolNatively(
                     requestBody.routingPreference = 'TRAFFIC_AWARE'
                 }
 
+                // For transit, also request the per-step breakdown so we can report which lines/stops to take.
+                let fieldMask = 'routes.distanceMeters,routes.duration,routes.description'
+                if (travelMode === 'TRANSIT') {
+                    fieldMask +=
+                        ',routes.legs.steps.travelMode' +
+                        ',routes.legs.steps.staticDuration' +
+                        ',routes.legs.steps.distanceMeters' +
+                        ',routes.legs.steps.navigationInstruction.instructions' +
+                        ',routes.legs.steps.transitDetails'
+                }
+
                 const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-Goog-Api-Key': googleMapsApiKey,
-                        'X-Goog-FieldMask':
-                            'routes.distanceMeters,routes.duration,routes.description,routes.legs.startLocation,routes.legs.endLocation',
+                        'X-Goog-FieldMask': fieldMask,
                     },
                     body: JSON.stringify(requestBody),
                 })
@@ -7163,10 +7173,63 @@ async function executeToolNatively(
                 const durationSeconds = route.duration ? parseInt(String(route.duration).replace('s', ''), 10) : 0
                 const durationMinutes = Math.round(durationSeconds / 60)
 
+                // For transit routes, surface the step-by-step plan (walk to stop, which line, where to get off).
+                let transitSteps = null
+                if (travelMode === 'TRANSIT') {
+                    const steps = []
+                    const legs = Array.isArray(route.legs) ? route.legs : []
+                    for (const leg of legs) {
+                        const legSteps = Array.isArray(leg.steps) ? leg.steps : []
+                        for (const step of legSteps) {
+                            const stepDurationSeconds = step.staticDuration
+                                ? parseInt(String(step.staticDuration).replace('s', ''), 10)
+                                : null
+                            const stepDurationMinutes =
+                                stepDurationSeconds != null ? Math.round(stepDurationSeconds / 60) : null
+
+                            if (step.travelMode === 'TRANSIT' && step.transitDetails) {
+                                const td = step.transitDetails
+                                const line = td.transitLine || {}
+                                const vehicle = line.vehicle || {}
+                                const stopDetails = td.stopDetails || {}
+                                const localized = td.localizedValues || {}
+                                steps.push({
+                                    mode: 'transit',
+                                    // e.g. BUS, SUBWAY, TRAIN, TRAM, LIGHT_RAIL
+                                    vehicle_type: vehicle.type || null,
+                                    vehicle_name: vehicle.name?.text || null,
+                                    // Short label riders look for (line number), with the full name as backup.
+                                    line: line.nameShort || line.name || null,
+                                    line_full_name: line.name || null,
+                                    headsign: td.headsign || null,
+                                    departure_stop: stopDetails.departureStop?.name || null,
+                                    arrival_stop: stopDetails.arrivalStop?.name || null,
+                                    departure_time:
+                                        localized.departureTime?.time?.text || stopDetails.departureTime || null,
+                                    arrival_time: localized.arrivalTime?.time?.text || stopDetails.arrivalTime || null,
+                                    num_stops: td.stopCount ?? null,
+                                    agency:
+                                        Array.isArray(line.agencies) && line.agencies[0] ? line.agencies[0].name : null,
+                                    duration_minutes: stepDurationMinutes,
+                                })
+                            } else if (step.travelMode === 'WALK') {
+                                steps.push({
+                                    mode: 'walk',
+                                    instruction: step.navigationInstruction?.instructions || 'Walk',
+                                    distance_meters: step.distanceMeters || null,
+                                    duration_minutes: stepDurationMinutes,
+                                })
+                            }
+                        }
+                    }
+                    if (steps.length) transitSteps = steps
+                }
+
                 console.log('🗺️ GET_ROUTE_INFO TOOL: Route computed', {
                     distanceKm,
                     durationMinutes,
                     travelMode,
+                    transitStepCount: transitSteps ? transitSteps.length : 0,
                 })
 
                 return {
@@ -7180,6 +7243,7 @@ async function executeToolNatively(
                     duration_seconds: durationSeconds,
                     duration_minutes: durationMinutes,
                     route_description: route.description || null,
+                    transit_steps: transitSteps,
                 }
             } catch (error) {
                 console.error('🗺️ GET_ROUTE_INFO TOOL: Lookup failed', {
