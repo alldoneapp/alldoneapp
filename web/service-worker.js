@@ -1,5 +1,5 @@
 // Version identifier - increment to force service worker update
-const SW_VERSION = 'v1.8'
+const SW_VERSION = 'v1.9'
 
 self.addEventListener('install', function (event) {
     // Perform install steps
@@ -66,14 +66,33 @@ self.addEventListener('fetch', function (event) {
                 return caches.match(event.request)
             })
             .then(function (response) {
-                // Ensure we always return a valid Response object
-                if (response && response.ok) {
+                // Pass through any response the browser can actually use. Besides
+                // normal 2xx responses, this includes:
+                //   - opaque responses (status 0, type "opaque"): cross-origin no-cors
+                //     requests such as the Firebase SDK <script> tags loaded from
+                //     www.gstatic.com on the MCP login page. These are not "ok" but
+                //     are perfectly valid for the browser to execute.
+                //   - opaque redirects (type "opaqueredirect"): a top-level navigation
+                //     that the server answers with a 302 (e.g. /mcpServer/authorize ->
+                //     login page).
+                // Without this, the fallback below mistranslated them into a synthetic
+                // 404 and broke the MCP OAuth flow (firebase script 404 -> "firebase is
+                // not defined").
+                if (
+                    response &&
+                    (response.ok ||
+                        response.status === 0 ||
+                        response.type === 'opaque' ||
+                        response.type === 'opaqueredirect')
+                ) {
                     return response
                 }
-                // If no cache match, return a basic response to avoid errors
+                // Real error status: prefer a cached copy, otherwise surface the
+                // original response rather than fabricating a 404.
                 return caches.match(event.request).then(function (cachedResponse) {
                     return (
                         cachedResponse ||
+                        response ||
                         new Response('', {
                             status: 404,
                             statusText: 'Not Found',
