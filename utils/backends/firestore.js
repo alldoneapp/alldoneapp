@@ -3629,6 +3629,8 @@ export function mapUserData(userId, user) {
         email: user.email ? user.email : '',
         notificationEmail: user.notificationEmail ? user.notificationEmail : '',
         assistantEmailEnabled: user.assistantEmailEnabled !== false,
+        mcpEnabled: user.mcpEnabled !== false,
+        mcpDisabledTools: Array.isArray(user.mcpDisabledTools) ? user.mcpDisabledTools : [],
         lastLogin: user.lastLogin ? user.lastLogin : new Date().getTime(),
         photoURL: user.photoURL ? user.photoURL : '',
         projectIds: user.projectIds || [],

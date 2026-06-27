@@ -260,9 +260,12 @@ async function classifyGmailMessage({ config, message }) {
     const firstResult = coerceClassifierResult({ ...parsed, usage: firstUsage }, validLabelKeys, confidenceThreshold)
 
     // Self-consistency check: when the model's reasoning references a configured label that is
-    // inconsistent with the normalized outcome, run a second pass to reconcile. This covers both
-    // matched-but-wrong-key and no-match-with-project-reasoning results.
-    const shouldInspectReasoning = firstResult.matched || noMatchReasoningSuggestsPositiveMatch(firstResult.reasoning)
+    // inconsistent with the normalized outcome, or the model reports zero confidence, run a
+    // stronger second pass to reconcile. This covers matched-but-wrong-key,
+    // no-match-with-project-reasoning, and unusable zero-confidence results.
+    const hasZeroConfidence = firstResult.confidence === 0
+    const shouldInspectReasoning =
+        firstResult.matched || hasZeroConfidence || noMatchReasoningSuggestsPositiveMatch(firstResult.reasoning)
     const crossReference = shouldInspectReasoning
         ? reasoningReferencesDifferentOption(
               firstResult.reasoning,
@@ -270,7 +273,8 @@ async function classifyGmailMessage({ config, message }) {
               buildConsistencyOptionsFromLabels(labelDefinitions)
           )
         : null
-    if (!crossReference) {
+    const consistencyTrigger = crossReference || (hasZeroConfidence ? { type: 'zero_confidence' } : null)
+    if (!consistencyTrigger) {
         return firstResult
     }
 
@@ -297,7 +301,7 @@ async function classifyGmailMessage({ config, message }) {
                     ran: true,
                     corrected: false,
                     inconclusive: true,
-                    trigger: crossReference,
+                    trigger: consistencyTrigger,
                     auditModel,
                     originalLabelKey: firstResult.labelKey,
                     originalConfidence: firstResult.confidence,
@@ -312,7 +316,7 @@ async function classifyGmailMessage({ config, message }) {
                 originalLabelKey: firstResult.labelKey,
                 correctedLabelKey: verified.labelKey,
                 correctedMatched: verified.matched,
-                trigger: crossReference,
+                trigger: consistencyTrigger,
                 auditModel,
             })
         }
@@ -323,7 +327,7 @@ async function classifyGmailMessage({ config, message }) {
             consistencyCheck: {
                 ran: true,
                 corrected,
-                trigger: crossReference,
+                trigger: consistencyTrigger,
                 auditModel,
                 originalLabelKey: firstResult.labelKey,
                 originalConfidence: firstResult.confidence,

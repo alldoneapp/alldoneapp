@@ -70,6 +70,10 @@ async function handleIncomingWhatsAppMessage(req, res) {
         const trimmedBody = (body || '').trim()
         const voiceMedia = getVoiceMediaCandidate(mediaItems)
         const canTreatAsVoiceMessage = !!voiceMedia && mediaItems.length === 1 && !trimmedBody
+        // A WhatsApp location pin arrives as dedicated Latitude/Longitude/Address/Label
+        // webhook params (NumMedia=0, empty Body). Capture it now — it is not retrievable
+        // later via the Twilio REST API.
+        const sharedLocationText = buildSharedLocationText(req.body)
 
         console.log('WhatsApp Incoming: Received message', {
             from: fromNumber,
@@ -77,6 +81,7 @@ async function handleIncomingWhatsAppMessage(req, res) {
             numMedia,
             acceptedMediaItems: mediaItems.length,
             firstMediaContentType: firstMedia?.contentType,
+            hasLocation: !!sharedLocationText,
             messageSid,
         })
 
@@ -234,13 +239,21 @@ async function handleIncomingWhatsAppMessage(req, res) {
                     messageText = `Please review the ${processedMedia.length > 1 ? 'attached files' : 'attached file'}.`
                 }
 
-                if (processedMedia.length === 0 && !messageText && !storedMessageText) {
+                if (processedMedia.length === 0 && !messageText && !storedMessageText && !sharedLocationText) {
                     await service.sendWhatsAppMessage(
                         fromNumber,
                         'Sorry, I could not process those files. Please resend in a supported format or add text.'
                     )
                     return res.status(200).send('OK')
                 }
+            }
+
+            // Fold a machine-readable location line into both the assistant prompt and the
+            // text stored in the thread, so "what's the weather here?" follow-ups can use it.
+            // get_weather / get_route_info accept the embedded "latitude,longitude" string.
+            if (sharedLocationText) {
+                messageText = [messageText, sharedLocationText].filter(Boolean).join('\n\n')
+                storedMessageText = [storedMessageText, sharedLocationText].filter(Boolean).join('\n\n')
             }
         }
 
@@ -590,6 +603,52 @@ function extractMediaItems(body, numMedia) {
     return items
 }
 
+/**
+ * Build a machine-readable location line from a Twilio WhatsApp webhook body.
+ * When a user shares a location pin, Twilio adds Latitude/Longitude (always) plus
+ * Address/Label (when a named place is shared). Returns '' when no valid coordinates
+ * are present. The coordinates are embedded as a bare "lat,lng" string so the assistant
+ * can pass them straight to get_weather / get_route_info.
+ */
+function buildSharedLocationText(body) {
+    if (!body || typeof body !== 'object') return ''
+
+    const latitude = parseCoordinate(body.Latitude, 90)
+    const longitude = parseCoordinate(body.Longitude, 180)
+    if (latitude === null || longitude === null) return ''
+
+    const coords = `${latitude},${longitude}`
+    const label = sanitizeLocationField(body.Label)
+    const address = sanitizeLocationField(body.Address)
+    const placeParts = []
+    if (label) placeParts.push(label)
+    if (address && address.toLowerCase() !== label.toLowerCase()) placeParts.push(address)
+    const place = placeParts.join(', ')
+
+    if (place) {
+        return `[Shared location 📍] My current location is ${place} (coordinates ${coords}).`
+    }
+    return `[Shared location 📍] My current location coordinates are ${coords}.`
+}
+
+function parseCoordinate(value, absLimit) {
+    if (value === undefined || value === null || value === '') return null
+    const num = Number(value)
+    if (!Number.isFinite(num)) return null
+    if (num < -absLimit || num > absLimit) return null
+    // Trim floating noise while keeping ~0.1m precision.
+    return Math.round(num * 1e6) / 1e6
+}
+
+function sanitizeLocationField(value) {
+    if (typeof value !== 'string') return ''
+    return value
+        .replace(/[\u0000-\u001f\u007f]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 200)
+}
+
 function getVoiceMediaCandidate(mediaItems) {
     return mediaItems.find(item => {
         const contentType = String(item?.contentType || '').toLowerCase()
@@ -892,5 +951,6 @@ module.exports = {
         buildStoredMediaFileName,
         getFileNameFromMediaResponse,
         sanitizeIncomingMediaFileName,
+        buildSharedLocationText,
     },
 }

@@ -201,6 +201,7 @@ function buildCalendarClassifierRepairRequestParams({
     definitions,
     normalizedEvent,
     previousResult,
+    retryReason,
 }) {
     const requestParams = buildCalendarClassifierRequestParams({
         selectedModel,
@@ -213,7 +214,10 @@ function buildCalendarClassifierRepairRequestParams({
     requestParams.messages.push({
         role: 'user',
         content:
-            'The previous JSON was inconsistent: the selected project ID/name did not match the reasoning, or the reasoning named a different configured project. Re-evaluate once and return corrected strict JSON only. If you cannot make the selected project and reasoning consistent, return no match.\n\n' +
+            (retryReason === 'zero_confidence'
+                ? 'The previous JSON had zero confidence. Re-evaluate once with independent judgment and return corrected strict JSON only. '
+                : 'The previous JSON was inconsistent: the selected project ID/name did not match the reasoning, or the reasoning named a different configured project. Re-evaluate once and return corrected strict JSON only. ') +
+            'If you cannot make a confident, consistent selection, return no match.\n\n' +
             `Previous JSON:\n${JSON.stringify(previousResult || {}, null, 2)}`,
     })
 
@@ -242,8 +246,11 @@ async function runCalendarClassifierCompletion(openai, requestParams) {
     }
 }
 
-function shouldRetryCalendarClassification(result) {
-    return !result?.matched && result?.reasoning === INCONSISTENT_ROUTING_REASON
+function getCalendarClassificationRetryReason(result) {
+    if (result?.matched) return null
+    if (result?.reasoning === INCONSISTENT_ROUTING_REASON) return 'inconsistent_result'
+    if (result?.confidence === 0) return 'zero_confidence'
+    return null
 }
 
 async function classifyCalendarEventProject({ config, event, projectDefinitions, calendarEmail = '' }) {
@@ -300,7 +307,8 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
         confidenceThreshold
     )
 
-    if (!shouldRetryCalendarClassification(firstResult)) {
+    const retryReason = getCalendarClassificationRetryReason(firstResult)
+    if (!retryReason) {
         return firstResult
     }
 
@@ -313,6 +321,7 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
             definitions,
             normalizedEvent,
             previousResult: firstCompletion.parsed,
+            retryReason,
         })
     )
 
@@ -327,7 +336,8 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
                 promptTokens: (firstCompletion.usage?.promptTokens || 0) + (repairCompletion.usage?.promptTokens || 0),
                 completionTokens:
                     (firstCompletion.usage?.completionTokens || 0) + (repairCompletion.usage?.completionTokens || 0),
-                retriedAfterInconsistentResult: true,
+                retriedAfterInconsistentResult: retryReason === 'inconsistent_result',
+                retriedAfterZeroConfidence: retryReason === 'zero_confidence',
                 auditModel,
             },
         },

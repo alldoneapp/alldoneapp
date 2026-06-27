@@ -1374,6 +1374,73 @@ describe('resolveCreateTaskTargetProject', () => {
         })
     })
 
+    test('keeps an exact project match when the reason negates the private project', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([
+            { id: 'p-private', name: 'Privat' },
+            { id: 'p-alldone', name: 'Alldone Product' },
+        ])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+        const fakeDb = {
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({
+                    get: jest.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
+                })),
+            })),
+        }
+
+        await expect(
+            resolveCreateTaskTargetProject(fakeDb, {
+                creatorId: 'u-1',
+                contextProjectId: 'p-private',
+                assistantId: 'a-1',
+                globalProjectId: 'global',
+                requestedProjectName: 'Alldone Product',
+                assistantProjectRoutingReason:
+                    'WhatsApp location handling is an Alldone product capability, not a private travel task.',
+            })
+        ).resolves.toMatchObject({
+            targetProjectId: 'p-alldone',
+            targetProjectName: 'Alldone Product',
+            source: 'toolArgs.projectName_exact',
+        })
+    })
+
+    test('does not redirect to a project that is explicitly negated', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([
+            { id: 'p-private', name: 'Privat' },
+            { id: 'p-alldone', name: 'Alldone Product' },
+        ])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+        const fakeDb = {
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({
+                    get: jest.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
+                })),
+            })),
+        }
+
+        await expect(
+            resolveCreateTaskTargetProject(fakeDb, {
+                creatorId: 'u-1',
+                contextProjectId: 'p-private',
+                assistantId: 'a-1',
+                globalProjectId: 'global',
+                requestedProjectName: 'Alldone Product',
+                assistantProjectRoutingReason: 'This belongs to Alldone Product, not Privat.',
+            })
+        ).resolves.toMatchObject({
+            targetProjectId: 'p-alldone',
+            targetProjectName: 'Alldone Product',
+            source: 'toolArgs.projectName_exact',
+        })
+    })
+
     test('corrects default-project fallback when low-confidence reason points to current context project', async () => {
         const getUserProjects = jest.fn().mockResolvedValue([
             { id: 'p-private', name: 'Privat' },

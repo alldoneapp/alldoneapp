@@ -259,3 +259,73 @@ describe('AlldoneSimpleMCPServer tools/call routing', () => {
         expect(mockExecuteToolNatively).not.toHaveBeenCalled()
     })
 })
+
+describe('AlldoneSimpleMCPServer per-user MCP access', () => {
+    let originalSetTimeout
+    let AlldoneSimpleMCPServer
+
+    beforeAll(() => {
+        originalSetTimeout = global.setTimeout
+        global.setTimeout = jest.fn(() => 0)
+        ;({ AlldoneSimpleMCPServer } = require('./mcpServerSimple'))
+    })
+
+    afterAll(() => {
+        global.setTimeout = originalSetTimeout
+    })
+
+    const buildServer = access => {
+        const server = new AlldoneSimpleMCPServer()
+        server.getAuthenticatedUserForClient = jest.fn().mockResolvedValue('user-1')
+        server.checkRateLimits = jest.fn().mockResolvedValue({ allowed: true })
+        server.getUserMcpAccess = jest.fn().mockResolvedValue(access)
+        server.buildDelegatedToolRuntimeContext = jest.fn().mockResolvedValue({ sourceChannel: 'mcp' })
+        return server
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    const callTool = (server, name) =>
+        server.handleSingleJsonRpc(
+            { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name, arguments: { projectId: 'p1' } } },
+            {}
+        )
+
+    test('tools/list returns no tools when MCP access is disabled', async () => {
+        const server = buildServer({ enabled: false, disabledTools: [] })
+        const response = await server.handleSingleJsonRpc({ jsonrpc: '2.0', id: 8, method: 'tools/list' }, {})
+        expect(response.result.tools).toEqual([])
+    })
+
+    test('tools/list omits per-tool disabled tools', async () => {
+        const server = buildServer({ enabled: true, disabledTools: ['get_contacts'] })
+        const response = await server.handleSingleJsonRpc({ jsonrpc: '2.0', id: 8, method: 'tools/list' }, {})
+        const names = response.result.tools.map(tool => tool.name)
+        expect(names).not.toContain('get_contacts')
+        expect(names).toContain('get_tasks')
+    })
+
+    test('tools/call is blocked for every tool when MCP access is disabled', async () => {
+        const server = buildServer({ enabled: false, disabledTools: [] })
+        const response = await callTool(server, 'get_tasks')
+        expect(response.result.isError).toBe(true)
+        expect(JSON.parse(response.result.content[0].text).error).toMatch(/disabled/i)
+        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
+    })
+
+    test('tools/call blocks a per-tool disabled tool but allows the others', async () => {
+        const server = buildServer({ enabled: true, disabledTools: ['get_contacts'] })
+        mockExecuteToolNatively.mockResolvedValue({ ok: true })
+
+        const blocked = await callTool(server, 'get_contacts')
+        expect(blocked.result.isError).toBe(true)
+        expect(JSON.parse(blocked.result.content[0].text).error).toMatch(/disabled/i)
+        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
+
+        const allowed = await callTool(server, 'get_tasks')
+        expect(allowed.result.isError).toBeUndefined()
+        expect(mockExecuteToolNatively).toHaveBeenCalledTimes(1)
+    })
+})

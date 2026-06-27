@@ -110,9 +110,25 @@ function getProjectFromList(projects, projectId) {
     return Array.isArray(projects) ? projects.find(project => project?.id === projectId) || null : null
 }
 
-function reasonMentionsProject(normalizedReason, projectName) {
+function reasonMentionsProject(normalizedReason, projectName, { allowTokenSuffix = false } = {}) {
     const normalizedProjectName = normalizeTextForProjectReference(projectName)
-    return !!normalizedProjectName && normalizedReason.includes(normalizedProjectName)
+    if (!normalizedProjectName) return false
+
+    const escapedProjectName = normalizedProjectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const suffixPattern = allowTokenSuffix ? '[a-z0-9]*' : ''
+    const projectReferencePattern = new RegExp(`(?:^|\\s)${escapedProjectName}${suffixPattern}(?=$|\\s)`, 'g')
+    let match
+
+    while ((match = projectReferencePattern.exec(normalizedReason)) !== null) {
+        const prefix = normalizedReason.slice(0, match.index).trimEnd()
+        const isNegatedReference = /(?:^|\s)(?:not|nicht|rather than|instead of|statt|anstatt)(?:\s+(?:in|the|a|an|das|die|der|den|dem|ein|eine|einem|einer)){0,2}$/.test(
+            prefix
+        )
+
+        if (!isNegatedReference) return true
+    }
+
+    return false
 }
 
 function findProjectReferencedByReason(projects, assistantReasoning, selectedProjectId) {
@@ -138,9 +154,7 @@ function findProjectReferencedByReason(projects, assistantReasoning, selectedPro
     const matchedByDistinctiveToken = []
     candidateProjects.forEach(project => {
         const projectTokens = getProjectReferenceTokens(project.name)
-        if (
-            projectTokens.some(token => normalizedReason.split(' ').some(reasonToken => reasonToken.startsWith(token)))
-        ) {
+        if (projectTokens.some(token => reasonMentionsProject(normalizedReason, token, { allowTokenSuffix: true }))) {
             matchedByDistinctiveToken.push(project)
         }
     })

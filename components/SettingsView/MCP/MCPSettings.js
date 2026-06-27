@@ -1,12 +1,54 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, View, Text } from 'react-native'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
 import global, { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
+import Switch from '../../UIControls/Switch'
 import URLsSettings, { URL_SETTINGS_MCP } from '../../../URLSystem/Settings/URLsSettings'
 import { translate, useTranslator } from '../../../i18n/TranslationService'
 import { copyTextToClipboard } from '../../../utils/HelperFunctions'
+import { setUserMCPSettings } from '../../../utils/backends/Users/usersFirestore'
+import { storeLoggedUser } from '../../../redux/actions'
+import { TOOL_LABEL_BY_KEY } from '../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
+
+// Tools exposed over MCP, in display order. Keep in sync with
+// MCP_DELEGATED_ASSISTANT_TOOLS in functions/MCP/mcpServerSimple.js — that constant
+// is the server-side source of truth for what the MCP server actually serves.
+const MCP_TOOL_KEYS = [
+    'create_task',
+    'update_task',
+    'get_tasks',
+    'get_focus_task',
+    'create_note',
+    'update_note',
+    'get_notes',
+    'update_contact',
+    'get_contacts',
+    'search',
+    'get_chats',
+    'get_user_projects',
+    'get_updates',
+    'get_goals',
+    'get_project_okrs',
+    'get_project_happiness',
+    'update_user_memory',
+    'web_search',
+    'get_route_info',
+    'get_chat_attachment',
+    'list_recent_chat_media',
+    'search_gmail',
+    'get_gmail_attachment',
+    'create_gmail_draft',
+    'create_gmail_reply_draft',
+    'update_gmail_draft',
+    'update_gmail_email',
+    'find_calendar_availability',
+    'search_calendar_events',
+    'create_calendar_event',
+    'update_calendar_event',
+    'delete_calendar_event',
+]
 
 // Derive the MCP server URL from the host the user is currently on so it is
 // always correct for the environment (my.alldone.app, mystaging.alldone.app, …).
@@ -22,9 +64,15 @@ const getMcpServerUrl = () => {
 
 export default function MCPSettings() {
     useTranslator()
+    const dispatch = useDispatch()
     const mobile = useSelector(state => state.isMiddleScreen)
+    const loggedUser = useSelector(state => state.loggedUser)
     const [copied, setCopied] = useState(false)
     const serverUrl = getMcpServerUrl()
+
+    const mcpEnabled = loggedUser.mcpEnabled !== false
+    const disabledTools = Array.isArray(loggedUser.mcpDisabledTools) ? loggedUser.mcpDisabledTools : []
+    const disabledSet = new Set(disabledTools)
 
     useEffect(() => {
         URLsSettings.push(URL_SETTINGS_MCP)
@@ -35,6 +83,24 @@ export default function MCPSettings() {
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
     }
+
+    // Optimistically update redux so the UI reflects the change immediately, then
+    // persist to the user doc (which the MCP server reads on its next request).
+    const persistMcpSettings = (enabled, nextDisabledTools) => {
+        dispatch(storeLoggedUser({ ...loggedUser, mcpEnabled: enabled, mcpDisabledTools: nextDisabledTools }))
+        setUserMCPSettings(loggedUser.uid, enabled, nextDisabledTools)
+    }
+
+    const setMcpEnabled = enabled => persistMcpSettings(enabled, disabledTools)
+
+    const setToolEnabled = (toolKey, enabled) => {
+        const next = new Set(disabledTools)
+        if (enabled) next.delete(toolKey)
+        else next.add(toolKey)
+        persistMcpSettings(mcpEnabled, Array.from(next))
+    }
+
+    const setAllToolsEnabled = enabled => persistMcpSettings(mcpEnabled, enabled ? [] : [...MCP_TOOL_KEYS])
 
     const renderStep = (index, text) => (
         <View style={localStyles.step} key={`step-${index}`}>
@@ -79,6 +145,61 @@ export default function MCPSettings() {
                         'Add this URL as a remote MCP server in your client, then sign in with your Alldone account to authorize access.'
                     )}
                 </Text>
+            </View>
+
+            <Text style={localStyles.sectionTitle}>{translate('MCP access')}</Text>
+            <View style={localStyles.card}>
+                <View style={localStyles.switchRow}>
+                    <Text style={localStyles.switchLabel}>{translate('Enable MCP access')}</Text>
+                    <Switch
+                        active={mcpEnabled}
+                        activeSwitch={() => setMcpEnabled(true)}
+                        deactiveSwitch={() => setMcpEnabled(false)}
+                    />
+                </View>
+                <Text style={localStyles.cardHelp}>
+                    {translate(
+                        'When this is off, no MCP client can use Alldone tools with your account — even one that is already connected.'
+                    )}
+                </Text>
+            </View>
+
+            <View style={[localStyles.card, !mcpEnabled && localStyles.cardDisabled]}>
+                <View style={localStyles.toolsHeader}>
+                    <Text style={localStyles.clientTitle}>{translate('Allowed tools')}</Text>
+                    <View style={localStyles.toolsHeaderActions}>
+                        <Button
+                            type={'ghost'}
+                            title={translate('Enable all')}
+                            onPress={() => setAllToolsEnabled(true)}
+                            disabled={!mcpEnabled}
+                        />
+                        <Button
+                            type={'ghost'}
+                            title={translate('Disable all')}
+                            onPress={() => setAllToolsEnabled(false)}
+                            disabled={!mcpEnabled}
+                        />
+                    </View>
+                </View>
+                <Text style={localStyles.cardHelp}>
+                    {translate('Choose which tools your connected MCP clients are allowed to use.')}
+                </Text>
+                <View style={localStyles.toolsList}>
+                    {MCP_TOOL_KEYS.map(toolKey => (
+                        <View style={localStyles.toolRow} key={toolKey}>
+                            <Text style={localStyles.toolLabel} numberOfLines={1}>
+                                {translate(TOOL_LABEL_BY_KEY[toolKey] || toolKey)}
+                            </Text>
+                            <Switch
+                                active={mcpEnabled && !disabledSet.has(toolKey)}
+                                activeSwitch={() => setToolEnabled(toolKey, true)}
+                                deactiveSwitch={() => setToolEnabled(toolKey, false)}
+                                disabled={!mcpEnabled}
+                            />
+                        </View>
+                    ))}
+                </View>
             </View>
 
             <Text style={localStyles.sectionTitle}>{translate('How to connect')}</Text>
@@ -164,6 +285,46 @@ const localStyles = StyleSheet.create({
     },
     securityCard: {
         marginTop: 12,
+    },
+    cardDisabled: {
+        opacity: 0.5,
+    },
+    switchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    switchLabel: {
+        ...global.subtitle2,
+        color: colors.Text01,
+        flex: 1,
+        marginRight: 16,
+    },
+    toolsHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    toolsHeaderActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    toolsList: {
+        marginTop: 16,
+    },
+    toolRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 8,
+        borderTopWidth: 1,
+        borderTopColor: colors.Grey300,
+    },
+    toolLabel: {
+        ...global.body1,
+        color: colors.Text02,
+        flex: 1,
+        marginRight: 16,
     },
     cardLabel: {
         ...global.subtitle2,

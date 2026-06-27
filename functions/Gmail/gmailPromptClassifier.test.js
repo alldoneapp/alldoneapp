@@ -229,4 +229,55 @@ describe('gmailPromptClassifier', () => {
             })
         )
     })
+
+    test('audits zero-confidence results with the stronger consistency model', async () => {
+        mockCreateCompletion
+            .mockResolvedValueOnce(
+                mockCompletion({
+                    matched: true,
+                    labelKey: 'project_private',
+                    confidence: 0,
+                    reasoning: 'The classifier could not make a reliable decision.',
+                })
+            )
+            .mockResolvedValueOnce(
+                mockCompletion({
+                    matched: true,
+                    labelKey: 'project_product',
+                    confidence: 0.96,
+                    reasoning: 'The message concerns an Alldone product capability.',
+                })
+            )
+
+        const result = await classifyGmailMessage({
+            config: {
+                prompt: 'Classify by active project.',
+                model: 'MODEL_GPT5_4_NANO',
+                confidenceThreshold: 0.7,
+                labelDefinitions: [
+                    { key: 'project_private', gmailLabelName: 'Privat' },
+                    { key: 'project_product', gmailLabelName: 'Alldone Product' },
+                ],
+            },
+            message: { subject: 'WhatsApp location support', direction: 'incoming' },
+        })
+
+        expect(mockCreateCompletion).toHaveBeenCalledTimes(2)
+        expect(mockCreateCompletion.mock.calls[1][0].model).toBe('gpt-5.5')
+        expect(result).toEqual(
+            expect.objectContaining({
+                matched: true,
+                labelKey: 'project_product',
+                confidence: 0.96,
+                consistencyCheck: expect.objectContaining({
+                    ran: true,
+                    corrected: true,
+                    trigger: { type: 'zero_confidence' },
+                    auditModel: 'gpt-5.5',
+                    originalLabelKey: null,
+                    originalConfidence: 0,
+                }),
+            })
+        )
+    })
 })

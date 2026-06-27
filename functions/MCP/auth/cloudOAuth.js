@@ -418,16 +418,6 @@ class CloudOAuthHandler {
         <div class="logo">🚀 Alldone MCP</div>
         <h2>Authenticate</h2>
         <p>Sign in with your Alldone account to use the Alldone MCP server</p>
-        ${
-            authCode
-                ? `
-        <div style="background: #f8f9fa; border: 2px solid #667eea; border-radius: 8px; padding: 15px; margin: 20px 0; text-align: left;">
-            <div style="font-weight: bold; color: #667eea; margin-bottom: 8px;">🔑 Authorization Code:</div>
-            <code style="background: white; padding: 8px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 14px; word-break: break-all; display: block;">${authCode}</code>
-            <div style="font-size: 12px; color: #666; margin-top: 8px;">This authorization code will be exchanged for an access token after authentication.</div>
-        </div>`
-                : ''
-        }
         <button id="loginBtn" class="button">Sign in with Google</button>
         <button id="closeBtn" class="button close hidden">Close this window</button>
         <div id="status"></div>
@@ -528,18 +518,8 @@ class CloudOAuthHandler {
                     }
                     
                     // Fallback: Show success message if no redirect needed
-                    let successMessage = '✅ Authentication successful! You can now close this window and return to Claude.';
-                    
-                    // Show access token if available
-                    if (data.bearerToken) {
-                        successMessage += 
-                        '<div style="background: #d4edda; border: 2px solid #28a745; border-radius: 8px; padding: 15px; margin: 15px 0; text-align: left;">' +
-                            '<div style="font-weight: bold; color: #155724; margin-bottom: 8px;">🎟️ Access Token (Bearer Token):</div>' +
-                            '<code style="background: white; padding: 8px; border-radius: 4px; font-family: Courier New, monospace; font-size: 12px; word-break: break-all; display: block; max-height: 100px; overflow-y: auto;">' + data.bearerToken + '</code>' +
-                            '<div style="font-size: 12px; color: #155724; margin-top: 8px;">This token can be used for authenticated MCP requests.</div>' +
-                        '</div>';
-                    }
-                    
+                    const successMessage = '✅ Authentication successful! You can now close this window and return to Claude.';
+
                     showStatus(successMessage);
                     showCloseButton();
                 } else {

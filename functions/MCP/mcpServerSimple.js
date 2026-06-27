@@ -1007,6 +1007,24 @@ class AlldoneSimpleMCPServer {
     // Email-based authentication is now handled by storeUserAuthByEmail in mcpOAuthCallback.js
     // Client identification methods are no longer needed with email-based authentication
 
+    // Per-user MCP access config (master switch + per-tool opt-out), edited in the
+    // app under Settings → MCP and stored on the user doc. Defaults are permissive
+    // (enabled, nothing disabled) so existing users and newly added tools keep
+    // working unless the user explicitly restricts them.
+    async getUserMcpAccess(userId) {
+        try {
+            const userDoc = await admin.firestore().collection('users').doc(userId).get()
+            const data = userDoc.exists ? userDoc.data() || {} : {}
+            return {
+                enabled: data.mcpEnabled !== false,
+                disabledTools: Array.isArray(data.mcpDisabledTools) ? data.mcpDisabledTools : [],
+            }
+        } catch (error) {
+            console.warn('MCP: failed to read user MCP access, defaulting to enabled', error && error.message)
+            return { enabled: true, disabledTools: [] }
+        }
+    }
+
     // Helper function to get user's default project
     async getUserDefaultProject(userId) {
         try {
@@ -1871,14 +1889,33 @@ class AlldoneSimpleMCPServer {
             // Handle tools/list
             if (request.method === 'tools/list') {
                 const { getToolSchemas } = require('../Assistant/toolSchemas')
+
+                // Honour the per-user MCP config (Settings → MCP). tools/list may be
+                // called during discovery before auth; if we can't resolve the user we
+                // fall back to the full list and still enforce at tools/call time.
+                let access = { enabled: true, disabledTools: [] }
+                try {
+                    const userId = await this.getAuthenticatedUserForClient(httpReq)
+                    if (userId) access = await this.getUserMcpAccess(userId)
+                } catch (error) {
+                    // Unauthenticated discovery: advertise the full list.
+                }
+
+                if (!access.enabled) {
+                    return { jsonrpc: '2.0', id: request.id, result: { tools: [] } }
+                }
+
+                const disabled = new Set(access.disabledTools)
                 // Derive the MCP tool definitions from the same schema source the
                 // in-app assistant uses (functions/Assistant/toolSchemas.js) so the two
                 // surfaces can never drift. MCP-only tools are appended afterwards.
-                const delegatedTools = getToolSchemas(MCP_DELEGATED_ASSISTANT_TOOLS).map(schema => ({
-                    name: schema.function.name,
-                    description: schema.function.description,
-                    inputSchema: schema.function.parameters,
-                }))
+                const delegatedTools = getToolSchemas(MCP_DELEGATED_ASSISTANT_TOOLS)
+                    .filter(schema => !disabled.has(schema.function.name))
+                    .map(schema => ({
+                        name: schema.function.name,
+                        description: schema.function.description,
+                        inputSchema: schema.function.parameters,
+                    }))
 
                 const tools = {
                     tools: [...delegatedTools, ...MCP_NATIVE_ONLY_TOOL_SCHEMAS],
@@ -1928,6 +1965,25 @@ class AlldoneSimpleMCPServer {
                     let result
                     // Backward-compat alias retained from the previous MCP surface.
                     const toolName = name === 'get_note' ? 'get_notes' : name
+
+                    // Enforce the per-user MCP config (Settings → MCP): the master
+                    // switch gates every tool, and disabledTools opts individual tools
+                    // out. The thrown errors are turned into JSON-RPC tool errors below.
+                    const accessUserId = userId || (await this.getAuthenticatedUserForClient(httpReq).catch(() => null))
+                    if (accessUserId) {
+                        const access = await this.getUserMcpAccess(accessUserId)
+                        if (!access.enabled) {
+                            throw new Error(
+                                'MCP access is disabled for this account. Enable it in Alldone under Settings → MCP.'
+                            )
+                        }
+                        if (access.disabledTools.includes(toolName)) {
+                            throw new Error(
+                                `The "${toolName}" tool is disabled for this account. Enable it in Alldone under Settings → MCP.`
+                            )
+                        }
+                    }
+
                     if (MCP_DELEGATED_ASSISTANT_TOOL_SET.has(toolName)) {
                         result = await this.executeDelegatedAssistantTool(toolName, args, httpReq)
                     } else {

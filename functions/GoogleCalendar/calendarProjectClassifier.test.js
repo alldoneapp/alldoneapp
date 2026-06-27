@@ -225,6 +225,72 @@ describe('calendarProjectClassifier', () => {
         )
     })
 
+    test('retries zero-confidence results with the stronger model', async () => {
+        const create = jest
+            .fn()
+            .mockResolvedValueOnce({
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                matched: false,
+                                projectId: null,
+                                projectName: null,
+                                confidence: 0,
+                                reasoning: 'The classifier could not make a reliable decision.',
+                            }),
+                        },
+                    },
+                ],
+                usage: { total_tokens: 100, prompt_tokens: 80, completion_tokens: 20 },
+            })
+            .mockResolvedValueOnce({
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                matched: true,
+                                projectId: 'juno-project',
+                                projectName: 'JTL Software - Project Juno',
+                                confidence: 0.93,
+                                reasoning: 'The event clearly concerns the Juno project.',
+                            }),
+                        },
+                    },
+                ],
+                usage: { total_tokens: 80, prompt_tokens: 65, completion_tokens: 15 },
+            })
+        assistantHelper.getCachedEnvFunctions.mockReturnValue({ OPEN_AI_KEY: 'key' })
+        assistantHelper.getOpenAIClient.mockReturnValue({ chat: { completions: { create } } })
+
+        const result = await classifyCalendarEventProject({
+            config: {
+                prompt: 'Route events',
+                model: 'MODEL_GPT5_4_NANO',
+                confidenceThreshold: 0.7,
+            },
+            event: { id: 'event-1', summary: 'Juno roadmap' },
+            projectDefinitions,
+            calendarEmail: 'me@example.com',
+        })
+
+        expect(create).toHaveBeenCalledTimes(2)
+        expect(create.mock.calls[1][0].model).toBe('gpt-5.5')
+        expect(create.mock.calls[1][0].messages[2].content).toContain('previous JSON had zero confidence')
+        expect(result).toEqual(
+            expect.objectContaining({
+                matched: true,
+                projectId: 'juno-project',
+                confidence: 0.93,
+                usage: expect.objectContaining({
+                    retriedAfterInconsistentResult: false,
+                    retriedAfterZeroConfidence: true,
+                    auditModel: 'gpt-5.5',
+                }),
+            })
+        )
+    })
+
     test('trusts the stronger retry when its configured project id is valid and above threshold', async () => {
         const create = jest
             .fn()

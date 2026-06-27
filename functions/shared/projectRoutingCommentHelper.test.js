@@ -94,6 +94,16 @@ describe('projectRoutingCommentHelper', () => {
         ).toBe('I chose Product because it mentions the launch plan. Confidence: 82%.')
     })
 
+    test('omits confidence when none was provided', () => {
+        expect(
+            buildProjectRoutingReasonComment({
+                projectName: 'Product',
+                reasoning: 'the task belongs to the product roadmap',
+                confidence: null,
+            })
+        ).toBe('I chose Product because the task belongs to the product roadmap.')
+    })
+
     test('writes comment, task metadata, and creates chat metadata', async () => {
         admin.__mock.doc.mockImplementation(path => {
             const ref = {

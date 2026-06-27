@@ -929,6 +929,18 @@ export async function setUserThemeName(userId, themeName) {
     getDb().doc(`users/${userId}`).update({ themeName })
 }
 
+// Per-user MCP access config, read server-side by functions/MCP/mcpServerSimple.js.
+// mcpEnabled is the master on/off switch (default on); mcpDisabledTools lists the
+// tool names the user turned off (default none, so new tools are available by default).
+export async function setUserMCPSettings(userId, mcpEnabled, mcpDisabledTools) {
+    return getDb()
+        .doc(`users/${userId}`)
+        .update({
+            mcpEnabled: mcpEnabled !== false,
+            mcpDisabledTools: Array.isArray(mcpDisabledTools) ? mcpDisabledTools : [],
+        })
+}
+
 export async function setUserAutoPostponeAfterDaysOverdue(userId, autoPostponeAfterDaysOverdue) {
     getDb().doc(`users/${userId}`).update({ autoPostponeAfterDaysOverdue })
 }

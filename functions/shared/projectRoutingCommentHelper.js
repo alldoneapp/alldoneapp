@@ -11,6 +11,7 @@ function normalizeText(value) {
 }
 
 function normalizeConfidence(confidence) {
+    if (confidence === undefined || confidence === null || confidence === '') return null
     const numericConfidence = Number(confidence)
     if (!Number.isFinite(numericConfidence) || numericConfidence < 0) return null
     if (numericConfidence <= 1) return numericConfidence
