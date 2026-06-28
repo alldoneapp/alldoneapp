@@ -274,6 +274,20 @@ describe('Local recommendations assistant tool schema', () => {
         expect(properties.limit.type).toBe('integer')
         expect(toolSchemas.get_local_recommendations.function.description).toContain('Google Places')
     })
+
+    test('documents the optional review-enrichment fields', () => {
+        const properties = toolSchemas.get_local_recommendations.function.parameters.properties
+        expect(properties.include_reviews.type).toBe('boolean')
+        expect(properties.include_review_summary.type).toBe('boolean')
+        expect(properties.max_reviews.type).toBe('integer')
+        // Review enrichment must stay opt-in (not required) so the default call stays cheap.
+        expect(toolSchemas.get_local_recommendations.function.parameters.required).not.toContain('include_reviews')
+        expect(toolSchemas.get_local_recommendations.function.parameters.required).not.toContain(
+            'include_review_summary'
+        )
+        expect(properties.include_reviews.description).toContain('Defaults to false')
+        expect(properties.max_reviews.description).toContain('Maximum 5')
+    })
 })
 
 describe('VM assistant tool schema', () => {

@@ -1228,7 +1228,7 @@ const toolSchemas = {
         function: {
             name: 'get_local_recommendations',
             description:
-                'Get practical local recommendations (nearby places) around a set of coordinates using Google Places. Use this when the user wants nearby suggestions such as a "baby-friendly restaurant", "playground nearby", "coffee nearby", a pharmacy, a park, or any kind of place close to a location — for example after they share their location over WhatsApp. Returns each place with its name, address, coordinates, rating and number of ratings, whether it is open now (when available), categories, and a Google Maps link. Provide the latitude and longitude of the point to search around; add a free-text "query" (e.g. "baby-friendly restaurant") to describe what you want, or a "type" (e.g. "restaurant", "playground", "cafe") to restrict the category.',
+                'Get practical local recommendations (nearby places) around a set of coordinates using Google Places. Use this when the user wants nearby suggestions such as a "baby-friendly restaurant", "playground nearby", "coffee nearby", a pharmacy, a park, or any kind of place close to a location — for example after they share their location over WhatsApp. Returns each place with its name, address, coordinates, rating and number of ratings, whether it is open now (when available), categories, and a Google Maps link. Provide the latitude and longitude of the point to search around; add a free-text "query" (e.g. "baby-friendly restaurant") to describe what you want, or a "type" (e.g. "restaurant", "playground", "cafe") to restrict the category. Optionally set include_reviews and/or include_review_summary to also return recent user reviews and a short editorial/AI summary per place when the user wants opinions — these are off by default to keep results cheap.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1263,6 +1263,21 @@ const toolSchemas = {
                     limit: {
                         type: 'integer',
                         description: 'Optional maximum number of places to return. Defaults to 8. Maximum 20.',
+                    },
+                    include_reviews: {
+                        type: 'boolean',
+                        description:
+                            'Optional: when true, include a few recent user reviews per place (author, rating, text, time) where available. Defaults to false to keep responses cheap and concise. Only enable when the user actually wants to read reviews/opinions.',
+                    },
+                    include_review_summary: {
+                        type: 'boolean',
+                        description:
+                            'Optional: when true, include a short editorial and/or AI review summary per place where available. Defaults to false. Cheaper than full reviews; use it when the user wants a quick sense of a place.',
+                    },
+                    max_reviews: {
+                        type: 'integer',
+                        description:
+                            'Optional: how many reviews to include per place when include_reviews is true. Defaults to 3. Maximum 5.',
                     },
                 },
                 required: ['latitude', 'longitude'],

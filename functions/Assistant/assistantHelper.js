@@ -7443,6 +7443,8 @@ async function executeToolNatively(
                 type: toolArgs.type,
                 radius: toolArgs.radius,
                 limit: toolArgs.limit,
+                include_reviews: toolArgs.include_reviews,
+                include_review_summary: toolArgs.include_review_summary,
             })
 
             // Accept numbers or numeric strings; validate they are real, in-range coordinates.
@@ -7486,8 +7488,33 @@ async function executeToolNatively(
             const placeType = typeof toolArgs.type === 'string' ? toolArgs.type.trim() : ''
             const openNow = toolArgs.open_now === true
 
+            // Review enrichment is opt-in and off by default so the common nearby-search call stays cheap.
+            const includeReviews = toolArgs.include_reviews === true
+            const includeReviewSummary = toolArgs.include_review_summary === true
+            let maxReviews = parseInt(toolArgs.max_reviews, 10)
+            if (!Number.isFinite(maxReviews) || maxReviews <= 0) maxReviews = 3
+            if (maxReviews > 5) maxReviews = 5
+
+            // Normalize a Places API (New) review object into a concise, assistant-friendly shape.
+            const normalizeReviews = (reviews, cap) => {
+                if (!Array.isArray(reviews) || reviews.length === 0) return null
+                const normalized = reviews.slice(0, cap).map(review => ({
+                    author: review.authorAttribution?.displayName || null,
+                    rating: review.rating ?? null,
+                    relative_publish_time: review.relativePublishTimeDescription || null,
+                    publish_time: review.publishTime || null,
+                    text: review.text?.text || review.originalText?.text || null,
+                    language: review.text?.languageCode || review.originalText?.languageCode || null,
+                }))
+                return normalized.length ? normalized : null
+            }
+            // editorialSummary is a short editorial blurb; reviewSummary is the (preview) AI summary of reviews.
+            const extractEditorialSummary = place => place.editorialSummary?.text || null
+            const extractReviewSummary = place => place.reviewSummary?.text?.text || place.reviewSummary?.text || null
+
             // The Places API (New) requires an explicit field mask so we only fetch what we render.
-            const fieldMask = [
+            // Review-related fields are appended only when requested to avoid overfetching/extra cost.
+            const baseFieldMaskParts = [
                 'places.id',
                 'places.displayName',
                 'places.formattedAddress',
@@ -7500,7 +7527,13 @@ async function executeToolNatively(
                 'places.types',
                 'places.priceLevel',
                 'places.googleMapsUri',
-            ].join(',')
+            ]
+            const searchFieldMaskParts = [...baseFieldMaskParts]
+            if (includeReviews) searchFieldMaskParts.push('places.reviews')
+            if (includeReviewSummary) searchFieldMaskParts.push('places.editorialSummary')
+            // The AI reviewSummary field is preview/limited-availability; request it but be ready to drop it.
+            const requestedInlineReviewSummary = includeReviewSummary
+            if (requestedInlineReviewSummary) searchFieldMaskParts.push('places.reviewSummary')
 
             try {
                 // Prefer Text Search when we have a free-text query (handles nuanced asks like
@@ -7535,17 +7568,30 @@ async function executeToolNatively(
                     if (placeType) requestBody.includedTypes = [placeType]
                 }
 
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Goog-Api-Key': googleMapsApiKey,
-                        'X-Goog-FieldMask': fieldMask,
-                    },
-                    body: JSON.stringify(requestBody),
-                })
+                const runSearch = fieldMaskParts =>
+                    fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Goog-Api-Key': googleMapsApiKey,
+                            'X-Goog-FieldMask': fieldMaskParts.join(','),
+                        },
+                        body: JSON.stringify(requestBody),
+                    })
 
-                const data = await response.json()
+                let response = await runSearch(searchFieldMaskParts)
+                let data = await response.json()
+
+                // The optional AI reviewSummary field can be rejected (unsupported field mask) for some
+                // keys/regions — retry once without it so summary unavailability never fails the whole call.
+                if (!response.ok && requestedInlineReviewSummary) {
+                    console.warn('📍 GET_LOCAL_RECOMMENDATIONS TOOL: retrying without reviewSummary field', {
+                        status: response.status,
+                    })
+                    const safeFieldMaskParts = searchFieldMaskParts.filter(f => f !== 'places.reviewSummary')
+                    response = await runSearch(safeFieldMaskParts)
+                    data = await response.json()
+                }
 
                 if (!response.ok) {
                     const apiMessage = data && data.error && data.error.message ? data.error.message : null
@@ -7567,9 +7613,10 @@ async function executeToolNatively(
                         ? rawPlaces.filter(place => place.currentOpeningHours?.openNow === true)
                         : rawPlaces
 
-                const places = filteredPlaces.slice(0, limit).map(place => {
+                const limitedPlaces = filteredPlaces.slice(0, limit)
+                const places = limitedPlaces.map(place => {
                     const placeId = place.id || null
-                    return {
+                    const entry = {
                         name: place.displayName?.text || null,
                         address: place.formattedAddress || null,
                         latitude: place.location?.latitude ?? null,
@@ -7585,7 +7632,71 @@ async function executeToolNatively(
                             place.googleMapsUri ||
                             (placeId ? `https://www.google.com/maps/place/?q=place_id:${placeId}` : null),
                     }
+                    if (includeReviewSummary) {
+                        entry.editorial_summary = extractEditorialSummary(place)
+                        entry.review_summary = extractReviewSummary(place)
+                    }
+                    if (includeReviews) {
+                        entry.reviews = normalizeReviews(place.reviews, maxReviews)
+                    }
+                    return entry
                 })
+
+                // Fallback: some place types (parks, playgrounds) often omit reviews/summaries in search
+                // results. Only when enrichment was requested AND a returned place is missing it, fetch a
+                // minimal Place Details record for just that place. Best-effort: failures leave nulls.
+                if ((includeReviews || includeReviewSummary) && places.length) {
+                    const fetchPlaceDetails = async (placeId, withReviewSummary) => {
+                        const detailParts = ['id']
+                        if (includeReviews) detailParts.push('reviews')
+                        if (includeReviewSummary) {
+                            detailParts.push('editorialSummary')
+                            if (withReviewSummary) detailParts.push('reviewSummary')
+                        }
+                        const detailResponse = await fetch(
+                            `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
+                            {
+                                method: 'GET',
+                                headers: {
+                                    'X-Goog-Api-Key': googleMapsApiKey,
+                                    'X-Goog-FieldMask': detailParts.join(','),
+                                },
+                            }
+                        )
+                        if (!detailResponse.ok) {
+                            // Retry without the optional AI summary field; otherwise give up for this place.
+                            if (withReviewSummary) return fetchPlaceDetails(placeId, false)
+                            return null
+                        }
+                        return detailResponse.json()
+                    }
+
+                    await Promise.all(
+                        places.map(async entry => {
+                            const needReviews = includeReviews && !entry.reviews
+                            const needSummary =
+                                includeReviewSummary && !entry.editorial_summary && !entry.review_summary
+                            if (!entry.place_id || (!needReviews && !needSummary)) return
+                            try {
+                                const detail = await fetchPlaceDetails(entry.place_id, includeReviewSummary)
+                                if (!detail) return
+                                if (needReviews) {
+                                    entry.reviews = normalizeReviews(detail.reviews, maxReviews)
+                                }
+                                if (needSummary) {
+                                    entry.editorial_summary =
+                                        entry.editorial_summary || extractEditorialSummary(detail)
+                                    entry.review_summary = entry.review_summary || extractReviewSummary(detail)
+                                }
+                            } catch (detailError) {
+                                console.warn('📍 GET_LOCAL_RECOMMENDATIONS TOOL: place details fallback failed', {
+                                    placeId: entry.place_id,
+                                    error: detailError.message,
+                                })
+                            }
+                        })
+                    )
+                }
 
                 if (places.length === 0) {
                     return {
@@ -7604,6 +7715,8 @@ async function executeToolNatively(
                 console.log('📍 GET_LOCAL_RECOMMENDATIONS TOOL: Places retrieved', {
                     count: places.length,
                     radius,
+                    includeReviews,
+                    includeReviewSummary,
                 })
 
                 return {
@@ -7614,6 +7727,8 @@ async function executeToolNatively(
                     query: query || null,
                     type: placeType || null,
                     open_now_only: openNow,
+                    reviews_included: includeReviews,
+                    review_summary_included: includeReviewSummary,
                     count: places.length,
                     places,
                 }
