@@ -250,7 +250,8 @@ async function handleIncomingWhatsAppMessage(req, res) {
 
             // Fold a machine-readable location line into both the assistant prompt and the
             // text stored in the thread, so "what's the weather here?" follow-ups can use it.
-            // get_weather / get_route_info accept the embedded "latitude,longitude" string.
+            // get_weather / get_route_info / get_local_recommendations accept the embedded
+            // "latitude,longitude" (and get_local_recommendations the separate lat/long) values.
             if (sharedLocationText) {
                 messageText = [messageText, sharedLocationText].filter(Boolean).join('\n\n')
                 storedMessageText = [storedMessageText, sharedLocationText].filter(Boolean).join('\n\n')

@@ -1223,6 +1223,53 @@ const toolSchemas = {
         },
     },
 
+    get_local_recommendations: {
+        type: 'function',
+        function: {
+            name: 'get_local_recommendations',
+            description:
+                'Get practical local recommendations (nearby places) around a set of coordinates using Google Places. Use this when the user wants nearby suggestions such as a "baby-friendly restaurant", "playground nearby", "coffee nearby", a pharmacy, a park, or any kind of place close to a location — for example after they share their location over WhatsApp. Returns each place with its name, address, coordinates, rating and number of ratings, whether it is open now (when available), categories, and a Google Maps link. Provide the latitude and longitude of the point to search around; add a free-text "query" (e.g. "baby-friendly restaurant") to describe what you want, or a "type" (e.g. "restaurant", "playground", "cafe") to restrict the category.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    latitude: {
+                        type: 'number',
+                        description:
+                            'Latitude of the point to search around, in decimal degrees (e.g. 51.4975 for near Buckingham Palace, London). Use the user\'s shared location when available.',
+                    },
+                    longitude: {
+                        type: 'number',
+                        description: 'Longitude of the point to search around, in decimal degrees (e.g. -0.1357).',
+                    },
+                    query: {
+                        type: 'string',
+                        description:
+                            'Optional free-text description of what to look for, e.g. "baby-friendly restaurant", "playground", "specialty coffee", "vegan dinner". Prefer this for nuanced requests. When omitted, results are based on "type" (or general nearby places).',
+                    },
+                    type: {
+                        type: 'string',
+                        description:
+                            'Optional Google Places category to restrict results, e.g. "restaurant", "cafe", "playground", "park", "pharmacy", "supermarket", "tourist_attraction". Used when no free-text "query" is given, or to narrow a query.',
+                    },
+                    radius: {
+                        type: 'number',
+                        description:
+                            'Optional search radius in meters around the coordinates. Defaults to 1500. Maximum 50000.',
+                    },
+                    open_now: {
+                        type: 'boolean',
+                        description: 'Optional: when true, only return places that are currently open.',
+                    },
+                    limit: {
+                        type: 'integer',
+                        description: 'Optional maximum number of places to return. Defaults to 8. Maximum 20.',
+                    },
+                },
+                required: ['latitude', 'longitude'],
+            },
+        },
+    },
+
     search_gmail: {
         type: 'function',
         function: {

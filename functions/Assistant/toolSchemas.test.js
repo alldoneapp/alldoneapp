@@ -251,6 +251,31 @@ describe('OKR assistant tool schemas', () => {
     })
 })
 
+describe('Local recommendations assistant tool schema', () => {
+    test('exposes get_local_recommendations only when allowed', () => {
+        expect(getToolSchemas(['get_local_recommendations']).map(schema => schema.function.name)).toEqual([
+            'get_local_recommendations',
+        ])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
+    test('requires only latitude and longitude', () => {
+        expect(toolSchemas.get_local_recommendations.function.parameters.required).toEqual(['latitude', 'longitude'])
+    })
+
+    test('documents the optional search filters', () => {
+        const properties = toolSchemas.get_local_recommendations.function.parameters.properties
+        expect(properties.latitude.type).toBe('number')
+        expect(properties.longitude.type).toBe('number')
+        expect(properties.query.type).toBe('string')
+        expect(properties.type.type).toBe('string')
+        expect(properties.radius.type).toBe('number')
+        expect(properties.open_now.type).toBe('boolean')
+        expect(properties.limit.type).toBe('integer')
+        expect(toolSchemas.get_local_recommendations.function.description).toContain('Google Places')
+    })
+})
+
 describe('VM assistant tool schema', () => {
     test('directs coding work to the VM tool', () => {
         expect(toolSchemas.execute_task_in_vm.function.description).toContain(

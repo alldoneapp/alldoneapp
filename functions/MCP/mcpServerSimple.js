@@ -50,6 +50,7 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     // Web / maps
     'web_search',
     'get_route_info',
+    'get_local_recommendations',
     // Chat attachments
     'get_chat_attachment',
     'list_recent_chat_media',

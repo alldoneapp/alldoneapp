@@ -7435,6 +7435,199 @@ async function executeToolNatively(
             }
         }
 
+        case 'get_local_recommendations': {
+            console.log('📍 GET_LOCAL_RECOMMENDATIONS TOOL: Searching nearby places', {
+                latitude: toolArgs.latitude,
+                longitude: toolArgs.longitude,
+                query: toolArgs.query,
+                type: toolArgs.type,
+                radius: toolArgs.radius,
+                limit: toolArgs.limit,
+            })
+
+            // Accept numbers or numeric strings; validate they are real, in-range coordinates.
+            const latitude = parseFloat(toolArgs.latitude)
+            const longitude = parseFloat(toolArgs.longitude)
+
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                return {
+                    success: false,
+                    error: 'A valid latitude and longitude are required.',
+                }
+            }
+            if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+                return {
+                    success: false,
+                    error: 'Coordinates are out of range. Latitude must be between -90 and 90 and longitude between -180 and 180.',
+                }
+            }
+
+            const envFunctions = getCachedEnvFunctions()
+            const googleMapsApiKey = envFunctions.GOOGLE_MAPS_API_KEY
+
+            if (!googleMapsApiKey || googleMapsApiKey === '' || googleMapsApiKey.startsWith('your_')) {
+                return {
+                    success: false,
+                    error: 'Local recommendations are not configured. GOOGLE_MAPS_API_KEY is missing.',
+                }
+            }
+
+            // Clamp the radius to the Places API's supported range; default to a walkable 1.5km.
+            let radius = parseFloat(toolArgs.radius)
+            if (!Number.isFinite(radius) || radius <= 0) radius = 1500
+            if (radius > 50000) radius = 50000
+
+            // Clamp the result count to the Places API maximum of 20; default to a concise 8.
+            let limit = parseInt(toolArgs.limit, 10)
+            if (!Number.isFinite(limit) || limit <= 0) limit = 8
+            if (limit > 20) limit = 20
+
+            const query = typeof toolArgs.query === 'string' ? toolArgs.query.trim() : ''
+            const placeType = typeof toolArgs.type === 'string' ? toolArgs.type.trim() : ''
+            const openNow = toolArgs.open_now === true
+
+            // The Places API (New) requires an explicit field mask so we only fetch what we render.
+            const fieldMask = [
+                'places.id',
+                'places.displayName',
+                'places.formattedAddress',
+                'places.location',
+                'places.rating',
+                'places.userRatingCount',
+                'places.currentOpeningHours.openNow',
+                'places.primaryTypeDisplayName',
+                'places.primaryType',
+                'places.types',
+                'places.priceLevel',
+                'places.googleMapsUri',
+            ].join(',')
+
+            try {
+                // Prefer Text Search when we have a free-text query (handles nuanced asks like
+                // "baby-friendly restaurant"); otherwise use Nearby Search restricted by category.
+                let endpoint
+                let requestBody
+                if (query) {
+                    endpoint = 'https://places.googleapis.com/v1/places:searchText'
+                    requestBody = {
+                        textQuery: query,
+                        maxResultCount: limit,
+                        openNow,
+                        locationBias: {
+                            circle: {
+                                center: { latitude, longitude },
+                                radius,
+                            },
+                        },
+                    }
+                    if (placeType) requestBody.includedType = placeType
+                } else {
+                    endpoint = 'https://places.googleapis.com/v1/places:searchNearby'
+                    requestBody = {
+                        maxResultCount: limit,
+                        locationRestriction: {
+                            circle: {
+                                center: { latitude, longitude },
+                                radius,
+                            },
+                        },
+                    }
+                    if (placeType) requestBody.includedTypes = [placeType]
+                }
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Goog-Api-Key': googleMapsApiKey,
+                        'X-Goog-FieldMask': fieldMask,
+                    },
+                    body: JSON.stringify(requestBody),
+                })
+
+                const data = await response.json()
+
+                if (!response.ok) {
+                    const apiMessage = data && data.error && data.error.message ? data.error.message : null
+                    console.error('📍 GET_LOCAL_RECOMMENDATIONS TOOL: Places API error', {
+                        status: response.status,
+                        apiMessage,
+                    })
+                    return {
+                        success: false,
+                        error: `Local recommendations lookup failed: ${apiMessage || `HTTP ${response.status}`}`,
+                    }
+                }
+
+                const rawPlaces = Array.isArray(data.places) ? data.places : []
+
+                // Nearby Search has no server-side open_now filter, so apply it here when requested.
+                const filteredPlaces =
+                    openNow && !query
+                        ? rawPlaces.filter(place => place.currentOpeningHours?.openNow === true)
+                        : rawPlaces
+
+                const places = filteredPlaces.slice(0, limit).map(place => {
+                    const placeId = place.id || null
+                    return {
+                        name: place.displayName?.text || null,
+                        address: place.formattedAddress || null,
+                        latitude: place.location?.latitude ?? null,
+                        longitude: place.location?.longitude ?? null,
+                        rating: place.rating ?? null,
+                        user_rating_count: place.userRatingCount ?? null,
+                        open_now: place.currentOpeningHours?.openNow ?? null,
+                        price_level: place.priceLevel || null,
+                        primary_type: place.primaryTypeDisplayName?.text || place.primaryType || null,
+                        types: Array.isArray(place.types) ? place.types : null,
+                        place_id: placeId,
+                        google_maps_url:
+                            place.googleMapsUri ||
+                            (placeId ? `https://www.google.com/maps/place/?q=place_id:${placeId}` : null),
+                    }
+                })
+
+                if (places.length === 0) {
+                    return {
+                        success: true,
+                        latitude,
+                        longitude,
+                        radius_meters: radius,
+                        query: query || null,
+                        type: placeType || null,
+                        count: 0,
+                        places: [],
+                        message: 'No matching places were found nearby. Try a larger radius or a different query.',
+                    }
+                }
+
+                console.log('📍 GET_LOCAL_RECOMMENDATIONS TOOL: Places retrieved', {
+                    count: places.length,
+                    radius,
+                })
+
+                return {
+                    success: true,
+                    latitude,
+                    longitude,
+                    radius_meters: radius,
+                    query: query || null,
+                    type: placeType || null,
+                    open_now_only: openNow,
+                    count: places.length,
+                    places,
+                }
+            } catch (error) {
+                console.error('📍 GET_LOCAL_RECOMMENDATIONS TOOL: Lookup failed', {
+                    error: error.message,
+                })
+                return {
+                    success: false,
+                    error: `Local recommendations lookup failed: ${error.message}`,
+                }
+            }
+        }
+
         case 'search_gmail': {
             console.log('📧 SEARCH_GMAIL TOOL: Starting Gmail search', {
                 query: toolArgs.query,

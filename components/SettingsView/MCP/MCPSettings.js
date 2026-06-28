@@ -35,6 +35,7 @@ const MCP_TOOL_KEYS = [
     'update_user_memory',
     'web_search',
     'get_route_info',
+    'get_local_recommendations',
     'get_chat_attachment',
     'list_recent_chat_media',
     'search_gmail',

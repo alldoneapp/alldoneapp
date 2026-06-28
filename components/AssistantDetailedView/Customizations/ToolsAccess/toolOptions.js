@@ -36,6 +36,7 @@ export const TOOL_OPTIONS = [
     { key: 'get_notes', labelKey: 'Get notes' },
     { key: 'web_search', labelKey: 'Search the internet' },
     { key: 'get_route_info', labelKey: 'Check distance and route between locations' },
+    { key: 'get_local_recommendations', labelKey: 'Get local recommendations nearby' },
     { key: 'get_weather', labelKey: 'Check the weather' },
     { key: 'execute_task_in_vm', labelKey: 'Run task in a VM' },
     { key: 'external_tools', labelKey: 'Use external app tools' },

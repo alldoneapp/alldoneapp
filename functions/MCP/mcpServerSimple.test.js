@@ -116,6 +116,15 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         )
     })
 
+    test('exposes get_local_recommendations with its coordinate schema over MCP', async () => {
+        const tools = await listTools()
+        const tool = tools.find(entry => entry.name === 'get_local_recommendations')
+        expect(tool).toBeDefined()
+        expect(tool.inputSchema.required).toEqual(['latitude', 'longitude'])
+        expect(tool.inputSchema.properties.query.type).toBe('string')
+        expect(tool.inputSchema.properties.radius.type).toBe('number')
+    })
+
     test('does not expose assistant/thread-only tools over MCP', async () => {
         const names = (await listTools()).map(tool => tool.name)
         expect(names).not.toContain('execute_task_in_vm')
