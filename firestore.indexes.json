@@ -437,6 +437,36 @@
                     "order": "ASCENDING"
                 }
             ]
+        },
+        {
+            "__comment__": "Heartbeat schedules - cleanup by assistant",
+            "collectionGroup": "assistantHeartbeatSchedules",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "projectId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "assistantId",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "__comment__": "Heartbeat schedules - cleanup by project member",
+            "collectionGroup": "assistantHeartbeatSchedules",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "projectId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                }
+            ]
         }
     ],
     "fieldOverrides": [

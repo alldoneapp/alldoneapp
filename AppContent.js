@@ -21,6 +21,7 @@ import Shortcuts from './components/UIComponents/ShortcutCheatSheet/Shortcuts'
 import EndDayStatisticsModal from './components/UIComponents/FloatModals/EndDayStatisticsModal'
 import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoaders'
 import { getConnectingMessage } from './utils/FunnyLoadingMessages'
+import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
 
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
@@ -205,6 +206,7 @@ export default function AppContent() {
 
     return (
         <>
+            <AnalyticsConsentManager />
             {loggedIn === null ? (
                 loadingStep > 0 ? (
                     <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />

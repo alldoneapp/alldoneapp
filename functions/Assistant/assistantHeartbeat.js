@@ -24,11 +24,22 @@ const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getFirstName } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
+const {
+    HEARTBEAT_SCHEDULES_COLLECTION,
+    calculateNextHeartbeatAt,
+    getHeartbeatScheduleTiming,
+    getTimestampMillis: getScheduleTimestampMillis,
+    isAssistantHeartbeatEligible,
+    isProjectHeartbeatEligible,
+    isTimestampInHeartbeatAwakeWindow,
+    isUserHeartbeatEligible,
+} = require('./assistantHeartbeatSchedule')
 
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE =
     'Heartbeat paused because you\u2019re out of gold. Add gold to resume assistant heartbeats here https://my.alldone.app/settings/premium'
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_FIELD = 'heartbeatInsufficientGoldNoticeAt'
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_THROTTLE_MS = 24 * 60 * 60 * 1000
+const HEARTBEAT_TASK_MAX_RUN_WALL_CLOCK_MS = 25 * 60 * 1000
 
 /**
  * Fetch recent conversation history from a topic for context.
@@ -697,6 +708,273 @@ async function checkAndExecuteHeartbeats() {
     }
 }
 
+async function updateHeartbeatScheduleOutcome(scheduleRef, outcome, data = {}) {
+    await scheduleRef
+        .update({
+            lastFinishedAt: Date.now(),
+            lastOutcome: outcome,
+            updatedAt: Date.now(),
+            ...data,
+        })
+        .catch(error => {
+            console.warn('Heartbeat worker: Failed to update schedule outcome', {
+                scheduleId: scheduleRef.id,
+                outcome,
+                error: error.message,
+            })
+        })
+}
+
+async function claimScheduledHeartbeat({ scheduleId, projectId, assistantId, userId, dueAt, scheduleHash }) {
+    const db = admin.firestore()
+    const scheduleRef = db.doc(`${HEARTBEAT_SCHEDULES_COLLECTION}/${scheduleId}`)
+    const now = Date.now()
+
+    const result = await db.runTransaction(async transaction => {
+        const scheduleDoc = await transaction.get(scheduleRef)
+        if (!scheduleDoc.exists) return { claimed: false, reason: 'missing_schedule' }
+        const schedule = scheduleDoc.data() || {}
+
+        if (
+            schedule.projectId !== projectId ||
+            schedule.assistantId !== assistantId ||
+            schedule.userId !== userId ||
+            schedule.scheduleHash !== scheduleHash
+        ) {
+            return { claimed: false, reason: 'stale_schedule' }
+        }
+
+        const lastProcessedDueAt = getScheduleTimestampMillis(schedule.lastProcessedDueAt)
+        if (lastProcessedDueAt >= dueAt) return { claimed: false, reason: 'already_processed' }
+
+        const update = {
+            lastProcessedDueAt: dueAt,
+            lastStartedAt: now,
+            lastOutcome: 'started',
+            updatedAt: now,
+        }
+        const currentNextAt = getScheduleTimestampMillis(schedule.nextHeartbeatAt)
+        if (!currentNextAt || currentNextAt <= dueAt) {
+            update.nextHeartbeatAt = calculateNextHeartbeatAt({
+                afterMs: Math.max(now, dueAt),
+                scheduleId,
+                intervalMs: schedule.intervalMs,
+                awakeStartMs: schedule.awakeStartMs,
+                awakeEndMs: schedule.awakeEndMs,
+                timezoneName: schedule.timezoneName || null,
+                timezoneOffsetMinutes: schedule.timezoneOffsetMinutes || 0,
+            })
+        }
+
+        transaction.update(scheduleRef, update)
+        return { claimed: true, schedule, scheduleRef }
+    })
+
+    return { ...result, scheduleRef }
+}
+
+async function executeHeartbeatContent({ projectId, assistant, userId, userData }) {
+    const assistantRef = admin.firestore().doc(`assistants/${projectId}/items/${assistant.uid}`)
+    const sendWhatsApp = getEffectiveHeartbeatSendWhatsApp(assistant, userData)
+    const shouldSendWhatsApp = sendWhatsApp && !!userData.phone
+
+    let chatId
+    if (shouldSendWhatsApp) {
+        const { getOrCreateWhatsAppDailyTopic } = require('../WhatsApp/whatsAppDailyTopic')
+        const result = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistant.uid, userData)
+        chatId = result.chatId
+    } else {
+        const result = await getOrCreateHeartbeatTopic(userId, projectId, assistant.uid, userData)
+        chatId = result.chatId
+    }
+
+    const prompt = assistant.heartbeatPrompt ?? DEFAULT_PROMPT
+    const timezoneOffset = resolveUserTimezoneOffset(userData) ?? normalizeTimezone(userData.timezone)
+    const [chatHistory, topicTitle, openTasksContext] = await Promise.all([
+        getTopicConversationHistory(projectId, chatId, THREAD_CONTEXT_MESSAGE_LIMIT, timezoneOffset),
+        getTopicTitle(projectId, chatId),
+        getOpenTasksContextMessage(userId, timezoneOffset),
+    ])
+    const additionalContextMessages = [
+        ...(topicTitle
+            ? [['system', `This conversation is about a chat titled: "${parseTextForUseLiKePrompt(topicTitle)}"`]]
+            : []),
+        ...(openTasksContext?.message ? [['system', openTasksContext.message]] : []),
+        ...chatHistory,
+    ]
+
+    console.log('Heartbeat worker: Dispatching assistant run', {
+        projectId,
+        assistantId: assistant.uid,
+        userId,
+        chatId,
+        silentModeMarker: HEARTBEAT_OK_MARKER,
+    })
+
+    const executionResult = await generatePreConfigTaskResult(
+        userId,
+        projectId,
+        chatId,
+        [userId],
+        [FEED_PUBLIC_FOR_ALL],
+        assistant.uid,
+        prompt,
+        'en',
+        {
+            model: assistant.model,
+            temperature: assistant.temperature,
+            instructions: assistant.instructions,
+        },
+        {
+            sendWhatsApp: shouldSendWhatsApp,
+            name: 'Heartbeat',
+            recurrence: 'never',
+        },
+        null,
+        'topics',
+        {
+            additionalContextMessages,
+            silentModeMarker: HEARTBEAT_OK_MARKER,
+            maxRunWallClockMs: HEARTBEAT_TASK_MAX_RUN_WALL_CLOCK_MS,
+        }
+    )
+
+    if (executionResult?.silentOk === true) {
+        await assistantRef.update({ [`heartbeatLastSilentOkByUser.${userId}`]: Date.now() })
+        return { outcome: 'silent_ok', executionResult }
+    }
+    if (executionResult?.guardrailStopped) {
+        await assistantRef.update({
+            [`heartbeatLastFailureByUser.${userId}`]: Date.now(),
+            [`heartbeatLastFailureMessageByUser.${userId}`]: executionResult.guardrailStopped.message,
+        })
+        return { outcome: 'guardrail_failed', executionResult }
+    }
+
+    await assistantRef.update({ [`heartbeatLastExecutedByUser.${userId}`]: Date.now() })
+    return { outcome: 'executed', executionResult }
+}
+
+async function executeScheduledHeartbeat(task = {}) {
+    const { scheduleId, projectId, assistantId, userId, scheduleHash } = task
+    const dueAt = Number(task.dueAt)
+    if (!scheduleId || !projectId || !assistantId || !userId || !scheduleHash || !Number.isFinite(dueAt)) {
+        console.warn('Heartbeat worker: Invalid task payload', { scheduleId, projectId, assistantId, userId })
+        return { outcome: 'invalid_payload' }
+    }
+
+    const claim = await claimScheduledHeartbeat({ scheduleId, projectId, assistantId, userId, dueAt, scheduleHash })
+    if (!claim.claimed) {
+        console.log('Heartbeat worker: Skipping unclaimed occurrence', {
+            scheduleId,
+            dueAt,
+            reason: claim.reason,
+        })
+        return { outcome: claim.reason }
+    }
+
+    const scheduleRef = claim.scheduleRef
+    try {
+        const db = admin.firestore()
+        const [projectDoc, assistantDoc, userDoc] = await Promise.all([
+            db.doc(`projects/${projectId}`).get(),
+            db.doc(`assistants/${projectId}/items/${assistantId}`).get(),
+            db.doc(`users/${userId}`).get(),
+        ])
+        const project = projectDoc.exists ? { ...projectDoc.data(), id: projectId } : null
+        const assistant = assistantDoc.exists ? { ...assistantDoc.data(), uid: assistantId } : null
+        let userData = userDoc.exists ? { ...userDoc.data(), id: userId } : null
+        const isMember = Array.isArray(project?.userIds) && project.userIds.includes(userId)
+
+        if (
+            !project ||
+            !assistant ||
+            !userData ||
+            !isMember ||
+            !isProjectHeartbeatEligible(project) ||
+            !isUserHeartbeatEligible(userData) ||
+            !isAssistantHeartbeatEligible(assistant, projectId, userData)
+        ) {
+            await scheduleRef.delete().catch(() => {})
+            return { outcome: 'ineligible' }
+        }
+
+        const timing = getHeartbeatScheduleTiming(assistant, userData)
+        if (timing.scheduleHash !== scheduleHash) {
+            await updateHeartbeatScheduleOutcome(scheduleRef, 'stale_schedule')
+            return { outcome: 'stale_schedule' }
+        }
+        if (!isTimestampInHeartbeatAwakeWindow(Date.now(), timing)) {
+            await updateHeartbeatScheduleOutcome(scheduleRef, 'outside_awake_window')
+            return { outcome: 'outside_awake_window' }
+        }
+
+        const lastExecuted = getTimestampMillis(assistant.heartbeatLastExecutedByUser?.[userId])
+        if (lastExecuted && Date.now() - lastExecuted < timing.intervalMs) {
+            await updateHeartbeatScheduleOutcome(scheduleRef, 'interval_guard')
+            return { outcome: 'interval_guard' }
+        }
+
+        const assistantRef = db.doc(`assistants/${projectId}/items/${assistantId}`)
+        await assistantRef.update({ [`heartbeatLastCheckedByUser.${userId}`]: Date.now() })
+
+        if (!userData.gold || userData.gold <= 0) {
+            const noticeReservation = await reserveHeartbeatInsufficientGoldNotice(userId)
+            if (noticeReservation.hasGold) {
+                userData = { ...userData, ...noticeReservation.userData }
+            } else {
+                if (noticeReservation.shouldNotify) {
+                    await sendHeartbeatInsufficientGoldNotice(
+                        projectId,
+                        assistant,
+                        userId,
+                        noticeReservation.userData || userData
+                    )
+                }
+                await updateHeartbeatScheduleOutcome(scheduleRef, 'no_gold')
+                return { outcome: 'no_gold' }
+            }
+        }
+
+        const repliedChancePercent = getEffectiveChancePercent(assistant, projectId, userData)
+        const noReplyChancePercent = getEffectiveChanceNoReplyPercent(assistant, projectId, userData)
+        let chancePercent = repliedChancePercent
+        let repliedToday = null
+        const completedToday = hasCompletedHeartbeatToday(assistant, userId, userData)
+        if (completedToday && repliedChancePercent !== noReplyChancePercent) {
+            repliedToday = await hasUserRepliedToday(projectId, userId, userData)
+            chancePercent = repliedToday ? repliedChancePercent : noReplyChancePercent
+        }
+
+        if (chancePercent <= 0 || Math.random() * 100 >= chancePercent) {
+            await updateHeartbeatScheduleOutcome(scheduleRef, 'chance_skipped', {
+                lastChancePercent: chancePercent,
+            })
+            return { outcome: 'chance_skipped', chancePercent, completedToday, repliedToday }
+        }
+
+        const result = await executeHeartbeatContent({ projectId, assistant, userId, userData })
+        await updateHeartbeatScheduleOutcome(scheduleRef, result.outcome)
+        return { outcome: result.outcome }
+    } catch (error) {
+        await updateHeartbeatScheduleOutcome(scheduleRef, 'failed', {
+            lastError: String(error.message || error).slice(0, 500),
+        })
+        console.error('Heartbeat worker: Execution failed', {
+            scheduleId,
+            projectId,
+            assistantId,
+            userId,
+            dueAt,
+            error: error.message,
+        })
+        throw error
+    }
+}
+
 module.exports = {
     checkAndExecuteHeartbeats,
+    claimScheduledHeartbeat,
+    executeHeartbeatContent,
+    executeScheduledHeartbeat,
 }

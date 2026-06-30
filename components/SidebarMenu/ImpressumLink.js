@@ -6,6 +6,7 @@ import styles from '../styles/global'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
 import { translate } from '../../i18n/TranslationService'
+import { openAnalyticsConsentSettings } from '../../utils/analytics/analytics'
 
 export default function ImpressumLink() {
     const themeName = useSelector(state => state.loggedUser.themeName)
@@ -46,6 +47,14 @@ export default function ImpressumLink() {
                 <View style={localStyles.link}>
                     <Text style={[localStyles.text, theme.text]} numberOfLines={1}>
                         {translate('Terms')}
+                    </Text>
+                </View>
+            </TouchableOpacity>
+            <View style={[localStyles.separator, theme.separator]} />
+            <TouchableOpacity onPress={openAnalyticsConsentSettings}>
+                <View style={localStyles.link}>
+                    <Text style={[localStyles.text, theme.text]} numberOfLines={1}>
+                        {translate('Cookie settings')}
                     </Text>
                 </View>
             </TouchableOpacity>

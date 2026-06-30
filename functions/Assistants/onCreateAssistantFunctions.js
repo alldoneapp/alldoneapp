@@ -5,6 +5,10 @@ const { getProject, getTemplateGuideIds } = require('../Firestore/generalFiresto
 const { uploadNewAssistant, GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
 const { createRecord, ASSISTANTS_OBJECTS_TYPE } = require('../AlgoliaGlobalSearchHelper')
 const { bumpProjectToolSchemasCacheVersion } = require('../Assistant/toolSchemaCacheVersion')
+const {
+    safelySyncHeartbeatSchedules,
+    syncHeartbeatSchedulesForAssistant,
+} = require('../Assistant/assistantHeartbeatSchedule')
 
 const processNewAssistantInTemplate = async (projectId, assistant) => {
     if (projectId !== GLOBAL_PROJECT_ID) {
@@ -43,6 +47,15 @@ const onCreateAssistant = async (projectId, assistant) => {
         createRecord(projectId, assistant.uid, assistant, ASSISTANTS_OBJECTS_TYPE, admin.firestore(), false, null)
     )
     promises.push(bumpProjectToolSchemasCacheVersion(projectId, 'assistant_created'))
+    if (projectId !== GLOBAL_PROJECT_ID) {
+        promises.push(
+            safelySyncHeartbeatSchedules(() => syncHeartbeatSchedulesForAssistant(projectId, assistant.uid), {
+                source: 'assistant_created',
+                projectId,
+                assistantId: assistant.uid,
+            })
+        )
+    }
     await Promise.all(promises)
 }
 

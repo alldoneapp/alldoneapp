@@ -31,23 +31,10 @@ export default function LogInButton({ btnId = 'google-sign-in-btn', containerSty
             size: 'large',
         })
         document.cookie = 'g_state=; Max-Age=-99999999;'
-
-        if (typeof gtag === 'function') {
-            gtag('event', 'login_button_rendered', {
-                event_category: 'login',
-                event_label: 'google_signin_rendered',
-            })
-        }
     }
 
     const handleMobileLogin = async () => {
         setIsLoading(true)
-        if (typeof gtag === 'function') {
-            gtag('event', 'login_button_click', {
-                event_category: 'login',
-                event_label: 'google_signin_popup_mobile',
-            })
-        }
         try {
             const user = await Backend.signInWithGoogleRedirect()
             // If we get here, popup succeeded and user is signed in

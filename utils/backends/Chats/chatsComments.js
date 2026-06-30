@@ -481,13 +481,20 @@ export async function createObjectMessage(
     editingCommentId,
     oldComment,
     skipAssistantTrigger = false,
-    explicitAssistantEnabled = null
+    explicitAssistantEnabled = null,
+    explicitAssistantId = null
 ) {
     const promises = []
     promises.push(getParentObjectData(projectId, objectId, objectType))
     promises.push(getChatMeta(projectId, objectId))
     const [parentData, chat] = await Promise.all(promises)
     let { isPublicFor, assistantId, followObjectsType, object, parentObjectCreatorId, title } = parentData
+
+    // The assistant selected when the user submitted the message is authoritative for this run.
+    // Persisting an assistant change and sending a message are separate network operations, so
+    // re-reading only the parent object here can otherwise race and route the answer to the old
+    // project assistant.
+    assistantId = explicitAssistantId || assistantId
 
     if (object) {
         const { loggedUser, assistantEnabled } = store.getState()

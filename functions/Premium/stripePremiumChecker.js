@@ -2,6 +2,7 @@ const functions = require('firebase-functions')
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { applyGoldChangeInTransaction } = require('../Gold/goldHelper')
+const { purchaseEvent, refundEvent } = require('../GAnalytics/GAnalytics')
 const {
     checkPremiumStatusByEmail,
     checkPremiumStatus,
@@ -255,7 +256,18 @@ const markRefundForGoldPurchase = async (charge, event) => {
         return { updated: false, reason: 'fulfillment_not_found' }
     }
 
-    const fulfillmentRef = matchingFulfillments.docs[0].ref
+    const fulfillmentDoc = matchingFulfillments.docs[0]
+    const fulfillmentRef = fulfillmentDoc.ref
+    const fulfillment = fulfillmentDoc.data() || {}
+
+    if (fulfillment.refundedEventId === event.id) {
+        return {
+            updated: false,
+            reason: 'already_processed',
+            fulfillmentId: fulfillmentRef.id,
+        }
+    }
+
     await fulfillmentRef.set(
         {
             refundStatus: charge?.refunded ? 'refunded' : 'partial_refund',
@@ -267,7 +279,13 @@ const markRefundForGoldPurchase = async (charge, event) => {
         { merge: true }
     )
 
-    return { updated: true, reason: 'refund_marked', fulfillmentId: fulfillmentRef.id }
+    return {
+        updated: true,
+        reason: 'refund_marked',
+        fulfillmentId: fulfillmentRef.id,
+        userId: fulfillment.userId,
+        transactionId: fulfillment.sessionId,
+    }
 }
 
 /**
@@ -513,6 +531,20 @@ const handleStripeWebhook = async (req, res) => {
             case 'checkout.session.async_payment_succeeded': {
                 const checkoutSession = event.data.object
                 const result = await fulfillGoldPurchase(checkoutSession, event, stripe)
+                if (result.fulfilled) {
+                    await purchaseEvent(
+                        result.userId,
+                        Number(checkoutSession.amount_total || 0) / 100,
+                        checkoutSession.id,
+                        {
+                            currency: checkoutSession.currency,
+                            provider: 'stripe',
+                            affiliation: 'Stripe',
+                            itemId: 'gold_10000',
+                            itemName: '10,000 Gold',
+                        }
+                    )
+                }
                 functions.logger.info('Processed Stripe checkout session webhook', {
                     eventId: event.id,
                     eventType: event.type,
@@ -525,6 +557,18 @@ const handleStripeWebhook = async (req, res) => {
             case 'charge.refunded': {
                 const charge = event.data.object
                 const result = await markRefundForGoldPurchase(charge, event)
+                if (result.updated && result.userId && result.transactionId) {
+                    await refundEvent(
+                        result.userId,
+                        result.transactionId,
+                        Number(charge.amount_refunded || charge.amount || 0) / 100,
+                        {
+                            currency: charge.currency,
+                            provider: 'stripe',
+                            affiliation: 'Stripe',
+                        }
+                    )
+                }
                 functions.logger.info('Processed Stripe charge refund webhook', {
                     eventId: event.id,
                     chargeId: charge?.id,

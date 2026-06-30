@@ -1614,6 +1614,23 @@ exports.adjustUserGoldSecondGen = onCall(
     }
 )
 
+// Consent-independent gold rollups: every gold ledger entry is aggregated into
+// goldStats/daily/days/{YYYY-MM-DD} and goldStats/monthly/months/{YYYY-MM} so
+// total earned/spent per day/month is exact (unlike GA, which only sees users who
+// granted analytics consent). Idempotent via an aggregatedAt stamp on the source
+// doc; backfill historical entries with migration/backfillGoldStats.js.
+exports.aggregateGoldTransactionStatsSecondGen = onDocumentCreated(
+    {
+        document: `users/{userId}/goldTransactions/{transactionId}`,
+        memory: '256MB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { aggregateGoldTransaction } = require('./Gold/goldStatsAggregator')
+        await aggregateGoldTransaction(event)
+    }
+)
+
 // MENUBAR APP (Anna Alldone macOS menubar assistant)
 
 exports.mintMenubarAppToken = onCall(
@@ -2525,7 +2542,7 @@ exports.onCreateProjectSecondGen = onDocumentCreated(
     },
     async event => {
         const { onCreateProject } = require('./Projects/onCreateProjectFunctions')
-        const project = event.data.data()
+        const project = { id: event.params.projectId, ...event.data.data() }
         await onCreateProject(project)
     }
 )
@@ -3409,8 +3426,37 @@ exports.checkAssistantHeartbeats = onSchedule(
         region: 'europe-west1',
     },
     async event => {
-        const { checkAndExecuteHeartbeats } = require('./Assistant/assistantHeartbeat')
-        await checkAndExecuteHeartbeats()
+        const { dispatchDueHeartbeats } = require('./Assistant/assistantHeartbeatDispatcher')
+        await dispatchDueHeartbeats()
+    }
+)
+
+exports.runAssistantHeartbeat = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: 1800,
+        memory: '512MiB',
+        retryConfig: { maxAttempts: 1 },
+        rateLimits: { maxConcurrentDispatches: 5, maxDispatchesPerSecond: 2 },
+    },
+    async req => {
+        const { executeScheduledHeartbeat } = require('./Assistant/assistantHeartbeat')
+        await executeScheduledHeartbeat(req.data || {})
+    }
+)
+
+exports.reconcileAssistantHeartbeatSchedules = onSchedule(
+    {
+        schedule: '17 2 * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: 3600,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { reconcileAllHeartbeatSchedules } = require('./Assistant/assistantHeartbeatSchedule')
+        const result = await reconcileAllHeartbeatSchedules()
+        console.log('Heartbeat schedule reconciliation completed', result)
     }
 )
 

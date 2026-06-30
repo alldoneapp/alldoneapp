@@ -57,6 +57,14 @@ const processPaymentStatus = async (paymentId, res) => {
             res
         )
     }
+
+    if (status === 'paid') {
+        await purchaseEvent(userPayingId, amount.value, paymentId, {
+            currency: amount.currency,
+            provider: 'mollie',
+            affiliation: 'Mollie',
+        })
+    }
 }
 
 const processPaymentStatusWhenUpdateCreditCard = async (
@@ -224,7 +232,6 @@ const processPaymentPaidStatusWhenCreateSubscription = async (
     })
     await Promise.all(promises)
 
-    purchaseEvent(userPayingId, amount.value, mollieSubscription.id)
     Invoices.createPdf(
         selectedUserIds.length,
         userPayingId,
@@ -327,7 +334,6 @@ const processPaymentPaidStatusWhenEditSubscription = async (
     if (paidAddedUserIds.length > 0) await addedPaidUsersToSubscription(userPayingId, paidAddedUserIds)
     if (removedUserIds.length > 0) await removePaidUsersFromSubscription(userPayingId, removedUserIds)
 
-    purchaseEvent(userPayingId, amount.value, subscriptionIdInMollie)
     promises = []
     promises.push(
         generateInvoceWhenAddingNewUsers(userPayingId, newAddedUserIds, amount, companyData, nextPaymentDate, res)
@@ -465,8 +471,6 @@ const processPaymentPaidStatusWhenActivateSubscription = async (
     const promisesResult = await Promise.all(promises)
     const newUsersToBePremium = promisesResult[0]
 
-    purchaseEvent(userPayingId, amount.value, subscriptionIdInMollie)
-
     promises = []
     promises.push(
         generateInvoceWhenAddingNewUsers(userPayingId, newAddedUserIds, amount, companyData, nextPaymentDate, res)
@@ -597,6 +601,11 @@ const processMontlyPaymentStatus = async (paymentId, res) => {
     console.log(userPayingId)
     if (status === 'paid') {
         await processMontlyPaymentPaidStatus(userPayingId, subscriptionId, subscription, amount, res)
+        await purchaseEvent(userPayingId, amount.value, paymentId, {
+            currency: amount.currency,
+            provider: 'mollie',
+            affiliation: 'Mollie',
+        })
     } else if (status === 'expired' || status === 'canceled' || status === 'failed') {
         await processMontlyPaymentUnpaidStatus(userPayingId, subscription, res)
     }
@@ -622,7 +631,6 @@ const processMontlyPaymentPaidStatus = async (userPayingId, subscriptionId, subs
     promises.push(admin.firestore().doc(`subscriptions/${userPayingId}`).update({ nextPaymentDate }))
     await Promise.all(promises)
 
-    purchaseEvent(userPayingId, amount.value, subscriptionId)
     Invoices.createPdf(
         activePaidUsersIds.length,
         userPayingId,

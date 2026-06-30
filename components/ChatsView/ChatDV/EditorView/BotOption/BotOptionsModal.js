@@ -168,8 +168,11 @@ export default function BotOptionsModal({
         }
     }
 
-    const toggleAssistantEnabled = isEnabled => {
+    const toggleAssistantEnabled = async isEnabled => {
         closeModal()
+        if (isEnabled && assistant?.uid && assistant.uid !== assistantId) {
+            await updateAssistant(assistant.uid)
+        }
         setAssistantEnabledForObject(isEnabled)
         if (onSelectBotOption) onSelectBotOption()
     }

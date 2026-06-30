@@ -3,6 +3,26 @@ const admin = require('firebase-admin')
 const { updateUserRecord } = require('../AlgoliaGlobalSearchHelper')
 const { generateUserWarnings } = require('../Payment/QuotaWarnings')
 const { processAutomaticSkillPointDistribution } = require('../Skills/automaticSkillPointDistribution')
+const {
+    ACTIVE_USER_WINDOW_MS,
+    getTimestampMillis,
+    safelySyncHeartbeatSchedules,
+    syncHeartbeatSchedulesForUser,
+} = require('../Assistant/assistantHeartbeatSchedule')
+
+const HEARTBEAT_USER_SCHEDULE_FIELDS = [
+    'timezone',
+    'timezoneOffset',
+    'timezoneMinutes',
+    'preferredTimezone',
+    'defaultProjectId',
+]
+
+function heartbeatUserScheduleChanged(oldUser, newUser, now = Date.now()) {
+    if (HEARTBEAT_USER_SCHEDULE_FIELDS.some(field => oldUser?.[field] !== newUser?.[field])) return true
+    const cutoff = now - ACTIVE_USER_WINDOW_MS
+    return getTimestampMillis(oldUser?.lastLogin) < cutoff && getTimestampMillis(newUser?.lastLogin) >= cutoff
+}
 
 const proccessAlgoliaRecord = async (userId, change) => {
     await updateUserRecord(userId, change, admin)
@@ -18,6 +38,15 @@ const onUpdateUser = async (userId, change) => {
 
     if (Number(newUser.level || 1) > Number(oldUser.level || 1)) {
         promises.push(processAutomaticSkillPointDistribution(userId, oldUser, newUser))
+    }
+
+    if (heartbeatUserScheduleChanged(oldUser, newUser)) {
+        promises.push(
+            safelySyncHeartbeatSchedules(() => syncHeartbeatSchedulesForUser(userId), {
+                source: 'user_updated',
+                userId,
+            })
+        )
     }
 
     // Check for WhatsApp phone number update
@@ -36,4 +65,4 @@ const onUpdateUser = async (userId, change) => {
     await Promise.all(promises)
 }
 
-module.exports = { onUpdateUser }
+module.exports = { onUpdateUser, heartbeatUserScheduleChanged }

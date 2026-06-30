@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, View, ImageBackground, Image, Text, ScrollView, Dimensions } from 'react-native'
+import { StyleSheet, View, ImageBackground, Image, Text, ScrollView, Dimensions, TouchableOpacity } from 'react-native'
 
 import Icon from '../Icon'
 import styles from '../styles/global'
 import LogInButton from '../UIControls/LogInButton'
 import URLSystem, { URL_LOGIN } from '../../URLSystem/URLSystem'
 import Colors from '../../Themes/Colors'
-import { getProjectData, logEvent, loginWithGoogleWebAnonymously } from '../../utils/backends/firestore'
+import { getProjectData, loginWithGoogleWebAnonymously } from '../../utils/backends/firestore'
 import { useSelector, useDispatch } from 'react-redux'
 import { setInitialUrl, setNavigationRoute } from '../../redux/actions'
+import { openAnalyticsConsentSettings } from '../../utils/analytics/analytics'
+import { translate } from '../../i18n/TranslationService'
 
 const LOADING_LOGIN = 'LOADING_LOGIN'
 const NORMAL_LOGIN = 'NORMAL_LOGIN'
@@ -81,13 +83,6 @@ export default function LoginScreenContent() {
     useEffect(() => {
         writeBrowserURL()
         dispatch(setNavigationRoute('LoginScreen'))
-        logEvent('login_page')
-        if (typeof gtag === 'function') {
-            gtag('event', 'login_view', {
-                page_path: '/login',
-                page_title: 'Login Page',
-            })
-        }
     }, [])
 
     return (
@@ -153,14 +148,6 @@ export default function LoginScreenContent() {
                             href="https://alldone.app/privacy"
                             target={'_blank'}
                             style={{ color: Colors.Primary100, textDecoration: 'none' }}
-                            onClick={() => {
-                                if (typeof gtag === 'function') {
-                                    gtag('event', 'click_privacy_policy', {
-                                        event_category: 'login',
-                                        event_label: 'privacy_policy_link',
-                                    })
-                                }
-                            }}
                         >
                             Privacy Policy
                         </a>{' '}
@@ -169,18 +156,15 @@ export default function LoginScreenContent() {
                             href="https://alldone.app/terms"
                             target={'_blank'}
                             style={{ color: Colors.Primary100, textDecoration: 'none' }}
-                            onClick={() => {
-                                if (typeof gtag === 'function') {
-                                    gtag('event', 'click_terms_service', {
-                                        event_category: 'login',
-                                        event_label: 'terms_service_link',
-                                    })
-                                }
-                            }}
                         >
                             Terms of Service
                         </a>{' '}
                     </Text>
+                    <TouchableOpacity onPress={openAnalyticsConsentSettings}>
+                        <Text style={[localStyles.subtitle, { color: Colors.Primary100 }]}>
+                            {translate('Cookie settings')}
+                        </Text>
+                    </TouchableOpacity>
                 </View>
             </ScrollView>
         </ImageBackground>

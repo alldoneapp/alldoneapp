@@ -125,6 +125,7 @@ jest.mock('./assistantHelper', () => ({
 jest.mock('./contextTimestampHelper', () => ({
     addTimestampToContextContent: content => content,
     resolveUserTimezoneOffset: jest.fn(() => 0),
+    resolveUserTimezoneName: jest.fn(() => null),
     getUserLocalDayBounds: jest.fn(() => ({ startOfDay: 999000000, endOfDay: 1001000000 })),
     getUserLocalDateContext: jest.fn(() => ({ dateKey: '20260504', dateLabel: 'May 4' })),
 }))
@@ -145,7 +146,8 @@ jest.mock('../Services/TwilioWhatsAppService', () =>
 )
 
 const admin = require('firebase-admin')
-const { checkAndExecuteHeartbeats } = require('./assistantHeartbeat')
+const { checkAndExecuteHeartbeats, executeScheduledHeartbeat } = require('./assistantHeartbeat')
+const { getHeartbeatScheduleId, getHeartbeatScheduleTiming } = require('./assistantHeartbeatSchedule')
 
 describe('assistant heartbeat insufficient gold notice', () => {
     beforeEach(() => {
@@ -398,5 +400,219 @@ describe('assistant heartbeat reply-aware execution chance', () => {
 
         expect(mockHasUserMessageOnUserLocalDay).not.toHaveBeenCalled()
         expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('scheduled assistant heartbeat worker', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        admin.__mock.reset()
+        jest.spyOn(Date, 'now').mockReturnValue(1000000000)
+        jest.spyOn(Math, 'random').mockReturnValue(0.1)
+        mockGeneratePreConfigTaskResult.mockResolvedValue({
+            success: true,
+            silentOk: false,
+            commentId: 'comment-1',
+            commentText: 'Heartbeat result',
+        })
+
+        admin.__mock.setDoc('users/user-1', {
+            uid: 'user-1',
+            displayName: 'Test User',
+            lastLogin: 1000000000,
+            gold: 100,
+        })
+        admin.__mock.setDoc('projects/project-1', {
+            active: true,
+            userIds: ['user-1'],
+        })
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            uid: 'assistant-1',
+            heartbeatPrompt: 'Check in.',
+            heartbeatChancePercent: 100,
+            heartbeatChanceNoReplyPercent: 100,
+            heartbeatAwakeStart: 0,
+            heartbeatAwakeEnd: 86340000,
+            heartbeatIntervalMs: 300000,
+            heartbeatSendWhatsApp: false,
+            model: 'MODEL_GPT5_5',
+            temperature: 'TEMPERATURE_NORMAL',
+            instructions: 'Be helpful.',
+        })
+    })
+
+    afterEach(() => {
+        Date.now.mockRestore()
+        Math.random.mockRestore()
+    })
+
+    function seedSchedule() {
+        const assistant = { uid: 'assistant-1', ...admin.__mock.getDoc('assistants/project-1/items/assistant-1') }
+        const user = admin.__mock.getDoc('users/user-1')
+        const timing = getHeartbeatScheduleTiming(assistant, user)
+        const scheduleId = getHeartbeatScheduleId('project-1', 'assistant-1', 'user-1')
+        admin.__mock.setDoc(`assistantHeartbeatSchedules/${scheduleId}`, {
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            nextHeartbeatAt: 1000000000,
+            ...timing,
+            createdAt: 999000000,
+            updatedAt: 999000000,
+        })
+        return { scheduleId, scheduleHash: timing.scheduleHash }
+    }
+
+    test('claims and executes an occurrence at most once', async () => {
+        const { scheduleId, scheduleHash } = seedSchedule()
+        const payload = {
+            scheduleId,
+            scheduleHash,
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            dueAt: 1000000000,
+        }
+
+        const first = await executeScheduledHeartbeat(payload)
+        const second = await executeScheduledHeartbeat(payload)
+
+        expect(first.outcome).toBe('executed')
+        expect(second.outcome).toBe('already_processed')
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual(
+            expect.objectContaining({ maxRunWallClockMs: 25 * 60 * 1000 })
+        )
+        expect(admin.__mock.getDoc('assistants/project-1/items/assistant-1')).toEqual(
+            expect.objectContaining({
+                'heartbeatLastCheckedByUser.user-1': 1000000000,
+                'heartbeatLastExecutedByUser.user-1': 1000000000,
+            })
+        )
+        expect(admin.__mock.getDoc(`assistantHeartbeatSchedules/${scheduleId}`).lastProcessedDueAt).toBe(1000000000)
+    })
+
+    test('skips a stale schedule hash before running side effects', async () => {
+        const { scheduleId } = seedSchedule()
+        const result = await executeScheduledHeartbeat({
+            scheduleId,
+            scheduleHash: 'stale-hash',
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            dueAt: 1000000000,
+        })
+
+        expect(result.outcome).toBe('stale_schedule')
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+    })
+
+    test('records a chance skip without invoking the assistant', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatChancePercent: 25,
+            heartbeatChanceNoReplyPercent: 25,
+        })
+        Math.random.mockReturnValue(0.9)
+        const { scheduleId, scheduleHash } = seedSchedule()
+
+        const result = await executeScheduledHeartbeat({
+            scheduleId,
+            scheduleHash,
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            dueAt: 1000000000,
+        })
+
+        expect(result.outcome).toBe('chance_skipped')
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(admin.__mock.getDoc(`assistantHeartbeatSchedules/${scheduleId}`).lastOutcome).toBe('chance_skipped')
+    })
+
+    test('records no-gold and sends the throttled notice without invoking the assistant', async () => {
+        admin.__mock.setDoc('users/user-1', {
+            ...admin.__mock.getDoc('users/user-1'),
+            gold: 0,
+        })
+        const { scheduleId, scheduleHash } = seedSchedule()
+
+        const result = await executeScheduledHeartbeat({
+            scheduleId,
+            scheduleHash,
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            dueAt: 1000000000,
+        })
+
+        expect(result.outcome).toBe('no_gold')
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockCreateInitialStatusMessage).toHaveBeenCalledWith(
+            'project-1',
+            'topics',
+            'Heartbeat20260504user-1',
+            'assistant-1',
+            NOTICE_MESSAGE,
+            ['user-1'],
+            ['FEED_PUBLIC_FOR_ALL'],
+            ['user-1']
+        )
+        expect(admin.__mock.getDoc(`assistantHeartbeatSchedules/${scheduleId}`).lastOutcome).toBe('no_gold')
+    })
+
+    test('records silent OK and guardrail outcomes through the worker', async () => {
+        mockGeneratePreConfigTaskResult.mockResolvedValueOnce({ success: true, silentOk: true })
+        const silentSchedule = seedSchedule()
+        const silentResult = await executeScheduledHeartbeat({
+            ...silentSchedule,
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            dueAt: 1000000000,
+        })
+        expect(silentResult.outcome).toBe('silent_ok')
+        expect(admin.__mock.getDoc('assistants/project-1/items/assistant-1')).toEqual(
+            expect.objectContaining({ 'heartbeatLastSilentOkByUser.user-1': 1000000000 })
+        )
+
+        admin.__mock.reset()
+        admin.__mock.setDoc('users/user-1', {
+            uid: 'user-1',
+            displayName: 'Test User',
+            lastLogin: 1000000000,
+            gold: 100,
+        })
+        admin.__mock.setDoc('projects/project-1', { active: true, userIds: ['user-1'] })
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            uid: 'assistant-1',
+            heartbeatPrompt: 'Check in.',
+            heartbeatChancePercent: 100,
+            heartbeatChanceNoReplyPercent: 100,
+            heartbeatAwakeStart: 0,
+            heartbeatAwakeEnd: 86340000,
+            heartbeatIntervalMs: 300000,
+            heartbeatSendWhatsApp: false,
+        })
+        mockGeneratePreConfigTaskResult.mockResolvedValueOnce({
+            success: true,
+            guardrailStopped: { reason: 'time_budget', message: 'Stopped by time budget.' },
+        })
+        const guardrailSchedule = seedSchedule()
+        const guardrailResult = await executeScheduledHeartbeat({
+            ...guardrailSchedule,
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            dueAt: 1000000000,
+        })
+
+        expect(guardrailResult.outcome).toBe('guardrail_failed')
+        expect(admin.__mock.getDoc('assistants/project-1/items/assistant-1')).toEqual(
+            expect.objectContaining({
+                'heartbeatLastFailureByUser.user-1': 1000000000,
+                'heartbeatLastFailureMessageByUser.user-1': 'Stopped by time budget.',
+            })
+        )
     })
 })

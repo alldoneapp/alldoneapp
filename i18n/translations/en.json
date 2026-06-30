@@ -2171,5 +2171,13 @@
     "Alldone booking success pitch": "Want your own AI Chief of Staff? Try out alldone.app.",
     "Try out alldone.app": "Try out alldone.app",
     "Checking calendar availability": "Checking calendar availability",
-    "Finding the best open slots": "Finding the best open slots"
+    "Finding the best open slots": "Finding the best open slots",
+    "Analytics consent title": "Help us improve Alldone",
+    "Analytics consent description": "With your permission, we use Google Analytics to understand how Alldone is used. No analytics data is sent before you agree.",
+    "Necessary only": "Necessary only",
+    "Allow analytics": "Allow analytics",
+    "Analytics and privacy": "Analytics & privacy",
+    "Analytics enabled": "Analytics enabled",
+    "Analytics disabled": "Analytics disabled",
+    "Cookie settings": "Cookie settings"
 }

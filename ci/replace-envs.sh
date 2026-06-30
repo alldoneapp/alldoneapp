@@ -4,7 +4,22 @@ set -e
 echo "Starting environment variable replacement..."
 echo "Current working directory: $(pwd)"
 echo "Checking if files exist before replacement:"
-ls -la utils/backends/firestore.js apis/google/apisConfig.js web/firebase-messaging-sw.js functions/MCP/config/environments.js || true
+ls -la utils/backends/firestore.js utils/analytics/analyticsConfig.js apis/google/apisConfig.js web/firebase-messaging-sw.js functions/MCP/config/environments.js || true
+
+if [ "$GOOGLE_ANALYTICS_KEY_PROD" != "G-HR3PWMHKQQ" ]; then
+    echo "GOOGLE_ANALYTICS_KEY_PROD must be G-HR3PWMHKQQ"
+    exit 1
+fi
+
+cat > temp_analytics_envs.txt << EOF
+export const ANALYTICS_ENABLED = true
+export const GOOGLE_ANALYTICS_KEY = "$GOOGLE_ANALYTICS_KEY_PROD"
+EOF
+
+sed -i '/\/\/ BEGIN-ANALYTICS-ENVS/,/\/\/ END-ANALYTICS-ENVS/{
+    /\/\/ BEGIN-ANALYTICS-ENVS/r temp_analytics_envs.txt
+    /\/\/ END-ANALYTICS-ENVS/!d
+}' utils/analytics/analyticsConfig.js
 
 # Replace environment variables in firestore.js (use const for local scope)
 cat > temp_firestore_envs.txt << EOF
@@ -23,8 +38,6 @@ const NOTES_COLLABORATION_SERVER = "$NOTES_COLLABORATION_SERVER"
 const ALGOLIA_APP_ID = "$ALGOLIA_APP_ID_PROD"
 const ALGOLIA_SEARCH_ONLY_API_KEY = "$ALGOLIA_SEARCH_ONLY_API_KEY_PROD"
 const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = "$GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD"
-const GOOGLE_ANALYTICS_KEY = "$GOOGLE_ANALYTICS_KEY_PROD"
-const GOOGLE_ADS_GUIDE_CONVERSION_TAG = "$GOOGLE_ADS_GUIDE_CONVERSION_TAG_PROD"
 EOF
 
 echo "Before replacement - checking firestore.js:"
@@ -77,7 +90,6 @@ sed -i "s|__FIREBASE_PROJECT_ID__|${GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD}|g" web/
 sed -i "s|__FIREBASE_STORAGE_BUCKET__|${GOOGLE_FIREBASE_STORAGE_BUCKET_PROD}|g" web/firebase-messaging-sw.js
 sed -i "s|__FIREBASE_MESSAGING_SENDER_ID__|${GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_PROD}|g" web/firebase-messaging-sw.js
 sed -i "s|__FIREBASE_APP_ID__|${GOOGLE_FIREBASE_WEB_APP_ID_PROD}|g" web/firebase-messaging-sw.js
-sed -i "s|__FIREBASE_MEASUREMENT_ID__|${GOOGLE_ANALYTICS_KEY_PROD}|g" web/firebase-messaging-sw.js
 
 echo "Checking final replacement result:"
 echo "NOTES_COLLABORATION_SERVER value should be: $NOTES_COLLABORATION_SERVER"
@@ -87,6 +99,6 @@ echo "Checking MCP config replacement:"
 grep -n "GOOGLE_FIREBASE_WEB_API_KEY" functions/MCP/config/environments.js || true
 
 # Clean up temporary files
-rm -f temp_firestore_envs.txt temp_apis_envs.txt temp_mcp_envs.txt
+rm -f temp_firestore_envs.txt temp_analytics_envs.txt temp_apis_envs.txt temp_mcp_envs.txt
 
 echo "Environment variable replacement completed"

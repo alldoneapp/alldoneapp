@@ -40,12 +40,8 @@ import {
     ALGOLIA_APP_ID,
     ALGOLIA_SEARCH_ONLY_API_KEY,
     GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET,
-    GOOGLE_ANALYTICS_KEY,
-    GOOGLE_ADS_GUIDE_CONVERSION_TAG,
 } from 'react-native-dotenv'
 // END-ENVS
-const correctGoogleAnalyticsKey = GOOGLE_ANALYTICS_KEY === 'G-HR3PWMHKQQ' ? 'G-XJ2QRBHJWL' : GOOGLE_ANALYTICS_KEY
-export { correctGoogleAnalyticsKey as GOOGLE_ANALYTICS_KEY }
 import { updateXpByCreateProject } from '../Levels'
 import store from '../../redux/store'
 
@@ -159,6 +155,8 @@ import {
 import Backend from '../BackendBridge'
 import { getTaskTypeIndex, MAIN_TASK_INDEX } from './openTasks'
 import { getHappinessDateKey, getHappinessDay, getHappinessTimestamp } from '../ProjectHappinessHelper'
+import { shouldProcessObjectLinkSnapshot } from './objectLinkSnapshot'
+import { setAnalyticsUser, trackEvent } from '../analytics/analytics'
 
 import {
     createBacklinkProjectFeed,
@@ -372,7 +370,6 @@ const firebaseConfig = {
     storageBucket: GOOGLE_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID,
     appId: GOOGLE_FIREBASE_WEB_APP_ID,
-    measurementId: correctGoogleAnalyticsKey, // This is for production
 }
 
 // Helper function to determine if we should use Firebase Functions emulator
@@ -569,10 +566,6 @@ function loadDeferredFirebaseModules() {
             messaging = firebase.messaging()
         }
 
-        // Load analytics
-        require('firebase/analytics')
-        firebase.analytics()
-
         // Load database
         require('firebase/database')
 
@@ -583,11 +576,7 @@ function loadDeferredFirebaseModules() {
 }
 
 export function initGoogleTagManager(userId) {
-    gtag('config', GOOGLE_ANALYTICS_KEY, {
-        user_id: userId,
-        allow_google_signals: false,
-        allow_ad_personalization_signals: false,
-    })
+    setAnalyticsUser(userId)
 }
 
 export function initFCM(userId) {
@@ -3097,6 +3086,7 @@ export async function loginWithGoogleWebAnonymously() {
 
 export function logoutWeb(onComplete) {
     // window.google.accounts.id.disableAutoSelect()
+    setAnalyticsUser(null)
     firebase
         .auth()
         .signOut()
@@ -3393,30 +3383,7 @@ export async function watchAllDoneVersion(callback) {
 }
 
 export async function logEvent(name, params) {
-    // Prefer gtag if available (GA4 on web)
-    try {
-        if (typeof gtag === 'function') {
-            gtag('event', name, params || {})
-            return
-        }
-    } catch (e) {
-        // noop
-    }
-
-    // Fallback to Firebase Analytics if it has been loaded
-    try {
-        if (firebase && typeof firebase.analytics === 'function') {
-            await firebase.analytics().logEvent(name, params)
-            return
-        }
-    } catch (err) {
-        // noop
-    }
-
-    // As a last resort, avoid throwing to keep app flow
-    try {
-        console.warn('[analytics] logEvent skipped (analytics not ready):', name, params)
-    } catch (_) {}
+    return trackEvent(name, params)
 }
 
 export function mapNoteData(noteId, note) {
@@ -5054,8 +5021,11 @@ export async function unwatchNote(projectId, noteId) {
 export async function watchObjectLTag(objectType, path, watchId, callback) {
     if (!hasProperty(linkTagsUnsubs, [objectType, path, watchId])) {
         const unsub = db.doc(path).onSnapshot(doc => {
-            const objectData = doc.data() != null ? { ...doc.data(), id: doc.id, uid: doc.id } : null
-            callback(objectData, path, watchId)
+            const data = doc.data()
+            if (shouldProcessObjectLinkSnapshot(data, doc.metadata)) {
+                const objectData = data != null ? { ...data, id: doc.id, uid: doc.id } : null
+                callback(objectData, path, watchId)
+            }
         })
 
         setProperty(linkTagsUnsubs, [objectType, path, watchId], unsub)
@@ -6936,10 +6906,6 @@ export const inStagingEnvironment = () => {
 
 export function getAlgoliaSearchOnlyKeys() {
     return { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY }
-}
-
-export function getAnalyticsVariables() {
-    return { GOOGLE_ANALYTICS_KEY, GOOGLE_ADS_GUIDE_CONVERSION_TAG }
 }
 
 export function getSentryVariables() {

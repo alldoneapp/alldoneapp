@@ -139,9 +139,10 @@ const getWarningPercent = async (
 }
 
 const generateProjectWarnings = async (projectId, oldProject, newProject, admin) => {
+    const analyticsUserId = newProject.creatorId || newProject.userIds?.[0]
     const percent = await getWarningPercent(
         PROJECT_QUOTA_TYPE,
-        projectId,
+        analyticsUserId,
         oldProject.monthlyXp,
         newProject.monthlyXp,
         oldProject.monthlyTraffic,

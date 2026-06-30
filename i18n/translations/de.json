@@ -1714,5 +1714,13 @@
     "Alldone booking success pitch": "Willst du deinen eigenen AI Chief of Staff? Probiere alldone.app aus.",
     "Try out alldone.app": "alldone.app ausprobieren",
     "Checking calendar availability": "Kalenderverfügbarkeit wird geprüft",
-    "Finding the best open slots": "Die besten freien Zeiten werden gesucht"
+    "Finding the best open slots": "Die besten freien Zeiten werden gesucht",
+    "Analytics consent title": "Hilf uns, Alldone zu verbessern",
+    "Analytics consent description": "Mit deiner Zustimmung verwenden wir Google Analytics, um zu verstehen, wie Alldone genutzt wird. Vor deiner Zustimmung werden keine Analytics-Daten gesendet.",
+    "Necessary only": "Nur notwendige",
+    "Allow analytics": "Analytics erlauben",
+    "Analytics and privacy": "Analytics & Datenschutz",
+    "Analytics enabled": "Analytics aktiviert",
+    "Analytics disabled": "Analytics deaktiviert",
+    "Cookie settings": "Cookie-Einstellungen"
 }

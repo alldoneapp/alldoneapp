@@ -12,7 +12,6 @@ import {
     getId,
     addFollowerWithoutFeeds,
     generateSortIndex,
-    getAnalyticsVariables,
 } from '../firestore'
 import ProjectHelper, { MAX_USERS_IN_GUIDES } from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
@@ -23,6 +22,7 @@ import { MENTION_SPACE_CODE, STAYWARD_COMMENT } from '../../../components/Feeds/
 import { addUserToProject, getUserData } from '../Users/usersFirestore'
 import { createChat, addFollowerToChat } from '../Chats/chatsComments'
 import { getChatMeta } from '../Chats/chatsFirestore'
+import { trackEvent } from '../../analytics/analytics'
 
 export const GUIDE_MAIN_CHAT_ID = 'guideMainChatId'
 
@@ -217,8 +217,7 @@ async function addWelcomeChatToGuideUser(guideId, projectName, templateCreatorId
 }
 
 function logGuideConversionEvent() {
-    const { GOOGLE_ADS_GUIDE_CONVERSION_TAG } = getAnalyticsVariables()
-    if (GOOGLE_ADS_GUIDE_CONVERSION_TAG) gtag('event', 'conversion', { send_to: GOOGLE_ADS_GUIDE_CONVERSION_TAG })
+    trackEvent('generate_lead', { source: 'guide' })
 }
 
 async function tryToAddCreatorUser(guide, templateCreatorId, projectUsersIdsForSpecialFeeds, specialUserIds) {

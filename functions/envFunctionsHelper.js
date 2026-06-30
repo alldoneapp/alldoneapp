@@ -54,6 +54,7 @@ const getEnvFunctions = () => {
             SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
             IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
             GIPHY_API_KEY: process.env.GIPHY_API_KEY || '',
+            ANALYTICS_ENABLED: process.env.ANALYTICS_ENABLED || '',
             GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
             GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                 process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
@@ -102,6 +103,7 @@ const getEnvFunctions = () => {
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         envJson.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
                         '',
+                    ANALYTICS_ENABLED: envJson.ANALYTICS_ENABLED || '',
                     GOOGLE_ANALYTICS_KEY: envJson.GOOGLE_ANALYTICS_KEY || '',
                     GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                         envJson.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
@@ -161,6 +163,7 @@ const getEnvFunctions = () => {
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                             process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
                             '',
+                        ANALYTICS_ENABLED: process.env.ANALYTICS_ENABLED || '',
                         GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
                         GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                             process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
@@ -204,6 +207,7 @@ const getEnvFunctions = () => {
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                         process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
                         '',
+                    ANALYTICS_ENABLED: process.env.ANALYTICS_ENABLED || '',
                     GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
                     GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                         process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',
@@ -246,6 +250,7 @@ const getEnvFunctions = () => {
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET ||
                     process.env.GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD ||
                     '',
+                ANALYTICS_ENABLED: process.env.ANALYTICS_ENABLED || '',
                 GOOGLE_ANALYTICS_KEY: process.env.GOOGLE_ANALYTICS_KEY || '',
                 GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET:
                     process.env.GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET || '',

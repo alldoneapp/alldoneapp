@@ -10,6 +10,24 @@ const {
 } = require('../Firestore/assistantsFirestore')
 const { updateRecord, ASSISTANTS_OBJECTS_TYPE } = require('../AlgoliaGlobalSearchHelper')
 const { bumpProjectToolSchemasCacheVersion } = require('../Assistant/toolSchemaCacheVersion')
+const {
+    safelySyncHeartbeatSchedules,
+    syncHeartbeatSchedulesForAssistant,
+} = require('../Assistant/assistantHeartbeatSchedule')
+
+const HEARTBEAT_SCHEDULE_FIELDS = [
+    'heartbeatPrompt',
+    'heartbeatIntervalMs',
+    'heartbeatAwakeStart',
+    'heartbeatAwakeEnd',
+    'heartbeatChancePercent',
+    'heartbeatChanceNoReplyPercent',
+    'isDefault',
+]
+
+function heartbeatScheduleSettingsChanged(oldAssistant, newAssistant) {
+    return HEARTBEAT_SCHEDULE_FIELDS.some(field => !isEqual(oldAssistant?.[field], newAssistant?.[field]))
+}
 
 const tryUpdateAssitantInGuides = async (oldAssistant, newAssistant, projectId) => {
     delete oldAssistant.lastEditorId
@@ -72,9 +90,18 @@ const onUpdateAssistant = async (projectId, assistantId, change) => {
         }
     } else {
         promises.push(tryUpdateAssitantInGuides({ ...oldAssistant }, { ...newAssistant }, projectId))
+        if (heartbeatScheduleSettingsChanged(oldAssistant, newAssistant)) {
+            promises.push(
+                safelySyncHeartbeatSchedules(() => syncHeartbeatSchedulesForAssistant(projectId, assistantId), {
+                    source: 'assistant_updated',
+                    projectId,
+                    assistantId,
+                })
+            )
+        }
     }
     promises.push(bumpProjectToolSchemasCacheVersion(projectId, 'assistant_updated'))
     await Promise.all(promises)
 }
 
-module.exports = { onUpdateAssistant }
+module.exports = { onUpdateAssistant, heartbeatScheduleSettingsChanged }

@@ -25,6 +25,7 @@ import {
 import ChatInputButtons from './ChatInputButtons'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
+import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -62,6 +63,8 @@ export default function ChatInput({
     const [showRunOutGoalModal, setShowRunOutGoalModal] = useState(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
+    const displayedAssistantId = getAssistantInProjectObject(projectId, assistantId)?.uid || assistantId
+    const selectedAssistantIdRef = useRef(displayedAssistantId)
 
     const { id: objectId, type: chatType } = chat
 
@@ -76,6 +79,15 @@ export default function ChatInput({
     const explicitAssistantEnabled =
         hasExplicitChatAssistantState || hasParentAssistantState || assistantEnabled ? isAssistantActive : null
     const disabledEdition = editing && loggedUserId !== creatorId
+
+    const updateSelectedAssistant = selectedAssistantId => {
+        selectedAssistantIdRef.current = selectedAssistantId
+        setAssistantId?.(selectedAssistantId)
+    }
+
+    useEffect(() => {
+        selectedAssistantIdRef.current = displayedAssistantId
+    }, [displayedAssistantId])
 
     const updateEditor = editor => {
         if (!editing) dispatch(setMainChatEditor(editor))
@@ -118,6 +130,7 @@ export default function ChatInput({
         if (isEvent) eventOrText.preventDefault()
 
         const textToSubmit = typeof eventOrText === 'string' ? eventOrText : inputText
+        const selectedAssistantId = selectedAssistantIdRef.current
 
         if (isAssistantActive && gold === 0) {
             setShowRunOutGoalModal(true)
@@ -141,7 +154,8 @@ export default function ChatInput({
                         null,
                         null,
                         false, // skipAssistantTrigger
-                        explicitAssistantEnabled
+                        explicitAssistantEnabled,
+                        selectedAssistantId
                     )
                 })
                 setAmountOfNewCommentsToHighligth(0)
@@ -361,6 +375,7 @@ export default function ChatInput({
                 characterLimit={CHAT_INPUT_LIMIT_IN_CHARACTERS}
                 setShowRunOutGoalModal={setShowRunOutGoalModal}
                 chatAssistantData={{ objectId, objectAssistantId: assistantId, objectType: chatType }}
+                setAssistantId={updateSelectedAssistant}
             />
             <ChatInputButtons
                 projectId={projectId}
@@ -380,7 +395,7 @@ export default function ChatInput({
                 showRunOutGoalModal={showRunOutGoalModal}
                 creatorData={creatorData}
                 assistantId={assistantId}
-                setAssistantId={setAssistantId}
+                setAssistantId={updateSelectedAssistant}
                 objectId={chat.id}
                 objectType={objectType}
                 assistantEnabled={isAssistantActive}

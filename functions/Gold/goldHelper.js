@@ -368,7 +368,10 @@ const adjustGold = async (userId, delta, context = {}) => {
     })
 
     if (result.success) {
-        await logGoldAnalytics(userId, 'adjust_gold', result.amount, source, context)
+        // Pass the signed delta (not result.amount, which is absolute) so a
+        // negative admin adjustment is reported as a negative value and the
+        // adjust_virtual_currency total sums to the net adjustment.
+        await logGoldAnalytics(userId, 'adjust_gold', Number(delta), source, context)
     }
 
     return result

@@ -81,6 +81,7 @@ export const MIN_WIDTH_LINK_TAG = 100
 
 export default function LinkTag({
     link = '',
+    initialTitle,
     style,
     tagStyle,
     inTaskDV,
@@ -118,7 +119,7 @@ export default function LinkTag({
     const [tagIcon, setTagIcon] = useState('link')
     const [type, setType] = useState(null)
     const [objectId, setObjectId] = useState('')
-    const [title, setTitle] = useState(getDomain(link))
+    const [title, setTitle] = useState(initialTitle || getDomain(link))
     const [linkUrl, setLinkUrl] = useState(addProtocol(link))
     const [shared, setShared] = useState(false)
     const [maxWidth, setMaxWidth] = useState(0)
@@ -210,6 +211,7 @@ export default function LinkTag({
 
     useEffect(() => {
         const watchId = Backend.getId()
+        setTitle(initialTitle || getDomain(link))
         let { objectType, path, projectId, objectId } = processUrl(getPathname(link))
         let newPath = false
 
@@ -303,7 +305,7 @@ export default function LinkTag({
                 Backend.unwatchObjectLTag(objectType, newPath || path, watchId)
             }
         }
-    }, [link])
+    }, [link, initialTitle])
 
     const checkIfLinkPointToInactiveGuide = initialUrl => {
         const { realGuideProjectIds } = loggedUser

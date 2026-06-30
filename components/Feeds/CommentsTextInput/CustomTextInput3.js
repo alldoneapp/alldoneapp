@@ -291,28 +291,31 @@ function CustomTextInput3(
                             setAssistantId?.(assistantId)
                             switch (objectType) {
                                 case 'tasks':
-                                    setTaskAssistant(projectId, objectId, assistantId, true)
+                                    await setTaskAssistant(projectId, objectId, assistantId, true)
                                     break
                                 case 'notes':
-                                    setNoteAssistant(projectId, objectId, assistantId, true)
+                                    await setNoteAssistant(projectId, objectId, assistantId, true)
                                     break
                                 case 'contacts':
                                     const isUser = !!TasksHelper.getUserInProject(projectId, objectId)
-                                    isUser
-                                        ? setUserAssistant(projectId, objectId, assistantId, true)
-                                        : setContactAssistant(projectId, objectId, assistantId, true)
+                                    if (isUser) {
+                                        await setUserAssistant(projectId, objectId, assistantId, true)
+                                    } else {
+                                        await setContactAssistant(projectId, objectId, assistantId, true)
+                                    }
                                     break
                                 case 'users':
-                                    setUserAssistant(projectId, objectId, assistantId, true)
+                                    await setUserAssistant(projectId, objectId, assistantId, true)
                                     break
                                 case 'goals':
-                                    setGoalAssistant(projectId, objectId, assistantId, true)
+                                    await setGoalAssistant(projectId, objectId, assistantId, true)
                                     break
                                 case 'skills':
-                                    setSkillAssistant(projectId, objectId, assistantId, true)
+                                    await setSkillAssistant(projectId, objectId, assistantId, true)
                                     break
+                                case 'chats':
                                 case 'topics':
-                                    updateChatAssistant(projectId, objectId, assistantId)
+                                    await updateChatAssistant(projectId, objectId, assistantId)
                                     break
                             }
                         }

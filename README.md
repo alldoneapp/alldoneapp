@@ -88,82 +88,20 @@ Add these to:
 
 ### Analytics
 
-Alldone uses **Google Analytics** and **Google Ads** for tracking, as well as **Google Tag Manager** for event and conversion management.
+Alldone uses the GA4 web stream `G-HR3PWMHKQQ` on `my.alldone.app`. The Google tag is loaded dynamically only
+after the visitor grants analytics consent. Local, preview and staging hosts do not load or send analytics.
 
----
+Client events must go through `utils/analytics/analytics.js`; do not add direct `gtag` or Firebase Analytics calls.
+The module owns consent, user identity, SPA page views, event normalization and parameter allowlisting.
 
-#### Local Environment Setup
+Cloud Functions use GA4 Measurement Protocol for confirmed server events. Production function configuration requires:
 
-Add the following variables:
+-   `ANALYTICS_ENABLED=true`
+-   `GOOGLE_ANALYTICS_KEY=G-HR3PWMHKQQ`
+-   `GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET=<secret for this web stream>`
 
--   `GOOGLE_ANALYTICS_KEY`
--   `GOOGLE_ADS_GUIDE_CONVERSION_TAG`
-
-Add these to:
-
--   `.env` (current environment)
--   `envs/env.develop`
--   `envs/env.master`
-
----
-
-#### CI/CD Configuration (Staging & Production)
-
-Add these variables to GitLab CI/CD:
-
--   `GOOGLE_ANALYTICS_KEY_PROD`
--   `GOOGLE_ADS_GUIDE_CONVERSION_TAG_PROD`
-
----
-
-#### Functions Environment Setup (Local, Staging, Production)
-
-To support analytics tracking in serverless functions, include:
-
--   `GOOGLE_ANALYTICS_KEY`
--   `GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET`
-
-Add these to:
-
--   `.env`
--   `env_functions.json`
--   `env_functions_master.json`
--   `env_functions_dev.json`
-
----
-
-#### Service Worker
-
-To enable analytics tracking in Firebase Messaging, set:
-
--   `measurementId`
-
-Add it to:
-
--   `firebase-messaging-sw.js`
-
----
-
-#### Google Tag Manager Setup
-
-To integrate **Google Tag Manager**, add the tag ID in the following format:
-
-```html
-<!-- Script -->
-gtmFn(window, document, 'script', 'dataLayer', '[GTM-ID]')
-
-<!-- Noscript -->
-<noscript
-    ><iframe
-        src="https://www.googletagmanager.com/ns.html?id=GTM-THM5BX5"
-        height="0"
-        width="0"
-        style="display:none;visibility:hidden"
-    ></iframe
-></noscript>
-
-Where GTM-ID is your Google Tag Manager id
-```
+Set `ANALYTICS_ENABLED=false` and omit the key and secret in non-production function environments. Google Ads
+conversions are imported from GA4 key events; the app does not load a Google Tag Manager container or direct Ads tags.
 
 ### Firebase
 

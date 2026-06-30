@@ -7,7 +7,7 @@ import URLSystem, { URL_PAYMENT_SUCCESS } from '../../URLSystem/URLSystem'
 import Colors from '../../Themes/Colors'
 import { useDispatch } from 'react-redux'
 import { setNavigationRoute } from '../../redux/actions'
-import { logEvent, GOOGLE_ANALYTICS_KEY } from '../../utils/backends/firestore'
+import { trackEvent } from '../../utils/analytics/analytics'
 
 export default function PaymentSuccessPage() {
     const dispatch = useDispatch()
@@ -28,41 +28,11 @@ export default function PaymentSuccessPage() {
     }
 
     // Track conversion for free trial users
-    const trackTrialConversion = (trackingId, planType) => {
+    const trackTrialConversion = planType => {
         try {
-            // Track the conversion event in Google Analytics with the specific measurement ID
-            if (typeof gtag !== 'undefined') {
-                // Send conversion event to the specific Google Analytics property
-                gtag('config', GOOGLE_ANALYTICS_KEY, {
-                    send_page_view: false,
-                })
-
-                gtag('event', 'conversion', {
-                    send_to: GOOGLE_ANALYTICS_KEY,
-                    event_category: 'trial_conversion',
-                    event_label: planType || 'unknown',
-                    value: planType === 'yearly' ? 1 : 0.5, // Higher value for yearly plans
-                    custom_parameters: {
-                        trial_tracking_id: trackingId?.substring(0, 20), // Truncated for privacy
-                        plan_type: planType,
-                        source: 'stripe_trial',
-                    },
-                })
-
-                console.log('📊 Google Analytics conversion tracked:', {
-                    measurement_id: GOOGLE_ANALYTICS_KEY,
-                    event: 'conversion',
-                    plan_type: planType,
-                    tracking_id_preview: trackingId?.substring(0, 20) + '...',
-                })
-            }
-
-            // Also track using Firebase Analytics for additional reporting
-            logEvent('trial_conversion_completed', {
-                plan_type: planType || 'monthly',
-                source: 'stripe',
-                tracking_id: trackingId?.substring(0, 20), // Truncated for privacy
-                conversion_source: 'payment_success_page',
+            trackEvent('start_trial', {
+                plan: planType || 'monthly',
+                provider: 'stripe',
             })
 
             console.log('🎯 Trial conversion tracking completed for plan:', planType)
@@ -91,7 +61,7 @@ export default function PaymentSuccessPage() {
         // Track conversion if this is a trial user
         if (trackingId && timestamp && planType) {
             console.log('🎯 Trial user detected - tracking conversion to Google Analytics')
-            trackTrialConversion(trackingId, planType)
+            trackTrialConversion(planType)
         } else {
             console.log('ℹ️ No trial tracking data found - this may not be a trial conversion')
         }

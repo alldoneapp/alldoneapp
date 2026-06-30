@@ -39,7 +39,7 @@ import EditObjectsInLinks from '../../../../EditObjectsInLinks/EditObjectsInLink
 
 const Delta = ReactQuill.Quill.import('delta')
 
-export default function UrlWrapper({ value, isShared }) {
+export default function UrlWrapper({ value, objectName, isShared }) {
     const dispatch = useDispatch()
     const virtualQuillLoaded = useSelector(state => state.virtualQuillLoaded)
     const projectId = useSelector(state => state.quillEditorProjectId)
@@ -432,6 +432,7 @@ export default function UrlWrapper({ value, isShared }) {
         >
             <LinkTag
                 link={url}
+                initialTitle={objectName}
                 onPress={!quillTextInputIsCalendarTask[editorId] && openModal}
                 shortTags={needShortTags()}
                 expandInNote={true}

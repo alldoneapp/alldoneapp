@@ -9,6 +9,7 @@ import Icon from '../Icon'
 import WhatsAppMockup from './WhatsAppMockup'
 import SplitLayout from './SplitLayout'
 import WebAppMockup from './WebAppMockup'
+import { trackEvent } from '../../utils/analytics/analytics'
 
 export default function OnboardingView({ navigation }) {
     const dispatch = useDispatch()
@@ -20,14 +21,6 @@ export default function OnboardingView({ navigation }) {
 
     useEffect(() => {
         dispatch(setNavigationRoute('Onboarding'))
-
-        // Track onboarding view
-        if (typeof gtag === 'function') {
-            gtag('event', 'onboarding_view', {
-                page_path: '/starttrial',
-                page_title: 'Onboarding Start',
-            })
-        }
     }, [])
 
     const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
@@ -208,20 +201,10 @@ export default function OnboardingView({ navigation }) {
             }
         }
 
-        // Track checkout begin
-        if (typeof gtag === 'function') {
-            gtag('event', 'begin_checkout', {
-                items: [
-                    {
-                        item_id: planType === 'yearly' ? 'premium_yearly' : 'premium_monthly',
-                        item_name: planType === 'yearly' ? 'Premium Yearly' : 'Premium Monthly',
-                        price: planType === 'yearly' ? 1.0 : 0.5,
-                    },
-                ],
-                value: planType === 'yearly' ? 1.0 : 0.5,
-                currency: 'USD',
-            })
-        }
+        trackEvent('begin_checkout', {
+            plan: planType === 'yearly' ? 'yearly' : 'monthly',
+            provider: 'stripe',
+        })
 
         URLSystemTrigger.redirectToStripe(planType)
     }
@@ -241,12 +224,7 @@ export default function OnboardingView({ navigation }) {
             <TouchableOpacity
                 style={localStyles.primaryButton}
                 onPress={() => {
-                    if (typeof gtag === 'function') {
-                        gtag('event', 'onboarding_start', {
-                            event_category: 'onboarding',
-                            event_label: 'get_started_click',
-                        })
-                    }
+                    trackEvent('onboarding_step', { step: 'started' })
                     setStep(1)
                 }}
             >

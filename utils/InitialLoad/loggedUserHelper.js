@@ -39,6 +39,7 @@ import { checkUserPremiumStatusStripe } from '../backends/Premium/stripePremiumF
 import UserDataCache from '../UserDataCache'
 import { isEqual } from 'lodash'
 import { storeLoggedUser } from '../../redux/actions'
+import { trackEvent } from '../analytics/analytics'
 
 function watchProjectsData(projectIds) {
     // Stagger watcher initialization to reduce initial Firebase load
@@ -219,6 +220,7 @@ export async function loadInitialDataForLoggedUser(loggedUser) {
     store.dispatch(updateLoadingStep(1, getProgressLoadingMessage()))
 
     initGoogleTagManager(loggedUser.uid)
+    trackEvent('login', { method: 'google' })
     watchForceReload(loggedUser.uid, true)
     storeVersion()
 

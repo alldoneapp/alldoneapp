@@ -1,6 +1,7 @@
 const mockCreateUserRecord = jest.fn()
 const mockSendEmailToNewSignUpUser = jest.fn()
 const mockInProductionEnvironment = jest.fn()
+const mockSyncHeartbeatSchedulesForUser = jest.fn()
 
 jest.mock('firebase-admin', () => ({}))
 
@@ -16,6 +17,11 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     inProductionEnvironment: mockInProductionEnvironment,
 }))
 
+jest.mock('../Assistant/assistantHeartbeatSchedule', () => ({
+    safelySyncHeartbeatSchedules: operation => operation(),
+    syncHeartbeatSchedulesForUser: mockSyncHeartbeatSchedulesForUser,
+}))
+
 const { onCreateUser } = require('./onCreateUserFunctions')
 
 describe('onCreateUser', () => {
@@ -24,6 +30,7 @@ describe('onCreateUser', () => {
         mockInProductionEnvironment.mockReturnValue(true)
         mockCreateUserRecord.mockResolvedValue()
         mockSendEmailToNewSignUpUser.mockResolvedValue()
+        mockSyncHeartbeatSchedulesForUser.mockResolvedValue()
     })
 
     test('runs signup side effects for a valid user document', async () => {
@@ -33,6 +40,7 @@ describe('onCreateUser', () => {
 
         expect(mockSendEmailToNewSignUpUser).toHaveBeenCalledWith(expect.any(Object), user)
         expect(mockCreateUserRecord).toHaveBeenCalledWith('user-1', user)
+        expect(mockSyncHeartbeatSchedulesForUser).toHaveBeenCalledWith('user-1')
     })
 
     test.each([undefined, null, '', '   '])('ignores documents without a valid email: %p', async email => {

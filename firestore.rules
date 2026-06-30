@@ -155,6 +155,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Server-managed heartbeat dispatch registry. It contains internal timing
+    // and execution state and must never be client-readable or client-writable.
+    match /assistantHeartbeatSchedules/{scheduleId} {
+      allow read, write: if false;
+    }
+
     function isAdministrator() {
       return signedIn() && get(/databases/$(database)/documents/roles/administrator).data.userId == request.auth.uid;
     }
@@ -188,6 +194,13 @@ service cloud.firestore {
     match /statistics/{projectId}/{userId}/{dayId} {
       allow read: if isProjectMember(projectId);
       allow write: if canReadUserScopedProjectData(projectId, userId);
+    }
+
+    // Aggregated gold earn/spend rollups (daily/monthly). Computed server-side by
+    // the aggregateGoldTransactionStats trigger; only administrators may read them.
+    match /goldStats/{document=**} {
+      allow read: if isAdministrator();
+      allow write: if false;
     }
 
     match /chatComments/{projectId}/{chatType}/{objectId}/comments/{commentId} {

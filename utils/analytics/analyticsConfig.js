@@ -1,0 +1,4 @@
+// BEGIN-ANALYTICS-ENVS
+export const ANALYTICS_ENABLED = false
+export const GOOGLE_ANALYTICS_KEY = null
+// END-ANALYTICS-ENVS

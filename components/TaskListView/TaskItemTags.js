@@ -6,6 +6,7 @@ import { checkIfInMyDay } from '../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpen
 import Tags from './TagsArea/Tags'
 import useTagsAmount from './TagsArea/useTagsAmount'
 import ProjectTag from '../Tags/ProjectTag'
+import { shouldSummarizeTaskTags } from './TagsArea/taskTagSummaryHelper'
 
 const TaskItemTags = ({
     task,
@@ -54,12 +55,14 @@ const TaskItemTags = ({
 
     const isMobile = smallScreenNavigation || smallScreenNavSidebarCollapsed
 
-    const thresholdData = task.calendarData ? 1 : 0
-    const needSummarize = inMyDayAndNotSubtask
-        ? amountTags > 0 && showSummarizeTagInByTime
-        : amountTags > 5 - thresholdData ||
-          (tablet && amountTags > 3 - thresholdData) ||
-          (isMobile && amountTags > 2 - thresholdData)
+    const needSummarize = shouldSummarizeTaskTags({
+        amountTags,
+        inMyDayAndNotSubtask,
+        showSummarizeTagInByTime,
+        isCalendarTask: !!task.calendarData,
+        tablet,
+        isMobile,
+    })
 
     const toggleVisibleTags = e => {
         e.preventDefault()

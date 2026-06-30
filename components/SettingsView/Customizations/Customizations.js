@@ -24,6 +24,7 @@ import DefaultProject from './Properties/DefaultProject/DefaultProject'
 import SidebarNavigation from './Properties/SidebarNavigation'
 import PublicBookingSettings from './Properties/PublicBookingSettings'
 import ConnectedAppsSection from './Properties/ConnectedAppsSection'
+import AnalyticsConsent from './Properties/AnalyticsConsent'
 
 const Customizations = () => {
     useTranslator()
@@ -76,6 +77,7 @@ const Customizations = () => {
                         email={loggedUser.email}
                         notificationEmail={loggedUser.notificationEmail}
                     />
+                    <AnalyticsConsent />
                     <ServerTime />
                     <UserTimezone />
                 </View>

@@ -12,6 +12,10 @@ const { getGlobalAssistants } = require('../Firestore/assistantsFirestore')
 const { deleteChat } = require('../Chats/chatsFirestoreCloud')
 const { startProjectIndexationInAlgolia } = require('../AlgoliaGlobalSearchHelper')
 const { setProjectAssistant } = require('./projectsFirestore')
+const {
+    safelySyncHeartbeatSchedules,
+    syncHeartbeatSchedulesForProject,
+} = require('../Assistant/assistantHeartbeatSchedule')
 
 const deleteTasksFromAssistantsInProject = async (projectId, assistantIds) => {
     const promises = []
@@ -123,6 +127,7 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
         'globalAssistantIds',
         'assistantId',
         'active',
+        'isTemplate',
         'activeFullSearch',
         'monthlyXp',
         'monthlyTraffic',
@@ -155,6 +160,19 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
 
     const promises = []
     const executionReasons = []
+
+    const heartbeatScheduleFieldsChanged = changedFields.some(change =>
+        ['userIds', 'active', 'isTemplate', 'parentTemplateId'].includes(change.field)
+    )
+    if (heartbeatScheduleFieldsChanged) {
+        executionReasons.push('heartbeat_schedule_sync')
+        promises.push(
+            safelySyncHeartbeatSchedules(
+                () => syncHeartbeatSchedulesForProject(projectId, { projectData: newProject }),
+                { source: 'project_updated', projectId }
+            )
+        )
+    }
 
     // Only run quota warnings if quota-related fields changed
     const quotaFieldsChanged = changedFields.some(c => ['monthlyXp', 'monthlyTraffic'].includes(c.field))

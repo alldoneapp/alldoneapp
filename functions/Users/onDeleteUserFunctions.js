@@ -3,6 +3,10 @@ const { deleteUserRecord } = require('../AlgoliaGlobalSearchHelper')
 const { cancelSubscription } = require('../Payment/CancelSubscriptions')
 const { SUBSCRIPTION_STATUS_CANCELED } = require('../Payment/Mollie')
 const { removePaidUsersFromSubscription } = require('../Payment/SubscriptionsActions')
+const {
+    deleteHeartbeatSchedulesForUser,
+    safelySyncHeartbeatSchedules,
+} = require('../Assistant/assistantHeartbeatSchedule')
 
 const processPremiumStatusPaidByOtherUser = async (userId, admin, superAdmin) => {
     const userSubscription = (await admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).get()).data()
@@ -46,6 +50,12 @@ const onDeleteUser = async user => {
     const promises = []
     promises.push(deleteUserDataFromAlldone(user.uid, admin, admin))
     promises.push(deleteUserRecord(user.uid, user))
+    promises.push(
+        safelySyncHeartbeatSchedules(() => deleteHeartbeatSchedulesForUser(user.uid), {
+            source: 'user_deleted',
+            userId: user.uid,
+        })
+    )
     await Promise.all(promises)
 }
 
