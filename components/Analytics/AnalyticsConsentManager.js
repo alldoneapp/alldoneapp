@@ -27,6 +27,12 @@ export default function AnalyticsConsentManager() {
     const smallScreen = useSelector(state => state.smallScreen)
     const [consent, setConsent] = useState(getAnalyticsConsent())
     const [dialogOpen, setDialogOpen] = useState(consent === ANALYTICS_CONSENT_UNKNOWN)
+    // Render nothing until after the client mounts so the prerendered HTML and the
+    // first (hydration) render match. Without this the consent banner renders during
+    // hydrate and causes a hydration mismatch crash.
+    const [mounted, setMounted] = useState(false)
+
+    useEffect(() => setMounted(true), [])
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined
@@ -87,7 +93,7 @@ export default function AnalyticsConsentManager() {
         }
     }, [consent, loggedUser?.uid, loggedUser?.isAnonymous])
 
-    if (!isAnalyticsEnabled() || !dialogOpen) return null
+    if (!mounted || !isAnalyticsEnabled() || !dialogOpen) return null
 
     return (
         <View pointerEvents="box-none" style={localStyles.overlay} testID="analytics-consent-banner">
@@ -96,9 +102,14 @@ export default function AnalyticsConsentManager() {
                     <Text style={[styles.subtitle1, localStyles.title]}>{translate('Analytics consent title')}</Text>
                     <Text style={[styles.body2, localStyles.description]}>
                         {translate('Analytics consent description')}{' '}
-                        <a href="https://alldone.app/privacy" target="_blank" style={localStyles.link}>
+                        <Text
+                            accessibilityRole="link"
+                            href="https://alldone.app/privacy"
+                            hrefAttrs={{ target: '_blank', rel: 'noreferrer' }}
+                            style={localStyles.link}
+                        >
                             {translate('Privacy')}
-                        </a>
+                        </Text>
                     </Text>
                 </View>
                 <View style={[localStyles.actions, smallScreen && localStyles.mobileActions]}>
