@@ -6443,6 +6443,40 @@ export async function getGithubUserConnection(projectId, userId) {
     }
 }
 
+// --- Google Cloud project connection (per-user, read-only). Lets the VM read the connecting
+// user's own Firestore / Cloud Logging via a short-lived read-only token. Mirrors GitHub/GitLab. ---
+
+export async function connectGcpProject(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('connectGcpProject')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function disconnectGcpProject(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGcpProject')
+    const result = await fn(data)
+    return result.data
+}
+
+// Read whether the given user has linked a Google Cloud service-account key for this project.
+// Reads the user's own private doc (allowed by security rules); never exposes the key to UI.
+export async function getGcpConnection(projectId, userId) {
+    try {
+        const snap = await firebase.firestore().doc(`users/${userId}/private/gcpAuth_${projectId}`).get()
+        if (!snap.exists) return null
+        const d = snap.data() || {}
+        if (!d.serviceAccountKey) return null
+        return {
+            connected: true,
+            gcpProjectId: d.gcpProjectId || '',
+            clientEmail: d.clientEmail || '',
+            capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
+        }
+    } catch (_) {
+        return null
+    }
+}
+
 // --- Per-assistant MCP server connections ---
 // The non-secret server config (label, url, transport, authType, enabled, tokenLast4)
 // lives on the assistant doc and is edited via updateAssistant. Only the secret

@@ -26,6 +26,7 @@ import ConnectCalendarProperty from './ConnectCalendar/ConnectCalendarProperty'
 import ConnectGmailProperty from './ConnectGmail/ConnectGmailProperty'
 import ConnectGitLabProperty from './ConnectGitLab/ConnectGitLabProperty'
 import ConnectGitHubProperty from './ConnectGitHub/ConnectGitHubProperty'
+import ConnectGCPProperty from './ConnectGCP/ConnectGCPProperty'
 import ColorProperty from './ColorProperty/ColorProperty'
 import PrivacyProperty from './PrivacyProperty/PrivacyProperty'
 import GuidesProperty from './GuidesProperty/GuidesProperty'
@@ -113,6 +114,7 @@ const ProjectProperties = ({ project, type }) => {
                             <ConnectGmailProperty projectId={project.id} disabled={!accessGranted} />
                             <ConnectGitLabProperty project={project} disabled={!accessGranted} />
                             <ConnectGitHubProperty project={project} disabled={!accessGranted} />
+                            <ConnectGCPProperty project={project} disabled={!accessGranted} />
                             <PrivacyProperty project={project} disabled={!accessGranted || userIsNormalUserInGuide} />
                         </View>
 

@@ -865,6 +865,44 @@ exports.disconnectGithubRepo = onCall(
     }
 )
 
+exports.connectGcpProject = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { connectGcpProject } = require('./Gcp/gcpConnect')
+        return await connectGcpProject({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            serviceAccountKey: data && data.serviceAccountKey,
+            gcpProjectId: data && data.gcpProjectId,
+        })
+    }
+)
+
+exports.disconnectGcpProject = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { disconnectGcpProject } = require('./Gcp/gcpConnect')
+        return await disconnectGcpProject({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+        })
+    }
+)
+
 exports.connectAssistantMcpServer = onCall(
     {
         timeoutSeconds: 60,

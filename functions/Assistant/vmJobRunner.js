@@ -427,6 +427,50 @@ async function setupGitRepo(sandbox, gitContext, correlationId) {
     })
 }
 
+// Read the requesting user's connected Google Cloud project (if any) and mint a short-lived,
+// read-only access token for this run. Best-effort: any failure just means the task runs without
+// GCP access (it never blocks the job). Applies to every task type, not just coding. The token
+// (~1h TTL) is minted fresh each run and injected per-command via envs — it is never written to
+// disk or captured in the paused-session snapshot, exactly like the git token.
+async function loadGcpContext(vmJob) {
+    try {
+        const userId = vmJob.requestUserId
+        if (!userId || !vmJob.projectId) return null
+        const snap = await admin.firestore().doc(`users/${userId}/private/gcpAuth_${vmJob.projectId}`).get()
+        if (!snap.exists) return null
+        const data = snap.data() || {}
+        if (!data.serviceAccountKey) return null
+        const { mintGcpAccessToken, parseServiceAccountKey } = require('../Gcp/gcpConnect')
+        const sa = parseServiceAccountKey(data.serviceAccountKey)
+        const { accessToken, expiresAtMs } = await mintGcpAccessToken(sa)
+        snap.ref.set({ lastUsed: Date.now() }, { merge: true }).catch(() => {})
+        return {
+            enabled: true,
+            gcpProjectId: data.gcpProjectId || sa.project_id || '',
+            accessToken,
+            expiresAtMs,
+            capabilities: Array.isArray(data.capabilities) ? data.capabilities : [],
+        }
+    } catch (error) {
+        console.warn('🖥️ VM JOB: failed loading GCP context', {
+            correlationId: vmJob.correlationId,
+            error: error.message,
+        })
+        return null
+    }
+}
+
+// The per-command env carrying the short-lived read-only GCP token into the sandbox. Standard
+// names so both raw curl (referenced in the prompt) and the gcloud CLI (if present) pick it up.
+function buildGcpEnv(gcpContext) {
+    return {
+        GCP_ACCESS_TOKEN: gcpContext.accessToken,
+        CLOUDSDK_AUTH_ACCESS_TOKEN: gcpContext.accessToken,
+        GOOGLE_CLOUD_PROJECT: gcpContext.gcpProjectId,
+        CLOUDSDK_CORE_PROJECT: gcpContext.gcpProjectId,
+    }
+}
+
 /**
  * Update the single live status comment in place (created when the job started).
  * Falls back to creating a new comment if no commentId was recorded.
@@ -507,7 +551,7 @@ async function writeStatusComment(
 /**
  * Build the prompt fed to Claude Code inside the sandbox.
  */
-function buildAgentPrompt(vmJob, gitContext = null) {
+function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
     const profile = TASK_TYPE_PROFILES[vmJob.taskType] || TASK_TYPE_PROFILES.research
     const parts = [profile, '', `# Objective`, vmJob.objective]
     if (vmJob.deliverable) {
@@ -568,6 +612,32 @@ function buildAgentPrompt(vmJob, gitContext = null) {
             'Authentication is already configured via a git credential helper. Do NOT change git remotes, credentials, or config, and never print, echo, or commit any tokens. ' +
                 `If a direct push to the base branch is rejected because it is protected, that is expected — open a ${reqName} instead.`,
             `If you made repository changes, your final message MUST include the ${reqName} URL (or, if you genuinely could not open one, a clear explanation of why). If you made no repository changes, your final message MUST say that no ${reqName} was opened because no code change was needed.`
+        )
+    }
+    if (gcpContext && gcpContext.enabled) {
+        const caps = []
+        if (gcpContext.capabilities.includes('firestore.read')) caps.push('Firestore (documents & queries)')
+        if (gcpContext.capabilities.includes('logging.read'))
+            caps.push('Cloud Logging (e.g. Cloud Functions / Cloud Run logs)')
+        parts.push(
+            '',
+            '# Connected Google Cloud project (read-only)',
+            `You have READ-ONLY access to the user's Google Cloud project "${gcpContext.gcpProjectId}"${
+                caps.length ? ` — available: ${caps.join('; ')}` : ''
+            }. A short-lived read-only access token is in the environment as $GCP_ACCESS_TOKEN (also exported as ` +
+                '$CLOUDSDK_AUTH_ACCESS_TOKEN for the gcloud CLI), and the project id as $GOOGLE_CLOUD_PROJECT.',
+            'The token is read-only and expires shortly after this task. NEVER print, echo, log, or persist it. ' +
+                'Only read what the task actually needs; any write/delete call will fail by design.',
+            'Prefer the REST APIs with curl (gcloud may not be installed in this sandbox):',
+            '- Read one Firestore document:',
+            '    curl -sS "https://firestore.googleapis.com/v1/projects/$GOOGLE_CLOUD_PROJECT/databases/(default)/documents/<collection>/<docId>" -H "Authorization: Bearer $GCP_ACCESS_TOKEN"',
+            '- List / page a Firestore collection (nested paths use collection/doc/collection, e.g. goldStats/daily/days):',
+            '    curl -sS "https://firestore.googleapis.com/v1/projects/$GOOGLE_CLOUD_PROJECT/databases/(default)/documents/<collectionPath>?pageSize=100" -H "Authorization: Bearer $GCP_ACCESS_TOKEN"',
+            '- Structured query: POST to ".../documents:runQuery" with the same Authorization header and a JSON body ' +
+                'like {"structuredQuery":{"from":[{"collectionId":"<collection>"}],"limit":50}}.',
+            '- Read recent logs: POST to "https://logging.googleapis.com/v2/entries:list" with the same Authorization ' +
+                'header and a JSON body like {"resourceNames":["projects/$GOOGLE_CLOUD_PROJECT"],"filter":"resource.type=\\"cloud_run_revision\\"","orderBy":"timestamp desc","pageSize":50} ' +
+                '(resource.type="cloud_run_revision" targets 2nd-gen Cloud Functions / Cloud Run; substitute the real project id for $GOOGLE_CLOUD_PROJECT inside the JSON).'
         )
     }
     parts.push(
@@ -1396,6 +1466,7 @@ async function runAgentInSandbox(
     e2bApiKey,
     onActivity,
     gitContext = null,
+    gcpContext = null,
     pendingWebhook = null,
     pendingRef = null
 ) {
@@ -1460,7 +1531,7 @@ async function runAgentInSandbox(
 
     try {
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
-        const prompt = buildAgentPrompt(vmJob, gitContext)
+        const prompt = buildAgentPrompt(vmJob, gitContext, gcpContext)
         await sandbox.files.write('/home/user/prompt.txt', prompt)
         const contextFileContent = [vmJob.packagedContext, vmJob.threadContext].filter(Boolean).join('\n\n---\n\n')
         await sandbox.files.write('/home/user/context.md', contextFileContent)
@@ -1548,7 +1619,9 @@ async function runAgentInSandbox(
             mode: agentCredentials.mode,
         })
         const agentEnv = config.sandboxEnv(agentCredentials)
-        const runEnvs = gitContext && gitContext.enabled ? { ...agentEnv, ...buildGitEnv(gitContext) } : agentEnv
+        let runEnvs = { ...agentEnv }
+        if (gitContext && gitContext.enabled) runEnvs = { ...runEnvs, ...buildGitEnv(gitContext) }
+        if (gcpContext && gcpContext.enabled) runEnvs = { ...runEnvs, ...buildGcpEnv(gcpContext) }
         const command = `mkdir -p /home/user/output && cd ${workdir} && ${config.installGuard} && ${config.buildRun(
             isResume,
             {
@@ -2022,6 +2095,17 @@ async function runVmJobByCorrelationId(correlationId) {
         }
     }
 
+    // Read-only Google Cloud access is useful for any task type (not just coding), so load it
+    // unconditionally. Best-effort: a null result just means the task runs without GCP access.
+    const gcpContext = await loadGcpContext(vmJob)
+    if (gcpContext && gcpContext.enabled) {
+        console.log('🖥️ VM JOB RUNNER: GCP project connected', {
+            correlationId,
+            gcpProjectId: gcpContext.gcpProjectId,
+            capabilities: gcpContext.capabilities,
+        })
+    }
+
     try {
         await throwIfVmJobCancelled(pendingRef)
         await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails))
@@ -2032,6 +2116,7 @@ async function runVmJobByCorrelationId(correlationId) {
             e2bApiKey,
             onActivity,
             gitContext && gitContext.enabled ? gitContext : null,
+            gcpContext && gcpContext.enabled ? gcpContext : null,
             pendingWebhook,
             pendingRef
         )
@@ -2177,6 +2262,8 @@ module.exports = {
     MAX_VM_RUNTIME_MS,
     __private__: {
         buildAgentPrompt,
+        loadGcpContext,
+        buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
         renderActivityLog,
