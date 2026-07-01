@@ -119,16 +119,19 @@ async function main() {
         accumulate(await processUserTransactions(db, scopeUserId, { dryRun }))
     } else {
         const pageSize = 200
-        // Process users concurrently to keep the backfill fast enough to finish in
-        // one run. Per-transaction writes stay transactional + idempotent, so any
-        // contention on the shared daily/monthly rollup docs is resolved by the
-        // admin SDK's automatic transaction retries.
-        const concurrency = Number(getArgument('concurrency')) || 12
-        let lastUser = null
+        // Concurrency controls how many users are processed at once. Keep it LOW
+        // (default 1 = sequential) because the per-transaction writes all target a
+        // small number of shared daily/monthly rollup docs — high concurrency
+        // livelocks on those hot documents (and fights the live trigger for them).
+        const concurrency = Number(getArgument('concurrency')) || 1
+        // Resume optimization: skip straight past users already processed by a prior
+        // run instead of re-scanning them. Pass the last fully-processed user id.
+        const startAfterUser = getArgument('start-after-user')
+        let cursorId = startAfterUser || null
         // eslint-disable-next-line no-constant-condition
         while (true) {
             let query = db.collection('users').orderBy(admin.firestore.FieldPath.documentId()).limit(pageSize)
-            if (lastUser) query = query.startAfter(lastUser.id)
+            if (cursorId) query = query.startAfter(cursorId)
 
             const snapshot = await query.get()
             if (snapshot.empty) break
@@ -146,7 +149,7 @@ async function main() {
                 })
             }
 
-            lastUser = snapshot.docs[snapshot.docs.length - 1]
+            cursorId = snapshot.docs[snapshot.docs.length - 1].id
             if (snapshot.size < pageSize) break
         }
     }
