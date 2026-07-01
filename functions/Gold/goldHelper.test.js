@@ -66,6 +66,11 @@ jest.mock('firebase-admin', () => {
                 doc: buildDocRef,
                 collection: buildCollectionRef,
                 runTransaction,
+                bulkWriter: jest.fn(() => ({
+                    update: jest.fn(async (ref, data) => applyWrite(ref.path, data, { merge: true })),
+                    onWriteError: jest.fn(),
+                    close: jest.fn(async () => {}),
+                })),
             })),
             {
                 FieldValue: {
@@ -116,7 +121,8 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
 }))
 
 const admin = require('firebase-admin')
-const { addMonthlyGoldToUser, deductGold, refundGold, earnGold } = require('./goldHelper')
+const { addMonthlyGoldToUser, deductGold, refundGold, earnGold, resetDailyGoldLimit } = require('./goldHelper')
+const { getUsersThatEarnedSomeGoldToday } = require('../Users/usersFirestore')
 const { applyGoldChangeInTransaction } = require('./goldTransactions')
 
 describe('goldHelper ledger integration', () => {
@@ -280,5 +286,35 @@ describe('goldHelper ledger integration', () => {
             })
         )
         expect(admin.__mock.getDocsByPrefix('users/user-1/goldTransactions/')).toHaveLength(1)
+    })
+})
+
+describe('resetDailyGoldLimit', () => {
+    beforeEach(() => {
+        admin.__mock.reset()
+        jest.clearAllMocks()
+    })
+
+    test('replenishes every candidate user back to the daily limit and awaits completion', async () => {
+        admin.__mock.setDoc('users/depleted', { dailyGold: 0 })
+        admin.__mock.setDoc('users/legacy', { dailyGold: 150 })
+        getUsersThatEarnedSomeGoldToday.mockResolvedValue([
+            { id: 'depleted', ref: admin.firestore().doc('users/depleted') },
+            { id: 'legacy', ref: admin.firestore().doc('users/legacy') },
+        ])
+
+        const result = await resetDailyGoldLimit()
+
+        // The regression this guards: a depleted user (0) must be topped back up so
+        // task-completion rewards stop failing with "No daily gold left".
+        expect(admin.__mock.getDoc('users/depleted').dailyGold).toBe(100)
+        expect(admin.__mock.getDoc('users/legacy').dailyGold).toBe(100)
+        expect(result).toEqual({ usersReset: 2, failed: 0 })
+    })
+
+    test('is a no-op when no users need resetting', async () => {
+        getUsersThatEarnedSomeGoldToday.mockResolvedValue([])
+        const result = await resetDailyGoldLimit()
+        expect(result).toEqual({ usersReset: 0, failed: 0 })
     })
 })

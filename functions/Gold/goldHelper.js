@@ -9,7 +9,6 @@ const {
     getUsersByPremiumStatus,
     getLastActiveUsers,
     getUsersThatEarnedSomeGoldToday,
-    updateUserDailyGold,
 } = require('../Users/usersFirestore')
 const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud')
 
@@ -312,11 +311,31 @@ const resetDailyGoldLimit = async () => {
     const DAILY_GOLD_LIMIT = 100
     const userDocs = await getUsersThatEarnedSomeGoldToday(true)
 
-    const promises = []
-    userDocs.forEach(doc => {
-        promises.push(updateUserDailyGold(doc.id, DAILY_GOLD_LIMIT))
+    // Use BulkWriter so the reset reliably completes at scale (thousands of users):
+    // it auto-batches, rate-limits and retries, and close() awaits every write.
+    // The previous per-user Promise.all could exceed limits / be cut off mid-run.
+    const bulkWriter = admin.firestore().bulkWriter()
+    let failed = 0
+    bulkWriter.onWriteError(error => {
+        // Retry transient failures a few times; give up (and log) after that so one
+        // bad doc can't block the whole reset.
+        if (error.failedAttempts < 5) return true
+        failed++
+        console.error('[gold] resetDailyGoldLimit failed to reset a user', {
+            userId: error.documentRef.id,
+            code: error.code,
+        })
+        return false
     })
-    await Promise.all(promises)
+
+    userDocs.forEach(doc => {
+        bulkWriter.update(doc.ref, { dailyGold: DAILY_GOLD_LIMIT })
+    })
+    await bulkWriter.close()
+
+    const usersReset = userDocs.length - failed
+    console.log('[gold] resetDailyGoldLimit completed', { candidates: userDocs.length, usersReset, failed })
+    return { usersReset, failed }
 }
 
 const deductGold = async (userId, gold, context = {}) => {

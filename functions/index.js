@@ -1742,8 +1742,11 @@ exports.resetDailyGoldLimitSecondGen = onSchedule(
         memory: '512MiB',
     },
     async event => {
+        // Must return/await: without it the async reset was fire-and-forget and the
+        // Cloud Function instance froze before it finished, so dailyGold was never
+        // replenished and task-completion rewards silently failed ("No daily gold left").
         const { resetDailyGoldLimit } = require('./Gold/goldHelper')
-        resetDailyGoldLimit()
+        return resetDailyGoldLimit()
     }
 )
 
