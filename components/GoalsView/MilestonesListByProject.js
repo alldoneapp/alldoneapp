@@ -31,6 +31,7 @@ import AddGoals from './AddGoals'
 import { allGoals } from '../AllSections/allSectionHelper'
 import useShowNewCommentsBubbleInBoard from '../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import MilestonesListEmptyProject from './MilestonesListEmptyProject'
+import { getPreviousOpenMilestoneDate } from './GoalsBoardMilestonesHelper'
 
 export default function MilestonesListByProject({
     projectIndex,
@@ -167,7 +168,8 @@ export default function MilestonesListByProject({
             {milestones.map((milestone, index) => {
                 let previousMilestoneDate
                 if (inOpenTab) {
-                    previousMilestoneDate = index === 0 ? 0 : milestones[index - 1].date
+                    // Task statistics use the real milestone range, including milestones filtered out of this board.
+                    previousMilestoneDate = getPreviousOpenMilestoneDate(milestone.id, openMilestones || [], backlogId)
                 } else {
                     const lastIndex = milestones.length - 1
                     previousMilestoneDate = index === lastIndex ? 0 : milestones[index + 1].date

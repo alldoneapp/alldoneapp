@@ -25,6 +25,7 @@ import {
     normalizeGoalScheduleMode,
     normalizeMilestoneType,
 } from '../../utils/GoalMilestonesHelper'
+import { shouldShowMilestoneWithoutGoals } from './GoalsBoardMilestonesHelper'
 
 export {
     GOAL_MILESTONES_MODE_MANUAL,
@@ -617,11 +618,19 @@ const processMilestonesAndGoalsToCountAndShow = (
         const { id } = milestone
         const milestoneGoals = filterGoalsInMilestone(goalsToShowAmount, milestone, goals, assigneesIdsToShow, inDone)
 
-        const isEmptyFutureLinearMilestone =
-            isAutomaticMode &&
+        // Keep the active milestone visible just like the Tasks board, even when no goal currently matches it,
+        // both in the selected project and in All Projects.
+        // Automatic linear milestones remain visible as planning buckets as well.
+        const showMilestoneWithoutGoals =
             milestoneGoals.length === 0 &&
-            id !== backlogId &&
-            normalizeMilestoneType(milestone.milestoneType) === MILESTONE_TYPE_LINEAR
+            shouldShowMilestoneWithoutGoals({
+                inAllProjects,
+                inDone,
+                milestoneIndex: i,
+                isAutomaticMode,
+                isLinearMilestone: normalizeMilestoneType(milestone.milestoneType) === MILESTONE_TYPE_LINEAR,
+                isBacklog: id === backlogId,
+            })
 
         if (stopAddingMilestonesAndGoals) {
             if (id === backlogId || milestoneGoals.length > 0) {
@@ -629,7 +638,7 @@ const processMilestonesAndGoalsToCountAndShow = (
                 break
             }
         } else {
-            if ((!inAllProjects && id === backlogId) || milestoneGoals.length > 0 || isEmptyFutureLinearMilestone) {
+            if ((!inAllProjects && id === backlogId) || milestoneGoals.length > 0 || showMilestoneWithoutGoals) {
                 milestoneGoals.forEach(goal => {
                     if (!alreadyCountedGoals[goal.id]) {
                         alreadyCountedGoals[goal.id] = goal
