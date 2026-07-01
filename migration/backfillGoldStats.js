@@ -119,6 +119,11 @@ async function main() {
         accumulate(await processUserTransactions(db, scopeUserId, { dryRun }))
     } else {
         const pageSize = 200
+        // Process users concurrently to keep the backfill fast enough to finish in
+        // one run. Per-transaction writes stay transactional + idempotent, so any
+        // contention on the shared daily/monthly rollup docs is resolved by the
+        // admin SDK's automatic transaction retries.
+        const concurrency = Number(getArgument('concurrency')) || 12
         let lastUser = null
         // eslint-disable-next-line no-constant-condition
         while (true) {
@@ -128,12 +133,17 @@ async function main() {
             const snapshot = await query.get()
             if (snapshot.empty) break
 
-            for (const userDoc of snapshot.docs) {
-                const userStats = await processUserTransactions(db, userDoc.id, { dryRun })
-                accumulate(userStats)
-                if (userStats.scanned > 0) {
-                    console.log(`  user ${userDoc.id}`, userStats)
-                }
+            for (let i = 0; i < snapshot.docs.length; i += concurrency) {
+                const batch = snapshot.docs.slice(i, i + concurrency)
+                const batchStats = await Promise.all(
+                    batch.map(userDoc => processUserTransactions(db, userDoc.id, { dryRun }))
+                )
+                batchStats.forEach((userStats, idx) => {
+                    accumulate(userStats)
+                    if (userStats.scanned > 0) {
+                        console.log(`  user ${batch[idx].id}`, userStats)
+                    }
+                })
             }
 
             lastUser = snapshot.docs[snapshot.docs.length - 1]

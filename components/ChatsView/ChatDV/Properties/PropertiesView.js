@@ -17,12 +17,14 @@ import { FOLLOWER_TOPICS_TYPE } from '../../../Followers/FollowerConstants'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import { GUIDE_MAIN_CHAT_ID } from '../../../../utils/backends/Projects/guidesFirestore'
 import AssistantProperty from '../../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
+import Project from '../../../TaskDetailedView/Properties/Project'
 
 export default function PropertiesView({ projectId, chat }) {
     const [creator, setCreator] = useState({})
     const smallScreen = useSelector(state => state.smallScreen)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const loggedUser = useSelector(state => state.loggedUser)
+    const project = useSelector(state => state.loggedUserProjectsMap[projectId])
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     useEffect(() => {
@@ -51,6 +53,13 @@ export default function PropertiesView({ projectId, chat }) {
             <View style={smallScreen ? localStyles.panelsContainerMobile : localStyles.panelsContainer}>
                 <View style={smallScreen ? localStyles.leftContainerMobile : localStyles.leftContainer}>
                     <CreatedBy createdDate={chat.created} creator={creator} />
+                    {project && (
+                        <Project
+                            item={{ type: 'chat', data: chat }}
+                            project={project}
+                            disabled={!accessGranted || !loggedUserCanUpdateObject}
+                        />
+                    )}
                     <Highlight chat={chat} projectId={projectId} disabled={!accessGranted} />
                     <Stickyness projectId={projectId} note={chat} disabled={!accessGranted} isChat />
                 </View>

@@ -3,15 +3,18 @@
  */
 
 import React from 'react'
+import { TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import AssistantOptions from './AssistantOptions'
+import { createBotQuickTopic } from '../../../../utils/assistantHelper'
+import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 
 const mockState = {
     selectedProjectIndex: 0,
-    loggedUserProjects: [{ id: 'project-1', index: 0, name: 'Project 1' }],
+    loggedUserProjects: [{ id: 'selected-project', index: 0, name: 'Selected project' }],
     defaultAssistant: { uid: 'assistant-1' },
-    loggedUser: { uid: 'user-1', defaultProjectId: 'project-1', gold: 100 },
+    loggedUser: { uid: 'user-1', defaultProjectId: 'default-project', gold: 100 },
     smallScreenNavigation: false,
 }
 
@@ -61,8 +64,8 @@ jest.mock('../../../../redux/actions', () => ({
 jest.mock('./helper', () => ({
     getAssistantLineData: () => ({
         assistant: { uid: 'assistant-1', displayName: 'Assistant' },
-        assistantProject: { id: 'project-1', index: 0, name: 'Project 1' },
-        assistantProjectId: 'project-1',
+        assistantProject: { id: 'default-project', index: 1, name: 'Default project' },
+        assistantProjectId: 'default-project',
     }),
     getOptionsPresentationData: () => ({
         optionsLikeButtons: [{ id: 'task-1', task: { name: 'Quick task' } }],
@@ -109,8 +112,18 @@ jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
 
 jest.mock('../../../UIControls/Button', () => {
     const React = require('react')
+    const { Text, TouchableOpacity } = require('react-native')
+    return ({ title, onPress, accessibilityLabel }) => (
+        <TouchableOpacity onPress={onPress} accessibilityLabel={accessibilityLabel}>
+            <Text>{title || 'Button'}</Text>
+        </TouchableOpacity>
+    )
+})
+
+jest.mock('../../../UIComponents/AssistantVoiceCallButton', () => {
+    const React = require('react')
     const { Text } = require('react-native')
-    return ({ title }) => <Text>{title || 'Button'}</Text>
+    return ({ projectId }) => <Text testID="voice-call-project">{projectId}</Text>
 })
 
 jest.mock('../../../UIComponents/Spinner', () => {
@@ -126,6 +139,10 @@ jest.mock('../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantM
 })
 
 describe('AssistantOptions search button', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
     it('renders the pinned Search button before assistant task quick actions', async () => {
         let tree
         await act(async () => {
@@ -136,5 +153,50 @@ describe('AssistantOptions search button', () => {
         expect(output.indexOf('SearchButton')).toBeGreaterThan(-1)
         expect(output.indexOf('OptionButtons')).toBeGreaterThan(-1)
         expect(output.indexOf('SearchButton')).toBeLessThan(output.indexOf('OptionButtons'))
+    })
+
+    it('creates fallback-assistant chats in the selected project while loading tasks from the assistant project', async () => {
+        createBotQuickTopic.mockResolvedValue({
+            projectId: 'selected-project',
+            chatId: 'chat-1',
+            isPublicFor: ['all'],
+        })
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        expect(watchAssistantTasks).toHaveBeenCalledWith(
+            'default-project',
+            'assistant-1',
+            expect.any(String),
+            expect.any(Function)
+        )
+
+        const input = tree.root.findByType(TextInput)
+        expect(input.props.projectId).toBe('selected-project')
+        expect(tree.root.findByProps({ testID: 'voice-call-project' }).props.children).toBe('selected-project')
+
+        await act(async () => {
+            input.props.onChangeText('Use this project context')
+        })
+
+        const sendButton = tree.root
+            .findAllByType(TouchableOpacity)
+            .find(node => node.props.accessibilityLabel === 'Send')
+        await act(async () => {
+            await sendButton.props.onPress()
+        })
+
+        expect(createBotQuickTopic).toHaveBeenCalledWith(
+            { uid: 'assistant-1', displayName: 'Assistant' },
+            'Use this project context',
+            {
+                skipNavigation: true,
+                enableAssistant: true,
+                projectId: 'selected-project',
+            }
+        )
     })
 })

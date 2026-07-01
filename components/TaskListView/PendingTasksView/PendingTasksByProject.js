@@ -30,7 +30,9 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
     const useSelectedProjectAssistantLine =
         isDefaultProject || (!!project?.assistantId && project.assistantId !== defaultProjectAssistantId)
-    const assistantLineProject = useSelectedProjectAssistantLine ? project : defaultProject
+    // Keep the selected project as the conversation context even when its assistant
+    // is inherited from the default project.
+    const assistantLineProject = project
     const assistantLineAssistantId = useSelectedProjectAssistantLine
         ? selectedProjectAssistantId
         : defaultProjectAssistantId

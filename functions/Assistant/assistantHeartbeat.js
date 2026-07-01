@@ -909,11 +909,9 @@ async function executeScheduledHeartbeat(task = {}) {
             return { outcome: 'outside_awake_window' }
         }
 
-        const lastExecuted = getTimestampMillis(assistant.heartbeatLastExecutedByUser?.[userId])
-        if (lastExecuted && Date.now() - lastExecuted < timing.intervalMs) {
-            await updateHeartbeatScheduleOutcome(scheduleRef, 'interval_guard')
-            return { outcome: 'interval_guard' }
-        }
+        // The claimed due time is the cadence boundary for scheduled heartbeats.
+        // Comparing it with the previous run's completion timestamp would discard
+        // the next occurrence whenever that run took any meaningful time to finish.
 
         const assistantRef = db.doc(`assistants/${projectId}/items/${assistantId}`)
         await assistantRef.update({ [`heartbeatLastCheckedByUser.${userId}`]: Date.now() })

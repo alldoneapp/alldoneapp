@@ -10,6 +10,7 @@ import ProjectModalItem from './ProjectModalItem'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 import URLsTasks, { URL_TASK_DETAILS_PROPERTIES } from '../../../../URLSystem/Tasks/URLsTasks'
+import URLsChats, { URL_CHAT_DETAILS_PROPERTIES } from '../../../../URLSystem/Chats/URLsChats'
 import Backend from '../../../../utils/BackendBridge'
 import {
     blockBackgroundTabShortcut,
@@ -26,6 +27,8 @@ import {
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import { applyPopoverWidth, dismissAllPopups, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import {
+    DV_TAB_CHAT_PROPERTIES,
+    DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_SKILL_PROPERTIES,
     DV_TAB_TASK_PROPERTIES,
@@ -141,22 +144,45 @@ export default function SelectProjectModal({
             e.stopPropagation()
         }
 
+        if (project.id === newProject.id) {
+            closePopover(newProject)
+            return
+        }
+
         if (onSelectProject) onSelectProject()
 
         if (onProjectClick) {
             onProjectClick(newProject)
         } else {
-            const callback = () => {
-                dispatch(stopLoadingData())
-            }
-
             const { type, data } = item
+            const objectType = type === 'chat' ? 'topics' : type + 's'
+            const beforeDeleteSource =
+                type === 'chat'
+                    ? movedChat => {
+                          NavigationService.navigate('ChatDetailedView', {
+                              chat: movedChat,
+                              projectId: newProject.id,
+                          })
+                          const projectType = ProjectHelper.getTypeOfProject(loggedUser, newProject.id)
+                          dispatch([
+                              setSelectedSidebarTab(DV_TAB_ROOT_CHATS),
+                              switchProject(newProject.index),
+                              setSelectedTypeOfProject(projectType),
+                              setSelectedNavItem(DV_TAB_CHAT_PROPERTIES),
+                          ])
+                      }
+                    : null
 
-            await moveChatOnMoveObjectFromProject(project.id, newProject.id, type + 's', data.id).then(callback)
+            if (type === 'chat') dispatch(startLoadingData())
+
+            await moveChatOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id, beforeDeleteSource)
+            if (type !== 'chat') dispatch(stopLoadingData())
             // Keep the object's "Updates" activity history with it across the move (chat is handled above).
-            await moveInnerFeedsOnMoveObjectFromProject(project.id, newProject.id, type + 's', data.id)
+            await moveInnerFeedsOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id)
 
-            if (type === 'task') {
+            if (type === 'chat') {
+                dispatch(stopLoadingData())
+            } else if (type === 'task') {
                 const task = data
                 const taskOwner = TasksHelper.getTaskOwner(task.userId, project.id)
                 dispatch(startLoadingData())
@@ -232,8 +258,10 @@ export default function SelectProjectModal({
                 const data = { noHistory: true, projectId: newProject.id, task: task.id }
                 URLsTasks.push(URL_TASK_DETAILS_PROPERTIES, data, newProject.id, task.id)
             }
-        } else {
-            const note = item.data
+        } else if (item.type === 'chat' && selectedTab === DV_TAB_CHAT_PROPERTIES) {
+            const chat = item.data
+            const data = { noHistory: true, projectId: newProject.id, chatId: chat.id }
+            URLsChats.push(URL_CHAT_DETAILS_PROPERTIES, data, newProject.id, chat.id)
         }
     }
 

@@ -85,7 +85,9 @@ const ChatDetailedView = ({ navigation }) => {
                 setAssistantId(chatUpdated.assistantId || '')
             }
         } else {
-            redirectOut(false)
+            // A project move navigates this mounted detail screen to the new project before
+            // deleting the source document. Ignore the old watcher's final delete event.
+            if (navigation.getParam('projectId', {}) === projectId) redirectOut(false)
         }
     }
 
@@ -117,7 +119,7 @@ const ChatDetailedView = ({ navigation }) => {
         return () => {
             unwatch(watcherKey)
         }
-    }, [])
+    }, [projectId, chat.id])
 
     return (
         <View style={localStyles.container}>

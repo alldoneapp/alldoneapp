@@ -24,6 +24,7 @@ jest.mock('../Assistant/assistantHelper', () => ({
 
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 0,
+    STAYWARD_COMMENT: 2,
 }))
 
 jest.mock('../Feeds/globalFeedsHelper', () => ({
@@ -45,6 +46,7 @@ const {
         getDistributionProjectIds,
         collectStreamText,
         parseJsonResponse,
+        writeSkillComment,
     },
 } = require('./automaticSkillPointDistribution')
 
@@ -168,5 +170,43 @@ describe('automatic skill point distribution helpers', () => {
                 { choices: [{ delta: { content: '[]}' } }] },
             ])
         ).resolves.toBe('{"allocations":[]}')
+    })
+
+    test('updates the nested chat preview fields when writing an automatic distribution comment', async () => {
+        const batch = {
+            set: jest.fn(),
+            update: jest.fn(),
+        }
+        const commentText = 'Auto-distributed +1 skill point. Recent work supports this skill.'
+
+        await writeSkillComment(batch, {
+            project: { userIds: [], name: 'Project' },
+            skill: {
+                id: 'skill-1',
+                projectId: 'project-1',
+                userId: 'user-1',
+                name: 'Planning',
+                isPublicFor: [0],
+            },
+            assistant: { uid: 'assistant-1', displayName: 'Assistant' },
+            allocation: { points: 1, evidenceTaskIds: [] },
+            commentId: 'comment-1',
+            commentText,
+            followers: [],
+        })
+
+        expect(batch.update).toHaveBeenCalledWith(
+            undefined,
+            expect.objectContaining({
+                'commentsData.lastCommentOwnerId': 'assistant-1',
+                'commentsData.lastComment': commentText,
+                'commentsData.lastCommentType': 2,
+            })
+        )
+        expect(batch.set).not.toHaveBeenCalledWith(
+            undefined,
+            expect.objectContaining({ 'commentsData.lastComment': commentText }),
+            { merge: true }
+        )
     })
 })

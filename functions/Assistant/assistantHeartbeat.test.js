@@ -492,6 +492,26 @@ describe('scheduled assistant heartbeat worker', () => {
         expect(admin.__mock.getDoc(`assistantHeartbeatSchedules/${scheduleId}`).lastProcessedDueAt).toBe(1000000000)
     })
 
+    test('runs the next scheduled occurrence when the previous run finished inside the interval', async () => {
+        const { scheduleId, scheduleHash } = seedSchedule()
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatLastExecutedByUser: { 'user-1': 999940000 },
+        })
+
+        const result = await executeScheduledHeartbeat({
+            scheduleId,
+            scheduleHash,
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            dueAt: 1000000000,
+        })
+
+        expect(result.outcome).toBe('executed')
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+    })
+
     test('skips a stale schedule hash before running side effects', async () => {
         const { scheduleId } = seedSchedule()
         const result = await executeScheduledHeartbeat({

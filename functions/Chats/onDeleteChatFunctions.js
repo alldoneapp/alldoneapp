@@ -31,14 +31,14 @@ const removeNewChatNotifications = async (projectId, chatId) => {
 }
 
 const onDeleteChat = async (projectId, chat) => {
-    const { type, id: chatId, noteId } = chat
+    const { type, id: chatId, noteId, movingToOtherProjectId } = chat
 
     const promises = []
     promises.push(
         recursiveDeleteHelper(firebase_tools, process.env.GCLOUD_PROJECT, `chatComments/${projectId}/${type}/${chatId}`)
     )
     promises.push(removeObjectFollowData(projectId, 'topics', chatId, admin))
-    if (noteId) promises.push(deleteNote(projectId, noteId, '', admin))
+    if (noteId) promises.push(deleteNote(projectId, noteId, movingToOtherProjectId || '', admin))
     if (chat.type === 'topics') {
         promises.push(deleteRecord(chatId, projectId, CHATS_OBJECTS_TYPE))
     } else {

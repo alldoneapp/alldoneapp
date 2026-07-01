@@ -62,6 +62,10 @@ export default function AssistantOptions({
         assistantId,
         defaultProjectId
     )
+    // The assistant can live in another project, but conversations started from
+    // this line must inherit the project the user currently has selected.
+    const conversationProject = selectedProjectFromStore || selectedProject || assistantProject
+    const conversationProjectId = conversationProject?.id || assistantProjectId
 
     useEffect(() => {
         if (assistantProjectId && assistant && assistant.uid) {
@@ -96,7 +100,7 @@ export default function AssistantOptions({
             const topicData = await createBotQuickTopic(assistant, trimmedMessage, {
                 skipNavigation: true,
                 enableAssistant: true,
-                projectId: assistantProjectId,
+                projectId: conversationProjectId,
             })
 
             if (!topicData) {
@@ -115,7 +119,7 @@ export default function AssistantOptions({
             setIsSending(false)
 
             // Continue executing the task in the background without blocking the input
-            if (topicData.projectId && !assistantProject?.isTemplate) {
+            if (topicData.projectId && !conversationProject?.isTemplate) {
                 try {
                     const userIdsToNotify = generateUserIdsToNotifyForNewComments(
                         topicData.projectId,
@@ -131,7 +135,7 @@ export default function AssistantOptions({
             isSendingRef.current = false
             setIsSending(false)
         }
-    }, [assistant, assistantProject, assistantProjectId, message, gold])
+    }, [assistant, conversationProject, conversationProjectId, message, gold])
 
     const updateInputHeight = useCallback(contentHeight => {
         const roundedContentHeight = Math.ceil(contentHeight)
@@ -212,7 +216,7 @@ export default function AssistantOptions({
     }
 
     const { optionsLikeButtons, optionsInModal, showSubmenu } = getOptionsPresentationData(
-        assistantProject,
+        conversationProject,
         assistant.uid,
         tasks,
         amountOfButtonOptions
@@ -251,7 +255,7 @@ export default function AssistantOptions({
                     onChangeText={updateMessage}
                     onContentSizeChange={(width, height) => updateInputHeight(height)}
                     placeholder={translate('Start a new chat')}
-                    projectId={assistantProject.id}
+                    projectId={conversationProjectId}
                     styleTheme={TASK_THEME}
                     disabledEdition={isSending}
                     setMentionsModalActive={setMentionsModalActive}
@@ -272,7 +276,7 @@ export default function AssistantOptions({
                         <AssistantVoiceCallButton
                             compact
                             assistant={assistant}
-                            projectId={assistantProjectId}
+                            projectId={conversationProjectId}
                             skipNavigationOnThreadCreate
                             buttonStyle={localStyles.voiceButton}
                         />
@@ -292,10 +296,14 @@ export default function AssistantOptions({
             {hasQuickActions && (
                 <View style={localStyles.quickActions}>
                     <AssistantTaskSearchButtonWrapper />
-                    <OptionButtons projectId={assistantProject.id} options={optionsLikeButtons} assistant={assistant} />
+                    <OptionButtons
+                        projectId={conversationProjectId}
+                        options={optionsLikeButtons}
+                        assistant={assistant}
+                    />
                     {showSubmenu && (
                         <MoreOptionsWrapper
-                            projectId={assistantProject.id}
+                            projectId={conversationProjectId}
                             options={optionsInModal}
                             assistant={assistant}
                         />

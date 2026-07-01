@@ -402,7 +402,11 @@ async function writeSkillComment(batch, { project, skill, assistant, allocation,
     }
     if (followers.length > 0) chatUpdate.usersFollowing = admin.firestore.FieldValue.arrayUnion(...followers)
 
-    batch.set(db.doc(`chatObjects/${skill.projectId}/chats/${skill.id}`), chatUpdate, { merge: true })
+    // `chatUpdate` uses Firestore field paths (for example
+    // `commentsData.lastComment`). Those paths are interpreted by `update`, but
+    // not reliably by a merged `set`, which can leave the nested commentsData
+    // preview unchanged in the chat list.
+    batch.update(db.doc(`chatObjects/${skill.projectId}/chats/${skill.id}`), chatUpdate)
 
     batch.update(db.doc(`skills/${skill.projectId}/items/${skill.id}`), {
         points: admin.firestore.FieldValue.increment(allocation.points),
@@ -762,5 +766,6 @@ module.exports = {
         buildAllocationPrompt,
         collectStreamText,
         parseJsonResponse,
+        writeSkillComment,
     },
 }

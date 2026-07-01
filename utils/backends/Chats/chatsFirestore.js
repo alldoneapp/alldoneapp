@@ -132,44 +132,110 @@ export async function setChatTopicHighlight(projectId, chatId, highlightColor) {
     await updateChatData(projectId, chatId, { hasStar: highlightColor }, null)
 }
 
-export async function moveChatOnMoveObjectFromProject(oldProjectId, newProjectId, objectType, chatId) {
-    const { projectUsers } = store.getState()
+export async function moveChatOnMoveObjectFromProject(
+    oldProjectId,
+    newProjectId,
+    objectType,
+    chatId,
+    beforeDeleteSource
+) {
+    if (oldProjectId === newProjectId) return
 
-    const chat = await getDb().doc(`chatObjects/${oldProjectId}/chats/${chatId}`).get()
+    const { loggedUser, loggedUserProjectsMap, projectUsers } = store.getState()
+
+    const sourceChatRef = getDb().doc(`chatObjects/${oldProjectId}/chats/${chatId}`)
+    const chat = await sourceChatRef.get()
     if (!chat.exists) return
 
     const commentDocs = await getDb().collection(`chatComments/${oldProjectId}/${objectType}/${chatId}/comments`).get()
 
-    const users = projectUsers[oldProjectId]
+    const users = projectUsers[oldProjectId] || []
+    const pointerUpdates = []
 
     users.forEach(user => {
-        if (user.lastAssistantCommentData[oldProjectId]?.objectId === chatId) {
-            getDb()
-                .doc(`users/${user.uid}`)
-                .update({
-                    [`lastAssistantCommentData.${oldProjectId}`]: firebase.firestore.FieldValue.delete(),
-                })
+        if (user.lastAssistantCommentData?.[oldProjectId]?.objectId === chatId) {
+            pointerUpdates.push(
+                getDb()
+                    .doc(`users/${user.uid}`)
+                    .update({
+                        [`lastAssistantCommentData.${oldProjectId}`]: firebase.firestore.FieldValue.delete(),
+                    })
+                    .catch(error => {
+                        console.warn('Unable to clear the source-project assistant comment pointer', error)
+                    })
+            )
         }
         if (
-            user.lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.projectId === oldProjectId &&
-            user.lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.objectId === chatId
+            user.lastAssistantCommentData?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.projectId === oldProjectId &&
+            user.lastAssistantCommentData?.[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.objectId === chatId
         ) {
-            getDb()
-                .doc(`users/${user.uid}`)
-                .update({
-                    [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                        ...user.lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY],
-                        projectId: newProjectId,
-                    },
-                })
+            pointerUpdates.push(
+                getDb()
+                    .doc(`users/${user.uid}`)
+                    .update({
+                        [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                            ...user.lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY],
+                            projectId: newProjectId,
+                        },
+                    })
+                    .catch(error => {
+                        console.warn('Unable to move the all-projects assistant comment pointer', error)
+                    })
+            )
         }
     })
 
-    getDb().doc(`chatObjects/${newProjectId}/chats/${chatId}`).set(chat.data())
+    const chatData = { ...chat.data() }
+    delete chatData.movingToOtherProjectId
+
+    const targetWrites = []
+    if (objectType === 'topics') {
+        const newProjectUserIds = loggedUserProjectsMap[newProjectId]?.userIds || []
+        const allowedUserIds = new Set(newProjectUserIds)
+        const sourceFollowers = await getDb().doc(`followers/${oldProjectId}/topics/${chatId}`).get()
+        const sourceFollowerIds = sourceFollowers.exists
+            ? sourceFollowers.data().usersFollowing || []
+            : chatData.usersFollowing || []
+        const followerIds = sourceFollowerIds.filter(userId => allowedUserIds.has(userId))
+
+        if (allowedUserIds.has(loggedUser.uid) && !followerIds.includes(loggedUser.uid)) {
+            followerIds.push(loggedUser.uid)
+        }
+
+        chatData.usersFollowing = followerIds
+        if (Array.isArray(chatData.members)) {
+            chatData.members = chatData.members.filter(userId => allowedUserIds.has(userId))
+        }
+        if (!chatData.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)) {
+            chatData.isPublicFor = chatData.isPublicFor.filter(userId => allowedUserIds.has(userId))
+            if (allowedUserIds.has(loggedUser.uid) && !chatData.isPublicFor.includes(loggedUser.uid)) {
+                chatData.isPublicFor.push(loggedUser.uid)
+            }
+        }
+
+        targetWrites.push(
+            getDb().doc(`followers/${newProjectId}/topics/${chatId}`).set({ usersFollowing: followerIds })
+        )
+        followerIds.forEach(userId => {
+            targetWrites.push(
+                getDb()
+                    .doc(`usersFollowing/${newProjectId}/entries/${userId}`)
+                    .set({ topics: { [chatId]: true } }, { merge: true })
+            )
+        })
+    }
+
     commentDocs.forEach(doc => {
-        getDb().doc(`chatComments/${newProjectId}/${objectType}/${chatId}/comments/${doc.id}`).set(doc.data())
+        targetWrites.push(
+            getDb().doc(`chatComments/${newProjectId}/${objectType}/${chatId}/comments/${doc.id}`).set(doc.data())
+        )
     })
-    getDb().doc(`chatObjects/${oldProjectId}/chats/${chatId}`).delete()
+
+    await Promise.all([...pointerUpdates, ...targetWrites])
+    await getDb().doc(`chatObjects/${newProjectId}/chats/${chatId}`).set(chatData)
+    await sourceChatRef.update({ movingToOtherProjectId: newProjectId })
+    if (beforeDeleteSource) await beforeDeleteSource({ ...chatData, id: chatId })
+    await sourceChatRef.delete()
 }
 
 export async function updateStickyChatData(projectId, chatId, stickyData) {
