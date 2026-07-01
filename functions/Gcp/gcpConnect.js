@@ -2,13 +2,14 @@ const admin = require('firebase-admin')
 const { HttpsError } = require('firebase-functions/v2/https')
 const { JWT } = require('google-auth-library')
 
-// Read-only OAuth scopes. cloud-platform.read-only grants read across the GCP services that honor
-// it (Firestore, Cloud Logging, Resource Manager, …); logging.read is added explicitly so log
-// reads still work for a service account scoped only to logging. Minting the VM's token with these
-// scopes means it can NEVER mutate anything through it, independent of the service account's own
-// IAM roles — a second read-only layer on top of whatever roles the user granted the SA.
+// OAuth scopes for the VM's token. IMPORTANT: the Firestore API rejects `cloud-platform.read-only`
+// ("Request had insufficient authentication scopes", 403) — it only accepts the `datastore` scope
+// (or full `cloud-platform`). There is NO read-only Firestore/Datastore scope, so Firestore
+// read-only is enforced by the service account's IAM role (recommend `datastore.viewer`), not by
+// the scope. Cloud Logging keeps its dedicated `logging.read` scope. The set is deliberately
+// limited to Firestore + Logging so the token cannot reach any other GCP service.
 const GCP_READONLY_SCOPES = [
-    'https://www.googleapis.com/auth/cloud-platform.read-only',
+    'https://www.googleapis.com/auth/datastore',
     'https://www.googleapis.com/auth/logging.read',
 ]
 
