@@ -29,6 +29,7 @@ const Metric = ({ label, value }) => (
 
 export function EmptyInboxOverview({ user, style, onOpenAchievements }) {
     const [contentWidth, setContentWidth] = useState(0)
+    const CardContainer = onOpenAchievements ? TouchableOpacity : View
     const emptyInboxDays = useMemo(() => getEmptyInboxDaysWithLegacyFallback(user), [
         user.emptyInboxDays,
         user.lastDayEmptyInbox,
@@ -51,9 +52,12 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements }) {
     ]
 
     return (
-        <View
+        <CardContainer
             style={[localStyles.card, style]}
             onLayout={event => setContentWidth(event.nativeEvent.layout.width - 40)}
+            {...(onOpenAchievements
+                ? { accessibilityRole: 'link', activeOpacity: 0.8, onPress: onOpenAchievements }
+                : {})}
         >
             <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
             <Text style={localStyles.description}>{translate('Empty inbox achievement description')}</Text>
@@ -113,15 +117,7 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements }) {
                     </View>
                 </View>
             </View>
-
-            {!!onOpenAchievements && (
-                <TouchableOpacity accessibilityRole="link" onPress={onOpenAchievements} style={localStyles.profileLink}>
-                    <Text style={localStyles.profileLinkText}>
-                        {translate('View your achievements in Settings > Profile')}
-                    </Text>
-                </TouchableOpacity>
-            )}
-        </View>
+        </CardContainer>
     )
 }
 
@@ -196,7 +192,7 @@ const localStyles = StyleSheet.create({
     },
     monthLabel: {
         ...styles.caption1,
-        color: colors.Text02,
+        color: colors.Text03,
         minWidth: WEEK_WIDTH * 3,
         textAlign: 'center',
     },
@@ -209,7 +205,7 @@ const localStyles = StyleSheet.create({
     },
     dayLabel: {
         ...styles.caption1,
-        color: colors.Text02,
+        color: colors.Text03,
         height: WEEK_WIDTH,
         lineHeight: WEEK_WIDTH,
     },
@@ -235,16 +231,5 @@ const localStyles = StyleSheet.create({
     todayCell: {
         borderWidth: 1,
         borderColor: colors.Primary100,
-    },
-    profileLink: {
-        alignSelf: 'center',
-        marginTop: 20,
-        paddingVertical: 4,
-    },
-    profileLinkText: {
-        ...styles.caption1,
-        color: colors.Primary100,
-        textAlign: 'center',
-        textDecorationLine: 'underline',
     },
 })

@@ -30,16 +30,16 @@ describe('AchievementsArea', () => {
         expect(textValues).toContain(2)
     })
 
-    it('renders the profile link only when a handler is provided', () => {
+    it('makes the card clickable when a profile-navigation handler is provided', () => {
         const onOpenAchievements = jest.fn()
         const tree = renderer.create(
             <EmptyInboxOverview user={{ emptyInboxDays: [] }} onOpenAchievements={onOpenAchievements} />
         )
-        const link = tree.root.findByProps({ accessibilityRole: 'link' })
+        const card = tree.root.findByProps({ accessibilityRole: 'link' })
 
-        link.props.onPress()
+        card.props.onPress()
 
-        expect(link.findByType('Text').props.children).toBe('View your achievements in Settings > Profile')
+        expect(tree.root.findAllByProps({ children: 'View your achievements in Settings > Profile' })).toHaveLength(0)
         expect(onOpenAchievements).toHaveBeenCalledTimes(1)
     })
 })
