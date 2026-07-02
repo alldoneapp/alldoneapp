@@ -5,6 +5,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import styles, { colors } from '../../../styles/global'
 import {
     buildEmptyInboxActivityWeeks,
+    buildEmptyInboxMonthSegments,
     getEmptyInboxAchievementStats,
     getEmptyInboxDaysWithLegacyFallback,
 } from './AchievementsHelper'
@@ -38,6 +39,7 @@ export function EmptyInboxOverview({ user, style }) {
         emptyInboxDays,
         numberOfWeeks,
     ])
+    const monthSegments = useMemo(() => buildEmptyInboxMonthSegments(weeks), [weeks])
     const dayLabels = [
         translate('Monday short'),
         '',
@@ -65,11 +67,14 @@ export function EmptyInboxOverview({ user, style }) {
             <View style={localStyles.activityContainer}>
                 <View style={localStyles.monthLabels}>
                     <View style={{ width: DAY_LABEL_WIDTH }} />
-                    {weeks.map((week, index) => (
-                        <View key={index} style={localStyles.monthLabelSlot}>
-                            {!!week.monthName && (
-                                <Text style={localStyles.monthLabel}>{translate(week.monthName).slice(0, 3)}</Text>
-                            )}
+                    {monthSegments.map((segment, index) => (
+                        <View
+                            key={`${segment.monthName}-${index}`}
+                            style={[localStyles.monthLabelSlot, { width: WEEK_WIDTH * segment.numberOfWeeks }]}
+                        >
+                            <Text numberOfLines={1} style={localStyles.monthLabel}>
+                                {translate(segment.monthName).slice(0, 3)}
+                            </Text>
                         </View>
                     ))}
                 </View>
@@ -141,11 +146,13 @@ const localStyles = StyleSheet.create({
     title: {
         ...styles.subtitle1,
         color: colors.Text01,
+        textAlign: 'center',
     },
     description: {
         ...styles.caption1,
         color: colors.Text03,
         marginTop: 4,
+        textAlign: 'center',
     },
     metricsContainer: {
         flexDirection: 'row',
@@ -159,11 +166,13 @@ const localStyles = StyleSheet.create({
     metricValue: {
         ...styles.title6,
         color: colors.Text01,
+        textAlign: 'center',
     },
     metricLabel: {
         ...styles.caption1,
         color: colors.Text03,
         marginTop: 2,
+        textAlign: 'center',
     },
     activityContainer: {
         marginTop: 24,
@@ -173,15 +182,15 @@ const localStyles = StyleSheet.create({
         height: 18,
     },
     monthLabelSlot: {
-        width: WEEK_WIDTH,
+        alignItems: 'center',
+        justifyContent: 'center',
         overflow: 'visible',
     },
     monthLabel: {
         ...styles.caption1,
-        position: 'absolute',
         color: colors.Text02,
-        width: WEEK_WIDTH * 4,
-        zIndex: 1,
+        minWidth: WEEK_WIDTH * 3,
+        textAlign: 'center',
     },
     activityRows: {
         flexDirection: 'row',

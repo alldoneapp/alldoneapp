@@ -87,3 +87,14 @@ export const buildEmptyInboxActivityWeeks = (emptyInboxDays, numberOfWeeks, toda
         }
     })
 }
+
+export const buildEmptyInboxMonthSegments = weeks =>
+    weeks.reduce((segments, week) => {
+        if (week.monthName || segments.length === 0) {
+            segments.push({ monthName: week.monthName, numberOfWeeks: 1 })
+        } else {
+            segments[segments.length - 1].numberOfWeeks += 1
+        }
+
+        return segments
+    }, [])

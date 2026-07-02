@@ -2,6 +2,7 @@ import moment from 'moment'
 
 import {
     buildEmptyInboxActivityWeeks,
+    buildEmptyInboxMonthSegments,
     getEmptyInboxAchievementStats,
     getEmptyInboxDaysWithLegacyFallback,
     normalizeEmptyInboxDays,
@@ -52,5 +53,14 @@ describe('AchievementsHelper', () => {
         expect(weeks[0].days[0].dateKey).toBe('2026-06-22')
         expect(weeks[1].days[3]).toMatchObject({ dateKey: '2026-07-02', achieved: true, isToday: true })
         expect(weeks[1].days[4]).toMatchObject({ dateKey: '2026-07-03', achieved: false, isFuture: true })
+    })
+
+    it('groups month labels across their week columns', () => {
+        const weeks = buildEmptyInboxActivityWeeks([], 41, today)
+
+        expect(buildEmptyInboxMonthSegments(weeks).slice(0, 2)).toEqual([
+            { monthName: 'September', numberOfWeeks: 1 },
+            { monthName: 'October', numberOfWeeks: 4 },
+        ])
     })
 })
