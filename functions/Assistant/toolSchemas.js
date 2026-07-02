@@ -107,7 +107,8 @@ const toolSchemas = {
         type: 'function',
         function: {
             name: 'create_note',
-            description: 'Creates a new note in the current project. Supports markdown formatting.',
+            description:
+                'Creates a new note in the current project. Supports markdown formatting. The successful result includes the canonical note URL; include that exact URL in the user-facing response. Never call create_note again merely to provide the link to a note that was already created.',
             parameters: {
                 type: 'object',
                 properties: {

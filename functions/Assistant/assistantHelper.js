@@ -80,6 +80,7 @@ const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -261,7 +262,8 @@ function getToolResultFollowUpPrompt(options = {}) {
         `${intro}, ${responseInstruction} ` +
         'Only treat the current tool call as failed if this tool result itself indicates failure, blocked status, no execution, or an explicit top-level error/status field for the current call. ' +
         'Do not infer current-run failure from nested historical text or quoted content inside returned records such as task comments, notes, chats, or other historical fields. ' +
-        'Explain what is missing and what should be tried next only when the current tool result itself shows that work did not complete.' +
+        'Explain what is missing and what should be tried next only when the current tool result itself shows that work did not complete. ' +
+        'When a successful tool result contains a URL, include that exact URL in the response instead of inventing or reconstructing one.' +
         toolSentence
     )
 }
@@ -2172,6 +2174,7 @@ async function collectAssistantTextWithToolCalls({
     let toolCallIteration = 0
     const executedToolNames = []
     const createdTaskResults = []
+    const createdNoteResults = []
     let pendingAttachmentPayload = null
 
     const collectStreamContent = async activeStream => {
@@ -2237,6 +2240,10 @@ async function collectAssistantTextWithToolCalls({
                 task: toolResult.task || null,
             })
         }
+        if (toolName === 'create_note' && toolResult?.success !== false) {
+            const createdNote = normalizeCreatedNote(toolResult)
+            if (createdNote) createdNoteResults.push(createdNote)
+        }
         const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
         pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
 
@@ -2265,10 +2272,11 @@ async function collectAssistantTextWithToolCalls({
     }
 
     return {
-        assistantResponse: responseText.trim(),
+        assistantResponse: ensureCreatedNoteLinksInResponse(responseText, createdNoteResults),
         executedToolCallsCount: toolCallIteration,
         executedToolNames,
         createdTaskResults,
+        createdNoteResults,
         reachedMaxToolIterations: toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS,
         finalConversation: currentConversation,
     }
@@ -4830,6 +4838,8 @@ async function executeToolNatively(
                 return {
                     success: result.success,
                     noteId: result.noteId,
+                    projectId: result.note?.projectId || projectId,
+                    url: buildNoteUrl(result.note?.projectId || projectId, result.noteId, getBaseUrl()),
                     message: result.message,
                     note: result.note,
                 }
@@ -8585,6 +8595,7 @@ async function storeChunks(
         let thinkingContent = ''
         let answerContent = ''
         let toolAlreadyExecuted = false
+        const createdNoteResults = []
 
         const silentModeEnabled = typeof silentModeMarker === 'string' && silentModeMarker.length > 0
         let committed = false
@@ -9073,6 +9084,29 @@ async function storeChunks(
                             runtimeContextForTools
                         )
                         await throwIfCancelled(true)
+                        if (toolName === 'create_note' && toolResult?.success !== false) {
+                            const createdNote = normalizeCreatedNote(toolResult)
+                            if (createdNote && !createdNoteResults.some(note => note.noteId === createdNote.noteId)) {
+                                createdNoteResults.push(createdNote)
+                                if (assistantRun) {
+                                    const existingCreatedEntities = Array.isArray(assistantRun.createdEntities)
+                                        ? assistantRun.createdEntities
+                                        : []
+                                    assistantRun.createdEntities = [...existingCreatedEntities, createdNote]
+                                    await safeCommentUpdate({
+                                        assistantRun: {
+                                            ...assistantRun,
+                                            status: 'running',
+                                        },
+                                    }).catch(error => {
+                                        console.warn('CREATE_NOTE TOOL: Failed persisting created-note metadata', {
+                                            noteId: createdNote.noteId,
+                                            error: error.message,
+                                        })
+                                    })
+                                }
+                            }
+                        }
                         const toolResultString = JSON.stringify(toolResult, null, 2)
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
@@ -9422,6 +9456,20 @@ async function storeChunks(
 
             // Note: Manual TOOL: format parsing removed - native tool calling only
             // Tools are only available for GPT models that support native tool calling
+        }
+
+        if (createdNoteResults.length > 0) {
+            await flushPendingUpdate()
+            const responseWithNoteLinks = ensureCreatedNoteLinksInResponse(commentText, createdNoteResults)
+            if (responseWithNoteLinks !== commentText) {
+                commentText = responseWithNoteLinks
+                answerContent = responseWithNoteLinks
+                await safeCommentUpdate({
+                    commentText,
+                    isThinking: false,
+                    isLoading: false,
+                })
+            }
         }
 
         const finalSilentCandidate = getSilentModeFinalResponseText(answerContent, commentText)
@@ -10497,6 +10545,12 @@ async function addBaseInstructions(
             'When you call create_task, decide which project should receive the task. If you target a project with projectId or projectName, or if you intentionally keep the task in the current/default project, include create_task.projectRoutingReason with a short reason for that project choice. The server will store that reason as an internal task comment. Do not repeat that routing explanation in your visible chat reply unless the user asks.',
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes('create_note')) {
+        messages.push([
+            'system',
+            'After create_note succeeds, include the exact canonical URL returned by the tool in your response. If the user later asks where the note is or requests its link, reuse the exact note URL from the recent conversation or created-entity metadata. Never call create_note again merely to provide a link. If no prior link or note ID is available, retrieve the existing note with get_notes or search instead of creating a replacement.',
+        ])
+    }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_goals')) {
         messages.push([
             'system',
@@ -11423,10 +11477,14 @@ async function getOptimizedContextMessages(
                         ),
                     ])
                 } else {
+                    const assistantCommentText = ensureCreatedNoteLinksInResponse(
+                        commentText,
+                        messageData?.assistantRun?.createdEntities || []
+                    )
                     messages.push([
                         role,
                         addTimestampToContextContent(
-                            parseTextForUseLiKePrompt(commentText),
+                            parseTextForUseLiKePrompt(assistantCommentText),
                             messageTimestamp,
                             userTimezoneOffset
                         ),

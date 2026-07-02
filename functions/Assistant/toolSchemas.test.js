@@ -142,6 +142,11 @@ describe('User memory assistant tool schemas', () => {
         })
     })
 
+    test('requires create_note responses to reuse the canonical URL without recreating the note', () => {
+        expect(toolSchemas.create_note.function.description).toContain('canonical note URL')
+        expect(toolSchemas.create_note.function.description).toContain('Never call create_note again')
+    })
+
     test('defines recurrence for task creation and updates', () => {
         const createRecurrence = toolSchemas.create_task.function.parameters.properties.recurrence
         const updateRecurrence = toolSchemas.update_task.function.parameters.properties.recurrence

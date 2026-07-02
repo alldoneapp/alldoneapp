@@ -15,6 +15,7 @@ const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver'
 const { extractMediaContextFromText } = require('../Utils/parseTextUtils')
 
 const mockCreateAndPersistTask = jest.fn()
+const mockCreateAndPersistNote = jest.fn()
 
 jest.mock('../shared/ProjectService', () => ({
     ProjectService: jest.fn().mockImplementation(() => ({
@@ -27,6 +28,17 @@ jest.mock('../shared/TaskService', () => ({
         initialize: jest.fn().mockResolvedValue(undefined),
         createAndPersistTask: mockCreateAndPersistTask,
     })),
+}))
+jest.mock('../shared/NoteService', () => ({
+    NoteService: jest.fn().mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        createAndPersistNote: mockCreateAndPersistNote,
+    })),
+}))
+jest.mock('../shared/UserHelper', () => ({
+    UserHelper: {
+        getFeedUserData: jest.fn().mockResolvedValue({ uid: 'user-1', displayName: 'User One' }),
+    },
 }))
 jest.mock('../shared/TaskRetrievalService', () => {
     const normalizeTimezoneOffset = jest.fn(value => {
@@ -167,6 +179,7 @@ const mockBatchDelete = jest.fn()
 const mockBatchCommit = jest.fn(async () => {})
 
 jest.mock('firebase-admin', () => ({
+    app: jest.fn(() => ({ options: { projectId: 'alldonealeph' } })),
     firestore: Object.assign(
         jest.fn(() => ({
             doc: jest.fn(path => ({
@@ -301,6 +314,7 @@ describe('assistant attachment handoff helpers', () => {
         mockBatchUpdate.mockClear()
         mockBatchDelete.mockClear()
         mockBatchCommit.mockClear()
+        mockCreateAndPersistNote.mockReset()
     })
 
     test('normalizes hour-based user timezone values into minutes', () => {
@@ -321,6 +335,61 @@ describe('assistant attachment handoff helpers', () => {
         expect(calculateGoldCostFromTokens(100, 'MODEL_GPT5_5')).toBe(1)
         expect(calculateGoldCostFromTokens(1200, 'MODEL_GPT5_4_NANO')).toBe(1)
         expect(calculateGoldCostFromTokens(2400, 'MODEL_GPT5_4_NANO')).toBe(2)
+    })
+
+    test('returns the canonical URL when creating a note', async () => {
+        const previousProjectId = process.env.GCLOUD_PROJECT
+        process.env.GCLOUD_PROJECT = 'alldonealeph'
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-1',
+            message: 'Note created',
+            note: {
+                id: 'note-1',
+                projectId: 'project-1',
+                extendedTitle: 'Launch plan',
+            },
+        })
+
+        try {
+            const result = await executeToolNatively(
+                'create_note',
+                { title: 'Launch plan', content: '# Plan' },
+                'project-1',
+                null,
+                'user-1',
+                null
+            )
+
+            expect(result).toMatchObject({
+                success: true,
+                noteId: 'note-1',
+                projectId: 'project-1',
+                url: 'https://my.alldone.app/projects/project-1/notes/note-1/editor',
+            })
+        } finally {
+            if (previousProjectId === undefined) delete process.env.GCLOUD_PROJECT
+            else process.env.GCLOUD_PROJECT = previousProjectId
+        }
+    })
+
+    test('requires exact tool URLs in follow-up responses', () => {
+        expect(getToolResultFollowUpPrompt()).toContain('include that exact URL')
+    })
+
+    test('instructs link follow-ups to reuse the created note instead of creating another note', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['create_note'])
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('reuse the exact note URL')
+        expect(systemMessages).toContain('Never call create_note again merely to provide a link')
+        expect(systemMessages).toContain('retrieve the existing note with get_notes or search')
     })
 
     test('commits a deferred silent-mode comment when the final reply is not HEARTBEAT_OK', async () => {
