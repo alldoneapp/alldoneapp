@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import { translate } from '../../../../i18n/TranslationService'
 import styles, { colors } from '../../../styles/global'
@@ -27,7 +27,7 @@ const Metric = ({ label, value }) => (
     </View>
 )
 
-export function EmptyInboxOverview({ user, style }) {
+export function EmptyInboxOverview({ user, style, onOpenAchievements }) {
     const [contentWidth, setContentWidth] = useState(0)
     const emptyInboxDays = useMemo(() => getEmptyInboxDaysWithLegacyFallback(user), [
         user.emptyInboxDays,
@@ -113,6 +113,14 @@ export function EmptyInboxOverview({ user, style }) {
                     </View>
                 </View>
             </View>
+
+            {!!onOpenAchievements && (
+                <TouchableOpacity accessibilityRole="link" onPress={onOpenAchievements} style={localStyles.profileLink}>
+                    <Text style={localStyles.profileLinkText}>
+                        {translate('View your achievements in Settings > Profile')}
+                    </Text>
+                </TouchableOpacity>
+            )}
         </View>
     )
 }
@@ -227,5 +235,16 @@ const localStyles = StyleSheet.create({
     todayCell: {
         borderWidth: 1,
         borderColor: colors.Primary100,
+    },
+    profileLink: {
+        alignSelf: 'center',
+        marginTop: 20,
+        paddingVertical: 4,
+    },
+    profileLinkText: {
+        ...styles.caption1,
+        color: colors.Primary100,
+        textAlign: 'center',
+        textDecorationLine: 'underline',
     },
 })

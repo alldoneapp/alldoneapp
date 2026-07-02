@@ -2,7 +2,7 @@ import React from 'react'
 import renderer from 'react-test-renderer'
 import moment from 'moment'
 
-import AchievementsArea from './AchievementsArea'
+import AchievementsArea, { EmptyInboxOverview } from './AchievementsArea'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: (key, values = {}) => (values.date ? `${key} ${values.date}` : key),
@@ -28,5 +28,18 @@ describe('AchievementsArea', () => {
         expect(textValues).toContain('Longest streak')
         expect(textValues).toContain('Total days')
         expect(textValues).toContain(2)
+    })
+
+    it('renders the profile link only when a handler is provided', () => {
+        const onOpenAchievements = jest.fn()
+        const tree = renderer.create(
+            <EmptyInboxOverview user={{ emptyInboxDays: [] }} onOpenAchievements={onOpenAchievements} />
+        )
+        const link = tree.root.findByProps({ accessibilityRole: 'link' })
+
+        link.props.onPress()
+
+        expect(link.findByType('Text').props.children).toBe('View your achievements in Settings > Profile')
+        expect(onOpenAchievements).toHaveBeenCalledTimes(1)
     })
 })
