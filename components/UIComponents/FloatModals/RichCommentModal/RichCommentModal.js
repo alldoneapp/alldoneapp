@@ -298,6 +298,9 @@ export default function RichCommentModal({
                         { maxHeight: height - MODAL_MAX_HEIGHT_GAP - 64 },
                     ]}
                     showsVerticalScrollIndicator={false}
+                    fixedChildren={
+                        <CloseButton closeModal={closeModal} comments={comments} openChat={processShowMore} />
+                    }
                 >
                     <View style={localStyles.innerContainer}>
                         {customHeader ? customHeader : <Header title={objectName} />}
@@ -369,8 +372,6 @@ export default function RichCommentModal({
                             style={{ marginTop: 8 }}
                         />
                     </View>
-
-                    <CloseButton closeModal={closeModal} comments={comments} openChat={processShowMore} />
                 </CustomScrollView>
             )}
         </View>

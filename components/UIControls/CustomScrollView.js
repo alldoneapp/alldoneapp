@@ -14,6 +14,7 @@ const CustomScrollView = (
         containerStyle,
         nativeID,
         style,
+        fixedChildren,
         onContentSizeChange: externalOnContentSizeChange,
         ...props
     },
@@ -110,6 +111,8 @@ const CustomScrollView = (
                     ]}
                 />
             )}
+
+            {fixedChildren}
         </View>
     )
 }
