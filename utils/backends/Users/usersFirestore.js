@@ -1,5 +1,6 @@
 import { firebase } from '@firebase/app'
 import { cloneDeep, uniq } from 'lodash'
+import moment from 'moment'
 
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import store from '../../../redux/store'
@@ -1004,8 +1005,17 @@ export async function setUserAssistantEmailEnabled(userId, assistantEmailEnabled
     getDb().doc(`users/${userId}`).update({ assistantEmailEnabled })
 }
 
-export async function setUserLastDayEmptyInbox(userId, date) {
-    getDb().doc(`users/${userId}`).update({ lastDayEmptyInbox: date })
+export async function setUserLastDayEmptyInbox(userId, date, legacyDate) {
+    const emptyInboxDays = [legacyDate, date]
+        .filter(value => value != null)
+        .map(value => moment(value).format('YYYY-MM-DD'))
+
+    getDb()
+        .doc(`users/${userId}`)
+        .update({
+            lastDayEmptyInbox: date,
+            emptyInboxDays: firebase.firestore.FieldValue.arrayUnion(...emptyInboxDays),
+        })
 }
 
 //////////////////////

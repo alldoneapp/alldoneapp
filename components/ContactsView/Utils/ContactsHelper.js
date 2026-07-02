@@ -574,7 +574,11 @@ export const isSomeContactEditOpen = () => {
 }
 
 export const getIfLoggedUserReachedEmptyInbox = dateTimestamp => {
-    const { lastDayEmptyInbox } = store.getState().loggedUser
+    const { emptyInboxDays, lastDayEmptyInbox } = store.getState().loggedUser
+    if (Array.isArray(emptyInboxDays)) {
+        return emptyInboxDays.includes(moment(dateTimestamp).format('YYYY-MM-DD'))
+    }
+
     const lastDateMoment = moment(lastDayEmptyInbox)
     const date = moment(dateTimestamp)
     return !lastDateMoment.isBefore(date, 'day')
@@ -747,6 +751,7 @@ export const getNewDefaultUser = (customData = {}) => {
         dailyTopicDate: dateNow,
         previousDailyTopicDate: dateNow,
         lastDayEmptyInbox: dateNow,
+        emptyInboxDays: [],
         quotaWarnings: {},
         monthlyXp: 0,
         monthlyTraffic: 0,

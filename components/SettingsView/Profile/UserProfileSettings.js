@@ -8,6 +8,7 @@ import ProfileHeader from './ProfileHeader'
 import ProfileProperties, { ProfileDescriptionProperty } from './Properties/ProfileProperties'
 import LogoutAndRemoveSection from './Properties/LogoutAndRemoveSection'
 import UserData from './Properties/UserData'
+import AchievementsArea from './Achievements/AchievementsArea'
 
 export default function UserProfileSettings() {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -25,6 +26,7 @@ export default function UserProfileSettings() {
             <ProfileHeader />
             <UserData user={loggedUser} />
             <ProfileProperties user={loggedUser} hideDescription={true}>
+                <AchievementsArea user={loggedUser} />
                 <SkillsArea userId={loggedUser.uid} />
             </ProfileProperties>
             <LogoutAndRemoveSection />

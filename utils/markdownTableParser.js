@@ -1,4 +1,6 @@
-const REGEX_TABLE_SEPARATOR_CELL = /^:?-{3,}:?$/
+// Be tolerant of compact delimiter cells emitted by assistants (for example `--:`),
+// while still requiring a delimiter-only cell rather than arbitrary pipe-delimited text.
+const REGEX_TABLE_SEPARATOR_CELL = /^:?-{2,}:?$/
 const TABLE_CELL_MIN_WIDTH = 96
 const TABLE_CELL_MAX_WIDTH = 360
 const TABLE_CELL_CHARACTER_WIDTH = 9

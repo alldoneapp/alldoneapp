@@ -313,8 +313,13 @@ async function sendHeartbeatInsufficientGoldNotice(projectId, assistant, userId,
         if (sendWhatsApp && userPhone) {
             const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
             const whatsappService = new TwilioWhatsAppService()
-            const whatsappResult = await whatsappService.sendWhatsAppMessage(
+            const whatsappResult = await whatsappService.sendTaskCompletionNotification(
                 userPhone,
+                userId,
+                projectId,
+                null,
+                assistant.displayName || 'Assistant',
+                { name: 'Heartbeat' },
                 HEARTBEAT_INSUFFICIENT_GOLD_NOTICE
             )
 

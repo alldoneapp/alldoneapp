@@ -8,16 +8,24 @@ import { setUserLastDayEmptyInbox } from '../utils/backends/Users/usersFirestore
 export default function useReachEmptyInbox() {
     const taskAmount = useAllProjectsTaskAmount()
     const loggedUser = useSelector(state => state.loggedUser)
-    const { lastDayEmptyInbox } = loggedUser
+    const { emptyInboxDays, lastDayEmptyInbox } = loggedUser
     const previousAmount = usePrevious(taskAmount)
 
     useEffect(() => {
         if (previousAmount > 0 && taskAmount === 0) {
             const lastDateMoment = moment(lastDayEmptyInbox)
             const today = moment()
+            const todayKey = today.format('YYYY-MM-DD')
+            const reachedToday = Array.isArray(emptyInboxDays)
+                ? emptyInboxDays.includes(todayKey)
+                : !lastDateMoment.isBefore(today, 'day')
 
-            if (lastDateMoment.isBefore(today, 'day')) {
-                setUserLastDayEmptyInbox(loggedUser.uid, today.valueOf())
+            if (!reachedToday) {
+                setUserLastDayEmptyInbox(
+                    loggedUser.uid,
+                    today.valueOf(),
+                    Array.isArray(emptyInboxDays) ? null : lastDayEmptyInbox
+                )
                 Backend.logEvent('empty_inbox', {
                     userUid: loggedUser.uid,
                 })

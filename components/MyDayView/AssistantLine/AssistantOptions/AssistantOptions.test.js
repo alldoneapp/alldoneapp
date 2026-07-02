@@ -3,12 +3,14 @@
  */
 
 import React from 'react'
-import { TextInput, TouchableOpacity } from 'react-native'
+import { Keyboard, StyleSheet, TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import AssistantOptions from './AssistantOptions'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
+
+const mockInputBlur = jest.fn()
 
 const mockState = {
     selectedProjectIndex: 0,
@@ -104,6 +106,7 @@ jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
     return React.forwardRef((props, ref) => {
         React.useImperativeHandle(ref, () => ({
             clear: jest.fn(),
+            blur: mockInputBlur,
             isFocused: () => false,
         }))
         return <TextInput {...props} />
@@ -153,6 +156,52 @@ describe('AssistantOptions search button', () => {
         expect(output.indexOf('SearchButton')).toBeGreaterThan(-1)
         expect(output.indexOf('OptionButtons')).toBeGreaterThan(-1)
         expect(output.indexOf('SearchButton')).toBeLessThan(output.indexOf('OptionButtons'))
+    })
+
+    it('stacks the voice and send controls when the assistant input expands', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        const getControlsStyle = () =>
+            StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
+
+        expect(getControlsStyle().flexDirection).toBe('row')
+
+        await act(async () => {
+            tree.root.findByType(TextInput).props.onContentSizeChange(100, 80)
+        })
+
+        expect(getControlsStyle().flexDirection).toBe('column')
+    })
+
+    it('removes input focus and dismisses the keyboard when sending a message', async () => {
+        createBotQuickTopic.mockResolvedValue({
+            projectId: 'selected-project',
+            chatId: 'chat-1',
+            isPublicFor: ['all'],
+        })
+        const dismissKeyboard = jest.spyOn(Keyboard, 'dismiss')
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        await act(async () => {
+            tree.root.findByType(TextInput).props.onChangeText('Send and close the keyboard')
+        })
+
+        const sendButton = tree.root
+            .findAllByType(TouchableOpacity)
+            .find(node => node.props.accessibilityLabel === 'Send')
+        await act(async () => {
+            await sendButton.props.onPress()
+        })
+
+        expect(mockInputBlur).toHaveBeenCalledTimes(1)
+        expect(dismissKeyboard).toHaveBeenCalledTimes(1)
+        dismissKeyboard.mockRestore()
     })
 
     it('creates fallback-assistant chats in the selected project while loading tasks from the assistant project', async () => {

@@ -2,7 +2,7 @@ const mockGeneratePreConfigTaskResult = jest.fn()
 const mockHasUserMessageOnUserLocalDay = jest.fn()
 const mockCreateInitialStatusMessage = jest.fn()
 const mockGetOpenTasksContextMessage = jest.fn()
-const mockSendWhatsAppMessage = jest.fn()
+const mockSendTaskCompletionNotification = jest.fn()
 let mockDocs = new Map()
 
 const NOTICE_MESSAGE =
@@ -141,7 +141,7 @@ jest.mock('../Users/usersFirestore', () => ({
 
 jest.mock('../Services/TwilioWhatsAppService', () =>
     jest.fn().mockImplementation(() => ({
-        sendWhatsAppMessage: (...args) => mockSendWhatsAppMessage(...args),
+        sendTaskCompletionNotification: (...args) => mockSendTaskCompletionNotification(...args),
     }))
 )
 
@@ -170,6 +170,7 @@ describe('assistant heartbeat insufficient gold notice', () => {
         })
         admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
             uid: 'assistant-1',
+            displayName: 'Anna',
             heartbeatPrompt: 'Check in.',
             heartbeatChancePercent: 1,
             heartbeatAwakeStart: 0,
@@ -188,11 +189,19 @@ describe('assistant heartbeat insufficient gold notice', () => {
     })
 
     test('sends a throttled WhatsApp notice before the heartbeat chance roll', async () => {
-        mockSendWhatsAppMessage.mockResolvedValue({ success: true })
+        mockSendTaskCompletionNotification.mockResolvedValue({ success: true })
 
         await checkAndExecuteHeartbeats()
 
-        expect(mockSendWhatsAppMessage).toHaveBeenCalledWith('+1234567890', NOTICE_MESSAGE)
+        expect(mockSendTaskCompletionNotification).toHaveBeenCalledWith(
+            '+1234567890',
+            'user-1',
+            'project-1',
+            null,
+            'Anna',
+            { name: 'Heartbeat' },
+            NOTICE_MESSAGE
+        )
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
         expect(admin.__mock.getDoc('users/user-1').heartbeatInsufficientGoldNoticeAt).toBe(1000000000)
     })
@@ -205,13 +214,16 @@ describe('assistant heartbeat insufficient gold notice', () => {
 
         await checkAndExecuteHeartbeats()
 
-        expect(mockSendWhatsAppMessage).not.toHaveBeenCalled()
+        expect(mockSendTaskCompletionNotification).not.toHaveBeenCalled()
         expect(mockCreateInitialStatusMessage).not.toHaveBeenCalled()
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
     })
 
     test('falls back to an in-app heartbeat topic notice when WhatsApp fails', async () => {
-        mockSendWhatsAppMessage.mockResolvedValue({ success: false, error: 'Outside WhatsApp session' })
+        mockSendTaskCompletionNotification.mockResolvedValue({
+            success: false,
+            error: 'Template delivery failed',
+        })
 
         await checkAndExecuteHeartbeats()
 

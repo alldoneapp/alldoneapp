@@ -64,6 +64,24 @@ describe('markdownParserFunctions', () => {
             ])
         })
 
+        it('accepts malformed two-dash delimiter cells from assistant output', () => {
+            const text = [
+                '| Month | Earn | Spend | Refund | Adjust (top-ups) | Net | Txns | Spend/day |',
+                '|---|--:|--:|--:|--:|--:|--:|--:|',
+                '| 2026-06 | 24,910 | 1,337,924 | 294 | 1,730,639 | +417,919 | 7,997 | ~44,597 |',
+            ].join('\n')
+
+            expect(parseMarkdownLines(text)[0]).toEqual({
+                type: 'table',
+                rows: [
+                    ['Month', 'Earn', 'Spend', 'Refund', 'Adjust (top-ups)', 'Net', 'Txns', 'Spend/day'],
+                    ['2026-06', '24,910', '1,337,924', '294', '1,730,639', '+417,919', '7,997', '~44,597'],
+                ],
+                alignments: [null, 'right', 'right', 'right', 'right', 'right', 'right', 'right'],
+                endIndex: 2,
+            })
+        })
+
         it('splits escaped pipe characters inside cells', () => {
             expect(splitMarkdownTableRow('| Platform | Browser \\| PWA |')).toEqual(['Platform', 'Browser | PWA'])
         })

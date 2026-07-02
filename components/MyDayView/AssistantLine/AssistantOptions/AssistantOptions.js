@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react'
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native'
+import { Keyboard, StyleSheet, View, Text, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 import Popover from 'react-tiny-popover'
@@ -94,6 +94,8 @@ export default function AssistantOptions({
             return
         }
 
+        inputRef.current?.blur()
+        Keyboard.dismiss()
         isSendingRef.current = true
         setIsSending(true)
         try {
@@ -224,6 +226,7 @@ export default function AssistantOptions({
 
     const hasQuickActions = true
     const canSend = message.trim().length > 0 && !isSending
+    const isInputExpanded = inputHeight > ASSISTANT_INPUT_MIN_HEIGHT
 
     const sendLabel = translate('Send')
     const sendButtonTitle = isMobile ? '' : sendLabel
@@ -272,13 +275,22 @@ export default function AssistantOptions({
                     isOpen={showRunOutOfGoldModal}
                     contentLocation={isMobile ? null : undefined}
                 >
-                    <View style={localStyles.sendButtonWrapper}>
+                    <View
+                        testID={'assistant-message-controls'}
+                        style={[
+                            localStyles.sendButtonWrapper,
+                            isInputExpanded && localStyles.sendButtonWrapperExpanded,
+                        ]}
+                    >
                         <AssistantVoiceCallButton
                             compact
                             assistant={assistant}
                             projectId={conversationProjectId}
                             skipNavigationOnThreadCreate
-                            buttonStyle={localStyles.voiceButton}
+                            buttonStyle={[
+                                localStyles.voiceButton,
+                                isInputExpanded && localStyles.voiceButtonExpanded,
+                            ]}
                         />
                         <Button
                             title={isSending ? null : sendButtonTitle}
@@ -372,9 +384,16 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
+    sendButtonWrapperExpanded: {
+        flexDirection: 'column',
+    },
     voiceButton: {
         marginLeft: 0,
         marginRight: 8,
+    },
+    voiceButtonExpanded: {
+        marginRight: 0,
+        marginBottom: 8,
     },
     sendButtonDesktop: {
         paddingHorizontal: 16,
