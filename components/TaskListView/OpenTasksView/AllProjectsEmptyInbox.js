@@ -13,9 +13,9 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false }
     return (
         <View style={localStyles.emptyInbox}>
             <AllProjectsEmptyInboxText />
-            {showEmptyInboxOverview && <EmptyInboxOverview user={loggedUser} style={localStyles.emptyInboxOverview} />}
             <AllProjectsEmptyInboxTags />
             <AllProjectsEmptyInboxPicture />
+            {showEmptyInboxOverview && <EmptyInboxOverview user={loggedUser} style={localStyles.emptyInboxOverview} />}
         </View>
     )
 }

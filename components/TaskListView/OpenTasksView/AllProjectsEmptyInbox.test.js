@@ -27,7 +27,10 @@ describe('AllProjectsEmptyInbox', () => {
 
         const openTasksEmptyInbox = renderer.create(<AllProjectsEmptyInbox showEmptyInboxOverview />)
         const overview = openTasksEmptyInbox.root.findByType('EmptyInboxOverview')
+        const children = openTasksEmptyInbox.root.findByType('View').children
 
         expect(overview.props.user).toBe(loggedUser)
+        expect(children[children.length - 2].type).toBe('AllProjectsEmptyInboxPicture')
+        expect(children[children.length - 1].type).toBe('EmptyInboxOverview')
     })
 })
