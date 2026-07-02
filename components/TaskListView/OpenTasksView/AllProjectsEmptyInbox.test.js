@@ -42,10 +42,14 @@ describe('AllProjectsEmptyInbox', () => {
 
         expect(overview.props.user).toBe(loggedUser)
         overview.props.onOpenAchievements()
-        expect(navigateToSettings).toHaveBeenCalledWith({ selectedNavItem: DV_TAB_SETTINGS_PROFILE })
+        const settingsOptions = {
+            selectedNavItem: DV_TAB_SETTINGS_PROFILE,
+            settingsScrollToTopToken: expect.any(Number),
+        }
+        expect(navigateToSettings).toHaveBeenCalledWith(settingsOptions)
         expect(dispatch).toHaveBeenCalledWith({
             type: 'Navigate to settings',
-            options: { selectedNavItem: DV_TAB_SETTINGS_PROFILE },
+            options: settingsOptions,
         })
         expect(NavigationService.navigate).toHaveBeenCalledWith('SettingsView')
         expect(children[children.length - 2].type).toBe('AllProjectsEmptyInboxPicture')

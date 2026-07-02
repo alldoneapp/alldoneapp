@@ -15,7 +15,12 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false }
     const loggedUser = useSelector(state => state.loggedUser)
 
     const openAchievements = () => {
-        dispatch(navigateToSettings({ selectedNavItem: DV_TAB_SETTINGS_PROFILE }))
+        dispatch(
+            navigateToSettings({
+                selectedNavItem: DV_TAB_SETTINGS_PROFILE,
+                settingsScrollToTopToken: Date.now(),
+            })
+        )
         NavigationService.navigate('SettingsView')
     }
 
