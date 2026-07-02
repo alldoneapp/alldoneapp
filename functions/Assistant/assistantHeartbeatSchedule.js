@@ -18,6 +18,8 @@ const ACTIVE_USER_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
 const END_MINUTE_GRACE_MS = 60 * 1000 - 1
 const WRITE_BATCH_SIZE = 400
+const HEARTBEAT_JITTER_VERSION = 3
+const HEARTBEAT_JITTER_RATIO = 0.2
 
 function sha256(value) {
     return crypto.createHash('sha256').update(String(value)).digest('hex')
@@ -56,6 +58,7 @@ function getHeartbeatScheduleTiming(assistant = {}, userData = {}) {
         awakeEndMs: normalizeHeartbeatTimeMs(assistant.heartbeatAwakeEnd, DEFAULT_AWAKE_END),
         timezoneName: timezoneName || null,
         timezoneOffsetMinutes,
+        jitterVersion: HEARTBEAT_JITTER_VERSION,
     }
 
     timing.scheduleHash = sha256(JSON.stringify(timing))
@@ -135,6 +138,31 @@ function calculateNextHeartbeatAt({ afterMs, scheduleId, ...timing }) {
     // Supported intervals are at most one hour, so the loop above should always
     // find a candidate. Retain a defensive fallback rather than disabling a user.
     return normalizedAfter + Math.min(timing.intervalMs || DAY_MS, DAY_MS)
+}
+
+function getHeartbeatJitterMs({ scheduleId, afterMs, intervalMs }) {
+    const maximum = Math.floor(intervalMs * HEARTBEAT_JITTER_RATIO)
+    const range = maximum * 2 + 1
+    return getStableOffset(`${scheduleId}|${afterMs}|jitter`, range) - maximum
+}
+
+/**
+ * Schedule the next occurrence around one full interval after the previous
+ * scheduled occurrence, with deterministic symmetric per-occurrence jitter.
+ * If the resulting time falls outside the awake window, resume at the next
+ * personalized awake-window slot instead of accumulating sleeping-hour work.
+ */
+function calculateNextHeartbeatAfterOccurrence({ afterMs, scheduleId, ...timing }) {
+    const normalizedAfter = Number(afterMs) || Date.now()
+    const jitterMs = getHeartbeatJitterMs({
+        scheduleId,
+        afterMs: normalizedAfter,
+        intervalMs: timing.intervalMs,
+    })
+    const candidate = normalizedAfter + timing.intervalMs + jitterMs
+    if (isTimestampInHeartbeatAwakeWindow(candidate, timing)) return candidate
+
+    return calculateNextHeartbeatAt({ afterMs: candidate - 1, scheduleId, ...timing })
 }
 
 function isProjectHeartbeatEligible(project = {}) {
@@ -478,6 +506,8 @@ module.exports = {
     getHeartbeatScheduleTiming,
     isTimestampInHeartbeatAwakeWindow,
     calculateNextHeartbeatAt,
+    calculateNextHeartbeatAfterOccurrence,
+    getHeartbeatJitterMs,
     isProjectHeartbeatEligible,
     isUserHeartbeatEligible,
     isAssistantHeartbeatEligible,

@@ -4,8 +4,10 @@ const {
     ACTIVE_USER_WINDOW_MS,
     buildHeartbeatScheduleData,
     calculateNextHeartbeatAt,
+    calculateNextHeartbeatAfterOccurrence,
     getHeartbeatScheduleId,
     getHeartbeatScheduleTiming,
+    getHeartbeatJitterMs,
     isTimestampInHeartbeatAwakeWindow,
     safelySyncHeartbeatSchedules,
     syncHeartbeatSchedulesForProject,
@@ -119,6 +121,63 @@ describe('assistant heartbeat schedule timing', () => {
 
         expect(dueTimes.some(value => value > awakeStart + 5 * 60 * 1000)).toBe(true)
         dueTimes.forEach(value => expect(value).toBeGreaterThanOrEqual(awakeStart))
+    })
+
+    test('adds deterministic variance on both sides of every completed interval', () => {
+        const timing = getHeartbeatScheduleTiming(
+            { ...assistant, heartbeatIntervalMs: 60 * 60 * 1000 },
+            { timezone: 'UTC' }
+        )
+        const previousDueAt = Date.parse('2026-06-30T09:09:00.000Z')
+        const scheduleId = getHeartbeatScheduleId('project-1', 'assistant-1', 'user-1')
+        const firstCalculation = calculateNextHeartbeatAfterOccurrence({
+            afterMs: previousDueAt,
+            scheduleId,
+            ...timing,
+        })
+        const secondCalculation = calculateNextHeartbeatAfterOccurrence({
+            afterMs: previousDueAt,
+            scheduleId,
+            ...timing,
+        })
+        const jitter = firstCalculation - previousDueAt - timing.intervalMs
+
+        expect(firstCalculation).toBe(secondCalculation)
+        expect(firstCalculation).not.toBe(Date.parse('2026-06-30T10:09:00.000Z'))
+        expect(jitter).toBeGreaterThanOrEqual(-timing.intervalMs * 0.2)
+        expect(jitter).toBeLessThanOrEqual(timing.intervalMs * 0.2)
+    })
+
+    test('varies the delay between successive occurrences', () => {
+        const timing = getHeartbeatScheduleTiming(assistant, { timezone: 'UTC' })
+        const scheduleId = getHeartbeatScheduleId('project-1', 'assistant-1', 'user-1')
+        const firstDueAt = Date.parse('2026-06-30T09:09:00.000Z')
+        const secondDueAt = calculateNextHeartbeatAfterOccurrence({ afterMs: firstDueAt, scheduleId, ...timing })
+        const thirdDueAt = calculateNextHeartbeatAfterOccurrence({ afterMs: secondDueAt, scheduleId, ...timing })
+        const firstJitter = secondDueAt - firstDueAt - timing.intervalMs
+        const secondJitter = thirdDueAt - secondDueAt - timing.intervalMs
+
+        expect(firstJitter).not.toBe(secondJitter)
+        expect(secondDueAt - firstDueAt).toBeGreaterThanOrEqual(timing.intervalMs * 0.8)
+        expect(secondDueAt - firstDueAt).toBeLessThanOrEqual(timing.intervalMs * 1.2)
+        expect(thirdDueAt - secondDueAt).toBeGreaterThanOrEqual(timing.intervalMs * 0.8)
+        expect(thirdDueAt - secondDueAt).toBeLessThanOrEqual(timing.intervalMs * 1.2)
+    })
+
+    test('produces both early and late occurrence offsets', () => {
+        const timing = getHeartbeatScheduleTiming(assistant, { timezone: 'UTC' })
+        const scheduleId = getHeartbeatScheduleId('project-1', 'assistant-1', 'user-1')
+        const base = Date.parse('2026-06-30T08:00:00.000Z')
+        const jitters = Array.from({ length: 50 }, (_, index) =>
+            getHeartbeatJitterMs({
+                afterMs: base + index * timing.intervalMs,
+                scheduleId,
+                intervalMs: timing.intervalMs,
+            })
+        )
+
+        expect(jitters.some(value => value < 0)).toBe(true)
+        expect(jitters.some(value => value > 0)).toBe(true)
     })
 
     test('supports overnight and narrow awake windows', () => {

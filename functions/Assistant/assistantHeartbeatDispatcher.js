@@ -3,7 +3,7 @@ const { getFunctions } = require('firebase-admin/functions')
 
 const {
     HEARTBEAT_SCHEDULES_COLLECTION,
-    calculateNextHeartbeatAt,
+    calculateNextHeartbeatAfterOccurrence,
     getHeartbeatDispatchTaskId,
     getTimestampMillis,
 } = require('./assistantHeartbeatSchedule')
@@ -54,7 +54,7 @@ async function advanceEnqueuedHeartbeatSchedule(scheduleRef, expected, now, db) 
         const currentDueAt = getTimestampMillis(current.nextHeartbeatAt)
         if (current.scheduleHash !== expected.scheduleHash || currentDueAt !== expected.dueAt) return false
 
-        const nextHeartbeatAt = calculateNextHeartbeatAt({
+        const nextHeartbeatAt = calculateNextHeartbeatAfterOccurrence({
             afterMs: Math.max(now, expected.dueAt),
             scheduleId: scheduleRef.id,
             intervalMs: current.intervalMs,

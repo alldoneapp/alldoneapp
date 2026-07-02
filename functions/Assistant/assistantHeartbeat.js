@@ -26,7 +26,7 @@ const { getFirstName } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
 const {
     HEARTBEAT_SCHEDULES_COLLECTION,
-    calculateNextHeartbeatAt,
+    calculateNextHeartbeatAfterOccurrence,
     getHeartbeatScheduleTiming,
     getTimestampMillis: getScheduleTimestampMillis,
     isAssistantHeartbeatEligible,
@@ -760,7 +760,7 @@ async function claimScheduledHeartbeat({ scheduleId, projectId, assistantId, use
         }
         const currentNextAt = getScheduleTimestampMillis(schedule.nextHeartbeatAt)
         if (!currentNextAt || currentNextAt <= dueAt) {
-            update.nextHeartbeatAt = calculateNextHeartbeatAt({
+            update.nextHeartbeatAt = calculateNextHeartbeatAfterOccurrence({
                 afterMs: Math.max(now, dueAt),
                 scheduleId,
                 intervalMs: schedule.intervalMs,
