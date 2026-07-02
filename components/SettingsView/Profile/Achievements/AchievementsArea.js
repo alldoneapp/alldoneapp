@@ -12,7 +12,7 @@ import {
 const CELL_SIZE = 11
 const CELL_GAP = 3
 const WEEK_WIDTH = CELL_SIZE + CELL_GAP
-const DAY_LABEL_WIDTH = 28
+const DAY_LABEL_WIDTH = 40
 const MIN_WEEKS = 12
 const MAX_WEEKS = 53
 
@@ -26,7 +26,7 @@ const Metric = ({ label, value }) => (
     </View>
 )
 
-export default function AchievementsArea({ user }) {
+export function EmptyInboxOverview({ user, style }) {
     const [contentWidth, setContentWidth] = useState(0)
     const emptyInboxDays = useMemo(() => getEmptyInboxDaysWithLegacyFallback(user), [
         user.emptyInboxDays,
@@ -39,77 +39,84 @@ export default function AchievementsArea({ user }) {
         numberOfWeeks,
     ])
     const dayLabels = [
-        translate('Monday').charAt(0),
+        translate('Monday short'),
         '',
-        translate('Wednesday').charAt(0),
+        translate('Wednesday short'),
         '',
-        translate('Friday').charAt(0),
+        translate('Friday short'),
         '',
         '',
     ]
 
     return (
-        <View style={localStyles.container}>
-            <Text style={localStyles.sectionTitle}>{translate('Achievements')}</Text>
-            <View style={localStyles.card} onLayout={event => setContentWidth(event.nativeEvent.layout.width - 40)}>
-                <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
-                <Text style={localStyles.description}>{translate('Empty inbox achievement description')}</Text>
+        <View
+            style={[localStyles.card, style]}
+            onLayout={event => setContentWidth(event.nativeEvent.layout.width - 40)}
+        >
+            <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
+            <Text style={localStyles.description}>{translate('Empty inbox achievement description')}</Text>
 
-                <View style={localStyles.metricsContainer}>
-                    <Metric label={translate('Current streak')} value={stats.currentStreak} />
-                    <Metric label={translate('Longest streak')} value={stats.longestStreak} />
-                    <Metric label={translate('Total days')} value={stats.totalDays} />
+            <View style={localStyles.metricsContainer}>
+                <Metric label={translate('Current streak')} value={stats.currentStreak} />
+                <Metric label={translate('Longest streak')} value={stats.longestStreak} />
+                <Metric label={translate('Total days')} value={stats.totalDays} />
+            </View>
+
+            <View style={localStyles.activityContainer}>
+                <View style={localStyles.monthLabels}>
+                    <View style={{ width: DAY_LABEL_WIDTH }} />
+                    {weeks.map((week, index) => (
+                        <View key={index} style={localStyles.monthLabelSlot}>
+                            {!!week.monthName && (
+                                <Text style={localStyles.monthLabel}>{translate(week.monthName).slice(0, 3)}</Text>
+                            )}
+                        </View>
+                    ))}
                 </View>
-
-                <View style={localStyles.activityContainer}>
-                    <View style={localStyles.monthLabels}>
-                        <View style={{ width: DAY_LABEL_WIDTH }} />
-                        {weeks.map((week, index) => (
-                            <View key={index} style={localStyles.monthLabelSlot}>
-                                {!!week.monthName && (
-                                    <Text style={localStyles.monthLabel} numberOfLines={1}>
-                                        {translate(week.monthName).slice(0, 3)}
-                                    </Text>
-                                )}
+                <View style={localStyles.activityRows}>
+                    <View style={localStyles.dayLabels}>
+                        {dayLabels.map((label, index) => (
+                            <Text key={index} style={localStyles.dayLabel}>
+                                {label}
+                            </Text>
+                        ))}
+                    </View>
+                    <View style={localStyles.weeks}>
+                        {weeks.map((week, weekIndex) => (
+                            <View key={weekIndex} style={localStyles.week}>
+                                {week.days.map(day => (
+                                    <View
+                                        key={day.dateKey}
+                                        accessible={day.achieved}
+                                        accessibilityLabel={
+                                            day.achieved
+                                                ? translate('Empty inbox reached on', {
+                                                      date: day.date.format('LL'),
+                                                  })
+                                                : undefined
+                                        }
+                                        style={[
+                                            localStyles.activityCell,
+                                            day.achieved && localStyles.achievedCell,
+                                            day.isFuture && localStyles.futureCell,
+                                            day.isToday && !day.achieved && localStyles.todayCell,
+                                        ]}
+                                    />
+                                ))}
                             </View>
                         ))}
                     </View>
-                    <View style={localStyles.activityRows}>
-                        <View style={localStyles.dayLabels}>
-                            {dayLabels.map((label, index) => (
-                                <Text key={index} style={localStyles.dayLabel}>
-                                    {label}
-                                </Text>
-                            ))}
-                        </View>
-                        <View style={localStyles.weeks}>
-                            {weeks.map((week, weekIndex) => (
-                                <View key={weekIndex} style={localStyles.week}>
-                                    {week.days.map(day => (
-                                        <View
-                                            key={day.dateKey}
-                                            accessible={day.achieved}
-                                            accessibilityLabel={
-                                                day.achieved
-                                                    ? translate('Empty inbox reached on', {
-                                                          date: day.date.format('LL'),
-                                                      })
-                                                    : undefined
-                                            }
-                                            style={[
-                                                localStyles.activityCell,
-                                                day.achieved && localStyles.achievedCell,
-                                                day.isFuture && localStyles.futureCell,
-                                                day.isToday && !day.achieved && localStyles.todayCell,
-                                            ]}
-                                        />
-                                    ))}
-                                </View>
-                            ))}
-                        </View>
-                    </View>
                 </View>
             </View>
+        </View>
+    )
+}
+
+export default function AchievementsArea({ user }) {
+    return (
+        <View style={localStyles.container}>
+            <Text style={localStyles.sectionTitle}>{translate('Achievements')}</Text>
+            <EmptyInboxOverview user={user} style={localStyles.profileCard} />
         </View>
     )
 }
@@ -122,12 +129,14 @@ const localStyles = StyleSheet.create({
         ...styles.title6,
     },
     card: {
-        marginTop: 16,
         padding: 20,
         borderWidth: 1,
         borderColor: colors.Grey300,
         borderRadius: 8,
         backgroundColor: '#FFFFFF',
+    },
+    profileCard: {
+        marginTop: 16,
     },
     title: {
         ...styles.subtitle1,
@@ -165,22 +174,25 @@ const localStyles = StyleSheet.create({
     },
     monthLabelSlot: {
         width: WEEK_WIDTH,
+        overflow: 'visible',
     },
     monthLabel: {
-        ...styles.caption2,
+        ...styles.caption1,
         position: 'absolute',
-        color: colors.Text03,
-        width: 42,
+        color: colors.Text02,
+        width: WEEK_WIDTH * 4,
+        zIndex: 1,
     },
     activityRows: {
         flexDirection: 'row',
     },
     dayLabels: {
         width: DAY_LABEL_WIDTH,
+        paddingRight: 8,
     },
     dayLabel: {
-        ...styles.caption2,
-        color: colors.Text03,
+        ...styles.caption1,
+        color: colors.Text02,
         height: WEEK_WIDTH,
         lineHeight: WEEK_WIDTH,
     },

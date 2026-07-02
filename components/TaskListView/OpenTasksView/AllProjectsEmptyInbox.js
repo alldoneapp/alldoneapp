@@ -1,14 +1,19 @@
 import React from 'react'
 import { View } from 'react-native'
+import { useSelector } from 'react-redux'
 
 import AllProjectsEmptyInboxTags from './AllProjectsEmptyInboxTags'
 import AllProjectsEmptyInboxText from './AllProjectsEmptyInboxText'
 import AllProjectsEmptyInboxPicture from './AllProjectsEmptyInboxPicture'
+import { EmptyInboxOverview } from '../../SettingsView/Profile/Achievements/AchievementsArea'
 
-export default function AllProjectsEmptyInbox() {
+export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false }) {
+    const loggedUser = useSelector(state => state.loggedUser)
+
     return (
         <View style={localStyles.emptyInbox}>
             <AllProjectsEmptyInboxText />
+            {showEmptyInboxOverview && <EmptyInboxOverview user={loggedUser} style={localStyles.emptyInboxOverview} />}
             <AllProjectsEmptyInboxTags />
             <AllProjectsEmptyInboxPicture />
         </View>
@@ -20,5 +25,10 @@ const localStyles = {
         flex: 1,
         marginTop: 12,
         alignItems: 'center',
+    },
+    emptyInboxOverview: {
+        width: '100%',
+        marginTop: 16,
+        marginBottom: 24,
     },
 }
