@@ -36,8 +36,8 @@ const CADENCE_OPTIONS = [
 function GoalMilestonesModal({ projectId, goalMilestonesConfig, closePopover }) {
     const currentConfig = normalizeGoalMilestonesConfig(goalMilestonesConfig, getCurrentTimezone())
     const [linearMode, setLinearMode] = useState(currentConfig.mode === GOAL_MILESTONES_MODE_LINEAR)
-    // Default newly enabled automatic milestones to a monthly cadence; keep the saved cadence for
-    // projects that already have automatic milestones turned on.
+    // Default newly enabled dynamic milestones to a monthly cadence; keep the saved cadence for
+    // projects that already have dynamic milestones turned on.
     const [cadence, setCadence] = useState(
         currentConfig.mode === GOAL_MILESTONES_MODE_LINEAR ? currentConfig.cadence : GOAL_MILESTONES_CADENCE_MONTHLY
     )
@@ -78,7 +78,7 @@ function GoalMilestonesModal({ projectId, goalMilestonesConfig, closePopover }) 
         <View style={[localStyles.modal, applyPopoverWidth()]}>
             <Text style={localStyles.modalTitle}>{translate('Goal milestones')}</Text>
             <View style={localStyles.modalRow}>
-                <Text style={localStyles.modalLabel}>{translate('Automatic milestones')}</Text>
+                <Text style={localStyles.modalLabel}>{translate('Dynamic')}</Text>
                 <Switch
                     active={linearMode}
                     activeSwitch={() => setLinearMode(true)}
@@ -177,7 +177,7 @@ export default function GoalMilestones({ projectId, disabled, goalMilestonesConf
     const [open, setOpen] = useState(false)
     const config = normalizeGoalMilestonesConfig(goalMilestonesConfig, getCurrentTimezone())
     const cadenceTitle = CADENCE_OPTIONS.find(option => option.key === config.cadence)?.title || 'Weekly'
-    const title = config.mode === GOAL_MILESTONES_MODE_LINEAR ? translate(cadenceTitle) : translate('Manual')
+    const title = config.mode === GOAL_MILESTONES_MODE_LINEAR ? translate(cadenceTitle) : translate('Fixed')
 
     return (
         <View style={localStyles.container}>

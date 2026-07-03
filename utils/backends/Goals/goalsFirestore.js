@@ -532,8 +532,17 @@ function buildLinearMilestone(period, ownerId, done = false) {
 }
 
 export async function ensureLinearMilestonesForProject(projectId, ownerId, config, startTimestamp = Date.now()) {
-    const normalizedConfig = normalizeGoalMilestonesConfig(config)
-    if (normalizedConfig.mode !== GOAL_MILESTONES_MODE_LINEAR) return []
+    let normalizedConfig = normalizeGoalMilestonesConfig(config)
+    if (normalizedConfig.mode !== GOAL_MILESTONES_MODE_LINEAR) {
+        const projectRef = getDb().doc(`/projects/${projectId}`)
+        const projectDoc = await projectRef.get()
+        normalizedConfig = normalizeGoalMilestonesConfig(projectDoc.data()?.goalMilestonesConfig || config)
+
+        if (normalizedConfig.mode !== GOAL_MILESTONES_MODE_LINEAR) {
+            normalizedConfig = { ...normalizedConfig, mode: GOAL_MILESTONES_MODE_LINEAR }
+            await projectRef.update({ goalMilestonesConfig: normalizedConfig })
+        }
+    }
 
     const periods = getLinearMilestonePeriods(
         normalizedConfig,
@@ -563,6 +572,19 @@ export async function ensureLinearMilestonesForProject(projectId, ownerId, confi
     }
 
     return milestones
+}
+
+async function ensureLinearMilestonesIncludingDate(projectId, ownerId, config, milestoneDate) {
+    const currentMilestones = await ensureLinearMilestonesForProject(projectId, ownerId, config)
+    if (
+        milestoneDate === BACKLOG_DATE_NUMERIC ||
+        currentMilestones.some(milestone => milestone.date === milestoneDate)
+    ) {
+        return currentMilestones
+    }
+
+    const selectedMilestones = await ensureLinearMilestonesForProject(projectId, ownerId, config, milestoneDate)
+    return [...currentMilestones, ...selectedMilestones]
 }
 
 async function getActiveLinearMilestone(projectId, ownerId, config) {
@@ -649,7 +671,12 @@ export async function uploadNewGoal(
     }
 
     if (goal.scheduleMode === GOAL_SCHEDULE_MODE_DYNAMIC) {
-        await ensureLinearMilestonesForProject(projectId, ownerId, project.goalMilestonesConfig)
+        await ensureLinearMilestonesIncludingDate(
+            projectId,
+            ownerId,
+            project.goalMilestonesConfig,
+            goal.completionMilestoneDate
+        )
     } else {
         uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, goal.completionMilestoneDate, ownerId)
     }
@@ -737,6 +764,36 @@ export async function updateGoal(projectId, oldGoal, updatedGoal, avoidFollow) {
     }
 
     const promisesToProcess = []
+    const scheduleModeChanged =
+        normalizeGoalScheduleMode(oldGoal.scheduleMode) !== normalizeGoalScheduleMode(updatedGoal.scheduleMode)
+    const milestoneDatesChanged =
+        oldGoal.startingMilestoneDate !== updatedGoal.startingMilestoneDate ||
+        oldGoal.completionMilestoneDate !== updatedGoal.completionMilestoneDate
+
+    if (scheduleModeChanged && !milestoneDatesChanged && updatedGoal.completionMilestoneDate !== BACKLOG_DATE_NUMERIC) {
+        if (normalizeGoalScheduleMode(updatedGoal.scheduleMode) === GOAL_SCHEDULE_MODE_DYNAMIC) {
+            const project = ProjectHelper.getProjectById(projectId)
+            await ensureLinearMilestonesIncludingDate(
+                projectId,
+                updatedGoal.ownerId,
+                project?.goalMilestonesConfig,
+                updatedGoal.completionMilestoneDate
+            )
+            await deleteOpenMilestoneIfIsEmpty(
+                projectId,
+                updatedGoal.completionMilestoneDate,
+                [updatedGoal.id],
+                updatedGoal.ownerId
+            )
+        } else {
+            await uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(
+                projectId,
+                updatedGoal.completionMilestoneDate,
+                updatedGoal.ownerId
+            )
+        }
+        await updateAllOpenGoalSortIndexs(projectId, updatedGoal, false)
+    }
 
     if (oldGoal.startingMilestoneDate !== updatedGoal.startingMilestoneDate) {
         const newDate = updatedGoal.startingMilestoneDate
@@ -1355,7 +1412,9 @@ async function handleMilestonesExistenceWhenAGoalDateRangeChanges(
     if (newDate !== BACKLOG_DATE_NUMERIC) {
         if (goal.scheduleMode === GOAL_SCHEDULE_MODE_DYNAMIC) {
             const project = ProjectHelper.getProjectById(projectId)
-            promises.push(ensureLinearMilestonesForProject(projectId, goal.ownerId, project.goalMilestonesConfig))
+            promises.push(
+                ensureLinearMilestonesIncludingDate(projectId, goal.ownerId, project?.goalMilestonesConfig, newDate)
+            )
         } else {
             promises.push(uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, newDate, goal.ownerId))
         }
@@ -1641,7 +1700,15 @@ async function uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, da
 async function deleteOpenMilestoneIfIsEmpty(projectId, milestoneDate, idsOfGoalsToExclude, ownerId) {
     if (milestoneDate === BACKLOG_DATE_NUMERIC) return
     const isEmpty =
-        (await getBaseGoalsInOpenMilestone(projectId, milestoneDate, idsOfGoalsToExclude, ownerId)).length === 0
+        (
+            await getBaseGoalsInOpenMilestone(
+                projectId,
+                milestoneDate,
+                idsOfGoalsToExclude,
+                ownerId,
+                GOAL_SCHEDULE_MODE_FIXED
+            )
+        ).length === 0
     if (isEmpty) {
         const milestone = await getMilestoneUsingDate(projectId, milestoneDate, false, ownerId, MILESTONE_TYPE_FIXED)
         if (milestone) await deleteMilestone(projectId, milestone.id)

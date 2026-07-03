@@ -268,13 +268,14 @@ export default function GoalMoreButton({
                     <GoalMilestoneRangeModal
                         projectId={projectId}
                         closeModal={dismissModal}
-                        updateMilestoneDateRange={(date, rangeEdgePropertyName) => {
+                        updateMilestoneDateRange={(date, rangeEdgePropertyName, milestone) => {
                             dismissModal()
-                            updateDateRange(date, rangeEdgePropertyName)
+                            updateDateRange(date, rangeEdgePropertyName, milestone)
                         }}
                         startingMilestoneDate={goal.startingMilestoneDate}
                         completionMilestoneDate={goal.completionMilestoneDate}
                         ownerId={goal.ownerId}
+                        scheduleMode={goal.scheduleMode}
                     />
                 ) : showAddTask ? (
                     <RichCreateTaskModal

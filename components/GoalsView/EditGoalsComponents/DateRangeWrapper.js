@@ -66,6 +66,7 @@ export default function DateRangeWrapper({
                     startingMilestoneDate={startingMilestoneDate}
                     completionMilestoneDate={completionMilestoneDate}
                     ownerId={goal.ownerId}
+                    scheduleMode={goal.scheduleMode}
                 />
             }
             align={'start'}

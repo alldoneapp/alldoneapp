@@ -16,7 +16,14 @@ import TabsList, { COMPLETION_TAB, STARTING_TAB } from './TabsList'
 import OptionsArea from '../GoalMilestoneModal/OptionsArea'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
-import { MILESTONE_TYPE_FIXED } from '../../../../utils/GoalMilestonesHelper'
+import {
+    GOAL_SCHEDULE_MODE_DYNAMIC,
+    MILESTONE_TYPE_FIXED,
+    MILESTONE_TYPE_LINEAR,
+    getDynamicMilestoneOptions,
+    normalizeGoalMilestonesConfig,
+    normalizeGoalScheduleMode,
+} from '../../../../utils/GoalMilestonesHelper'
 
 export default function GoalMilestoneRangeModal({
     projectId,
@@ -27,12 +34,19 @@ export default function GoalMilestoneRangeModal({
     setModalWidth,
     setModalHeight,
     ownerId,
+    scheduleMode,
 }) {
     const [width, height] = useWindowSize()
     const goalsActiveTab = useSelector(state => state.goalsActiveTab)
     const [showCalendar, setShowCalendar] = useState(false)
     const [activeTab, setActiveTab] = useState(COMPLETION_TAB)
     const [milestones, setMilestones] = useState([])
+    const project = useSelector(state => state.loggedUserProjectsMap[projectId])
+    const dynamicMilestones = getDynamicMilestoneOptions(normalizeGoalMilestonesConfig(project?.goalMilestonesConfig))
+    const selectedMilestoneType =
+        normalizeGoalScheduleMode(scheduleMode) === GOAL_SCHEDULE_MODE_DYNAMIC
+            ? MILESTONE_TYPE_LINEAR
+            : MILESTONE_TYPE_FIXED
 
     const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
     const finalHeight = tmpHeight < 597 ? tmpHeight : 597
@@ -112,7 +126,9 @@ export default function GoalMilestoneRangeModal({
                 <OptionsArea
                     updateMilestone={updateMilestone}
                     selectedDate={milestoneDate}
+                    selectedMilestoneType={selectedMilestoneType}
                     milestones={milestones}
+                    dynamicMilestones={dynamicMilestones}
                     openCalendar={openCalendar}
                 />
             )}

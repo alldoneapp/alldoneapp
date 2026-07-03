@@ -18,11 +18,9 @@ export default function GoalSwipeDateRangeWrapper({
     const [modalHeight, setModalHeight] = useState(0)
     const [modalWidth, setModalWidth] = useState(0)
 
-    const updateMilestoneDateRange = async (date, rangeEdgePropertyName) => {
+    const updateMilestoneDateRange = async (date, rangeEdgePropertyName, milestone) => {
         closeMiletsoneModal()
-        if (goal[rangeEdgePropertyName] !== date) {
-            Backend.updateGoalDateRange(projectId, goal, date, rangeEdgePropertyName, true)
-        }
+        Backend.updateGoalDateRange(projectId, goal, date, rangeEdgePropertyName, true, milestone?.milestoneType)
     }
 
     const updateModalLocation = () => {
@@ -50,6 +48,7 @@ export default function GoalSwipeDateRangeWrapper({
                     setModalWidth={setModalWidth}
                     setModalHeight={setModalHeight}
                     ownerId={goal.ownerId}
+                    scheduleMode={goal.scheduleMode}
                 />
             }
             align={'center'}

@@ -27,11 +27,9 @@ export default function ParentMilestonesWrapper({ projectId, goal, parentMilesto
         removeModal(GOAL_DATE_RANGE_MODAL_ID)
     }
 
-    const updateMilestoneDateRange = (newDate, rangeEdgePropertyName) => {
+    const updateMilestoneDateRange = (newDate, rangeEdgePropertyName, milestone) => {
         closeModal()
-        if (goal[rangeEdgePropertyName] !== newDate) {
-            Backend.updateGoalDateRange(projectId, goal, newDate, rangeEdgePropertyName, true)
-        }
+        Backend.updateGoalDateRange(projectId, goal, newDate, rangeEdgePropertyName, true, milestone?.milestoneType)
     }
 
     return (
@@ -44,6 +42,7 @@ export default function ParentMilestonesWrapper({ projectId, goal, parentMilesto
                     startingMilestoneDate={startingMilestoneDate}
                     completionMilestoneDate={completionMilestoneDate}
                     ownerId={goal.ownerId}
+                    scheduleMode={goal.scheduleMode}
                 />
             }
             align={'start'}

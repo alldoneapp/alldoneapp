@@ -20,6 +20,12 @@ import HighlightColorModal from '../HighlightColorModal/HighlightColorModal'
 import DescriptionModal from '../DescriptionModal/DescriptionModal'
 import { getActiveMilestone, getNextMilestones } from '../../../../utils/backends/Goals/goalsFirestore'
 import ProjectHelper, { checkIfSelectedAllProjects } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
+import {
+    GOAL_SCHEDULE_MODE_DYNAMIC,
+    GOAL_SCHEDULE_MODE_FIXED,
+    MILESTONE_TYPE_LINEAR,
+    normalizeMilestoneType,
+} from '../../../../utils/GoalMilestonesHelper'
 
 const getNewInitialDefaultGoal = projectId => {
     const newGoal = getNewDefaultGoal(BACKLOG_DATE_NUMERIC)
@@ -85,8 +91,12 @@ export default function RichCreateGoalModal({ projectId, closeModal }) {
         dispatch(hideFloatPopup())
     }
 
-    const saveDateRange = (date, rangeEdgePropertyName) => {
-        setGoal({ ...goal, [rangeEdgePropertyName]: date })
+    const saveDateRange = (date, rangeEdgePropertyName, milestone) => {
+        const scheduleMode =
+            normalizeMilestoneType(milestone?.milestoneType) === MILESTONE_TYPE_LINEAR
+                ? GOAL_SCHEDULE_MODE_DYNAMIC
+                : GOAL_SCHEDULE_MODE_FIXED
+        setGoal({ ...goal, [rangeEdgePropertyName]: date, scheduleMode })
         setShowDateRangeModal(false)
         dispatch(hideFloatPopup())
     }
@@ -175,6 +185,7 @@ export default function RichCreateGoalModal({ projectId, closeModal }) {
                     startingMilestoneDate={goal.startingMilestoneDate}
                     completionMilestoneDate={goal.completionMilestoneDate}
                     ownerId={goal.ownerId}
+                    scheduleMode={goal.scheduleMode}
                 />
             ) : showAssigneeModal ? (
                 <GoalAssigneesModal

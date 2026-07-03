@@ -144,3 +144,14 @@ export function getLinearMilestoneTitle(period) {
     const end = moment.tz(period.periodEndDate, period.timezone)
     return `${start.format('D MMM')} - ${end.format('D MMM YYYY')}`
 }
+
+export function getDynamicMilestoneOptions(config, startTimestamp = Date.now()) {
+    const normalizedConfig = normalizeGoalMilestonesConfig(config)
+    return getLinearMilestonePeriods(normalizedConfig, startTimestamp, normalizedConfig.futureMilestonesToCreate).map(
+        period => ({
+            ...period,
+            extendedName: getLinearMilestoneTitle(period),
+            milestoneType: MILESTONE_TYPE_LINEAR,
+        })
+    )
+}

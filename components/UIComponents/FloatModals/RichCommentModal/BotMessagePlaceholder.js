@@ -31,7 +31,6 @@ const localStyles = StyleSheet.create({
     statusRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginLeft: 36,
         marginTop: 6,
     },
     helperText: {

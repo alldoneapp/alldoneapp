@@ -46,6 +46,7 @@ import {
     GOAL_SCHEDULE_MODE_DYNAMIC,
     GOAL_SCHEDULE_MODE_FIXED,
     MILESTONE_TYPE_LINEAR,
+    normalizeGoalScheduleMode,
     normalizeMilestoneType,
 } from '../../utils/GoalMilestonesHelper'
 
@@ -152,15 +153,17 @@ export default function EditGoal({
     }
 
     const updateDateRange = (date, rangeEdgePropertyName, milestone) => {
-        if (tmpGoal[rangeEdgePropertyName] !== date) {
-            const selectedMilestoneType = normalizeMilestoneType(milestone?.milestoneType)
+        const selectedMilestoneType = normalizeMilestoneType(milestone?.milestoneType)
+        const selectedScheduleMode =
+            selectedMilestoneType === MILESTONE_TYPE_LINEAR ? GOAL_SCHEDULE_MODE_DYNAMIC : GOAL_SCHEDULE_MODE_FIXED
+        if (
+            tmpGoal[rangeEdgePropertyName] !== date ||
+            normalizeGoalScheduleMode(tmpGoal.scheduleMode) !== selectedScheduleMode
+        ) {
             const finalGoal = {
                 ...tmpGoal,
                 [rangeEdgePropertyName]: date,
-                scheduleMode:
-                    selectedMilestoneType === MILESTONE_TYPE_LINEAR
-                        ? GOAL_SCHEDULE_MODE_DYNAMIC
-                        : GOAL_SCHEDULE_MODE_FIXED,
+                scheduleMode: selectedScheduleMode,
             }
             adding ? createGoal(finalGoal) : updateGoal(finalGoal)
         }

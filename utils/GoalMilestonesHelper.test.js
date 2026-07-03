@@ -1,4 +1,9 @@
-import { getGoalMilestoneTransition } from './GoalMilestonesHelper'
+import {
+    GOAL_MILESTONES_CADENCE_MONTHLY,
+    MILESTONE_TYPE_LINEAR,
+    getDynamicMilestoneOptions,
+    getGoalMilestoneTransition,
+} from './GoalMilestonesHelper'
 
 describe('getGoalMilestoneTransition', () => {
     it('keeps Someday as the cleanup date when moving a goal to its first milestone', () => {
@@ -39,5 +44,25 @@ describe('getGoalMilestoneTransition', () => {
         expect(transition.previousCompletionMilestoneDate).toBe(milestoneDate)
         expect(transition.updatedGoal.startingMilestoneDate).toBe(someday)
         expect(transition.updatedGoal.completionMilestoneDate).toBe(someday)
+    })
+})
+
+describe('getDynamicMilestoneOptions', () => {
+    it('uses the configured number of dynamic periods even when project milestones are fixed', () => {
+        const startTimestamp = Date.UTC(2026, 6, 3, 12)
+        const options = getDynamicMilestoneOptions(
+            {
+                mode: 'manual',
+                cadence: GOAL_MILESTONES_CADENCE_MONTHLY,
+                timezone: 'UTC',
+                cadenceStartDate: startTimestamp,
+                futureMilestonesToCreate: 2,
+            },
+            startTimestamp
+        )
+
+        expect(options).toHaveLength(2)
+        expect(options.map(option => option.periodKey)).toEqual(['monthly:2026-07-01', 'monthly:2026-08-01'])
+        expect(options.every(option => option.milestoneType === MILESTONE_TYPE_LINEAR)).toBe(true)
     })
 })
