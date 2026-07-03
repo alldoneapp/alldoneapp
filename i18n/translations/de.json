@@ -1685,7 +1685,7 @@
     "The goal stays on the milestone date you set": "Das Ziel bleibt auf dem von dir festgelegten Meilensteindatum",
     "Automatic milestones": "Automatische Meilensteine",
     "Future milestones to show": "Anzuzeigende zukünftige Meilensteine",
-    "automatic_milestones_note": "Da für dieses Projekt automatische Meilensteine aktiviert sind, zeigen wir die nächsten %{count} Meilensteine automatisch an. Du kannst dies in den %{settingsLink} konfigurieren.",
+    "automatic_milestones_note": "Da für dieses Projekt dynamische Meilensteine aktiviert sind, zeigen wir die nächsten %{count} Meilensteine automatisch an. Du kannst dies in den %{settingsLink} konfigurieren.",
     "Project Settings": "Projekteinstellungen",
     "project settings": "Projekteinstellungen",
     "Public booking link": "Öffentlicher Buchungslink",
@@ -1754,5 +1754,10 @@
     "No priority": "Keine Priorität",
     "Must do": "Muss erledigt werden",
     "Should do": "Sollte erledigt werden",
-    "Could do": "Könnte erledigt werden"
+    "Could do": "Könnte erledigt werden",
+    "Do later": "Später erledigen",
+    "Apply": "Anwenden",
+    "Auto-reminder tasks": "Auto-Erinnerung für Aufgaben",
+    "Auto-reminder tasks description": "Wähle, welche der heutigen Aufgaben automatisch erinnert werden sollen. Sie werden verschoben und tauchen später wieder auf.",
+    "All today's tasks": "Alle heutigen Aufgaben"
 }

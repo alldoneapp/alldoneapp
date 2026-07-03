@@ -169,7 +169,7 @@ describe('User memory assistant tool schemas', () => {
 
     test('defines task priority and general comments for update_task', () => {
         const properties = toolSchemas.update_task.function.parameters.properties
-        expect(properties.priority.enum).toEqual(['must_do', 'should_do', 'could_do', 'none'])
+        expect(properties.priority.enum).toEqual(['must_do', 'should_do', 'could_do', 'do_later', 'none'])
         expect(properties.comment).toEqual(
             expect.objectContaining({
                 type: 'string',

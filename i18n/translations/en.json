@@ -2143,7 +2143,7 @@
     "Choose how this goal follows your linear milestones": "Choose how this goal follows your linear milestones",
     "The goal moves automatically to the current linear milestone": "The goal moves automatically to the current linear milestone",
     "The goal stays on the milestone date you set": "The goal stays on the milestone date you set",
-    "automatic_milestones_note": "Since this project has automatic milestones activated, we will show the next %{count} milestones automatically. You can configure this in the %{settingsLink}.",
+    "automatic_milestones_note": "Since this project has dynamic milestones activated, we will show the next %{count} milestones automatically. You can configure this in the %{settingsLink}.",
     "project settings": "project settings",
     "Public booking link": "Public booking link",
     "Public booking link description": "Let people book a meeting from your connected calendar availability.",
@@ -2211,5 +2211,10 @@
     "No priority": "No priority",
     "Must do": "Must do",
     "Should do": "Should do",
-    "Could do": "Could do"
+    "Could do": "Could do",
+    "Do later": "Do later",
+    "Apply": "Apply",
+    "Auto-reminder tasks": "Auto-reminder tasks",
+    "Auto-reminder tasks description": "Pick which of today's tasks to auto-remind. They'll be postponed and come back later.",
+    "All today's tasks": "All today's tasks"
 }

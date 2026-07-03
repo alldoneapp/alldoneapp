@@ -269,7 +269,7 @@ async function createNewRecurringTask(projectId, originalTask, nextDate) {
     console.log('🔍 ORIGINAL TASK NAME:', originalTask.name)
     console.log('🔍 ORIGINAL TASK EXTENDED NAME:', originalTask.extendedName)
     const newTaskData = cloneDeep(originalTask)
-    newTaskData.priority = ['must_do', 'should_do', 'could_do', 'none'].includes(newTaskData.priority)
+    newTaskData.priority = ['must_do', 'should_do', 'could_do', 'do_later', 'none'].includes(newTaskData.priority)
         ? newTaskData.priority
         : 'none'
     console.log('✅ Task data cloned')
@@ -475,7 +475,7 @@ async function createSubtasksCopiesInCloudFunction(projectId, newParentTaskId, o
 
             const newSubtask = {
                 ...originalSubtask,
-                priority: ['must_do', 'should_do', 'could_do', 'none'].includes(originalSubtask.priority)
+                priority: ['must_do', 'should_do', 'could_do', 'do_later', 'none'].includes(originalSubtask.priority)
                     ? originalSubtask.priority
                     : 'none',
                 id: newSubtaskId,

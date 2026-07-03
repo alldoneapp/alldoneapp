@@ -115,6 +115,61 @@ describe('TaskCommentService', () => {
         expect(batch.commit).toHaveBeenCalled()
     })
 
+    test('silent comments write the comment/chat metadata but skip follower notifications', async () => {
+        const refs = new Map()
+        const taskData = {
+            id: 'task-1',
+            name: 'Launch',
+            extendedName: 'Launch',
+            userId: 'user-1',
+            creatorId: 'user-1',
+            created: 1,
+            isPublicFor: [0, 'user-1'],
+            commentsData: { amount: 2 },
+        }
+        const getSnapshot = path => {
+            if (path === 'items/project-1/tasks/task-1') return { exists: true, data: () => taskData }
+            if (path === 'projects/project-1') return { exists: true, data: () => ({ name: 'Product' }) }
+            if (path === 'followers/project-1/tasks/task-1') {
+                return { exists: true, data: () => ({ usersFollowing: ['user-2'] }) }
+            }
+            return { exists: false, data: () => ({}) }
+        }
+        const doc = jest.fn(path => {
+            if (!refs.has(path)) refs.set(path, { path, get: jest.fn(() => Promise.resolve(getSnapshot(path))) })
+            return refs.get(path)
+        })
+        const transaction = { get: jest.fn(ref => ref.get()), set: jest.fn(), update: jest.fn() }
+        const batch = { set: jest.fn(), commit: jest.fn(() => Promise.resolve()) }
+        const database = {
+            doc,
+            runTransaction: jest.fn(callback => callback(transaction)),
+            batch: jest.fn(() => batch),
+        }
+        const service = new TaskCommentService({ database })
+
+        const result = await service.addComment({
+            projectId: 'project-1',
+            taskId: 'task-1',
+            task: taskData,
+            comment: 'This blocks the launch.',
+            actor: { uid: 'assistant-1', displayName: 'Anna' },
+            fromAssistant: true,
+            silent: true,
+        })
+
+        // The comment itself (the feed/chat entry) is still written inside the transaction.
+        expect(transaction.set).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'chatComments/project-1/tasks/task-1/comments/comment-1' }),
+            expect.objectContaining({ commentText: 'This blocks the launch.', fromAssistant: true })
+        )
+        // But no unread markers / push / email are created.
+        expect(database.batch).not.toHaveBeenCalled()
+        expect(batch.set).not.toHaveBeenCalled()
+        expect(batch.commit).not.toHaveBeenCalled()
+        expect(result).toEqual(expect.objectContaining({ success: true, silent: true, notifiedFollowers: 0 }))
+    })
+
     test('attributes assistant-less comments to the authenticated user', async () => {
         const refs = new Map()
         const taskData = {

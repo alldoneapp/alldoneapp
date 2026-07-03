@@ -167,7 +167,7 @@ function validateOptionalFields(params) {
     }
 
     if (priority !== undefined && priority !== null) {
-        const validPriorities = ['none', 'could_do', 'should_do', 'must_do']
+        const validPriorities = ['none', 'do_later', 'could_do', 'should_do', 'must_do']
         if (!validPriorities.includes(priority)) {
             throw new Error(`Invalid priority: ${priority}. Must be one of: ${validPriorities.join(', ')}`)
         }

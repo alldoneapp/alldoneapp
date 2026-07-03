@@ -84,6 +84,20 @@ describe('TaskUpdateService comments', () => {
         expect(result.message).toContain('Comment added')
     })
 
+    test('forwards silentComment so update_task comments do not mark threads unread', async () => {
+        const service = createService()
+        await service.findAndUpdateTask(
+            'user-1',
+            { taskId: 'task-1' },
+            { taskId: 'task-1', comment: 'Silent context' },
+            { feedUser: { uid: 'assistant-1' }, commentFromAssistant: true, silentComment: true }
+        )
+
+        expect(service.taskCommentService.addComment).toHaveBeenCalledWith(
+            expect.objectContaining({ comment: 'Silent context', fromAssistant: true, silent: true })
+        )
+    })
+
     test('supports a priority update with an explanatory comment found by task name', async () => {
         const service = createService()
         service.taskService.updateAndPersistTask.mockResolvedValue({
@@ -135,6 +149,9 @@ describe('TaskUpdateService comments', () => {
         const service = createService()
         await expect(
             service.findAndUpdateTask('user-1', { taskId: 'task-1' }, { priority: 'must_do' })
+        ).rejects.toThrow('comment is required')
+        await expect(
+            service.findAndUpdateTask('user-1', { taskId: 'task-1' }, { priority: 'do_later' })
         ).rejects.toThrow('comment is required')
     })
 

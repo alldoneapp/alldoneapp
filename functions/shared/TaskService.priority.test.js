@@ -30,6 +30,19 @@ describe('TaskService priority updates', () => {
         expect(cleared.changes).toContain('priority cleared')
     })
 
+    test('accepts the do_later priority', async () => {
+        const currentTask = { id: 'task-1', name: 'Launch', priority: 'none', userId: 'user-1' }
+        const deferred = await taskService.updateTask({
+            taskId: 'task-1',
+            projectId: 'project-1',
+            currentTask,
+            priority: 'do_later',
+        })
+
+        expect(deferred.updateData.priority).toBe('do_later')
+        expect(deferred.changes).toContain('priority to "do_later"')
+    })
+
     test('rejects unsupported priority values', async () => {
         await expect(
             taskService.updateTask({

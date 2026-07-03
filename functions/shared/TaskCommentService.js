@@ -26,7 +26,7 @@ class TaskCommentService {
         this.database = database || admin.firestore()
     }
 
-    async addComment({ projectId, taskId, task = null, comment, actor, fromAssistant = false }) {
+    async addComment({ projectId, taskId, task = null, comment, actor, fromAssistant = false, silent = false }) {
         if (!projectId || !taskId) throw new Error('Project ID and task ID are required to add a comment')
 
         const commentText = normalizeTaskComment(comment)
@@ -130,17 +130,23 @@ class TaskCommentService {
             }
         })
 
+        // A silent comment still writes the comment + task/chat metadata above, so it shows
+        // up as a normal entry in the task's feed/chat history. It only skips notifyFollowers,
+        // which is the sole source of the chatNotifications unread markers (plus push/email).
+        // This keeps assistant-authored update_task comments from marking threads as unread.
         let notificationError = null
-        try {
-            await this.notifyFollowers({ projectId, taskId, ...notificationData, fromAssistant })
-        } catch (error) {
-            notificationError = error.message
-            console.error('TaskCommentService: Comment saved but follower notification failed', {
-                projectId,
-                taskId,
-                commentId,
-                error: error.message,
-            })
+        if (!silent) {
+            try {
+                await this.notifyFollowers({ projectId, taskId, ...notificationData, fromAssistant })
+            } catch (error) {
+                notificationError = error.message
+                console.error('TaskCommentService: Comment saved but follower notification failed', {
+                    projectId,
+                    taskId,
+                    commentId,
+                    error: error.message,
+                })
+            }
         }
 
         return {
@@ -149,7 +155,8 @@ class TaskCommentService {
             commentText,
             creatorId: actorId,
             fromAssistant: !!fromAssistant,
-            notifiedFollowers: notificationData?.followers?.length || 0,
+            silent: !!silent,
+            notifiedFollowers: silent ? 0 : notificationData?.followers?.length || 0,
             notificationError,
         }
     }

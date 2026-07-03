@@ -176,6 +176,7 @@ class TaskUpdateService {
                     comment: normalizedUpdateFields.comment,
                     feedUser,
                     fromAssistant: !!options.commentFromAssistant,
+                    silent: !!options.silentComment,
                 })
                 updateResult.message = updateResult.changes?.length
                     ? `${updateResult.message}; comment added`
@@ -386,6 +387,7 @@ class TaskUpdateService {
                             comment: updateFields.comment,
                             feedUser,
                             fromAssistant: !!options.commentFromAssistant,
+                            silent: !!options.silentComment,
                         })
                     } catch (commentError) {
                         if (!updateResult.changes || updateResult.changes.length === 0) {
@@ -454,14 +456,17 @@ class TaskUpdateService {
             normalizedFields.comment = normalizedComment
         }
 
-        if (['must_do', 'should_do', 'could_do'].includes(normalizedFields.priority) && !normalizedComment) {
+        if (
+            ['must_do', 'should_do', 'could_do', 'do_later'].includes(normalizedFields.priority) &&
+            !normalizedComment
+        ) {
             throw new Error('A non-empty comment is required when assigning a task priority')
         }
 
         return normalizedFields
     }
 
-    async addTaskComment({ projectId, task, comment, feedUser, fromAssistant }) {
+    async addTaskComment({ projectId, task, comment, feedUser, fromAssistant, silent }) {
         if (!this.taskCommentService) {
             const { TaskCommentService } = require('./TaskCommentService')
             this.taskCommentService = new TaskCommentService({ database: this.options.database })
@@ -474,6 +479,7 @@ class TaskUpdateService {
             comment,
             actor: feedUser,
             fromAssistant,
+            silent,
         })
     }
 

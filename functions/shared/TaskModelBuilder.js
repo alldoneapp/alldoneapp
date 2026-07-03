@@ -13,7 +13,7 @@
 // Constants - these MUST match the constants in Utils/HelperFunctionsCloud.js
 const OPEN_STEP = 'Open'
 const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsCloud.js
-const TASK_PRIORITIES = new Set(['none', 'could_do', 'should_do', 'must_do'])
+const TASK_PRIORITIES = new Set(['none', 'do_later', 'could_do', 'should_do', 'must_do'])
 
 /**
  * Builds a complete task object with all required fields

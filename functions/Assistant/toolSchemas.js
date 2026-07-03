@@ -538,7 +538,7 @@ const toolSchemas = {
         function: {
             name: 'update_task',
             description:
-                'Updates an existing task or multiple tasks at once, and can add a visible comment to the task thread either by itself or together with another update. Use this when the user wants to mark a task as done/complete, set or clear the current focus task, rename, update, set reminders/alerts, set or disable recurrence, set time estimations, set priority, move a task to another project, or comment on a task. IMPORTANT: For requests like "set this task in focus", "make this my focus task", or German "in den Fokus setzen", call update_task with focus=true and do not set completed=true unless the user explicitly asks to finish/complete the task. Setting priority to must_do, should_do, or could_do requires a non-empty comment explaining the choice. Can search by taskId, taskName, or projectName. Supports bulk updates for today and overdue tasks only (max 100 tasks); the same comment is added to each successfully updated task.',
+                'Updates an existing task or multiple tasks at once, and can add a visible comment to the task thread either by itself or together with another update. Use this when the user wants to mark a task as done/complete, set or clear the current focus task, rename, update, set reminders/alerts, set or disable recurrence, set time estimations, set priority, move a task to another project, or comment on a task. IMPORTANT: For requests like "set this task in focus", "make this my focus task", or German "in den Fokus setzen", call update_task with focus=true and do not set completed=true unless the user explicitly asks to finish/complete the task. Setting priority to must_do, should_do, could_do, or do_later requires a non-empty comment explaining the choice. Can search by taskId, taskName, or projectName. Supports bulk updates for today and overdue tasks only (max 100 tasks); the same comment is added to each successfully updated task.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -630,9 +630,9 @@ const toolSchemas = {
                     },
                     priority: {
                         type: 'string',
-                        enum: ['must_do', 'should_do', 'could_do', 'none'],
+                        enum: ['must_do', 'should_do', 'could_do', 'do_later', 'none'],
                         description:
-                            'Set task priority. must_do sorts before should_do, then could_do, then none. A non-empty comment is required when assigning must_do, should_do, or could_do. Use none to clear priority.',
+                            'Set task priority. must_do sorts before should_do, then could_do, then do_later, then none. A non-empty comment is required when assigning must_do, should_do, could_do, or do_later (not for none). Use do_later for low-priority tasks to get to later, or none to clear priority.',
                     },
                     comment: {
                         type: 'string',
@@ -1248,7 +1248,7 @@ const toolSchemas = {
                     latitude: {
                         type: 'number',
                         description:
-                            'Latitude of the point to search around, in decimal degrees (e.g. 51.4975 for near Buckingham Palace, London). Use the user\'s shared location when available.',
+                            "Latitude of the point to search around, in decimal degrees (e.g. 51.4975 for near Buckingham Palace, London). Use the user's shared location when available.",
                     },
                     longitude: {
                         type: 'number',

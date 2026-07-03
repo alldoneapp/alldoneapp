@@ -1,10 +1,12 @@
 export const TASK_PRIORITY_NONE = 'none'
+export const TASK_PRIORITY_DO_LATER = 'do_later'
 export const TASK_PRIORITY_COULD_DO = 'could_do'
 export const TASK_PRIORITY_SHOULD_DO = 'should_do'
 export const TASK_PRIORITY_MUST_DO = 'must_do'
 
 export const TASK_PRIORITIES = [
     TASK_PRIORITY_NONE,
+    TASK_PRIORITY_DO_LATER,
     TASK_PRIORITY_COULD_DO,
     TASK_PRIORITY_SHOULD_DO,
     TASK_PRIORITY_MUST_DO,
@@ -12,13 +14,15 @@ export const TASK_PRIORITIES = [
 
 const TASK_PRIORITY_RANK = {
     [TASK_PRIORITY_NONE]: 0,
-    [TASK_PRIORITY_COULD_DO]: 1,
-    [TASK_PRIORITY_SHOULD_DO]: 2,
-    [TASK_PRIORITY_MUST_DO]: 3,
+    [TASK_PRIORITY_DO_LATER]: 1,
+    [TASK_PRIORITY_COULD_DO]: 2,
+    [TASK_PRIORITY_SHOULD_DO]: 3,
+    [TASK_PRIORITY_MUST_DO]: 4,
 }
 
 const TASK_PRIORITY_LABEL = {
     [TASK_PRIORITY_NONE]: 'No priority',
+    [TASK_PRIORITY_DO_LATER]: 'Do later',
     [TASK_PRIORITY_COULD_DO]: 'Could do',
     [TASK_PRIORITY_SHOULD_DO]: 'Should do',
     [TASK_PRIORITY_MUST_DO]: 'Must do',

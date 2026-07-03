@@ -11,6 +11,7 @@ import useWindowSize from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
 import {
     TASK_PRIORITY_COULD_DO,
+    TASK_PRIORITY_DO_LATER,
     TASK_PRIORITY_MUST_DO,
     TASK_PRIORITY_NONE,
     TASK_PRIORITY_SHOULD_DO,
@@ -19,7 +20,13 @@ import {
 } from '../../../../utils/TaskPriority'
 import { getTaskPriorityColors } from '../../../TaskListView/Utils/TaskPriorityPresentation'
 
-const PRIORITY_OPTIONS = [TASK_PRIORITY_MUST_DO, TASK_PRIORITY_SHOULD_DO, TASK_PRIORITY_COULD_DO, TASK_PRIORITY_NONE]
+const PRIORITY_OPTIONS = [
+    TASK_PRIORITY_MUST_DO,
+    TASK_PRIORITY_SHOULD_DO,
+    TASK_PRIORITY_COULD_DO,
+    TASK_PRIORITY_DO_LATER,
+    TASK_PRIORITY_NONE,
+]
 
 export default function TaskPriorityModal({ priority, setPriority, closeModal }) {
     const [, height] = useWindowSize()

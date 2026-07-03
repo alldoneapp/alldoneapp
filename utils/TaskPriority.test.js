@@ -5,6 +5,7 @@ describe('TaskPriority', () => {
         expect(normalizeTaskPriority()).toBe(TASK_PRIORITY_NONE)
         expect(normalizeTaskPriority('urgent')).toBe(TASK_PRIORITY_NONE)
         expect(normalizeTaskPriority('must_do')).toBe('must_do')
+        expect(normalizeTaskPriority('do_later')).toBe('do_later')
     })
 
     test('sorts by priority while preserving order inside each tier', () => {
@@ -13,15 +14,18 @@ describe('TaskPriority', () => {
             { id: 'should-1', priority: 'should_do' },
             { id: 'must-1', priority: 'must_do' },
             { id: 'could-1', priority: 'could_do' },
+            { id: 'later-1', priority: 'do_later' },
             { id: 'must-2', priority: 'must_do' },
             { id: 'none-2', priority: 'none' },
         ]
 
+        // do_later ranks below could_do but above none.
         expect(sortTasksByPriority(tasks).map(task => task.id)).toEqual([
             'must-1',
             'must-2',
             'should-1',
             'could-1',
+            'later-1',
             'none-1',
             'none-2',
         ])

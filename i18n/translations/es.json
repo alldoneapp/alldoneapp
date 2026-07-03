@@ -2112,7 +2112,7 @@
     "The goal stays on the milestone date you set": "El objetivo permanece en la fecha del hito que estableciste",
     "Automatic milestones": "Hitos automáticos",
     "Future milestones to show": "Hitos futuros a mostrar",
-    "automatic_milestones_note": "Como este proyecto tiene los hitos automáticos activados, mostraremos los próximos %{count} hitos automáticamente. Puedes configurarlo en los %{settingsLink}.",
+    "automatic_milestones_note": "Como este proyecto tiene los hitos dinámicos activados, mostraremos los próximos %{count} hitos automáticamente. Puedes configurarlo en los %{settingsLink}.",
     "project settings": "ajustes del proyecto",
     "Public booking link": "Enlace público de reserva",
     "Public booking link description": "Permite que otras personas reserven una reunión según la disponibilidad de tu calendario conectado.",
@@ -2180,5 +2180,10 @@
     "No priority": "Sin prioridad",
     "Must do": "Debe hacerse",
     "Should do": "Debería hacerse",
-    "Could do": "Podría hacerse"
+    "Could do": "Podría hacerse",
+    "Do later": "Hacer más tarde",
+    "Apply": "Aplicar",
+    "Auto-reminder tasks": "Auto-recordatorio de tareas",
+    "Auto-reminder tasks description": "Elige qué tareas de hoy quieres auto-recordar. Se pospondrán y volverán a aparecer más tarde.",
+    "All today's tasks": "Todas las tareas de hoy"
 }

@@ -664,7 +664,7 @@ function mapAssistantTaskForToolResponse(task, requestingUserId = '') {
         dueDate: Number.isFinite(dueDate) ? dueDate : null,
         humanReadableId: task?.humanReadableId || null,
         sortIndex: task?.sortIndex || 0,
-        priority: ['must_do', 'should_do', 'could_do'].includes(task?.priority) ? task.priority : 'none',
+        priority: ['must_do', 'should_do', 'could_do', 'do_later'].includes(task?.priority) ? task.priority : 'none',
         parentGoal: task?.parentGoal || null,
         calendarTime: task?.calendarTime || null,
         comments,
@@ -5615,6 +5615,10 @@ async function executeToolNatively(
                         updateAll: toolArgs.updateAll || false, // Enable bulk update if requested
                         feedUser,
                         commentFromAssistant: !!assistantId,
+                        // Comments written via update_task should show up in the task's feed/chat
+                        // history but must not mark the thread/comments as unread (no unread badge,
+                        // push, or email). See TaskCommentService.addComment's `silent` handling.
+                        silentComment: true,
                     }
                 )
 
@@ -7491,7 +7495,8 @@ async function executeToolNatively(
             if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
                 return {
                     success: false,
-                    error: 'Coordinates are out of range. Latitude must be between -90 and 90 and longitude between -180 and 180.',
+                    error:
+                        'Coordinates are out of range. Latitude must be between -90 and 90 and longitude between -180 and 180.',
                 }
             }
 
@@ -7715,8 +7720,7 @@ async function executeToolNatively(
                                     entry.reviews = normalizeReviews(detail.reviews, maxReviews)
                                 }
                                 if (needSummary) {
-                                    entry.editorial_summary =
-                                        entry.editorial_summary || extractEditorialSummary(detail)
+                                    entry.editorial_summary = entry.editorial_summary || extractEditorialSummary(detail)
                                     entry.review_summary = entry.review_summary || extractReviewSummary(detail)
                                 }
                             } catch (detailError) {
