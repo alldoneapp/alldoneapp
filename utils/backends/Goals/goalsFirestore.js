@@ -78,6 +78,7 @@ import {
     MILESTONE_TYPE_LINEAR,
     getLinearMilestonePeriods,
     getLinearMilestoneTitle,
+    getGoalMilestoneTransition,
     normalizeGoalMilestonesConfig,
     normalizeGoalScheduleMode,
     normalizeMilestoneType,
@@ -906,6 +907,7 @@ export async function updateGoalDateRange(
 
 async function updateGoalDates(projectId, goal, newDate, datesData, needToUpdateGoal, needToHandleMilestoneExistence) {
     const promises = []
+    const { updatedGoal, previousCompletionMilestoneDate } = getGoalMilestoneTransition(goal, datesData)
     if (needToUpdateGoal) {
         promises.push(
             updateGoalData(
@@ -924,8 +926,15 @@ async function updateGoalDates(projectId, goal, newDate, datesData, needToUpdate
         )
     }
     if (needToHandleMilestoneExistence)
-        promises.push(handleMilestonesExistenceWhenAGoalDateRangeChanges(projectId, { ...goal, ...datesData }, newDate))
-    promises.push(updateAllOpenGoalSortIndexs(projectId, { ...goal, ...datesData }, false))
+        promises.push(
+            handleMilestonesExistenceWhenAGoalDateRangeChanges(
+                projectId,
+                updatedGoal,
+                newDate,
+                previousCompletionMilestoneDate
+            )
+        )
+    promises.push(updateAllOpenGoalSortIndexs(projectId, updatedGoal, false))
     await Promise.all(promises)
 }
 
@@ -1336,7 +1345,12 @@ export async function moveCompletedGoalInBacklogToDone(projectId, goal) {
     updateGoalSortIndexes(projectId, goal.id, milestone.id)
 }
 
-async function handleMilestonesExistenceWhenAGoalDateRangeChanges(projectId, goal, newDate) {
+async function handleMilestonesExistenceWhenAGoalDateRangeChanges(
+    projectId,
+    goal,
+    newDate,
+    previousCompletionMilestoneDate
+) {
     const promises = []
     if (newDate !== BACKLOG_DATE_NUMERIC) {
         if (goal.scheduleMode === GOAL_SCHEDULE_MODE_DYNAMIC) {
@@ -1346,7 +1360,7 @@ async function handleMilestonesExistenceWhenAGoalDateRangeChanges(projectId, goa
             promises.push(uploadOpenNewMilestoneIfNotExistMilestoneInSameDate(projectId, newDate, goal.ownerId))
         }
     }
-    promises.push(deleteOpenMilestoneIfIsEmpty(projectId, goal.completionMilestoneDate, [goal.id], goal.ownerId))
+    promises.push(deleteOpenMilestoneIfIsEmpty(projectId, previousCompletionMilestoneDate, [goal.id], goal.ownerId))
     await Promise.all(promises)
 }
 

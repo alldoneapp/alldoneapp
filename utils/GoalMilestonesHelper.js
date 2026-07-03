@@ -64,6 +64,13 @@ export function normalizeMilestoneType(milestoneType) {
     return milestoneType === MILESTONE_TYPE_LINEAR ? MILESTONE_TYPE_LINEAR : MILESTONE_TYPE_FIXED
 }
 
+export function getGoalMilestoneTransition(goal, datesData) {
+    return {
+        updatedGoal: { ...goal, ...datesData },
+        previousCompletionMilestoneDate: goal.completionMilestoneDate,
+    }
+}
+
 function getPeriodStartForTimestamp(timestamp, config) {
     const normalizedConfig = normalizeGoalMilestonesConfig(config)
     const date = moment.tz(timestamp, normalizedConfig.timezone)
