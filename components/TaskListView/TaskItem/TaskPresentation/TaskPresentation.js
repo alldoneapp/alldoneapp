@@ -32,6 +32,7 @@ import AlertTag from '../../../Tags/AlertTag'
 import TranscribeTag from '../../../Tags/TranscribeTag'
 import TaskTagsContainerByTime from './TaskTagsContainerByTime'
 import TaskTagsContainer from './TaskTagsContainer'
+import TaskPriorityTagButton from '../../TaskPriorityTagButton'
 
 function TaskPresentation(
     {
@@ -217,6 +218,20 @@ function TaskPresentation(
 
     const isLocked = objectIsLockedForUser(projectId, unlockedKeysByGuides, task.lockKey, task.userId)
 
+    // Priority chip is now shown at the START of the task row (like a calendar task's time) instead
+    // of in the trailing tags. Built once here so the regular view (in the title via leftCustomElement)
+    // and the My Day by-time view (in the left time area) share the same clickable element + disabled
+    // rule. Renders null for tasks without a priority.
+    const priorityTagDisabled = isActiveOrganizeMode || isLocked || !accessGranted || isSuggested || isPending
+    const leadingPriorityTag = (
+        <TaskPriorityTagButton
+            task={task}
+            projectId={projectId}
+            disabled={priorityTagDisabled}
+            style={{ marginRight: 8 }}
+        />
+    )
+
     return (
         <View style={isLocked && !inParentGoal && localStyles.blurry}>
             <SwipeAreasContainer
@@ -318,6 +333,7 @@ function TaskPresentation(
                                     blockOpen={blockOpen}
                                     tagsExpandedHeight={tagsExpandedHeight}
                                     showVerticalEllipsisInByTime={inMyDayAndNotSubtask && showVerticalEllipsis}
+                                    leadingPriorityTag={leadingPriorityTag}
                                 />
                             </View>
                             {inMyDayAndNotSubtask && (
@@ -341,6 +357,7 @@ function TaskPresentation(
                                     toggleModal={toggleModal}
                                     blockOpen={blockOpen}
                                     onAlertTagPress={onLeftSwipe}
+                                    leadingPriorityTag={leadingPriorityTag}
                                 />
                             )}
                             {!inMyDayAndNotSubtask && (

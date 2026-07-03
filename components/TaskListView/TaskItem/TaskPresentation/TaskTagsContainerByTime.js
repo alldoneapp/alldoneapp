@@ -28,6 +28,7 @@ export default function TaskTagsContainerByTime({
     setTagsExpandedHeight,
     toggleModal,
     blockOpen,
+    leadingPriorityTag,
 }) {
     const [showSummarizeTag, setShowSummarizeTag] = useState(false)
     const [widthInFullArea, setWidthInFullArea] = useState(0)
@@ -74,7 +75,7 @@ export default function TaskTagsContainerByTime({
                     style={localStyles.innerTaskTags}
                     nativeID={`social_tags_${projectId}_${task.id}`}
                 >
-                    <View onLayout={onLayoutInLeftArea}>
+                    <View onLayout={onLayoutInLeftArea} style={localStyles.leftArea}>
                         {task && task.time && !task.calendarData && (
                             <TimeTagWrapper projectId={projectId} task={task} />
                         )}
@@ -82,6 +83,7 @@ export default function TaskTagsContainerByTime({
                             <CalendarTag calendarData={task.calendarData} containerStyle={{ marginRight: 8 }} />
                         )}
                         {!inOpenSection && task && task.completedTime && <CompletedTimeTag task={task} />}
+                        {leadingPriorityTag}
                     </View>
                     <View onLayout={onLayoutInRightArea} style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <TaskItemTags
@@ -146,6 +148,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         width: '100%',
+    },
+    leftArea: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     innerSubtasksTags: {
         marginTop: 6,

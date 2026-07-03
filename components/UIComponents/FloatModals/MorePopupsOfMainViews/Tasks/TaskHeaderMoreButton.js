@@ -6,9 +6,11 @@ import CopyLinkModalItem from '../../MorePopupsOfEditModals/Common/CopyLinkModal
 import ModalItem from '../../MorePopupsOfEditModals/Common/ModalItem'
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
 import SyncCalendarModalItem from './SyncCalendarModalItem'
+import DateBarOrganizeModalItem from './DateBarOrganizeModalItem'
 import { checkIfSelectedAllProjects } from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import OKRModal from '../../../../TaskListView/OKRs/OKRModal'
 import AutoReminderTasksModal from '../../../../TaskListView/AutoReminder/AutoReminderTasksModal'
+import { DATE_TASK_INDEX, TODAY_DATE } from '../../../../../utils/backends/openTasks'
 
 export default function TaskHeaderMoreButton({
     projectIdOverride,
@@ -30,6 +32,17 @@ export default function TaskHeaderMoreButton({
     })
     const projectId = projectIdOverride || selectedProjectId
     const projectOKRs = useSelector(state => (projectId ? state.okrsByProjectInTasks[projectId] || [] : []))
+    // Organize / Select all act on the "Today" section of this project's task list. The date-section
+    // store is keyed by `projectId + userId` and each section carries its own date string, so we find
+    // the index of the section whose date is TODAY_DATE. -1 means the list isn't loaded yet / no today
+    // section, in which case we don't offer the items.
+    const instanceKey = projectId && userId ? `${projectId}${userId}` : null
+    const todayDateIndex = useSelector(state => {
+        if (!instanceKey) return -1
+        const dateSections = state.filteredOpenTasksStore[instanceKey]
+        if (!dateSections) return -1
+        return dateSections.findIndex(section => section[DATE_TASK_INDEX] === TODAY_DATE)
+    })
     const [showAddOKR, setShowAddOKR] = useState(false)
     const [showAutoReminder, setShowAutoReminder] = useState(false)
     const modalRef = useRef()
@@ -38,6 +51,7 @@ export default function TaskHeaderMoreButton({
 
     const inSelectedProject = !!projectId
     const showAddOKRItem = !!projectId && projectOKRs.length === 0
+    const showOrganizeItems = inSelectedProject && todayDateIndex >= 0
 
     const link = inSelectedProject
         ? `${window.location.origin}/projects/${projectId}/user/${userId}/tasks/open`
@@ -114,11 +128,44 @@ export default function TaskHeaderMoreButton({
     const renderItems = () => {
         const list = []
 
+        if (showOrganizeItems) {
+            list.push(shortcut => {
+                return (
+                    <DateBarOrganizeModalItem
+                        key={'gmbtn-organize'}
+                        icon={'multi-selection'}
+                        text={'Organize'}
+                        shortcut={shortcut}
+                        onPress={dismissModal}
+                        projectId={projectId}
+                        dateIndex={todayDateIndex}
+                        instanceKey={instanceKey}
+                    />
+                )
+            })
+
+            list.push(shortcut => {
+                return (
+                    <DateBarOrganizeModalItem
+                        key={'gmbtn-select-all'}
+                        icon={'multi-selection-selected'}
+                        text={'Select all'}
+                        shortcut={shortcut}
+                        onPress={dismissModal}
+                        projectId={projectId}
+                        dateIndex={todayDateIndex}
+                        instanceKey={instanceKey}
+                        selectTasks={true}
+                    />
+                )
+            })
+        }
+
         list.push(shortcut => {
             return (
                 <ModalItem
                     key={'gmbtn-auto-reminder'}
-                    icon={'bell'}
+                    icon={'coffee'}
                     text={'Auto-reminder tasks'}
                     shortcut={shortcut}
                     onPress={openAutoReminder}

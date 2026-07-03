@@ -25,6 +25,7 @@ export default function TitleContainer({
     blockOpen,
     tagsExpandedHeight,
     showVerticalEllipsisInByTime,
+    leadingPriorityTag,
 }) {
     const gmailTag = isGmailLabelFollowUpTask(task) ? (
         <TouchableOpacity
@@ -37,6 +38,15 @@ export default function TitleContainer({
             <Text style={[styles.subtitle2, localStyles.gmailTagText]}>Email</Text>
         </TouchableOpacity>
     ) : null
+
+    // In the by-time view the priority chip is rendered in the left time area
+    // (TaskTagsContainerByTime); here it leads the title so it sits next to the calendar tag.
+    const leftCustomElement = (
+        <>
+            {!inMyDayAndNotSubtask && leadingPriorityTag}
+            {gmailTag}
+        </>
+    )
 
     return (
         <View
@@ -63,7 +73,7 @@ export default function TitleContainer({
                 bgColor={hasStar ? backColorHighlight : backColor}
                 projectId={projectId}
                 blockOpen={blockOpen}
-                leftCustomElement={gmailTag}
+                leftCustomElement={leftCustomElement}
                 activeCalendarStyle={inMyDayAndNotSubtask}
                 tagsExpandedHeight={tagsExpandedHeight}
                 isObservedTask={isObservedTask}

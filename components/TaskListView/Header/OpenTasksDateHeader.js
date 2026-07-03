@@ -7,7 +7,6 @@ import styles, { colors } from '../../styles/global'
 import { getDateFormat } from '../../UIComponents/FloatModals/DateFormatPickerModal'
 import { BACKLOG_DATE_STRING } from '../Utils/TasksHelper'
 import Icon from '../../Icon'
-import TaskDateBarMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskDateBarMoreButton'
 import { translate } from '../../../i18n/TranslationService'
 import { generateDateHeaderText } from '../../../utils/EstimationHelper'
 import {
@@ -16,11 +15,8 @@ import {
     ESTIMATION_TASKS_INDEX,
     TODAY_DATE,
 } from '../../../utils/backends/openTasks'
-import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 
-export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex, accessGranted }) {
-    const loggedUserId = useSelector(state => state.loggedUser.uid)
-    const currentUserId = useSelector(state => state.currentUser.uid)
+export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex }) {
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const amountTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][AMOUNT_TASKS_INDEX])
     const estimation = useSelector(
@@ -61,10 +57,6 @@ export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex,
 
     const text = generateDateHeaderText(projectId, upperCaseDateText, dayName, estimation, amountTasks)
 
-    const loggedUserIsBoardOwner = loggedUserId === currentUserId
-    const loggedUserCanUpdateObject =
-        loggedUserIsBoardOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
-
     return (
         <View style={[localStyles.container, isMainDay ? localStyles.containerToday : undefined]}>
             <View style={[localStyles.innerContainer, inBacklog && localStyles.inBacklogIContainer]}>
@@ -78,9 +70,6 @@ export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex,
                         {text}
                     </Text>
                 </View>
-                {accessGranted && loggedUserCanUpdateObject && (
-                    <TaskDateBarMoreButton projectId={projectId} dateIndex={dateIndex} instanceKey={instanceKey} />
-                )}
             </View>
         </View>
     )
