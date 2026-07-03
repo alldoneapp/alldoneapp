@@ -5,9 +5,12 @@ const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 
 const { OPEN_STEP } = require('../Utils/HelperFunctionsCloud')
 const { mapTaskData } = require('../Utils/MapDataFuncions')
+const { updateStatistics } = require('../Utils/statisticsHelper')
 const { isEqual } = require('lodash')
 const { getUserData } = require('../Users/usersFirestore')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+
+const FIRESTORE_IN_QUERY_MAX_IDS = 30
 
 const generateTask = (customData, uid) => {
     return {
@@ -115,8 +118,6 @@ const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOf
         endDate = moment(end.dateTime)
     }
 
-    const MINUTES_IN_8_HOURS = 480
-
     const calendarData = { link: htmlLink, start, end, email, provider: event.provider || 'google' }
 
     // Store the original project ID if this is a new task
@@ -130,7 +131,7 @@ const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOf
         extendedName: name,
         description: description || '',
         estimations: {
-            [OPEN_STEP]: isAllDay ? MINUTES_IN_8_HOURS : endDate.diff(startDate, 'minutes'),
+            [OPEN_STEP]: isAllDay ? 0 : endDate.diff(startDate, 'minutes'),
         },
     }
 
@@ -293,7 +294,19 @@ const addOrUpdateCalendarTask = async (
 
         // Otherwise, just update in-place when needed (and keep pinning if present)
         if (checkIfNeedToUpdateTask(task, dataToUpdate)) {
-            await admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`).update(dataToUpdate)
+            const taskRef = admin.firestore().doc(`items/${task.projectId}/tasks/${taskId}`)
+            const oldEstimation = Number(task.estimations?.[OPEN_STEP] || 0)
+            const newEstimation = Number(dataToUpdate.estimations?.[OPEN_STEP] || 0)
+
+            if (task.done && task.completed && oldEstimation !== newEstimation) {
+                const batch = new BatchWrapper(admin.firestore())
+                batch.update(taskRef, dataToUpdate)
+                await updateStatistics(task.projectId, task.userId, oldEstimation, true, true, task.completed, batch)
+                await updateStatistics(task.projectId, task.userId, newEstimation, false, true, task.completed, batch)
+                await batch.commit()
+            } else {
+                await taskRef.update(dataToUpdate)
+            }
         }
         await addCalendarRoutingCommentIfNeeded({
             userData,
@@ -339,12 +352,14 @@ const addCalendarEvents = async (
         return
     }
 
+    const filteredEvents = filterEvents(events, email)
+    const eventIds = filteredEvents.map(event => event.id).filter(Boolean)
+
     // Search across ALL user projects to find existing calendar tasks
-    // This prevents duplicates when users manually move tasks between projects
-    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, true, timezoneOffset)
+    // This prevents duplicates when users manually move or previously complete tasks.
+    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, eventIds)
     const tasksMap = createTasksMap(tasks)
 
-    const filteredEvents = filterEvents(events, email)
     console.log(
         `[addCalendarEvents] Processing ${filteredEvents.length}/${events.length} events (${
             events.length - filteredEvents.length
@@ -402,31 +417,41 @@ const getTasksBaseQuery = (projectId, userId, done) => {
         .where('done', '==', done)
 }
 
-const getTodayDoneCalendarTasksInProject = async (projectId, userId, timezoneOffset = 0) => {
-    const startOfToday = moment().utcOffset(timezoneOffset).startOf('day').valueOf()
-    const tasksDocs = await getTasksBaseQuery(projectId, userId, true).where('completed', '>=', startOfToday).get()
-    return convertDocsInTasks(projectId, tasksDocs)
-}
+const getCalendarTasksByEventIdsInProject = async (projectId, userId, eventIds = []) => {
+    const uniqueEventIds = [...new Set(eventIds.filter(Boolean))]
+    if (uniqueEventIds.length === 0) return []
 
-const getCalendarTasksInProject = async (projectId, userId, includeDone = false) => {
-    const promises = [getTasksBaseQuery(projectId, userId, false).get()]
-    if (includeDone) {
-        promises.push(getTasksBaseQuery(projectId, userId, true).get())
+    const eventIdChunks = []
+    for (let i = 0; i < uniqueEventIds.length; i += FIRESTORE_IN_QUERY_MAX_IDS) {
+        eventIdChunks.push(uniqueEventIds.slice(i, i + FIRESTORE_IN_QUERY_MAX_IDS))
     }
 
-    const results = await Promise.all(promises)
+    const results = await Promise.all(
+        eventIdChunks.map(eventIdChunk =>
+            admin
+                .firestore()
+                .collection(`items/${projectId}/tasks`)
+                .where(admin.firestore.FieldPath.documentId(), 'in', eventIdChunk)
+                .get()
+        )
+    )
     const tasks = []
     results.forEach(snapshot => {
-        tasks.push(...convertDocsInTasks(projectId, snapshot))
+        tasks.push(...convertDocsInTasks(projectId, snapshot).filter(task => task.userId === userId))
     })
     return tasks
 }
 
-const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks, timezoneOffset = 0) => {
+const getCalendarTasksInProject = async (projectId, userId) => {
+    const tasksDocs = await getTasksBaseQuery(projectId, userId, false).get()
+    return convertDocsInTasks(projectId, tasksDocs)
+}
+
+const getCalendarTasksInAllProjects = async (projectIds, userId, eventIds = []) => {
     const promises = []
     projectIds.forEach(projectId => {
-        if (needGetDoneTaks) promises.push(getTodayDoneCalendarTasksInProject(projectId, userId, timezoneOffset))
         promises.push(getCalendarTasksInProject(projectId, userId))
+        if (eventIds.length > 0) promises.push(getCalendarTasksByEventIdsInProject(projectId, userId, eventIds))
     })
     const results = await Promise.all(promises)
 
@@ -439,15 +464,15 @@ const getCalendarTasksInAllProjects = async (projectIds, userId, needGetDoneTaks
 
 // Event ids whose task has already been routed (and commented) in a previous sync. The sync
 // uses this to skip re-classifying those events, which avoids re-charging gold and the
-// non-deterministic re-routing that re-stamps the routing chat. Mirrors the task set that
-// addCalendarEvents matches against (open tasks + today's done tasks across all projects).
-const getRoutedCalendarEventIds = async (userId, timezoneOffset = 0) => {
+// non-deterministic re-routing that re-stamps the routing chat. Exact event-id lookups include
+// completed tasks from previous days, including multi-day calendar events.
+const getRoutedCalendarEventIds = async (userId, eventIds = []) => {
     const user = await getUserData(userId)
     if (!user) {
         return new Set()
     }
 
-    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, true, timezoneOffset)
+    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, eventIds)
     const routedEventIds = new Set()
     tasks.forEach(task => {
         if (isCalendarEventAlreadyRouted(task)) {
@@ -474,7 +499,7 @@ const removeCalendarTasks = async (
     // Search across ALL user projects to find calendar tasks to potentially remove
     // This ensures we find and clean up tasks even if they were manually moved
     console.log(`[removeCalendarTasks] Fetching tasks for projects: ${user.projectIds.join(', ')}`)
-    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId, false)
+    const tasks = await getCalendarTasksInAllProjects(user.projectIds, userId)
     console.log(`[removeCalendarTasks] Found ${tasks.length} tasks in DB to check.`)
     tasks.forEach(t =>
         console.log(
@@ -568,4 +593,5 @@ module.exports = {
     addOrUpdateCalendarTask,
     resolveCalendarRoutingForEvent,
     getRoutedCalendarEventIds,
+    getCalendarTasksByEventIdsInProject,
 }

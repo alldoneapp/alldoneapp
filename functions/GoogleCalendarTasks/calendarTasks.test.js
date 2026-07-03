@@ -1,5 +1,7 @@
 jest.mock('firebase-admin', () => {
     const refs = new Map()
+    const collectionDocs = new Map()
+    const collectionQueries = []
     const doc = jest.fn(path => {
         if (!refs.has(path)) {
             refs.set(path, {
@@ -12,16 +14,49 @@ jest.mock('firebase-admin', () => {
         return refs.get(path)
     })
 
+    const collection = jest.fn(path => {
+        const filters = []
+        const query = {
+            where: jest.fn((field, operator, value) => {
+                filters.push({ field, operator, value })
+                return query
+            }),
+            get: jest.fn(() => {
+                let docs = collectionDocs.get(path) || []
+                filters.forEach(({ field, operator, value }) => {
+                    if (field === '__name__' && operator === 'in') {
+                        docs = docs.filter(item => value.includes(item.id))
+                    }
+                })
+                const queryDocs = docs.map(item => ({ id: item.id, data: () => item.data }))
+                return Promise.resolve({
+                    docs: queryDocs,
+                    forEach: callback => queryDocs.forEach(callback),
+                })
+            }),
+        }
+        collectionQueries.push({ path, query })
+        return query
+    })
+
+    const firestore = jest.fn(() => ({ doc, collection }))
+    firestore.FieldPath = { documentId: jest.fn(() => '__name__') }
+
     return {
-        firestore: jest.fn(() => ({
-            doc,
-        })),
+        firestore,
         __mock: {
             doc,
+            collectionDocs,
+            collectionQueries,
             refs,
+            setCollectionDocs: (path, docs) => collectionDocs.set(path, docs),
             reset: () => {
                 refs.clear()
+                collectionDocs.clear()
+                collectionQueries.length = 0
                 doc.mockClear()
+                collection.mockClear()
+                firestore.FieldPath.documentId.mockClear()
             },
         },
     }
@@ -31,8 +66,42 @@ jest.mock('../Users/usersFirestore', () => ({
     getUserData: jest.fn(),
 }))
 
+jest.mock('../BatchWrapper/batchWrapper', () => ({
+    BatchWrapper: class {
+        constructor(db) {
+            this.db = db
+        }
+
+        update(ref, data) {
+            return ref.update(data)
+        }
+
+        set(ref, data, options) {
+            return ref.set(data, options)
+        }
+
+        delete(ref) {
+            return ref.delete()
+        }
+
+        commit() {
+            return Promise.resolve()
+        }
+    },
+}))
+
+jest.mock('../Utils/statisticsHelper', () => ({
+    updateStatistics: jest.fn(() => Promise.resolve()),
+}))
+
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
+    ESTIMATION_0_MIN: 0,
+    FEED_PUBLIC_FOR_ALL: 0,
     OPEN_STEP: 'open',
+    RECURRENCE_NEVER: 'never',
+    TASK_ASSIGNEE_USER_TYPE: 'user',
+    generateNegativeSortIndex: jest.fn(() => -1),
+    getTaskNameWithoutMeta: jest.fn(value => value),
 }))
 
 jest.mock('../shared/projectRoutingCommentHelper', () => ({
@@ -41,7 +110,12 @@ jest.mock('../shared/projectRoutingCommentHelper', () => ({
 
 const admin = require('firebase-admin')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
-const { addOrUpdateCalendarTask, resolveCalendarRoutingForEvent } = require('./calendarTasks')
+const { updateStatistics } = require('../Utils/statisticsHelper')
+const {
+    addOrUpdateCalendarTask,
+    getCalendarTasksByEventIdsInProject,
+    resolveCalendarRoutingForEvent,
+} = require('./calendarTasks')
 
 const event = {
     id: 'event-1',
@@ -56,6 +130,7 @@ describe('calendarTasks routing', () => {
     beforeEach(() => {
         admin.__mock.reset()
         addProjectRoutingReasonComment.mockClear()
+        updateStatistics.mockClear()
     })
 
     test('creates new routed tasks in the target project and stores the connected project as originalProjectId', async () => {
@@ -253,6 +328,126 @@ describe('calendarTasks routing', () => {
         expect(admin.__mock.refs.get('items/target-project/tasks/event-1')).toBeUndefined()
         expect(admin.__mock.refs.get('items/old-project/tasks/event-1').delete).not.toHaveBeenCalled()
         expect(admin.__mock.refs.get('items/old-project/tasks/event-1').update).toHaveBeenCalled()
+    })
+
+    test('preserves a completed multi-day event found by its calendar event id', async () => {
+        const multiDayEvent = {
+            ...event,
+            start: { date: '2026-06-26' },
+            end: { date: '2026-06-29' },
+        }
+        const existingTask = {
+            id: 'event-1',
+            projectId: 'target-project',
+            userId: 'user-1',
+            done: true,
+            inDone: true,
+            completed: Date.parse('2026-06-26T08:00:00Z'),
+            calendarData: {
+                link: event.htmlLink,
+                start: multiDayEvent.start,
+                end: multiDayEvent.end,
+                email: 'me@example.com',
+                provider: 'google',
+                originalProjectId: 'connected-project',
+            },
+            name: event.summary,
+            extendedName: event.summary,
+            description: event.description,
+            estimations: { open: 480 },
+        }
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            existingTask,
+            multiDayEvent,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        const targetRef = admin.__mock.refs.get('items/target-project/tasks/event-1')
+        expect(targetRef.set).not.toHaveBeenCalled()
+        expect(targetRef.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                estimations: { open: 0 },
+            })
+        )
+        expect(updateStatistics).toHaveBeenNthCalledWith(
+            1,
+            'target-project',
+            'user-1',
+            480,
+            true,
+            true,
+            existingTask.completed,
+            expect.anything()
+        )
+        expect(updateStatistics).toHaveBeenNthCalledWith(
+            2,
+            'target-project',
+            'user-1',
+            0,
+            false,
+            true,
+            existingTask.completed,
+            expect.anything()
+        )
+    })
+
+    test('creates all-day events with zero logged minutes', async () => {
+        const allDayEvent = {
+            ...event,
+            start: { date: '2026-06-26' },
+            end: { date: '2026-06-29' },
+        }
+
+        await addOrUpdateCalendarTask(
+            'connected-project',
+            'target-project',
+            null,
+            allDayEvent,
+            'user-1',
+            'me@example.com',
+            0
+        )
+
+        expect(admin.__mock.refs.get('items/target-project/tasks/event-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({ estimations: { open: 0 } })
+        )
+    })
+
+    test('finds completed events from previous days by exact event id', async () => {
+        admin.__mock.setCollectionDocs('items/target-project/tasks', [
+            {
+                id: 'event-1',
+                data: {
+                    userId: 'user-1',
+                    done: true,
+                    inDone: true,
+                    completed: Date.parse('2026-06-26T08:00:00Z'),
+                    name: 'Multi-day event',
+                    calendarData: {
+                        start: { date: '2026-06-26' },
+                        end: { date: '2026-06-29' },
+                    },
+                },
+            },
+        ])
+
+        const tasks = await getCalendarTasksByEventIdsInProject('target-project', 'user-1', ['event-1'])
+
+        expect(tasks).toEqual([
+            expect.objectContaining({
+                id: 'event-1',
+                projectId: 'target-project',
+                done: true,
+                completed: Date.parse('2026-06-26T08:00:00Z'),
+            }),
+        ])
+        expect(admin.firestore.FieldPath.documentId).toHaveBeenCalled()
+        expect(admin.__mock.collectionQueries[0].query.where).toHaveBeenCalledWith('__name__', 'in', ['event-1'])
     })
 
     describe('resolveCalendarRoutingForEvent', () => {

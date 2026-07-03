@@ -222,7 +222,10 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
         // skip re-classifying them. This prevents re-charging routing gold every sync and the
         // non-deterministic re-routing that re-stamps the routing chat's "last edited" date
         // (most visible on full-day events, which carry no attendee/domain signal).
-        const alreadyRoutedEventIds = await getRoutedCalendarEventIds(userId, timezoneOffset)
+        const alreadyRoutedEventIds = await getRoutedCalendarEventIds(
+            userId,
+            filteredEvents.map(event => event.id).filter(Boolean)
+        )
         const routingDecisionsByEventId = await routeCalendarEventsToProjects({
             userId,
             syncProjectId: projectId,
