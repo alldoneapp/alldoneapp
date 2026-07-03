@@ -24,6 +24,16 @@ const { ProjectService } = require('./ProjectService')
 const ALL_USERS = 'ALL_USERS'
 const NOT_PARENT_GOAL_INDEX = '0'
 
+// Higher rank = higher priority. Mirrors utils/TaskPriority.js (which Cloud Functions can't
+// import). Focus selection must respect this so it never picks a lower-priority task as the
+// next focus when a higher-priority one exists.
+const TASK_PRIORITY_RANK = { none: 0, do_later: 1, could_do: 2, should_do: 3, must_do: 4 }
+const getTaskPriorityRank = priority => TASK_PRIORITY_RANK[priority] || 0
+const compareTasksByPriorityThenSortIndex = (a, b) => {
+    const priorityDiff = getTaskPriorityRank(b.priority) - getTaskPriorityRank(a.priority)
+    return priorityDiff !== 0 ? priorityDiff : (b.sortIndex || 0) - (a.sortIndex || 0)
+}
+
 class FocusTaskService {
     constructor(options = {}) {
         this.options = {
@@ -90,12 +100,18 @@ class FocusTaskService {
         const filteredTasks = excludeTaskId ? tasks.filter(task => task.id !== excludeTaskId) : tasks
         if (filteredTasks.length === 0) return null
 
+        // Never cross a priority boundary: restrict to the highest-priority tier present so a
+        // must_do is always chosen over a should_do, regardless of the input ordering.
+        const topRank = Math.max(...filteredTasks.map(task => getTaskPriorityRank(task.priority)))
+        const topTierTasks = filteredTasks.filter(task => getTaskPriorityRank(task.priority) === topRank)
+
         if (excludeTaskId) {
-            const candidates = filteredTasks.slice(0, 10)
+            // Preserve the historical "spread" behaviour, but only within the top-priority tier.
+            const candidates = topTierTasks.slice(0, 10)
             return candidates[Math.floor(Math.random() * candidates.length)]
         }
 
-        return filteredTasks[0]
+        return topTierTasks[0]
     }
 
     pickGeneralTask(tasks, excludeTaskId = null) {
@@ -241,7 +257,7 @@ class FocusTaskService {
         })
 
         Object.keys(tasksByGoalId).forEach(goalId => {
-            tasksByGoalId[goalId].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+            tasksByGoalId[goalId].sort(compareTasksByPriorityThenSortIndex)
         })
 
         const taskGroups = Object.keys(tasksByGoalId).map(goalId => [goalId, tasksByGoalId[goalId]])
@@ -281,13 +297,13 @@ class FocusTaskService {
 
         if (generalTasks.length > 0) {
             const existingGeneralIndex = validGroups.findIndex(([goalId]) => goalId === NOT_PARENT_GOAL_INDEX)
-            const sortedGeneralTasks = [...generalTasks].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+            const sortedGeneralTasks = [...generalTasks].sort(compareTasksByPriorityThenSortIndex)
 
             if (existingGeneralIndex >= 0) {
                 validGroups[existingGeneralIndex][1] = [
                     ...validGroups[existingGeneralIndex][1],
                     ...sortedGeneralTasks,
-                ].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+                ].sort(compareTasksByPriorityThenSortIndex)
             } else {
                 validGroups.push([NOT_PARENT_GOAL_INDEX, sortedGeneralTasks])
             }

@@ -70,7 +70,12 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
             Object.values(projectTasks).forEach(task => {
                 if (!isTodayTask(task, currentUserId, endOfDay)) return
                 const key = normalizeTaskPriority(task.priority)
-                if (result[key]) result[key].push(task)
+                if (!result[key]) return
+                // openTasksMap stores tasks without a projectId field (it's the Firestore
+                // collection path, not a field on the doc), but autoReminderMultipleTasks →
+                // setTaskDueDate needs it to locate the task. Stamp it from the map key so the
+                // update doesn't target items/undefined/... and fail.
+                result[key].push(task.projectId ? task : { ...task, projectId: pid })
             })
         })
         return result
@@ -106,6 +111,10 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
         try {
             await autoReminderMultipleTasks(selectedTasks)
             closePopover()
+        } catch (error) {
+            // Keep the modal open (so the user can retry) instead of leaving a hung dialog
+            // behind an unhandled promise rejection.
+            console.error('AutoReminderTasksModal: failed to apply auto-reminders', error)
         } finally {
             setApplying(false)
         }

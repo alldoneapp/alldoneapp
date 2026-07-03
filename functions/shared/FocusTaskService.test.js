@@ -369,6 +369,40 @@ describe('FocusTaskService general task priority', () => {
         )
     })
 
+    test('prefers a higher-priority task over a lower-priority one with a higher sortIndex', async () => {
+        const service = createService({
+            collections: {
+                [`items/${currentProjectId}/tasks`]: [
+                    { id: 'no-priority', ...baseTask, priority: 'none', sortIndex: 900 },
+                    { id: 'should-do', ...baseTask, priority: 'should_do', sortIndex: 500 },
+                    { id: 'must-do', ...baseTask, priority: 'must_do', sortIndex: 100 },
+                ],
+            },
+        })
+
+        const result = await service.findAndSetNewFocusTask(userId, currentProjectId, null, null, null, null)
+
+        expect(result.id).toBe('must-do')
+    })
+
+    test('never crosses a priority tier when re-selecting focus after excluding a task', async () => {
+        const service = createService({
+            collections: {
+                [`items/${currentProjectId}/tasks`]: [
+                    { id: 'excluded', ...baseTask, priority: 'must_do', sortIndex: 999 },
+                    { id: 'must-a', ...baseTask, priority: 'must_do', sortIndex: 300 },
+                    { id: 'must-b', ...baseTask, priority: 'must_do', sortIndex: 200 },
+                    { id: 'should-high', ...baseTask, priority: 'should_do', sortIndex: 900 },
+                ],
+            },
+        })
+
+        const result = await service.findAndSetNewFocusTask(userId, currentProjectId, null, 'excluded', null, null)
+
+        // Must stay within the top (must_do) tier, never fall through to should_do.
+        expect(['must-a', 'must-b']).toContain(result.id)
+    })
+
     test('explicitly switching to a different project does not keep general-task priority from the previous project', async () => {
         const service = createService({
             docs: {

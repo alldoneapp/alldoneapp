@@ -117,7 +117,7 @@ import { updateXpByDoneForAllReviewers, updateXpByDoneTask } from '../../Levels'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { isDayRateTimeLogTask, reconcileExistingDayRateTimeLog } from '../../DayRateTimeLogHelper'
-import { normalizeTaskPriority } from '../../TaskPriority'
+import { getTaskPriorityRank, normalizeTaskPriority } from '../../TaskPriority'
 
 import { getDvMainTabLink } from '../../LinkingHelper'
 import { isPrivateNote } from '../../../components/NotesView/NotesHelper'
@@ -3219,6 +3219,15 @@ const getGoalsOrderingDataForProject = async (projectId, assigneeId) => {
     }
 }
 
+// Focus selection must match the task list's display order, which sorts tasks within each
+// goal group by priority first (must_do > should_do > could_do > do_later > none) and then
+// by sortIndex. Keeping this in sync avoids picking a lower-priority task as the next focus
+// when a higher-priority one is visible above it.
+const compareTasksByPriorityThenSortIndex = (a, b) => {
+    const priorityDiff = getTaskPriorityRank(b.priority) - getTaskPriorityRank(a.priority)
+    return priorityDiff !== 0 ? priorityDiff : (b.sortIndex || 0) - (a.sortIndex || 0)
+}
+
 const sortTasksByDisplayOrder = ({ projectId, assigneeId, tasks, openMilestones, doneMilestones, goalsById }) => {
     if (!tasks || tasks.length === 0) return []
 
@@ -3230,7 +3239,7 @@ const sortTasksByDisplayOrder = ({ projectId, assigneeId, tasks, openMilestones,
     }
 
     Object.keys(tasksByGoalId).forEach(goalId => {
-        tasksByGoalId[goalId].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0))
+        tasksByGoalId[goalId].sort(compareTasksByPriorityThenSortIndex)
     })
 
     const taskGroups = Object.keys(tasksByGoalId).map(goalId => [goalId, tasksByGoalId[goalId]])
@@ -3269,14 +3278,11 @@ const sortTasksByDisplayOrder = ({ projectId, assigneeId, tasks, openMilestones,
         const existingGeneralIndex = validGroups.findIndex(([goalId]) => goalId === NOT_PARENT_GOAL_INDEX)
         if (existingGeneralIndex >= 0) {
             const mergedGeneralTasks = [...validGroups[existingGeneralIndex][1], ...generalTasks].sort(
-                (a, b) => (b.sortIndex || 0) - (a.sortIndex || 0)
+                compareTasksByPriorityThenSortIndex
             )
             validGroups[existingGeneralIndex][1] = mergedGeneralTasks
         } else {
-            validGroups.push([
-                NOT_PARENT_GOAL_INDEX,
-                [...generalTasks].sort((a, b) => (b.sortIndex || 0) - (a.sortIndex || 0)),
-            ])
+            validGroups.push([NOT_PARENT_GOAL_INDEX, [...generalTasks].sort(compareTasksByPriorityThenSortIndex)])
         }
 
         if (goalsPositionId[NOT_PARENT_GOAL_INDEX] === undefined) {
