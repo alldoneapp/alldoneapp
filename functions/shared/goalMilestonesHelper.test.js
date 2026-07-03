@@ -21,7 +21,7 @@ describe('goalMilestonesHelper', () => {
 
         expect(normalizeGoalMilestonesConfig({}, 'Europe/Berlin', defaultDate)).toEqual({
             mode: GOAL_MILESTONES_MODE_MANUAL,
-            cadence: GOAL_MILESTONES_CADENCE_WEEKLY,
+            cadence: GOAL_MILESTONES_CADENCE_MONTHLY,
             timezone: 'Europe/Berlin',
             cadenceStartDate: defaultDate,
             futureMilestonesToCreate: 3,
@@ -69,7 +69,7 @@ describe('goalMilestonesHelper', () => {
             cadenceStartDate: timestamp,
         })
 
-        expect(moment.tz(period.periodStartDate, 'Europe/Berlin').format()).toBe('2026-03-01T00:00:00+01:00')
+        expect(moment.tz(period.periodStartDate, 'Europe/Berlin').format()).toBe('2026-03-29T00:00:00+01:00')
         expect(moment.tz(period.periodEndDate, 'Europe/Berlin').format()).toBe('2026-03-31T23:59:59+02:00')
         expect(moment.tz(period.date, 'Europe/Berlin').format('YYYY-MM-DD HH:mm')).toBe('2026-03-31 12:00')
     })

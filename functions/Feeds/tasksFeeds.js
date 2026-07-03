@@ -583,6 +583,9 @@ async function createTaskUpdatedFeed(
     } else {
         taskFeedObject.parentName = taskFeedObject.parentName || ''
     }
+    if (task) {
+        taskFeedObject.priority = ['must_do', 'should_do', 'could_do'].includes(task.priority) ? task.priority : 'none'
+    }
 
     await proccessFeed(
         projectId,

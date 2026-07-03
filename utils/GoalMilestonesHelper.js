@@ -33,7 +33,7 @@ export function normalizeGoalMilestonesConfig(
     defaultDate = Date.now()
 ) {
     const mode = config.mode === GOAL_MILESTONES_MODE_LINEAR ? GOAL_MILESTONES_MODE_LINEAR : GOAL_MILESTONES_MODE_MANUAL
-    const cadence = VALID_CADENCES.includes(config.cadence) ? config.cadence : GOAL_MILESTONES_CADENCE_WEEKLY
+    const cadence = VALID_CADENCES.includes(config.cadence) ? config.cadence : GOAL_MILESTONES_CADENCE_MONTHLY
     const timezone =
         typeof config.timezone === 'string' && moment.tz.zone(config.timezone) ? config.timezone : fallbackTimezone
     const cadenceStartDate = Number.isFinite(Number(config.cadenceStartDate))
@@ -76,6 +76,8 @@ function getPeriodStartForTimestamp(timestamp, config) {
     const date = moment.tz(timestamp, normalizedConfig.timezone)
 
     if (normalizedConfig.cadence === GOAL_MILESTONES_CADENCE_MONTHLY) {
+        const cadenceStart = moment.tz(normalizedConfig.cadenceStartDate, normalizedConfig.timezone)
+        if (cadenceStart.isSame(date, 'month')) return cadenceStart.startOf('day')
         return date.clone().startOf('month')
     }
 
@@ -115,6 +117,10 @@ export function getLinearMilestonePeriod(timestamp, config) {
     const periodStart = getPeriodStartForTimestamp(timestamp, normalizedConfig)
     const periodEnd = getPeriodEndFromStart(periodStart, normalizedConfig.cadence)
     const milestoneDate = periodEnd.clone().startOf('day').hour(12).minute(0).second(0).millisecond(0)
+    const periodKeyStart =
+        normalizedConfig.cadence === GOAL_MILESTONES_CADENCE_MONTHLY
+            ? moment.tz(timestamp, normalizedConfig.timezone).startOf('month')
+            : periodStart
 
     return {
         cadence: normalizedConfig.cadence,
@@ -122,7 +128,7 @@ export function getLinearMilestonePeriod(timestamp, config) {
         periodStartDate: periodStart.valueOf(),
         periodEndDate: periodEnd.valueOf(),
         date: milestoneDate.valueOf(),
-        periodKey: `${normalizedConfig.cadence}:${periodStart.format('YYYY-MM-DD')}`,
+        periodKey: `${normalizedConfig.cadence}:${periodKeyStart.format('YYYY-MM-DD')}`,
     }
 }
 

@@ -167,6 +167,19 @@ describe('User memory assistant tool schemas', () => {
         expect(createRecurrence.oneOf[1].pattern).toBe('^custom:[1-9]\\d*$')
     })
 
+    test('defines task priority and general comments for update_task', () => {
+        const properties = toolSchemas.update_task.function.parameters.properties
+        expect(properties.priority.enum).toEqual(['must_do', 'should_do', 'could_do', 'none'])
+        expect(properties.comment).toEqual(
+            expect.objectContaining({
+                type: 'string',
+                maxLength: 5000,
+            })
+        )
+        expect(toolSchemas.update_task.function.description).toContain('visible comment')
+        expect(toolSchemas.update_task.function.description).toContain('requires a non-empty comment')
+    })
+
     test('documents heartbeat settings update fields', () => {
         expect(toolSchemas.update_heartbeat_settings.function.parameters.required).toEqual([])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.intervalMinutes.type).toBe('number')

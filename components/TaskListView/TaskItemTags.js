@@ -7,6 +7,7 @@ import Tags from './TagsArea/Tags'
 import useTagsAmount from './TagsArea/useTagsAmount'
 import ProjectTag from '../Tags/ProjectTag'
 import { shouldSummarizeTaskTags } from './TagsArea/taskTagSummaryHelper'
+import TaskPriorityTag from '../Tags/TaskPriorityTag'
 
 const TaskItemTags = ({
     task,
@@ -93,6 +94,7 @@ const TaskItemTags = ({
 
     return (
         <>
+            <TaskPriorityTag priority={task.priority} style={{ marginLeft: 8 }} />
             {needSummarize && (
                 <View
                     style={[

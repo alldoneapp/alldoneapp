@@ -44,6 +44,7 @@ import HighlightColorModal from '../../HighlightColorModal/HighlightColorModal'
 import { translate } from '../../../../../i18n/TranslationService'
 import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 import ModalItem from '../Common/ModalItem'
+import TaskPriorityModal from '../../TaskPriorityModal/TaskPriorityModal'
 
 export default function TaskMoreButton({
     formType,
@@ -63,6 +64,7 @@ export default function TaskMoreButton({
     isAssistant,
     editing,
     setTempAutoEstimation,
+    setPriorityBeforeSave,
     createSubtask,
 }) {
     const dispatch = useDispatch()
@@ -75,6 +77,7 @@ export default function TaskMoreButton({
     const [showWorkflow, setShowWorkflow] = useState(false)
     const [showEstimation, setShowEstimation] = useState(false)
     const [showHighlight, setShowHighlight] = useState(false)
+    const [showPriority, setShowPriority] = useState(false)
     const [activeGoal, setActiveGoal] = useState(null)
     const modalRef = useRef()
 
@@ -130,6 +133,11 @@ export default function TaskMoreButton({
         dismissModal()
     }
 
+    const hidePriorityPopup = () => {
+        hidePopups(setShowPriority)
+        dismissModal()
+    }
+
     const savePrivacy = (isPrivate, isPublicFor) => {
         savePrivacyBeforeSaveObject(isPrivate, isPublicFor)
     }
@@ -157,6 +165,10 @@ export default function TaskMoreButton({
         if (showHighlight) {
             setShowHighlight(false)
             removeModal(HIGHLIGHT_MODAL_ID)
+            dispatch(hideFloatPopup())
+        }
+        if (showPriority) {
+            setShowPriority(false)
             dispatch(hideFloatPopup())
         }
     }
@@ -203,10 +215,28 @@ export default function TaskMoreButton({
             removeModal(HIGHLIGHT_MODAL_ID)
             dispatch(hideFloatPopup())
         }
+        if (showPriority) {
+            setShowPriority(false)
+            dispatch(hideFloatPopup())
+        }
     }
 
     const renderItems = () => {
         const list = []
+
+        if (editing) {
+            list.push(shortcut => {
+                return (
+                    <GenericModalItem
+                        key={'mbtn-priority'}
+                        icon={'flag'}
+                        text={translate('Priority')}
+                        visibilityData={{ openPopup, visibilityFn: setShowPriority }}
+                        shortcut={shortcut}
+                    />
+                )
+            })
+        }
 
         if (editing) {
             list.push(shortcut => {
@@ -508,6 +538,12 @@ export default function TaskMoreButton({
                         onPress={selectHighlightColor}
                         selectedColor={task.hasStar}
                         onClickOutside={hideHighlightPopup}
+                    />
+                ) : showPriority ? (
+                    <TaskPriorityModal
+                        priority={task.priority}
+                        setPriority={setPriorityBeforeSave}
+                        closeModal={hidePriorityPopup}
                     />
                 ) : null
             }

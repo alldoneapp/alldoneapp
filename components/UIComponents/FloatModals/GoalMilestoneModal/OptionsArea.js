@@ -79,6 +79,7 @@ export default function OptionsArea({
                 ))}
             </CustomScrollView>
             <Line />
+            <Text style={localStyles.sectionLabel}>{translate('Fixed')}</Text>
             <MilestoneItem
                 updateMilestone={date => updateMilestone(date, { milestoneType: MILESTONE_TYPE_FIXED })}
                 milestoneDate={lastSelectedCustomDate}

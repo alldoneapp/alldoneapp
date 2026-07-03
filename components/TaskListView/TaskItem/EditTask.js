@@ -284,6 +284,11 @@ export default function EditTask({
         adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
     }
 
+    const setPriorityBeforeSave = priority => {
+        const finalTask = { ...tmpTask, priority }
+        editTask(finalTask, true, false, null, '')
+    }
+
     const setTempAutoEstimation = autoEstimation => {
         setTmpTask(tmpTask => {
             return { ...tmpTask, autoEstimation }
@@ -744,6 +749,7 @@ export default function EditTask({
                     setDescriptionBeforeSave={setDescriptionBeforeSave}
                     setParentGoalBeforeSave={setParentGoalBeforeSave}
                     setRecurrenceBeforeSave={setRecurrenceBeforeSave}
+                    setPriorityBeforeSave={setPriorityBeforeSave}
                     setTempAutoEstimation={setTempAutoEstimation}
                     isPending={isPending}
                     parentInTaskOutOfOpen={parentInTaskOutOfOpen}

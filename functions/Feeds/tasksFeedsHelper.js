@@ -1,6 +1,7 @@
 const { setFeedObjectLastState } = require('./globalFeedsHelper')
 const { OPEN_STEP, FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getGlobalState } = require('../GlobalState/globalState')
+const TASK_PRIORITIES = new Set(['none', 'could_do', 'should_do', 'must_do'])
 
 function generateTaskObjectModel(currentMilliseconds, task, taskId) {
     return {
@@ -12,6 +13,7 @@ function generateTaskObjectModel(currentMilliseconds, task, taskId) {
         name: task.extendedName ? task.extendedName : task.name,
         assigneeEstimation: task.estimations[OPEN_STEP],
         recurrence: task.recurrence,
+        priority: TASK_PRIORITIES.has(task.priority) ? task.priority : 'none',
         isDone: task.done,
         isDeleted: false,
         privacy: task.isPrivate ? task.userId : 'public',

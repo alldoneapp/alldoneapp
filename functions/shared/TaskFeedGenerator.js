@@ -11,6 +11,7 @@ const FEED_TASK_FOLLOWED = 'FEED_TASK_FOLLOWED'
 const FEED_TASK_UPDATED = 'FEED_TASK_UPDATED'
 const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsCloud.js
 const OPEN_STEP = 'Open'
+const TASK_PRIORITIES = new Set(['none', 'could_do', 'should_do', 'must_do'])
 
 /**
  * Generates current date objects for feed creation
@@ -101,6 +102,7 @@ function generateTaskObjectModel(currentMilliseconds, task, taskId) {
         name: task.extendedName || task.name,
         assigneeEstimation: (task.estimations && task.estimations[OPEN_STEP]) || 0,
         recurrence: task.recurrence || 'never',
+        priority: TASK_PRIORITIES.has(task.priority) ? task.priority : 'none',
         isDone: Boolean(task.done),
         isDeleted: false,
         privacy: task.isPrivate ? task.userId || task.userIds?.[0] || '' : 'public',

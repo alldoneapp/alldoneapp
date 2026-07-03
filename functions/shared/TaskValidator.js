@@ -63,7 +63,7 @@ function validateRequiredFields(params) {
  * @param {Object} params - Task parameters to validate
  */
 function validateOptionalFields(params) {
-    const { description, dueDate, userIds, observersIds, estimations, recurrence } = params
+    const { description, dueDate, userIds, observersIds, estimations, recurrence, priority } = params
 
     // Description validation
     if (description !== undefined && description !== null) {
@@ -163,6 +163,13 @@ function validateOptionalFields(params) {
             throw new Error(
                 `Invalid recurrence: ${recurrence}. Must be one of: ${validRecurrences.join(', ')} or custom:<days>`
             )
+        }
+    }
+
+    if (priority !== undefined && priority !== null) {
+        const validPriorities = ['none', 'could_do', 'should_do', 'must_do']
+        if (!validPriorities.includes(priority)) {
+            throw new Error(`Invalid priority: ${priority}. Must be one of: ${validPriorities.join(', ')}`)
         }
     }
 }

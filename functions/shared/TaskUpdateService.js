@@ -60,6 +60,7 @@ class TaskUpdateService {
         this.initialized = false
         this.taskService = null
         this.taskSearchService = null
+        this.taskCommentService = null
     }
 
     /**
@@ -103,10 +104,12 @@ class TaskUpdateService {
             throw new Error('TaskUpdateService not initialized. Call initialize() first.')
         }
 
+        const normalizedUpdateFields = this.normalizeCommentFields(updateFields)
+
         // Check if this is a bulk update request
         if (options.updateAll === true) {
             console.log('🔄 TaskUpdateService: Bulk update requested')
-            return await this.bulkUpdateTasks(userId, searchCriteria, updateFields, options)
+            return await this.bulkUpdateTasks(userId, searchCriteria, normalizedUpdateFields, options)
         }
 
         const searchOptions = {
@@ -160,10 +163,32 @@ class TaskUpdateService {
             currentTask,
             projectId,
             projectName,
-            updateFields,
+            normalizedUpdateFields,
             userId,
             feedUser
         )
+
+        if (normalizedUpdateFields.comment) {
+            try {
+                updateResult.commentResult = await this.addTaskComment({
+                    projectId,
+                    task: updateResult.task || currentTask,
+                    comment: normalizedUpdateFields.comment,
+                    feedUser,
+                    fromAssistant: !!options.commentFromAssistant,
+                })
+                updateResult.message = updateResult.changes?.length
+                    ? `${updateResult.message}; comment added`
+                    : `Comment added to task "${currentTask.name}" in project "${projectName}"`
+            } catch (error) {
+                if (!updateResult.changes || updateResult.changes.length === 0) {
+                    throw new Error(`Failed to add task comment: ${error.message}`)
+                }
+                updateResult.partialFailure = true
+                updateResult.commentResult = { success: false, error: error.message }
+                updateResult.message += `; task updated but comment failed: ${error.message}`
+            }
+        }
 
         // Add search transparency if auto-selected
         if (searchResult.decision === 'auto_select') {
@@ -189,6 +214,7 @@ class TaskUpdateService {
      * @returns {Promise<Object>} Bulk update result with summary
      */
     async bulkUpdateTasks(userId, searchCriteria, updateFields, options = {}) {
+        updateFields = this.normalizeCommentFields(updateFields)
         console.log('🔄🔄 TaskUpdateService: Starting bulk update', {
             userId,
             searchCriteria,
@@ -351,12 +377,31 @@ class TaskUpdateService {
                     userId,
                     feedUser
                 )
+                let commentResult = null
+                if (updateFields.comment) {
+                    try {
+                        commentResult = await this.addTaskComment({
+                            projectId: taskProjectId,
+                            task: updateResult.task || task,
+                            comment: updateFields.comment,
+                            feedUser,
+                            fromAssistant: !!options.commentFromAssistant,
+                        })
+                    } catch (commentError) {
+                        if (!updateResult.changes || updateResult.changes.length === 0) {
+                            throw new Error(`Failed to add task comment: ${commentError.message}`)
+                        }
+                        commentResult = { success: false, error: commentError.message }
+                    }
+                }
+
                 updated.push({
                     id: task.id,
                     name: task.name,
                     projectId: taskProjectId,
                     projectName: taskProjectName,
                     changes: updateResult.changes,
+                    commentResult,
                 })
             } catch (error) {
                 console.error('🔄🔄 TaskUpdateService: Failed to update task', {
@@ -374,9 +419,11 @@ class TaskUpdateService {
             }
         }
 
+        const commentFailures = updated.filter(item => item.commentResult?.success === false).length
         const successMessage =
             `Updated ${updated.length} of ${tasks.length} tasks` +
-            (failed.length > 0 ? ` (${failed.length} failed)` : '')
+            (failed.length > 0 ? ` (${failed.length} failed)` : '') +
+            (commentFailures > 0 ? ` (${commentFailures} comments failed after task updates)` : '')
 
         console.log('🔄🔄 TaskUpdateService: Bulk update complete', {
             total: tasks.length,
@@ -386,6 +433,7 @@ class TaskUpdateService {
 
         return {
             success: true,
+            partialFailure: updated.some(item => item.commentResult && item.commentResult.success === false),
             updated,
             failed,
             total: tasks.length,
@@ -393,6 +441,40 @@ class TaskUpdateService {
             projectScope: projectId ? `Limited to project ${projectsData[projectId]?.name}` : 'All projects',
             message: successMessage,
         }
+    }
+
+    normalizeCommentFields(updateFields = {}) {
+        const normalizedFields = { ...updateFields }
+        const hasComment = Object.prototype.hasOwnProperty.call(normalizedFields, 'comment')
+        let normalizedComment = null
+
+        if (hasComment) {
+            const { normalizeTaskComment } = require('./TaskCommentService')
+            normalizedComment = normalizeTaskComment(normalizedFields.comment)
+            normalizedFields.comment = normalizedComment
+        }
+
+        if (['must_do', 'should_do', 'could_do'].includes(normalizedFields.priority) && !normalizedComment) {
+            throw new Error('A non-empty comment is required when assigning a task priority')
+        }
+
+        return normalizedFields
+    }
+
+    async addTaskComment({ projectId, task, comment, feedUser, fromAssistant }) {
+        if (!this.taskCommentService) {
+            const { TaskCommentService } = require('./TaskCommentService')
+            this.taskCommentService = new TaskCommentService({ database: this.options.database })
+        }
+
+        return await this.taskCommentService.addComment({
+            projectId,
+            taskId: task.id,
+            task,
+            comment,
+            actor: feedUser,
+            fromAssistant,
+        })
     }
 
     /**
@@ -468,6 +550,7 @@ class TaskUpdateService {
                 description: updateFields.description,
                 dueDate: processedDueDate,
                 recurrence: updateFields.recurrence,
+                priority: updateFields.priority,
                 completed: updateFields.completed,
                 userId: updateFields.userId || updateFields.targetUserId,
                 parentId: updateFields.parentId,

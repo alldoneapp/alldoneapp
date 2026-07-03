@@ -653,6 +653,7 @@ class TaskService {
             description,
             dueDate,
             recurrence,
+            priority,
             completed,
             userId,
             parentId,
@@ -698,6 +699,11 @@ class TaskService {
                 updateData.timesDone = 0
             }
             changes.push(`recurrence to "${recurrence}"`)
+        }
+        if (priority !== undefined && priority !== currentTask.priority) {
+            TaskValidator.validateOptionalFields({ priority })
+            updateData.priority = priority
+            changes.push(priority === 'none' ? 'priority cleared' : `priority to "${priority}"`)
         }
         if (userId !== undefined) {
             updateData.userId = String(userId)

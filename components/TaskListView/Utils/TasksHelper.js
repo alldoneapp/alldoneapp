@@ -31,6 +31,7 @@ import ProjectHelper, {
     PROJECT_PRIVATE,
 } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import SearchHelper from '../../../utils/SearchHelper'
+import { TASK_PRIORITY_NONE } from '../../../utils/TaskPriority'
 import URLsTasks, {
     URL_ALL_PROJECTS_TASKS,
     URL_ALL_PROJECTS_TASKS_DONE,
@@ -406,6 +407,7 @@ class TasksHelper {
             estimationsByObserverIds: {},
             stepHistory: [OPEN_STEP],
             hasStar: '#FFFFFF',
+            priority: TASK_PRIORITY_NONE,
             created: date,
             creatorId: loggedUser.uid,
             dueDate: date,

@@ -117,6 +117,7 @@ import { updateXpByDoneForAllReviewers, updateXpByDoneTask } from '../../Levels'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { isDayRateTimeLogTask, reconcileExistingDayRateTimeLog } from '../../DayRateTimeLogHelper'
+import { normalizeTaskPriority } from '../../TaskPriority'
 
 import { getDvMainTabLink } from '../../LinkingHelper'
 import { isPrivateNote } from '../../../components/NotesView/NotesHelper'
@@ -360,6 +361,7 @@ export async function uploadNewTask(
         taskCopy.estimationsByObserverIds = taskCopy.estimationsByObserverIds ? taskCopy.estimationsByObserverIds : {}
         taskCopy.stepHistory = [OPEN_STEP]
         taskCopy.hasStar = taskCopy.hasStar ? taskCopy.hasStar : '#FFFFFF'
+        taskCopy.priority = normalizeTaskPriority(taskCopy.priority)
         taskCopy.created = taskCopy.created ? taskCopy.created : Date.now()
         taskCopy.creatorId = taskCopy.creatorId ? taskCopy.creatorId : ''
         taskCopy.dueDate = taskCopy.dueDate ? taskCopy.dueDate : Date.now()
@@ -1089,6 +1091,14 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
         newAssignee,
         isObservedTask
     )
+}
+
+export async function setTaskPriority(projectId, task, priority) {
+    const normalizedPriority = normalizeTaskPriority(priority)
+    if (normalizeTaskPriority(task.priority) === normalizedPriority) return
+
+    const oldAssignee = TasksHelper.getTaskOwner(task.userId, projectId)
+    return updateTask(projectId, { ...task, priority: normalizedPriority }, task, oldAssignee, '', [], false)
 }
 
 export const setTaskAssistant = async (projectId, taskId, assistantId, needGenerateUpdate) => {

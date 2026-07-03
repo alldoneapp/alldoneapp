@@ -50,6 +50,7 @@ export default function SecondaryButtonsArea({
     setParentGoalBeforeSave,
     dismissEditMode,
     setRecurrenceBeforeSave,
+    setPriorityBeforeSave,
     setTempAutoEstimation,
     isPending,
     parentInTaskOutOfOpen,
@@ -324,6 +325,7 @@ export default function SecondaryButtonsArea({
                     dismissEditMode={dismissEditMode}
                     savePrivacyBeforeSaveObject={setPrivacyBeforeSave}
                     saveRecurrenceBeforeSaveTask={setRecurrenceBeforeSave}
+                    setPriorityBeforeSave={setPriorityBeforeSave}
                     disabled={!hasName || !accessGranted || isLoadingGoal}
                     isSuggestedTask={isSuggestedTask}
                     setEstimationBeforeSave={setEstimationBeforeSave}

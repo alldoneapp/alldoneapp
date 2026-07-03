@@ -3,6 +3,16 @@ import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import DroppableTaskList from '../../DragSystem/DroppableTaskList'
 import ParentTaskContainer from '../ParentTaskContainer'
+import {
+    CALENDAR_TASK_INDEX,
+    EMAIL_TASK_INDEX,
+    MAIN_TASK_INDEX,
+    MENTION_TASK_INDEX,
+    OBSERVED_TASKS_INDEX,
+    STREAM_AND_USER_TASKS_INDEX,
+    SUGGESTED_TASK_INDEX,
+} from '../../../utils/backends/openTasks'
+import { sortTasksByPriority } from '../../../utils/TaskPriority'
 
 export default function TasksList({
     projectId,
@@ -28,26 +38,30 @@ export default function TasksList({
     const optimisticFocusTaskProjectId = useSelector(state => state.optimisticFocusTaskProjectId)
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
 
-    let sortedTaskList = [...taskList]
-
     // When optimistic state is active for this project, use it (even if null = no task focused yet)
     const effectiveFocusTaskId =
         optimisticFocusActive && optimisticFocusTaskProjectId === projectId ? optimisticFocusTaskId : focusedTaskId
 
-    if (effectiveFocusTaskId && !isActiveOrganizeMode) {
-        const focusedTaskIndex = sortedTaskList.findIndex(task => task.id === effectiveFocusTaskId)
-        if (focusedTaskIndex > -1) {
-            const [focusedTask] = sortedTaskList.splice(focusedTaskIndex, 1)
-            sortedTaskList.unshift(focusedTask)
-        }
-    }
+    const priorityTaskListIndexes = [
+        MAIN_TASK_INDEX,
+        MENTION_TASK_INDEX,
+        SUGGESTED_TASK_INDEX,
+        OBSERVED_TASKS_INDEX,
+        STREAM_AND_USER_TASKS_INDEX,
+        EMAIL_TASK_INDEX,
+    ]
+    const shouldSortByPriority =
+        priorityTaskListIndexes.includes(taskListIndex) && taskListIndex !== CALENDAR_TASK_INDEX
+    const sortedTaskList = shouldSortByPriority
+        ? sortTasksByPriority(taskList, isActiveOrganizeMode ? null : effectiveFocusTaskId)
+        : [...taskList]
 
     return (
         <View style={[localStyles.container, containerStyle]}>
             {isActiveOrganizeMode ? (
                 <DroppableTaskList
                     projectId={projectId}
-                    taskList={taskList}
+                    taskList={sortedTaskList}
                     taskListIndex={taskListIndex}
                     dateIndex={dateIndex}
                     subtaskByTask={subtaskByTask}

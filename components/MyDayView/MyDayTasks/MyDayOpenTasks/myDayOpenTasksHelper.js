@@ -21,6 +21,7 @@ import {
 import { DV_TAB_ROOT_TASKS } from '../../../../utils/TabNavigationConstants'
 import { sortTaskByTime, sortTaskByTimeForSortingMode } from './myDayOpenTasksIntervals'
 import { objectIsLocked } from '../../../Guides/guidesHelper'
+import { sortTasksByPriority } from '../../../../utils/TaskPriority'
 
 export const TIME_FOR_CHECK_ACTIVE_TASK_ESTIMATION = 300000 //5 minutes
 
@@ -247,14 +248,14 @@ const generateSubtasksMapAndEstimationData = (tasks, subtasksMapData) => {
 
         if (subtasksMapData[task.id]) {
             if (subtasksMapByProject[projectId]) {
-                subtasksMapByProject[projectId][task.id] = orderBy(
-                    subtasksMapData[task.id],
-                    [subtask => subtask.sortIndex],
-                    ['desc']
+                subtasksMapByProject[projectId][task.id] = sortTasksByPriority(
+                    orderBy(subtasksMapData[task.id], [subtask => subtask.sortIndex], ['desc'])
                 )
             } else {
                 subtasksMapByProject[projectId] = {
-                    [task.id]: orderBy(subtasksMapData[task.id], [subtask => subtask.sortIndex], ['desc']),
+                    [task.id]: sortTasksByPriority(
+                        orderBy(subtasksMapData[task.id], [subtask => subtask.sortIndex], ['desc'])
+                    ),
                 }
             }
             subtasksMapByProject[projectId][task.id].forEach(subtask => {

@@ -538,7 +538,7 @@ const toolSchemas = {
         function: {
             name: 'update_task',
             description:
-                'Updates an existing task or multiple tasks at once. Use this when the user wants to mark a task as done/complete, set or clear the current focus task, rename, update, set reminders/alerts, set or disable recurrence, set time estimations, or move a task to another project. IMPORTANT: For requests like "set this task in focus", "make this my focus task", or German "in den Fokus setzen", call update_task with focus=true and do not set completed=true unless the user explicitly asks to finish/complete the task. Can search by taskId, taskName, or projectName. Can update completion status, focus status, name, description, reminder date/time, recurrence, estimation, and enable/disable alerts. Supports bulk updates for today and overdue tasks only (max 100 tasks).',
+                'Updates an existing task or multiple tasks at once, and can add a visible comment to the task thread either by itself or together with another update. Use this when the user wants to mark a task as done/complete, set or clear the current focus task, rename, update, set reminders/alerts, set or disable recurrence, set time estimations, set priority, move a task to another project, or comment on a task. IMPORTANT: For requests like "set this task in focus", "make this my focus task", or German "in den Fokus setzen", call update_task with focus=true and do not set completed=true unless the user explicitly asks to finish/complete the task. Setting priority to must_do, should_do, or could_do requires a non-empty comment explaining the choice. Can search by taskId, taskName, or projectName. Supports bulk updates for today and overdue tasks only (max 100 tasks); the same comment is added to each successfully updated task.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -627,6 +627,18 @@ const toolSchemas = {
                         type: 'number',
                         description:
                             'Task estimation in minutes (e.g., 30, 60, 120, 240). Common values: 15 (15min), 30 (30min), 60 (1 hour), 120 (2 hours), 240 (4 hours), 480 (8 hours), 960 (16 hours). Use this when the user wants to estimate how long a task will take.',
+                    },
+                    priority: {
+                        type: 'string',
+                        enum: ['must_do', 'should_do', 'could_do', 'none'],
+                        description:
+                            'Set task priority. must_do sorts before should_do, then could_do, then none. A non-empty comment is required when assigning must_do, should_do, or could_do. Use none to clear priority.',
+                    },
+                    comment: {
+                        type: 'string',
+                        maxLength: 5000,
+                        description:
+                            'Optional complete visible comment to add to the task thread. This can be used by itself without changing another task field. The comment is trimmed, attributed to the invoking assistant, and not stored as a task property.',
                     },
                     updateAll: {
                         type: 'boolean',

@@ -36,11 +36,7 @@ const CADENCE_OPTIONS = [
 function GoalMilestonesModal({ projectId, goalMilestonesConfig, closePopover }) {
     const currentConfig = normalizeGoalMilestonesConfig(goalMilestonesConfig, getCurrentTimezone())
     const [linearMode, setLinearMode] = useState(currentConfig.mode === GOAL_MILESTONES_MODE_LINEAR)
-    // Default newly enabled dynamic milestones to a monthly cadence; keep the saved cadence for
-    // projects that already have dynamic milestones turned on.
-    const [cadence, setCadence] = useState(
-        currentConfig.mode === GOAL_MILESTONES_MODE_LINEAR ? currentConfig.cadence : GOAL_MILESTONES_CADENCE_MONTHLY
-    )
+    const [cadence, setCadence] = useState(currentConfig.cadence)
     const [timezone, setTimezone] = useState(currentConfig.timezone)
     const [futureMilestones, setFutureMilestones] = useState(currentConfig.futureMilestonesToCreate)
     const [startDateText, setStartDateText] = useState(
@@ -176,7 +172,7 @@ export default function GoalMilestones({ projectId, disabled, goalMilestonesConf
     const smallScreen = useSelector(state => state.smallScreen)
     const [open, setOpen] = useState(false)
     const config = normalizeGoalMilestonesConfig(goalMilestonesConfig, getCurrentTimezone())
-    const cadenceTitle = CADENCE_OPTIONS.find(option => option.key === config.cadence)?.title || 'Weekly'
+    const cadenceTitle = CADENCE_OPTIONS.find(option => option.key === config.cadence)?.title || 'Monthly'
     const title = config.mode === GOAL_MILESTONES_MODE_LINEAR ? translate(cadenceTitle) : translate('Fixed')
 
     return (

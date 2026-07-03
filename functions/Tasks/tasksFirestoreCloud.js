@@ -31,10 +31,13 @@ const deleteTasksFromAssignee = async (projectId, assigneeId, admin) => {
 async function uploadTask(appAdmin, projectId, task) {
     const taskCopy = { ...task }
     delete taskCopy.id
+    taskCopy.priority = ['must_do', 'should_do', 'could_do', 'none'].includes(taskCopy.priority)
+        ? taskCopy.priority
+        : 'none'
 
     const promises = []
     promises.push(appAdmin.firestore().collection(`items/${projectId}/tasks`).doc(task.id).set(taskCopy))
-    promises.push(createTaskFeedChain(projectId, task.id, task, false, false))
+    promises.push(createTaskFeedChain(projectId, task.id, taskCopy, false, false))
     promises.push(logEvent('', 'new_task', { taskOwnerUid: task.userId, estimation: task.estimations[OPEN_STEP] }))
     await Promise.all(promises)
 }

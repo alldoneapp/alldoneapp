@@ -31,6 +31,7 @@ import { BACKLOG_MILESTONE_ID, DYNAMIC_PERCENT, getOwnerId } from '../../compone
 import { isInboxSummaryGmailTask } from '../Gmail/gmailTaskUtils'
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../EstimationHelper'
 import { filterOpenTasks } from '../../components/HashtagFilters/FilterHelpers/FilterTasks'
+import { sortTasksByPriority } from '../TaskPriority'
 
 export const TODAY_DATE = '0'
 
@@ -681,17 +682,17 @@ const sortTasksListThatHaveNewTasks = (storedTasks, listsToSort) => {
             taskTypeIndex === OBSERVED_TASKS_INDEX ||
             taskTypeIndex === STREAM_AND_USER_TASKS_INDEX
         ) {
-            storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId] = orderBy(
+            const taskList = orderBy(
                 storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId],
                 'sortIndex',
                 'desc'
             )
+            storedTasks[date][taskTypeIndex][innerGroupKey][taskParentGoalId] =
+                taskTypeIndex === WORKFLOW_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         } else {
-            storedTasks[date][taskTypeIndex][taskParentGoalId] = orderBy(
-                storedTasks[date][taskTypeIndex][taskParentGoalId],
-                'sortIndex',
-                'desc'
-            )
+            const taskList = orderBy(storedTasks[date][taskTypeIndex][taskParentGoalId], 'sortIndex', 'desc')
+            storedTasks[date][taskTypeIndex][taskParentGoalId] =
+                taskTypeIndex === CALENDAR_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         }
     }
 }

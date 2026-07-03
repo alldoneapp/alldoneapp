@@ -1747,5 +1747,12 @@
     "Analytics and privacy": "Analytics & Datenschutz",
     "Analytics enabled": "Analytics aktiviert",
     "Analytics disabled": "Analytics deaktiviert",
-    "Cookie settings": "Cookie-Einstellungen"
+    "Cookie settings": "Cookie-Einstellungen",
+    "Priority": "Priorität",
+    "Select priority": "Priorität auswählen",
+    "Choose how important this task is": "Wähle, wie wichtig diese Aufgabe ist",
+    "No priority": "Keine Priorität",
+    "Must do": "Muss erledigt werden",
+    "Should do": "Sollte erledigt werden",
+    "Could do": "Könnte erledigt werden"
 }

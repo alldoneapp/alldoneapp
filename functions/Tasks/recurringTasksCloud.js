@@ -269,6 +269,9 @@ async function createNewRecurringTask(projectId, originalTask, nextDate) {
     console.log('🔍 ORIGINAL TASK NAME:', originalTask.name)
     console.log('🔍 ORIGINAL TASK EXTENDED NAME:', originalTask.extendedName)
     const newTaskData = cloneDeep(originalTask)
+    newTaskData.priority = ['must_do', 'should_do', 'could_do', 'none'].includes(newTaskData.priority)
+        ? newTaskData.priority
+        : 'none'
     console.log('✅ Task data cloned')
 
     // Restore original casing for the recurring copy before validation trims it away
@@ -472,6 +475,9 @@ async function createSubtasksCopiesInCloudFunction(projectId, newParentTaskId, o
 
             const newSubtask = {
                 ...originalSubtask,
+                priority: ['must_do', 'should_do', 'could_do', 'none'].includes(originalSubtask.priority)
+                    ? originalSubtask.priority
+                    : 'none',
                 id: newSubtaskId,
                 parentId: newParentTaskId,
                 done: false,

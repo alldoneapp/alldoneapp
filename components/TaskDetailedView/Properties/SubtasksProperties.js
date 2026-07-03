@@ -9,6 +9,7 @@ import FollowObject from '../../Followers/FollowObject'
 import { FOLLOWER_TASKS_TYPE } from '../../Followers/FollowerConstants'
 import CreatedBy from './CreatedBy'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
+import Priority from './Priority'
 
 export default function SubtasksProperties({
     project,
@@ -26,6 +27,7 @@ export default function SubtasksProperties({
         <View style={[localStyles.container, smallScreen ? null : localStyles.panelsContainer]}>
             <View style={[localStyles.columnContainer, smallScreen ? null : localStyles.leftContainer]}>
                 <Subtask projectId={projectId} task={task} disabled={!loggedUserCanUpdateObject} />
+                <Priority projectId={projectId} task={task} disabled={!accessGranted || !loggedUserCanUpdateObject} />
                 <Highlight
                     task={task}
                     projectId={projectId}

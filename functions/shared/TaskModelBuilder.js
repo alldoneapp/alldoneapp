@@ -13,6 +13,7 @@
 // Constants - these MUST match the constants in Utils/HelperFunctionsCloud.js
 const OPEN_STEP = 'Open'
 const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsCloud.js
+const TASK_PRIORITIES = new Set(['none', 'could_do', 'should_do', 'must_do'])
 
 /**
  * Builds a complete task object with all required fields
@@ -72,6 +73,7 @@ function buildTaskObject({
     autoFollowUpType = null,
     autoFollowUpContactId = null,
     autoFollowUpStatusId = null,
+    priority = 'none',
 }) {
     // Validation
     if (!name || !name.trim()) {
@@ -141,6 +143,7 @@ function buildTaskObject({
         // Creation metadata
         creatorId: userId,
         hasStar: hasStar,
+        priority: TASK_PRIORITIES.has(priority) ? priority : 'none',
         sortIndex: now,
 
         // Hierarchy and relationships

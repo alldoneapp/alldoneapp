@@ -664,6 +664,7 @@ function mapAssistantTaskForToolResponse(task, requestingUserId = '') {
         dueDate: Number.isFinite(dueDate) ? dueDate : null,
         humanReadableId: task?.humanReadableId || null,
         sortIndex: task?.sortIndex || 0,
+        priority: ['must_do', 'should_do', 'could_do'].includes(task?.priority) ? task.priority : 'none',
         parentGoal: task?.parentGoal || null,
         calendarTime: task?.calendarTime || null,
         comments,
@@ -5418,7 +5419,7 @@ async function executeToolNatively(
         }
 
         case 'update_task': {
-            const updateTaskPatchVersion = '2026-02-12-project-move-support-v4'
+            const updateTaskPatchVersion = '2026-07-03-priority-and-comments-v5'
             console.log('📝 UPDATE_TASK TOOL: Starting task update', {
                 creatorId,
                 projectId,
@@ -5455,6 +5456,25 @@ async function executeToolNatively(
                         ? normalizedToolArgs.moveToProjectName.trim()
                         : ''
                 const hasMoveRequest = !!(moveToProjectId || moveToProjectName)
+                const mutationFields = [
+                    'completed',
+                    'focus',
+                    'name',
+                    'description',
+                    'dueDate',
+                    'alertEnabled',
+                    'recurrence',
+                    'estimation',
+                    'priority',
+                    'userId',
+                    'targetUserId',
+                    'parentId',
+                ]
+                const hasTaskMutation = mutationFields.some(field => normalizedToolArgs[field] !== undefined)
+                const hasComment = Object.prototype.hasOwnProperty.call(normalizedToolArgs, 'comment')
+                if (!hasTaskMutation && !hasMoveRequest && !hasComment) {
+                    throw new Error('update_task requires at least one task change or a comment')
+                }
 
                 // Never pass move fields into TaskUpdateService update payload.
                 delete normalizedToolArgs.moveToProjectId
@@ -5594,6 +5614,7 @@ async function executeToolNatively(
                         maxOptionsToShow: 5,
                         updateAll: toolArgs.updateAll || false, // Enable bulk update if requested
                         feedUser,
+                        commentFromAssistant: !!assistantId,
                     }
                 )
 

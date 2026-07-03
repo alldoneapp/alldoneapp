@@ -34,6 +34,7 @@ import InFocus from './InFocus'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
 import TaskId from './TaskId'
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
+import Priority from './Priority'
 
 export default function PropertiesView({ project, task, loggedUser }) {
     const [creator, setCreator] = useState({})
@@ -106,6 +107,11 @@ export default function PropertiesView({ project, task, loggedUser }) {
                             projectId={projectId}
                             task={task}
                             disabled={!accessGranted || isLockedGmailTask || !loggedUserCanUpdateObject}
+                        />
+                        <Priority
+                            projectId={projectId}
+                            task={task}
+                            disabled={!accessGranted || !loggedUserCanUpdateObject}
                         />
                         <AlertTime
                             projectId={projectId}

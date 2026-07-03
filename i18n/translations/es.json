@@ -2173,5 +2173,12 @@
     "Analytics and privacy": "Analíticas y privacidad",
     "Analytics enabled": "Analíticas activadas",
     "Analytics disabled": "Analíticas desactivadas",
-    "Cookie settings": "Configuración de cookies"
+    "Cookie settings": "Configuración de cookies",
+    "Priority": "Prioridad",
+    "Select priority": "Seleccionar prioridad",
+    "Choose how important this task is": "Elige la importancia de esta tarea",
+    "No priority": "Sin prioridad",
+    "Must do": "Debe hacerse",
+    "Should do": "Debería hacerse",
+    "Could do": "Podría hacerse"
 }

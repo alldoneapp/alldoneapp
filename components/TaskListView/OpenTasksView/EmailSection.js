@@ -5,6 +5,7 @@ import GoogleGmail from '../../../assets/svg/GoogleGmail'
 import { EMAIL_TASK_INDEX, NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../../../utils/backends/openTasks'
 import TasksList from './TasksList'
 import { sortBy } from 'lodash'
+import { sortTasksByPriority } from '../../../utils/TaskPriority'
 import ParentGoalSection from './ParentGoalSection'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfGmailIsConnected } from '../../../utils/backends/firestore'
@@ -75,7 +76,7 @@ export default function EmailSection({ dateIndex, projectId, isActiveOrganizeMod
                             dateIndex={dateIndex}
                             subtaskByTask={[]}
                             isActiveOrganizeMode={isActiveOrganizeMode}
-                            taskList={sortBy(taskList, [item => item.sortIndex])}
+                            taskList={sortTasksByPriority(sortBy(taskList, [item => item.sortIndex]))}
                             taskListIndex={EMAIL_TASK_INDEX}
                             goalIndex={goalIndex}
                             instanceKey={instanceKey}
@@ -89,7 +90,7 @@ export default function EmailSection({ dateIndex, projectId, isActiveOrganizeMod
                         goalId={goalId}
                         subtaskByTask={[]}
                         isActiveOrganizeMode={isActiveOrganizeMode}
-                        taskList={sortBy(taskList, [item => item.sortIndex])}
+                        taskList={sortTasksByPriority(sortBy(taskList, [item => item.sortIndex]))}
                         taskListIndex={EMAIL_TASK_INDEX}
                         containerStyle={isLastIndex ? null : { marginBottom: 16 }}
                         goalIndex={goalIndex}

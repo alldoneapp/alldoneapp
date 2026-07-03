@@ -46,6 +46,7 @@ import { updateXpByCreateProject } from '../Levels'
 import store from '../../redux/store'
 
 import HelperFunctions, { chronoEntriesOrder } from '../HelperFunctions'
+import { normalizeTaskPriority } from '../TaskPriority'
 import {
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
@@ -249,6 +250,7 @@ import {
     createTaskObserverEstimationChangedFeed,
     createTaskParentGoalChangedFeed,
     createTaskPrivacyChangedFeed,
+    createTaskPriorityChangedFeed,
     createTaskProjectChangedFeed,
     createTaskRecurrenceChangedFeed,
     createTaskReviewerEstimationChangedFeed,
@@ -1541,6 +1543,10 @@ export const updateTaskFeedsChain = async (
 
     if (task.hasStar !== oldTask.hasStar) {
         await createTaskHighlightedChangedFeed(projectId, task, taskId, task.hasStar, batch)
+    }
+
+    if (normalizeTaskPriority(task.priority) !== normalizeTaskPriority(oldTask.priority)) {
+        await createTaskPriorityChangedFeed(projectId, task, taskId, oldTask.priority, task.priority, batch)
     }
 
     if (task.recurrence !== oldTask.recurrence) {
@@ -3502,6 +3508,7 @@ export function mapTaskData(taskId, task) {
         estimationsByObserverIds: task.estimationsByObserverIds ? task.estimationsByObserverIds : {},
         stepHistory: task.stepHistory ? task.stepHistory : [],
         hasStar: hasStar,
+        priority: normalizeTaskPriority(task.priority),
         created: task.created ? task.created : Date.now(),
         creatorId: task.creatorId ? task.creatorId : '',
         dueDate: task.dueDate ? task.dueDate : Date.now(),

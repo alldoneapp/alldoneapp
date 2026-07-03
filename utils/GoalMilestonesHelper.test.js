@@ -63,6 +63,10 @@ describe('getDynamicMilestoneOptions', () => {
 
         expect(options).toHaveLength(2)
         expect(options.map(option => option.periodKey)).toEqual(['monthly:2026-07-01', 'monthly:2026-08-01'])
+        expect(options.map(option => new Date(option.periodStartDate).toISOString())).toEqual([
+            '2026-07-03T00:00:00.000Z',
+            '2026-08-01T00:00:00.000Z',
+        ])
         expect(options.every(option => option.milestoneType === MILESTONE_TYPE_LINEAR)).toBe(true)
     })
 })

@@ -11,6 +11,7 @@ import AddTask from '../AddTask'
 import store from '../../../redux/store'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import EditTask from '../TaskItem/EditTask'
+import { sortTasksByPriority } from '../../../utils/TaskPriority'
 
 export default function SubTasksView({
     projectId,
@@ -27,6 +28,7 @@ export default function SubTasksView({
     const dispatch = useDispatch()
     const checkTaskItem = useSelector(state => state.checkTaskItem)
     const focusedTaskItem = useSelector(state => state.focusedTaskItem)
+    const focusedTaskId = useSelector(state => state.loggedUser.inFocusTaskId)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const projectIds = useSelector(state => state.loggedUser.projectIds, shallowEqual)
@@ -37,9 +39,12 @@ export default function SubTasksView({
     const newItemRef = useRef(null)
     const parentRefsList = useRef([])
 
+    const parentInTaskOutOfOpen = isPending || isToReviewTask || parentTask.inDone
+    const renderedSubtaskList = parentInTaskOutOfOpen ? subtaskList : sortTasksByPriority(subtaskList, focusedTaskId)
+
     const setAriaTaskId = () => {
-        for (let index in subtaskList) {
-            const task = subtaskList[index]
+        for (let index in renderedSubtaskList) {
+            const task = renderedSubtaskList[index]
             if (task && parentRefsList.current[index]) {
                 parentRefsList.current[index].setNativeProps({ 'aria-task-id': task.id })
                 parentRefsList.current[index].setNativeProps({ 'is-observed-task': isObservedTask ? 'true' : 'false' })
@@ -59,7 +64,7 @@ export default function SubTasksView({
     }
 
     const findTaskIndexById = taskId => {
-        return subtaskList.findIndex(subT => subT.id === taskId)
+        return renderedSubtaskList.findIndex(subT => subT.id === taskId)
     }
 
     useEffect(() => {
@@ -104,13 +109,11 @@ export default function SubTasksView({
     const loggedUserCanUpdateObject =
         loggedUserIsParentTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
-    const parentInTaskOutOfOpen = isPending || isToReviewTask || parentTask.inDone
-
     return (
         <View style={{ marginLeft: 34 }}>
-            {subtaskList.length > 0
+            {renderedSubtaskList.length > 0
                 ? isActiveOrganizeMode
-                    ? subtaskList.map(subTask => {
+                    ? renderedSubtaskList.map(subTask => {
                           return (
                               <ParentTaskContainer
                                   key={subTask.id}
@@ -123,7 +126,7 @@ export default function SubTasksView({
                               />
                           )
                       })
-                    : subtaskList.map((subTask, index) => {
+                    : renderedSubtaskList.map((subTask, index) => {
                           return (
                               <View key={subTask.id} ref={ref => (parentRefsList.current[index] = ref)}>
                                   <DismissibleItem

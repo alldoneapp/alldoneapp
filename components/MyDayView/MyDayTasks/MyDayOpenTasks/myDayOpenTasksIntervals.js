@@ -3,6 +3,7 @@ import moment from 'moment'
 import { getEstimationToUse, getRoundedStartAndEndDates, roundDate } from './myDayOpenTasksHelper'
 import { orderBy } from 'lodash'
 import { getTaskAutoEstimation } from '../../../TaskListView/Utils/TasksHelper'
+import { getTaskPriorityRank } from '../../../../utils/TaskPriority'
 
 const splitTasksInCalendarAndNotCalendar = tasks => {
     const calendarTasks = []
@@ -134,12 +135,14 @@ const groupNonCalendarTaskByProject = (nonCalendarTasks, user, loggedUserProject
     const sortedNonCalendarTasks = orderBy(
         nonCalendarTasks,
         [
+            task => task.id === user.inFocusTaskId,
             task => task.projectId === user.inFocusTaskProjectId,
             task => guideProjectIds.includes(task.projectId),
             task => loggedUserProjectsMap[task.projectId].sortIndexByUser[user.uid],
             task => loggedUserProjectsMap[task.projectId].name.toLowerCase(),
+            task => getTaskPriorityRank(task.priority),
         ],
-        ['desc', 'asc', 'desc', 'asc']
+        ['desc', 'desc', 'asc', 'desc', 'asc', 'desc']
     )
 
     return sortedNonCalendarTasks
@@ -151,8 +154,9 @@ const groupNonCalendarTaskByProjectForSortingMode = (nonCalendarTasks, user, log
         [
             task => loggedUserProjectsMap[task.projectId].sortIndexByUser[user.uid],
             task => loggedUserProjectsMap[task.projectId].name.toLowerCase(),
+            task => getTaskPriorityRank(task.priority),
         ],
-        ['desc', 'asc']
+        ['desc', 'asc', 'desc']
     )
 
     return sortedNonCalendarTasks

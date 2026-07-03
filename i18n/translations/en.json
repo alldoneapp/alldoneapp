@@ -2204,5 +2204,12 @@
     "Analytics and privacy": "Analytics & privacy",
     "Analytics enabled": "Analytics enabled",
     "Analytics disabled": "Analytics disabled",
-    "Cookie settings": "Cookie settings"
+    "Cookie settings": "Cookie settings",
+    "Priority": "Priority",
+    "Select priority": "Select priority",
+    "Choose how important this task is": "Choose how important this task is",
+    "No priority": "No priority",
+    "Must do": "Must do",
+    "Should do": "Should do",
+    "Could do": "Could do"
 }

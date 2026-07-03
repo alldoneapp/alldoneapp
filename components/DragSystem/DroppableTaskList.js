@@ -11,6 +11,8 @@ import {
     addTaskIdWithSubtasksExpandedWhenActiveDragTaskMode,
     removeTaskIdWithSubtasksExpandedWhenActiveDragTaskMode,
 } from '../../redux/actions'
+import { CALENDAR_TASK_INDEX, WORKFLOW_TASK_INDEX } from '../../utils/backends/openTasks'
+import { sortTasksByPriority } from '../../utils/TaskPriority'
 
 export default function DroppableTaskList({
     projectId,
@@ -29,6 +31,7 @@ export default function DroppableTaskList({
         state => state.tasksIdsWithSubtasksExpandedWhenActiveDragTaskMode
     )
     const draggingParentTaskId = useSelector(state => state.draggingParentTaskId)
+    const focusedTaskId = useSelector(state => state.loggedUser.inFocusTaskId)
     const [internalTaskList, serInternalTaksList] = useState([])
     const [listId, setListId] = useState(
         generateDroppableListId(projectId, goalIndex, taskListIndex, dateIndex, nestedTaskListIndex)
@@ -46,7 +49,11 @@ export default function DroppableTaskList({
                 subtaskByTask[id] &&
                 draggingParentTaskId !== id
             ) {
-                mixedTaskList.push(...subtaskByTask[id])
+                const subtasks =
+                    taskListIndex === WORKFLOW_TASK_INDEX || taskListIndex === CALENDAR_TASK_INDEX
+                        ? subtaskByTask[id]
+                        : sortTasksByPriority(subtaskByTask[id], focusedTaskId)
+                mixedTaskList.push(...subtasks)
             }
         }
         serInternalTaksList(mixedTaskList)
@@ -60,7 +67,13 @@ export default function DroppableTaskList({
 
     useEffect(() => {
         updateTaskList()
-    }, [taskList, subtaskByTask, draggingParentTaskId, tasksIdsWithSubtasksExpandedWhenActiveDragTaskMode])
+    }, [
+        taskList,
+        subtaskByTask,
+        draggingParentTaskId,
+        tasksIdsWithSubtasksExpandedWhenActiveDragTaskMode,
+        focusedTaskId,
+    ])
 
     return (
         <Droppable

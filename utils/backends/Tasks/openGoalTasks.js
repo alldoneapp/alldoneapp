@@ -8,6 +8,7 @@ import { BACKLOG_DATE_STRING, OPEN_STEP } from '../../../components/TaskListView
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../../EstimationHelper'
 import { setGoalOpenSubtasksByParent, setGoalOpenTasksData } from '../../../redux/actions'
 import { isInboxSummaryGmailTask } from '../../Gmail/gmailTaskUtils'
+import { sortTasksByPriority } from '../../TaskPriority'
 
 export const DATE_TASK_INDEX = 0
 export const AMOUNT_TASKS_INDEX = 1
@@ -89,7 +90,9 @@ const processTasks = (projectId, docs) => {
 
     Object.keys(tasksByDate).forEach(date => {
         Object.keys(tasksByDate[date]).forEach(taskTypeIndex => {
-            tasksByDate[date][taskTypeIndex] = orderBy(tasksByDate[date][taskTypeIndex], 'sortIndex', 'desc')
+            const taskList = orderBy(tasksByDate[date][taskTypeIndex], 'sortIndex', 'desc')
+            tasksByDate[date][taskTypeIndex] =
+                Number(taskTypeIndex) === CALENDAR_TASK_INDEX ? taskList : sortTasksByPriority(taskList)
         })
     })
 
@@ -172,7 +175,9 @@ const processSubtasks = docs => {
     })
 
     Object.keys(openSubtasksByParent).forEach(parentId => {
-        openSubtasksByParent[parentId] = orderBy(openSubtasksByParent[parentId], 'sortIndex', 'desc')
+        openSubtasksByParent[parentId] = sortTasksByPriority(
+            orderBy(openSubtasksByParent[parentId], 'sortIndex', 'desc')
+        )
     })
 
     return { openSubtasksByParent }

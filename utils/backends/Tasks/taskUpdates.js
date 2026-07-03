@@ -30,6 +30,7 @@ import {
     FEED_TASK_UNFOLLOWED,
     FEED_TASK_UNOBSERVED,
     FEED_TASK_OBSERVER_ESTIMATION_CHANGED,
+    FEED_TASK_UPDATED,
 } from '../../../components/Feeds/Utils/FeedsConstants'
 import TasksHelper, {
     DONE_STEP,
@@ -68,6 +69,7 @@ import {
 } from '../../EstimationHelper'
 import { getUserPresentationData } from '../../../components/ContactsView/Utils/ContactsHelper'
 import { shrinkTagText } from '../../../functions/Utils/parseTextUtils'
+import { getTaskPriorityLabel, normalizeTaskPriority } from '../../TaskPriority'
 
 //COMMON
 
@@ -81,6 +83,7 @@ export function generateTaskObjectModel(currentMilliseconds, task = {}, taskId) 
         name: task.extendedName ? task.extendedName : task.name,
         assigneeEstimation: task.estimations[OPEN_STEP],
         recurrence: task.recurrence,
+        priority: normalizeTaskPriority(task.priority),
         isDone: task.done,
         isDeleted: false,
         privacy: task.isPrivate ? task.userId : 'public',
@@ -984,6 +987,51 @@ export async function createTaskHighlightedChangedFeed(projectId, task, taskId, 
     if (!externalBatch) {
         batch.commit()
     }
+}
+
+export async function createTaskPriorityChangedFeed(
+    projectId,
+    task,
+    taskId,
+    oldPriority,
+    newPriority,
+    externalBatch,
+    creator
+) {
+    const feedCreator = creator ? creator : store.getState().loggedUser
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
+    const taskFeedObject = await loadFeedObject(
+        projectId,
+        taskId,
+        'tasks',
+        currentDateFormated,
+        currentMilliseconds,
+        batch
+    )
+    const normalizedOldPriority = normalizeTaskPriority(oldPriority)
+    const normalizedNewPriority = normalizeTaskPriority(newPriority)
+    const isSubtask = taskFeedObject.parentId ? true : false
+    const { feed, feedId } = generateFeedModel({
+        feedType: FEED_TASK_UPDATED,
+        lastChangeDate: currentMilliseconds,
+        entryText: `changed ${isSubtask ? 'subtask' : 'task'} priority • From ${getTaskPriorityLabel(
+            normalizedOldPriority
+        )} to ${getTaskPriorityLabel(normalizedNewPriority)}`,
+        feedCreator,
+        objectId: taskId,
+        isPublicFor: taskFeedObject.isPublicFor,
+    })
+
+    taskFeedObject.priority = normalizedNewPriority
+    updateTaskFeedObject(projectId, currentDateFormated, taskId, taskFeedObject, feed, feedId, null, batch)
+    await increaseFeedCount(currentDateFormated, [], projectId, 'tasks', taskId, batch, feedId, feed, taskFeedObject, {
+        creatorName: HelperFunctions.getFirstName(feedCreator.displayName),
+        creatorPhotoURL: feedCreator.photoURL,
+    })
+    globalInnerFeedsGenerator(projectId, 'tasks', taskId, feed, feedId, feedCreator.uid, batch, true)
+
+    if (!externalBatch) batch.commit()
 }
 
 export async function createTaskFocusChangedFeed(projectId, taskId, inFocus, externalBatch, creator) {
