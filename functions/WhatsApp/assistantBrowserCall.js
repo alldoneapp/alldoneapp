@@ -9,6 +9,7 @@ const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
 const { getRunCallQueueResource, getRunCallTaskId } = require('./whatsAppCallOpenAIWebhook')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
+const { buildCallBootstrapInstructions } = require('./whatsAppCallPrompt')
 const { createDirectCallSessionWithLease, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
 
 const MAX_SDP_LENGTH = 200000
@@ -43,10 +44,11 @@ function getLocationCallId(location) {
     return normalized.split('/').filter(Boolean).pop() || ''
 }
 
-function buildInitialBrowserRealtimeSession({ config, voice }) {
+function buildInitialBrowserRealtimeSession({ config, voice, assistant, language }) {
     return {
         type: 'realtime',
         model: config.realtimeModel,
+        instructions: buildCallBootstrapInstructions(assistant, language),
         audio: {
             output: { voice },
         },
@@ -104,7 +106,7 @@ async function createOpenAIWebRTCSession({ config, offerSdp, assistant, language
     const voice = normalizeRealtimeVoice(assistant?.realtimeVoice)
     const form = new FormData()
     form.set('sdp', offerSdp)
-    form.set('session', JSON.stringify(buildInitialBrowserRealtimeSession({ config, voice, language })))
+    form.set('session', JSON.stringify(buildInitialBrowserRealtimeSession({ config, voice, assistant, language })))
 
     const response = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',

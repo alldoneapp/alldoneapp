@@ -42,10 +42,12 @@ describe('WhatsApp call prompt', () => {
     test('does not proactively speak human-readable task IDs during calls', () => {
         const instructions = buildCallBootstrapInstructions(assistant)
 
-        expect(instructions).toContain('When talking about tasks')
-        expect(instructions).toContain('do not proactively say human-readable task IDs')
-        expect(instructions).toContain('Refer to tasks by their name and project instead')
-        expect(instructions).toContain('Only say a human-readable task ID if the caller explicitly asks')
+        expect(instructions).toContain('Task IDs are silent by default')
+        expect(instructions).toContain('even when IDs appear in conversation context or tool results')
+        expect(instructions).toContain('Refer to each task by its name and project instead')
+        expect(instructions).toContain('does not count as asking for their IDs')
+        expect(instructions).toContain('when the caller explicitly asks')
+        expect(instructions).toContain('then say only the requested ID or IDs')
     })
 
     test('omits the language directive from bootstrap instructions when no language is provided', () => {

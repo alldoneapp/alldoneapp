@@ -107,7 +107,12 @@ describe('assistant browser calls', () => {
         })
         getDefaultAssistantId.mockResolvedValue('assistant-1')
         createDirectCallSessionWithLease.mockResolvedValue({ success: true })
-        getAssistantForChat.mockResolvedValue({ uid: 'assistant-1', realtimeVoice: 'marin' })
+        getAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna Alldone',
+            instructions: 'Act as Anna.',
+            realtimeVoice: 'marin',
+        })
     })
 
     test('requires auth', async () => {
@@ -143,6 +148,10 @@ describe('assistant browser calls', () => {
             'https://api.openai.com/v1/realtime/calls',
             expect.objectContaining({ method: 'POST' })
         )
+        const initialSession = JSON.parse(global.fetch.mock.calls[0][1].body.values.session)
+        expect(initialSession.instructions).toContain('Act as Anna.')
+        expect(initialSession.instructions).toContain('Task IDs are silent by default')
+        expect(initialSession.instructions).toContain('Start the call in English')
         expect(updateCallSession).toHaveBeenCalledWith(
             expect.stringMatching(/^browser-/),
             expect.objectContaining({ openAiCallId: 'rtc_123', status: 'accepted' })
@@ -177,16 +186,21 @@ describe('assistant browser calls', () => {
         ).resolves.toEqual({ projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' })
     })
 
-    test('uses a minimal initial session and leaves full configuration to the sideband', () => {
+    test('protects the browser call with the special prompt before the sideband connects', () => {
         expect(
             buildInitialBrowserRealtimeSession({
                 config: { realtimeModel: 'gpt-realtime-2' },
                 voice: 'marin',
+                assistant: { displayName: 'Anna Alldone', instructions: 'Act as Anna.' },
+                language: 'German',
             })
-        ).toEqual({
-            type: 'realtime',
-            model: 'gpt-realtime-2',
-            audio: { output: { voice: 'marin' } },
-        })
+        ).toEqual(
+            expect.objectContaining({
+                type: 'realtime',
+                model: 'gpt-realtime-2',
+                instructions: expect.stringContaining('Task IDs are silent by default'),
+                audio: { output: { voice: 'marin' } },
+            })
+        )
     })
 })
