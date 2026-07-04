@@ -3402,8 +3402,8 @@ const pickNextGeneralFocusTask = ({ projectId, userId, tasks, openMilestones, do
     return orderedTasks[0] || null
 }
 
-async function callAutoReminderTasks(tasks, targetUserId, clearSelectedTasks) {
-    store.dispatch(startLoadingData())
+async function callAutoReminderTasks(tasks, targetUserId, clearSelectedTasks, background) {
+    if (!background) store.dispatch(startLoadingData())
     try {
         const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
         const taskRequests = sortedTasks.map(task => ({
@@ -3427,19 +3427,24 @@ async function callAutoReminderTasks(tasks, targetUserId, clearSelectedTasks) {
         if (clearSelectedTasks) store.dispatch(setSelectedTasks(null, true))
         return result
     } finally {
-        store.dispatch(stopLoadingData())
+        if (!background) store.dispatch(stopLoadingData())
     }
 }
 
-export async function autoReminderMultipleTasks(tasks, targetUserId = store.getState().currentUser.uid) {
-    return callAutoReminderTasks(tasks, targetUserId, true)
+export async function autoReminderMultipleTasks(
+    tasks,
+    targetUserId = store.getState().currentUser.uid,
+    { background = false } = {}
+) {
+    return callAutoReminderTasks(tasks, targetUserId, true, background)
 }
 
-export async function autoReminderTask(projectId, task, isObservedTask, targetUserId) {
+export async function autoReminderTask(projectId, task, isObservedTask, targetUserId, { background = false } = {}) {
     const result = await callAutoReminderTasks(
         [{ ...task, projectId, isObservedTask }],
         targetUserId || store.getState().currentUser.uid,
-        false
+        false,
+        background
     )
     return result.updated[0]?.dueDate ?? null
 }

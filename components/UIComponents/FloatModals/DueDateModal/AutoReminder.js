@@ -36,16 +36,33 @@ export default function AutoReminder({
     const autoReminder = async () => {
         if (applying) return
         setApplying(true)
+        const isGoalAutoReminder = goal && updateParentGoalReminderDate
+
+        if (!isGoalAutoReminder && tasks && tasks.length > 0) {
+            autoReminderMultipleTasks(tasks, currentUserId, { background: true }).catch(error => {
+                console.error('AutoReminder: failed to apply auto-reminder', error)
+            })
+            closePopover()
+            return
+        }
+
+        if (!isGoalAutoReminder && task?.id) {
+            autoReminderTask(projectId, task, isObservedTabActive, currentUserId, { background: true })
+                .then(dateTimestamp => {
+                    if (dateTimestamp !== null) dispatch(setLastSelectedDueDate(dateTimestamp))
+                })
+                .catch(error => {
+                    console.error('AutoReminder: failed to apply auto-reminder', error)
+                })
+            closePopover()
+            return
+        }
+
         try {
             if (goal && updateParentGoalReminderDate) {
                 // Goal auto-reminders keep their existing cloud-backed flow.
                 const dateTimestamp = await autoReminderGoal(projectId, goal, currentUserId, inParentGoal)
                 dispatch(setLastSelectedDueDate(dateTimestamp))
-            } else if (tasks && tasks.length > 0) {
-                await autoReminderMultipleTasks(tasks, currentUserId)
-            } else if (task?.id) {
-                const dateTimestamp = await autoReminderTask(projectId, task, isObservedTabActive, currentUserId)
-                if (dateTimestamp !== null) dispatch(setLastSelectedDueDate(dateTimestamp))
             } else {
                 // Draft tasks have no server object yet, so keep the calculated date local.
                 const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()

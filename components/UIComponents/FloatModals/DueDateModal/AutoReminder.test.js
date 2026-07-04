@@ -78,7 +78,9 @@ describe('DueDateModal AutoReminder', () => {
         const task = { id: 'task-1', timesPostponed: 2 }
         await renderAndPress({ task })
 
-        expect(mockAutoReminderTask).toHaveBeenCalledWith('project-1', task, false, 'target-1')
+        expect(mockAutoReminderTask).toHaveBeenCalledWith('project-1', task, false, 'target-1', {
+            background: true,
+        })
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_LAST_SELECTED_DUE_DATE', value: 123456 })
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
@@ -87,7 +89,7 @@ describe('DueDateModal AutoReminder', () => {
         const tasks = [{ id: 'task-1' }, { id: 'task-2' }]
         await renderAndPress({ task: tasks[0], tasks })
 
-        expect(mockAutoReminderMultipleTasks).toHaveBeenCalledWith(tasks, 'target-1')
+        expect(mockAutoReminderMultipleTasks).toHaveBeenCalledWith(tasks, 'target-1', { background: true })
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 
@@ -100,13 +102,13 @@ describe('DueDateModal AutoReminder', () => {
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 
-    test('keeps the modal open when the callable fails', async () => {
+    test('closes immediately and logs a background callable failure', async () => {
         const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
         mockAutoReminderTask.mockRejectedValueOnce(new Error('network'))
 
         await renderAndPress({ task: { id: 'task-1', timesPostponed: 0 } })
 
-        expect(baseProps.closePopover).not.toHaveBeenCalled()
+        expect(baseProps.closePopover).toHaveBeenCalled()
         expect(consoleError).toHaveBeenCalled()
         consoleError.mockRestore()
     })

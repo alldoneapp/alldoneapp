@@ -178,17 +178,13 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
         setExpandedPriorities(previous => ({ ...previous, [key]: !previous[key] }))
     }
 
-    const apply = async () => {
+    const apply = () => {
         if (applying || selectedTasks.length === 0) return
         setApplying(true)
-        try {
-            await autoReminderMultipleTasks(selectedTasks, currentUserId)
-            closePopover()
-        } catch (error) {
+        autoReminderMultipleTasks(selectedTasks, currentUserId, { background: true }).catch(error => {
             console.error('AutoReminderTasksModal: failed to apply auto-reminders', error)
-        } finally {
-            setApplying(false)
-        }
+        })
+        closePopover()
     }
 
     useEffect(() => {

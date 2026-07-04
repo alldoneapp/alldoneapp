@@ -92,8 +92,9 @@ describe('AutoReminderTasksModal', () => {
 
     test('supports automatic expansion, manual collapse, partial state, and individual Apply selection', async () => {
         let component
+        const closePopover = jest.fn()
         act(() => {
-            component = renderer.create(<AutoReminderTasksModal projectId="project-1" closePopover={jest.fn()} />)
+            component = renderer.create(<AutoReminderTasksModal projectId="project-1" closePopover={closePopover} />)
         })
         const root = component.root
 
@@ -119,13 +120,25 @@ describe('AutoReminderTasksModal', () => {
         act(() => root.findByProps({ testID: 'auto-reminder-priority-do_later-expand' }).props.onPress())
         expect(root.findAllByProps({ testID: 'auto-reminder-task-project-1:later' })).toHaveLength(0)
 
+        let finishRequest
+        const pendingRequest = new Promise(resolve => {
+            finishRequest = resolve
+        })
+        mockAutoReminderMultipleTasks.mockReturnValueOnce(pendingRequest)
         const applyButton = root.findAll(node => node.props.title === 'Apply' && node.props.onPress)[0]
-        await act(async () => applyButton.props.onPress())
+        act(() => applyButton.props.onPress())
 
         expect(mockAutoReminderMultipleTasks).toHaveBeenCalledWith(
             [expect.objectContaining({ id: 'must-2' }), expect.objectContaining({ id: 'later' })],
-            'user-1'
+            'user-1',
+            { background: true }
         )
+        expect(closePopover).toHaveBeenCalled()
+
+        await act(async () => {
+            finishRequest({ updatedCount: 2 })
+            await pendingRequest
+        })
     })
 
     test('shows project context for expanded tasks in All Projects', () => {
