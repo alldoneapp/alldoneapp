@@ -530,11 +530,11 @@ const processTaskChange = (
             //THE WORKFLOW ALGORITHM IS UPDATING THE TASK DIRECTLY (BAD PRACTICE) AND WE NEED TO CLONE THE TASK FOR NOT BEEN AFFECTED BY THIS
             //IS THE WORKLFOW IS REFACTORED WE CAN REMOVE TEH CLONE AND PUT THE TASK DIRECTLY
             if (areObservedTasks) {
-                tasksMap.observedTasksById[task.id] = cloneDeep(task)
+                tasksMap.observedTasksById[task.id] = { ...cloneDeep(task), isObservedTask: true }
             } else if (areStreamAndUserTasks) {
-                tasksMap.streamAndUserTasksById[task.id] = cloneDeep(task)
+                tasksMap.streamAndUserTasksById[task.id] = { ...cloneDeep(task), isObservedTask: false }
             } else {
-                tasksMap.userTasksById[task.id] = cloneDeep(task)
+                tasksMap.userTasksById[task.id] = { ...cloneDeep(task), isObservedTask: false }
             }
         }
     }

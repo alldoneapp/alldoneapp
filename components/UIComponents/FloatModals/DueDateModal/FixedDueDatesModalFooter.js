@@ -58,6 +58,7 @@ export default function FixedDueDatesModalFooter({
                     goal={goal}
                     updateParentGoalReminderDate={updateParentGoalReminderDate}
                     inParentGoal={inParentGoal}
+                    saveDueDateBeforeSaveTask={saveDueDateBeforeSaveTask}
                 />
             )}
         </View>

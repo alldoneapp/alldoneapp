@@ -321,6 +321,7 @@ async function autoPostponeTaskCloud({
     projectId,
     task,
     userId,
+    editorUserId = userId,
     isObservedTask,
     timezoneContext,
     batch,
@@ -332,19 +333,46 @@ async function autoPostponeTaskCloud({
     const updateData = {
         sortIndex: generateSortIndex(),
         lastEditionDate: now,
-        lastEditorId: userId,
+        lastEditorId: editorUserId,
+    }
+    const isPostponingPrimaryDueDate = !isObservedTask && newDueDate > task.dueDate
+
+    if (isPostponingPrimaryDueDate) {
+        updateData.timesPostponed = admin.firestore.FieldValue.increment(1)
+        if (shouldSaveRecurrenceOriginalDueDate(task, task.dueDate, newDueDate)) {
+            updateData.recurrenceOriginalDueDate = task.dueDate
+        }
     }
 
-    if (isObservedTask) {
+    if (task.parentId) {
+        const parentRef = admin.firestore().doc(`items/${projectId}/tasks/${task.parentId}`)
+        const parentDoc = await parentRef.get()
+        if (parentDoc.exists) {
+            const parentTask = parentDoc.data() || {}
+            const subtaskIds = Array.isArray(parentTask.subtaskIds) ? [...parentTask.subtaskIds] : []
+            const subtaskNames = Array.isArray(parentTask.subtaskNames) ? [...parentTask.subtaskNames] : []
+            const subtaskIndex = subtaskIds.indexOf(task.id)
+            if (subtaskIndex >= 0) {
+                subtaskIds.splice(subtaskIndex, 1)
+                subtaskNames.splice(subtaskIndex, 1)
+                batch.update(parentRef, {
+                    subtaskIds,
+                    subtaskNames,
+                    lastEditionDate: now,
+                    lastEditorId: editorUserId,
+                })
+            }
+        }
+
+        // Preserve the existing client behavior: postponing a subtask promotes it to
+        // a top-level task and writes its primary due date.
+        updateData.parentId = null
+        updateData.isSubtask = false
+        updateData.dueDate = newDueDate
+    } else if (isObservedTask) {
         updateData[`dueDateByObserversIds.${userId}`] = newDueDate
     } else {
         updateData.dueDate = newDueDate
-        if (newDueDate > task.dueDate) {
-            updateData.timesPostponed = admin.firestore.FieldValue.increment(1)
-            if (shouldSaveRecurrenceOriginalDueDate(task, task.dueDate, newDueDate)) {
-                updateData.recurrenceOriginalDueDate = task.dueDate
-            }
-        }
     }
 
     batch.update(admin.firestore().doc(`items/${projectId}/tasks/${task.id}`), updateData)
@@ -355,7 +383,7 @@ async function autoPostponeTaskCloud({
                 dueDate: newDueDate,
                 timesPostponed: admin.firestore.FieldValue.increment(1),
                 lastEditionDate: now,
-                lastEditorId: userId,
+                lastEditorId: editorUserId,
             })
         })
     }

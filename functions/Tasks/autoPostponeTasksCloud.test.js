@@ -1,5 +1,6 @@
 const mockQueryGet = jest.fn()
 const mockUserDocUpdate = jest.fn(() => Promise.resolve())
+const mockParentDocGet = jest.fn(() => Promise.resolve({ exists: false }))
 
 jest.mock('firebase-admin', () => ({
     firestore: Object.assign(
@@ -17,6 +18,7 @@ jest.mock('firebase-admin', () => ({
             }),
             doc: jest.fn(path => ({
                 update: path.startsWith('users/') ? mockUserDocUpdate : jest.fn(() => Promise.resolve()),
+                get: mockParentDocGet,
             })),
         })),
         {
@@ -88,6 +90,7 @@ describe('autoPostponeTasksCloud', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         mockQueryGet.mockResolvedValue({ docs: [] })
+        mockParentDocGet.mockResolvedValue({ exists: false })
     })
 
     test('defaults invalid settings to 3 and preserves Never as 0', () => {
@@ -238,6 +241,54 @@ describe('autoPostponeTasksCloud', () => {
             expect.objectContaining({
                 'dueDateByObserversIds.user-1': Date.UTC(2026, 0, 5, 0, 5, 0),
                 lastEditorId: 'user-1',
+            })
+        )
+    })
+
+    test('promotes postponed subtasks and attributes edits to the authenticated actor', async () => {
+        const batch = { update: jest.fn() }
+        mockParentDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({ subtaskIds: ['task-1', 'task-2'], subtaskNames: ['First', 'Second'] }),
+        })
+
+        await autoPostponeTaskCloud({
+            projectId: 'project-1',
+            task: {
+                id: 'task-1',
+                parentId: 'parent-1',
+                dueDate: Date.UTC(2026, 0, 1, 10, 0, 0),
+                timesPostponed: 0,
+                subtaskIds: [],
+                isPublicFor: [0, 'target-1'],
+            },
+            userId: 'target-1',
+            editorUserId: 'actor-1',
+            isObservedTask: false,
+            timezoneContext: resolveTimezoneContext({ timezone: 0 }),
+            batch,
+            feedUser: { uid: 'actor-1' },
+            now: Date.UTC(2026, 0, 4, 0, 5, 0),
+        })
+
+        expect(batch.update).toHaveBeenNthCalledWith(
+            1,
+            expect.any(Object),
+            expect.objectContaining({
+                subtaskIds: ['task-2'],
+                subtaskNames: ['Second'],
+                lastEditorId: 'actor-1',
+            })
+        )
+        expect(batch.update).toHaveBeenNthCalledWith(
+            2,
+            expect.any(Object),
+            expect.objectContaining({
+                parentId: null,
+                isSubtask: false,
+                dueDate: Date.UTC(2026, 0, 5, 0, 5, 0),
+                timesPostponed: { __increment__: 1 },
+                lastEditorId: 'actor-1',
             })
         )
     })

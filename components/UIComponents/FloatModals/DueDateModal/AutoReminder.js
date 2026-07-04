@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Hotkeys from 'react-hot-keys'
 import { useDispatch, useSelector } from 'react-redux'
@@ -11,8 +11,8 @@ import DateText from './DateText'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import {
     autoReminderMultipleTasks,
+    autoReminderTask,
     getDateToMoveTaskInAutoTeminder,
-    setTaskDueDate,
 } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { autoReminderGoal, getDateToMoveGoalInAutoReminder } from '../../../../utils/backends/Goals/goalsFirestore'
 import { setLastSelectedDueDate } from '../../../../redux/actions'
@@ -26,24 +26,38 @@ export default function AutoReminder({
     goal,
     updateParentGoalReminderDate,
     inParentGoal,
+    saveDueDateBeforeSaveTask,
 }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const [applying, setApplying] = useState(false)
 
     const autoReminder = async () => {
-        if (goal && updateParentGoalReminderDate) {
-            // Auto-remind goal and cascade to tasks
-            const dateTimestamp = await autoReminderGoal(projectId, goal, currentUserId, inParentGoal)
-            dispatch(setLastSelectedDueDate(dateTimestamp))
-        } else if (tasks) {
-            autoReminderMultipleTasks(tasks)
-        } else {
-            const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
-            dispatch(setLastSelectedDueDate(dateTimestamp))
-            setTaskDueDate(projectId, task.id, dateTimestamp, task, isObservedTabActive, null)
+        if (applying) return
+        setApplying(true)
+        try {
+            if (goal && updateParentGoalReminderDate) {
+                // Goal auto-reminders keep their existing cloud-backed flow.
+                const dateTimestamp = await autoReminderGoal(projectId, goal, currentUserId, inParentGoal)
+                dispatch(setLastSelectedDueDate(dateTimestamp))
+            } else if (tasks && tasks.length > 0) {
+                await autoReminderMultipleTasks(tasks, currentUserId)
+            } else if (task?.id) {
+                const dateTimestamp = await autoReminderTask(projectId, task, isObservedTabActive, currentUserId)
+                if (dateTimestamp !== null) dispatch(setLastSelectedDueDate(dateTimestamp))
+            } else {
+                // Draft tasks have no server object yet, so keep the calculated date local.
+                const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
+                dispatch(setLastSelectedDueDate(dateTimestamp))
+                await saveDueDateBeforeSaveTask?.(dateTimestamp, isObservedTabActive)
+            }
+            closePopover()
+        } catch (error) {
+            console.error('AutoReminder: failed to apply auto-reminder', error)
+        } finally {
+            setApplying(false)
         }
-        closePopover()
     }
 
     // Calculate date based on goal or task
@@ -54,7 +68,12 @@ export default function AutoReminder({
         : getDateToMoveTaskInAutoTeminder(task.timesPostponed, isObservedTabActive)
 
     return (
-        <TouchableOpacity style={localStyles.dateSectionItem} onPress={autoReminder} accessible={false}>
+        <TouchableOpacity
+            style={[localStyles.dateSectionItem, applying && localStyles.disabled]}
+            onPress={autoReminder}
+            disabled={applying}
+            accessible={false}
+        >
             <Hotkeys key={9} keyName={'A'} onKeyDown={(sht, event) => autoReminder(event)} filter={e => true}>
                 <View style={localStyles.dateSectionItem}>
                     <View style={localStyles.sectionItemText}>
@@ -110,5 +129,8 @@ const localStyles = StyleSheet.create({
     },
     navigateIndicator: {
         marginTop: 4,
+    },
+    disabled: {
+        opacity: 0.5,
     },
 })

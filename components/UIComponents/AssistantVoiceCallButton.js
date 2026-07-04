@@ -139,7 +139,6 @@ export default function AssistantVoiceCallButton({
     skipNavigationOnThreadCreate = true,
 }) {
     const [status, setStatus] = useState(STATUS_IDLE)
-    const [muted, setMuted] = useState(false)
     const [error, setError] = useState('')
     const peerConnectionRef = useRef(null)
     const localStreamRef = useRef(null)
@@ -307,7 +306,6 @@ export default function AssistantVoiceCallButton({
             }
             audioElementRef.current = null
             if (resetState && mountedRef.current) {
-                setMuted(false)
                 setStatus(STATUS_IDLE)
             }
         },
@@ -479,13 +477,6 @@ export default function AssistantVoiceCallButton({
         skipNavigationOnThreadCreate,
     ])
 
-    const toggleMute = useCallback(() => {
-        const nextMuted = !muted
-        const stream = localStreamRef.current
-        if (stream) stream.getAudioTracks().forEach(track => (track.enabled = !nextMuted))
-        setMuted(nextMuted)
-    }, [muted])
-
     if (Platform.OS !== 'web') return null
 
     const idleTitle = title || translate('Start voice call') || translate('Call Anna')
@@ -494,14 +485,6 @@ export default function AssistantVoiceCallButton({
     if (status === STATUS_CONNECTED) {
         return (
             <View style={[localStyles.connectedContainer, compact && localStyles.connectedContainerCompact]}>
-                <Button
-                    type="ghost"
-                    icon={muted ? 'mic-off' : 'mic'}
-                    onPress={toggleMute}
-                    buttonStyle={[localStyles.iconButton, buttonStyle]}
-                    accessibilityLabel={muted ? translate('Unmute assistant call') : translate('Mute assistant call')}
-                    accessible
-                />
                 <Button
                     type="danger"
                     icon="phone-call"

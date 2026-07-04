@@ -3501,6 +3501,34 @@ exports.reconcileAssistantHeartbeatSchedules = onSchedule(
     }
 )
 
+exports.autoReminderTasksSecondGen = onCall(
+    {
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+
+        try {
+            const { executeAutoReminderTasks } = require('./Tasks/autoReminderTasksCallable')
+            return await executeAutoReminderTasks({ actorUserId: auth.uid, data })
+        } catch (error) {
+            if (error instanceof HttpsError) throw error
+            const supportedCodes = new Set(['invalid-argument', 'permission-denied', 'not-found'])
+            const code = supportedCodes.has(error.code) ? error.code : 'internal'
+            console.error('[autoReminderTasksSecondGen] Failed', {
+                actorUserId: auth.uid,
+                code,
+                error: error.message,
+            })
+            throw new HttpsError(code, code === 'internal' ? 'Failed to apply auto-reminders' : error.message)
+        }
+    }
+)
+
 exports.autoPostponeOverdueTasksSecondGen = onSchedule(
     {
         schedule: '0 * * * *',

@@ -1,4 +1,4 @@
-import { cloneDeep, intersection, isEqual, uniq } from 'lodash'
+import { chunk, cloneDeep, intersection, isEqual, uniq } from 'lodash'
 import { firebase } from '@firebase/app'
 import moment from 'moment'
 
@@ -20,6 +20,7 @@ import {
     getMentionedUsersIdsWhenEditText,
     getNoteMeta,
     getObjectFollowersIds,
+    runHttpsCallableFunction,
     getTaskData,
     globalWatcherUnsub,
     insertFollowersUserToFeedChain,
@@ -3401,21 +3402,46 @@ const pickNextGeneralFocusTask = ({ projectId, userId, tasks, openMilestones, do
     return orderedTasks[0] || null
 }
 
-export async function autoReminderMultipleTasks(tasks) {
+async function callAutoReminderTasks(tasks, targetUserId, clearSelectedTasks) {
     store.dispatch(startLoadingData())
+    try {
+        const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
+        const taskRequests = sortedTasks.map(task => ({
+            projectId: task.projectId,
+            taskId: task.id,
+            isObservedTask: !!task.isObservedTask,
+        }))
+        const result = { requestedCount: 0, updatedCount: 0, updated: [], skipped: [] }
 
-    const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
-    const batch = new BatchWrapper(getDb())
-    const promises = []
-    for (let task of sortedTasks) {
-        const dueDate = getDateToMoveTaskInAutoTeminder(task.timesPostponed, task.isObservedTask)
-        const dateTimestamp = dueDate === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : dueDate.valueOf()
-        promises.push(setTaskDueDate(task.projectId, task.id, dateTimestamp, task, task.isObservedTask, batch))
+        for (const taskChunk of chunk(taskRequests, 500)) {
+            const chunkResult = await runHttpsCallableFunction('autoReminderTasksSecondGen', {
+                targetUserId,
+                tasks: taskChunk,
+            })
+            result.requestedCount += chunkResult.requestedCount || 0
+            result.updatedCount += chunkResult.updatedCount || 0
+            result.updated.push(...(chunkResult.updated || []))
+            result.skipped.push(...(chunkResult.skipped || []))
+        }
+
+        if (clearSelectedTasks) store.dispatch(setSelectedTasks(null, true))
+        return result
+    } finally {
+        store.dispatch(stopLoadingData())
     }
-    await Promise.all(promises)
-    await batch.commit()
+}
 
-    store.dispatch([setSelectedTasks(null, true), stopLoadingData()])
+export async function autoReminderMultipleTasks(tasks, targetUserId = store.getState().currentUser.uid) {
+    return callAutoReminderTasks(tasks, targetUserId, true)
+}
+
+export async function autoReminderTask(projectId, task, isObservedTask, targetUserId) {
+    const result = await callAutoReminderTasks(
+        [{ ...task, projectId, isObservedTask }],
+        targetUserId || store.getState().currentUser.uid,
+        false
+    )
+    return result.updated[0]?.dueDate ?? null
 }
 
 /**
