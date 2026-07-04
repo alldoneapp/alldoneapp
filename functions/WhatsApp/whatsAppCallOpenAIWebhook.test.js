@@ -81,7 +81,7 @@ describe('OpenAI incoming Realtime call webhook', () => {
         expect(session.instructions).not.toContain('Anna Alldone')
         expect(session.instructions).toContain('Act as Anna.')
         expect(session.instructions).toContain('Never say you are ChatGPT')
-        expect(session.instructions).toContain('Task IDs are silent by default')
+        expect(session.instructions).toContain('All task IDs are silent by default')
         expect(session.tools).toBeUndefined()
     })
 
@@ -187,7 +187,7 @@ describe('OpenAI incoming Realtime call webhook', () => {
         const acceptBody = JSON.parse(global.fetch.mock.calls[0][1].body)
         expect(acceptBody.instructions).toContain('You are Anna,')
         expect(acceptBody.instructions).toContain('Act as Anna.')
-        expect(acceptBody.instructions).toContain('Task IDs are silent by default')
+        expect(acceptBody.instructions).toContain('All task IDs are silent by default')
         // The accepted call must carry the caller's language so the very first response is in
         // their language, not the English default, before the controller's instructions arrive.
         expect(acceptBody.instructions).toContain('Start the call in German')

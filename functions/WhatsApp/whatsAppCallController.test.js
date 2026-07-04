@@ -279,7 +279,7 @@ describe('WhatsApp call sideband configuration', () => {
             'Never say you are ChatGPT'
         )
         expect(sentEvents.find(event => event.type === 'session.update').session.instructions).toContain(
-            'Task IDs are silent by default'
+            'All task IDs are silent by default'
         )
         expect(sentEvents.find(event => event.type === 'response.create').response.instructions).toContain(
             'introduce yourself only as Anna'
@@ -314,7 +314,7 @@ describe('WhatsApp call sideband configuration', () => {
         )
         expect(enrichedSessionUpdate.session.instructions).toContain('Compacted thread summary: prior progress.')
         expect(enrichedSessionUpdate.session.instructions).toContain('Start the call in English')
-        expect(enrichedSessionUpdate.session.instructions).toContain('Task IDs are silent by default')
+        expect(enrichedSessionUpdate.session.instructions).toContain('All task IDs are silent by default')
         expect(enrichedSessionUpdate.session.instructions).toContain('User: Earlier context')
         // History is never replayed as live conversation items, only carried in instructions.
         expect(

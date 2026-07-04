@@ -150,7 +150,7 @@ describe('assistant browser calls', () => {
         )
         const initialSession = JSON.parse(global.fetch.mock.calls[0][1].body.values.session)
         expect(initialSession.instructions).toContain('Act as Anna.')
-        expect(initialSession.instructions).toContain('Task IDs are silent by default')
+        expect(initialSession.instructions).toContain('All task IDs are silent by default')
         expect(initialSession.instructions).toContain('Start the call in English')
         expect(updateCallSession).toHaveBeenCalledWith(
             expect.stringMatching(/^browser-/),
@@ -198,7 +198,7 @@ describe('assistant browser calls', () => {
             expect.objectContaining({
                 type: 'realtime',
                 model: 'gpt-realtime-2',
-                instructions: expect.stringContaining('Task IDs are silent by default'),
+                instructions: expect.stringContaining('All task IDs are silent by default'),
                 audio: { output: { voice: 'marin' } },
             })
         )
