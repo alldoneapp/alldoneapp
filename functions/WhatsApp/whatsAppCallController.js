@@ -250,12 +250,21 @@ async function hangUpOpenAICall(config, openAiCallId) {
 }
 
 async function sendCallRecap(sessionId) {
+    const session = await getCallSession(sessionId)
+    if (!session) return { sent: false, reason: 'session_not_found' }
+
+    // Call recaps are only delivered for WhatsApp-initiated calls. Phone and
+    // browser calls skip the recap for now.
+    const channel = String(session.channel || 'whatsapp_call')
+    if (channel !== 'whatsapp_call') {
+        await updateCallSession(sessionId, { recapStatus: 'skipped' }).catch(() => {})
+        return { sent: false, reason: 'recap_disabled_for_channel' }
+    }
+
     const claimed = await claimRecap(sessionId)
     if (!claimed) return { sent: false, reason: 'already_claimed' }
 
     const config = getWhatsAppCallConfig()
-    const session = await getCallSession(sessionId)
-    if (!session) return { sent: false, reason: 'session_not_found' }
 
     const storedRecap = await getCallTranscriptTurn({
         sessionId,
