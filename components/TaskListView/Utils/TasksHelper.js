@@ -2,6 +2,7 @@ import moment from 'moment'
 import { findIndex, uniq } from 'lodash'
 
 import store from '../../../redux/store'
+import { shouldBlockPressAfterPopupDismiss } from '../../../utils/popupDismissGuard'
 import {
     setBacklinkSection,
     setGoalsActiveTab,
@@ -1674,6 +1675,11 @@ export const getTaskAutoEstimation = (projectId, estimation, taskAutoEstimation,
 }
 
 export const shouldOnPressInput = (event, blockOpen) => {
+    // Ignore the emulated click mobile browsers fire right after a popup is
+    // dismissed mid-tap — by then the popover container is unmounted, so the
+    // querySelectorAll check below can no longer catch it
+    if (shouldBlockPressAfterPopupDismiss()) return false
+
     const { target } = event
 
     let shouldOnPress = true

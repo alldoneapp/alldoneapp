@@ -24,6 +24,7 @@ import {
     showShortcuts,
 } from '../redux/actions'
 import Backend from './BackendBridge'
+import { registerPopupDismiss } from './popupDismissGuard'
 import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormatPickerModal'
 import { BACKWARD_COMMENT, FORDWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { DONE_STEP, OPEN_STEP } from '../components/TaskListView/Utils/TasksHelper'
@@ -468,7 +469,9 @@ export const applyPopoverWidthV2 = (isMiddleScreen, smallScreenNavigation, windo
 }
 
 export const forceCloseModals = tryToRemove => {
-    document.querySelectorAll('.react-tiny-popover-container').forEach(e => {
+    const containers = document.querySelectorAll('.react-tiny-popover-container')
+    if (containers.length > 0) registerPopupDismiss()
+    containers.forEach(e => {
         if (e?.parentNode) e?.parentNode?.click?.()
         else if (tryToRemove) e?.remove?.()
     })

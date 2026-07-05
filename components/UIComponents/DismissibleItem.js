@@ -6,6 +6,7 @@ import store from '../../redux/store'
 import { setDismissibleComponent, toggleDismissibleActive, unsetAddTaskRepeatMode } from '../../redux/actions'
 import DismissibleModal from './DismissibleModal'
 import { dismissAllPopups } from '../../utils/HelperFunctions'
+import { shouldBlockPressAfterPopupDismiss } from '../../utils/popupDismissGuard'
 
 class DismissibleItem extends Component {
     _isMounted = false
@@ -68,6 +69,10 @@ class DismissibleItem extends Component {
         const { visibleModal } = this.state
         const { onToggleModal } = this.props
 
+        // A press right after a popup closed is most likely the browser's
+        // emulated click-through on mobile web — don't open edit mode from it
+        if (!visibleModal && !forceAction && shouldBlockPressAfterPopupDismiss()) return
+
         if (forceAction || store.getState().showFloatPopup === 0) {
             if (MyPlatform.isMobile) {
                 // Set dismissible as active
@@ -93,6 +98,8 @@ class DismissibleItem extends Component {
     openModal = forceAction => {
         const { visibleModal } = this.state
         const { onToggleModal } = this.props
+
+        if (!forceAction && shouldBlockPressAfterPopupDismiss()) return
 
         if (forceAction || store.getState().showFloatPopup === 0) {
             if (MyPlatform.isMobile) {

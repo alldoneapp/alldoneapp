@@ -1,3 +1,5 @@
+import { registerPopupDismiss } from '../utils/popupDismissGuard'
+
 export const LogOut = () => {
     const action = {
         type: 'Log out',
@@ -389,6 +391,7 @@ export const showFloatPopup = () => {
 }
 
 export const hideFloatPopup = () => {
+    registerPopupDismiss()
     const action = {
         type: 'Hide float popup',
     }
@@ -396,6 +399,7 @@ export const hideFloatPopup = () => {
 }
 
 export const resetFloatPopup = () => {
+    registerPopupDismiss()
     const action = {
         type: 'Reset float popup',
     }
@@ -1500,6 +1504,7 @@ export const storeOpenModal = (modalId, params) => {
 }
 
 export const removeOpenModal = modalId => {
+    registerPopupDismiss()
     const action = {
         type: 'Remove open modal',
         modalId,
@@ -1508,6 +1513,7 @@ export const removeOpenModal = modalId => {
 }
 
 export const resetOpenModal = () => {
+    registerPopupDismiss()
     const action = {
         type: 'Reset open modal',
     }
