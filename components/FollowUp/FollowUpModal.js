@@ -47,14 +47,11 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
     const [dateTimestamp, setDateTimestamp] = useState(0)
     const [dateText, setDateText] = useState('')
 
-    const [explicitAssistantEnabled, setExplicitAssistantEnabled] = useState(null)
-
-    const getCommentAndFiles = (comment, mentions, commentIsPrivate, hasKarma, explicitAssistantEnabledFromModal) => {
+    const getCommentAndFiles = (comment, mentions, commentIsPrivate, hasKarma) => {
         setTimeout(() => {
             setComment(comment)
             setCommentIsPrivate(commentIsPrivate)
             setHasKarma(hasKarma)
-            setExplicitAssistantEnabled(explicitAssistantEnabledFromModal)
             setInComments(false)
         })
     }
@@ -194,18 +191,10 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
                 needToCreateFolloUpTask ? null : STAYWARD_COMMENT,
                 estimations,
                 checkBoxId,
-                explicitAssistantEnabled,
                 recurrenceBaseDateOverride
             )
             if (needToCreateFolloUpTask) {
-                createFollowUpTask(
-                    projectId,
-                    task,
-                    dateTimestamp,
-                    commentWithAttachments,
-                    safeEstimation,
-                    explicitAssistantEnabled
-                )
+                createFollowUpTask(projectId, task, dateTimestamp, commentWithAttachments, safeEstimation)
             }
         })
     }

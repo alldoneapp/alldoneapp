@@ -857,7 +857,7 @@ async function copyChatsForFolloupTaskAndGenerateCommentsData(projectId, oldTask
     return commentsData
 }
 
-export async function createFollowUpTask(projectId, task, dueDate, comment, newEstimation, explicitAssistantEnabled) {
+export async function createFollowUpTask(projectId, task, dueDate, comment, newEstimation) {
     const { loggedUser } = store.getState()
 
     const newTaskId = getId()
@@ -898,43 +898,15 @@ export async function createFollowUpTask(projectId, task, dueDate, comment, newE
         createSubtasksCopies(projectId, projectId, newTaskId, followUpTask, [...task.subtaskIds], null, true, true)
     }
 
+    // Follow-up comments must never trigger an assistant reply, even when the
+    // task/thread has an assistant enabled — hence skipAssistantTrigger = true.
     const linkToNewTask = `${window.location.origin}/projects/${projectId}/tasks/${newTaskId}/properties`
     const commentOldTask = `Follow up task created: ${linkToNewTask}`
-    createObjectMessage(
-        projectId,
-        task.id,
-        commentOldTask,
-        'tasks',
-        STAYWARD_COMMENT,
-        null,
-        null,
-        false,
-        explicitAssistantEnabled
-    )
+    createObjectMessage(projectId, task.id, commentOldTask, 'tasks', STAYWARD_COMMENT, null, null, true)
 
     if (comment && comment.trim()) {
-        createObjectMessage(
-            projectId,
-            task.id,
-            comment,
-            'tasks',
-            STAYWARD_COMMENT,
-            null,
-            null,
-            false,
-            explicitAssistantEnabled
-        )
-        createObjectMessage(
-            projectId,
-            newTaskId,
-            comment,
-            'tasks',
-            STAYWARD_COMMENT,
-            null,
-            null,
-            false,
-            explicitAssistantEnabled
-        )
+        createObjectMessage(projectId, task.id, comment, 'tasks', STAYWARD_COMMENT, null, null, true)
+        createObjectMessage(projectId, newTaskId, comment, 'tasks', STAYWARD_COMMENT, null, null, true)
     }
 
     createFollowUpBacklinksToNotes(projectId, newTaskId, task.id)
@@ -2622,7 +2594,6 @@ export async function moveTasksFromOpen(
     commentType,
     estimations,
     checkBoxId,
-    explicitAssistantEnabled,
     recurrenceBaseDateOverride = null
 ) {
     const { loggedUser } = store.getState()
@@ -2630,18 +2601,9 @@ export async function moveTasksFromOpen(
     const completionDate = Date.now()
     const { parentId, subtaskIds, userId } = task
 
-    if (comment)
-        createObjectMessage(
-            projectId,
-            task.id,
-            comment,
-            'tasks',
-            commentType,
-            null,
-            null,
-            false,
-            explicitAssistantEnabled
-        )
+    // Completion/workflow-move comments must never trigger an assistant reply,
+    // even when the task/thread has an assistant enabled — hence skipAssistantTrigger = true.
+    if (comment) createObjectMessage(projectId, task.id, comment, 'tasks', commentType, null, null, true)
 
     const ownerIsWorkstream = userId.startsWith(WORKSTREAM_ID_PREFIX)
     const newUserId = ownerIsWorkstream ? loggedUserId : userId
