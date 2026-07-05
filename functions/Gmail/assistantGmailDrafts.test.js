@@ -116,7 +116,13 @@ describe('assistantGmailDrafts helpers', () => {
     test('builds a Gmail URL that opens a specific draft message', () => {
         const url = buildGmailDraftUrl('person@example.com', 'message-123')
 
-        expect(url).toBe('https://mail.google.com/mail/u/person%40example.com/#inbox?compose=message-123')
+        expect(url).toBe('https://mail.google.com/mail/u/0/?authuser=person%40example.com#drafts?compose=message-123')
+    })
+
+    test('builds a Gmail drafts list URL when no message id is available', () => {
+        const url = buildGmailDraftUrl('person@example.com', '')
+
+        expect(url).toBe('https://mail.google.com/mail/u/0/?authuser=person%40example.com#drafts')
     })
 
     test('normalizes a Gmail draft payload for editing', () => {

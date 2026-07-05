@@ -177,9 +177,13 @@ function buildMimeMessage({ to, cc, bcc, subject, body, inReplyTo, references, a
 }
 
 function buildGmailDraftUrl(gmailEmail = '', messageId = '') {
-    const accountSegment = gmailEmail ? encodeURIComponent(gmailEmail) : '0'
-    const composeQuery = messageId ? `?compose=${encodeURIComponent(messageId)}` : '?compose=new'
-    return `https://mail.google.com/mail/u/${accountSegment}/#inbox${composeQuery}`
+    // Gmail 404s on an email address in the /mail/u/ path segment; account targeting must
+    // use ?authuser=. The legacy hex message id is only accepted by ?compose= on the
+    // #drafts view, where Gmail rewrites it to its internal compose token.
+    const normalizedEmail = typeof gmailEmail === 'string' ? gmailEmail.trim().toLowerCase() : ''
+    const authQuery = normalizedEmail ? `?authuser=${encodeURIComponent(normalizedEmail)}` : ''
+    const composeQuery = messageId ? `?compose=${encodeURIComponent(messageId)}` : ''
+    return `https://mail.google.com/mail/u/0/${authQuery}#drafts${composeQuery}`
 }
 
 function getBodyOrInstructions({ body, instructions }) {
