@@ -7,6 +7,7 @@ import Tags from './TagsArea/Tags'
 import useTagsAmount from './TagsArea/useTagsAmount'
 import ProjectTag from '../Tags/ProjectTag'
 import { shouldSummarizeTaskTags } from './TagsArea/taskTagSummaryHelper'
+import { normalizeTaskPriority, TASK_PRIORITY_NONE } from '../../utils/TaskPriority'
 
 const TaskItemTags = ({
     task,
@@ -60,6 +61,7 @@ const TaskItemTags = ({
         inMyDayAndNotSubtask,
         showSummarizeTagInByTime,
         isCalendarTask: !!task.calendarData,
+        hasPriorityTag: normalizeTaskPriority(task.priority) !== TASK_PRIORITY_NONE,
         tablet,
         isMobile,
     })

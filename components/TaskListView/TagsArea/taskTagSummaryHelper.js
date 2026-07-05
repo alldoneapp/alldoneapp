@@ -9,21 +9,24 @@ export const shouldSummarizeTaskTags = ({
     inMyDayAndNotSubtask,
     showSummarizeTagInByTime,
     isCalendarTask,
+    hasPriorityTag,
     tablet,
     isMobile,
 }) => {
-    const calendarTagOffset = isCalendarTask ? 1 : 0
+    // Leading chips (calendar time, priority) render before the task title and never collapse
+    // into the summary tag, so each one lowers the limit of trailing tags shown before summarizing.
+    const leadingTagsOffset = (isCalendarTask ? 1 : 0) + (hasPriorityTag ? 1 : 0)
 
     if (inMyDayAndNotSubtask) {
         const tagLimit = tablet || isMobile ? MY_DAY_COMPACT_TAG_LIMIT : MY_DAY_DESKTOP_TAG_LIMIT
-        const calendarTaskReachedLimit = isCalendarTask && amountTags > tagLimit - calendarTagOffset
+        const leadingTagsReachedLimit = leadingTagsOffset > 0 && amountTags > tagLimit - leadingTagsOffset
 
-        return amountTags > 0 && (showSummarizeTagInByTime || calendarTaskReachedLimit)
+        return amountTags > 0 && (showSummarizeTagInByTime || leadingTagsReachedLimit)
     }
 
     return (
-        amountTags > DESKTOP_TAG_LIMIT - calendarTagOffset ||
-        (tablet && amountTags > TABLET_TAG_LIMIT - calendarTagOffset) ||
-        (isMobile && amountTags > MOBILE_TAG_LIMIT - calendarTagOffset)
+        amountTags > DESKTOP_TAG_LIMIT - leadingTagsOffset ||
+        (tablet && amountTags > TABLET_TAG_LIMIT - leadingTagsOffset) ||
+        (isMobile && amountTags > MOBILE_TAG_LIMIT - leadingTagsOffset)
     )
 }
