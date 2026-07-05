@@ -123,7 +123,6 @@ function CheckBoxWrapper(
                 null,
                 estimations,
                 checkBoxIdRef.current,
-                undefined,
                 recurrenceBaseDateOverride
             )
         }, ANIMATION_DURATION)

@@ -150,17 +150,7 @@ export default function TaskArea({
 
     const completeWithSelectedRecurrenceDateBasis = recurrenceBaseDateOverride => {
         setRecurrenceDateBasisModalIsOpen(false)
-        moveTasksFromOpen(
-            projectId,
-            task,
-            DONE_STEP,
-            null,
-            null,
-            task.estimations,
-            '',
-            undefined,
-            recurrenceBaseDateOverride
-        )
+        moveTasksFromOpen(projectId, task, DONE_STEP, null, null, task.estimations, '', recurrenceBaseDateOverride)
     }
 
     return (

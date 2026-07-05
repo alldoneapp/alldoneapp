@@ -376,7 +376,6 @@ export default class WorkflowModal extends Component {
             pendingMoveFromOpenData.commentType,
             pendingMoveFromOpenData.estimations,
             checkBoxId,
-            undefined,
             recurrenceBaseDateOverride
         )
         this.props.hidePopover()
