@@ -166,7 +166,7 @@ export default function TaskHeaderMoreButton({
                 <ModalItem
                     key={'gmbtn-auto-reminder'}
                     icon={'coffee'}
-                    text={'Auto-reminder tasks'}
+                    text={'Auto-postpone tasks'}
                     shortcut={shortcut}
                     onPress={openAutoReminder}
                 />

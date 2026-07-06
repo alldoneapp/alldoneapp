@@ -95,7 +95,7 @@ export default function AutoReminder({
                 <View style={localStyles.dateSectionItem}>
                     <View style={localStyles.sectionItemText}>
                         <Text style={[styles.subtitle1, { color: '#ffffff' }]}>
-                            {translate('Auto reminder')}{' '}
+                            {translate('Auto postpone')}{' '}
                             {date ? (
                                 date === BACKLOG_DATE_NUMERIC ? (
                                     <Text style={[styles.body1, { color: colors.Text03 }]}>

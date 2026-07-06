@@ -207,9 +207,9 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
         >
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <View style={localStyles.header}>
-                    <Text style={[styles.title7, localStyles.title]}>{translate('Auto-reminder tasks')}</Text>
+                    <Text style={[styles.title7, localStyles.title]}>{translate('Auto-postpone tasks')}</Text>
                     <Text style={[styles.body2, localStyles.description]}>
-                        {translate('Auto-reminder tasks description')}
+                        {translate('Auto-postpone tasks description')}
                     </Text>
                 </View>
 

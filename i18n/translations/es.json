@@ -1770,7 +1770,7 @@
     "Copy to edit": "Copiar para editar",
     "Update from template": "Actualizar desde plantilla",
     "Update available": "Actualización disponible",
-    "Auto reminder": "Auto-recordatorio",
+    "Auto postpone": "Auto-posponer",
     "External link": "Enlace externo",
     "Choose the task type": "Seleccione el tipo de tarea",
     "Task type": "Tipo de tarea",
@@ -2184,7 +2184,7 @@
     "Could do": "Podría hacerse",
     "Do later": "Hacer más tarde",
     "Apply": "Aplicar",
-    "Auto-reminder tasks": "Auto-recordatorio de tareas",
-    "Auto-reminder tasks description": "Elige qué tareas de hoy quieres auto-recordar. Se pospondrán y volverán a aparecer más tarde.",
+    "Auto-postpone tasks": "Auto-posponer tareas",
+    "Auto-postpone tasks description": "Elige qué tareas de hoy quieres auto-posponer. Volverán a aparecer más tarde.",
     "All today's tasks": "Todas las tareas de hoy"
 }

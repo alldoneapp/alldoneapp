@@ -1758,7 +1758,8 @@
     "Could do": "Könnte erledigt werden",
     "Do later": "Später erledigen",
     "Apply": "Anwenden",
-    "Auto-reminder tasks": "Auto-Erinnerung für Aufgaben",
-    "Auto-reminder tasks description": "Wähle, welche der heutigen Aufgaben automatisch erinnert werden sollen. Sie werden verschoben und tauchen später wieder auf.",
+    "Auto postpone": "Automatisch verschieben",
+    "Auto-postpone tasks": "Aufgaben automatisch verschieben",
+    "Auto-postpone tasks description": "Wähle, welche der heutigen Aufgaben automatisch verschoben werden sollen. Sie tauchen später wieder auf.",
     "All today's tasks": "Alle heutigen Aufgaben"
 }

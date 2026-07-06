@@ -1786,7 +1786,7 @@
     "Copy to edit": "Copy to edit",
     "Update from template": "Update from template",
     "Update available": "Update available",
-    "Auto reminder": "Auto-reminder",
+    "Auto postpone": "Auto-postpone",
     "External link": "External link",
     "Webhook": "Webhook",
     "Choose the task type": "Choose the task type",
@@ -2215,7 +2215,7 @@
     "Could do": "Could do",
     "Do later": "Do later",
     "Apply": "Apply",
-    "Auto-reminder tasks": "Auto-reminder tasks",
-    "Auto-reminder tasks description": "Pick which of today's tasks to auto-remind. They'll be postponed and come back later.",
+    "Auto-postpone tasks": "Auto-postpone tasks",
+    "Auto-postpone tasks description": "Pick which of today's tasks to auto-postpone. They'll come back later.",
     "All today's tasks": "All today's tasks"
 }
