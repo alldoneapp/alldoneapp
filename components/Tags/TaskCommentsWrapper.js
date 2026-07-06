@@ -32,6 +32,7 @@ export default function TaskCommentsWrapper({
     linkForNoteTopic,
     objectName,
     assistantId,
+    compact,
 }) {
     const openModals = useSelector(state => state.openModals)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
@@ -159,6 +160,7 @@ export default function TaskCommentsWrapper({
                 inDetailView={inDetailView}
                 style={tagStyle}
                 outline={outline}
+                compact={compact}
             />
         </Popover>
     ) : (
@@ -173,6 +175,7 @@ export default function TaskCommentsWrapper({
             inDetailView={inDetailView}
             style={tagStyle}
             outline={outline}
+            compact={compact}
         />
     )
 }

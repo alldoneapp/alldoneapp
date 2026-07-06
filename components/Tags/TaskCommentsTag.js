@@ -18,6 +18,7 @@ export default function TaskCommentsTag({
     inTextInput,
     inDetailView,
     outline,
+    compact,
 }) {
     const { lastComment, lastCommentType, amount } = commentsData
     const { backgroundColor, fontColor } = getCommentTagColors(lastCommentType)
@@ -58,6 +59,7 @@ export default function TaskCommentsTag({
                 { backgroundColor: outline ? 'transparent' : backgroundColor },
                 outline && outlineStyle(),
                 getCustomStyle(inDetailView, null, false),
+                compact && !outline && !inTextInput && compactStyles.container,
                 style,
             ]}
             onPress={onPress}
@@ -67,7 +69,7 @@ export default function TaskCommentsTag({
                 accessibilityLabel={accessibilityLabel}
                 name={'message-circle'}
                 color={outline ? outlineStyle(false) : fontColor}
-                size={outline ? 14 : inDetailView ? 18 : 16}
+                size={outline ? 14 : compact ? 9.6 : inDetailView ? 18 : 16}
             />
             <Text
                 accessibilityLabel={accessibilityLabel}
@@ -75,6 +77,7 @@ export default function TaskCommentsTag({
                 style={[
                     (outline ? otl : localStyles).text,
                     inDetailView && { ...styles.title6 },
+                    compact && !outline && !inTextInput && compactStyles.text,
                     { color: outline ? outlineStyle(false) : fontColor },
                     windowTagStyle(),
                 ]}
@@ -128,5 +131,19 @@ const otl = StyleSheet.create({
     text: {
         ...styles.caption1,
         marginLeft: 5.33,
+    },
+})
+
+const compactStyles = StyleSheet.create({
+    container: {
+        borderRadius: 30,
+        height: 14.4,
+        paddingLeft: 3.2,
+        paddingRight: 4.8,
+    },
+    text: {
+        fontSize: 8.4,
+        lineHeight: 13.2,
+        marginLeft: 3.2,
     },
 })

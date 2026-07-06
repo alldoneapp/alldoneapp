@@ -220,6 +220,7 @@ export default function Tags({
                     disabled={isActiveOrganizeMode || isLocked}
                     objectName={task.name}
                     assistantId={task.assistantId}
+                    compact={true}
                 />
             )}
             {inMyDayAndNotSubtask && task.alertEnabled && (
@@ -362,6 +363,7 @@ export default function Tags({
                     projectId={projectId}
                     style={[tagAlignment, tagsStyle]}
                     disabled={isActiveOrganizeMode || isLocked || !anonymousGranted}
+                    compact={true}
                 />
             )}
             {backlinksCount > 0 && (
@@ -384,6 +386,7 @@ export default function Tags({
                     disabled={isActiveOrganizeMode || isLocked || !anonymousGranted || !loggedUserCanUpdateObject}
                     objectType={FEED_TASK_OBJECT_TYPE}
                     updateDescription={updateDescription}
+                    compact={true}
                 />
             )}
             {isObservedTask && !isToday && ((!task.done && !inBacklog) || inBacklinksView) && (

@@ -17,6 +17,7 @@ export default function DescriptionTag({
     objectType,
     outline,
     updateDescription,
+    compact,
 }) {
     const mobile = useSelector(state => state.mobile)
     const tablet = useSelector(state => state.isMiddleScreen)
@@ -56,15 +57,28 @@ export default function DescriptionTag({
             contentLocation={mobile ? null : undefined}
         >
             <TouchableOpacity onPress={showPopover} disabled={disabled} accessible={false}>
-                <View style={[(outline ? otl : localStyles).container, style]}>
+                <View
+                    style={[
+                        (outline ? otl : localStyles).container,
+                        compact && !outline && compactStyles.container,
+                        style,
+                    ]}
+                >
                     <Icon
                         name={'info'}
-                        size={outline ? 14 : 16}
+                        size={outline ? 14 : compact ? 9.6 : 16}
                         color={outline ? colors.UtilityBlue200 : colors.Text03}
-                        style={localStyles.icon}
+                        style={compact && !outline ? compactStyles.icon : localStyles.icon}
                     />
                     {!outline && !mobile && (
-                        <Text style={[styles.subtitle2, !mobile && localStyles.text, windowTagStyle()]}>
+                        <Text
+                            style={[
+                                styles.subtitle2,
+                                !mobile && localStyles.text,
+                                compact && compactStyles.text,
+                                windowTagStyle(),
+                            ]}
+                        >
                             {shrinkTagText(cleanTextMetaData(object.description, true), textLimit)}
                         </Text>
                     )}
@@ -108,5 +122,22 @@ const otl = StyleSheet.create({
     },
     icon: {
         marginHorizontal: 3,
+    },
+})
+
+const compactStyles = StyleSheet.create({
+    container: {
+        borderRadius: 7.2,
+        height: 14.4,
+    },
+    icon: {
+        marginHorizontal: 2.4,
+    },
+    text: {
+        fontSize: 8.4,
+        lineHeight: 13.2,
+        marginVertical: 0.6,
+        marginRight: 6,
+        marginLeft: 1.2,
     },
 })
