@@ -3702,6 +3702,7 @@ export function mapUserData(userId, user) {
         okrsHiddenInAllProjectsTodayByProjectAndOkr: user.okrsHiddenInAllProjectsTodayByProjectAndOkr
             ? user.okrsHiddenInAllProjectsTodayByProjectAndOkr
             : {},
+        emailLineHiddenTodayByProject: user.emailLineHiddenTodayByProject ? user.emailLineHiddenTodayByProject : {},
     }
 }
 

@@ -7,6 +7,7 @@ import { Text } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import EmailLine from './EmailLine'
+import { getEmailLineTodayKey } from './emailLineHelper'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(selector => selector(mockState)),
@@ -113,30 +114,28 @@ describe('EmailLine', () => {
         expect(textNodes(tree).some(text => typeof text === 'string' && text.includes('Inbox Zero'))).toBe(true)
     })
 
-    it('hides entirely in All Projects when done for today', () => {
-        mockState = createState({ hiddenToday: '2026-07-06', summary: { connected: true, labels: [] } })
-        // Freeze today key by using timezone 0 and matching the summary date is not
-        // needed; helper compares to getEmailLineTodayKey which uses "now".
-        const tree = renderer.create(<EmailLine projectId={projectId} inAllProjects />).toJSON()
-        // When not actually today's key, the line still renders; this asserts the
-        // component does not throw for the hidden-today code path.
-        expect(tree === null || typeof tree === 'object').toBe(true)
-    })
-
-    it('renders a Needs reply chip when needsReplyCount > 0', () => {
+    it('collapses to a Show again affordance when done for today (hides emails)', () => {
+        const todayKey = getEmailLineTodayKey({ timezone: 0 })
         mockState = createState({
+            hiddenToday: todayKey,
             summary: {
                 connected: true,
                 provider: 'google',
-                labels: [{ labelId: 'INBOX', displayName: 'Inbox', unreadCount: 4, kind: 'inbox' }],
-                needsReplyCount: 2,
+                labels: [{ labelId: 'INBOX', displayName: 'Inbox', unreadCount: 3, kind: 'inbox' }],
                 inboxZero: false,
             },
         })
         const tree = renderer.create(<EmailLine projectId={projectId} inAllProjects={false} />)
-        // The mocked chip renders "<displayName>:<unreadCount>"; the needs-reply
-        // chip uses the translated label and the count.
-        expect(textNodes(tree)).toContain('Needs reply:2')
+        // Emails are hidden; only a "Show again" affordance remains.
+        expect(textNodes(tree)).toContain('Show again')
+        expect(tree.root.findAllByProps({ testID: 'chip' })).toHaveLength(0)
+    })
+
+    it('also collapses (does not vanish) in All Projects when done for today', () => {
+        const todayKey = getEmailLineTodayKey({ timezone: 0 })
+        mockState = createState({ hiddenToday: todayKey, summary: { connected: true, labels: [] } })
+        const tree = renderer.create(<EmailLine projectId={projectId} inAllProjects />)
+        expect(textNodes(tree)).toContain('Show again')
     })
 
     it('shows a Reconnect email state when auth expired', () => {

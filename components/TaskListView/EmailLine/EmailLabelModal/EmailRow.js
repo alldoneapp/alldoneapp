@@ -134,7 +134,7 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 10,
         borderBottomWidth: 1,
-        borderBottomColor: colors.Grey200,
+        borderBottomColor: colors.Secondary300,
     },
     checkboxArea: {
         paddingRight: 12,
@@ -156,7 +156,7 @@ const localStyles = StyleSheet.create({
         marginRight: 6,
     },
     sender: {
-        color: colors.Text01,
+        color: '#ffffff',
         flexShrink: 1,
     },
     needsReplyTag: {
@@ -172,10 +172,10 @@ const localStyles = StyleSheet.create({
         color: colors.UtilityYellow300,
     },
     readText: {
-        color: colors.Text02,
+        color: colors.Text03,
     },
     subject: {
-        color: colors.Text02,
+        color: colors.Text03,
         marginTop: 1,
     },
     snippet: {

@@ -235,14 +235,14 @@ export default withWindowSizeHook(EmailLabelModal)
 
 const localStyles = StyleSheet.create({
     container: {
-        backgroundColor: '#ffffff',
-        borderRadius: 8,
+        backgroundColor: colors.Secondary400,
+        borderRadius: 4,
         paddingHorizontal: 16,
         paddingTop: 12,
         paddingBottom: 8,
-        shadowColor: colors.Text01,
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOpacity: 1,
+        shadowRadius: 16,
         shadowOffset: { width: 0, height: 4 },
     },
     header: {
@@ -252,7 +252,7 @@ const localStyles = StyleSheet.create({
         marginBottom: 8,
     },
     title: {
-        color: colors.Text01,
+        color: '#ffffff',
         flex: 1,
         marginRight: 8,
     },
@@ -280,7 +280,7 @@ const localStyles = StyleSheet.create({
         marginBottom: 4,
     },
     confirmText: {
-        color: colors.Text01,
+        color: '#ffffff',
         flex: 1,
     },
     confirmActions: {
@@ -320,12 +320,12 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         borderTopWidth: 1,
-        borderTopColor: colors.Grey200,
+        borderTopColor: colors.Secondary300,
         paddingTop: 8,
         marginTop: 4,
     },
     selectionCount: {
-        color: colors.Text02,
+        color: colors.Text03,
     },
     selectionActions: {
         flexDirection: 'row',
@@ -340,7 +340,7 @@ const localStyles = StyleSheet.create({
         marginLeft: 8,
     },
     cancelText: {
-        color: colors.Text02,
+        color: colors.Text03,
     },
     primaryButton: {
         backgroundColor: colors.Primary100,

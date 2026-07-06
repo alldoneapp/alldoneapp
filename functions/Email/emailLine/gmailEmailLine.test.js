@@ -45,9 +45,14 @@ const UNREAD_BY_ID = {
 
 function setupLabels(labels) {
     mockLabelsList.mockResolvedValue({ data: { labels } })
-    mockLabelsGet.mockImplementation(async ({ id }) => ({
-        data: { messagesUnread: UNREAD_BY_ID[id] || 0 },
-    }))
+    // Inbox-scoped unread counting: labelIds is [labelId, 'INBOX', 'UNREAD'] for a
+    // user label, or ['INBOX', 'UNREAD'] for the inbox itself. The primary label
+    // id is always first, so map it to the configured count.
+    mockMessagesList.mockImplementation(async ({ labelIds }) => {
+        const primary = labelIds[0]
+        const count = UNREAD_BY_ID[primary] || 0
+        return { data: { messages: Array.from({ length: count }, (_, i) => ({ id: `${primary}-${i}` })) } }
+    })
 }
 
 describe('gmailEmailLine', () => {

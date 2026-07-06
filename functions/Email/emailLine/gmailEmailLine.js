@@ -29,7 +29,7 @@ const EXCLUDED_SYSTEM_LABEL_IDS = new Set([
     'CATEGORY_FORUMS',
 ])
 
-// Cap how many labels we fan out labels.get calls for, to keep the summary cheap.
+// Cap how many labels we fan out inbox-unread count queries for, to keep the summary cheap.
 const MAX_LABELS_TO_INSPECT = 25
 const ALLDONE_LABEL_PREFIX = 'Alldone/'
 
@@ -66,6 +66,22 @@ function compareLabels(a, b) {
     return String(a.name || '').localeCompare(String(b.name || ''))
 }
 
+// Counts unread messages that are BOTH in the inbox AND carry the given label.
+// We only ever consider inbox mail, so a label whose messages were auto-archived
+// (e.g. Ads) contributes only the copies still sitting in the inbox — matching
+// exactly what the label modal lists.
+async function countInboxUnread(gmail, labelId) {
+    const labelIds = labelId === 'INBOX' ? ['INBOX', 'UNREAD'] : [labelId, 'INBOX', 'UNREAD']
+    const response = await gmail.users.messages.list({ userId: 'me', labelIds, maxResults: 100 })
+    const messages = Array.isArray(response?.data?.messages) ? response.data.messages : []
+    // Exact for the realistic inbox range; if a page overflows, fall back to the
+    // estimate as a floor so a very large count isn't understated.
+    if (response?.data?.nextPageToken) {
+        return Math.max(messages.length, Number(response?.data?.resultSizeEstimate || messages.length))
+    }
+    return messages.length
+}
+
 async function getGmailLabelSummary(userId, projectId) {
     const gmail = await getGmailClient(userId, projectId)
     const listResponse = await gmail.users.labels.list({ userId: 'me' })
@@ -76,12 +92,12 @@ async function getGmailLabelSummary(userId, projectId) {
     const detailed = await Promise.all(
         eligible.map(async label => {
             try {
-                const detail = await gmail.users.labels.get({ userId: 'me', id: label.id })
+                const unreadCount = await countInboxUnread(gmail, label.id)
                 return {
                     labelId: label.id,
                     name: label.name || label.id,
                     displayName: label.id === 'INBOX' ? 'Inbox' : stripLabelPrefix(label.name),
-                    unreadCount: Number(detail?.data?.messagesUnread || 0),
+                    unreadCount,
                     kind: label.id === 'INBOX' ? 'inbox' : 'user',
                 }
             } catch (error) {
@@ -90,8 +106,8 @@ async function getGmailLabelSummary(userId, projectId) {
         })
     )
 
-    // Keep only labels with unread mail, but always keep INBOX so the line can
-    // render its Inbox Zero state.
+    // Keep only labels with unread inbox mail, but always keep INBOX so the line
+    // can render its Inbox Zero state.
     const labels = detailed.filter(Boolean).filter(label => label.unreadCount > 0 || label.labelId === 'INBOX')
 
     const inboxUnread = labels.find(label => label.labelId === 'INBOX')?.unreadCount || 0

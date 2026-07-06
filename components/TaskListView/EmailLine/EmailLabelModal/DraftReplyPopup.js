@@ -86,12 +86,12 @@ export default function DraftReplyPopup({ projectId, messageId, closePopover }) 
 const localStyles = StyleSheet.create({
     container: {
         width: 280,
-        backgroundColor: '#ffffff',
-        borderRadius: 8,
+        backgroundColor: colors.Secondary400,
+        borderRadius: 4,
         padding: 12,
-        shadowColor: colors.Text01,
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOpacity: 1,
+        shadowRadius: 16,
         shadowOffset: { width: 0, height: 4 },
     },
     header: {
@@ -101,15 +101,16 @@ const localStyles = StyleSheet.create({
         marginBottom: 8,
     },
     title: {
-        color: colors.Text01,
+        color: '#ffffff',
     },
     input: {
         minHeight: 64,
         borderWidth: 1,
-        borderColor: colors.Grey300,
+        borderColor: colors.Secondary300,
+        backgroundColor: colors.Secondary300,
         borderRadius: 6,
         padding: 8,
-        color: colors.Text01,
+        color: '#ffffff',
         textAlignVertical: 'top',
         marginBottom: 8,
     },

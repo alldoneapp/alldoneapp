@@ -19,7 +19,6 @@ import { getEmailLineTodayKey, isEmailLineHiddenToday, splitChipsForDisplay } fr
 
 export default function EmailLine({ projectId, inAllProjects }) {
     const loggedUser = useSelector(state => state.loggedUser)
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const connection = resolveEmailConnection(loggedUser.apisConnected?.[projectId])
     const summary = useSelector(state => state.emailLineSummaryByProject[projectId])
     const [showAllChips, setShowAllChips] = useState(false)
@@ -33,8 +32,6 @@ export default function EmailLine({ projectId, inAllProjects }) {
     }, [projectId, connection.connected])
 
     if (!connection.connected) return null
-    // In All Projects view, "Done for today" removes the line entirely for the day.
-    if (hiddenToday && inAllProjects) return null
 
     const hideForToday = () => {
         setUserEmailLineHiddenToday(loggedUser.uid, projectId, getEmailLineTodayKey(loggedUser))
@@ -52,20 +49,36 @@ export default function EmailLine({ projectId, inAllProjects }) {
         ProjectHelper.processURLProjectDetailsTab(NavigationService, DV_TAB_PROJECT_PROPERTIES, projectId)
     }
 
+    // When done for today, collapse to just the header + a "Show again" pill.
+    if (hiddenToday) {
+        return (
+            <View style={localStyles.container}>
+                <View style={localStyles.header}>
+                    <View style={localStyles.headerLeft}>
+                        <Icon name="mail" size={14} color={colors.Text03} style={localStyles.headerIcon} />
+                        <Text style={[styles.caption1, localStyles.headerText]}>{translate('Email')}</Text>
+                    </View>
+                    <View style={localStyles.headerRight}>
+                        <TouchableOpacity
+                            style={localStyles.doneButton}
+                            onPress={showAgain}
+                            disabled={!loggedUser.uid}
+                            accessibilityLabel={translate('Show again')}
+                        >
+                            <Icon name="rotate-ccw" size={12} color={colors.Text03} />
+                            <Text style={[styles.caption1, localStyles.doneButtonText]}>{translate('Show again')}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        )
+    }
+
     const emailAddress = summary?.emailAddress || connection.email
     const unreadLabels = (summary?.labels || []).filter(label => label.unreadCount > 0)
     const { visible, overflowCount } = splitChipsForDisplay(unreadLabels, showAllChips)
     const authExpired = summary?.authExpired
     const inboxZero = !!summary && !authExpired && unreadLabels.length === 0
-
-    const needsReplyCount = summary?.needsReplyCount || 0
-    const inboxLabel = (summary?.labels || []).find(label => label.kind === 'inbox')
-    const needsReplyTargetLabel =
-        inboxLabel || (connection.provider !== 'microsoft' ? { labelId: 'INBOX', kind: 'inbox' } : null)
-    const needsReplyLabel =
-        needsReplyCount > 0 && needsReplyTargetLabel
-            ? { ...needsReplyTargetLabel, displayName: translate('Needs reply'), unreadCount: needsReplyCount }
-            : null
 
     return (
         <View style={localStyles.container}>
@@ -74,7 +87,7 @@ export default function EmailLine({ projectId, inAllProjects }) {
                     <Icon name="mail" size={14} color={colors.Text03} style={localStyles.headerIcon} />
                     <Text style={[styles.caption1, localStyles.headerText]}>{translate('Email')}</Text>
                     <TouchableOpacity
-                        style={localStyles.headerButton}
+                        style={localStyles.iconButton}
                         onPress={reload}
                         accessibilityLabel={translate('Reload')}
                     >
@@ -82,63 +95,33 @@ export default function EmailLine({ projectId, inAllProjects }) {
                     </TouchableOpacity>
                 </View>
                 <View style={localStyles.headerRight}>
-                    {hiddenToday ? (
-                        <TouchableOpacity
-                            style={localStyles.headerButton}
-                            onPress={showAgain}
-                            disabled={!loggedUser.uid}
-                            accessibilityLabel={translate('Show again')}
-                        >
-                            <Icon name="rotate-ccw" size={14} color={colors.Text03} />
-                            {!smallScreenNavigation && (
-                                <Text style={[styles.caption1, localStyles.headerButtonText]}>
-                                    {translate('Show again')}
-                                </Text>
-                            )}
-                        </TouchableOpacity>
-                    ) : (
-                        <TouchableOpacity
-                            style={localStyles.headerButton}
-                            onPress={hideForToday}
-                            disabled={!loggedUser.uid}
-                            accessibilityLabel={translate('Done for today')}
-                        >
-                            <Icon name="check" size={14} color={colors.Text03} />
-                            {!smallScreenNavigation && (
-                                <Text style={[styles.caption1, localStyles.headerButtonText]}>
-                                    {translate('Done for today')}
-                                </Text>
-                            )}
-                        </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                        style={localStyles.doneButton}
+                        onPress={hideForToday}
+                        disabled={!loggedUser.uid}
+                        accessibilityLabel={translate('Done for today')}
+                    >
+                        <Icon name="check" size={12} color={colors.Text03} />
+                        <Text style={[styles.caption1, localStyles.doneButtonText]}>{translate('Done for today')}</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
 
-            {!hiddenToday && authExpired && (
+            {authExpired && (
                 <TouchableOpacity style={localStyles.stateRow} onPress={openReconnect}>
                     <Icon name="alert-circle" size={14} color={colors.UtilityYellow300} />
                     <Text style={[styles.caption1, localStyles.reconnectText]}>{translate('Reconnect email')}</Text>
                 </TouchableOpacity>
             )}
 
-            {!hiddenToday && !authExpired && inboxZero && (
+            {!authExpired && inboxZero && (
                 <View style={localStyles.stateRow}>
                     <Text style={[styles.caption1, localStyles.inboxZeroText]}>{translate('Inbox Zero')} 🎉</Text>
                 </View>
             )}
 
-            {!hiddenToday && !authExpired && !inboxZero && unreadLabels.length > 0 && (
+            {!authExpired && !inboxZero && unreadLabels.length > 0 && (
                 <View style={localStyles.chipsRow}>
-                    {needsReplyLabel && (
-                        <EmailLabelChip
-                            key="needs-reply"
-                            label={needsReplyLabel}
-                            projectId={projectId}
-                            provider={connection.provider}
-                            emailAddress={emailAddress}
-                            variant="needsReply"
-                        />
-                    )}
                     {visible.map(label => (
                         <EmailLabelChip
                             key={label.labelId}
@@ -185,14 +168,25 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
-    headerButton: {
+    iconButton: {
         height: 22,
         paddingHorizontal: 2,
         flexDirection: 'row',
         alignItems: 'center',
         marginRight: 8,
     },
-    headerButtonText: {
+    doneButton: {
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: '#ffffff',
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    doneButtonText: {
         color: colors.Text03,
         marginLeft: 4,
     },
