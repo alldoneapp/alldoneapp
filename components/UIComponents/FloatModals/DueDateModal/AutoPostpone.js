@@ -11,8 +11,9 @@ import DateText from './DateText'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import {
     autoPostponeMultipleTasks,
-    autoPostponeTask,
     getDateToMoveTaskInAutoPostpone,
+    setTaskDueDate,
+    setTaskToBacklog,
 } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { autoPostponeGoal, getDateToMoveGoalInAutoPostpone } from '../../../../utils/backends/Goals/goalsFirestore'
 import { setLastSelectedDueDate } from '../../../../redux/actions'
@@ -47,13 +48,18 @@ export default function AutoPostpone({
         }
 
         if (!isGoalAutoPostpone && task?.id) {
-            autoPostponeTask(projectId, task, isObservedTabActive, currentUserId, { background: true })
-                .then(dateTimestamp => {
-                    if (dateTimestamp !== null) dispatch(setLastSelectedDueDate(dateTimestamp))
-                })
-                .catch(error => {
-                    console.error('AutoPostpone: failed to apply auto-postpone', error)
-                })
+            // Write directly to Firestore (like a manual due-date change) so the task moves
+            // instantly via Firestore's local cache, instead of waiting on the auto-postpone
+            // Cloud Function round-trip. The target date is already computed client-side below.
+            const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
+            const applyPromise =
+                dateTimestamp === BACKLOG_DATE_NUMERIC
+                    ? setTaskToBacklog(projectId, task.id, task, isObservedTabActive, null)
+                    : setTaskDueDate(projectId, task.id, dateTimestamp, task, isObservedTabActive)
+            Promise.resolve(applyPromise).catch(error => {
+                console.error('AutoPostpone: failed to apply auto-postpone', error)
+            })
+            dispatch(setLastSelectedDueDate(dateTimestamp))
             closePopover()
             return
         }
