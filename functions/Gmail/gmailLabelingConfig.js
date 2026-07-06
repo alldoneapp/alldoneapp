@@ -19,6 +19,8 @@ const MAX_SYNC_INTERVAL_MINUTES = 24 * 60
 const DEFAULT_ESTIMATED_EMAILS_PER_DAY = 20
 const MAX_ESTIMATED_EMAILS_PER_DAY = 10000
 const MAX_LOOKBACK_DAYS = 30
+// Cap on the feedback-learned rules block so the classifier prompt stays bounded.
+const MAX_LEARNED_RULES_LENGTH = 2000
 const GMAIL_LABELING_CONFIG_TYPE = 'gmailLabelingConfig'
 const GMAIL_LABELING_STATE_TYPE = 'gmailLabelingState'
 const GMAIL_LABELING_LOCK_TIMEOUT_MS = 10 * 60 * 1000
@@ -114,6 +116,7 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         maxMessagesPerRun: DEFAULT_MAX_MESSAGES_PER_RUN,
         confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
         labelDefinitions: getStarterLabelDefinitions(),
+        learnedRules: '',
     }
 }
 
@@ -209,6 +212,10 @@ function normalizeConfigInput(projectId, input = {}, gmailEmail = '') {
             ? Math.min(Math.max(Number(input.confidenceThreshold), 0), 1)
             : DEFAULT_CONFIDENCE_THRESHOLD,
         labelDefinitions: normalizedLabels,
+        learnedRules:
+            typeof input.learnedRules === 'string'
+                ? input.learnedRules.trim().slice(0, MAX_LEARNED_RULES_LENGTH)
+                : null,
     }
 }
 
@@ -282,6 +289,12 @@ function buildConfigWriteData(userId, projectId, configInput, gmailEmail = '', e
 
     const now = admin.firestore.Timestamp.now()
 
+    // A payload without learnedRules (older client, partial save) must not wipe the
+    // feedback-learned rules — keep whatever is already stored.
+    if (normalizedConfig.learnedRules === null) {
+        normalizedConfig.learnedRules = typeof existingData?.learnedRules === 'string' ? existingData.learnedRules : ''
+    }
+
     return {
         ...normalizedConfig,
         createdAt: existingData?.createdAt || now,
@@ -329,6 +342,7 @@ module.exports = {
     GMAIL_LABELING_PROMPT_MODES,
     GMAIL_LABELING_STATE_TYPE,
     MAX_ESTIMATED_EMAILS_PER_DAY,
+    MAX_LEARNED_RULES_LENGTH,
     MAX_LOOKBACK_DAYS,
     MAX_SYNC_INTERVAL_MINUTES,
     MIN_SYNC_INTERVAL_MINUTES,

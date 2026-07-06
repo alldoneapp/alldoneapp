@@ -16,6 +16,14 @@ export function isEmailLineHiddenToday(loggedUser = {}, projectId) {
     return !!hidden && hidden === getEmailLineTodayKey(loggedUser)
 }
 
+// Account-level variant: the unified line collapses only when EVERY listed connection
+// is hidden for today.
+export function areEmailLineConnectionsHiddenToday(loggedUser = {}, connectionIds = []) {
+    if (!connectionIds.length) return false
+    const todayKey = getEmailLineTodayKey(loggedUser)
+    return connectionIds.every(connectionId => loggedUser.emailLineHiddenTodayByConnection?.[connectionId] === todayKey)
+}
+
 // Chips are already provider-sorted server-side (Inbox first, then Alldone/*,
 // then alphabetical). Split into visible + overflow for the "+N" toggle.
 export function splitChipsForDisplay(labels = [], showAll = false) {

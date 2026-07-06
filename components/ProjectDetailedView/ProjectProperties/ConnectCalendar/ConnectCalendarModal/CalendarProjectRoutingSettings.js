@@ -56,12 +56,15 @@ export default function CalendarProjectRoutingSettings({
     projectId,
     isConnected,
     isSignedIn,
+    connectionEmail,
     onUnsavedChangesChange,
     onRegisterCloseHandlers,
 }) {
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
-    const connectedEmail = useSelector(state => state.loggedUser.apisConnected?.[projectId]?.calendarEmail || '')
+    const connectedEmail = useSelector(
+        state => connectionEmail || state.loggedUser.apisConnected?.[projectId]?.calendarEmail || ''
+    )
     const [config, setConfig] = useState(() => normalizeCalendarProjectRoutingConfig(projectId, {}, connectedEmail))
     const [projectDefinitions, setProjectDefinitions] = useState(() =>
         buildProjectDefinitionsFromProjects(loggedUserProjects)

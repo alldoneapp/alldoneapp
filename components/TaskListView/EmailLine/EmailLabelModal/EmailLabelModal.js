@@ -13,14 +13,22 @@ import EmailRow from './EmailRow'
 
 const MODAL_MAX_WIDTH = 560
 
-function EmailLabelModal({ projectId, label, provider, emailAddress, closePopover, windowSize }) {
+function EmailLabelModal({
+    projectId,
+    label,
+    provider,
+    emailAddress,
+    labelingDisabled,
+    labelOptions,
+    closePopover,
+    windowSize,
+}) {
     const [messages, setMessages] = useState([])
     const [nextPageToken, setNextPageToken] = useState(null)
     const [loading, setLoading] = useState(true)
     const [loadingMore, setLoadingMore] = useState(false)
     const [selectedIds, setSelectedIds] = useState(() => new Set())
     const [busyAction, setBusyAction] = useState(null)
-    const [confirmSweep, setConfirmSweep] = useState(null)
 
     const screenWidth = windowSize?.[0] || Dimensions.get('window').width
     const screenHeight = windowSize?.[1] || Dimensions.get('window').height
@@ -84,7 +92,6 @@ function EmailLabelModal({ projectId, label, provider, emailAddress, closePopove
         setBusyAction(action)
         try {
             await performEmailLineAction(projectId, { action, labelId: label.labelId })
-            setConfirmSweep(null)
             setSelectedIds(new Set())
             await load()
         } finally {
@@ -106,50 +113,32 @@ function EmailLabelModal({ projectId, label, provider, emailAddress, closePopove
                 </TouchableOpacity>
             </View>
 
-            {confirmSweep ? (
-                <View style={localStyles.confirmBar}>
-                    <Text style={[styles.body2, localStyles.confirmText]}>
-                        {translate(confirmSweep === 'archiveAll' ? 'Archive all emails?' : 'Mark all as read?')}
-                    </Text>
-                    <View style={localStyles.confirmActions}>
-                        <TouchableOpacity
-                            style={localStyles.textButton}
-                            onPress={() => setConfirmSweep(null)}
-                            disabled={isBusy}
-                        >
-                            <Text style={[styles.subtitle2, localStyles.cancelText]}>{translate('Cancel')}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[localStyles.textButton, localStyles.primaryButton]}
-                            onPress={() => runSweep(confirmSweep)}
-                            disabled={isBusy}
-                        >
-                            <Text style={[styles.subtitle2, localStyles.primaryButtonText]}>
-                                {translate('Confirm')}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            ) : (
-                <View style={localStyles.sweepBar}>
-                    <TouchableOpacity
-                        style={localStyles.sweepButton}
-                        onPress={() => setConfirmSweep('archiveAll')}
-                        disabled={isBusy || messages.length === 0}
-                    >
+            <View style={localStyles.sweepBar}>
+                <TouchableOpacity
+                    style={localStyles.sweepButton}
+                    onPress={() => runSweep('archiveAll')}
+                    disabled={isBusy || messages.length === 0}
+                >
+                    {busyAction === 'archiveAll' ? (
+                        <ActivityIndicator size="small" color={colors.Text03} />
+                    ) : (
                         <Icon name="archive" size={14} color={colors.Text03} />
-                        <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Archive all')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={localStyles.sweepButton}
-                        onPress={() => setConfirmSweep('markAllRead')}
-                        disabled={isBusy}
-                    >
+                    )}
+                    <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Archive all')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={localStyles.sweepButton}
+                    onPress={() => runSweep('markAllRead')}
+                    disabled={isBusy}
+                >
+                    {busyAction === 'markAllRead' ? (
+                        <ActivityIndicator size="small" color={colors.Text03} />
+                    ) : (
                         <Icon name="check" size={14} color={colors.Text03} />
-                        <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Mark all read')}</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
+                    )}
+                    <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Mark all read')}</Text>
+                </TouchableOpacity>
+            </View>
 
             <CustomScrollView style={localStyles.list} showsVerticalScrollIndicator={false}>
                 {loading ? (
@@ -178,6 +167,7 @@ function EmailLabelModal({ projectId, label, provider, emailAddress, closePopove
                                 key={row.messageId}
                                 row={row}
                                 projectId={projectId}
+                                labelOptions={labelOptions}
                                 selected={selectedIds.has(row.messageId)}
                                 onToggleSelect={toggleSelect}
                                 onOpen={openRow}
@@ -197,6 +187,15 @@ function EmailLabelModal({ projectId, label, provider, emailAddress, closePopove
                     </>
                 )}
             </CustomScrollView>
+
+            {labelingDisabled && (
+                <View style={localStyles.hintRow}>
+                    <Icon name="info" size={12} color={colors.Text03} />
+                    <Text style={[styles.caption2, localStyles.hintText]}>
+                        {translate('Enable email labeling to get reply detection')}
+                    </Text>
+                </View>
+            )}
 
             {selectedCount > 0 && (
                 <View style={localStyles.selectionBar}>
@@ -272,21 +271,6 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginLeft: 4,
     },
-    confirmBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 6,
-        marginBottom: 4,
-    },
-    confirmText: {
-        color: '#ffffff',
-        flex: 1,
-    },
-    confirmActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
     list: {
         flexGrow: 0,
     },
@@ -314,6 +298,15 @@ const localStyles = StyleSheet.create({
     },
     loadMoreText: {
         color: colors.Primary100,
+    },
+    hintRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingTop: 6,
+    },
+    hintText: {
+        color: colors.Text03,
+        marginLeft: 4,
     },
     selectionBar: {
         flexDirection: 'row',

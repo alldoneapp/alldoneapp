@@ -1,17 +1,23 @@
 import { runHttpsCallableFunction } from '../firestore'
+import { buildConnectionKeyPayload } from '../../IntegrationProviders'
 
-export async function getGmailLabelingConfig(projectId) {
-    return await runHttpsCallableFunction('getGmailLabelingConfigSecondGen', { projectId })
+// `key` is an account-level connection id (email_google_…) or a legacy projectId.
+
+export async function getGmailLabelingConfig(key) {
+    return await runHttpsCallableFunction('getGmailLabelingConfigSecondGen', buildConnectionKeyPayload(key))
 }
 
-export async function saveGmailLabelingConfig(projectId, config) {
-    return await runHttpsCallableFunction('upsertGmailLabelingConfigSecondGen', { projectId, config })
+export async function saveGmailLabelingConfig(key, config) {
+    return await runHttpsCallableFunction('upsertGmailLabelingConfigSecondGen', {
+        ...buildConnectionKeyPayload(key),
+        config,
+    })
 }
 
-export async function runGmailLabelingSync(projectId, forceBootstrap = false) {
+export async function runGmailLabelingSync(key, forceBootstrap = false) {
     return await runHttpsCallableFunction(
         'runGmailLabelingSyncSecondGen',
-        { projectId, forceBootstrap },
+        { ...buildConnectionKeyPayload(key), forceBootstrap },
         { timeout: 120000 }
     )
 }

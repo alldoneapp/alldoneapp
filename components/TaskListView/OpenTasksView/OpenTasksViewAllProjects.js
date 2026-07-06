@@ -11,6 +11,7 @@ import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonConta
 import { checkIfThereAreNewComments } from '../../ChatsView/Utils/ChatHelper'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 import TaskPriorityFiltersLine from '../PriorityFilters/TaskPriorityFiltersLine'
+import EmailLine from '../EmailLine/EmailLine'
 
 export default function OpenTasksViewAllProjects() {
     const dispatch = useDispatch()
@@ -69,6 +70,7 @@ export default function OpenTasksViewAllProjects() {
             <AllProjectsLine />
             <AssistantLine useAssistantProjectContext={false} />
             <TaskPriorityFiltersLine projectId={null} />
+            <EmailLine />
             {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {sortedLoggedUserProjectIds.map(projectId => {
                 let thisProjectIsTheFirstProject = false

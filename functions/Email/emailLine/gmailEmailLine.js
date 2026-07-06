@@ -155,6 +155,7 @@ async function getMessageContext(userId, projectId, messageId) {
         from: getHeader(headers, 'From'),
         snippet: data.snippet || '',
         body: body.slice(0, 4000),
+        threadId: data.threadId || '',
     }
 }
 
@@ -220,6 +221,18 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
         messages: messages.filter(Boolean),
         nextPageToken,
     }
+}
+
+// Ids of the newest unread inbox messages — a single list call, no per-message fetches.
+async function getUnreadInboxMessageIds(userId, projectId, limit = 100) {
+    const gmail = await getGmailClient(userId, projectId)
+    const listResponse = await gmail.users.messages.list({
+        userId: 'me',
+        labelIds: ['INBOX', 'UNREAD'],
+        maxResults: limit,
+    })
+    const refs = Array.isArray(listResponse?.data?.messages) ? listResponse.data.messages : []
+    return refs.map(ref => ref.id).filter(Boolean)
 }
 
 // Newest unread inbox messages (subject/from/snippet only) for the needs-reply scan.
@@ -318,6 +331,7 @@ module.exports = {
     markMessagesRead,
     sweepLabel,
     getMessageContext,
+    getUnreadInboxMessageIds,
     getUnreadInboxMessages,
     stripLabelPrefix,
     buildGmailMessageUrl,

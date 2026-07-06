@@ -39,17 +39,26 @@ export type GoogleService = 'calendar' | 'gmail'
  * Initiate server-side OAuth flow for Google Calendar and Gmail
  * Opens a popup window for Google authentication
  *
- * @param projectId - The project ID to connect the calendar to
+ * @param projectId - The default project for a NEW connection (account-level model);
+ *   historically the project the connection was keyed to
  * @param service - The service to connect ('calendar' or 'gmail')
+ * @param returnUrl - Optional same-window redirect target
+ * @param connectionId - Existing account-level connection id when reconnecting
  * @returns Promise that resolves when OAuth is complete
  */
 export async function startServerSideAuth(
     projectId: string,
     service?: GoogleService,
-    returnUrl?: string
+    returnUrl?: string,
+    connectionId?: string
 ): Promise<void> {
     try {
-        const result = await runHttpsCallableFunction('googleOAuthInitiate', { projectId, service, returnUrl })
+        const result = await runHttpsCallableFunction('googleOAuthInitiate', {
+            projectId,
+            service,
+            returnUrl,
+            connectionId,
+        })
         const { authUrl } = result
 
         if (returnUrl) {

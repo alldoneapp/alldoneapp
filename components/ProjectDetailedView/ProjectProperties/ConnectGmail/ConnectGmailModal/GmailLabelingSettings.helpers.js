@@ -90,6 +90,7 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
         maxMessagesPerRun: Number.isFinite(config.maxMessagesPerRun) ? String(config.maxMessagesPerRun) : '20',
         confidenceThreshold: Number.isFinite(config.confidenceThreshold) ? String(config.confidenceThreshold) : '0.7',
         labelDefinitions,
+        learnedRules: typeof config.learnedRules === 'string' ? config.learnedRules : '',
     }
 }
 
@@ -123,6 +124,7 @@ function sanitizeConfigForSave(config) {
             autoArchive: !!label.autoArchive,
             postLabelPrompt: label.postLabelPrompt || '',
         })),
+        learnedRules: typeof config.learnedRules === 'string' ? config.learnedRules : '',
     }
 }
 

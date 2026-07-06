@@ -52,6 +52,7 @@ function getTransactionLabel(source) {
         meeting_transcription: 'Meeting transcription',
         email_draft_reply: 'Email reply draft',
         email_needs_reply: 'Email needs-reply scan',
+        email_create_task: 'Task from email',
         vm_execution: 'VM task',
         vm_execution_refund: 'VM task refund',
         mcp_tool_call: 'MCP tool call',

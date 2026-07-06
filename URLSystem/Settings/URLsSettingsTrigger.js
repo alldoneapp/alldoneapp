@@ -13,6 +13,7 @@ import {
     URL_SETTINGS_PROFILE,
     URL_SETTINGS_EXPORT,
     URL_SETTINGS_MCP,
+    URL_SETTINGS_INTEGRATIONS,
 } from './URLsSettings'
 import SettingsHelper from '../../components/SettingsView/SettingsHelper'
 import {
@@ -27,6 +28,7 @@ import {
     DV_TAB_SETTINGS_PROFILE,
     DV_TAB_SETTINGS_EXPORT,
     DV_TAB_SETTINGS_MCP,
+    DV_TAB_SETTINGS_INTEGRATIONS,
 } from '../../utils/TabNavigationConstants'
 import {
     PROJECT_TYPE_ACTIVE,
@@ -51,6 +53,7 @@ class URLsSettingsTrigger {
             [URL_SETTINGS_PREMIUM]: new RegExp('^/settings/premium$'),
             [URL_SETTINGS_EXPORT]: new RegExp('^/settings/export$'),
             [URL_SETTINGS_MCP]: new RegExp('^/settings/mcp$'),
+            [URL_SETTINGS_INTEGRATIONS]: new RegExp('^/settings/integrations$'),
         }
     }
 
@@ -98,6 +101,8 @@ class URLsSettingsTrigger {
                 return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_EXPORT)
             case URL_SETTINGS_MCP:
                 return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_MCP)
+            case URL_SETTINGS_INTEGRATIONS:
+                return SettingsHelper.processURLSettingsTab(navigation, DV_TAB_SETTINGS_INTEGRATIONS)
         }
     }
 }

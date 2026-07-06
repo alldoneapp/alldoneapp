@@ -1,4 +1,6 @@
 const mockDocs = new Map()
+// In-memory stand-in for the labeling audit subcollection (messageId -> audit data).
+const mockAuditDocs = new Map()
 jest.mock('firebase-admin', () => ({
     firestore: () => ({
         doc: path => ({
@@ -11,12 +13,34 @@ jest.mock('firebase-admin', () => ({
                 mockDocs.set(path, opts && opts.merge ? { ...prev, ...value } : value)
             },
         }),
+        getAll: async (...refs) =>
+            refs.map(ref => ({
+                id: ref.id,
+                exists: mockAuditDocs.has(ref.id),
+                data: () => mockAuditDocs.get(ref.id),
+            })),
     }),
 }))
 
-jest.mock('./needsReplyDetector', () => ({
-    detectNeedsReply: jest.fn(),
-    NEEDS_REPLY_MODEL_KEY: 'MODEL_GPT5_4_NANO',
+jest.mock('../../Gmail/gmailLabelingConfig', () => ({
+    getGmailLabelingConfigRef: jest.fn(() => ({
+        get: async () => {
+            const data = mockDocs.get('labelingConfig')
+            return { exists: data !== undefined, data: () => data }
+        },
+    })),
+    getGmailLabelingStateRef: jest.fn(() => ({
+        collection: () => ({
+            doc: id => ({ id }),
+            orderBy: () => ({
+                limit: () => ({
+                    get: async () => ({
+                        docs: [...mockAuditDocs.entries()].map(([id, data]) => ({ id, data: () => data })),
+                    }),
+                }),
+            }),
+        }),
+    })),
 }))
 
 jest.mock('./gmailEmailLine', () => ({
@@ -26,7 +50,21 @@ jest.mock('./gmailEmailLine', () => ({
     markMessagesRead: jest.fn(),
     sweepLabel: jest.fn(),
     getMessageContext: jest.fn(),
-    getUnreadInboxMessages: jest.fn(),
+    getUnreadInboxMessageIds: jest.fn(),
+    buildGmailMessageUrl: jest.fn(() => 'https://gmail/message'),
+}))
+
+jest.mock('./taskSummarizer', () => ({
+    summarizeEmailAsTaskName: jest.fn(),
+    TASK_SUMMARY_MODEL_KEY: 'MODEL_GPT5_4_NANO',
+}))
+
+const mockCreateAndPersistTask = jest.fn()
+jest.mock('../../shared/TaskService', () => ({
+    TaskService: jest.fn(() => ({
+        initialize: jest.fn(),
+        createAndPersistTask: mockCreateAndPersistTask,
+    })),
 }))
 
 jest.mock('./microsoftEmailLine', () => ({
@@ -36,7 +74,6 @@ jest.mock('./microsoftEmailLine', () => ({
     markMessagesRead: jest.fn(),
     sweepLabel: jest.fn(),
     getMessageContext: jest.fn(),
-    getUnreadInboxMessages: jest.fn(),
 }))
 
 jest.mock('./replyComposer', () => ({
@@ -60,7 +97,7 @@ jest.mock('../../Gmail/assistantGmailDrafts', () => ({
 const gmailEmailLine = require('./gmailEmailLine')
 const microsoftEmailLine = require('./microsoftEmailLine')
 const { composeReply } = require('./replyComposer')
-const { detectNeedsReply } = require('./needsReplyDetector')
+const { summarizeEmailAsTaskName } = require('./taskSummarizer')
 const { deductGold, refundGold } = require('../../Gold/goldHelper')
 const { createGmailReplyDraftForAssistantRequest } = require('../../Gmail/assistantGmailDrafts')
 const { getEmailLineSummary, listEmailLineMessages, performEmailLineAction } = require('./emailLineService')
@@ -74,6 +111,8 @@ describe('emailLineService', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         mockDocs.clear()
+        mockAuditDocs.clear()
+        gmailEmailLine.getUnreadInboxMessageIds.mockResolvedValue([])
     })
 
     test('returns a disconnected summary when email is not connected', async () => {
@@ -210,84 +249,128 @@ describe('emailLineService', () => {
         )
     })
 
-    test('needs-reply scan flags messages, charges gold, and persists state', async () => {
+    test('summary builds needs-reply flags from audit records intersected with unread inbox ids', async () => {
         gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
             labels: [{ labelId: 'INBOX', unreadCount: 2, kind: 'inbox' }],
         })
-        gmailEmailLine.getUnreadInboxMessages.mockResolvedValue([
-            { messageId: 'm1', from: 'a@ex.com', subject: 'Q?', snippet: 's' },
-            { messageId: 'm2', from: 'b@ex.com', subject: 'FYI', snippet: 's' },
-        ])
-        detectNeedsReply.mockResolvedValue({ flagsByMessageId: { m1: true }, totalTokens: 40 })
-        deductGold.mockResolvedValue({ success: true, amount: 5 })
+        mockAuditDocs.set('m1', { needsReply: true })
+        mockAuditDocs.set('m2', { needsReply: false })
+        mockAuditDocs.set('m3', { needsReply: true }) // flagged but no longer unread
+        gmailEmailLine.getUnreadInboxMessageIds.mockResolvedValue(['m1', 'm2'])
+        mockDocs.set('labelingConfig', { enabled: true })
 
         const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData, includeNeedsReply: true })
-        expect(summary.needsReplyCount).toBe(1)
         expect(summary.needsReplyByMessageId).toEqual({ m1: true })
+        expect(summary.needsReplyCount).toBe(1)
+        expect(summary.labelingEnabled).toBe(true)
+        // No separate detector, no gold charge.
+        expect(deductGold).not.toHaveBeenCalled()
+    })
+
+    test('summary keeps audit flags when the unread-ids lookup fails', async () => {
+        gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
+            labels: [{ labelId: 'INBOX', unreadCount: 1, kind: 'inbox' }],
+        })
+        mockAuditDocs.set('m1', { needsReply: true })
+        gmailEmailLine.getUnreadInboxMessageIds.mockRejectedValue(new Error('quota'))
+
+        const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData, includeNeedsReply: true })
+        expect(summary.needsReplyByMessageId).toEqual({ m1: true })
+    })
+
+    test('summary skips needs-reply flags for Microsoft connections', async () => {
+        microsoftEmailLine.getMicrosoftLabelSummary.mockResolvedValue({
+            labels: [{ labelId: 'f_inbox', unreadCount: 1, kind: 'inbox' }],
+            emailAddress: 'me@outlook.com',
+        })
+        mockAuditDocs.set('m1', { needsReply: true })
+
+        const summary = await getEmailLineSummary('u', 'p1', { userData: microsoftUserData, includeNeedsReply: true })
+        expect(summary.needsReplyByMessageId).toEqual({})
+        expect(gmailEmailLine.getUnreadInboxMessageIds).not.toHaveBeenCalled()
+    })
+
+    test('createTask summarizes the email, charges gold, and creates a follow-up-format task', async () => {
+        const userData = {
+            ...googleUserData,
+            projectIds: ['p1', 'proj_target'],
+        }
+        gmailEmailLine.getMessageContext.mockResolvedValue({
+            subject: 'Invoice 42',
+            from: 'bob@ex.com',
+            body: 'Please pay invoice 42',
+            threadId: 'th1',
+        })
+        mockAuditDocs.set('m1', { selectedProjectId: 'proj_target', gmailThreadId: 'th1' })
+        summarizeEmailAsTaskName.mockResolvedValue({ name: 'Pay invoice 42 from Bob', totalTokens: 120 })
+        deductGold.mockResolvedValue({ success: true })
+        mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 't1' })
+
+        const result = await performEmailLineAction('u', 'p1', {
+            action: 'createTask',
+            messageIds: ['m1'],
+            userData,
+        })
+
         expect(deductGold).toHaveBeenCalledWith(
             'u',
             5,
-            expect.objectContaining({ source: 'email_needs_reply', projectId: 'p1', channel: 'google' })
+            expect.objectContaining({
+                source: 'email_create_task',
+                projectId: 'proj_target',
+                objectId: 'm1',
+                channel: 'google',
+            })
         )
-        // Persisted with scanned ids so a repeat won't re-charge.
-        const state = mockDocs.get('users/u/emailLineState/p1')
-        expect(state.scannedMessageIds).toEqual(['m1', 'm2'])
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: 'Pay invoice 42 from Bob',
+                projectId: 'proj_target',
+                gmailData: expect.objectContaining({
+                    origin: 'gmail_label_follow_up',
+                    messageId: 'm1',
+                    gmailEmail: 'me@gmail.com',
+                    selectedProjectId: 'proj_target',
+                    webUrl: 'https://gmail/message',
+                    archiveOnComplete: true,
+                }),
+            }),
+            expect.objectContaining({ projectId: 'proj_target' })
+        )
+        expect(result).toEqual({
+            taskId: 't1',
+            projectId: 'proj_target',
+            taskName: 'Pay invoice 42 from Bob',
+            goldCost: 5,
+        })
+        expect(refundGold).not.toHaveBeenCalled()
     })
 
-    test('needs-reply honors the cooldown and does not re-scan', async () => {
-        gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
-            labels: [{ labelId: 'INBOX', unreadCount: 1, kind: 'inbox' }],
-        })
-        mockDocs.set('users/u/emailLineState/p1', {
-            needsReplyByMessageId: { m1: true },
-            scannedMessageIds: ['m1'],
-            lastNeedsReplyScanAt: Date.now(),
-        })
+    test('createTask falls back to the connection project and refunds gold on failure', async () => {
+        gmailEmailLine.getMessageContext.mockResolvedValue({ subject: 'Hi', from: 'a@ex.com', body: 'b' })
+        summarizeEmailAsTaskName.mockResolvedValue({ name: 'Do the thing', totalTokens: 50 })
+        deductGold.mockResolvedValue({ success: true })
+        mockCreateAndPersistTask.mockRejectedValue(new Error('boom'))
 
-        const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData, includeNeedsReply: true })
-        expect(summary.needsReplyCount).toBe(1)
-        expect(gmailEmailLine.getUnreadInboxMessages).not.toHaveBeenCalled()
-        expect(detectNeedsReply).not.toHaveBeenCalled()
+        await expect(
+            performEmailLineAction('u', 'p1', { action: 'createTask', messageIds: ['m1'], userData: googleUserData })
+        ).rejects.toThrow(/boom/)
+        expect(deductGold).toHaveBeenCalledWith('u', 5, expect.objectContaining({ projectId: 'p1' }))
+        expect(refundGold).toHaveBeenCalledWith(
+            'u',
+            5,
+            expect.objectContaining({ source: 'email_create_task', note: 'task creation failed' })
+        )
     })
 
-    test('needs-reply does not re-charge already-scanned messages', async () => {
-        gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
-            labels: [{ labelId: 'INBOX', unreadCount: 1, kind: 'inbox' }],
+    test('listEmailLineMessages joins labeling audit data onto rows', async () => {
+        mockAuditDocs.set('m1', {
+            needsReply: true,
+            selectedLabelKey: 'newsletter',
+            selectedGmailLabelName: 'Alldone/Newsletter',
+            reasoning: 'Weekly digest the user subscribed to.',
+            confidence: 0.92,
         })
-        // Cooldown expired, but the only unread message was already scanned.
-        mockDocs.set('users/u/emailLineState/p1', {
-            needsReplyByMessageId: { m1: true },
-            scannedMessageIds: ['m1'],
-            lastNeedsReplyScanAt: Date.now() - 60 * 60 * 1000,
-        })
-        gmailEmailLine.getUnreadInboxMessages.mockResolvedValue([
-            { messageId: 'm1', from: 'a@ex.com', subject: 'Q?', snippet: 's' },
-        ])
-
-        const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData, includeNeedsReply: true })
-        expect(detectNeedsReply).not.toHaveBeenCalled()
-        expect(deductGold).not.toHaveBeenCalled()
-        expect(summary.needsReplyByMessageId).toEqual({ m1: true })
-    })
-
-    test('needs-reply skips silently when gold is insufficient', async () => {
-        gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
-            labels: [{ labelId: 'INBOX', unreadCount: 1, kind: 'inbox' }],
-        })
-        gmailEmailLine.getUnreadInboxMessages.mockResolvedValue([
-            { messageId: 'm9', from: 'a@ex.com', subject: 'Q?', snippet: 's' },
-        ])
-        detectNeedsReply.mockResolvedValue({ flagsByMessageId: { m9: true }, totalTokens: 40 })
-        deductGold.mockResolvedValue({ success: false })
-
-        const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData, includeNeedsReply: true })
-        expect(summary.needsReplyScanSkipped).toBe('no_gold')
-        // State not persisted with the new scan (so it retries later).
-        expect(mockDocs.get('users/u/emailLineState/p1')).toBeUndefined()
-    })
-
-    test('listEmailLineMessages merges needs-reply flags into rows', async () => {
-        mockDocs.set('users/u/emailLineState/p1', { needsReplyByMessageId: { m1: true } })
         gmailEmailLine.listMessagesForLabel.mockResolvedValue({
             messages: [
                 { messageId: 'm1', subject: 'Q?' },
@@ -297,7 +380,15 @@ describe('emailLineService', () => {
         })
 
         const result = await listEmailLineMessages('u', 'p1', 'INBOX', { userData: googleUserData })
-        expect(result.messages.find(m => m.messageId === 'm1').needsReply).toBe(true)
-        expect(result.messages.find(m => m.messageId === 'm2').needsReply).toBe(false)
+        const first = result.messages.find(m => m.messageId === 'm1')
+        expect(first.needsReply).toBe(true)
+        expect(first.hasAudit).toBe(true)
+        expect(first.labelName).toBe('Alldone/Newsletter')
+        expect(first.reasoning).toBe('Weekly digest the user subscribed to.')
+        expect(first.confidence).toBe(0.92)
+        const second = result.messages.find(m => m.messageId === 'm2')
+        expect(second.needsReply).toBe(false)
+        expect(second.hasAudit).toBe(false)
+        expect(second.reasoning).toBe('')
     })
 })

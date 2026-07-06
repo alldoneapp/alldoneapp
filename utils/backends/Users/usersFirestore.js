@@ -1001,6 +1001,25 @@ export async function clearUserEmailLineHiddenToday(userId, projectId) {
     )
 }
 
+// Account-level email line: hide/show all listed connections in one write.
+export async function setUserEmailLineHiddenTodayForConnections(userId, connectionIds = [], todayKey) {
+    if (!userId || !connectionIds.length || !todayKey) return
+    const updates = {}
+    connectionIds.forEach(connectionId => {
+        updates[`emailLineHiddenTodayByConnection.${connectionId}`] = todayKey
+    })
+    updateUserData(userId, updates, null)
+}
+
+export async function clearUserEmailLineHiddenTodayForConnections(userId, connectionIds = []) {
+    if (!userId || !connectionIds.length) return
+    const updates = {}
+    connectionIds.forEach(connectionId => {
+        updates[`emailLineHiddenTodayByConnection.${connectionId}`] = firebase.firestore.FieldValue.delete()
+    })
+    updateUserData(userId, updates, null)
+}
+
 export async function updateUserDefaultCurrency(userId, defaultCurrency) {
     getDb().doc(`users/${userId}`).update({ defaultCurrency })
 }

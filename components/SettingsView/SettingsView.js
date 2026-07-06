@@ -36,10 +36,12 @@ import {
     DV_TAB_SETTINGS_HAPPINESS,
     DV_TAB_SETTINGS_OKRS,
     DV_TAB_SETTINGS_MCP,
+    DV_TAB_SETTINGS_INTEGRATIONS,
 } from '../../utils/TabNavigationConstants'
 import StripePremiumTab from '../Premium/PremiumTab/StripePremiumTab'
 import ExportTab from './Export/ExportTab'
 import MCPSettings from './MCP/MCPSettings'
+import IntegrationsSettings from './Integrations/IntegrationsSettings'
 import { useDispatch, useSelector } from 'react-redux'
 import LoadingData from '../UIComponents/LoadingData'
 import UserProfileSettings from './Profile/UserProfileSettings'
@@ -71,6 +73,7 @@ const SettingsView = ({ navigation }) => {
         DV_TAB_SETTINGS_SHORTCUTS,
         DV_TAB_SETTINGS_EXPORT,
         DV_TAB_SETTINGS_MCP,
+        DV_TAB_SETTINGS_INTEGRATIONS,
         DV_TAB_SETTINGS_PREMIUM,
     ]
 
@@ -156,6 +159,8 @@ const SettingsView = ({ navigation }) => {
                                     return <ExportTab />
                                 case DV_TAB_SETTINGS_MCP:
                                     return <MCPSettings />
+                                case DV_TAB_SETTINGS_INTEGRATIONS:
+                                    return <IntegrationsSettings />
                             }
                         })()}
                     </View>

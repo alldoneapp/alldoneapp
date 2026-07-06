@@ -103,7 +103,7 @@ describe('EmailLabelModal', () => {
         expect(performEmailLineAction).toHaveBeenCalledWith('p1', { action: 'archive', messageIds: ['m1'] })
     })
 
-    it('confirms then runs a sweep', async () => {
+    it('runs a sweep immediately without confirmation', async () => {
         listEmailLineMessages.mockResolvedValue({
             messages: [{ messageId: 'm1', from: 'a@ex.com', subject: 'One', isUnread: true, webUrl: 'u1' }],
             nextPageToken: null,
@@ -114,10 +114,6 @@ describe('EmailLabelModal', () => {
 
         await act(async () => {
             touchableContaining(tree, 'Mark all read').props.onPress()
-            await Promise.resolve()
-        })
-        await act(async () => {
-            touchableContaining(tree, 'Confirm').props.onPress()
             await Promise.resolve()
         })
 

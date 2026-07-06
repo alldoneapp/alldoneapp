@@ -1,6 +1,10 @@
 import store from '../../../redux/store'
 import { setEmailLineSummary, setEmailLineLoading } from '../../../redux/actions'
 import { runHttpsCallableFunction } from '../firestore'
+import { buildConnectionKeyPayload } from '../../IntegrationProviders'
+
+// All functions here take a `key`: an account-level connection id (email_google_…) or a
+// legacy projectId. Redux summaries are stored under whichever key was used.
 
 // Per-project cooldown so mounting/remounting the line doesn't hammer the
 // callable. Mirrors the gmailSyncCache pattern in firestore.js.
@@ -20,7 +24,7 @@ export async function fetchEmailLineSummary(projectId, { force = false, includeN
 
     try {
         const summary = await runHttpsCallableFunction('getEmailLineSummarySecondGen', {
-            projectId,
+            ...buildConnectionKeyPayload(projectId),
             includeNeedsReply,
         })
         store.dispatch(setEmailLineSummary(projectId, summary))
@@ -58,21 +62,39 @@ export function invalidateEmailLineSummaryCooldown(projectId) {
 
 export async function listEmailLineMessages(projectId, labelId, { pageToken } = {}) {
     if (!projectId || !labelId) return { messages: [], nextPageToken: null }
-    return runHttpsCallableFunction('listEmailLineMessagesSecondGen', { projectId, labelId, pageToken })
+    return runHttpsCallableFunction('listEmailLineMessagesSecondGen', {
+        ...buildConnectionKeyPayload(projectId),
+        labelId,
+        pageToken,
+    })
 }
 
-// action ∈ { archive, markRead, archiveAll, markAllRead, draftReply }. After a
-// mutating action, force-refresh the summary so chip counts update.
+// Marks an email's label decision as wrong (optionally naming the correct label) and
+// returns the updated learned-rules block the server folded the feedback into.
+export async function submitEmailLabelFeedback(projectId, { messageId, correctLabel, note } = {}) {
+    if (!projectId || !messageId) return null
+    return runHttpsCallableFunction('submitEmailLabelFeedbackSecondGen', {
+        ...buildConnectionKeyPayload(projectId),
+        messageId,
+        verdict: 'wrong',
+        correctLabel,
+        note,
+    })
+}
+
+// action ∈ { archive, markRead, archiveAll, markAllRead, draftReply, createTask }.
+// After a mutating action, force-refresh the summary so chip counts update; draftReply
+// and createTask don't change the inbox, so they skip the refresh.
 export async function performEmailLineAction(projectId, { action, messageIds, labelId, guidance } = {}) {
     if (!projectId || !action) return null
     const result = await runHttpsCallableFunction('emailLineActionSecondGen', {
-        projectId,
+        ...buildConnectionKeyPayload(projectId),
         action,
         messageIds,
         labelId,
         guidance,
     })
-    if (action !== 'draftReply') {
+    if (action !== 'draftReply' && action !== 'createTask') {
         await fetchEmailLineSummary(projectId, { force: true })
     }
     return result

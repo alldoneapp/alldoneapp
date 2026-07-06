@@ -18,9 +18,15 @@ export type MicrosoftService = 'calendar' | 'email'
 export async function startMicrosoftServerSideAuth(
     projectId: string,
     service: MicrosoftService,
-    returnUrl?: string
+    returnUrl?: string,
+    connectionId?: string
 ): Promise<void> {
-    const result = await runHttpsCallableFunction('microsoftOAuthInitiate', { projectId, service, returnUrl })
+    const result = await runHttpsCallableFunction('microsoftOAuthInitiate', {
+        projectId,
+        service,
+        returnUrl,
+        connectionId,
+    })
     const { authUrl } = result
 
     if (returnUrl) {

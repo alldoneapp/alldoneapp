@@ -4,13 +4,35 @@ const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper.js')
 const {
     CALENDAR_PROVIDER_MICROSOFT,
+    CONNECTION_SERVICE_CALENDAR,
+    CONNECTION_SERVICE_EMAIL,
     EMAIL_PROVIDER_MICROSOFT,
     buildCalendarConnectionUpdate,
+    buildConnectionId,
     buildEmailConnectionUpdate,
+    findConnectionsForProject,
+    getConnection,
+    getConnectionsMapField,
     hasExistingDefaultConnection,
+    listCalendarConnections,
+    listEmailConnections,
     resolveCalendarConnection,
     resolveEmailConnection,
 } = require('../Integrations/providerConnections')
+
+// Microsoft services already use 'email'/'calendar', matching the connection model.
+function microsoftServiceToConnectionService(service) {
+    return service === 'calendar' ? CONNECTION_SERVICE_CALENDAR : CONNECTION_SERVICE_EMAIL
+}
+
+function isConnectionId(value) {
+    return typeof value === 'string' && /^(email|calendar)_(google|microsoft)_[0-9a-f]{8}$/.test(value)
+}
+
+async function loadUserDataForConnections(userId) {
+    const userDoc = await admin.firestore().collection('users').doc(userId).get()
+    return userDoc.exists ? userDoc.data() || {} : {}
+}
 
 if (!global.fetch) require('isomorphic-fetch')
 const fetchImpl = global.fetch
@@ -68,6 +90,48 @@ function tokenDocRef(userId, projectId, service) {
         .doc(`microsoftAuth_${projectId}_${service}`)
 }
 
+function connectionTokenDocRef(userId, connectionId) {
+    return admin.firestore().collection('users').doc(userId).collection('private').doc(`microsoftAuth_${connectionId}`)
+}
+
+// Resolve the token doc for a connection id or a legacy (projectId, service) pair:
+// account-level doc first, then the legacy per-project doc of the (default) project.
+async function resolveTokenDoc(userId, connectionIdOrProjectId, service) {
+    if (isConnectionId(connectionIdOrProjectId)) {
+        const connectionId = connectionIdOrProjectId
+        const resolvedService = service || (connectionId.startsWith('calendar_') ? 'calendar' : 'email')
+        const connectionRef = connectionTokenDocRef(userId, connectionId)
+        const connectionDoc = await connectionRef.get()
+        if (connectionDoc.exists)
+            return { ref: connectionRef, doc: connectionDoc, connectionId, service: resolvedService }
+
+        const userData = await loadUserDataForConnections(userId)
+        const connection = getConnection(userData, microsoftServiceToConnectionService(resolvedService), connectionId)
+        if (connection?.defaultProjectId) {
+            const legacyRef = tokenDocRef(userId, connection.defaultProjectId, resolvedService)
+            const legacyDoc = await legacyRef.get()
+            if (legacyDoc.exists) return { ref: legacyRef, doc: legacyDoc, connectionId, service: resolvedService }
+        }
+        return { ref: connectionRef, doc: connectionDoc, connectionId, service: resolvedService }
+    }
+
+    const projectId = connectionIdOrProjectId
+    let connectionId = null
+    if (projectId && service) {
+        const userData = await loadUserDataForConnections(userId)
+        const [match] = findConnectionsForProject(userData, microsoftServiceToConnectionService(service), projectId)
+        if (match && match.provider === EMAIL_PROVIDER_MICROSOFT) {
+            connectionId = match.connectionId
+            const connectionRef = connectionTokenDocRef(userId, connectionId)
+            const connectionDoc = await connectionRef.get()
+            if (connectionDoc.exists) return { ref: connectionRef, doc: connectionDoc, connectionId, service }
+        }
+    }
+    const legacyRef = tokenDocRef(userId, projectId, service)
+    const legacyDoc = await legacyRef.get()
+    return { ref: legacyRef, doc: legacyDoc, connectionId, service }
+}
+
 async function postTokenRequest(params) {
     const response = await fetchImpl(`${MICROSOFT_AUTHORITY}/token`, {
         method: 'POST',
@@ -106,9 +170,22 @@ function normalizeMicrosoftEmail(userInfo = {}) {
         .toLowerCase()
 }
 
-async function initiateOAuth(userId, projectId, service, returnUrl) {
+async function initiateOAuth(userId, projectId, service, returnUrl, connectionId = null) {
     const { clientId, redirectUri } = getMicrosoftOAuthConfig()
     const scopes = getScopes(service)
+
+    // A reconnect targets an existing account-level connection; keep its default project.
+    if (isConnectionId(connectionId)) {
+        const userData = await loadUserDataForConnections(userId)
+        const connection = getConnection(userData, microsoftServiceToConnectionService(service), connectionId)
+        if (connection && !projectId) {
+            projectId = connection.defaultProjectId
+        }
+    }
+    if (!projectId) {
+        throw new Error('A default project is required to connect a Microsoft account')
+    }
+
     const state = `${userId}:${projectId}:${service}:${Date.now()}`
 
     await admin
@@ -119,6 +196,7 @@ async function initiateOAuth(userId, projectId, service, returnUrl) {
             userId,
             projectId,
             service,
+            connectionId: isConnectionId(connectionId) ? connectionId : null,
             returnUrl: returnUrl || null,
             createdAt: admin.firestore.Timestamp.now(),
             expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000)),
@@ -164,7 +242,12 @@ async function handleOAuthCallback(code, state) {
     const email = normalizeMicrosoftEmail(userInfo)
     if (!email) throw new Error('Microsoft account email was not returned')
 
-    await tokenDocRef(userId, projectId, service).set({
+    // Store tokens keyed by the account-level connection id — reconnecting the same
+    // account always lands on the same doc, deduping for free.
+    const connectionService = microsoftServiceToConnectionService(service)
+    const connectionId = buildConnectionId(connectionService, EMAIL_PROVIDER_MICROSOFT, email)
+
+    await connectionTokenDocRef(userId, connectionId).set({
         refreshToken: tokenData.refresh_token || '',
         accessToken: tokenData.access_token,
         tokenExpiry: tokenData.expires_in
@@ -177,13 +260,41 @@ async function handleOAuthCallback(code, state) {
         lastUsed: admin.firestore.Timestamp.now(),
         provider: 'microsoft',
         service,
+        connectionId,
     })
 
     const userRef = admin.firestore().collection('users').doc(userId)
     const userDoc = await userRef.get()
-    const existingApisConnected = userDoc.exists ? userDoc.data()?.apisConnected || {} : {}
-    const updateData = {}
+    const userData = userDoc.exists ? userDoc.data() || {} : {}
+    const existingApisConnected = userData.apisConnected || {}
 
+    // Upsert the account-level connection (reconnect keeps defaultProjectId + default flag).
+    const mapField = getConnectionsMapField(connectionService)
+    const existingConnections =
+        connectionService === CONNECTION_SERVICE_CALENDAR
+            ? listCalendarConnections(userData)
+            : listEmailConnections(userData)
+    const existingEntry = (userData[mapField] || {})[connectionId] || null
+    const hasAnyDefaultAccount = existingConnections.some(connection => connection.isDefaultAccount)
+    const now = admin.firestore.Timestamp.now()
+
+    const updateData = {
+        [`${mapField}.${connectionId}.provider`]: EMAIL_PROVIDER_MICROSOFT,
+        [`${mapField}.${connectionId}.emailAddress`]: email,
+        [`${mapField}.${connectionId}.defaultProjectId`]: existingEntry?.defaultProjectId || projectId,
+        [`${mapField}.${connectionId}.isDefaultAccount`]: existingEntry
+            ? existingEntry.isDefaultAccount === true
+            : !hasAnyDefaultAccount,
+        [`${mapField}.${connectionId}.authInvalid`]: false,
+        [`${mapField}.${connectionId}.updatedAt`]: now,
+    }
+    if (!existingEntry) {
+        updateData[`${mapField}.${connectionId}.connectedAt`] = now
+    }
+
+    // Keep the legacy per-project shape updated during the transition. (No cross-provider
+    // token deletes anymore — Google and Microsoft accounts coexist as separate connections.)
+    const legacyProjectId = existingEntry?.defaultProjectId || projectId
     if (service === 'calendar') {
         const hasExistingDefaultCalendar = hasExistingDefaultConnection(
             existingApisConnected,
@@ -191,41 +302,34 @@ async function handleOAuthCallback(code, state) {
         )
         Object.assign(
             updateData,
-            buildCalendarConnectionUpdate(projectId, CALENDAR_PROVIDER_MICROSOFT, email, !hasExistingDefaultCalendar)
+            buildCalendarConnectionUpdate(
+                legacyProjectId,
+                CALENDAR_PROVIDER_MICROSOFT,
+                email,
+                !hasExistingDefaultCalendar
+            )
         )
-        await admin
-            .firestore()
-            .collection('users')
-            .doc(userId)
-            .collection('private')
-            .doc(`googleAuth_${projectId}_calendar`)
-            .delete()
-            .catch(() => null)
     } else {
         const hasExistingDefaultEmail = hasExistingDefaultConnection(existingApisConnected, resolveEmailConnection)
         Object.assign(
             updateData,
-            buildEmailConnectionUpdate(projectId, EMAIL_PROVIDER_MICROSOFT, email, !hasExistingDefaultEmail)
+            buildEmailConnectionUpdate(legacyProjectId, EMAIL_PROVIDER_MICROSOFT, email, !hasExistingDefaultEmail)
         )
-        await admin
-            .firestore()
-            .collection('users')
-            .doc(userId)
-            .collection('private')
-            .doc(`googleAuth_${projectId}_gmail`)
-            .delete()
-            .catch(() => null)
     }
 
     await userRef.update(updateData)
     await stateRef.delete()
 
-    return { userId, projectId, service, email, returnUrl }
+    return { userId, projectId, service, connectionId, email, returnUrl }
 }
 
 async function getAccessToken(userId, projectId, service) {
-    const ref = tokenDocRef(userId, projectId, service)
-    const tokenDoc = await ref.get()
+    const { ref, doc: tokenDoc, connectionId, service: resolvedService } = await resolveTokenDoc(
+        userId,
+        projectId,
+        service
+    )
+    service = resolvedService || service
     if (!tokenDoc.exists) throw new Error(`User not authenticated with Microsoft for ${service}`)
 
     const data = tokenDoc.data() || {}
@@ -238,14 +342,30 @@ async function getAccessToken(userId, projectId, service) {
     if (!data.refreshToken) throw new Error('Microsoft OAuth refresh token is missing. Please reconnect.')
 
     const { clientId, clientSecret, redirectUri } = getMicrosoftOAuthConfig()
-    const refreshed = await postTokenRequest({
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: data.refreshToken,
-        redirect_uri: redirectUri,
-        grant_type: 'refresh_token',
-        scope: getScopes(service).join(' '),
-    })
+    let refreshed
+    try {
+        refreshed = await postTokenRequest({
+            client_id: clientId,
+            client_secret: clientSecret,
+            refresh_token: data.refreshToken,
+            redirect_uri: redirectUri,
+            grant_type: 'refresh_token',
+            scope: getScopes(service).join(' '),
+        })
+    } catch (error) {
+        // Flag the account-level connection on a dead refresh token so the UI can offer
+        // a reconnect.
+        if (connectionId && /invalid_grant|AADSTS/i.test(error?.message || '')) {
+            const mapField = getConnectionsMapField(microsoftServiceToConnectionService(service))
+            await admin
+                .firestore()
+                .collection('users')
+                .doc(userId)
+                .update({ [`${mapField}.${connectionId}.authInvalid`]: true })
+                .catch(() => null)
+        }
+        throw error
+    }
 
     const updateData = {
         accessToken: refreshed.access_token,
@@ -261,7 +381,59 @@ async function getAccessToken(userId, projectId, service) {
     return refreshed.access_token
 }
 
+// Revoke an account-level Microsoft connection: delete its token doc(s), remove the
+// connection map entry, and clear every legacy apisConnected entry for this account.
+async function revokeConnectionAccess(userId, connectionId) {
+    const connectionService = connectionId.startsWith('calendar_')
+        ? CONNECTION_SERVICE_CALENDAR
+        : CONNECTION_SERVICE_EMAIL
+    const mapField = getConnectionsMapField(connectionService)
+    const legacyService = connectionService === CONNECTION_SERVICE_CALENDAR ? 'calendar' : 'email'
+    const userData = await loadUserDataForConnections(userId)
+    const connection = getConnection(userData, connectionService, connectionId)
+
+    await connectionTokenDocRef(userId, connectionId)
+        .delete()
+        .catch(() => null)
+    if (connection?.defaultProjectId) {
+        await tokenDocRef(userId, connection.defaultProjectId, legacyService)
+            .delete()
+            .catch(() => null)
+    }
+
+    const updateData = { [`${mapField}.${connectionId}`]: admin.firestore.FieldValue.delete() }
+    const resolver =
+        connectionService === CONNECTION_SERVICE_CALENDAR ? resolveCalendarConnection : resolveEmailConnection
+    const apisConnected = userData.apisConnected || {}
+    Object.keys(apisConnected).forEach(legacyProjectId => {
+        const resolved = resolver(apisConnected[legacyProjectId] || {})
+        if (!resolved.connected || !resolved.emailAddress) return
+        if (buildConnectionId(connectionService, resolved.provider, resolved.emailAddress) !== connectionId) return
+        if (connectionService === CONNECTION_SERVICE_CALENDAR) {
+            updateData[`apisConnected.${legacyProjectId}.calendar`] = false
+            updateData[`apisConnected.${legacyProjectId}.calendarProvider`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${legacyProjectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${legacyProjectId}.calendarDefault`] = false
+        } else {
+            updateData[`apisConnected.${legacyProjectId}.email`] = false
+            updateData[`apisConnected.${legacyProjectId}.emailProvider`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${legacyProjectId}.emailAddress`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${legacyProjectId}.emailDefault`] = false
+            updateData[`apisConnected.${legacyProjectId}.gmail`] = false
+            updateData[`apisConnected.${legacyProjectId}.gmailDefault`] = false
+            updateData[`apisConnected.${legacyProjectId}.gmailEmail`] = admin.firestore.FieldValue.delete()
+        }
+    })
+
+    await admin.firestore().collection('users').doc(userId).update(updateData)
+    return { success: true, message: 'Microsoft access disconnected successfully' }
+}
+
 async function revokeAccess(userId, projectId, service) {
+    if (isConnectionId(projectId)) {
+        return await revokeConnectionAccess(userId, projectId)
+    }
+
     await tokenDocRef(userId, projectId, service)
         .delete()
         .catch(() => null)
@@ -290,7 +462,8 @@ async function revokeAccess(userId, projectId, service) {
 }
 
 async function getCredentialStatus(userId, projectId, service) {
-    const tokenDoc = await tokenDocRef(userId, projectId, service).get()
+    const { doc: tokenDoc, service: resolvedService } = await resolveTokenDoc(userId, projectId, service)
+    service = resolvedService || service
     if (!tokenDoc.exists) {
         return { hasCredentials: false, email: null, scopes: [], hasModifyScope: false }
     }

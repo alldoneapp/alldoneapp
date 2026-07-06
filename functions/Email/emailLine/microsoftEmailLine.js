@@ -226,7 +226,7 @@ async function getUnreadInboxMessages(userId, projectId, limit = 15) {
 async function getMessageContext(userId, projectId, messageId) {
     const { client } = await getClientForProject(userId, projectId)
     const message = await client.request(
-        `/me/messages/${encodePath(messageId)}${buildQuery({ $select: 'subject,from,body,bodyPreview' })}`
+        `/me/messages/${encodePath(messageId)}${buildQuery({ $select: 'subject,from,body,bodyPreview,webLink' })}`
     )
     const body = message.body?.content || message.bodyPreview || ''
     return {
@@ -234,6 +234,7 @@ async function getMessageContext(userId, projectId, messageId) {
         from: message.from?.emailAddress?.address || '',
         snippet: message.bodyPreview || '',
         body: String(body).slice(0, 4000),
+        webUrl: message.webLink || '',
     }
 }
 

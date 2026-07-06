@@ -182,7 +182,7 @@ export default function OpenTasksByProject({
                     )}
                     {inSelectedProject && !isAssistant && <TaskPriorityFiltersLine projectId={projectId} />}
                     <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
-                    <EmailLine projectId={projectId} inAllProjects={!inSelectedProject} />
+                    {inSelectedProject && <EmailLine projectId={projectId} />}
                     <UpcomingMilestoneRow projectId={projectId} />
                     {filteredOpenTasksDates.map((dateFormated, index) => {
                         return (

@@ -8,6 +8,7 @@ import renderer from 'react-test-renderer'
 
 import EmailLine from './EmailLine'
 import { getEmailLineTodayKey } from './emailLineHelper'
+import { buildConnectionId } from '../../../utils/IntegrationProviders'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(selector => selector(mockState)),
@@ -22,13 +23,15 @@ jest.mock('../../../utils/backends/EmailLine/emailLineBackend', () => ({
 }))
 
 jest.mock('../../../utils/backends/Users/usersFirestore', () => ({
-    setUserEmailLineHiddenToday: jest.fn(),
-    clearUserEmailLineHiddenToday: jest.fn(),
+    setUserEmailLineHiddenTodayForConnections: jest.fn(),
+    clearUserEmailLineHiddenTodayForConnections: jest.fn(),
 }))
 
-jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
+// SettingsHelper transitively imports the redux store (react-hot-keys), which jest
+// cannot transform.
+jest.mock('../../SettingsView/SettingsHelper', () => ({
     __esModule: true,
-    default: { processURLProjectDetailsTab: jest.fn() },
+    default: { processURLSettingsTab: jest.fn() },
 }))
 
 jest.mock('../../../utils/NavigationService', () => ({ __esModule: true, default: {} }))
@@ -47,11 +50,13 @@ jest.mock('./EmailLabelChip', () => ({
 }))
 
 const projectId = 'project-1'
+const accountEmail = 'me@gmail.com'
+const connectionId = buildConnectionId('email', 'google', accountEmail)
 
 let mockState
 
 const createState = ({
-    apisConnected = { [projectId]: { email: true, emailProvider: 'google' } },
+    apisConnected = { [projectId]: { email: true, emailProvider: 'google', gmailEmail: accountEmail } },
     summary,
     hiddenToday,
 } = {}) => ({
@@ -59,10 +64,10 @@ const createState = ({
         uid: 'user-1',
         timezone: 0,
         apisConnected,
-        emailLineHiddenTodayByProject: hiddenToday ? { [projectId]: hiddenToday } : {},
+        emailLineHiddenTodayByConnection: hiddenToday ? { [connectionId]: hiddenToday } : {},
     },
     smallScreenNavigation: false,
-    emailLineSummaryByProject: summary ? { [projectId]: summary } : {},
+    emailLineSummaryByProject: summary ? { [connectionId]: summary } : {},
 })
 
 const textNodes = tree =>
@@ -79,7 +84,7 @@ describe('EmailLine', () => {
 
     it('renders nothing when email is not connected', () => {
         mockState = createState({ apisConnected: {} })
-        const tree = renderer.create(<EmailLine projectId={projectId} inAllProjects={false} />).toJSON()
+        const tree = renderer.create(<EmailLine projectId={projectId} />).toJSON()
         expect(tree).toBeNull()
     })
 
@@ -95,7 +100,7 @@ describe('EmailLine', () => {
                 inboxZero: false,
             },
         })
-        const tree = renderer.create(<EmailLine projectId={projectId} inAllProjects={false} />)
+        const tree = renderer.create(<EmailLine projectId={projectId} />)
         const rendered = textNodes(tree)
         expect(rendered).toContain('Inbox:3')
         expect(rendered).toContain('Ads:7')
@@ -110,7 +115,7 @@ describe('EmailLine', () => {
                 inboxZero: true,
             },
         })
-        const tree = renderer.create(<EmailLine projectId={projectId} inAllProjects={false} />)
+        const tree = renderer.create(<EmailLine projectId={projectId} />)
         expect(textNodes(tree).some(text => typeof text === 'string' && text.includes('Inbox Zero'))).toBe(true)
     })
 
@@ -125,16 +130,16 @@ describe('EmailLine', () => {
                 inboxZero: false,
             },
         })
-        const tree = renderer.create(<EmailLine projectId={projectId} inAllProjects={false} />)
+        const tree = renderer.create(<EmailLine projectId={projectId} />)
         // Emails are hidden; only a "Show again" affordance remains.
         expect(textNodes(tree)).toContain('Show again')
         expect(tree.root.findAllByProps({ testID: 'chip' })).toHaveLength(0)
     })
 
-    it('also collapses (does not vanish) in All Projects when done for today', () => {
+    it('also collapses (does not vanish) in the unified All Projects line when done for today', () => {
         const todayKey = getEmailLineTodayKey({ timezone: 0 })
         mockState = createState({ hiddenToday: todayKey, summary: { connected: true, labels: [] } })
-        const tree = renderer.create(<EmailLine projectId={projectId} inAllProjects />)
+        const tree = renderer.create(<EmailLine />)
         expect(textNodes(tree)).toContain('Show again')
     })
 
@@ -142,7 +147,51 @@ describe('EmailLine', () => {
         mockState = createState({
             summary: { connected: true, provider: '', labels: [], authExpired: true, inboxZero: false },
         })
-        const tree = renderer.create(<EmailLine projectId={projectId} inAllProjects={false} />)
+        const tree = renderer.create(<EmailLine projectId={projectId} />)
         expect(textNodes(tree)).toContain('Reconnect email')
+    })
+
+    it('merges multiple accounts into one line with account captions in All Projects', () => {
+        const secondEmail = 'work@outlook.com'
+        const secondConnectionId = buildConnectionId('email', 'microsoft', secondEmail)
+        mockState = {
+            loggedUser: {
+                uid: 'user-1',
+                timezone: 0,
+                emailConnections: {
+                    [connectionId]: {
+                        provider: 'google',
+                        emailAddress: accountEmail,
+                        defaultProjectId: projectId,
+                        isDefaultAccount: true,
+                    },
+                    [secondConnectionId]: {
+                        provider: 'microsoft',
+                        emailAddress: secondEmail,
+                        defaultProjectId: 'project-2',
+                    },
+                },
+                emailLineHiddenTodayByConnection: {},
+            },
+            smallScreenNavigation: false,
+            emailLineSummaryByProject: {
+                [connectionId]: {
+                    connected: true,
+                    provider: 'google',
+                    labels: [{ labelId: 'INBOX', displayName: 'Inbox', unreadCount: 2, kind: 'inbox' }],
+                },
+                [secondConnectionId]: {
+                    connected: true,
+                    provider: 'microsoft',
+                    labels: [{ labelId: 'f_inbox', displayName: 'Inbox', unreadCount: 5, kind: 'inbox' }],
+                },
+            },
+        }
+        const tree = renderer.create(<EmailLine />)
+        const rendered = textNodes(tree)
+        expect(rendered).toContain('Inbox:2')
+        expect(rendered).toContain('Inbox:5')
+        expect(rendered).toContain(accountEmail)
+        expect(rendered).toContain(secondEmail)
     })
 })

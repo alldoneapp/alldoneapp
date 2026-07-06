@@ -22,8 +22,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import DescriptionField from '../../TaskDetailedView/Properties/DescriptionField'
 import { FEED_PROJECT_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import SharedHelper from '../../../utils/SharedHelper'
-import ConnectCalendarProperty from './ConnectCalendar/ConnectCalendarProperty'
-import ConnectGmailProperty from './ConnectGmail/ConnectGmailProperty'
+import IntegrationsLinkProperty from './IntegrationsLink/IntegrationsLinkProperty'
 import ConnectGitLabProperty from './ConnectGitLab/ConnectGitLabProperty'
 import ConnectGitHubProperty from './ConnectGitHub/ConnectGitHubProperty'
 import ConnectGCPProperty from './ConnectGCP/ConnectGCPProperty'
@@ -110,8 +109,7 @@ const ProjectProperties = ({ project, type }) => {
                         <View style={{ flex: 1, marginRight: mobile ? 0 : 72 }}>
                             <ColorProperty project={project} disabled={!accessGranted || userIsNormalUserInGuide} />
                             <ProjectStatus project={project} disabled={!accessGranted || hasGuideChildren} />
-                            <ConnectCalendarProperty projectId={project.id} disabled={!accessGranted} />
-                            <ConnectGmailProperty projectId={project.id} disabled={!accessGranted} />
+                            <IntegrationsLinkProperty />
                             <ConnectGitLabProperty project={project} disabled={!accessGranted} />
                             <ConnectGitHubProperty project={project} disabled={!accessGranted} />
                             <ConnectGCPProperty project={project} disabled={!accessGranted} />

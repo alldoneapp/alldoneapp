@@ -5,6 +5,11 @@ const crypto = require('crypto')
 const { google } = require('googleapis')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const {
+    CONNECTION_SERVICE_EMAIL,
+    findConnectionsForProject,
+    getConnection,
+} = require('../Integrations/providerConnections')
+const {
     addBaseInstructions,
     calculateTokens,
     calculateGoldCostFromTokens,
@@ -288,12 +293,22 @@ async function buildDefaultActiveProjectsGmailLabelingConfig(userData = {}) {
     }
 }
 
+// The learned-rules block persists user feedback across prompt regenerations: in
+// default mode the prompt is rebuilt from active projects on every sync, so feedback
+// must live outside it and be appended here — the single injection point for both modes.
+function appendLearnedRulesToPrompt(prompt = '', learnedRules = '') {
+    const rules = typeof learnedRules === 'string' ? learnedRules.trim() : ''
+    if (!rules) return prompt
+    return [prompt, `User feedback rules (always apply):\n${rules}`].filter(Boolean).join('\n\n')
+}
+
 async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
     const promptMode = normalizePromptMode(config.promptMode, GMAIL_LABELING_PROMPT_MODE_CUSTOM)
     if (promptMode !== GMAIL_LABELING_PROMPT_MODE_DEFAULT) {
         return {
             ...config,
             promptMode: GMAIL_LABELING_PROMPT_MODE_CUSTOM,
+            prompt: appendLearnedRulesToPrompt(config.prompt, config.learnedRules),
         }
     }
 
@@ -305,7 +320,7 @@ async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
     return {
         ...config,
         promptMode: GMAIL_LABELING_PROMPT_MODE_DEFAULT,
-        prompt: defaultConfig.prompt,
+        prompt: appendLearnedRulesToPrompt(defaultConfig.prompt, config.learnedRules),
         labelDefinitions: defaultConfig.labelDefinitions,
     }
 }
@@ -338,9 +353,18 @@ async function loadState(userId, projectId, gmailEmail = '') {
     }
 }
 
-async function upsertGmailLabelingConfig(userId, projectId, configInput, gmailEmail = '') {
-    const { ref, config, exists } = await loadConfig(userId, projectId, gmailEmail)
-    const writeData = buildConfigWriteData(userId, projectId, configInput, gmailEmail, exists ? config : null)
+async function upsertGmailLabelingConfig(userId, key, configInput, gmailEmail = '') {
+    const { ref, config, exists } = await loadConfig(userId, key, gmailEmail)
+    const writeData = buildConfigWriteData(userId, key, configInput, gmailEmail, exists ? config : null)
+    // Connection-keyed configs record the connection id and keep `projectId` pointing at
+    // the connection's real default project (consumers and the scheduled scanner rely on it).
+    if (typeof key === 'string' && key.startsWith('email_')) {
+        writeData.connectionId = key
+        const userDoc = await admin.firestore().collection('users').doc(userId).get()
+        const userData = userDoc.exists ? userDoc.data() || {} : {}
+        const connection = getConnection(userData, CONNECTION_SERVICE_EMAIL, key)
+        if (connection?.defaultProjectId) writeData.projectId = connection.defaultProjectId
+    }
     await ref.set(writeData, { merge: true })
     return writeData
 }
@@ -1160,11 +1184,15 @@ async function processSingleMessage({
     userId,
     userData,
     projectId,
+    // Real project behind the connection — used for gold ledger + follow-up routing;
+    // `projectId` may be an account-level connection id (the doc key).
+    connectionProjectId = '',
     gmailEmail,
     rawMessage,
     syncRunId,
     forceFollowUp = false,
 }) {
+    const goldProjectId = connectionProjectId || projectId
     const normalizedMessage = normalizeGmailMessage(rawMessage)
     const direction = getGmailMessageDirection(rawMessage)
     const eligibleLabelDefinitions = getEligibleLabelDefinitions(config.labelDefinitions, direction)
@@ -1193,6 +1221,7 @@ async function processSingleMessage({
             autoArchive: false,
             confidence: null,
             reasoning: 'Skipped before classification because the user has insufficient gold.',
+            needsReply: null,
             applied: false,
             archived: false,
             skippedReason: 'insufficient_gold',
@@ -1251,6 +1280,9 @@ async function processSingleMessage({
         ? calculateGoldCostFromTokens(tokenUsage.totalTokens, config.model)
         : 0
 
+    // Outgoing mail never needs a reply from the user, regardless of what the model returned.
+    const needsReply = direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : classifierResult.needsReply === true
+
     // Charge the real token-based cost in a single ledger entry. If tokens round
     // to 0 Gold we still charge a minimum of 1 so usage is reflected somewhere.
     const goldToCharge = Math.max(estimatedNormalGoldCost, GMAIL_LABELING_MIN_GOLD_TO_CLASSIFY)
@@ -1269,7 +1301,7 @@ async function processSingleMessage({
     let insufficientGoldForClassification = false
     const chargeResult = await deductGold(userId, goldToCharge, {
         source: 'gmail_labeling',
-        projectId,
+        projectId: goldProjectId,
         objectId: normalizedMessage.messageId,
         channel: 'gmail',
     })
@@ -1306,6 +1338,7 @@ async function processSingleMessage({
             autoArchive: false,
             confidence: classifierResult.confidence,
             reasoning: classifierResult.reasoning,
+            needsReply,
             consistencyCheck: classifierResult.consistencyCheck || null,
             applied: false,
             archived: false,
@@ -1334,6 +1367,7 @@ async function processSingleMessage({
             autoArchive: false,
             confidence: classifierResult.confidence,
             reasoning: classifierResult.reasoning,
+            needsReply,
             applied: false,
             archived: false,
             skippedReason: 'missing_label_definition',
@@ -1385,7 +1419,7 @@ async function processSingleMessage({
         if (classificationGoldSpent > 0) {
             await refundGold(userId, classificationGoldSpent, {
                 source: 'gmail_labeling',
-                projectId,
+                projectId: goldProjectId,
                 objectId: normalizedMessage.messageId,
                 channel: 'gmail',
                 note: 'Refund real classifier cost after Gmail label apply failure',
@@ -1420,7 +1454,7 @@ async function processSingleMessage({
             existingAuditEntry,
             reasoning: classifierResult.reasoning,
             confidence: classifierResult.confidence,
-            connectionProjectId: projectId,
+            connectionProjectId: goldProjectId,
             selectedProjectId,
         })
         postLabelActions.push(action)
@@ -1440,6 +1474,7 @@ async function processSingleMessage({
         autoArchive: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : !!selectedDefinition.autoArchive,
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
+        needsReply,
         consistencyCheck: classifierResult.consistencyCheck || null,
         applied: modifyResult.applied,
         archived: modifyResult.archived,
@@ -1460,22 +1495,49 @@ async function processSingleMessage({
     }
 }
 
-async function getConnectedGmailEmail(userId, projectId) {
+// The labeling key is an account-level connection id (new) or a projectId (legacy).
+// Returns the connected Gmail address plus the real project behind the connection —
+// used for gold ledger entries and follow-up task routing, never the raw key.
+async function getConnectedGmailEmail(userId, key) {
     const userDoc = await admin.firestore().collection('users').doc(userId).get()
     if (!userDoc.exists) {
         throw new Error('User not found')
     }
 
     const userData = userDoc.data() || {}
-    const gmailConnection = userData.apisConnected?.[projectId] || {}
-    if (!gmailConnection.gmail) {
-        throw new Error('Gmail is not connected for this project')
+
+    if (typeof key === 'string' && key.startsWith('email_')) {
+        const connection = getConnection(userData, CONNECTION_SERVICE_EMAIL, key)
+        if (!connection || connection.provider !== 'google') {
+            throw new Error('Gmail is not connected for this account')
+        }
+        return {
+            userData,
+            gmailEmail: connection.emailAddress || userData.email || '',
+            connectionProjectId: connection.defaultProjectId || '',
+        }
     }
 
-    return {
-        userData,
-        gmailEmail: gmailConnection.gmailEmail || userData.email || '',
+    const gmailConnection = userData.apisConnected?.[key] || {}
+    if (gmailConnection.gmail) {
+        return {
+            userData,
+            gmailEmail: gmailConnection.gmailEmail || userData.email || '',
+            connectionProjectId: key,
+        }
     }
+
+    // A project whose connection exists account-level only (new connect flow).
+    const [match] = findConnectionsForProject(userData, CONNECTION_SERVICE_EMAIL, key)
+    if (match && match.provider === 'google') {
+        return {
+            userData,
+            gmailEmail: match.emailAddress || userData.email || '',
+            connectionProjectId: key,
+        }
+    }
+
+    throw new Error('Gmail is not connected for this project')
 }
 
 function assertPremiumAccess(userData) {
@@ -1487,7 +1549,7 @@ function assertPremiumAccess(userData) {
 }
 
 async function syncGmailLabeling(userId, projectId, options = {}) {
-    const { gmailEmail, userData } = await getConnectedGmailEmail(userId, projectId)
+    const { gmailEmail, userData, connectionProjectId } = await getConnectedGmailEmail(userId, projectId)
     const logContext = createSyncLogContext(userId, projectId, gmailEmail)
     assertPremiumAccess(userData)
     const { config, exists } = await loadConfig(userId, projectId, gmailEmail)
@@ -1650,6 +1712,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     userId,
                     userData,
                     projectId,
+                    connectionProjectId,
                     gmailEmail,
                     rawMessage,
                     syncRunId: logContext.runId,
@@ -1806,22 +1869,27 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
         const data = doc.data() || {}
         const parent = doc.ref.parent?.parent
         const userId = parent?.id
-        if (!userId || !data.projectId) continue
+        // The migration disables + stamps old project-keyed configs with `migratedTo`;
+        // skipping them here is the double-processing guard.
+        if (data.migratedTo) continue
+        // New configs are keyed by connectionId; legacy ones by projectId.
+        const syncKey = data.connectionId || data.projectId
+        if (!userId || !syncKey) continue
 
         try {
-            const { state } = await loadState(userId, data.projectId, data.gmailEmail || '')
+            const { state } = await loadState(userId, syncKey, data.gmailEmail || '')
             if (!isScheduledSyncDue(state, data)) {
                 results.push({
                     success: true,
                     skippedReason: 'interval_not_due',
                     userId,
-                    projectId: data.projectId,
+                    projectId: syncKey,
                     syncIntervalMinutes: getConfiguredSyncIntervalMinutes(data),
                 })
                 continue
             }
 
-            const result = await syncGmailLabeling(userId, data.projectId)
+            const result = await syncGmailLabeling(userId, syncKey)
             results.push(result)
         } catch (error) {
             if (error?.code === 'premium-required') {
@@ -1877,6 +1945,8 @@ module.exports = {
     getGmailLabelingConfigWithState,
     getDefaultAssistantIdForProject,
     getExternalRecipientEmails,
+    loadAuditEntry,
+    loadConfig,
     processEnabledGmailLabelingConfigs,
     processSingleMessage,
     resolveEffectiveGmailLabelingConfig,

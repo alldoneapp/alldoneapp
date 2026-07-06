@@ -883,6 +883,21 @@ export default function GmailLabelingSettings({
                                 </Text>
                             </View>
 
+                            <View style={localStyles.section}>
+                                <Text style={localStyles.inputLabel}>
+                                    {translate('Learned rules from your feedback')}
+                                </Text>
+                                <TextInput
+                                    value={config.learnedRules}
+                                    onChangeText={learnedRules => updateConfig({ learnedRules })}
+                                    editable={canManage}
+                                    style={[localStyles.input, localStyles.multilineInput]}
+                                    multiline
+                                    placeholderTextColor={colors.Text03}
+                                />
+                                <Text style={localStyles.helperText}>{translate('LearnedRulesDescription')}</Text>
+                            </View>
+
                             <SyncSummary state={syncState} result={syncResult} />
                             <SyncAuditSection entries={recentAuditEntries} />
                         </>

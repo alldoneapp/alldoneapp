@@ -5,48 +5,120 @@ import { useSelector } from 'react-redux'
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import { translate } from '../../../i18n/TranslationService'
-import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../utils/NavigationService'
-import { DV_TAB_PROJECT_PROPERTIES } from '../../../utils/TabNavigationConstants'
-import { resolveEmailConnection } from '../../../utils/IntegrationProviders'
+import SettingsHelper from '../../SettingsView/SettingsHelper'
+import { DV_TAB_SETTINGS_INTEGRATIONS } from '../../../utils/TabNavigationConstants'
+import {
+    CONNECTION_SERVICE_EMAIL,
+    getConnectionsForProject,
+    getProviderLabel,
+    listEmailConnections,
+} from '../../../utils/IntegrationProviders'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
 import {
-    setUserEmailLineHiddenToday,
-    clearUserEmailLineHiddenToday,
+    setUserEmailLineHiddenTodayForConnections,
+    clearUserEmailLineHiddenTodayForConnections,
 } from '../../../utils/backends/Users/usersFirestore'
 import EmailLabelChip from './EmailLabelChip'
-import { getEmailLineTodayKey, isEmailLineHiddenToday, splitChipsForDisplay } from './emailLineHelper'
+import { areEmailLineConnectionsHiddenToday, getEmailLineTodayKey, splitChipsForDisplay } from './emailLineHelper'
 
-export default function EmailLine({ projectId, inAllProjects }) {
+// One row for one connected account: optional account caption (multi-account view),
+// state rows (auth expired / inbox zero handled by the parent), and the label chips.
+function ConnectionChips({ connection, summary, showAccountCaption, labelingDisabled, showAllChips, onShowAll }) {
+    const emailAddress = summary?.emailAddress || connection.email
+    const unreadLabels = (summary?.labels || []).filter(label => label.unreadCount > 0)
+    const { visible, overflowCount } = splitChipsForDisplay(unreadLabels, showAllChips)
+    const authExpired = summary?.authExpired || connection.authInvalid
+    const labelOptions = (summary?.labels || []).map(label => label.displayName).filter(Boolean)
+
+    const openSettings = () => {
+        SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_INTEGRATIONS)
+    }
+
+    if (!authExpired && unreadLabels.length === 0) return null
+
+    return (
+        <View>
+            {showAccountCaption && (
+                <View style={localStyles.accountCaption}>
+                    <Text style={[styles.caption2, localStyles.accountCaptionText]} numberOfLines={1}>
+                        {connection.email}
+                    </Text>
+                    <Text style={[styles.caption2, localStyles.accountCaptionProvider]}>
+                        {getProviderLabel(connection.provider)}
+                    </Text>
+                </View>
+            )}
+
+            {authExpired ? (
+                <TouchableOpacity style={localStyles.stateRow} onPress={openSettings}>
+                    <Icon name="alert-circle" size={14} color={colors.UtilityYellow300} />
+                    <Text style={[styles.caption1, localStyles.reconnectText]}>{translate('Reconnect email')}</Text>
+                </TouchableOpacity>
+            ) : (
+                <View style={localStyles.chipsRow}>
+                    {visible.map(label => (
+                        <EmailLabelChip
+                            key={`${connection.connectionId}-${label.labelId}`}
+                            label={label}
+                            projectId={connection.connectionId}
+                            provider={connection.provider}
+                            emailAddress={emailAddress}
+                            labelingDisabled={labelingDisabled}
+                            labelOptions={labelOptions}
+                        />
+                    ))}
+                    {overflowCount > 0 && (
+                        <TouchableOpacity style={localStyles.overflowChip} onPress={onShowAll}>
+                            <Text style={[styles.caption1, localStyles.overflowText]}>{`+${overflowCount}`}</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
+        </View>
+    )
+}
+
+// The Email line. With `projectId` it shows the connections whose default project is
+// that project (single-project view); without it, ALL email connections merged into one
+// line (All Projects). Summaries stay keyed per connection in redux.
+export default function EmailLine({ projectId }) {
     const loggedUser = useSelector(state => state.loggedUser)
-    const connection = resolveEmailConnection(loggedUser.apisConnected?.[projectId])
-    const summary = useSelector(state => state.emailLineSummaryByProject[projectId])
+    const summariesByKey = useSelector(state => state.emailLineSummaryByProject)
     const [showAllChips, setShowAllChips] = useState(false)
 
-    const hiddenToday = isEmailLineHiddenToday(loggedUser, projectId)
+    const connections = projectId
+        ? getConnectionsForProject(loggedUser, CONNECTION_SERVICE_EMAIL, projectId)
+        : listEmailConnections(loggedUser)
+    const connectionIds = connections.map(connection => connection.connectionId)
+    const connectionIdsKey = connectionIds.join(',')
+
+    const hiddenToday = areEmailLineConnectionsHiddenToday(loggedUser, connectionIds)
 
     useEffect(() => {
-        if (connection.connected && projectId) {
-            fetchEmailLineSummary(projectId)
-        }
-    }, [projectId, connection.connected])
+        connectionIds.forEach(connectionId => {
+            fetchEmailLineSummary(connectionId)
+        })
+    }, [connectionIdsKey])
 
-    if (!connection.connected) return null
+    if (connections.length === 0) return null
 
     const hideForToday = () => {
-        setUserEmailLineHiddenToday(loggedUser.uid, projectId, getEmailLineTodayKey(loggedUser))
+        setUserEmailLineHiddenTodayForConnections(loggedUser.uid, connectionIds, getEmailLineTodayKey(loggedUser))
     }
 
     const showAgain = () => {
-        clearUserEmailLineHiddenToday(loggedUser.uid, projectId)
+        clearUserEmailLineHiddenTodayForConnections(loggedUser.uid, connectionIds)
     }
 
     const reload = () => {
-        fetchEmailLineSummary(projectId, { force: true })
+        connectionIds.forEach(connectionId => {
+            fetchEmailLineSummary(connectionId, { force: true })
+        })
     }
 
-    const openReconnect = () => {
-        ProjectHelper.processURLProjectDetailsTab(NavigationService, DV_TAB_PROJECT_PROPERTIES, projectId)
+    const openSettings = () => {
+        SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_INTEGRATIONS)
     }
 
     // When done for today, collapse to just the header + a "Show again" pill.
@@ -74,11 +146,16 @@ export default function EmailLine({ projectId, inAllProjects }) {
         )
     }
 
-    const emailAddress = summary?.emailAddress || connection.email
-    const unreadLabels = (summary?.labels || []).filter(label => label.unreadCount > 0)
-    const { visible, overflowCount } = splitChipsForDisplay(unreadLabels, showAllChips)
-    const authExpired = summary?.authExpired
-    const inboxZero = !!summary && !authExpired && unreadLabels.length === 0
+    const summaries = connections.map(connection => summariesByKey[connection.connectionId])
+    const loadedSummaries = summaries.filter(Boolean)
+    const anyAuthExpired = connections.some(
+        (connection, index) => summaries[index]?.authExpired || connection.authInvalid
+    )
+    const inboxZero =
+        loadedSummaries.length === connections.length &&
+        !anyAuthExpired &&
+        loadedSummaries.every(summary => (summary.labels || []).every(label => label.unreadCount === 0))
+    const showAccountCaption = connections.length > 1
 
     return (
         <View style={localStyles.container}>
@@ -92,6 +169,13 @@ export default function EmailLine({ projectId, inAllProjects }) {
                         accessibilityLabel={translate('Reload')}
                     >
                         <Icon name="refresh-cw" size={14} color={colors.Text03} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={localStyles.iconButton}
+                        onPress={openSettings}
+                        accessibilityLabel={translate('Integrations')}
+                    >
+                        <Icon name="settings" size={14} color={colors.Text03} />
                     </TouchableOpacity>
                 </View>
                 <View style={localStyles.headerRight}>
@@ -107,36 +191,26 @@ export default function EmailLine({ projectId, inAllProjects }) {
                 </View>
             </View>
 
-            {authExpired && (
-                <TouchableOpacity style={localStyles.stateRow} onPress={openReconnect}>
-                    <Icon name="alert-circle" size={14} color={colors.UtilityYellow300} />
-                    <Text style={[styles.caption1, localStyles.reconnectText]}>{translate('Reconnect email')}</Text>
-                </TouchableOpacity>
-            )}
-
-            {!authExpired && inboxZero && (
+            {inboxZero ? (
                 <View style={localStyles.stateRow}>
                     <Text style={[styles.caption1, localStyles.inboxZeroText]}>{translate('Inbox Zero')} 🎉</Text>
                 </View>
-            )}
-
-            {!authExpired && !inboxZero && unreadLabels.length > 0 && (
-                <View style={localStyles.chipsRow}>
-                    {visible.map(label => (
-                        <EmailLabelChip
-                            key={label.labelId}
-                            label={label}
-                            projectId={projectId}
-                            provider={connection.provider}
-                            emailAddress={emailAddress}
-                        />
-                    ))}
-                    {overflowCount > 0 && (
-                        <TouchableOpacity style={localStyles.overflowChip} onPress={() => setShowAllChips(true)}>
-                            <Text style={[styles.caption1, localStyles.overflowText]}>{`+${overflowCount}`}</Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
+            ) : (
+                connections.map((connection, index) => (
+                    <ConnectionChips
+                        key={connection.connectionId}
+                        connection={connection}
+                        summary={summaries[index]}
+                        showAccountCaption={showAccountCaption}
+                        labelingDisabled={
+                            !!summaries[index] &&
+                            connection.provider !== 'microsoft' &&
+                            summaries[index].labelingEnabled === false
+                        }
+                        showAllChips={showAllChips}
+                        onShowAll={() => setShowAllChips(true)}
+                    />
+                ))
             )}
         </View>
     )
@@ -189,6 +263,19 @@ const localStyles = StyleSheet.create({
     doneButtonText: {
         color: colors.Text03,
         marginLeft: 4,
+    },
+    accountCaption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+    },
+    accountCaptionText: {
+        color: colors.Text02,
+        flexShrink: 1,
+    },
+    accountCaptionProvider: {
+        color: colors.Text03,
+        marginLeft: 6,
     },
     chipsRow: {
         flexDirection: 'row',

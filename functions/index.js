@@ -74,6 +74,41 @@ async function assertProjectAccess(userId, projectId) {
     return userDoc.data() || {}
 }
 
+// Access check for account-level connection ids (email_… / calendar_…): the connection
+// must belong to the caller. Returns { userData, connection }.
+async function assertConnectionAccess(userId, connectionId) {
+    const userDoc = await admin.firestore().doc(`users/${userId}`).get()
+    if (!userDoc.exists) {
+        throw new HttpsError('permission-denied', 'User not found')
+    }
+
+    const userData = userDoc.data() || {}
+    const { getConnection } = require('./Integrations/providerConnections')
+    const service = String(connectionId || '').startsWith('calendar_') ? 'calendar' : 'email'
+    const connection = getConnection(userData, service, connectionId)
+    if (!connection) {
+        throw new HttpsError('permission-denied', 'No access to this connection')
+    }
+
+    return { userData, connection }
+}
+
+// Many callables accept either a legacy projectId or an account-level connectionId.
+// Resolves the working key, runs the matching access check, and returns everything.
+async function assertEmailLineAccess(userId, data = {}) {
+    const connectionId = typeof data.connectionId === 'string' && data.connectionId.trim() ? data.connectionId : null
+    const projectId = typeof data.projectId === 'string' && data.projectId.trim() ? data.projectId : null
+    if (!connectionId && !projectId) {
+        throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
+    }
+    if (connectionId) {
+        const { userData, connection } = await assertConnectionAccess(userId, connectionId)
+        return { key: connectionId, userData, connection }
+    }
+    const userData = await assertProjectAccess(userId, projectId)
+    return { key: projectId, userData, connection: null }
+}
+
 async function assertAdministrator(userId) {
     const administratorRoleDoc = await admin
         .firestore()
@@ -3291,13 +3326,12 @@ exports.getEmailLineSummarySecondGen = onCall(
         const { data, auth } = request
         if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
 
-        const { projectId, includeNeedsReply } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        const { includeNeedsReply } = data || {}
 
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { key, userData } = await assertEmailLineAccess(auth.uid, data || {})
             const { getEmailLineSummary } = require('./Email/emailLine/emailLineService')
-            return await getEmailLineSummary(auth.uid, projectId, { userData, includeNeedsReply: !!includeNeedsReply })
+            return await getEmailLineSummary(auth.uid, key, { userData, includeNeedsReply: !!includeNeedsReply })
         } catch (error) {
             if (error instanceof HttpsError) throw error
             if (error?.code === 'EMAIL_AUTH_EXPIRED') {
@@ -3320,14 +3354,13 @@ exports.listEmailLineMessagesSecondGen = onCall(
         const { data, auth } = request
         if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
 
-        const { projectId, labelId, pageToken } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        const { labelId, pageToken } = data || {}
         if (!labelId) throw new HttpsError('invalid-argument', 'labelId is required')
 
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { key, userData } = await assertEmailLineAccess(auth.uid, data || {})
             const { listEmailLineMessages } = require('./Email/emailLine/emailLineService')
-            return await listEmailLineMessages(auth.uid, projectId, labelId, { pageToken, userData })
+            return await listEmailLineMessages(auth.uid, key, labelId, { pageToken, userData })
         } catch (error) {
             if (error instanceof HttpsError) throw error
             if (error?.code === 'EMAIL_AUTH_EXPIRED') {
@@ -3350,14 +3383,13 @@ exports.emailLineActionSecondGen = onCall(
         const { data, auth } = request
         if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
 
-        const { projectId, action, messageIds, labelId, guidance } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        const { action, messageIds, labelId, guidance } = data || {}
         if (!action) throw new HttpsError('invalid-argument', 'action is required')
 
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { key, userData } = await assertEmailLineAccess(auth.uid, data || {})
             const { performEmailLineAction } = require('./Email/emailLine/emailLineService')
-            return await performEmailLineAction(auth.uid, projectId, {
+            return await performEmailLineAction(auth.uid, key, {
                 action,
                 messageIds,
                 labelId,
@@ -3862,11 +3894,11 @@ exports.googleOAuthInitiate = onCall(
         }
 
         const { initiateOAuth } = require('./GoogleOAuth/googleOAuthHandler')
-        const { projectId, service, returnUrl } = data
+        const { projectId, service, returnUrl, connectionId } = data
         const userId = auth.uid
 
         try {
-            const authUrl = await initiateOAuth(userId, projectId, service, returnUrl)
+            const authUrl = await initiateOAuth(userId, projectId, service, returnUrl, connectionId)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Google OAuth:', error)
@@ -4026,12 +4058,15 @@ exports.microsoftOAuthInitiate = onCall(
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
         const { initiateOAuth } = require('./MicrosoftOAuth/microsoftOAuthHandler')
-        const { projectId, service, returnUrl } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        const { projectId, service, returnUrl, connectionId } = data || {}
+        if (!projectId && !connectionId) {
+            throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
+        }
 
         try {
-            await assertProjectAccess(auth.uid, projectId)
-            const authUrl = await initiateOAuth(auth.uid, projectId, service, returnUrl)
+            if (projectId) await assertProjectAccess(auth.uid, projectId)
+            else await assertConnectionAccess(auth.uid, connectionId)
+            const authUrl = await initiateOAuth(auth.uid, projectId, service, returnUrl, connectionId)
             return { authUrl }
         } catch (error) {
             console.error('Error initiating Microsoft OAuth:', error)
@@ -4162,15 +4197,15 @@ exports.upsertGmailLabelingConfigSecondGen = onCall(
         const { auth, data } = request
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
-        const { projectId, config } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        const { config } = data || {}
 
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { key, userData, connection } = await assertEmailLineAccess(auth.uid, data || {})
             assertPremiumFeatureAccess(userData, 'Gmail labeling')
-            const gmailEmail = userData.apisConnected?.[projectId]?.gmailEmail || userData.email || ''
+            const gmailEmail =
+                connection?.emailAddress || userData.apisConnected?.[key]?.gmailEmail || userData.email || ''
             const { upsertGmailLabelingConfig } = require('./Gmail/serverSideGmailLabelingSync')
-            const savedConfig = await upsertGmailLabelingConfig(auth.uid, projectId, config || {}, gmailEmail)
+            const savedConfig = await upsertGmailLabelingConfig(auth.uid, key, config || {}, gmailEmail)
             return { config: savedConfig }
         } catch (error) {
             console.error('Error saving Gmail labeling config:', error)
@@ -4194,19 +4229,56 @@ exports.getGmailLabelingConfigSecondGen = onCall(
         const { auth, data } = request
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
-        const { projectId } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
-
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { key, userData, connection } = await assertEmailLineAccess(auth.uid, data || {})
             assertPremiumFeatureAccess(userData, 'Gmail labeling')
-            const gmailEmail = userData.apisConnected?.[projectId]?.gmailEmail || userData.email || ''
+            const gmailEmail =
+                connection?.emailAddress || userData.apisConnected?.[key]?.gmailEmail || userData.email || ''
             const { getGmailLabelingConfigWithState } = require('./Gmail/serverSideGmailLabelingSync')
-            return await getGmailLabelingConfigWithState(auth.uid, projectId, gmailEmail)
+            return await getGmailLabelingConfigWithState(auth.uid, key, gmailEmail)
         } catch (error) {
             console.error('Error loading Gmail labeling config:', error)
             if (error instanceof HttpsError) throw error
             throw new HttpsError('internal', error.message || 'Failed to load Gmail labeling config')
+        }
+    }
+)
+
+exports.submitEmailLabelFeedbackSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { messageId, verdict, correctLabel, note } = data || {}
+        if (!messageId) throw new HttpsError('invalid-argument', 'messageId is required')
+
+        try {
+            const { key, userData } = await assertEmailLineAccess(auth.uid, data || {})
+            assertPremiumFeatureAccess(userData, 'Gmail labeling')
+            const { submitEmailLabelFeedback } = require('./Gmail/gmailLabelFeedback')
+            return await submitEmailLabelFeedback({
+                userId: auth.uid,
+                userData,
+                projectId: key,
+                messageId,
+                verdict,
+                correctLabel,
+                note,
+            })
+        } catch (error) {
+            console.error('Error submitting email label feedback:', error)
+            if (error instanceof HttpsError) throw error
+            if (error?.code === 'FEEDBACK_LIMIT') throw new HttpsError('resource-exhausted', error.message)
+            if (error?.code === 'LABELING_NOT_CONFIGURED' || error?.code === 'AUDIT_ENTRY_NOT_FOUND') {
+                throw new HttpsError('failed-precondition', error.message)
+            }
+            throw new HttpsError('internal', error.message || 'Failed to submit email label feedback')
         }
     }
 )
@@ -4222,20 +4294,15 @@ exports.upsertCalendarProjectRoutingConfigSecondGen = onCall(
         const { auth, data } = request
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
-        const { projectId, config } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        const { config } = data || {}
 
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { key, userData, connection } = await assertEmailLineAccess(auth.uid, data || {})
             assertPremiumFeatureAccess(userData, 'Calendar project routing')
-            const calendarEmail = userData.apisConnected?.[projectId]?.calendarEmail || userData.email || ''
+            const calendarEmail =
+                connection?.emailAddress || userData.apisConnected?.[key]?.calendarEmail || userData.email || ''
             const { upsertCalendarProjectRoutingConfig } = require('./GoogleCalendar/calendarProjectRoutingConfig')
-            const savedConfig = await upsertCalendarProjectRoutingConfig(
-                auth.uid,
-                projectId,
-                config || {},
-                calendarEmail
-            )
+            const savedConfig = await upsertCalendarProjectRoutingConfig(auth.uid, key, config || {}, calendarEmail)
             return { config: savedConfig }
         } catch (error) {
             console.error('Error saving Calendar project routing config:', error)
@@ -4259,17 +4326,15 @@ exports.getCalendarProjectRoutingConfigSecondGen = onCall(
         const { auth, data } = request
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
-        const { projectId } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
-
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { key, userData, connection } = await assertEmailLineAccess(auth.uid, data || {})
             assertPremiumFeatureAccess(userData, 'Calendar project routing')
-            const calendarEmail = userData.apisConnected?.[projectId]?.calendarEmail || userData.email || ''
+            const calendarEmail =
+                connection?.emailAddress || userData.apisConnected?.[key]?.calendarEmail || userData.email || ''
             const {
                 getCalendarProjectRoutingConfigWithPreview,
             } = require('./GoogleCalendar/calendarProjectRoutingConfig')
-            return await getCalendarProjectRoutingConfigWithPreview(auth.uid, projectId, calendarEmail, userData)
+            return await getCalendarProjectRoutingConfigWithPreview(auth.uid, key, calendarEmail, userData)
         } catch (error) {
             console.error('Error loading Calendar project routing config:', error)
             if (error instanceof HttpsError) throw error
@@ -4289,42 +4354,69 @@ exports.setDefaultGmailConnectionSecondGen = onCall(
         const { auth, data } = request
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
-        const { projectId, isDefault } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        const { projectId, connectionId, isDefault } = data || {}
+        if (!projectId && !connectionId) {
+            throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
+        }
 
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
-            const { resolveEmailConnection } = require('./Integrations/providerConnections')
-            const apisConnected = userData.apisConnected || {}
-            const currentConnection = apisConnected[projectId] || {}
-            const resolvedConnection = resolveEmailConnection(currentConnection)
+            const {
+                CONNECTION_SERVICE_EMAIL,
+                buildConnectionId,
+                findConnectionsForProject,
+                materializeConnectionsMap,
+                resolveEmailConnection,
+            } = require('./Integrations/providerConnections')
 
-            if (!resolvedConnection.connected) {
-                throw new HttpsError('failed-precondition', 'Email is not connected for this project')
+            let userData
+            let targetConnectionId = connectionId || null
+            if (connectionId) {
+                const access = await assertConnectionAccess(auth.uid, connectionId)
+                userData = access.userData
+            } else {
+                userData = await assertProjectAccess(auth.uid, projectId)
+                const [match] = findConnectionsForProject(userData, CONNECTION_SERVICE_EMAIL, projectId)
+                if (!match) {
+                    throw new HttpsError('failed-precondition', 'Email is not connected for this project')
+                }
+                targetConnectionId = match.connectionId
             }
 
             const updateData = {}
             const shouldSetDefault = !!isDefault
 
+            // Authoritative account-level map: exactly 0..1 connection is the default.
+            const connectionsMap = materializeConnectionsMap(CONNECTION_SERVICE_EMAIL, userData)
+            if (!connectionsMap[targetConnectionId]) {
+                throw new HttpsError('failed-precondition', 'Email connection not found')
+            }
+            Object.keys(connectionsMap).forEach(id => {
+                connectionsMap[id].isDefaultAccount = shouldSetDefault && id === targetConnectionId
+            })
+            updateData.emailConnections = connectionsMap
+
+            // Legacy per-project mirror for not-yet-updated clients.
+            const apisConnected = userData.apisConnected || {}
             Object.keys(apisConnected).forEach(connectedProjectId => {
                 const resolved = resolveEmailConnection(apisConnected[connectedProjectId])
-                if (!resolved.connected) return
+                if (!resolved.connected || !resolved.emailAddress) return
+                const entryConnectionId = buildConnectionId(
+                    CONNECTION_SERVICE_EMAIL,
+                    resolved.provider,
+                    resolved.emailAddress
+                )
                 updateData[`apisConnected.${connectedProjectId}.emailDefault`] =
-                    shouldSetDefault && connectedProjectId === projectId
+                    shouldSetDefault && entryConnectionId === targetConnectionId
                 updateData[`apisConnected.${connectedProjectId}.gmailDefault`] =
-                    resolved.provider === 'google' && shouldSetDefault && connectedProjectId === projectId
+                    resolved.provider === 'google' && shouldSetDefault && entryConnectionId === targetConnectionId
             })
-
-            if (!shouldSetDefault) {
-                updateData[`apisConnected.${projectId}.emailDefault`] = false
-                updateData[`apisConnected.${projectId}.gmailDefault`] = false
-            }
 
             await admin.firestore().doc(`users/${auth.uid}`).update(updateData)
 
             return {
                 success: true,
-                projectId,
+                projectId: projectId || null,
+                connectionId: targetConnectionId,
                 isDefault: shouldSetDefault,
             }
         } catch (error) {
@@ -4346,42 +4438,139 @@ exports.setDefaultCalendarConnectionSecondGen = onCall(
         const { auth, data } = request
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
-        const { projectId, isDefault } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        const { projectId, connectionId, isDefault } = data || {}
+        if (!projectId && !connectionId) {
+            throw new HttpsError('invalid-argument', 'projectId or connectionId is required')
+        }
 
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
-            const apisConnected = userData.apisConnected || {}
-            const currentConnection = apisConnected[projectId] || {}
+            const {
+                CONNECTION_SERVICE_CALENDAR,
+                buildConnectionId,
+                findConnectionsForProject,
+                materializeConnectionsMap,
+                resolveCalendarConnection,
+            } = require('./Integrations/providerConnections')
 
-            if (!currentConnection.calendar) {
-                throw new HttpsError('failed-precondition', 'Calendar is not connected for this project')
+            let userData
+            let targetConnectionId = connectionId || null
+            if (connectionId) {
+                const access = await assertConnectionAccess(auth.uid, connectionId)
+                userData = access.userData
+            } else {
+                userData = await assertProjectAccess(auth.uid, projectId)
+                const [match] = findConnectionsForProject(userData, CONNECTION_SERVICE_CALENDAR, projectId)
+                if (!match) {
+                    throw new HttpsError('failed-precondition', 'Calendar is not connected for this project')
+                }
+                targetConnectionId = match.connectionId
             }
 
             const updateData = {}
             const shouldSetDefault = !!isDefault
 
-            Object.keys(apisConnected).forEach(connectedProjectId => {
-                if (!apisConnected[connectedProjectId]?.calendar) return
-                updateData[`apisConnected.${connectedProjectId}.calendarDefault`] =
-                    shouldSetDefault && connectedProjectId === projectId
-            })
-
-            if (!shouldSetDefault) {
-                updateData[`apisConnected.${projectId}.calendarDefault`] = false
+            const connectionsMap = materializeConnectionsMap(CONNECTION_SERVICE_CALENDAR, userData)
+            if (!connectionsMap[targetConnectionId]) {
+                throw new HttpsError('failed-precondition', 'Calendar connection not found')
             }
+            Object.keys(connectionsMap).forEach(id => {
+                connectionsMap[id].isDefaultAccount = shouldSetDefault && id === targetConnectionId
+            })
+            updateData.calendarConnections = connectionsMap
+
+            // Legacy per-project mirror for not-yet-updated clients.
+            const apisConnected = userData.apisConnected || {}
+            Object.keys(apisConnected).forEach(connectedProjectId => {
+                const resolved = resolveCalendarConnection(apisConnected[connectedProjectId])
+                if (!resolved.connected || !resolved.emailAddress) return
+                const entryConnectionId = buildConnectionId(
+                    CONNECTION_SERVICE_CALENDAR,
+                    resolved.provider,
+                    resolved.emailAddress
+                )
+                updateData[`apisConnected.${connectedProjectId}.calendarDefault`] =
+                    shouldSetDefault && entryConnectionId === targetConnectionId
+            })
 
             await admin.firestore().doc(`users/${auth.uid}`).update(updateData)
 
             return {
                 success: true,
-                projectId,
+                projectId: projectId || null,
+                connectionId: targetConnectionId,
                 isDefault: shouldSetDefault,
             }
         } catch (error) {
             console.error('Error setting default Calendar connection:', error)
             if (error instanceof HttpsError) throw error
             throw new HttpsError('internal', error.message || 'Failed to update default Calendar connection')
+        }
+    }
+)
+
+// Change the required default project of an account-level connection. Also inline-migrates
+// the connection's project-keyed private docs (labeling config/state, routing config,
+// token) to connection-keyed ids so the change never strands a legacy-keyed sync.
+exports.setConnectionDefaultProjectSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
+
+        const { connectionId, defaultProjectId } = data || {}
+        if (!connectionId) throw new HttpsError('invalid-argument', 'connectionId is required')
+        if (!defaultProjectId) throw new HttpsError('invalid-argument', 'defaultProjectId is required')
+
+        try {
+            const { connection } = await assertConnectionAccess(auth.uid, connectionId)
+            const userData = await assertProjectAccess(auth.uid, defaultProjectId)
+            const {
+                buildConnectionId,
+                getConnectionsMapField,
+                materializeConnectionsMap,
+                resolveCalendarConnection,
+                resolveEmailConnection,
+            } = require('./Integrations/providerConnections')
+            const { migrateConnectionDocs } = require('./Integrations/connectionDocMigration')
+
+            const service = connectionId.startsWith('calendar_') ? 'calendar' : 'email'
+            const mapField = getConnectionsMapField(service)
+
+            // Move the connection's project-keyed docs onto connection ids first — after
+            // that, the default project is just one field on the connection.
+            const resolver = service === 'calendar' ? resolveCalendarConnection : resolveEmailConnection
+            const apisConnected = userData.apisConnected || {}
+            const sourceProjectIds = Object.keys(apisConnected).filter(legacyProjectId => {
+                const resolved = resolver(apisConnected[legacyProjectId] || {})
+                return (
+                    resolved.connected &&
+                    resolved.emailAddress &&
+                    buildConnectionId(service, resolved.provider, resolved.emailAddress) === connectionId
+                )
+            })
+            await migrateConnectionDocs(auth.uid, connection, sourceProjectIds)
+
+            const connectionsMap = materializeConnectionsMap(service, userData)
+            if (!connectionsMap[connectionId]) {
+                throw new HttpsError('failed-precondition', 'Connection not found')
+            }
+            connectionsMap[connectionId].defaultProjectId = defaultProjectId
+
+            await admin
+                .firestore()
+                .doc(`users/${auth.uid}`)
+                .update({ [mapField]: connectionsMap })
+
+            return { success: true, connectionId, defaultProjectId }
+        } catch (error) {
+            console.error('Error setting connection default project:', error)
+            if (error instanceof HttpsError) throw error
+            throw new HttpsError('internal', error.message || 'Failed to update connection default project')
         }
     }
 )
@@ -4397,14 +4586,13 @@ exports.runGmailLabelingSyncSecondGen = onCall(
         const { auth, data } = request
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
-        const { projectId, forceBootstrap } = data || {}
-        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        const { forceBootstrap } = data || {}
 
         try {
-            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { key, userData } = await assertEmailLineAccess(auth.uid, data || {})
             assertPremiumFeatureAccess(userData, 'Gmail labeling')
             const { syncGmailLabeling } = require('./Gmail/serverSideGmailLabelingSync')
-            return await syncGmailLabeling(auth.uid, projectId, { forceBootstrap: !!forceBootstrap })
+            return await syncGmailLabeling(auth.uid, key, { forceBootstrap: !!forceBootstrap })
         } catch (error) {
             console.error('Error running Gmail labeling sync:', error)
             if (error instanceof HttpsError) throw error

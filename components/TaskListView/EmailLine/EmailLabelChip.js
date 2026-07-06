@@ -10,7 +10,7 @@ const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 
 // A single label/folder pill with its unread count. Tapping it opens a modal
 // listing the inbox emails carrying that label.
-export default function EmailLabelChip({ label, projectId, provider, emailAddress }) {
+export default function EmailLabelChip({ label, projectId, provider, emailAddress, labelingDisabled, labelOptions }) {
     const [isOpen, setIsOpen] = useState(false)
     const smallScreen = useSelector(state => state.smallScreen)
     if (!label) return null
@@ -48,6 +48,8 @@ export default function EmailLabelChip({ label, projectId, provider, emailAddres
                     label={label}
                     provider={provider}
                     emailAddress={emailAddress}
+                    labelingDisabled={labelingDisabled}
+                    labelOptions={labelOptions}
                     closePopover={() => setIsOpen(false)}
                 />
             }
