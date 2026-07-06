@@ -30,6 +30,7 @@ const {
 } = require('./whatsAppCallPrompt')
 const {
     CONFIRMATION_TOOL_NAME,
+    END_CALL_TOOL_NAME,
     buildRealtimeToolSchemas,
     canApprovePendingAction,
     getAssistantTranscriptsFromResponse,
@@ -50,6 +51,10 @@ const { getCallTranscript, getCallTranscriptTurn, storeCallTranscriptTurn } = re
 const MAX_SIDEBAND_RECONNECTS = 3
 const RECONNECT_DELAY_MS = 1000
 const CLOSING_GRACE_MS = 3500
+// When the assistant ends the call after already speaking a farewell in the same turn, wait this
+// long before hanging up so the generated goodbye audio finishes playing out to the caller. The
+// sideband WebSocket can't observe SIP/RTP playout completion, so a time buffer is the only signal.
+const ASSISTANT_FAREWELL_GRACE_MS = 6000
 const CONTROLLER_FINALIZATION_RESERVE_SECONDS = 30
 
 function getTextFromHistoryContent(content) {
@@ -396,13 +401,14 @@ async function runAssistantRealtimeCall(sessionId) {
     const requestResponse = instructions => {
         send({ type: 'response.create', response: instructions ? { instructions } : {} })
     }
-    const closeCall = async (reason, status = 'completed', closingMessage = '') => {
+    const closeCall = async (reason, status = 'completed', closingMessage = '', graceMsOverride = null) => {
         if (ending) return
         ending = true
         completionReason = reason
         completionStatus = status
         if (closingMessage) requestResponse(closingMessage)
-        await new Promise(resolve => setTimeout(resolve, closingMessage ? CLOSING_GRACE_MS : 250))
+        const graceMs = Number.isFinite(graceMsOverride) ? graceMsOverride : closingMessage ? CLOSING_GRACE_MS : 250
+        await new Promise(resolve => setTimeout(resolve, graceMs))
         await hangUpOpenAICall(config, session.openAiCallId).catch(error => {
             console.warn('WhatsApp Call: Hangup failed', {
                 sessionId,
@@ -441,7 +447,7 @@ async function runAssistantRealtimeCall(sessionId) {
         return buildConversationSafeToolResult(toolName, result)
     }
 
-    const handleToolCall = async call => {
+    const handleToolCall = async (call, { spokeThisTurn = false } = {}) => {
         const toolName = String(call.name || '').trim()
         const callId = call.call_id || call.id
         let toolArgs
@@ -450,6 +456,23 @@ async function runAssistantRealtimeCall(sessionId) {
         } catch (_) {
             sendFunctionOutput(callId, { success: false, error: 'Invalid tool arguments.' })
             requestResponse()
+            return
+        }
+
+        if (toolName === END_CALL_TOOL_NAME) {
+            // The assistant chose to end the call. Acknowledge the tool call, then hang up. If it
+            // already spoke a farewell in this same turn, wait for that audio to play out (no new
+            // message); otherwise ask for a brief goodbye first so the caller isn't cut off abruptly.
+            sendFunctionOutput(callId, { success: true, status: 'ending' })
+            if (spokeThisTurn) {
+                await closeCall('assistant_ended_call', 'completed', '', ASSISTANT_FAREWELL_GRACE_MS)
+            } else {
+                await closeCall(
+                    'assistant_ended_call',
+                    'completed',
+                    "Give the caller a short, warm goodbye in their language, then stop. Don't ask any further questions."
+                )
+            }
             return
         }
 
@@ -566,9 +589,13 @@ async function runAssistantRealtimeCall(sessionId) {
         if (event.type !== 'response.done' || !event.response) return
 
         const response = event.response
-        for (const transcript of getAssistantTranscriptsFromResponse(response)) {
+        const assistantTranscripts = getAssistantTranscriptsFromResponse(response)
+        for (const transcript of assistantTranscripts) {
             await persistTurn('assistant', transcript.itemId || response.id, transcript.text)
         }
+        // Whether the assistant spoke in this same turn, so an end_call in this response can wait
+        // for the farewell audio to finish instead of generating a second goodbye.
+        const spokeThisTurn = assistantTranscripts.some(transcript => String(transcript.text || '').trim())
 
         const tokens = getResponseTotalTokens(response)
         if (tokens > 0) {
@@ -596,7 +623,7 @@ async function runAssistantRealtimeCall(sessionId) {
         }
 
         for (const call of getFunctionCallsFromResponse(response)) {
-            await handleToolCall(call)
+            await handleToolCall(call, { spokeThisTurn })
         }
     }
 

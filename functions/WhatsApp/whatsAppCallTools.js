@@ -1,6 +1,7 @@
 const { getToolSchemas } = require('../Assistant/toolSchemas')
 
 const CONFIRMATION_TOOL_NAME = 'resolve_voice_confirmation'
+const END_CALL_TOOL_NAME = 'end_call'
 const CONFIRMATION_TTL_MS = 90 * 1000
 const ALWAYS_CONFIRM_TOOLS = new Set([
     'create_calendar_event',
@@ -43,6 +44,24 @@ function buildConfirmationToolSchema() {
     }
 }
 
+function buildEndCallToolSchema() {
+    return {
+        type: 'function',
+        name: END_CALL_TOOL_NAME,
+        description:
+            'End and hang up the current phone call. Use this only when the conversation is genuinely finished — for example after the caller says goodbye, asks you to hang up, or confirms there is nothing else they need. Say a short, warm spoken farewell first in the same turn, then call this tool. Do not use it to pause, and never hang up while a task is still in progress or a question is unanswered.',
+        parameters: {
+            type: 'object',
+            properties: {
+                reason: {
+                    type: 'string',
+                    description: 'Short reason the call is ending (e.g. "caller said goodbye", "all done").',
+                },
+            },
+        },
+    }
+}
+
 function buildRealtimeToolSchemas(allowedTools, dynamicToolSchemas = {}) {
     const staticSchemas = getToolSchemas(allowedTools)
     const dynamicSchemas = [
@@ -56,6 +75,7 @@ function buildRealtimeToolSchemas(allowedTools, dynamicToolSchemas = {}) {
         if (converted) byName.set(converted.name, converted)
     })
     byName.set(CONFIRMATION_TOOL_NAME, buildConfirmationToolSchema())
+    byName.set(END_CALL_TOOL_NAME, buildEndCallToolSchema())
 
     return Array.from(byName.values())
 }
@@ -107,6 +127,8 @@ function getAssistantTranscriptsFromResponse(response) {
 module.exports = {
     CONFIRMATION_TOOL_NAME,
     CONFIRMATION_TTL_MS,
+    END_CALL_TOOL_NAME,
+    buildEndCallToolSchema,
     buildRealtimeToolSchemas,
     canApprovePendingAction,
     convertChatToolSchemaToRealtime,

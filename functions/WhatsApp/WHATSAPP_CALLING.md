@@ -40,6 +40,18 @@ Twilio calls are routed directly from Twilio to OpenAI SIP over TLS. Browser cal
 stores text transcripts in the call-start day's assistant topic. WhatsApp calls send a short WhatsApp recap afterward;
 phone and browser calls store the recap in Alldone. Audio recording is not enabled.
 
+## Assistant-initiated hangup
+
+The assistant can end the call from its side when the conversation is genuinely finished (the caller says goodbye,
+asks to hang up, or confirms nothing else is needed). It calls the server-handled `end_call` Realtime tool, which the
+sideband controller intercepts and turns into a `POST /v1/realtime/calls/{call_id}/hangup` (the same call used for the
+max-duration and Gold-exhaustion cutoffs). This works for all three channels — SIP phone/WhatsApp and WebRTC browser —
+because they share one controller. The tool needs no per-assistant opt-in and requires no spoken confirmation. When the
+assistant already spoke a farewell in the same turn, the controller waits a short grace window for that audio to finish
+playing before hanging up (the sideband WebSocket can't observe SIP/RTP playout completion, so this is time-based);
+otherwise it asks for a brief goodbye first. Assistant-ended calls finalize with the `assistant_ended_call` completion
+reason and flow through the normal recap/billing path.
+
 ## Staging prerequisites
 
 Before testing, complete Meta Business Verification and reach Meta's required messaging limit of at least 2,000

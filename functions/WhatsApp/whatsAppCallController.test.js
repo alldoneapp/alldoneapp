@@ -326,4 +326,125 @@ describe('WhatsApp call sideband configuration', () => {
         eventHandlers.close(1000)
         await callPromise
     })
+
+    test('lets the assistant end the call: acks end_call, plays the farewell, then hangs up', async () => {
+        // Collapse the farewell grace (and other short waits) to near-zero so the hangup path runs
+        // fast, while keeping the long max-duration deadline timer real (it never fires in the test).
+        const originalSetTimeout = global.setTimeout
+        global.setTimeout = (fn, delay = 0, ...args) => originalSetTimeout(fn, delay >= 60000 ? delay : 0, ...args)
+        try {
+            const socket = { readyState: 1, send: jest.fn(), on: jest.fn(), once: jest.fn(), close: jest.fn() }
+            let resolveGreetingSent
+            const greetingSent = new Promise(resolve => {
+                resolveGreetingSent = resolve
+            })
+            socket.send.mockImplementation(payload => {
+                if (JSON.parse(payload).type === 'response.create') resolveGreetingSent()
+            })
+            const eventHandlers = {}
+            socket.on.mockImplementation((event, handler) => {
+                eventHandlers[event] = handler
+                return socket
+            })
+            socket.once.mockImplementation((event, handler) => {
+                eventHandlers[event] = handler
+                return socket
+            })
+            socket.close.mockImplementation(() => {
+                socket.readyState = 3
+                if (eventHandlers.close) eventHandlers.close(1000)
+            })
+            WebSocket.OPEN = 1
+            WebSocket.mockImplementation(() => {
+                setImmediate(() => eventHandlers.open())
+                return socket
+            })
+
+            const now = Date.now()
+            getCallSession.mockResolvedValue({
+                id: 'call-1',
+                status: 'controller_queued',
+                openAiCallId: 'openai-call-1',
+                userId: 'user-1',
+                projectId: 'project-1',
+                assistantId: 'assistant-1',
+                chatId: 'chat-1',
+                createdAt: now,
+                startedAt: now,
+            })
+            admin.firestore.mockReturnValue({
+                doc: jest.fn(() => ({
+                    get: jest.fn(async () => ({ exists: true, data: () => ({ language: 'English' }) })),
+                })),
+            })
+            getAssistantForChat.mockResolvedValue({
+                name: 'Anna',
+                instructions: 'Help the caller.',
+                allowedTools: ['get_tasks'],
+            })
+            getConversationHistory.mockResolvedValue([])
+            filterAllowedToolsForRuntimeContext.mockReturnValue(['get_tasks'])
+            getDynamicToolSchemasWithCache.mockResolvedValue([])
+            addBaseInstructions.mockImplementation(async messages => {
+                messages.push(['system', 'Full instructions'])
+            })
+            getOpenTasksContextMessage.mockResolvedValue({ message: '' })
+            loadAssistantThreadState.mockResolvedValue(null)
+            updateCallSession.mockResolvedValue()
+            finalizeCallSession.mockResolvedValue()
+            claimRecap.mockResolvedValue(false)
+            global.fetch = jest.fn(async () => ({ ok: true, status: 200 }))
+
+            const callPromise = runWhatsAppRealtimeCall('call-1')
+            await greetingSent
+
+            // The assistant speaks a farewell and calls end_call in the same response.
+            eventHandlers.message(
+                JSON.stringify({
+                    type: 'response.done',
+                    event_id: 'evt-1',
+                    response: {
+                        id: 'resp-1',
+                        output: [
+                            {
+                                id: 'msg-1',
+                                type: 'message',
+                                content: [{ type: 'audio', transcript: 'Talk soon, take care. Bye!' }],
+                            },
+                            {
+                                id: 'fc-1',
+                                type: 'function_call',
+                                name: 'end_call',
+                                call_id: 'fc-1',
+                                arguments: '{"reason":"caller said goodbye"}',
+                            },
+                        ],
+                    },
+                })
+            )
+
+            await callPromise
+
+            const sentEvents = socket.send.mock.calls.map(([payload]) => JSON.parse(payload))
+            const ack = sentEvents.find(
+                event => event.type === 'conversation.item.create' && event.item?.type === 'function_call_output'
+            )
+            expect(ack.item.call_id).toBe('fc-1')
+            expect(ack.item.output).toContain('"status":"ending"')
+            // A farewell was already spoken, so no second closing response is generated after end_call.
+            const responseCreateAfterEndCall = sentEvents
+                .slice(sentEvents.indexOf(ack) + 1)
+                .filter(event => event.type === 'response.create')
+            expect(responseCreateAfterEndCall).toHaveLength(0)
+
+            expect(global.fetch).toHaveBeenCalledWith(
+                'https://api.openai.com/v1/realtime/calls/openai-call-1/hangup',
+                expect.objectContaining({ method: 'POST' })
+            )
+            expect(socket.close).toHaveBeenCalled()
+            expect(finalizeCallSession).toHaveBeenCalledWith('call-1', 'assistant_ended_call', 'completed')
+        } finally {
+            global.setTimeout = originalSetTimeout
+        }
+    })
 })

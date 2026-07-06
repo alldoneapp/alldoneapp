@@ -8,6 +8,7 @@ const VOICE_INSTRUCTIONS = [
     'Do not use generic fillers like "please wait while I process." Describe the action, not your internal reasoning.',
     'Never claim an action succeeded until its tool result confirms success.',
     'Sensitive actions require explicit spoken confirmation. Ask a concise confirmation question when a tool result says confirmation_required.',
+    "You can end the call yourself when the conversation is genuinely finished — for example when the caller says goodbye, asks you to hang up, or confirms they need nothing else. When that happens, give a short, warm farewell in the caller's language and then call the end_call tool in the same turn. Do not end the call while a task is still in progress or a question is unanswered, and never hang up abruptly without a brief goodbye.",
 ].join(' ')
 
 function getCallAssistantName(assistant = {}) {

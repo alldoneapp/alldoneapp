@@ -1,5 +1,6 @@
 const {
     CONFIRMATION_TOOL_NAME,
+    END_CALL_TOOL_NAME,
     buildRealtimeToolSchemas,
     canApprovePendingAction,
     convertChatToolSchemaToRealtime,
@@ -28,9 +29,13 @@ describe('WhatsApp call Realtime tools', () => {
         })
     })
 
-    test('adds the server confirmation resolver to allowed tools', () => {
+    test('adds the server confirmation resolver and end_call control tools to allowed tools', () => {
         const schemas = buildRealtimeToolSchemas(['create_task'])
-        expect(schemas.map(schema => schema.name)).toEqual(['create_task', CONFIRMATION_TOOL_NAME])
+        expect(schemas.map(schema => schema.name)).toEqual(['create_task', CONFIRMATION_TOOL_NAME, END_CALL_TOOL_NAME])
+    })
+
+    test('the end_call control tool never requires spoken confirmation', () => {
+        expect(requiresVoiceConfirmation(END_CALL_TOOL_NAME)).toBe(false)
     })
 
     test('requires confirmation for calendar writes, VM execution, external tools, and delegation', () => {
