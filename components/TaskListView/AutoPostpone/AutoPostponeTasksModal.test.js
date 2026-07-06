@@ -10,9 +10,18 @@ import { useSelector } from 'react-redux'
 import AutoPostponeTasksModal from './AutoPostponeTasksModal'
 
 const mockAutoPostponeMultipleTasks = jest.fn(() => Promise.resolve({ updatedCount: 1 }))
+const mockGetSortedProjectIds = jest.fn(() => ['project-2', 'project-1'])
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(),
+}))
+
+jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
+    __esModule: true,
+    default: {
+        getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop: (...args) =>
+            mockGetSortedProjectIds(...args),
+    },
 }))
 
 jest.mock('../../../i18n/TranslationService', () => ({
@@ -66,6 +75,14 @@ const makeTask = (id, priority, projectId = 'project-1', sortIndex = 1) => ({
 
 const buildState = () => ({
     currentUser: { uid: 'user-1' },
+    loggedUser: {
+        uid: 'user-1',
+        projectIds: ['project-1', 'project-2'],
+        guideProjectIds: [],
+        archivedProjectIds: [],
+        templateProjectIds: [],
+        inFocusTaskProjectId: null,
+    },
     openTasksMap: {
         'project-1': {
             later: makeTask('later', 'do_later'),
@@ -83,6 +100,18 @@ const buildState = () => ({
     isMiddleScreen: false,
     smallScreenNavigation: false,
 })
+
+const collectTestIds = tree => {
+    const testIds = []
+    const visit = node => {
+        if (!node || typeof node !== 'object') return
+        if (node.props?.testID) testIds.push(node.props.testID)
+        ;(node.children || []).forEach(visit)
+    }
+    const roots = Array.isArray(tree) ? tree : [tree]
+    roots.forEach(visit)
+    return testIds
+}
 
 describe('AutoPostponeTasksModal', () => {
     beforeEach(() => {
@@ -141,17 +170,86 @@ describe('AutoPostponeTasksModal', () => {
         })
     })
 
-    test('shows project context for expanded tasks in All Projects', () => {
+    test('pre-selects and expands the priorities passed from the filter line', () => {
+        let component
+        act(() => {
+            component = renderer.create(
+                <AutoPostponeTasksModal
+                    projectId="project-1"
+                    closePopover={jest.fn()}
+                    initialSelectedPriorities={['must_do']}
+                />
+            )
+        })
+        const root = component.root
+
+        // must_do is checked and expanded, the default do_later selection is replaced
+        expect(root.findByProps({ testID: 'auto-postpone-task-project-1:must-1' })).toBeTruthy()
+        const mustCheckbox = root
+            .findAllByProps({ testID: 'auto-postpone-priority-must_do-checkbox' })
+            .find(node => node.props.accessibilityState)
+        expect(mustCheckbox.props.accessibilityState.checked).toBe(true)
+        const laterCheckbox = root
+            .findAllByProps({ testID: 'auto-postpone-priority-do_later-checkbox' })
+            .find(node => node.props.accessibilityState)
+        expect(laterCheckbox.props.accessibilityState.checked).toBe(false)
+        expect(root.findAllByProps({ testID: 'auto-postpone-task-project-1:later' })).toHaveLength(0)
+    })
+
+    test('groups expanded tasks by project in the main task list order in All Projects', () => {
         let component
         act(() => {
             component = renderer.create(<AutoPostponeTasksModal projectId={null} closePopover={jest.fn()} />)
         })
 
+        expect(mockGetSortedProjectIds).toHaveBeenCalledWith(
+            ['project-1', 'project-2'],
+            [],
+            [],
+            [],
+            expect.any(Object),
+            'user-1',
+            null
+        )
+
         const renderedText = component.root
             .findAll(node => typeof node.props.children === 'string')
             .map(node => node.props.children)
-
         expect(renderedText).toContain('Project One')
         expect(renderedText).toContain('Project Two')
+
+        // do_later is expanded by default; the sorted project order (project-2
+        // first, from the mocked main-list helper) drives header + task order
+        const testIds = collectTestIds(component.toJSON()).filter(
+            testId =>
+                !testId.endsWith('-checkbox') &&
+                (testId.startsWith('auto-postpone-project-') || testId.startsWith('auto-postpone-task-'))
+        )
+        expect(testIds).toEqual([
+            'auto-postpone-project-do_later-project-2',
+            'auto-postpone-task-project-2:later-2',
+            'auto-postpone-project-do_later-project-1',
+            'auto-postpone-task-project-1:later',
+        ])
+    })
+
+    test('orders tasks within a project by sortIndex descending like the main list', () => {
+        let component
+        act(() => {
+            component = renderer.create(
+                <AutoPostponeTasksModal
+                    projectId="project-1"
+                    closePopover={jest.fn()}
+                    initialSelectedPriorities={['must_do']}
+                />
+            )
+        })
+
+        const testIds = collectTestIds(component.toJSON()).filter(
+            testId => testId.startsWith('auto-postpone-task-') && !testId.endsWith('-checkbox')
+        )
+        expect(testIds).toEqual(['auto-postpone-task-project-1:must-2', 'auto-postpone-task-project-1:must-1'])
+        // Single-project mode shows no project group headers
+        expect(component.root.findAll(node => node.props.testID?.startsWith('auto-postpone-project-'))).toHaveLength(0)
     })
 })

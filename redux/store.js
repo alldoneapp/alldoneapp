@@ -245,6 +245,7 @@ export const initialState = {
     goalsShowMoreExpanded: false,
     hashtagFilters: new Map(),
     contactStatusFilter: null,
+    taskPriorityFilters: [],
     goldEarnedData: { goldEarned: 0, checkBoxId: '' },
     showGoldChain: false,
     showGoldCoin: false,
@@ -1486,6 +1487,20 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 contactStatusFilter: action.statusId,
+            }
+        }
+
+        case 'Clear task priority filters': {
+            return {
+                ...state,
+                taskPriorityFilters: [],
+            }
+        }
+
+        case 'Set task priority filters': {
+            return {
+                ...state,
+                taskPriorityFilters: action.priorities,
             }
         }
 

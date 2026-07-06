@@ -6,6 +6,7 @@ import moment from 'moment'
 import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import CustomScrollView from '../../UIControls/CustomScrollView'
+import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import { applyPopoverWidthV2, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
@@ -60,22 +61,64 @@ export const isAutoPostponeTaskSelected = (task, priorityKey, prioritySelection,
     return hasOwn(taskOverrides, taskKey) ? taskOverrides[taskKey] : !!prioritySelection[priorityKey]
 }
 
-export default function AutoPostponeTasksModal({ projectId, closePopover }) {
+export default function AutoPostponeTasksModal({ projectId, closePopover, initialSelectedPriorities }) {
     const [width, height] = useWindowSize()
     const currentUserId = useSelector(state => state.currentUser.uid)
     const openTasksMap = useSelector(state => state.openTasksMap)
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
+    const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const loggedUserProjectIds = useSelector(state => state.loggedUser.projectIds)
+    const guideProjectIds = useSelector(state => state.loggedUser.guideProjectIds)
+    const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds)
+    const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
+    const inFocusTaskProjectId = useSelector(state => state.loggedUser.inFocusTaskProjectId)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [applying, setApplying] = useState(false)
-    const [prioritySelection, setPrioritySelection] = useState(INITIAL_PRIORITY_SELECTION)
+    const [prioritySelection, setPrioritySelection] = useState(() =>
+        initialSelectedPriorities && initialSelectedPriorities.length > 0
+            ? PRIORITY_KEYS.reduce((acc, key) => ({ ...acc, [key]: initialSelectedPriorities.includes(key) }), {})
+            : INITIAL_PRIORITY_SELECTION
+    )
     const [taskOverrides, setTaskOverrides] = useState({})
-    const [expandedPriorities, setExpandedPriorities] = useState({ [TASK_PRIORITY_DO_LATER]: true })
+    const [expandedPriorities, setExpandedPriorities] = useState(() =>
+        initialSelectedPriorities && initialSelectedPriorities.length > 0
+            ? initialSelectedPriorities.reduce((acc, key) => ({ ...acc, [key]: true }), {})
+            : { [TASK_PRIORITY_DO_LATER]: true }
+    )
     const inAllProjects = !projectId
+
+    // Same project order as the main task list view (in-focus project on top,
+    // then normal + guide projects by the user's manual sort).
+    const sortedProjectIds = useMemo(() => {
+        if (projectId) return [projectId]
+        return ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
+            loggedUserProjectIds || [],
+            guideProjectIds || [],
+            archivedProjectIds || [],
+            templateProjectIds || [],
+            loggedUserProjectsMap || {},
+            loggedUserId,
+            inFocusTaskProjectId
+        )
+    }, [
+        projectId,
+        loggedUserProjectIds,
+        guideProjectIds,
+        archivedProjectIds,
+        templateProjectIds,
+        loggedUserProjectsMap,
+        loggedUserId,
+        inFocusTaskProjectId,
+    ])
 
     const buckets = useMemo(() => {
         const result = PRIORITY_KEYS.reduce((acc, key) => ({ ...acc, [key]: [] }), {})
         const endOfDay = moment().endOf('day').valueOf()
+        const projectRank = {}
+        sortedProjectIds.forEach((pid, index) => {
+            projectRank[pid] = index
+        })
         const projectIds = projectId ? [projectId] : Object.keys(openTasksMap || {})
 
         projectIds.forEach(pid => {
@@ -91,17 +134,32 @@ export default function AutoPostponeTasksModal({ projectId, closePopover }) {
 
         PRIORITY_KEYS.forEach(key => {
             result[key].sort((a, b) => {
-                if (inAllProjects && a.projectId !== b.projectId) {
-                    const aIndex = loggedUserProjectsMap?.[a.projectId]?.index ?? Number.MAX_SAFE_INTEGER
-                    const bIndex = loggedUserProjectsMap?.[b.projectId]?.index ?? Number.MAX_SAFE_INTEGER
-                    if (aIndex !== bIndex) return aIndex - bIndex
+                if (a.projectId !== b.projectId) {
+                    const aRank = projectRank[a.projectId] ?? Number.MAX_SAFE_INTEGER
+                    const bRank = projectRank[b.projectId] ?? Number.MAX_SAFE_INTEGER
+                    if (aRank !== bRank) return aRank - bRank
                     return a.projectId.localeCompare(b.projectId)
                 }
-                return (a.sortIndex || 0) - (b.sortIndex || 0)
+                // The main list orders open tasks by sortIndex descending
+                return (b.sortIndex || 0) - (a.sortIndex || 0)
             })
         })
         return result
-    }, [openTasksMap, projectId, currentUserId, inAllProjects, loggedUserProjectsMap])
+    }, [openTasksMap, projectId, currentUserId, sortedProjectIds])
+
+    const groupedBuckets = useMemo(() => {
+        const result = {}
+        PRIORITY_KEYS.forEach(key => {
+            const groups = []
+            buckets[key].forEach(task => {
+                const lastGroup = groups[groups.length - 1]
+                if (lastGroup && lastGroup.projectId === task.projectId) lastGroup.tasks.push(task)
+                else groups.push({ projectId: task.projectId, tasks: [task] })
+            })
+            result[key] = groups
+        })
+        return result
+    }, [buckets])
 
     const counts = useMemo(() => {
         const result = { all: 0 }
@@ -244,23 +302,30 @@ export default function AutoPostponeTasksModal({ projectId, closePopover }) {
                                 onToggleExpanded={() => toggleExpanded(key)}
                             />
                             {expanded &&
-                                buckets[key].map(task => (
-                                    <TaskPreviewRow
-                                        key={getTaskKey(task)}
-                                        testID={`auto-postpone-task-${getTaskKey(task)}`}
-                                        task={task}
-                                        projectName={
-                                            inAllProjects ? loggedUserProjectsMap?.[task.projectId]?.name : null
-                                        }
-                                        checked={isAutoPostponeTaskSelected(
-                                            task,
-                                            key,
-                                            prioritySelection,
-                                            taskOverrides
+                                groupedBuckets[key].map(group => (
+                                    <View key={group.projectId}>
+                                        {inAllProjects && (
+                                            <ProjectGroupHeader
+                                                testID={`auto-postpone-project-${key}-${group.projectId}`}
+                                                project={loggedUserProjectsMap?.[group.projectId]}
+                                            />
                                         )}
-                                        disabled={applying}
-                                        onToggle={() => toggleTask(task, key)}
-                                    />
+                                        {group.tasks.map(task => (
+                                            <TaskPreviewRow
+                                                key={getTaskKey(task)}
+                                                testID={`auto-postpone-task-${getTaskKey(task)}`}
+                                                task={task}
+                                                checked={isAutoPostponeTaskSelected(
+                                                    task,
+                                                    key,
+                                                    prioritySelection,
+                                                    taskOverrides
+                                                )}
+                                                disabled={applying}
+                                                onToggle={() => toggleTask(task, key)}
+                                            />
+                                        ))}
+                                    </View>
                                 ))}
                         </View>
                     )
@@ -376,7 +441,18 @@ function ReminderRow({
     )
 }
 
-function TaskPreviewRow({ task, projectName, checked, disabled, onToggle, testID }) {
+function ProjectGroupHeader({ project, testID }) {
+    return (
+        <View testID={testID} style={localStyles.projectHeaderRow}>
+            <View style={[localStyles.projectMarker, !!project?.color && { backgroundColor: project.color }]} />
+            <Text style={[styles.subtitle2, localStyles.projectHeaderName]} numberOfLines={1}>
+                {project?.name || ''}
+            </Text>
+        </View>
+    )
+}
+
+function TaskPreviewRow({ task, checked, disabled, onToggle, testID }) {
     const reminderDate = getDateToMoveTaskInAutoPostpone(task.timesPostponed, task.isObservedTask)
     const dateText = reminderDate === BACKLOG_DATE_NUMERIC ? translate('Someday') : reminderDate.format('D MMM')
 
@@ -393,11 +469,6 @@ function TaskPreviewRow({ task, projectName, checked, disabled, onToggle, testID
                 <Text style={[styles.body1, localStyles.taskName]} numberOfLines={1}>
                     {task.name || task.extendedName || ''}
                 </Text>
-                {!!projectName && (
-                    <Text style={[styles.caption2, localStyles.projectName]} numberOfLines={1}>
-                        {projectName}
-                    </Text>
-                )}
             </View>
             <Text style={[styles.body2, localStyles.taskDate]}>{dateText}</Text>
         </TouchableOpacity>
@@ -501,6 +572,27 @@ const localStyles = StyleSheet.create({
         alignItems: 'flex-end',
         justifyContent: 'center',
     },
+    projectHeaderRow: {
+        minHeight: 32,
+        marginLeft: 32,
+        paddingLeft: 16,
+        paddingRight: 4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderLeftWidth: 1,
+        borderLeftColor: colors.Secondary300,
+    },
+    projectMarker: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.Text03,
+    },
+    projectHeaderName: {
+        color: colors.Text03,
+        marginLeft: 8,
+        flex: 1,
+    },
     taskRow: {
         minHeight: 48,
         marginLeft: 32,
@@ -518,10 +610,6 @@ const localStyles = StyleSheet.create({
     },
     taskName: {
         color: '#ffffff',
-    },
-    projectName: {
-        color: colors.Text03,
-        marginTop: 2,
     },
     taskDate: {
         minWidth: 64,

@@ -1799,6 +1799,19 @@ export const setContactStatusFilter = statusId => {
     return action
 }
 
+export const clearTaskPriorityFilters = () => {
+    const action = { type: 'Clear task priority filters' }
+    return action
+}
+
+export const setTaskPriorityFilters = priorities => {
+    const action = {
+        type: 'Set task priority filters',
+        priorities,
+    }
+    return action
+}
+
 export const setTriggerGoldAnimation = (goldEarned, checkBoxId) => {
     const action = {
         type: 'Set gold earned',

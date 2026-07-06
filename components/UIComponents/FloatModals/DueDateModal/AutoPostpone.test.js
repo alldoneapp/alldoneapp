@@ -10,10 +10,14 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import AutoPostpone from './AutoPostpone'
 
+const BACKLOG_DATE_NUMERIC = Number.MAX_SAFE_INTEGER
+
 const mockAutoPostponeMultipleTasks = jest.fn(() => Promise.resolve({ updatedCount: 1 }))
-const mockAutoPostponeTask = jest.fn(() => Promise.resolve(123456))
+const mockSetTaskDueDate = jest.fn(() => Promise.resolve())
+const mockSetTaskToBacklog = jest.fn(() => Promise.resolve())
 const mockAutoPostponeGoal = jest.fn(() => Promise.resolve(654321))
 const mockDispatch = jest.fn()
+let mockDateToMoveTask
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -38,8 +42,9 @@ jest.mock('../../../../redux/actions', () => ({
 
 jest.mock('../../../../utils/backends/Tasks/tasksFirestore', () => ({
     autoPostponeMultipleTasks: (...args) => mockAutoPostponeMultipleTasks(...args),
-    autoPostponeTask: (...args) => mockAutoPostponeTask(...args),
-    getDateToMoveTaskInAutoPostpone: () => require('moment')('2026-07-05T12:00:00'),
+    setTaskDueDate: (...args) => mockSetTaskDueDate(...args),
+    setTaskToBacklog: (...args) => mockSetTaskToBacklog(...args),
+    getDateToMoveTaskInAutoPostpone: () => mockDateToMoveTask,
 }))
 
 jest.mock('../../../../utils/backends/Goals/goalsFirestore', () => ({
@@ -67,6 +72,7 @@ const renderAndPress = async props => {
 describe('DueDateModal AutoPostpone', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        mockDateToMoveTask = moment('2026-07-05T12:00:00')
         useDispatch.mockReturnValue(mockDispatch)
         useSelector.mockImplementation(selector =>
             selector({ currentUser: { uid: 'target-1' }, smallScreenNavigation: false })
@@ -74,14 +80,28 @@ describe('DueDateModal AutoPostpone', () => {
         baseProps.closePopover = jest.fn()
     })
 
-    test('routes a persisted single task through the callable wrapper', async () => {
+    test('applies a persisted single task via a direct due-date write', async () => {
         const task = { id: 'task-1', timesPostponed: 2 }
         await renderAndPress({ task })
 
-        expect(mockAutoPostponeTask).toHaveBeenCalledWith('project-1', task, false, 'target-1', {
-            background: true,
+        const expectedDate = moment('2026-07-05T12:00:00').valueOf()
+        expect(mockSetTaskDueDate).toHaveBeenCalledWith('project-1', 'task-1', expectedDate, task, false)
+        expect(mockSetTaskToBacklog).not.toHaveBeenCalled()
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_LAST_SELECTED_DUE_DATE', value: expectedDate })
+        expect(baseProps.closePopover).toHaveBeenCalled()
+    })
+
+    test('moves a persisted single task to the backlog when the postpone date is someday', async () => {
+        mockDateToMoveTask = BACKLOG_DATE_NUMERIC
+        const task = { id: 'task-1', timesPostponed: 5 }
+        await renderAndPress({ task })
+
+        expect(mockSetTaskToBacklog).toHaveBeenCalledWith('project-1', 'task-1', task, false, null)
+        expect(mockSetTaskDueDate).not.toHaveBeenCalled()
+        expect(mockDispatch).toHaveBeenCalledWith({
+            type: 'SET_LAST_SELECTED_DUE_DATE',
+            value: BACKLOG_DATE_NUMERIC,
         })
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_LAST_SELECTED_DUE_DATE', value: 123456 })
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 
@@ -97,14 +117,14 @@ describe('DueDateModal AutoPostpone', () => {
         const saveDueDateBeforeSaveTask = jest.fn(() => Promise.resolve())
         await renderAndPress({ task: { timesPostponed: 0 }, saveDueDateBeforeSaveTask })
 
-        expect(mockAutoPostponeTask).not.toHaveBeenCalled()
+        expect(mockSetTaskDueDate).not.toHaveBeenCalled()
         expect(saveDueDateBeforeSaveTask).toHaveBeenCalledWith(moment('2026-07-05T12:00:00').valueOf(), false)
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 
-    test('closes immediately and logs a background callable failure', async () => {
+    test('closes immediately and logs a background write failure', async () => {
         const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-        mockAutoPostponeTask.mockRejectedValueOnce(new Error('network'))
+        mockSetTaskDueDate.mockRejectedValueOnce(new Error('network'))
 
         await renderAndPress({ task: { id: 'task-1', timesPostponed: 0 } })
 

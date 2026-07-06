@@ -24,6 +24,7 @@ import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewComm
 import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject'
 import OKRSection from '../OKRs/OKRSection'
 import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
+import TaskPriorityFiltersLine from '../PriorityFilters/TaskPriorityFiltersLine'
 import { watchProjectOKRs } from '../../../utils/backends/OKRs/okrsFirestore'
 import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../OKRs/okrHelper'
 
@@ -178,6 +179,7 @@ export default function OpenTasksByProject({
                             />
                         </View>
                     )}
+                    {inSelectedProject && !isAssistant && <TaskPriorityFiltersLine projectId={projectId} />}
                     <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
                     <UpcomingMilestoneRow projectId={projectId} />
                     {filteredOpenTasksDates.map((dateFormated, index) => {
