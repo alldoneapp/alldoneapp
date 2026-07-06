@@ -985,6 +985,22 @@ export async function clearUserOKRsHiddenInAllProjectsToday(userId, projectId, o
     updateUserData(userId, updates, null)
 }
 
+export async function setUserEmailLineHiddenToday(userId, projectId, todayKey) {
+    if (!userId || !projectId || !todayKey) return
+    updateUserData(userId, { [`emailLineHiddenTodayByProject.${projectId}`]: todayKey }, null)
+}
+
+export async function clearUserEmailLineHiddenToday(userId, projectId) {
+    if (!userId || !projectId) return
+    updateUserData(
+        userId,
+        {
+            [`emailLineHiddenTodayByProject.${projectId}`]: firebase.firestore.FieldValue.delete(),
+        },
+        null
+    )
+}
+
 export async function updateUserDefaultCurrency(userId, defaultCurrency) {
     getDb().doc(`users/${userId}`).update({ defaultCurrency })
 }

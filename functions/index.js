@@ -3280,6 +3280,101 @@ exports.syncMicrosoftUnreadEmailSecondGen = onCall(
     }
 )
 
+exports.getEmailLineSummarySecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+
+        const { projectId, includeNeedsReply } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { getEmailLineSummary } = require('./Email/emailLine/emailLineService')
+            return await getEmailLineSummary(auth.uid, projectId, { userData, includeNeedsReply: !!includeNeedsReply })
+        } catch (error) {
+            if (error instanceof HttpsError) throw error
+            if (error?.code === 'EMAIL_AUTH_EXPIRED') {
+                throw new HttpsError('failed-precondition', 'EMAIL_AUTH_EXPIRED')
+            }
+            console.error('[getEmailLineSummarySecondGen] Error:', error)
+            throw new HttpsError('internal', error.message || 'Failed to load email summary')
+        }
+    }
+)
+
+exports.listEmailLineMessagesSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+
+        const { projectId, labelId, pageToken } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        if (!labelId) throw new HttpsError('invalid-argument', 'labelId is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { listEmailLineMessages } = require('./Email/emailLine/emailLineService')
+            return await listEmailLineMessages(auth.uid, projectId, labelId, { pageToken, userData })
+        } catch (error) {
+            if (error instanceof HttpsError) throw error
+            if (error?.code === 'EMAIL_AUTH_EXPIRED') {
+                throw new HttpsError('failed-precondition', 'EMAIL_AUTH_EXPIRED')
+            }
+            console.error('[listEmailLineMessagesSecondGen] Error:', error)
+            throw new HttpsError('internal', error.message || 'Failed to list email messages')
+        }
+    }
+)
+
+exports.emailLineActionSecondGen = onCall(
+    {
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+
+        const { projectId, action, messageIds, labelId, guidance } = data || {}
+        if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required')
+        if (!action) throw new HttpsError('invalid-argument', 'action is required')
+
+        try {
+            const userData = await assertProjectAccess(auth.uid, projectId)
+            const { performEmailLineAction } = require('./Email/emailLine/emailLineService')
+            return await performEmailLineAction(auth.uid, projectId, {
+                action,
+                messageIds,
+                labelId,
+                guidance,
+                userData,
+            })
+        } catch (error) {
+            if (error instanceof HttpsError) throw error
+            if (error?.code === 'EMAIL_AUTH_EXPIRED') {
+                throw new HttpsError('failed-precondition', 'EMAIL_AUTH_EXPIRED')
+            }
+            console.error('[emailLineActionSecondGen] Error:', error)
+            throw new HttpsError('internal', error.message || 'Failed to perform email action')
+        }
+    }
+)
+
 exports.increaseVersionSecondGen = onRequest(
     {
         region: 'europe-west1',

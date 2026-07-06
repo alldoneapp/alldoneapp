@@ -286,6 +286,8 @@ export const initialState = {
     doneMilestonesByProjectInTasks: {},
     goalsByProjectInTasks: {},
     okrsByProjectInTasks: {},
+    emailLineSummaryByProject: {},
+    emailLineLoadingByProject: {},
     skillsByProject: {},
     activeDragSkillModeId: null,
     skillsDefaultPrivacyByProject: {},
@@ -1909,6 +1911,20 @@ export const theReducer = (state = initialState, action) => {
             const okrsByProjectInTasks = { ...state.okrsByProjectInTasks }
             okrs ? (okrsByProjectInTasks[projectId] = okrs) : delete okrsByProjectInTasks[projectId]
             return { ...state, okrsByProjectInTasks }
+        }
+
+        case 'Set email line summary': {
+            const { projectId, summary } = action
+            const emailLineSummaryByProject = { ...state.emailLineSummaryByProject }
+            summary ? (emailLineSummaryByProject[projectId] = summary) : delete emailLineSummaryByProject[projectId]
+            return { ...state, emailLineSummaryByProject }
+        }
+
+        case 'Set email line loading': {
+            const { projectId, loading } = action
+            const emailLineLoadingByProject = { ...state.emailLineLoadingByProject }
+            loading ? (emailLineLoadingByProject[projectId] = true) : delete emailLineLoadingByProject[projectId]
+            return { ...state, emailLineLoadingByProject }
         }
 
         case 'Set adding user to community': {

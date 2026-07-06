@@ -50,6 +50,8 @@ function getTransactionLabel(source) {
         monthly_gold: 'Monthly gold',
         gold_pack_purchase: 'Gold pack purchase',
         meeting_transcription: 'Meeting transcription',
+        email_draft_reply: 'Email reply draft',
+        email_needs_reply: 'Email needs-reply scan',
         vm_execution: 'VM task',
         vm_execution_refund: 'VM task refund',
         mcp_tool_call: 'MCP tool call',

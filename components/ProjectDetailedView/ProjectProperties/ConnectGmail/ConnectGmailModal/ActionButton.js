@@ -1,11 +1,9 @@
 import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
-import moment from 'moment-timezone'
 
 import Button from '../../../../UIControls/Button'
 import { translate } from '../../../../../i18n/TranslationService'
-import GoogleApi from '../../../../../apis/google/GoogleApi'
-import { connectToGmail } from '../../../../../utils/backends/firestore'
+import { fetchEmailLineSummary } from '../../../../../utils/backends/EmailLine/emailLineBackend'
 import store from '../../../../../redux/store'
 import { showConfirmPopup } from '../../../../../redux/actions'
 import { CONFIRM_POPUP_TRIGGER_INFO } from '../../../../UIComponents/ConfirmPopup'
@@ -13,7 +11,6 @@ import {
     hasServerSideAuth,
     startServerSideAuth,
     revokeServerSideAuth,
-    setServerTokenInGoogleApi,
 } from '../../../../../apis/google/GoogleOAuthServerSide'
 import {
     hasMicrosoftServerSideAuth,
@@ -23,11 +20,6 @@ import {
 import { PROVIDER_MICROSOFT } from '../../../../../utils/IntegrationProviders'
 
 export default function ActionButton({ projectId, isConnected, authStatus, provider, closePopover, setAuthStatus }) {
-    const loggedUserId = useSelector(state => state.loggedUser.uid)
-    const userEmail = useSelector(state => state.loggedUser.email)
-    const storedTimezone = useSelector(state => state.loggedUser.timezone)
-    // Use stored timezone if set, otherwise detect from browser (same as UserTimezone.js display)
-    const timezone = storedTimezone || parseInt(moment().format('Z'))
     const [isLoading, setIsLoading] = useState(false)
 
     const isSignedIn = !!authStatus?.hasCredentials
@@ -37,21 +29,10 @@ export default function ActionButton({ projectId, isConnected, authStatus, provi
         try {
             if (provider === PROVIDER_MICROSOFT) return
 
-            // Set server-side token in GoogleApi for immediate use
-            await setServerTokenInGoogleApi(GoogleApi, projectId, 'gmail')
-
-            // Now get Gmail data using the GoogleApi with server-side token
-            const result = await GoogleApi.listGmail()
-            const email = GoogleApi.getBasicUserProfile()?.getEmail() || userEmail
-
-            await connectToGmail({
-                projectId,
-                date: Date.now(),
-                uid: loggedUserId,
-                unreadMails: result.threadsTotal,
-                email,
-                timezone,
-            })
+            // Prime the email line summary so the label chips appear right after
+            // connecting. The server callable reads the freshly-written OAuth
+            // connection from Firestore.
+            await fetchEmailLineSummary(projectId, { force: true })
         } catch (error) {
             console.error('[ConnectGmail] Error loading Gmail data:', error)
         }

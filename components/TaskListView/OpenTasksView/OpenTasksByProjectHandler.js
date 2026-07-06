@@ -34,7 +34,8 @@ import useEffectDebug from '../../../hooks/useEffectDebug'
 import { cleanDataWhenRemoveWorkstreamMember, WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
 import store from '../../../redux/store'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
-import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../../utils/backends/firestore'
+import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
+import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
 
 export default function OpenTasksByProjectHandler({ projectIndex, firstProject, setProjectsHaveTasksInFirstDay }) {
     const dispatch = useDispatch()
@@ -87,8 +88,8 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
                 checkIfCalendarConnected(projectId)
             }
             if (projectApis?.email || projectApis?.gmail) {
-                console.log('[OpenTasksByProjectHandler] 📧 Checking gmail sync for project:', projectId)
-                checkIfGmailIsConnected(projectId)
+                console.log('[OpenTasksByProjectHandler] 📧 Fetching email line summary for project:', projectId)
+                fetchEmailLineSummary(projectId)
             }
         }
     }, [projectId, currentUserId])

@@ -5,7 +5,8 @@ import { useSelector } from 'react-redux'
 import MyDayOpenTasks from './MyDayTasks/MyDayOpenTasks/MyDayOpenTasks'
 import MyDayWorkflowTasks from './MyDayTasks/MyDayWorkflowTasks/MyDayWorkflowTasks'
 import MyDayDoneTasks from './MyDayTasks/MyDayDoneTasks/MyDayDoneTasks'
-import { checkIfCalendarConnected, checkIfGmailIsConnected } from '../../utils/backends/firestore'
+import { checkIfCalendarConnected } from '../../utils/backends/firestore'
+import { fetchEmailLineSummary } from '../../utils/backends/EmailLine/emailLineBackend'
 import store from '../../redux/store'
 
 export default function MyDayView() {
@@ -29,8 +30,8 @@ export default function MyDayView() {
                     checkIfCalendarConnected(pid)
                 }
                 if (flags?.email || flags?.gmail) {
-                    console.log('[MyDayView] 📧 Checking gmail sync for project:', pid)
-                    checkIfGmailIsConnected(pid)
+                    console.log('[MyDayView] 📧 Fetching email line summary for project:', pid)
+                    fetchEmailLineSummary(pid)
                 }
             })
         }

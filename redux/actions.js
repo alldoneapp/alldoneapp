@@ -2113,6 +2113,22 @@ export const setOKRsInProjectInTasks = (projectId, okrs) => {
 }
 //////////////ENDDDDDDDD
 
+export const setEmailLineSummary = (projectId, summary) => {
+    return {
+        type: 'Set email line summary',
+        projectId,
+        summary,
+    }
+}
+
+export const setEmailLineLoading = (projectId, loading) => {
+    return {
+        type: 'Set email line loading',
+        projectId,
+        loading,
+    }
+}
+
 export const setSkillsByProject = (projectId, skills) => {
     const action = {
         type: 'Set skills by project',

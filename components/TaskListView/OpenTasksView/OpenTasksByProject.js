@@ -23,6 +23,7 @@ import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject'
 import OKRSection from '../OKRs/OKRSection'
+import EmailLine from '../EmailLine/EmailLine'
 import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
 import TaskPriorityFiltersLine from '../PriorityFilters/TaskPriorityFiltersLine'
 import { watchProjectOKRs } from '../../../utils/backends/OKRs/okrsFirestore'
@@ -181,6 +182,7 @@ export default function OpenTasksByProject({
                     )}
                     {inSelectedProject && !isAssistant && <TaskPriorityFiltersLine projectId={projectId} />}
                     <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
+                    <EmailLine projectId={projectId} inAllProjects={!inSelectedProject} />
                     <UpcomingMilestoneRow projectId={projectId} />
                     {filteredOpenTasksDates.map((dateFormated, index) => {
                         return (

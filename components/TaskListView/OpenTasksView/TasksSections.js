@@ -5,11 +5,9 @@ import { useSelector } from 'react-redux'
 import MentionSection from './MentionSection'
 import MainSection from './MainSection'
 import { onBeforeCapture, onDragEnd } from '../../DragSystem/DragHelper'
-import EmailSection from './EmailSection'
 import store from '../../../redux/store'
 import {
     CALENDAR_TASK_INDEX,
-    EMAIL_TASK_INDEX,
     MENTION_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
     STREAM_AND_USER_TASKS_INDEX,
@@ -48,9 +46,6 @@ export default function TasksSections({
     )
     const calendarTasksAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][CALENDAR_TASK_INDEX].length
-    )
-    const emailTasksAmount = useSelector(
-        state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMAIL_TASK_INDEX].length
     )
 
     const beforeCapture = dragData => {
@@ -110,15 +105,6 @@ export default function TasksSections({
                     projectId={projectId}
                     dateIndex={dateIndex}
                     instanceKey={instanceKey}
-                    isActiveOrganizeMode={isActiveOrganizeMode}
-                />
-            )}
-
-            {emailTasksAmount > 0 && (
-                <EmailSection
-                    projectId={projectId}
-                    instanceKey={instanceKey}
-                    dateIndex={dateIndex}
                     isActiveOrganizeMode={isActiveOrganizeMode}
                 />
             )}

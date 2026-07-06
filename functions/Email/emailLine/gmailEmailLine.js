@@ -1,0 +1,311 @@
+'use strict'
+
+const { google } = require('googleapis')
+const { getAccessToken, getOAuth2Client } = require('../../GoogleOAuth/googleOAuthHandler')
+const { parseListUnsubscribe, chunk } = require('./emailLineShared')
+
+const MESSAGES_PER_PAGE = 25
+// Hard cap on how many messages a single sweep invocation touches.
+const SWEEP_LIMIT = 500
+const BATCH_MODIFY_CHUNK = 100
+const METADATA_HEADERS = ['Subject', 'From', 'Date', 'List-Unsubscribe', 'List-Unsubscribe-Post']
+
+// Gmail system labels we never surface as chips. Everything else that is a
+// user label (type === 'user') or the INBOX is eligible.
+const EXCLUDED_SYSTEM_LABEL_IDS = new Set([
+    'SPAM',
+    'TRASH',
+    'DRAFT',
+    'DRAFTS',
+    'CHAT',
+    'SENT',
+    'IMPORTANT',
+    'STARRED',
+    'UNREAD',
+    'CATEGORY_PERSONAL',
+    'CATEGORY_SOCIAL',
+    'CATEGORY_PROMOTIONS',
+    'CATEGORY_UPDATES',
+    'CATEGORY_FORUMS',
+])
+
+// Cap how many labels we fan out labels.get calls for, to keep the summary cheap.
+const MAX_LABELS_TO_INSPECT = 25
+const ALLDONE_LABEL_PREFIX = 'Alldone/'
+
+async function getGmailClient(userId, projectId) {
+    const accessToken = await getAccessToken(userId, projectId, 'gmail')
+    const oauth2Client = getOAuth2Client()
+    oauth2Client.setCredentials({ access_token: accessToken })
+    return google.gmail({ version: 'v1', auth: oauth2Client })
+}
+
+function stripLabelPrefix(name = '') {
+    if (typeof name !== 'string') return ''
+    if (name.startsWith(ALLDONE_LABEL_PREFIX)) return name.slice(ALLDONE_LABEL_PREFIX.length)
+    // Nested user labels ("Clients/Acme") read better as just the leaf name.
+    const parts = name.split('/')
+    return parts[parts.length - 1] || name
+}
+
+function isEligibleLabel(label) {
+    if (!label || !label.id) return false
+    if (label.id === 'INBOX') return true
+    if (EXCLUDED_SYSTEM_LABEL_IDS.has(label.id)) return false
+    if (label.id.startsWith('CATEGORY_')) return false
+    return label.type === 'user'
+}
+
+// INBOX first, then Alldone/* labels, then alphabetical by display name.
+function compareLabels(a, b) {
+    if (a.id === 'INBOX') return -1
+    if (b.id === 'INBOX') return 1
+    const aAlldone = (a.name || '').startsWith(ALLDONE_LABEL_PREFIX)
+    const bAlldone = (b.name || '').startsWith(ALLDONE_LABEL_PREFIX)
+    if (aAlldone !== bAlldone) return aAlldone ? -1 : 1
+    return String(a.name || '').localeCompare(String(b.name || ''))
+}
+
+async function getGmailLabelSummary(userId, projectId) {
+    const gmail = await getGmailClient(userId, projectId)
+    const listResponse = await gmail.users.labels.list({ userId: 'me' })
+    const rawLabels = Array.isArray(listResponse?.data?.labels) ? listResponse.data.labels : []
+
+    const eligible = rawLabels.filter(isEligibleLabel).sort(compareLabels).slice(0, MAX_LABELS_TO_INSPECT)
+
+    const detailed = await Promise.all(
+        eligible.map(async label => {
+            try {
+                const detail = await gmail.users.labels.get({ userId: 'me', id: label.id })
+                return {
+                    labelId: label.id,
+                    name: label.name || label.id,
+                    displayName: label.id === 'INBOX' ? 'Inbox' : stripLabelPrefix(label.name),
+                    unreadCount: Number(detail?.data?.messagesUnread || 0),
+                    kind: label.id === 'INBOX' ? 'inbox' : 'user',
+                }
+            } catch (error) {
+                return null
+            }
+        })
+    )
+
+    // Keep only labels with unread mail, but always keep INBOX so the line can
+    // render its Inbox Zero state.
+    const labels = detailed.filter(Boolean).filter(label => label.unreadCount > 0 || label.labelId === 'INBOX')
+
+    const inboxUnread = labels.find(label => label.labelId === 'INBOX')?.unreadCount || 0
+
+    return {
+        labels,
+        inboxUnread,
+    }
+}
+
+function getHeader(headers, name) {
+    if (!Array.isArray(headers)) return ''
+    const lower = name.toLowerCase()
+    const match = headers.find(header => String(header.name || '').toLowerCase() === lower)
+    return match ? match.value || '' : ''
+}
+
+function decodeBase64Url(data = '') {
+    if (!data) return ''
+    return Buffer.from(String(data).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+}
+
+// Walks a Gmail payload tree for the first text/plain part.
+function extractPlainTextBody(payload) {
+    if (!payload) return ''
+    if (payload.mimeType === 'text/plain' && payload.body?.data) return decodeBase64Url(payload.body.data)
+    if (Array.isArray(payload.parts)) {
+        for (const part of payload.parts) {
+            const text = extractPlainTextBody(part)
+            if (text) return text
+        }
+    }
+    return ''
+}
+
+// Fetches the subject/from/body of a message so a reply can be composed.
+async function getMessageContext(userId, projectId, messageId) {
+    const gmail = await getGmailClient(userId, projectId)
+    const detail = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' })
+    const data = detail?.data || {}
+    const headers = data.payload?.headers || []
+    const body = extractPlainTextBody(data.payload) || data.snippet || ''
+    return {
+        subject: getHeader(headers, 'Subject'),
+        from: getHeader(headers, 'From'),
+        snippet: data.snippet || '',
+        body: body.slice(0, 4000),
+    }
+}
+
+// Deep link that opens a specific message in Gmail for the connected account.
+function buildGmailMessageUrl(emailAddress, messageId) {
+    const continueUrl = `https://mail.google.com/mail/u/0/${
+        emailAddress ? `?authuser=${encodeURIComponent(emailAddress)}` : ''
+    }#all/${encodeURIComponent(messageId)}`
+    if (!emailAddress) return continueUrl
+    return `https://accounts.google.com/AccountChooser?Email=${encodeURIComponent(
+        emailAddress
+    )}&continue=${encodeURIComponent(continueUrl)}&service=mail`
+}
+
+function labelIdsForList(labelId) {
+    if (!labelId || labelId === 'INBOX') return ['INBOX']
+    return [labelId, 'INBOX']
+}
+
+async function listMessagesForLabel(userId, projectId, labelId, { pageToken, emailAddress } = {}) {
+    const gmail = await getGmailClient(userId, projectId)
+    const listResponse = await gmail.users.messages.list({
+        userId: 'me',
+        labelIds: labelIdsForList(labelId),
+        maxResults: MESSAGES_PER_PAGE,
+        pageToken: pageToken || undefined,
+    })
+
+    const messageRefs = Array.isArray(listResponse?.data?.messages) ? listResponse.data.messages : []
+    const nextPageToken = listResponse?.data?.nextPageToken || null
+
+    const messages = await Promise.all(
+        messageRefs.map(async ref => {
+            try {
+                const detail = await gmail.users.messages.get({
+                    userId: 'me',
+                    id: ref.id,
+                    format: 'metadata',
+                    metadataHeaders: METADATA_HEADERS,
+                })
+                const data = detail?.data || {}
+                const headers = data.payload?.headers || []
+                const labelIds = Array.isArray(data.labelIds) ? data.labelIds : []
+                return {
+                    messageId: data.id || ref.id,
+                    threadId: data.threadId || ref.threadId || '',
+                    subject: getHeader(headers, 'Subject'),
+                    from: getHeader(headers, 'From'),
+                    date: getHeader(headers, 'Date'),
+                    snippet: data.snippet || '',
+                    isUnread: labelIds.includes('UNREAD'),
+                    webUrl: buildGmailMessageUrl(emailAddress, data.id || ref.id),
+                    needsReply: false,
+                    unsubscribe: parseListUnsubscribe(getHeader(headers, 'List-Unsubscribe')),
+                }
+            } catch (error) {
+                return null
+            }
+        })
+    )
+
+    return {
+        messages: messages.filter(Boolean),
+        nextPageToken,
+    }
+}
+
+// Newest unread inbox messages (subject/from/snippet only) for the needs-reply scan.
+async function getUnreadInboxMessages(userId, projectId, limit = 15) {
+    const gmail = await getGmailClient(userId, projectId)
+    const listResponse = await gmail.users.messages.list({
+        userId: 'me',
+        labelIds: ['INBOX', 'UNREAD'],
+        maxResults: limit,
+    })
+    const refs = Array.isArray(listResponse?.data?.messages) ? listResponse.data.messages : []
+    const messages = await Promise.all(
+        refs.map(async ref => {
+            try {
+                const detail = await gmail.users.messages.get({
+                    userId: 'me',
+                    id: ref.id,
+                    format: 'metadata',
+                    metadataHeaders: ['Subject', 'From'],
+                })
+                const data = detail?.data || {}
+                const headers = data.payload?.headers || []
+                return {
+                    messageId: data.id || ref.id,
+                    subject: getHeader(headers, 'Subject'),
+                    from: getHeader(headers, 'From'),
+                    snippet: data.snippet || '',
+                }
+            } catch (error) {
+                return null
+            }
+        })
+    )
+    return messages.filter(Boolean)
+}
+
+async function batchModifyMessages(gmail, messageIds, requestBody) {
+    for (const ids of chunk(messageIds, BATCH_MODIFY_CHUNK)) {
+        await gmail.users.messages.batchModify({
+            userId: 'me',
+            requestBody: { ids, ...requestBody },
+        })
+    }
+}
+
+async function archiveMessages(userId, projectId, messageIds) {
+    if (!Array.isArray(messageIds) || messageIds.length === 0) return { processed: 0 }
+    const gmail = await getGmailClient(userId, projectId)
+    await batchModifyMessages(gmail, messageIds, { removeLabelIds: ['INBOX'] })
+    return { processed: messageIds.length }
+}
+
+async function markMessagesRead(userId, projectId, messageIds) {
+    if (!Array.isArray(messageIds) || messageIds.length === 0) return { processed: 0 }
+    const gmail = await getGmailClient(userId, projectId)
+    await batchModifyMessages(gmail, messageIds, { removeLabelIds: ['UNREAD'] })
+    return { processed: messageIds.length }
+}
+
+// Collects up to SWEEP_LIMIT message ids matching the given label filter.
+async function collectMessageIds(gmail, labelIds) {
+    const ids = []
+    let pageToken
+    do {
+        const response = await gmail.users.messages.list({
+            userId: 'me',
+            labelIds,
+            maxResults: BATCH_MODIFY_CHUNK,
+            pageToken,
+        })
+        const refs = Array.isArray(response?.data?.messages) ? response.data.messages : []
+        refs.forEach(ref => ids.push(ref.id))
+        pageToken = response?.data?.nextPageToken
+    } while (pageToken && ids.length < SWEEP_LIMIT)
+    return { ids: ids.slice(0, SWEEP_LIMIT), hasMore: !!pageToken }
+}
+
+async function sweepLabel(userId, projectId, labelId, action) {
+    const gmail = await getGmailClient(userId, projectId)
+    const isArchive = action === 'archiveAll'
+    const labelIds = isArchive ? labelIdsForList(labelId) : [labelId, 'UNREAD']
+    const { ids, hasMore } = await collectMessageIds(gmail, labelIds)
+    if (ids.length > 0) {
+        await batchModifyMessages(gmail, ids, {
+            removeLabelIds: isArchive ? ['INBOX'] : ['UNREAD'],
+        })
+    }
+    return { processed: ids.length, remaining: hasMore }
+}
+
+module.exports = {
+    getGmailClient,
+    getGmailLabelSummary,
+    listMessagesForLabel,
+    archiveMessages,
+    markMessagesRead,
+    sweepLabel,
+    getMessageContext,
+    getUnreadInboxMessages,
+    stripLabelPrefix,
+    buildGmailMessageUrl,
+    EXCLUDED_SYSTEM_LABEL_IDS,
+    MAX_LABELS_TO_INSPECT,
+    SWEEP_LIMIT,
+}
