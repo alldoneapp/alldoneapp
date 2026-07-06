@@ -363,7 +363,6 @@ export default function Tags({
                     projectId={projectId}
                     style={[tagAlignment, tagsStyle]}
                     disabled={isActiveOrganizeMode || isLocked || !anonymousGranted}
-                    compact={true}
                 />
             )}
             {backlinksCount > 0 && (

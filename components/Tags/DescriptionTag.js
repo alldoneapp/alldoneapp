@@ -24,6 +24,7 @@ export default function DescriptionTag({
     const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
     const textLimit = mobile ? 15 : tablet ? 20 : 25
+    const compactTextLimit = Math.round(textLimit * 0.6)
 
     const hidePopover = () => {
         setIsOpen(false)
@@ -57,16 +58,10 @@ export default function DescriptionTag({
             contentLocation={mobile ? null : undefined}
         >
             <TouchableOpacity onPress={showPopover} disabled={disabled} accessible={false}>
-                <View
-                    style={[
-                        (outline ? otl : localStyles).container,
-                        compact && !outline && compactStyles.container,
-                        style,
-                    ]}
-                >
+                <View style={[(outline ? otl : localStyles).container, style]}>
                     <Icon
                         name={'info'}
-                        size={outline ? 14 : compact ? 9.6 : 16}
+                        size={outline ? 14 : 16}
                         color={outline ? colors.UtilityBlue200 : colors.Text03}
                         style={compact && !outline ? compactStyles.icon : localStyles.icon}
                     />
@@ -79,7 +74,10 @@ export default function DescriptionTag({
                                 windowTagStyle(),
                             ]}
                         >
-                            {shrinkTagText(cleanTextMetaData(object.description, true), textLimit)}
+                            {shrinkTagText(
+                                cleanTextMetaData(object.description, true),
+                                compact ? compactTextLimit : textLimit
+                            )}
                         </Text>
                     )}
                 </View>
@@ -126,17 +124,10 @@ const otl = StyleSheet.create({
 })
 
 const compactStyles = StyleSheet.create({
-    container: {
-        borderRadius: 7.2,
-        height: 14.4,
-    },
     icon: {
         marginHorizontal: 2.4,
     },
     text: {
-        fontSize: 8.4,
-        lineHeight: 13.2,
-        marginVertical: 0.6,
         marginRight: 6,
         marginLeft: 1.2,
     },

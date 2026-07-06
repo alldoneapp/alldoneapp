@@ -541,14 +541,14 @@ export const getCommentTagColors = type => {
     }
 }
 
-export const getCommentTagParsed = (comment, commentsAmount) => {
+export const getCommentTagParsed = (comment, commentsAmount, textLimitMultiplier = 1) => {
     const { smallScreenNavigation, isMiddleScreen } = store.getState()
     const textLimit = smallScreenNavigation
         ? LAST_COMMENT_CHARACTER_LIMIT_IN_SMALL_SCREEN
         : isMiddleScreen
         ? LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN
         : LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN
-    const cleanedComment = shrinkTagText(comment, textLimit)
+    const cleanedComment = shrinkTagText(comment, Math.round(textLimit * textLimitMultiplier))
     return `${cleanedComment}${commentsAmount > 1 ? ` +${commentsAmount - 1}` : ''}`
 }
 
