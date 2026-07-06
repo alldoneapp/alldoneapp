@@ -29,10 +29,15 @@ describe('shouldSummarizeTaskTags', () => {
         ).toBe(true)
     })
 
+    it('summarizes plain tasks past the desktop limit', () => {
+        expect(shouldSummarize({ amountTags: 5 })).toBe(true)
+        expect(shouldSummarize({ amountTags: 4 })).toBe(false)
+    })
+
     it('summarizes calendar tasks one tag earlier outside My Day', () => {
-        expect(shouldSummarize({ amountTags: 5, isCalendarTask: true })).toBe(true)
-        expect(shouldSummarize({ amountTags: 4, isCalendarTask: true })).toBe(false)
-        expect(shouldSummarize({ amountTags: 5 })).toBe(false)
+        expect(shouldSummarize({ amountTags: 4, isCalendarTask: true })).toBe(true)
+        expect(shouldSummarize({ amountTags: 3, isCalendarTask: true })).toBe(false)
+        expect(shouldSummarize({ amountTags: 4 })).toBe(false)
     })
 
     it('uses the earlier compact-layout limit for calendar tasks in My Day', () => {
@@ -47,8 +52,8 @@ describe('shouldSummarizeTaskTags', () => {
     })
 
     it('summarizes priority-tagged tasks one tag earlier outside My Day', () => {
-        expect(shouldSummarize({ amountTags: 5, hasPriorityTag: true })).toBe(true)
-        expect(shouldSummarize({ amountTags: 4, hasPriorityTag: true })).toBe(false)
+        expect(shouldSummarize({ amountTags: 4, hasPriorityTag: true })).toBe(true)
+        expect(shouldSummarize({ amountTags: 3, hasPriorityTag: true })).toBe(false)
         expect(shouldSummarize({ amountTags: 2, hasPriorityTag: true, isMobile: true })).toBe(true)
         expect(shouldSummarize({ amountTags: 2, isMobile: true })).toBe(false)
     })
@@ -63,8 +68,8 @@ describe('shouldSummarizeTaskTags', () => {
     })
 
     it('stacks the calendar and priority offsets', () => {
-        expect(shouldSummarize({ amountTags: 4, isCalendarTask: true, hasPriorityTag: true })).toBe(true)
-        expect(shouldSummarize({ amountTags: 3, isCalendarTask: true, hasPriorityTag: true })).toBe(false)
+        expect(shouldSummarize({ amountTags: 3, isCalendarTask: true, hasPriorityTag: true })).toBe(true)
+        expect(shouldSummarize({ amountTags: 2, isCalendarTask: true, hasPriorityTag: true })).toBe(false)
         expect(shouldSummarize({ amountTags: 1, isCalendarTask: true, hasPriorityTag: true, isMobile: true })).toBe(
             true
         )
