@@ -18,6 +18,17 @@ jest.mock('../../../i18n/TranslationService', () => ({
     translate: text => text,
 }))
 
+// windowTagStyle() reads navigator.userAgent via MyPlatform, which jsdom doesn't
+// populate — stub it while keeping the real styles/colors.
+jest.mock('../../styles/global', () => {
+    const actual = jest.requireActual('../../styles/global')
+    return {
+        __esModule: true,
+        ...actual,
+        windowTagStyle: () => ({}),
+    }
+})
+
 jest.mock('./taskPriorityFilterHelper', () => ({
     collectTaskPriorityCounts: (...args) => mockCollectTaskPriorityCounts(...args),
 }))

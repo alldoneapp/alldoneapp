@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector, shallowEqual } from 'react-redux'
 
-import styles, { colors } from '../../styles/global'
+import styles, { colors, windowTagStyle } from '../../styles/global'
 import Icon from '../../Icon'
 import { translate } from '../../../i18n/TranslationService'
 import {
@@ -167,21 +167,31 @@ export default function TaskPriorityFiltersLine({ projectId }) {
                         padding={0}
                         onClickOutside={delayCloseAutoPostpone}
                     >
-                        <AutoPostponeButton onPress={delayCloseAutoPostpone} />
+                        <AutoPostponeButton onPress={delayCloseAutoPostpone} mobile={smallScreenNavigation} />
                     </Popover>
                 ) : (
-                    <AutoPostponeButton onPress={openAutoPostpone} />
+                    <AutoPostponeButton onPress={openAutoPostpone} mobile={smallScreenNavigation} />
                 )}
             </View>
         </View>
     )
 }
 
-function AutoPostponeButton({ onPress }) {
+function AutoPostponeButton({ onPress, mobile }) {
     return (
-        <TouchableOpacity style={localStyles.autoPostponeButton} onPress={onPress} testID="task-priority-auto-postpone">
-            <Icon name="coffee" size={14} color={colors.Primary300} style={{ marginRight: 6 }} />
-            <Text style={localStyles.autoPostponeText}>{translate('Auto-postpone tasks')}</Text>
+        <TouchableOpacity
+            style={[localStyles.autoPostponeButton, mobile && localStyles.autoPostponeButtonMobile]}
+            onPress={onPress}
+            testID="task-priority-auto-postpone"
+        >
+            <View style={localStyles.autoPostponeIcon}>
+                <Icon name="coffee" size={16} color={colors.Text03} />
+            </View>
+            {!mobile && (
+                <Text style={[styles.subtitle2, localStyles.autoPostponeText, windowTagStyle()]}>
+                    {translate('Auto-postpone tasks')}
+                </Text>
+            )}
         </TouchableOpacity>
     )
 }
@@ -238,16 +248,26 @@ const localStyles = StyleSheet.create({
     },
     autoPostponeButton: {
         flexDirection: 'row',
+        borderRadius: 50,
+        justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'white',
+        height: 24,
+        alignSelf: 'flex-start',
         borderWidth: 1,
-        borderColor: colors.Primary300,
-        borderRadius: 12,
-        paddingHorizontal: 10,
-        paddingVertical: 3,
+        borderColor: colors.Text03,
+        paddingHorizontal: 4,
+    },
+    autoPostponeButtonMobile: {
+        width: 24,
+        height: 24,
+    },
+    autoPostponeIcon: {
+        flexDirection: 'row',
+        alignSelf: 'center',
     },
     autoPostponeText: {
-        ...styles.caption1,
-        color: colors.Primary300,
+        color: colors.Text03,
+        marginLeft: 6,
+        marginRight: 4,
     },
 })
