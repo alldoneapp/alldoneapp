@@ -9,7 +9,7 @@ import SyncCalendarModalItem from './SyncCalendarModalItem'
 import DateBarOrganizeModalItem from './DateBarOrganizeModalItem'
 import { checkIfSelectedAllProjects } from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import OKRModal from '../../../../TaskListView/OKRs/OKRModal'
-import AutoReminderTasksModal from '../../../../TaskListView/AutoReminder/AutoReminderTasksModal'
+import AutoPostponeTasksModal from '../../../../TaskListView/AutoPostpone/AutoPostponeTasksModal'
 import { DATE_TASK_INDEX, TODAY_DATE } from '../../../../../utils/backends/openTasks'
 
 export default function TaskHeaderMoreButton({
@@ -44,10 +44,10 @@ export default function TaskHeaderMoreButton({
         return dateSections.findIndex(section => section[DATE_TASK_INDEX] === TODAY_DATE)
     })
     const [showAddOKR, setShowAddOKR] = useState(false)
-    const [showAutoReminder, setShowAutoReminder] = useState(false)
+    const [showAutoPostpone, setShowAutoPostpone] = useState(false)
     const modalRef = useRef()
     const openAddOKRTimeoutRef = useRef()
-    const openAutoReminderTimeoutRef = useRef()
+    const openAutoPostponeTimeoutRef = useRef()
 
     const inSelectedProject = !!projectId
     const showAddOKRItem = !!projectId && projectOKRs.length === 0
@@ -86,42 +86,42 @@ export default function TaskHeaderMoreButton({
         dismissModal()
     }
 
-    const clearOpenAutoReminderTimeout = () => {
-        if (openAutoReminderTimeoutRef.current) {
-            clearTimeout(openAutoReminderTimeoutRef.current)
-            openAutoReminderTimeoutRef.current = null
+    const clearOpenAutoPostponeTimeout = () => {
+        if (openAutoPostponeTimeoutRef.current) {
+            clearTimeout(openAutoPostponeTimeoutRef.current)
+            openAutoPostponeTimeoutRef.current = null
         }
     }
 
-    const openAutoReminder = e => {
+    const openAutoPostpone = e => {
         e?.preventDefault?.()
         e?.stopPropagation?.()
         e?.nativeEvent?.stopImmediatePropagation?.()
 
-        clearOpenAutoReminderTimeout()
-        openAutoReminderTimeoutRef.current = setTimeout(() => {
-            openAutoReminderTimeoutRef.current = null
-            setShowAutoReminder(true)
+        clearOpenAutoPostponeTimeout()
+        openAutoPostponeTimeoutRef.current = setTimeout(() => {
+            openAutoPostponeTimeoutRef.current = null
+            setShowAutoPostpone(true)
         })
     }
 
-    const closeAutoReminder = () => {
-        clearOpenAutoReminderTimeout()
-        setShowAutoReminder(false)
+    const closeAutoPostpone = () => {
+        clearOpenAutoPostponeTimeout()
+        setShowAutoPostpone(false)
         dismissModal()
     }
 
     const onCloseMainModal = () => {
         clearOpenAddOKRTimeout()
-        clearOpenAutoReminderTimeout()
+        clearOpenAutoPostponeTimeout()
         setShowAddOKR(false)
-        setShowAutoReminder(false)
+        setShowAutoPostpone(false)
     }
 
     useEffect(() => {
         return () => {
             clearOpenAddOKRTimeout()
-            clearOpenAutoReminderTimeout()
+            clearOpenAutoPostponeTimeout()
         }
     }, [])
 
@@ -164,11 +164,11 @@ export default function TaskHeaderMoreButton({
         list.push(shortcut => {
             return (
                 <ModalItem
-                    key={'gmbtn-auto-reminder'}
+                    key={'gmbtn-auto-postpone'}
                     icon={'coffee'}
                     text={'Auto-postpone tasks'}
                     shortcut={shortcut}
-                    onPress={openAutoReminder}
+                    onPress={openAutoPostpone}
                 />
             )
         })
@@ -216,8 +216,8 @@ export default function TaskHeaderMoreButton({
             customModal={
                 showAddOKR ? (
                     <OKRModal projectId={projectId} closePopover={closeAddOKR} />
-                ) : showAutoReminder ? (
-                    <AutoReminderTasksModal projectId={projectId} closePopover={closeAutoReminder} />
+                ) : showAutoPostpone ? (
+                    <AutoPostponeTasksModal projectId={projectId} closePopover={closeAutoPostpone} />
                 ) : null
             }
         >

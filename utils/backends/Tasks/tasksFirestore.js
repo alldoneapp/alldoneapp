@@ -3094,7 +3094,7 @@ export const updateSubtasksState = (projectId, subtaskIds, updateData, externalB
     }
 }
 
-export const getDateToMoveTaskInAutoTeminder = (timesPostponed, isObservedTask) => {
+export const getDateToMoveTaskInAutoPostpone = (timesPostponed, isObservedTask) => {
     let date = moment()
 
     if (!timesPostponed || isObservedTask) {
@@ -3364,7 +3364,7 @@ const pickNextGeneralFocusTask = ({ projectId, userId, tasks, openMilestones, do
     return orderedTasks[0] || null
 }
 
-async function callAutoReminderTasks(tasks, targetUserId, clearSelectedTasks, background) {
+async function callAutoPostponeTasks(tasks, targetUserId, clearSelectedTasks, background) {
     if (!background) store.dispatch(startLoadingData())
     try {
         const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
@@ -3393,16 +3393,16 @@ async function callAutoReminderTasks(tasks, targetUserId, clearSelectedTasks, ba
     }
 }
 
-export async function autoReminderMultipleTasks(
+export async function autoPostponeMultipleTasks(
     tasks,
     targetUserId = store.getState().currentUser.uid,
     { background = false } = {}
 ) {
-    return callAutoReminderTasks(tasks, targetUserId, true, background)
+    return callAutoPostponeTasks(tasks, targetUserId, true, background)
 }
 
-export async function autoReminderTask(projectId, task, isObservedTask, targetUserId, { background = false } = {}) {
-    const result = await callAutoReminderTasks(
+export async function autoPostponeTask(projectId, task, isObservedTask, targetUserId, { background = false } = {}) {
+    const result = await callAutoPostponeTasks(
         [{ ...task, projectId, isObservedTask }],
         targetUserId || store.getState().currentUser.uid,
         false,

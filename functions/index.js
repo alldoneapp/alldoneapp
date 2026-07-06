@@ -3501,6 +3501,7 @@ exports.reconcileAssistantHeartbeatSchedules = onSchedule(
     }
 )
 
+// Deployed callable name predates the auto-postpone rename; keep it so shipped clients calling it don't break.
 exports.autoReminderTasksSecondGen = onCall(
     {
         timeoutSeconds: 300,
@@ -3513,8 +3514,8 @@ exports.autoReminderTasksSecondGen = onCall(
         if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
 
         try {
-            const { executeAutoReminderTasks } = require('./Tasks/autoReminderTasksCallable')
-            return await executeAutoReminderTasks({ actorUserId: auth.uid, data })
+            const { executeAutoPostponeTasks } = require('./Tasks/autoPostponeTasksCallable')
+            return await executeAutoPostponeTasks({ actorUserId: auth.uid, data })
         } catch (error) {
             if (error instanceof HttpsError) throw error
             const supportedCodes = new Set(['invalid-argument', 'permission-denied', 'not-found'])
@@ -3524,7 +3525,7 @@ exports.autoReminderTasksSecondGen = onCall(
                 code,
                 error: error.message,
             })
-            throw new HttpsError(code, code === 'internal' ? 'Failed to apply auto-reminders' : error.message)
+            throw new HttpsError(code, code === 'internal' ? 'Failed to auto-postpone tasks' : error.message)
         }
     }
 )

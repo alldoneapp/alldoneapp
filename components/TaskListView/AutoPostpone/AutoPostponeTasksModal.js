@@ -11,8 +11,8 @@ import { translate } from '../../../i18n/TranslationService'
 import { applyPopoverWidthV2, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import {
-    autoReminderMultipleTasks,
-    getDateToMoveTaskInAutoTeminder,
+    autoPostponeMultipleTasks,
+    getDateToMoveTaskInAutoPostpone,
 } from '../../../utils/backends/Tasks/tasksFirestore'
 import {
     TASK_PRIORITY_COULD_DO,
@@ -55,12 +55,12 @@ const isTodayTask = (task, currentUserId, endOfDay) => {
 
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key)
 
-export const isAutoReminderTaskSelected = (task, priorityKey, prioritySelection, taskOverrides) => {
+export const isAutoPostponeTaskSelected = (task, priorityKey, prioritySelection, taskOverrides) => {
     const taskKey = getTaskKey(task)
     return hasOwn(taskOverrides, taskKey) ? taskOverrides[taskKey] : !!prioritySelection[priorityKey]
 }
 
-export default function AutoReminderTasksModal({ projectId, closePopover }) {
+export default function AutoPostponeTasksModal({ projectId, closePopover }) {
     const [width, height] = useWindowSize()
     const currentUserId = useSelector(state => state.currentUser.uid)
     const openTasksMap = useSelector(state => state.openTasksMap)
@@ -115,7 +115,7 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
     const selectedTasks = useMemo(
         () =>
             PRIORITY_KEYS.flatMap(key =>
-                buckets[key].filter(task => isAutoReminderTaskSelected(task, key, prioritySelection, taskOverrides))
+                buckets[key].filter(task => isAutoPostponeTaskSelected(task, key, prioritySelection, taskOverrides))
             ),
         [buckets, prioritySelection, taskOverrides]
     )
@@ -124,7 +124,7 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
         const result = { all: selectedTasks.length }
         PRIORITY_KEYS.forEach(key => {
             result[key] = buckets[key].filter(task =>
-                isAutoReminderTaskSelected(task, key, prioritySelection, taskOverrides)
+                isAutoPostponeTaskSelected(task, key, prioritySelection, taskOverrides)
             ).length
         })
         return result
@@ -181,8 +181,8 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
     const apply = () => {
         if (applying || selectedTasks.length === 0) return
         setApplying(true)
-        autoReminderMultipleTasks(selectedTasks, currentUserId, { background: true }).catch(error => {
-            console.error('AutoReminderTasksModal: failed to apply auto-reminders', error)
+        autoPostponeMultipleTasks(selectedTasks, currentUserId, { background: true }).catch(error => {
+            console.error('AutoPostponeTasksModal: failed to auto-postpone tasks', error)
         })
         closePopover()
     }
@@ -198,7 +198,7 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
 
     return (
         <View
-            testID="auto-reminder-modal"
+            testID="auto-postpone-modal"
             style={[
                 localStyles.container,
                 applyPopoverWidthV2(isMiddleScreen, smallScreenNavigation, width),
@@ -214,7 +214,7 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
                 </View>
 
                 <ReminderRow
-                    testID="auto-reminder-all"
+                    testID="auto-postpone-all"
                     label={translate("All today's tasks")}
                     count={counts.all}
                     checked={allSelected}
@@ -231,7 +231,7 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
                     return (
                         <View key={key}>
                             <ReminderRow
-                                testID={`auto-reminder-priority-${key}`}
+                                testID={`auto-postpone-priority-${key}`}
                                 priorityKey={key}
                                 label={translate(getTaskPriorityLabel(key))}
                                 count={counts[key]}
@@ -247,12 +247,12 @@ export default function AutoReminderTasksModal({ projectId, closePopover }) {
                                 buckets[key].map(task => (
                                     <TaskPreviewRow
                                         key={getTaskKey(task)}
-                                        testID={`auto-reminder-task-${getTaskKey(task)}`}
+                                        testID={`auto-postpone-task-${getTaskKey(task)}`}
                                         task={task}
                                         projectName={
                                             inAllProjects ? loggedUserProjectsMap?.[task.projectId]?.name : null
                                         }
-                                        checked={isAutoReminderTaskSelected(
+                                        checked={isAutoPostponeTaskSelected(
                                             task,
                                             key,
                                             prioritySelection,
@@ -377,7 +377,7 @@ function ReminderRow({
 }
 
 function TaskPreviewRow({ task, projectName, checked, disabled, onToggle, testID }) {
-    const reminderDate = getDateToMoveTaskInAutoTeminder(task.timesPostponed, task.isObservedTask)
+    const reminderDate = getDateToMoveTaskInAutoPostpone(task.timesPostponed, task.isObservedTask)
     const dateText = reminderDate === BACKLOG_DATE_NUMERIC ? translate('Someday') : reminderDate.format('D MMM')
 
     return (

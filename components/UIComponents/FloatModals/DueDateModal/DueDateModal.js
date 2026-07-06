@@ -228,7 +228,7 @@ function DueDateModal({
                             isObservedTabActive={activeTab === OBSERVERS_TAB}
                             setVisibleCalendar={setVisibleCalendar}
                             updateParentGoalReminderDate={updateParentGoalReminderDate}
-                            showAutoReminder={true}
+                            showAutoPostpone={true}
                             goal={goal}
                         />
                     </View>

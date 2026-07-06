@@ -10,14 +10,14 @@ import { translate } from '../../../../i18n/TranslationService'
 import DateText from './DateText'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import {
-    autoReminderMultipleTasks,
-    autoReminderTask,
-    getDateToMoveTaskInAutoTeminder,
+    autoPostponeMultipleTasks,
+    autoPostponeTask,
+    getDateToMoveTaskInAutoPostpone,
 } from '../../../../utils/backends/Tasks/tasksFirestore'
-import { autoReminderGoal, getDateToMoveGoalInAutoReminder } from '../../../../utils/backends/Goals/goalsFirestore'
+import { autoPostponeGoal, getDateToMoveGoalInAutoPostpone } from '../../../../utils/backends/Goals/goalsFirestore'
 import { setLastSelectedDueDate } from '../../../../redux/actions'
 
-export default function AutoReminder({
+export default function AutoPostpone({
     projectId,
     task,
     tasks,
@@ -33,26 +33,26 @@ export default function AutoReminder({
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [applying, setApplying] = useState(false)
 
-    const autoReminder = async () => {
+    const autoPostpone = async () => {
         if (applying) return
         setApplying(true)
-        const isGoalAutoReminder = goal && updateParentGoalReminderDate
+        const isGoalAutoPostpone = goal && updateParentGoalReminderDate
 
-        if (!isGoalAutoReminder && tasks && tasks.length > 0) {
-            autoReminderMultipleTasks(tasks, currentUserId, { background: true }).catch(error => {
-                console.error('AutoReminder: failed to apply auto-reminder', error)
+        if (!isGoalAutoPostpone && tasks && tasks.length > 0) {
+            autoPostponeMultipleTasks(tasks, currentUserId, { background: true }).catch(error => {
+                console.error('AutoPostpone: failed to apply auto-postpone', error)
             })
             closePopover()
             return
         }
 
-        if (!isGoalAutoReminder && task?.id) {
-            autoReminderTask(projectId, task, isObservedTabActive, currentUserId, { background: true })
+        if (!isGoalAutoPostpone && task?.id) {
+            autoPostponeTask(projectId, task, isObservedTabActive, currentUserId, { background: true })
                 .then(dateTimestamp => {
                     if (dateTimestamp !== null) dispatch(setLastSelectedDueDate(dateTimestamp))
                 })
                 .catch(error => {
-                    console.error('AutoReminder: failed to apply auto-reminder', error)
+                    console.error('AutoPostpone: failed to apply auto-postpone', error)
                 })
             closePopover()
             return
@@ -60,8 +60,8 @@ export default function AutoReminder({
 
         try {
             if (goal && updateParentGoalReminderDate) {
-                // Goal auto-reminders keep their existing cloud-backed flow.
-                const dateTimestamp = await autoReminderGoal(projectId, goal, currentUserId, inParentGoal)
+                // Goal auto-postpone keeps its existing cloud-backed flow.
+                const dateTimestamp = await autoPostponeGoal(projectId, goal, currentUserId, inParentGoal)
                 dispatch(setLastSelectedDueDate(dateTimestamp))
             } else {
                 // Draft tasks have no server object yet, so keep the calculated date local.
@@ -71,7 +71,7 @@ export default function AutoReminder({
             }
             closePopover()
         } catch (error) {
-            console.error('AutoReminder: failed to apply auto-reminder', error)
+            console.error('AutoPostpone: failed to apply auto-postpone', error)
         } finally {
             setApplying(false)
         }
@@ -79,19 +79,19 @@ export default function AutoReminder({
 
     // Calculate date based on goal or task
     const date = goal
-        ? getDateToMoveGoalInAutoReminder(goal.timesPostponed)
+        ? getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
         : tasks
         ? null
-        : getDateToMoveTaskInAutoTeminder(task.timesPostponed, isObservedTabActive)
+        : getDateToMoveTaskInAutoPostpone(task.timesPostponed, isObservedTabActive)
 
     return (
         <TouchableOpacity
             style={[localStyles.dateSectionItem, applying && localStyles.disabled]}
-            onPress={autoReminder}
+            onPress={autoPostpone}
             disabled={applying}
             accessible={false}
         >
-            <Hotkeys key={9} keyName={'A'} onKeyDown={(sht, event) => autoReminder(event)} filter={e => true}>
+            <Hotkeys key={9} keyName={'A'} onKeyDown={(sht, event) => autoPostpone(event)} filter={e => true}>
                 <View style={localStyles.dateSectionItem}>
                     <View style={localStyles.sectionItemText}>
                         <Text style={[styles.subtitle1, { color: '#ffffff' }]}>

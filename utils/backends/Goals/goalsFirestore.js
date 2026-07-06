@@ -1168,7 +1168,7 @@ export async function updateGoalAssigneeReminderDate(
     }
 }
 
-export const getDateToMoveGoalInAutoReminder = timesPostponed => {
+export const getDateToMoveGoalInAutoPostpone = timesPostponed => {
     let date = moment()
 
     if (!timesPostponed) {
@@ -1224,10 +1224,10 @@ const updateChildTasksDueDate = async (projectId, goalId, newDate) => {
     await batch.commit()
 }
 
-export async function autoReminderGoal(projectId, goal, userId, cascadeToTasks = true) {
+export async function autoPostponeGoal(projectId, goal, userId, cascadeToTasks = true) {
     store.dispatch(startLoadingData())
 
-    const date = getDateToMoveGoalInAutoReminder(goal.timesPostponed)
+    const date = getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
     const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
 
     await updateGoalAssigneeReminderDate(projectId, goal.id, userId, dateTimestamp, goal, cascadeToTasks)

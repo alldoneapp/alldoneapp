@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 
 import DateItemSection from './DateItemSection'
 import CustomDate from './CustomDate'
-import AutoReminder from './AutoReminder'
+import AutoPostpone from './AutoPostpone'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 
 export default function FixedDueDatesModalFooter({
@@ -20,7 +20,7 @@ export default function FixedDueDatesModalFooter({
     isObservedTabActive,
     setVisibleCalendar,
     updateParentGoalReminderDate,
-    showAutoReminder,
+    showAutoPostpone,
     goal,
 }) {
     const lastSelectedDueDate = useSelector(state => state.lastSelectedDueDate)
@@ -48,8 +48,8 @@ export default function FixedDueDatesModalFooter({
                 updateParentGoalReminderDate={updateParentGoalReminderDate}
             />
             <CustomDate setVisibleCalendar={setVisibleCalendar} />
-            {showAutoReminder && (
-                <AutoReminder
+            {showAutoPostpone && (
+                <AutoPostpone
                     projectId={projectId}
                     task={task}
                     tasks={tasks}

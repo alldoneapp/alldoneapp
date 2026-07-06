@@ -60,12 +60,12 @@ jest.mock('./autoPostponeTasksCloud', () => ({
 }))
 
 const {
-    MAX_AUTO_REMINDER_TASKS,
+    MAX_AUTO_POSTPONE_TASKS,
     normalizeTaskRequests,
-    executeAutoReminderTasks,
-} = require('./autoReminderTasksCallable')
+    executeAutoPostponeTasks,
+} = require('./autoPostponeTasksCallable')
 
-describe('autoReminderTasksCallable', () => {
+describe('autoPostponeTasksCallable', () => {
     beforeEach(() => {
         Object.keys(mockDocuments).forEach(key => delete mockDocuments[key])
         jest.clearAllMocks()
@@ -90,7 +90,7 @@ describe('autoReminderTasksCallable', () => {
                 tasks: [{ projectId: 'project-1', taskId: 'task-1' }],
             })
         ).toThrow('isObservedTask')
-        expect(MAX_AUTO_REMINDER_TASKS).toBe(500)
+        expect(MAX_AUTO_POSTPONE_TASKS).toBe(500)
     })
 
     test('uses the actor for editor/feed metadata and the target user for observer and focus behavior', async () => {
@@ -115,7 +115,7 @@ describe('autoReminderTasksCallable', () => {
         }
         mockDocuments['items/project-1/tasks/task-missing'] = undefined
 
-        const result = await executeAutoReminderTasks({
+        const result = await executeAutoPostponeTasks({
             actorUserId: 'actor-1',
             now,
             data: {
@@ -173,7 +173,7 @@ describe('autoReminderTasksCallable', () => {
         }
 
         await expect(
-            executeAutoReminderTasks({
+            executeAutoPostponeTasks({
                 actorUserId: 'actor-1',
                 data: {
                     targetUserId: 'target-1',
@@ -185,7 +185,7 @@ describe('autoReminderTasksCallable', () => {
         mockDocuments['users/actor-1'].projectIds = ['project-1']
         mockDocuments['users/target-1'].projectIds = ['project-1']
         await expect(
-            executeAutoReminderTasks({
+            executeAutoPostponeTasks({
                 actorUserId: 'actor-1',
                 data: {
                     targetUserId: 'target-1',

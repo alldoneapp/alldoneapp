@@ -135,7 +135,7 @@ function mergeTaskCandidate(taskMap, candidate) {
     }
 }
 
-function getDateToMoveTaskInAutoReminder(timesPostponed, isObservedTask, timezoneContext, now = Date.now()) {
+function getDateToMoveTaskInAutoPostpone(timesPostponed, isObservedTask, timezoneContext, now = Date.now()) {
     let nextDate = getMomentInTimezone(now, timezoneContext)
 
     if (!timesPostponed || isObservedTask) {
@@ -329,7 +329,7 @@ async function autoPostponeTaskCloud({
     now = Date.now(),
 }) {
     const oldDueDate = isObservedTask ? task.dueDateByObserversIds?.[userId] : task.dueDate
-    const newDueDate = getDateToMoveTaskInAutoReminder(task.timesPostponed, isObservedTask, timezoneContext, now)
+    const newDueDate = getDateToMoveTaskInAutoPostpone(task.timesPostponed, isObservedTask, timezoneContext, now)
     const updateData = {
         sortIndex: generateSortIndex(),
         lastEditionDate: now,
@@ -564,7 +564,7 @@ module.exports = {
     getUserWorkstreamIds,
     shouldAutoPostponeTask,
     mergeTaskCandidate,
-    getDateToMoveTaskInAutoReminder,
+    getDateToMoveTaskInAutoPostpone,
     autoPostponeTaskCloud,
     processUserAutoPostpone,
     checkAndAutoPostponeTasks,

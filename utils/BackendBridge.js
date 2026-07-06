@@ -775,12 +775,12 @@ export default class Backend {
         return goalsBridge.updateGoalAssigneeReminderDate(projectId, goalId, userId, date, goal, cascadeToTasks)
     }
 
-    static autoReminderGoal(projectId, goal, userId, cascadeToTasks = true) {
-        return goalsBridge.autoReminderGoal(projectId, goal, userId, cascadeToTasks)
+    static autoPostponeGoal(projectId, goal, userId, cascadeToTasks = true) {
+        return goalsBridge.autoPostponeGoal(projectId, goal, userId, cascadeToTasks)
     }
 
-    static getDateToMoveGoalInAutoReminder(timesPostponed) {
-        return goalsBridge.getDateToMoveGoalInAutoReminder(timesPostponed)
+    static getDateToMoveGoalInAutoPostpone(timesPostponed) {
+        return goalsBridge.getDateToMoveGoalInAutoPostpone(timesPostponed)
     }
 
     static async updateGoal(projectId, oldGoal, updatedGoal, avoidFollow) {

@@ -8,9 +8,9 @@ const { mapProjectData, mapTaskData } = require('../Utils/MapDataFuncions')
 const { WORKSTREAM_ID_PREFIX } = require('../Utils/HelperFunctionsCloud')
 const { autoPostponeTaskCloud, getMomentInTimezone, resolveTimezoneContext } = require('./autoPostponeTasksCloud')
 
-const MAX_AUTO_REMINDER_TASKS = 500
+const MAX_AUTO_POSTPONE_TASKS = 500
 
-class AutoReminderCallableError extends Error {
+class AutoPostponeCallableError extends Error {
     constructor(code, message) {
         super(message)
         this.code = code
@@ -20,15 +20,15 @@ class AutoReminderCallableError extends Error {
 function normalizeTaskRequests(data = {}) {
     const targetUserId = typeof data.targetUserId === 'string' ? data.targetUserId.trim() : ''
     if (!targetUserId) {
-        throw new AutoReminderCallableError('invalid-argument', 'targetUserId is required')
+        throw new AutoPostponeCallableError('invalid-argument', 'targetUserId is required')
     }
     if (!Array.isArray(data.tasks) || data.tasks.length === 0) {
-        throw new AutoReminderCallableError('invalid-argument', 'At least one task is required')
+        throw new AutoPostponeCallableError('invalid-argument', 'At least one task is required')
     }
-    if (data.tasks.length > MAX_AUTO_REMINDER_TASKS) {
-        throw new AutoReminderCallableError(
+    if (data.tasks.length > MAX_AUTO_POSTPONE_TASKS) {
+        throw new AutoPostponeCallableError(
             'invalid-argument',
-            `A maximum of ${MAX_AUTO_REMINDER_TASKS} tasks can be processed per request`
+            `A maximum of ${MAX_AUTO_POSTPONE_TASKS} tasks can be processed per request`
         )
     }
 
@@ -37,7 +37,7 @@ function normalizeTaskRequests(data = {}) {
         const projectId = typeof task?.projectId === 'string' ? task.projectId.trim() : ''
         const taskId = typeof task?.taskId === 'string' ? task.taskId.trim() : ''
         if (!projectId || !taskId || typeof task?.isObservedTask !== 'boolean') {
-            throw new AutoReminderCallableError(
+            throw new AutoPostponeCallableError(
                 'invalid-argument',
                 `tasks[${index}] must contain projectId, taskId, and isObservedTask`
             )
@@ -77,18 +77,18 @@ function buildFeedUser(userId, userData = {}) {
     }
 }
 
-async function executeAutoReminderTasks({ actorUserId, data, now = Date.now() }) {
-    if (!actorUserId) throw new AutoReminderCallableError('permission-denied', 'Authentication required')
+async function executeAutoPostponeTasks({ actorUserId, data, now = Date.now() }) {
+    if (!actorUserId) throw new AutoPostponeCallableError('permission-denied', 'Authentication required')
 
     const { targetUserId, tasks } = normalizeTaskRequests(data)
     const db = admin.firestore()
     const actorData = await getUserRecord(db, actorUserId)
-    if (!actorData) throw new AutoReminderCallableError('permission-denied', 'User not found')
+    if (!actorData) throw new AutoPostponeCallableError('permission-denied', 'User not found')
 
     const targetIsWorkstream = targetUserId.startsWith(WORKSTREAM_ID_PREFIX)
     const targetData = targetIsWorkstream ? null : await getUserRecord(db, targetUserId)
     if (!targetData && !targetIsWorkstream) {
-        throw new AutoReminderCallableError('not-found', 'Target user not found')
+        throw new AutoPostponeCallableError('not-found', 'Target user not found')
     }
 
     const timezoneUserData = targetData || actorData
@@ -100,13 +100,13 @@ async function executeAutoReminderTasks({ actorUserId, data, now = Date.now() })
 
     projectSnapshots.forEach((snapshot, index) => {
         const projectId = projectIds[index]
-        if (!snapshot.exists) throw new AutoReminderCallableError('not-found', `Project not found: ${projectId}`)
+        if (!snapshot.exists) throw new AutoPostponeCallableError('not-found', `Project not found: ${projectId}`)
         const projectData = { id: projectId, ...snapshot.data() }
         if (!canAccessProject(actorData, projectId, projectData)) {
-            throw new AutoReminderCallableError('permission-denied', `No access to project: ${projectId}`)
+            throw new AutoPostponeCallableError('permission-denied', `No access to project: ${projectId}`)
         }
         if (targetData && !canAccessProject(targetData, projectId, projectData)) {
-            throw new AutoReminderCallableError(
+            throw new AutoPostponeCallableError(
                 'permission-denied',
                 `Target user has no access to project: ${projectId}`
             )
@@ -149,13 +149,13 @@ async function executeAutoReminderTasks({ actorUserId, data, now = Date.now() })
                 continue
             }
             if (!canAccessObject(task, actorUserId)) {
-                throw new AutoReminderCallableError('permission-denied', `No access to task: ${request.taskId}`)
+                throw new AutoPostponeCallableError('permission-denied', `No access to task: ${request.taskId}`)
             }
             if (
                 request.isObservedTask &&
                 (!Array.isArray(task.observersIds) || !task.observersIds.includes(targetUserId))
             ) {
-                throw new AutoReminderCallableError(
+                throw new AutoPostponeCallableError(
                     'permission-denied',
                     `Target user is not observing task: ${request.taskId}`
                 )
@@ -212,8 +212,8 @@ async function executeAutoReminderTasks({ actorUserId, data, now = Date.now() })
 }
 
 module.exports = {
-    MAX_AUTO_REMINDER_TASKS,
-    AutoReminderCallableError,
+    MAX_AUTO_POSTPONE_TASKS,
+    AutoPostponeCallableError,
     normalizeTaskRequests,
-    executeAutoReminderTasks,
+    executeAutoPostponeTasks,
 }
