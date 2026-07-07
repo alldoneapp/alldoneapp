@@ -100,7 +100,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
     },
     badgeText: {
-        color: colors.Text03,
+        color: colors.Text02,
     },
     sweepSpinner: {
         marginLeft: 6,

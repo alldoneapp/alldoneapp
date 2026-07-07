@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
@@ -46,6 +47,7 @@ function EmailLabelModal({
     // last email of a label doesn't unmount its chip — and this popover with it — mid-feedback.
     const pendingSummaryRefreshRef = useRef(new Set())
 
+    const smallScreen = useSelector(state => state.smallScreen)
     const screenWidth = windowSize?.[0] || Dimensions.get('window').width
     const screenHeight = windowSize?.[1] || Dimensions.get('window').height
     const width = Math.min(screenWidth - 32, MODAL_MAX_WIDTH)
@@ -239,7 +241,7 @@ function EmailLabelModal({
     }
 
     return (
-        <View style={[localStyles.container, { width, maxHeight }]}>
+        <View style={[localStyles.container, smallScreen && localStyles.containerMobile, { width, maxHeight }]}>
             <View style={localStyles.header}>
                 <Text style={[styles.title6, localStyles.title]} numberOfLines={1}>
                     {group.displayName}
@@ -249,9 +251,9 @@ function EmailLabelModal({
                 </TouchableOpacity>
             </View>
 
-            <View style={localStyles.sweepBar}>
+            <View style={[localStyles.sweepBar, smallScreen && localStyles.sweepBarMobile]}>
                 <TouchableOpacity
-                    style={localStyles.sweepButton}
+                    style={[localStyles.sweepButton, smallScreen && localStyles.sweepButtonMobile]}
                     onPress={toggleSelectAll}
                     disabled={totalMessages === 0}
                     accessibilityLabel={translate(allSelected ? 'Deselect all' : 'Select all')}
@@ -262,14 +264,17 @@ function EmailLabelModal({
                     </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                    style={localStyles.sweepButton}
+                    style={[localStyles.sweepButton, smallScreen && localStyles.sweepButtonMobile]}
                     onPress={() => runSweep('archiveAll')}
                     disabled={totalMessages === 0}
                 >
                     <Icon name="archive" size={14} color={colors.Text03} />
                     <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Archive all')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={localStyles.sweepButton} onPress={() => runSweep('markAllRead')}>
+                <TouchableOpacity
+                    style={[localStyles.sweepButton, smallScreen && localStyles.sweepButtonMobile]}
+                    onPress={() => runSweep('markAllRead')}
+                >
                     <Icon name="check" size={14} color={colors.Text03} />
                     <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Mark all read')}</Text>
                 </TouchableOpacity>
@@ -405,6 +410,9 @@ const localStyles = StyleSheet.create({
         shadowRadius: 16,
         shadowOffset: { width: 0, height: 4 },
     },
+    containerMobile: {
+        paddingHorizontal: 12,
+    },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -421,12 +429,19 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 4,
     },
+    sweepBarMobile: {
+        flexWrap: 'wrap',
+    },
     sweepButton: {
         height: 28,
         paddingHorizontal: 4,
         flexDirection: 'row',
         alignItems: 'center',
         marginRight: 16,
+    },
+    sweepButtonMobile: {
+        marginRight: 12,
+        marginBottom: 4,
     },
     sweepText: {
         color: colors.Text03,

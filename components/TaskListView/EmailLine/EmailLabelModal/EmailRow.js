@@ -134,281 +134,300 @@ export default function EmailRow({
         URLTrigger.processUrl(NavigationService, getDvMainTabLink(createdTask.projectId, createdTask.taskId, 'tasks'))
     }
 
-    return (
-        <View style={localStyles.row}>
-            <TouchableOpacity
-                style={localStyles.checkboxArea}
-                onPress={() => onToggleSelect && onToggleSelect(row)}
-                accessibilityLabel={translate(selected ? 'Deselect' : 'Select')}
-            >
-                <CheckBox checked={selected} />
-            </TouchableOpacity>
+    const checkbox = (
+        <TouchableOpacity
+            style={localStyles.checkboxArea}
+            onPress={() => onToggleSelect && onToggleSelect(row)}
+            accessibilityLabel={translate(selected ? 'Deselect' : 'Select')}
+        >
+            <CheckBox checked={selected} />
+        </TouchableOpacity>
+    )
 
-            <TouchableOpacity
-                style={localStyles.content}
-                onPress={() => onToggleSelect && onToggleSelect(row)}
-                activeOpacity={0.7}
-            >
-                <View style={localStyles.topLine}>
-                    {row.isUnread && <View style={localStyles.unreadDot} />}
-                    <Text
-                        style={[styles.subtitle2, localStyles.sender, !row.isUnread && localStyles.readText]}
-                        numberOfLines={1}
-                    >
-                        {parseSenderName(row.from) || translate('Unknown sender')}
-                    </Text>
-                    {row.needsReply && (
-                        <View style={localStyles.needsReplyTag}>
-                            <Text style={[styles.caption2, localStyles.needsReplyTagText]}>
-                                {translate('Needs reply')}
-                            </Text>
-                        </View>
-                    )}
-                </View>
-                <Text style={[styles.body2, localStyles.subject]} numberOfLines={1}>
-                    {row.subject || translate('No subject')}
+    const content = (
+        <TouchableOpacity
+            style={localStyles.content}
+            onPress={() => onToggleSelect && onToggleSelect(row)}
+            activeOpacity={0.7}
+        >
+            <View style={localStyles.topLine}>
+                {row.isUnread && <View style={localStyles.unreadDot} />}
+                <Text
+                    style={[styles.subtitle2, localStyles.sender, !row.isUnread && localStyles.readText]}
+                    numberOfLines={1}
+                >
+                    {parseSenderName(row.from) || translate('Unknown sender')}
                 </Text>
-                {!!row.snippet && (
-                    <Text style={[styles.caption1, localStyles.snippet]} numberOfLines={1}>
-                        {row.snippet}
-                    </Text>
-                )}
-                {reasoningOpen && (
-                    <View style={localStyles.reasoningBox}>
-                        {!!row.labelName && (
-                            <Text style={[styles.caption2, localStyles.reasoningLabel]}>
-                                {confidencePercent === null
-                                    ? row.labelName
-                                    : `${row.labelName} · ${confidencePercent}%`}
-                            </Text>
-                        )}
-                        <Text style={[styles.caption1, localStyles.reasoningText]}>{explanationText}</Text>
-
-                        {hasReasoning && (
-                            <>
-                                {feedbackState === 'done' ? (
-                                    <View style={localStyles.feedbackDoneRow}>
-                                        <Icon name="check" size={12} color={colors.UtilityGreen300} />
-                                        <Text style={[styles.caption2, localStyles.feedbackDoneText]}>
-                                            {translate('Labeling instructions updated')}
-                                        </Text>
-                                    </View>
-                                ) : !feedbackOpen ? (
-                                    <TouchableOpacity
-                                        style={localStyles.feedbackLink}
-                                        onPress={() => {
-                                            setFeedbackOpen(true)
-                                            setFeedbackLabel(null)
-                                        }}
-                                        accessibilityLabel={translate('Wrong label?')}
-                                    >
-                                        <Text style={[styles.caption2, localStyles.feedbackLinkText]}>
-                                            {translate('Wrong label?')}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ) : (
-                                    <View style={localStyles.feedbackForm}>
-                                        <Popover
-                                            isOpen={feedbackDropdownOpen}
-                                            position={['bottom', 'top']}
-                                            align="start"
-                                            padding={4}
-                                            containerStyle={POPOVER_CONTAINER_STYLE}
-                                            onClickOutside={() => setFeedbackDropdownOpen(false)}
-                                            contentLocation={smallScreen ? null : undefined}
-                                            content={
-                                                <CustomScrollView
-                                                    style={localStyles.feedbackDropdown}
-                                                    showsVerticalScrollIndicator={false}
-                                                >
-                                                    {feedbackDropdownOptions.map(option => {
-                                                        const selectedOption = feedbackLabel === option.value
-                                                        return (
-                                                            <TouchableOpacity
-                                                                key={option.value || 'inbox'}
-                                                                style={[
-                                                                    localStyles.feedbackDropdownItem,
-                                                                    selectedOption &&
-                                                                        localStyles.feedbackDropdownItemSelected,
-                                                                ]}
-                                                                onPress={() => {
-                                                                    // Tapping an option lands in the
-                                                                    // dropdown's own portal, which the
-                                                                    // parent modal reads as an outside
-                                                                    // click; stamp it so the modal
-                                                                    // ignores that dismissal.
-                                                                    markEmailLabelPickerInteraction()
-                                                                    setFeedbackLabel(option.value)
-                                                                    setFeedbackLabelName(option.gmailLabelName)
-                                                                    setFeedbackDropdownOpen(false)
-                                                                }}
-                                                                accessibilityLabel={`${correctLabelText}: ${option.label}`}
-                                                            >
-                                                                <Text
-                                                                    style={[
-                                                                        styles.caption1,
-                                                                        localStyles.feedbackDropdownItemText,
-                                                                        selectedOption &&
-                                                                            localStyles.feedbackDropdownItemTextSelected,
-                                                                    ]}
-                                                                    numberOfLines={1}
-                                                                >
-                                                                    {option.label}
-                                                                </Text>
-                                                                {selectedOption && (
-                                                                    <Icon name="check" size={12} color="#ffffff" />
-                                                                )}
-                                                            </TouchableOpacity>
-                                                        )
-                                                    })}
-                                                </CustomScrollView>
-                                            }
-                                        >
-                                            <TouchableOpacity
-                                                style={localStyles.feedbackDropdownTrigger}
-                                                onPress={() => setFeedbackDropdownOpen(open => !open)}
-                                                accessibilityLabel={translate('Select correct label')}
-                                            >
-                                                <View style={localStyles.feedbackDropdownTextBlock}>
-                                                    <Text
-                                                        style={[styles.caption2, localStyles.feedbackDropdownCaption]}
-                                                    >
-                                                        {correctLabelText}
-                                                    </Text>
-                                                    <Text
-                                                        style={[styles.caption1, localStyles.feedbackDropdownValue]}
-                                                        numberOfLines={1}
-                                                    >
-                                                        {feedbackLabelText}
-                                                    </Text>
-                                                </View>
-                                                <Icon
-                                                    name={feedbackDropdownOpen ? 'chevron-up' : 'chevron-down'}
-                                                    size={14}
-                                                    color={colors.Text03}
-                                                />
-                                            </TouchableOpacity>
-                                        </Popover>
-                                        {feedbackLabelOptions.length === 0 && (
-                                            <View style={localStyles.feedbackOnlyInboxHint}>
-                                                <Icon name="info" size={12} color={colors.Text03} />
-                                                <Text style={[styles.caption2, localStyles.feedbackOnlyInboxHintText]}>
-                                                    {translate('No other labels are configured')}
-                                                </Text>
-                                            </View>
-                                        )}
-                                        <TextInput
-                                            style={[styles.caption1, localStyles.feedbackInput]}
-                                            value={feedbackNote}
-                                            onChangeText={setFeedbackNote}
-                                            placeholder={translate('Add a note (optional)')}
-                                            placeholderTextColor={colors.Text03}
-                                        />
-                                        <View style={localStyles.feedbackActions}>
-                                            {feedbackState === 'error' && (
-                                                <Text style={[styles.caption2, localStyles.feedbackErrorText]}>
-                                                    {translate('Something went wrong')}
-                                                </Text>
-                                            )}
-                                            <TouchableOpacity
-                                                style={localStyles.feedbackSendButton}
-                                                onPress={sendFeedback}
-                                                disabled={feedbackState === 'sending'}
-                                            >
-                                                {feedbackState === 'sending' ? (
-                                                    <ActivityIndicator size="small" color="#ffffff" />
-                                                ) : (
-                                                    <Text style={[styles.caption2, localStyles.feedbackSendText]}>
-                                                        {translate('Send feedback')}
-                                                    </Text>
-                                                )}
-                                            </TouchableOpacity>
-                                        </View>
-                                    </View>
-                                )}
-                            </>
-                        )}
+                {row.needsReply && (
+                    <View style={localStyles.needsReplyTag}>
+                        <Text style={[styles.caption2, localStyles.needsReplyTagText]}>{translate('Needs reply')}</Text>
                     </View>
                 )}
-                {!!unsubscribeUrl && (
-                    <TouchableOpacity
-                        style={localStyles.unsubscribe}
-                        onPress={() => openUrlInNewTab(unsubscribeUrl)}
-                        accessibilityLabel={translate('Unsubscribe')}
-                    >
-                        <Icon name="slash" size={11} color={colors.Text03} />
-                        <Text style={[styles.caption2, localStyles.unsubscribeText]}>{translate('Unsubscribe')}</Text>
-                    </TouchableOpacity>
-                )}
-            </TouchableOpacity>
-
-            <View style={localStyles.actions}>
-                <TouchableOpacity
-                    style={localStyles.actionButton}
-                    onPress={() => setReasoningOpen(open => !open)}
-                    accessibilityLabel={translate('Why this label')}
-                >
-                    <Icon name="help-circle" size={16} color={hasReasoning ? colors.Primary100 : colors.Text03} />
-                </TouchableOpacity>
-                {taskState === 'done' ? (
-                    <TouchableOpacity
-                        style={localStyles.actionButton}
-                        onPress={openCreatedTask}
-                        disabled={!createdTask?.taskId || !createdTask?.projectId}
-                        accessibilityLabel={translate('Task created')}
-                    >
-                        <Icon name="check-square" size={16} color={colors.UtilityGreen300} />
-                    </TouchableOpacity>
-                ) : (
-                    <TouchableOpacity
-                        style={localStyles.actionButton}
-                        onPress={createTask}
-                        disabled={taskState === 'creating'}
-                        accessibilityLabel={translate('Create task')}
-                    >
-                        {taskState === 'creating' ? (
-                            <ActivityIndicator size="small" color={colors.Text03} />
-                        ) : (
-                            <Icon
-                                name="plus-square"
-                                size={16}
-                                color={taskState === 'error' ? colors.UtilityRed200 : colors.Text03}
-                            />
-                        )}
-                    </TouchableOpacity>
-                )}
-                <Popover
-                    isOpen={draftOpen}
-                    position={['left', 'bottom', 'top', 'right']}
-                    align="start"
-                    padding={4}
-                    containerStyle={POPOVER_CONTAINER_STYLE}
-                    onClickOutside={() => setDraftOpen(false)}
-                    contentLocation={smallScreen ? null : undefined}
-                    content={
-                        <DraftReplyPopup
-                            projectId={connectionId}
-                            messageId={row.messageId}
-                            closePopover={() => setDraftOpen(false)}
-                        />
-                    }
-                >
-                    <TouchableOpacity
-                        style={localStyles.actionButton}
-                        onPress={() => setDraftOpen(true)}
-                        accessibilityLabel={translate('Draft reply')}
-                    >
-                        <Icon name="corner-up-left" size={16} color={colors.Text03} />
-                    </TouchableOpacity>
-                </Popover>
-                <TouchableOpacity
-                    style={localStyles.actionButton}
-                    onPress={() => onOpen && onOpen(row)}
-                    accessibilityLabel={translate('Open')}
-                >
-                    <Icon name="external-link" size={16} color={colors.Text03} />
-                </TouchableOpacity>
             </View>
+            <Text style={[styles.body2, localStyles.subject]} numberOfLines={1}>
+                {row.subject || translate('No subject')}
+            </Text>
+            {!!row.snippet && (
+                <Text style={[styles.caption1, localStyles.snippet]} numberOfLines={1}>
+                    {row.snippet}
+                </Text>
+            )}
+            {reasoningOpen && (
+                <View style={localStyles.reasoningBox}>
+                    {!!row.labelName && (
+                        <Text style={[styles.caption2, localStyles.reasoningLabel]}>
+                            {confidencePercent === null ? row.labelName : `${row.labelName} · ${confidencePercent}%`}
+                        </Text>
+                    )}
+                    <Text style={[styles.caption1, localStyles.reasoningText]}>{explanationText}</Text>
+
+                    {hasReasoning && (
+                        <>
+                            {feedbackState === 'done' ? (
+                                <View style={localStyles.feedbackDoneRow}>
+                                    <Icon name="check" size={12} color={colors.UtilityGreen300} />
+                                    <Text style={[styles.caption2, localStyles.feedbackDoneText]}>
+                                        {translate('Labeling instructions updated')}
+                                    </Text>
+                                </View>
+                            ) : !feedbackOpen ? (
+                                <TouchableOpacity
+                                    style={localStyles.feedbackLink}
+                                    onPress={() => {
+                                        setFeedbackOpen(true)
+                                        setFeedbackLabel(null)
+                                    }}
+                                    accessibilityLabel={translate('Wrong label?')}
+                                >
+                                    <Text style={[styles.caption2, localStyles.feedbackLinkText]}>
+                                        {translate('Wrong label?')}
+                                    </Text>
+                                </TouchableOpacity>
+                            ) : (
+                                <View style={localStyles.feedbackForm}>
+                                    <Popover
+                                        isOpen={feedbackDropdownOpen}
+                                        position={['bottom', 'top']}
+                                        align="start"
+                                        padding={4}
+                                        containerStyle={POPOVER_CONTAINER_STYLE}
+                                        onClickOutside={() => setFeedbackDropdownOpen(false)}
+                                        contentLocation={smallScreen ? null : undefined}
+                                        content={
+                                            <CustomScrollView
+                                                style={localStyles.feedbackDropdown}
+                                                showsVerticalScrollIndicator={false}
+                                            >
+                                                {feedbackDropdownOptions.map(option => {
+                                                    const selectedOption = feedbackLabel === option.value
+                                                    return (
+                                                        <TouchableOpacity
+                                                            key={option.value || 'inbox'}
+                                                            style={[
+                                                                localStyles.feedbackDropdownItem,
+                                                                selectedOption &&
+                                                                    localStyles.feedbackDropdownItemSelected,
+                                                            ]}
+                                                            onPress={() => {
+                                                                // Tapping an option lands in the
+                                                                // dropdown's own portal, which the
+                                                                // parent modal reads as an outside
+                                                                // click; stamp it so the modal
+                                                                // ignores that dismissal.
+                                                                markEmailLabelPickerInteraction()
+                                                                setFeedbackLabel(option.value)
+                                                                setFeedbackLabelName(option.gmailLabelName)
+                                                                setFeedbackDropdownOpen(false)
+                                                            }}
+                                                            accessibilityLabel={`${correctLabelText}: ${option.label}`}
+                                                        >
+                                                            <Text
+                                                                style={[
+                                                                    styles.caption1,
+                                                                    localStyles.feedbackDropdownItemText,
+                                                                    selectedOption &&
+                                                                        localStyles.feedbackDropdownItemTextSelected,
+                                                                ]}
+                                                                numberOfLines={1}
+                                                            >
+                                                                {option.label}
+                                                            </Text>
+                                                            {selectedOption && (
+                                                                <Icon name="check" size={12} color="#ffffff" />
+                                                            )}
+                                                        </TouchableOpacity>
+                                                    )
+                                                })}
+                                            </CustomScrollView>
+                                        }
+                                    >
+                                        <TouchableOpacity
+                                            style={localStyles.feedbackDropdownTrigger}
+                                            onPress={() => setFeedbackDropdownOpen(open => !open)}
+                                            accessibilityLabel={translate('Select correct label')}
+                                        >
+                                            <View style={localStyles.feedbackDropdownTextBlock}>
+                                                <Text style={[styles.caption2, localStyles.feedbackDropdownCaption]}>
+                                                    {correctLabelText}
+                                                </Text>
+                                                <Text
+                                                    style={[styles.caption1, localStyles.feedbackDropdownValue]}
+                                                    numberOfLines={1}
+                                                >
+                                                    {feedbackLabelText}
+                                                </Text>
+                                            </View>
+                                            <Icon
+                                                name={feedbackDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                                                size={14}
+                                                color={colors.Text03}
+                                            />
+                                        </TouchableOpacity>
+                                    </Popover>
+                                    {feedbackLabelOptions.length === 0 && (
+                                        <View style={localStyles.feedbackOnlyInboxHint}>
+                                            <Icon name="info" size={12} color={colors.Text03} />
+                                            <Text style={[styles.caption2, localStyles.feedbackOnlyInboxHintText]}>
+                                                {translate('No other labels are configured')}
+                                            </Text>
+                                        </View>
+                                    )}
+                                    <TextInput
+                                        style={[styles.caption1, localStyles.feedbackInput]}
+                                        value={feedbackNote}
+                                        onChangeText={setFeedbackNote}
+                                        placeholder={translate('Add a note (optional)')}
+                                        placeholderTextColor={colors.Text03}
+                                    />
+                                    <View style={localStyles.feedbackActions}>
+                                        {feedbackState === 'error' && (
+                                            <Text style={[styles.caption2, localStyles.feedbackErrorText]}>
+                                                {translate('Something went wrong')}
+                                            </Text>
+                                        )}
+                                        <TouchableOpacity
+                                            style={localStyles.feedbackSendButton}
+                                            onPress={sendFeedback}
+                                            disabled={feedbackState === 'sending'}
+                                        >
+                                            {feedbackState === 'sending' ? (
+                                                <ActivityIndicator size="small" color="#ffffff" />
+                                            ) : (
+                                                <Text style={[styles.caption2, localStyles.feedbackSendText]}>
+                                                    {translate('Send feedback')}
+                                                </Text>
+                                            )}
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            )}
+                        </>
+                    )}
+                </View>
+            )}
+            {!!unsubscribeUrl && (
+                <TouchableOpacity
+                    style={localStyles.unsubscribe}
+                    onPress={() => openUrlInNewTab(unsubscribeUrl)}
+                    accessibilityLabel={translate('Unsubscribe')}
+                >
+                    <Icon name="slash" size={11} color={colors.Text03} />
+                    <Text style={[styles.caption2, localStyles.unsubscribeText]}>{translate('Unsubscribe')}</Text>
+                </TouchableOpacity>
+            )}
+        </TouchableOpacity>
+    )
+
+    const actions = (
+        <View style={[localStyles.actions, smallScreen && localStyles.actionsMobile]}>
+            <TouchableOpacity
+                style={localStyles.actionButton}
+                onPress={() => setReasoningOpen(open => !open)}
+                accessibilityLabel={translate('Why this label')}
+            >
+                <Icon name="help-circle" size={16} color={hasReasoning ? colors.Primary100 : colors.Text03} />
+            </TouchableOpacity>
+            {taskState === 'done' ? (
+                <TouchableOpacity
+                    style={localStyles.actionButton}
+                    onPress={openCreatedTask}
+                    disabled={!createdTask?.taskId || !createdTask?.projectId}
+                    accessibilityLabel={translate('Task created')}
+                >
+                    <Icon name="check-square" size={16} color={colors.UtilityGreen300} />
+                </TouchableOpacity>
+            ) : (
+                <TouchableOpacity
+                    style={localStyles.actionButton}
+                    onPress={createTask}
+                    disabled={taskState === 'creating'}
+                    accessibilityLabel={translate('Create task')}
+                >
+                    {taskState === 'creating' ? (
+                        <ActivityIndicator size="small" color={colors.Text03} />
+                    ) : (
+                        <Icon
+                            name="plus-square"
+                            size={16}
+                            color={taskState === 'error' ? colors.UtilityRed200 : colors.Text03}
+                        />
+                    )}
+                </TouchableOpacity>
+            )}
+            <Popover
+                isOpen={draftOpen}
+                position={['left', 'bottom', 'top', 'right']}
+                align="start"
+                padding={4}
+                containerStyle={POPOVER_CONTAINER_STYLE}
+                onClickOutside={() => setDraftOpen(false)}
+                contentLocation={smallScreen ? null : undefined}
+                content={
+                    <DraftReplyPopup
+                        projectId={connectionId}
+                        messageId={row.messageId}
+                        closePopover={() => setDraftOpen(false)}
+                    />
+                }
+            >
+                <TouchableOpacity
+                    style={localStyles.actionButton}
+                    onPress={() => setDraftOpen(true)}
+                    accessibilityLabel={translate('Draft reply')}
+                >
+                    <Icon name="corner-up-left" size={16} color={colors.Text03} />
+                </TouchableOpacity>
+            </Popover>
+            <TouchableOpacity
+                style={localStyles.actionButton}
+                onPress={() => onOpen && onOpen(row)}
+                accessibilityLabel={translate('Open')}
+            >
+                <Icon name="external-link" size={16} color={colors.Text03} />
+            </TouchableOpacity>
+        </View>
+    )
+
+    // On phones the four action icons would squeeze the sender/subject and — worse —
+    // the expanded "Why this label" / feedback form into a ~150px column. Drop the
+    // actions onto their own full-width row below the content so it gets the room.
+    if (smallScreen) {
+        return (
+            <View style={[localStyles.row, localStyles.rowMobile]}>
+                <View style={localStyles.rowMain}>
+                    {checkbox}
+                    {content}
+                </View>
+                {actions}
+            </View>
+        )
+    }
+
+    return (
+        <View style={localStyles.row}>
+            {checkbox}
+            {content}
+            {actions}
         </View>
     )
 }
@@ -420,6 +439,14 @@ const localStyles = StyleSheet.create({
         paddingVertical: 10,
         borderBottomWidth: 1,
         borderBottomColor: colors.Secondary300,
+    },
+    rowMobile: {
+        flexDirection: 'column',
+        alignItems: 'stretch',
+    },
+    rowMain: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     checkboxArea: {
         paddingRight: 12,
@@ -606,6 +633,10 @@ const localStyles = StyleSheet.create({
     actions: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    actionsMobile: {
+        justifyContent: 'flex-end',
+        marginTop: 2,
     },
     actionButton: {
         width: 32,

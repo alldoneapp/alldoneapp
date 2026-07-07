@@ -57,12 +57,52 @@ function EmailLabelingLiveDot() {
     )
 }
 
+// Ghost chips shown while the first summary is still loading. A few rounded grey
+// pills of varying widths gently pulse so the Email line reads as "loading" rather
+// than empty. Animation is skipped under tests to avoid leaking timers.
+const SKELETON_CHIP_WIDTHS = [88, 116, 72, 100]
+
+function EmailChipsSkeleton() {
+    const pulse = useRef(new Animated.Value(0.5)).current
+
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'test') return undefined
+        const animation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulse, {
+                    toValue: 1,
+                    duration: 700,
+                    easing: Easing.inOut(Easing.ease),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulse, {
+                    toValue: 0.5,
+                    duration: 700,
+                    easing: Easing.inOut(Easing.ease),
+                    useNativeDriver: true,
+                }),
+            ])
+        )
+        animation.start()
+        return () => animation.stop()
+    }, [pulse])
+
+    return (
+        <View style={localStyles.chipsRow} accessibilityLabel={translate('Loading emails')}>
+            {SKELETON_CHIP_WIDTHS.map((width, index) => (
+                <Animated.View key={index} style={[localStyles.skeletonChip, { width, opacity: pulse }]} />
+            ))}
+        </View>
+    )
+}
+
 // The unified Email line (All Projects only): ALL connected accounts merged into
 // one line, labels grouped by display name across accounts. Summaries stay keyed
 // per connection in redux; the merge happens at render time.
 export default function EmailLine() {
     const loggedUser = useSelector(state => state.loggedUser)
     const summariesByKey = useSelector(state => state.emailLineSummaryByProject)
+    const loadingByKey = useSelector(state => state.emailLineLoadingByProject)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [showAllChips, setShowAllChips] = useState(false)
 
@@ -113,6 +153,9 @@ export default function EmailLine() {
     const visibleGroups = groups.filter(group => group.threadCount > 0 || group.sweeping)
     const inboxZero =
         loadedSummaries.length === connections.length && expiredConnections.length === 0 && visibleGroups.length === 0
+    // First-time load: nothing cached in redux yet and a fetch is in flight. Show
+    // ghost chips instead of an empty line so the section doesn't look broken.
+    const isInitialLoading = loadedSummaries.length === 0 && connectionIds.some(id => loadingByKey[id])
     const { visible, overflowCount } = splitChipsForDisplay(visibleGroups, showAllChips)
 
     const labelOptionsByConnectionId = {}
@@ -164,7 +207,7 @@ export default function EmailLine() {
                     >
                         <Icon
                             name="check"
-                            size={14}
+                            size={12}
                             color={colors.Text03}
                             style={mobile ? undefined : localStyles.doneIcon}
                         />
@@ -185,7 +228,9 @@ export default function EmailLine() {
                 </TouchableOpacity>
             ))}
 
-            {inboxZero ? (
+            {isInitialLoading ? (
+                <EmailChipsSkeleton />
+            ) : inboxZero ? (
                 <View style={localStyles.stateRow}>
                     <Text style={[styles.caption1, localStyles.inboxZeroText]}>{translate('Inbox Zero')} 🎉</Text>
                 </View>
@@ -303,6 +348,13 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#ffffff',
         alignItems: 'center',
         justifyContent: 'center',
+        marginBottom: 8,
+    },
+    skeletonChip: {
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: colors.Grey300,
+        marginRight: 8,
         marginBottom: 8,
     },
     overflowText: {
