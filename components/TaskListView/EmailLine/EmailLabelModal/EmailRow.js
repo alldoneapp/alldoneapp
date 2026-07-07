@@ -9,7 +9,7 @@ import CheckBox from '../../../CheckBox'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
 import { performEmailLineAction, submitEmailLabelFeedback } from '../../../../utils/backends/EmailLine/emailLineBackend'
-import { openUrlInNewTab } from '../emailLineHelper'
+import { markEmailLabelPickerInteraction, openUrlInNewTab } from '../emailLineHelper'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../utils/NavigationService'
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
@@ -232,6 +232,12 @@ export default function EmailRow({
                                                                         localStyles.feedbackDropdownItemSelected,
                                                                 ]}
                                                                 onPress={() => {
+                                                                    // Tapping an option lands in the
+                                                                    // dropdown's own portal, which the
+                                                                    // parent modal reads as an outside
+                                                                    // click; stamp it so the modal
+                                                                    // ignores that dismissal.
+                                                                    markEmailLabelPickerInteraction()
                                                                     setFeedbackLabel(option.value)
                                                                     setFeedbackLabelName(option.gmailLabelName)
                                                                     setFeedbackDropdownOpen(false)

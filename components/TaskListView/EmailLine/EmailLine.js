@@ -63,6 +63,7 @@ function EmailLabelingLiveDot() {
 export default function EmailLine() {
     const loggedUser = useSelector(state => state.loggedUser)
     const summariesByKey = useSelector(state => state.emailLineSummaryByProject)
+    const mobile = useSelector(state => state.smallScreenNavigation)
     const [showAllChips, setShowAllChips] = useState(false)
 
     const connections = listEmailConnections(loggedUser)
@@ -157,12 +158,19 @@ export default function EmailLine() {
                 </View>
                 <View style={localStyles.headerRight}>
                     <TouchableOpacity
-                        style={localStyles.doneButton}
+                        style={[localStyles.doneButton, mobile && localStyles.doneButtonMobile]}
                         onPress={hideForToday}
                         accessibilityLabel={translate('Done for today')}
                     >
-                        <Icon name="check" size={14} color={colors.Text03} style={localStyles.doneIcon} />
-                        <Text style={[styles.caption1, localStyles.doneText]}>{translate('Done for today')}</Text>
+                        <Icon
+                            name="check"
+                            size={14}
+                            color={colors.Text03}
+                            style={mobile ? undefined : localStyles.doneIcon}
+                        />
+                        {!mobile && (
+                            <Text style={[styles.caption1, localStyles.doneText]}>{translate('Done for today')}</Text>
+                        )}
                     </TouchableOpacity>
                 </View>
             </View>
@@ -268,6 +276,11 @@ const localStyles = StyleSheet.create({
         backgroundColor: '#ffffff',
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    doneButtonMobile: {
+        width: 24,
+        paddingHorizontal: 0,
+        justifyContent: 'center',
     },
     doneIcon: {
         marginRight: 6,

@@ -62,6 +62,20 @@ describe('assistantGmailMutations helpers', () => {
             'Unknown',
         ])
     })
+
+    test('resolves label names case-insensitively so case variants reuse the same label id', () => {
+        const labelMap = new Map([
+            ['Ads', 'Label_ads'],
+            ['Receipts', 'Label_456'],
+        ])
+
+        // Gmail label names are case-sensitive; "ads"/"ADS" must still resolve to "Ads".
+        expect(resolveRequestedLabelIds(['ads', 'ADS', 'receipts'], labelMap)).toEqual([
+            'Label_ads',
+            'Label_ads',
+            'Label_456',
+        ])
+    })
 })
 
 describe('updateGmailEmailForAssistantRequest', () => {

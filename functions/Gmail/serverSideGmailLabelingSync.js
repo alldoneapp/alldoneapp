@@ -35,6 +35,7 @@ const {
     getGmailLabelingStateRef,
     GMAIL_LABELING_PROMPT_MODE_CUSTOM,
     GMAIL_LABELING_PROMPT_MODE_DEFAULT,
+    findLabelIdByName,
     normalizePromptMode,
     slugifyLabelKey,
 } = require('./gmailLabelingConfig')
@@ -656,17 +657,14 @@ function findExistingLabelId(labelMap, labelName) {
     const normalizedLabelName = normalizeLabelName(labelName)
     if (!normalizedLabelName) return null
 
-    if (labelMap.has(normalizedLabelName)) return labelMap.get(normalizedLabelName)
-
-    const normalizedLookup = normalizedLabelName.toLowerCase()
-    for (const [existingLabelName, existingLabelId] of labelMap.entries()) {
-        if (normalizeLabelName(existingLabelName).toLowerCase() === normalizedLookup) {
-            labelMap.set(normalizedLabelName, existingLabelId)
-            return existingLabelId
-        }
+    const existingLabelId = findLabelIdByName(labelMap, normalizedLabelName)
+    // Cache the resolution under the exact requested casing so repeat lookups within the
+    // same sync hit the Map directly instead of re-scanning case-insensitively.
+    if (existingLabelId && !labelMap.has(normalizedLabelName)) {
+        labelMap.set(normalizedLabelName, existingLabelId)
     }
 
-    return null
+    return existingLabelId
 }
 
 async function createOrGetGmailLabelId(gmail, labelMap, labelName) {

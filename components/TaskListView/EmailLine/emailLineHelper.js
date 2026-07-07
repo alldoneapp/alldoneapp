@@ -145,3 +145,27 @@ export function openUrlInNewTab(url) {
     }
     Linking.openURL(url).catch(() => {})
 }
+
+// react-tiny-popover v4 fires a popover's onClickOutside on any window click whose target isn't
+// inside THAT popover's own portal. The label-options dropdown is a nested popover rendered in its
+// own document.body portal, so tapping an option counts as "outside" the parent label modal and
+// dismisses it. On mobile a single tap produces the touch press (which selects the label) and then
+// a synthesized `click` shortly after — and it is that trailing click that reaches the modal's
+// window listener. EmailRow stamps an interaction on the option press (which always runs before the
+// trailing click); the modal's onClickOutside then swallows the NEXT dismiss ONCE.
+//
+// Consume-once (not a fixed time window) so we don't depend on how far apart the tap and click
+// land: the one dismiss caused by the option tap is ignored, and a stamp whose dismiss never
+// arrives (e.g. desktop, where the press stops the click from bubbling to window) is invalidated by
+// a generous sanity cap so it can't later swallow a genuine outside tap.
+const EMAIL_LABEL_PICKER_GUARD_MS = 2000
+let emailLabelPickerInteractionAt = 0
+export function markEmailLabelPickerInteraction() {
+    emailLabelPickerInteractionAt = Date.now()
+}
+export function shouldIgnoreEmailLabelModalDismiss() {
+    if (!emailLabelPickerInteractionAt) return false
+    const elapsed = Date.now() - emailLabelPickerInteractionAt
+    emailLabelPickerInteractionAt = 0 // consume: swallow at most one dismiss per label pick
+    return elapsed < EMAIL_LABEL_PICKER_GUARD_MS
+}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../../../styles/global'
@@ -41,6 +41,10 @@ function EmailLabelModal({
     const [loading, setLoading] = useState(() => !getCachedEmailLineSections(group?.key))
     const [loadingMoreKey, setLoadingMoreKey] = useState(null)
     const [selectedIds, setSelectedIds] = useState(() => new Set())
+    // Connections whose chip counts went stale from a relabel while the modal was open. We flush
+    // the summary refresh on close (see handleRelabeled) rather than immediately, so relabeling the
+    // last email of a label doesn't unmount its chip — and this popover with it — mid-feedback.
+    const pendingSummaryRefreshRef = useRef(new Set())
 
     const screenWidth = windowSize?.[0] || Dimensions.get('window').width
     const screenHeight = windowSize?.[1] || Dimensions.get('window').height
@@ -109,8 +113,10 @@ function EmailLabelModal({
     }
 
     // A row was re-labeled server-side (label feedback with a corrected label): drop it from this
-    // section immediately so it leaves the old label, then refresh the summary so the chip counts
-    // and the destination label update.
+    // section immediately so it leaves the old label — the modal stays open showing the shorter list
+    // (or the empty state). The chip-count refresh is deferred until this modal closes: forcing it
+    // now can drop this label's count to zero, which unmounts its chip and closes this popover in the
+    // middle of giving feedback. See the flush-on-unmount effect below.
     const handleRelabeled = (section, row) => {
         const next = sections.map(item =>
             sectionKey(item) === sectionKey(section)
@@ -119,9 +125,21 @@ function EmailLabelModal({
         )
         setSections(next)
         cacheEmailLineSections(group?.key, next)
-        invalidateEmailLineSummaryCooldown(section.connectionId)
-        fetchEmailLineSummary(section.connectionId, { force: true }).catch(() => {})
+        pendingSummaryRefreshRef.current.add(section.connectionId)
     }
+
+    // Flush the deferred summary refreshes when the modal closes (popover unmounts its content), so
+    // chip counts and destination labels catch up without disrupting the open modal.
+    useEffect(() => {
+        const pending = pendingSummaryRefreshRef.current
+        return () => {
+            pending.forEach(connectionId => {
+                invalidateEmailLineSummaryCooldown(connectionId)
+                fetchEmailLineSummary(connectionId, { force: true }).catch(() => {})
+            })
+            pending.clear()
+        }
+    }, [])
 
     const openAccount = section => {
         openUrlInNewTab(getEmailAccountWebUrl(section.provider, section.emailAddress))

@@ -1,6 +1,7 @@
 const {
     GMAIL_LABELING_PROMPT_MODE_CUSTOM,
     GMAIL_LABELING_PROMPT_MODE_DEFAULT,
+    findLabelIdByName,
     normalizeConfigInput,
     normalizeLabelDefinition,
     validateGmailLabelingConfig,
@@ -123,5 +124,34 @@ describe('gmailLabelingConfig', () => {
         expect(validation.valid).toBe(false)
         expect(validation.errors.join(' ')).toContain('Prompt is required')
         expect(validation.errors.join(' ')).toContain('At least one label definition')
+    })
+
+    describe('findLabelIdByName', () => {
+        test('prefers an exact-case match', () => {
+            const map = new Map([
+                ['Ads', 'Label_ads'],
+                ['ads', 'Label_lower'],
+            ])
+
+            expect(findLabelIdByName(map, 'Ads')).toBe('Label_ads')
+            expect(findLabelIdByName(map, 'ads')).toBe('Label_lower')
+        })
+
+        test('falls back to a case-insensitive match so case variants reuse one label', () => {
+            const map = new Map([['Ads', 'Label_ads']])
+
+            expect(findLabelIdByName(map, 'ads')).toBe('Label_ads')
+            expect(findLabelIdByName(map, 'ADS')).toBe('Label_ads')
+            expect(findLabelIdByName(map, '  ads  ')).toBe('Label_ads')
+        })
+
+        test('returns null for empty, unknown, or invalid inputs', () => {
+            const map = new Map([['Ads', 'Label_ads']])
+
+            expect(findLabelIdByName(map, 'Receipts')).toBeNull()
+            expect(findLabelIdByName(map, '')).toBeNull()
+            expect(findLabelIdByName(map, '   ')).toBeNull()
+            expect(findLabelIdByName(null, 'Ads')).toBeNull()
+        })
     })
 })

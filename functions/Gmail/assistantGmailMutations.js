@@ -5,6 +5,7 @@ const {
     getConnectedMicrosoftEmailAccounts,
     updateMicrosoftEmailForAssistantRequest,
 } = require('../Email/providers/microsoftEmailProvider')
+const { findLabelIdByName } = require('./gmailLabelingConfig')
 
 const SYSTEM_LABELS = new Set(['INBOX', 'UNREAD', 'STARRED', 'IMPORTANT'])
 
@@ -66,7 +67,9 @@ async function loadLabelMaps(gmail) {
 function resolveRequestedLabelIds(requestedLabels = [], labelNameToId = new Map()) {
     return requestedLabels.map(label => {
         if (SYSTEM_LABELS.has(label)) return label
-        return labelNameToId.get(label) || label
+        // Case-insensitive so an assistant-supplied "ads" resolves to an existing "Ads"
+        // label id instead of being passed through as a bogus label id (which Gmail rejects).
+        return findLabelIdByName(labelNameToId, label) || label
     })
 }
 

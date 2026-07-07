@@ -145,6 +145,34 @@ function slugifyLabelKey(value = '') {
         .replace(/^_+|_+$/g, '')
 }
 
+// Gmail treats label names as case-sensitive ("Ads" and "ads" are two distinct labels), so
+// every place that resolves a requested name to an already-existing Gmail label MUST match
+// case-insensitively — otherwise the same label gets created or missed under a different case.
+// This is the single source of truth for that lookup, shared by the sync/create path
+// (serverSideGmailLabelingSync.js) and the assistant apply path (assistantGmailMutations.js).
+// Pure and non-mutating: exact-case hit first, then a trimmed case-insensitive scan.
+function findLabelIdByName(labelNameToId, labelName) {
+    if (!labelNameToId || typeof labelNameToId.get !== 'function') return null
+
+    const normalized = String(labelName || '').trim()
+    if (!normalized) return null
+
+    if (labelNameToId.has(normalized)) return labelNameToId.get(normalized)
+
+    const lookup = normalized.toLowerCase()
+    for (const [existingName, existingId] of labelNameToId.entries()) {
+        if (
+            String(existingName || '')
+                .trim()
+                .toLowerCase() === lookup
+        ) {
+            return existingId
+        }
+    }
+
+    return null
+}
+
 function ensureLabelKeys(labelDefinitions = []) {
     const usedKeys = new Set()
 
@@ -360,6 +388,7 @@ module.exports = {
     getGmailLabelingStateDocId,
     getGmailLabelingStateRef,
     getStarterLabelDefinitions,
+    findLabelIdByName,
     normalizeConfigInput,
     ensureLabelKeys,
     normalizeLabelDefinition,

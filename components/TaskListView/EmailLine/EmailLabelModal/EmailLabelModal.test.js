@@ -164,6 +164,42 @@ describe('EmailLabelModal', () => {
         expect(performEmailLineAction).not.toHaveBeenCalledWith('c2', expect.anything())
     })
 
+    it('drops a re-labeled row but keeps the modal open, deferring the summary refresh until close', async () => {
+        const {
+            fetchEmailLineSummary,
+            invalidateEmailLineSummaryCooldown,
+        } = require('../../../../utils/backends/EmailLine/emailLineBackend')
+        const tree = await renderModal()
+
+        const rowNode = tree.root.find(
+            node =>
+                node.props &&
+                node.props.row &&
+                node.props.row.messageId === 'm1' &&
+                typeof node.props.onRelabeled === 'function'
+        )
+        await act(async () => {
+            rowNode.props.onRelabeled(rowNode.props.row)
+            await Promise.resolve()
+        })
+
+        const texts = () =>
+            tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
+        // The re-labeled row leaves the list, but the modal stays open (other rows still render).
+        expect(texts()).not.toContain('One')
+        expect(texts()).toContain('Two')
+        // No summary refresh while the modal is open — that could unmount the chip and close us.
+        expect(fetchEmailLineSummary).not.toHaveBeenCalled()
+
+        // Closing the modal flushes the deferred refresh for the affected connection only.
+        await act(async () => {
+            tree.unmount()
+        })
+        expect(invalidateEmailLineSummaryCooldown).toHaveBeenCalledWith('c1')
+        expect(fetchEmailLineSummary).toHaveBeenCalledWith('c1', { force: true })
+        expect(fetchEmailLineSummary).not.toHaveBeenCalledWith('c2', expect.anything())
+    })
+
     it('closes immediately on sweep and runs it in the background for every account', async () => {
         const closePopover = jest.fn()
         const tree = await renderModal(closePopover)

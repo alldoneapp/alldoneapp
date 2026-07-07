@@ -5,6 +5,7 @@ import Popover from 'react-tiny-popover'
 
 import styles, { colors } from '../../styles/global'
 import EmailLabelModal from './EmailLabelModal/EmailLabelModal'
+import { shouldIgnoreEmailLabelModalDismiss } from './emailLineHelper'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 
@@ -45,7 +46,12 @@ export default function EmailLabelChip({ group, labelOptionsByConnectionId, labe
             align="start"
             padding={4}
             containerStyle={POPOVER_CONTAINER_STYLE}
-            onClickOutside={() => setIsOpen(false)}
+            onClickOutside={() => {
+                // Selecting an option in the nested label-options popover reads as an outside click
+                // here (it lives in a separate portal); ignore it so picking a label keeps the modal
+                // open. Genuine outside taps still dismiss.
+                if (!shouldIgnoreEmailLabelModalDismiss()) setIsOpen(false)
+            }}
             contentLocation={smallScreen ? null : undefined}
             content={
                 <EmailLabelModal
@@ -89,12 +95,12 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 5,
         borderRadius: 9,
         marginLeft: 6,
-        backgroundColor: colors.Primary100,
+        backgroundColor: colors.Grey300,
         alignItems: 'center',
         justifyContent: 'center',
     },
     badgeText: {
-        color: '#ffffff',
+        color: colors.Text03,
     },
     sweepSpinner: {
         marginLeft: 6,

@@ -8,6 +8,8 @@ import {
     getLabelWebUrl,
     mergeLabelsAcrossConnections,
     MAX_VISIBLE_CHIPS,
+    markEmailLabelPickerInteraction,
+    shouldIgnoreEmailLabelModalDismiss,
 } from './emailLineHelper'
 
 describe('emailLineHelper', () => {
@@ -160,5 +162,34 @@ describe('emailLineHelper', () => {
 
     test('getEmailAccountWebUrl returns the Outlook account entry point for Microsoft', () => {
         expect(getEmailAccountWebUrl('microsoft', 'me@outlook.com')).toBe('https://outlook.office.com/mail/')
+    })
+
+    describe('email label picker dismissal guard', () => {
+        let now
+        beforeEach(() => {
+            now = 1_000_000
+            jest.spyOn(Date, 'now').mockImplementation(() => now)
+            // Drain any stamp left by a previous test.
+            shouldIgnoreEmailLabelModalDismiss()
+        })
+        afterEach(() => Date.now.mockRestore())
+
+        test('does not ignore a dismiss with no recent pick', () => {
+            expect(shouldIgnoreEmailLabelModalDismiss()).toBe(false)
+        })
+
+        test('swallows exactly one dismiss after a pick, then lets the next through', () => {
+            markEmailLabelPickerInteraction()
+            now += 250 // the trailing synthesized click lands shortly after the tap
+            expect(shouldIgnoreEmailLabelModalDismiss()).toBe(true)
+            // Consumed: a genuine outside tap right after is honored.
+            expect(shouldIgnoreEmailLabelModalDismiss()).toBe(false)
+        })
+
+        test('does not swallow a dismiss long after the pick (stale stamp)', () => {
+            markEmailLabelPickerInteraction()
+            now += 5000 // no dismiss arrived promptly (e.g. desktop swallowed the click)
+            expect(shouldIgnoreEmailLabelModalDismiss()).toBe(false)
+        })
     })
 })

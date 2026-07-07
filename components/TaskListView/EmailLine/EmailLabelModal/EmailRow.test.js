@@ -12,7 +12,7 @@ import URLTrigger from '../../../../URLSystem/URLTrigger'
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn(selector => selector({ smallScreen: false })) }))
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: jest.fn(key => key) }))
-jest.mock('../emailLineHelper', () => ({ openUrlInNewTab: jest.fn() }))
+jest.mock('../emailLineHelper', () => ({ openUrlInNewTab: jest.fn(), markEmailLabelPickerInteraction: jest.fn() }))
 jest.mock('./DraftReplyPopup', () => () => null)
 // The label dropdown renders as a react-tiny-popover; render its trigger + (when open) its
 // content inline so the option list is assertable in react-test-renderer (the real lib portals
