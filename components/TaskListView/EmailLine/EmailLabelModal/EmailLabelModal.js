@@ -9,6 +9,8 @@ import { MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { translate } from '../../../../i18n/TranslationService'
 import { getProviderLabel } from '../../../../utils/IntegrationProviders'
 import {
+    fetchEmailLineSummary,
+    invalidateEmailLineSummaryCooldown,
     listEmailLineMessages,
     performEmailLineAction,
     performEmailLineSweepInBackground,
@@ -84,6 +86,21 @@ function EmailLabelModal({
         openUrlInNewTab(row.webUrl || getLabelWebUrl(section.provider, section.emailAddress, section.label))
     }
 
+    // A row was re-labeled server-side (label feedback with a corrected label): drop it from this
+    // section immediately so it leaves the old label, then refresh the summary so the chip counts
+    // and the destination label update.
+    const handleRelabeled = (section, row) => {
+        setSections(previous =>
+            previous.map(item =>
+                sectionKey(item) === sectionKey(section)
+                    ? { ...item, messages: item.messages.filter(message => message.messageId !== row.messageId) }
+                    : item
+            )
+        )
+        invalidateEmailLineSummaryCooldown(section.connectionId)
+        fetchEmailLineSummary(section.connectionId, { force: true }).catch(() => {})
+    }
+
     const openAccount = section => {
         openUrlInNewTab(getEmailAccountWebUrl(section.provider, section.emailAddress))
     }
@@ -151,6 +168,14 @@ function EmailLabelModal({
     const totalMessages = sections.reduce((total, section) => total + section.messages.length, 0)
     const labelingDisabled = entries.some(entry => labelingDisabledByConnectionId?.[entry.connectionId])
 
+    const allSelectionKeys = sections.flatMap(section =>
+        section.messages.map(row => selectionKey(section.connectionId, section.labelId, row.messageId))
+    )
+    const allSelected = allSelectionKeys.length > 0 && allSelectionKeys.every(key => selectedIds.has(key))
+    const toggleSelectAll = () => {
+        setSelectedIds(() => (allSelected ? new Set() : new Set(allSelectionKeys)))
+    }
+
     return (
         <View style={[localStyles.container, { width, maxHeight }]}>
             <View style={localStyles.header}>
@@ -163,6 +188,17 @@ function EmailLabelModal({
             </View>
 
             <View style={localStyles.sweepBar}>
+                <TouchableOpacity
+                    style={localStyles.sweepButton}
+                    onPress={toggleSelectAll}
+                    disabled={totalMessages === 0}
+                    accessibilityLabel={translate(allSelected ? 'Deselect all' : 'Select all')}
+                >
+                    <Icon name={allSelected ? 'check-square' : 'square'} size={14} color={colors.Text03} />
+                    <Text style={[styles.caption1, localStyles.sweepText]}>
+                        {translate(allSelected ? 'Deselect all' : 'Select all')}
+                    </Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                     style={localStyles.sweepButton}
                     onPress={() => runSweep('archiveAll')}
@@ -229,6 +265,7 @@ function EmailLabelModal({
                                     row={row}
                                     connectionId={section.connectionId}
                                     labelOptions={labelOptionsByConnectionId?.[section.connectionId] || []}
+                                    currentLabelId={section.labelId}
                                     selected={selectedIds.has(
                                         selectionKey(section.connectionId, section.labelId, row.messageId)
                                     )}
@@ -236,6 +273,7 @@ function EmailLabelModal({
                                         toggleSelect(section.connectionId, section.labelId, selectedRow)
                                     }
                                     onOpen={selectedRow => openRow(section, selectedRow)}
+                                    onRelabeled={relabeledRow => handleRelabeled(section, relabeledRow)}
                                 />
                             ))}
                             {section.nextPageToken && (

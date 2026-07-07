@@ -4283,7 +4283,7 @@ exports.submitEmailLabelFeedbackSecondGen = onCall(
         const { auth, data } = request
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
-        const { messageId, verdict, correctLabel, note } = data || {}
+        const { messageId, verdict, correctLabel, note, correctLabelId, currentLabelId } = data || {}
         if (!messageId) throw new HttpsError('invalid-argument', 'messageId is required')
 
         try {
@@ -4298,6 +4298,8 @@ exports.submitEmailLabelFeedbackSecondGen = onCall(
                 verdict,
                 correctLabel,
                 note,
+                correctLabelId,
+                currentLabelId,
             })
         } catch (error) {
             console.error('Error submitting email label feedback:', error)

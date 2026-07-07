@@ -132,12 +132,12 @@ export default function EmailLine() {
     const labelingDisabledByConnectionId = {}
     connections.forEach(connection => {
         const summary = summariesByKey[connection.connectionId]
-        labelOptionsByConnectionId[connection.connectionId] =
-            summary?.labelOptions ||
-            (summary?.labels || [])
-                .filter(isLabelFeedbackOption)
-                .map(label => label.displayName)
-                .filter(Boolean)
+        // Carry the Gmail label id alongside the display name so the feedback row can re-label the
+        // email directly (move it to that label's id), not just record a name for learned rules.
+        labelOptionsByConnectionId[connection.connectionId] = (summary?.labels || [])
+            .filter(isLabelFeedbackOption)
+            .map(label => ({ labelId: label.labelId, displayName: label.displayName }))
+            .filter(option => option.labelId && option.displayName)
         labelingDisabledByConnectionId[connection.connectionId] =
             !!summary && connection.provider !== 'microsoft' && summary.labelingEnabled === false
     })
@@ -216,7 +216,7 @@ export default function EmailLine() {
 const localStyles = StyleSheet.create({
     container: {
         paddingTop: 12,
-        paddingBottom: 8,
+        paddingBottom: 20,
     },
     header: {
         minHeight: 24,

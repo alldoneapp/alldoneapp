@@ -106,6 +106,7 @@ const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { buildConnectionId } = require('../Integrations/providerConnections')
 const {
+    buildThreadLabelModification,
     buildDefaultActiveProjectLabelDefinitions,
     buildDefaultProjectFollowUpPrompt,
     buildGmailMessageUrl,
@@ -977,5 +978,38 @@ describe('canonical labeling config resolution (account-level ↔ project key)',
 
         expect(resolved.resolvedKey).toBe(CONNECTION_ID)
         expect(resolved.exists).toBe(false)
+    })
+})
+
+describe('buildThreadLabelModification (feedback re-label)', () => {
+    test('moves to a non-archiving label: adds the new label, removes the old one', () => {
+        expect(
+            buildThreadLabelModification({ currentLabelId: 'L_old', targetLabelId: 'L_new', targetAutoArchive: false })
+        ).toEqual({ addLabelIds: ['L_new'], removeLabelIds: ['L_old'] })
+    })
+
+    test('moves to an auto-archiving label: also removes INBOX', () => {
+        expect(
+            buildThreadLabelModification({ currentLabelId: 'L_old', targetLabelId: 'L_new', targetAutoArchive: true })
+        ).toEqual({ addLabelIds: ['L_new'], removeLabelIds: expect.arrayContaining(['INBOX', 'L_old']) })
+    })
+
+    test('"Inbox only" restores INBOX and removes the old managed label', () => {
+        expect(
+            buildThreadLabelModification({ currentLabelId: 'L_old', targetLabelId: null, targetAutoArchive: false })
+        ).toEqual({ addLabelIds: ['INBOX'], removeLabelIds: ['L_old'] })
+    })
+
+    test('never removes INBOX or the synthetic No-label id as the "old" label', () => {
+        expect(
+            buildThreadLabelModification({ currentLabelId: 'INBOX', targetLabelId: 'L_new', targetAutoArchive: false })
+        ).toEqual({ addLabelIds: ['L_new'], removeLabelIds: [] })
+        expect(
+            buildThreadLabelModification({
+                currentLabelId: '__NO_LABEL__',
+                targetLabelId: 'L_new',
+                targetAutoArchive: false,
+            })
+        ).toEqual({ addLabelIds: ['L_new'], removeLabelIds: [] })
     })
 })

@@ -1278,6 +1278,88 @@ async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchi
     }
 }
 
+// Labels the email line renders as a "section" but that are not removable user labels.
+const NON_REMOVABLE_SECTION_LABEL_IDS = new Set(['INBOX', '__NO_LABEL__'])
+
+// Pure computation of the Gmail label add/remove sets for a user's label correction, isolated so
+// the archive/inbox edge cases are unit-testable without a Gmail client. A null targetLabelId is
+// "Inbox only" (restore the plain inbox, no managed label). INBOX is only removed when the corrected
+// label auto-archives; the old section label is removed otherwise (never a system/synthetic id).
+function buildThreadLabelModification({ currentLabelId, targetLabelId, targetAutoArchive }) {
+    const addLabelIds = []
+    const removeLabelIds = []
+    if (targetLabelId) {
+        addLabelIds.push(targetLabelId)
+        if (targetAutoArchive) removeLabelIds.push('INBOX')
+    } else {
+        addLabelIds.push('INBOX')
+    }
+    if (currentLabelId && currentLabelId !== targetLabelId && !NON_REMOVABLE_SECTION_LABEL_IDS.has(currentLabelId)) {
+        removeLabelIds.push(currentLabelId)
+    }
+    return { addLabelIds: [...new Set(addLabelIds)], removeLabelIds: [...new Set(removeLabelIds)] }
+}
+
+// Re-label a whole Gmail thread in response to a user's label correction from the feedback UI.
+// Removes the label the thread currently sits under (currentLabelId) and applies the corrected
+// label (targetLabelId), mirroring the sync's auto-archive behavior for the corrected label. A
+// null targetLabelId means "Inbox only": the managed label is removed and the thread returns to a
+// plain inbox. Operates on the whole thread in one call (threads.modify) so every message moves,
+// matching how the email line groups threads. Returns the resolved target label name/key + archive
+// state so the caller can update the audit record and the client can move the row.
+async function applyGmailThreadLabelCorrection(
+    userId,
+    projectId,
+    { threadId, currentLabelId, targetLabelId, labelDefinitions = [] }
+) {
+    if (!threadId) throw new Error('threadId is required to re-label an email')
+
+    const { connectionProjectId } = await getConnectedGmailEmail(userId, projectId)
+    const gmail = await getGmailClient(userId, connectionProjectId || projectId)
+    const labelMap = await loadExistingLabelMap(gmail)
+
+    // Labels created by the sync are keyed by their Gmail label name, so we can recover the
+    // corrected label's name/key/auto-archive by matching its Gmail id against the config.
+    let targetGmailLabelName = null
+    let targetLabelKey = null
+    let targetAutoArchive = false
+    if (targetLabelId) {
+        for (const [name, id] of labelMap.entries()) {
+            if (id === targetLabelId) {
+                targetGmailLabelName = name
+                break
+            }
+        }
+        const targetDefinition = (labelDefinitions || []).find(
+            definition => findExistingLabelId(labelMap, normalizeLabelName(definition.gmailLabelName)) === targetLabelId
+        )
+        if (targetDefinition) {
+            targetLabelKey = targetDefinition.key || null
+            targetAutoArchive = targetDefinition.autoArchive === true
+        }
+    }
+
+    const { addLabelIds, removeLabelIds } = buildThreadLabelModification({
+        currentLabelId,
+        targetLabelId,
+        targetAutoArchive,
+    })
+
+    await gmail.users.threads.modify({
+        userId: 'me',
+        id: threadId,
+        requestBody: { addLabelIds, removeLabelIds },
+    })
+
+    return {
+        applied: true,
+        archived: removeLabelIds.includes('INBOX'),
+        targetLabelId: targetLabelId || null,
+        targetGmailLabelName,
+        targetLabelKey,
+    }
+}
+
 async function processSingleMessage({
     gmail,
     labelMap,
@@ -2036,6 +2118,8 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
 
 module.exports = {
     GmailSyncLockedError,
+    applyGmailThreadLabelCorrection,
+    buildThreadLabelModification,
     buildDefaultActiveProjectLabelDefinitions,
     buildDefaultActiveProjectsGmailLabelingConfig,
     buildDefaultProjectFollowUpPrompt,

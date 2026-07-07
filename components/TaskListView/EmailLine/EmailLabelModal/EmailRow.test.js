@@ -92,7 +92,12 @@ describe('EmailRow', () => {
                 <EmailRow
                     row={row}
                     connectionId="c1"
-                    labelOptions={['Ads', 'Alldone/Newsletter', 'Bookkeeping']}
+                    labelOptions={[
+                        { labelId: 'L_ads', displayName: 'Ads' },
+                        { labelId: 'L_news', displayName: 'Alldone/Newsletter' },
+                        { labelId: 'L_book', displayName: 'Bookkeeping' },
+                    ]}
+                    currentLabelId="L_news"
                     selected={false}
                 />
             )
@@ -134,6 +139,8 @@ describe('EmailRow', () => {
         expect(submitEmailLabelFeedback).toHaveBeenCalledWith('c1', {
             messageId: 'm1',
             correctLabel: 'Ads',
+            correctLabelId: 'L_ads',
+            currentLabelId: 'L_news',
             note: '',
         })
         const doneTexts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
@@ -171,7 +178,15 @@ describe('EmailRow', () => {
         }
         let tree
         act(() => {
-            tree = renderer.create(<EmailRow row={row} connectionId="c1" labelOptions={['Ads']} selected={false} />)
+            tree = renderer.create(
+                <EmailRow
+                    row={row}
+                    connectionId="c1"
+                    labelOptions={[{ labelId: 'L_ads', displayName: 'Ads' }]}
+                    currentLabelId="L_ads"
+                    selected={false}
+                />
+            )
         })
 
         act(() => findByLabel(tree, 'Why this label')[0].props.onPress())
@@ -191,6 +206,8 @@ describe('EmailRow', () => {
         expect(submitEmailLabelFeedback).toHaveBeenCalledWith('c1', {
             messageId: 'm1',
             correctLabel: null,
+            correctLabelId: null,
+            currentLabelId: 'L_ads',
             note: '',
         })
     })

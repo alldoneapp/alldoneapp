@@ -69,9 +69,15 @@ export async function listEmailLineMessages(projectId, labelId, { pageToken } = 
     })
 }
 
-// Marks an email's label decision as wrong (optionally naming the correct label) and
-// returns the updated learned-rules block the server folded the feedback into.
-export async function submitEmailLabelFeedback(projectId, { messageId, correctLabel, note } = {}) {
+// Marks an email's label decision as wrong (optionally naming the correct label). When move
+// context is provided the server also re-labels the email's Gmail thread directly, so it leaves
+// the wrong label section immediately. `correctLabelId` is the target Gmail label id, or null for
+// "Inbox only"; `currentLabelId` is the label section the email is currently in. Returns the
+// updated learned-rules block plus whether the thread was re-labeled.
+export async function submitEmailLabelFeedback(
+    projectId,
+    { messageId, correctLabel, note, correctLabelId, currentLabelId } = {}
+) {
     if (!projectId || !messageId) return null
     return runHttpsCallableFunction('submitEmailLabelFeedbackSecondGen', {
         ...buildConnectionKeyPayload(projectId),
@@ -79,6 +85,8 @@ export async function submitEmailLabelFeedback(projectId, { messageId, correctLa
         verdict: 'wrong',
         correctLabel,
         note,
+        correctLabelId,
+        currentLabelId,
     })
 }
 

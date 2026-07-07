@@ -344,6 +344,9 @@ export default function GmailLabelingSettings({
     const [savedConfigSnapshot, setSavedConfigSnapshot] = useState(null)
     const [initialLoadComplete, setInitialLoadComplete] = useState(false)
     const [recentAuditEntries, setRecentAuditEntries] = useState([])
+    // Grow the learned-rules box to fit its content so every rule is visible without scrolling
+    // inside a cramped single line; clamped to a sane range in the style below.
+    const [learnedRulesHeight, setLearnedRulesHeight] = useState(0)
 
     const connectedEmail = authStatus?.email || config.gmailEmail || ''
     const isPremiumUser = premiumStatus === PLAN_STATUS_PREMIUM
@@ -909,8 +912,18 @@ export default function GmailLabelingSettings({
                                     value={config.learnedRules}
                                     onChangeText={learnedRules => updateConfig({ learnedRules })}
                                     editable={canManage}
-                                    style={[localStyles.input, localStyles.multilineInput]}
+                                    style={[
+                                        localStyles.input,
+                                        localStyles.learnedRulesInput,
+                                        learnedRulesHeight
+                                            ? { height: Math.min(Math.max(learnedRulesHeight + 20, 120), 400) }
+                                            : null,
+                                    ]}
                                     multiline
+                                    onContentSizeChange={event =>
+                                        setLearnedRulesHeight(event.nativeEvent.contentSize.height)
+                                    }
+                                    placeholder={translate('LearnedRulesPlaceholder')}
                                     placeholderTextColor={colors.Text03}
                                 />
                                 <Text style={localStyles.helperText}>{translate('LearnedRulesDescription')}</Text>
@@ -1051,6 +1064,12 @@ const localStyles = StyleSheet.create({
     multilineInput: {
         paddingVertical: 3,
         paddingHorizontal: 16,
+    },
+    learnedRulesInput: {
+        minHeight: 120,
+        paddingTop: 12,
+        textAlignVertical: 'top',
+        lineHeight: 20,
     },
     multilineInputText: {
         ...styles.body2,

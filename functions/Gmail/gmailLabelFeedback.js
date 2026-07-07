@@ -6,9 +6,14 @@ const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assista
 const { extractJsonFromText, isGpt5ReasoningModel, mapAssistantModelToOpenAIModel } = require('./gmailPromptClassifier')
 const { MAX_LEARNED_RULES_LENGTH, getGmailLabelingStateRef } = require('./gmailLabelingConfig')
 
-// Feedback is free (a single nano call) — the cap only bounds abuse.
+// Feedback is free — the cap only bounds abuse. Folding a user correction into the
+// learned-rules block is a low-frequency, quality-sensitive judgment task, so it runs on a
+// stronger model than the nano first-pass classifier (same rationale as the consistency
+// auditor). The nano model intermittently returned empty/unparseable output here
+// ("Feedback revision produced no rules text"), silently dropping the correction; a stronger
+// model both fixes that and produces better-generalized rules.
 const FEEDBACK_DAILY_CAP = 30
-const FEEDBACK_REVISION_MODEL = 'MODEL_GPT5_4_NANO'
+const FEEDBACK_REVISION_MODEL = 'MODEL_GPT5_5'
 
 const REVISION_SYSTEM_PROMPT =
     'You maintain a compact list of user feedback rules for an AI email labeling assistant. ' +
@@ -137,15 +142,31 @@ async function reviseLearnedRules({ currentRules, labelDefinitions, auditEntry, 
     return revised.slice(0, MAX_LEARNED_RULES_LENGTH)
 }
 
-// Stores the feedback event on the email's audit record and immediately folds it into
-// the config's learnedRules block, which resolveEffectiveGmailLabelingConfig appends to
-// the classifier prompt on every future sync (both prompt modes).
-async function submitEmailLabelFeedback({ userId, userData, projectId, messageId, verdict, correctLabel, note }) {
+// Applies the user's correction in two ways: (1) immediately re-labels the email's Gmail thread so
+// it leaves the wrong label section right away, and (2) folds the correction into the config's
+// learnedRules block, which resolveEffectiveGmailLabelingConfig appends to the classifier prompt on
+// every future sync. The re-label is the user's primary intent, so it runs first and its failure
+// propagates; the learned-rules revision is best-effort (a transient LLM hiccup must not undo or
+// mask a successful move). Feedback also records an audit event either way.
+async function submitEmailLabelFeedback({
+    userId,
+    userData,
+    projectId,
+    messageId,
+    verdict,
+    correctLabel,
+    note,
+    correctLabelId,
+    currentLabelId,
+}) {
     const normalizedVerdict = verdict === 'wrong' ? 'wrong' : null
     if (!normalizedVerdict) throw new Error('Unsupported feedback verdict')
     if (!messageId || typeof messageId !== 'string') throw new Error('messageId is required')
 
-    const { resolveEffectiveGmailLabelingConfig } = require('./serverSideGmailLabelingSync')
+    const {
+        resolveEffectiveGmailLabelingConfig,
+        applyGmailThreadLabelCorrection,
+    } = require('./serverSideGmailLabelingSync')
     const { key: feedbackProjectId, config, ref: configRef, auditEntry } = await resolveFeedbackLabelingContext({
         userId,
         userData,
@@ -168,18 +189,59 @@ async function submitEmailLabelFeedback({ userId, userData, projectId, messageId
     await auditRef.set({ feedback: admin.firestore.FieldValue.arrayUnion(feedbackEvent) }, { merge: true })
 
     const effectiveConfig = await resolveEffectiveGmailLabelingConfig(config, userData)
-    const learnedRules = await reviseLearnedRules({
-        currentRules: typeof config.learnedRules === 'string' ? config.learnedRules : '',
-        labelDefinitions: effectiveConfig.labelDefinitions || [],
-        auditEntry,
-        verdict: normalizedVerdict,
-        correctLabel: feedbackEvent.correctLabel,
-        note: feedbackEvent.note,
-    })
 
-    await configRef.set({ learnedRules, updatedAt: admin.firestore.Timestamp.now() }, { merge: true })
+    // Re-label the thread when the client sent move context (`currentLabelId`) and the target
+    // actually differs. `correctLabelId === null` is an explicit "Inbox only" move; `undefined`
+    // means an older client that only wants to record feedback, so we skip the move.
+    let relabel = null
+    const targetLabelId = typeof correctLabelId === 'string' && correctLabelId.trim() ? correctLabelId.trim() : null
+    const wantsRelabel =
+        typeof currentLabelId === 'string' &&
+        currentLabelId.trim() &&
+        correctLabelId !== undefined &&
+        targetLabelId !== currentLabelId.trim()
+    if (wantsRelabel && auditEntry.gmailThreadId) {
+        relabel = await applyGmailThreadLabelCorrection(userId, feedbackProjectId, {
+            threadId: auditEntry.gmailThreadId,
+            currentLabelId: currentLabelId.trim(),
+            targetLabelId,
+            labelDefinitions: effectiveConfig.labelDefinitions || [],
+        })
+        await auditRef.set(
+            {
+                selectedLabelKey: relabel.targetLabelKey,
+                selectedGmailLabelName: relabel.targetGmailLabelName,
+                applied: relabel.applied,
+                archived: relabel.archived,
+                correctedByFeedbackAt: admin.firestore.Timestamp.now(),
+            },
+            { merge: true }
+        )
+    }
 
-    return { learnedRules }
+    let learnedRules = typeof config.learnedRules === 'string' ? config.learnedRules : ''
+    try {
+        learnedRules = await reviseLearnedRules({
+            currentRules: learnedRules,
+            labelDefinitions: effectiveConfig.labelDefinitions || [],
+            auditEntry,
+            verdict: normalizedVerdict,
+            correctLabel: feedbackEvent.correctLabel,
+            note: feedbackEvent.note,
+        })
+        await configRef.set({ learnedRules, updatedAt: admin.firestore.Timestamp.now() }, { merge: true })
+    } catch (error) {
+        // Keep the existing rules and the successful re-label; the correction is still recorded in
+        // the audit feedback array, so nothing is lost.
+        console.warn('[gmailLabeling] Learned-rules revision skipped after feedback:', error?.message || error)
+    }
+
+    return {
+        learnedRules,
+        relabeled: !!relabel,
+        targetLabelId: relabel?.targetLabelId || null,
+        archived: relabel?.archived || false,
+    }
 }
 
 module.exports = {
