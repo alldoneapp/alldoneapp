@@ -48,41 +48,37 @@ const UNREAD_BY_ID = {
     Label_ads: 12,
     Label_work: 0,
     Label_clients: 3,
-    [NO_LABEL_ID]: 2,
 }
 
 // Fake mailbox modelling thread-level membership. The INBOX set and each user label's
 // thread ids overlap on purpose so an intersection (label ∩ inbox) yields the count a
 // user actually sees. Label_ads carries a thread on a NON-inbox message (t_ads_archived)
-// plus five inbox threads → count 5; Label_work has no inbox thread.
+// plus five inbox threads → count 5; Label_work has no inbox thread. t_in5 is the only
+// inbox thread with no user label → the whole No-label bucket.
 const INBOX_THREAD_IDS = ['t_in0', 't_in1', 't_in2', 't_in3', 't_in4', 't_in5'] // inbox size 6
 const LABEL_THREAD_IDS = {
     Label_ads: ['t_in0', 't_in1', 't_in2', 't_in3', 't_in4', 't_ads_archived'],
     Label_work: ['t_work_archived'],
     Label_clients: ['t_in0', 't_in1', 't_in2'],
 }
-const NO_LABEL_INBOX_COUNT = 2
+// Every thread carrying a user label (union of all label buckets) = Gmail's has:userlabels
+// set. No-label is the inbox threads NOT in here: t_in5.
+const ALL_LABELED_THREAD_IDS = [...new Set(Object.values(LABEL_THREAD_IDS).flat())]
 
 const makeThreadRefs = ids => ids.map(id => ({ id }))
 
 function setupLabels(labels) {
     mockLabelsList.mockResolvedValue({ data: { labels } })
     // Unread counting stays message-level via messages.list [labelId, INBOX, UNREAD].
-    mockMessagesList.mockImplementation(async ({ labelIds, q }) => {
-        const primary = q === 'has:nouserlabels' ? NO_LABEL_ID : labelIds[0]
-        const count = UNREAD_BY_ID[primary] || 0
-        return { data: { messages: Array.from({ length: count }, (_, i) => ({ id: `${primary}-${i}` })) } }
+    mockMessagesList.mockImplementation(async ({ labelIds }) => {
+        const count = UNREAD_BY_ID[labelIds[0]] || 0
+        return { data: { messages: Array.from({ length: count }, (_, i) => ({ id: `${labelIds[0]}-${i}` })) } }
     })
-    // Thread counting is thread-level: ['INBOX'] returns the inbox set, [labelId] returns
-    // the label's threads (some not in the inbox), and the no-label bucket keeps its query.
+    // Thread counting is thread-level: ['INBOX'] returns the inbox set, [labelId] returns the
+    // label's threads (some not in the inbox), and has:userlabels returns every labeled thread
+    // (the exact complement of the No-label bucket = inbox minus this set).
     mockThreadsList.mockImplementation(async ({ labelIds = [], q }) => {
-        if (q === 'has:nouserlabels') {
-            return {
-                data: {
-                    threads: makeThreadRefs(Array.from({ length: NO_LABEL_INBOX_COUNT }, (_, i) => `t_nolabel${i}`)),
-                },
-            }
-        }
+        if (q === 'has:userlabels') return { data: { threads: makeThreadRefs(ALL_LABELED_THREAD_IDS) } }
         const primary = labelIds[0]
         if (primary === 'INBOX') return { data: { threads: makeThreadRefs(INBOX_THREAD_IDS) } }
         return { data: { threads: makeThreadRefs(LABEL_THREAD_IDS[primary] || []) } }
@@ -154,17 +150,22 @@ describe('gmailEmailLine', () => {
         expect(ads.kind).toBe('user')
         expect(ads.unreadCount).toBe(12)
         expect(ads.threadCount).toBe(5)
+        // No-label is the inbox threads carrying no user label: inbox {t_in0..t_in5} minus the
+        // has:userlabels set {t_in0..t_in4, ...} = just t_in5. Unread is derived the same way
+        // from the unread-inbox thread set.
         const noLabel = summary.labels.find(label => label.labelId === NO_LABEL_ID)
         expect(noLabel).toEqual(
-            expect.objectContaining({ displayName: 'No label', threadCount: 2, unreadCount: 2, kind: 'no_label' })
+            expect.objectContaining({ displayName: 'No label', threadCount: 1, unreadCount: 1, kind: 'no_label' })
         )
         // Thread counting is thread-level: the inbox set is fetched once (['INBOX']) and
         // each user label is listed on its own (['Label_ads']) then intersected.
         expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
         expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_ads'] }))
-        expect(mockThreadsList).toHaveBeenCalledWith(
-            expect.objectContaining({ labelIds: ['INBOX'], q: 'has:nouserlabels' })
-        )
+        // The no-label bucket is inbox minus the has:userlabels set (thread-level complement),
+        // so the summary issues has:userlabels + reads the unread-inbox set, never has:nouserlabels.
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX', 'UNREAD'] }))
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ q: 'has:userlabels' }))
+        expect(mockThreadsList).not.toHaveBeenCalledWith(expect.objectContaining({ q: 'has:nouserlabels' }))
     })
 
     test('listMessagesForLabel returns inbox∩label threads (incl. label on a non-inbox message) and parses headers', async () => {
@@ -253,12 +254,44 @@ describe('gmailEmailLine', () => {
         expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
     })
 
-    test('listMessagesForLabel no-label bucket queries unlabeled inbox threads', async () => {
-        mockThreadsList.mockResolvedValue({ data: { threads: [] } })
-        await listMessagesForLabel('u', 'p', NO_LABEL_ID, {})
-        expect(mockThreadsList).toHaveBeenCalledWith(
-            expect.objectContaining({ labelIds: ['INBOX'], q: 'has:nouserlabels' })
-        )
+    test('listMessagesForLabel no-label bucket lists inbox threads absent from has:userlabels', async () => {
+        // inbox = {t_in0..t_in5}; has:userlabels = every labeled thread {t_in0..t_in4, ...}.
+        // No-label = the difference = [t_in5].
+        setupLabels([{ id: 'INBOX', name: 'INBOX', type: 'system' }])
+        mockThreadsGet.mockImplementation(async ({ id }) => ({
+            data: { id, messages: [{ id: `${id}-m`, labelIds: ['INBOX'], payload: { headers: [] } }] },
+        }))
+
+        const result = await listMessagesForLabel('u', 'p', NO_LABEL_ID, {})
+
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ q: 'has:userlabels' }))
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
+        expect(mockThreadsList).not.toHaveBeenCalledWith(expect.objectContaining({ q: 'has:nouserlabels' }))
+        expect(result.messages.map(row => row.threadId)).toEqual(['t_in5'])
+    })
+
+    test('listMessagesForLabel no-label bucket drops an inbox thread whose label is on a non-inbox message', async () => {
+        // t_split is in the inbox (via an unlabeled reply) but carries a user label on a sent
+        // message, so Gmail's thread-level has:userlabels returns it — it must NOT appear in
+        // No-label, and we never need to inspect per-message labels to exclude it.
+        mockThreadsList.mockImplementation(async ({ labelIds = [], q }) => {
+            if (q === 'has:userlabels') return { data: { threads: makeThreadRefs(['t_split']) } }
+            if (labelIds[0] === 'INBOX') return { data: { threads: makeThreadRefs(['t_clean', 't_split']) } }
+            return { data: { threads: [] } }
+        })
+        mockThreadsGet.mockImplementation(async ({ id }) => ({
+            data: {
+                id,
+                messages: [
+                    { id: `${id}-m`, labelIds: ['INBOX'], payload: { headers: [{ name: 'Subject', value: id }] } },
+                ],
+            },
+        }))
+
+        const result = await listMessagesForLabel('u', 'p', NO_LABEL_ID, {})
+
+        expect(result.messages.map(row => row.threadId)).toEqual(['t_clean'])
+        expect(mockThreadsGet).not.toHaveBeenCalledWith(expect.objectContaining({ id: 't_split' }))
     })
 
     test('archiveMessages removes INBOX and chunks batchModify at 100', async () => {
@@ -427,12 +460,38 @@ describe('gmailEmailLine', () => {
         expect(result.messages.map(row => row.threadId)).toEqual(['t_convo'])
     })
 
-    test('sweepLabel supports the no-label bucket', async () => {
+    test('sweepLabel no-label bucket queries the inbox and has:userlabels sets', async () => {
         mockThreadsList.mockResolvedValue({ data: { threads: [] } })
         const result = await sweepLabel('u', 'p', NO_LABEL_ID, 'archiveAll')
         expect(result.processed).toBe(0)
-        expect(mockThreadsList).toHaveBeenCalledWith(
-            expect.objectContaining({ labelIds: ['INBOX'], q: 'has:nouserlabels' })
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ q: 'has:userlabels' }))
+        expect(mockThreadsList).not.toHaveBeenCalledWith(expect.objectContaining({ q: 'has:nouserlabels' }))
+    })
+
+    test('sweepLabel no-label bucket sweeps only inbox threads absent from has:userlabels', async () => {
+        // t_labeled is in the has:userlabels set (filed under a label, even if only on a
+        // sent/archived message), so an "Archive all" on No-label must skip it entirely.
+        mockThreadsList.mockImplementation(async ({ labelIds = [], q }) => {
+            if (q === 'has:userlabels') return { data: { threads: makeThreadRefs(['t_labeled']) } }
+            if (labelIds[0] === 'INBOX') return { data: { threads: makeThreadRefs(['t_clean', 't_labeled']) } }
+            return { data: { threads: [] } }
+        })
+        mockThreadsGet.mockImplementation(async ({ id }) => {
+            if (id === 't_clean') return { data: { id: 't_clean', messages: [{ id: 'c1', labelIds: ['INBOX'] }] } }
+            return { data: { id: 't_labeled', messages: [{ id: 'l1', labelIds: ['INBOX'] }] } }
+        })
+        mockBatchModify.mockResolvedValue({})
+
+        const result = await sweepLabel('u', 'p', NO_LABEL_ID, 'archiveAll')
+
+        expect(result.processed).toBe(1)
+        expect(mockBatchModify).toHaveBeenCalledWith(
+            expect.objectContaining({
+                requestBody: { ids: ['c1'], removeLabelIds: ['INBOX'] },
+            })
         )
+        // The labeled thread is never even fetched for message ids.
+        expect(mockThreadsGet).not.toHaveBeenCalledWith(expect.objectContaining({ id: 't_labeled' }))
     })
 })

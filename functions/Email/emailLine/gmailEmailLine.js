@@ -6,7 +6,12 @@ const { parseListUnsubscribe, chunk } = require('./emailLineShared')
 
 const MESSAGES_PER_PAGE = 25
 const NO_LABEL_ID = '__NO_LABEL__'
-const NO_LABEL_SEARCH_QUERY = 'has:nouserlabels'
+// The No-label bucket is the inbox threads carrying no user label on any message. We resolve
+// it at the thread level as (inbox threads − has:userlabels threads) — the exact complement
+// of Gmail's per-message has:nouserlabels, which leaked already-labeled threads that merely
+// contained a later unlabeled reply. This is independent of MAX_LABELS_TO_INSPECT (it's one
+// query, not per-label enumeration). See collectLabeledThreadIds.
+const HAS_USER_LABELS_SEARCH_QUERY = 'has:userlabels'
 // Hard cap on how many messages a single sweep invocation touches.
 const SWEEP_LIMIT = 500
 const BATCH_MODIFY_CHUNK = 100
@@ -18,6 +23,11 @@ const BATCH_MODIFY_CHUNK = 100
 // Both scans are capped so a huge label or inbox can't run unbounded.
 const INBOX_THREAD_ID_LIMIT = 1000
 const LABEL_THREAD_ID_LIMIT = 1000
+// Cap on the has:userlabels scan behind the No-label bucket. Only labeled threads that also
+// sit in the inbox (≤ INBOX_THREAD_ID_LIMIT) matter and Gmail returns newest first, so this
+// covers real mailboxes; beyond it the No-label count degrades gracefully — and identically
+// across count/list/sweep, which all subtract the same set, so they never disagree.
+const LABELED_THREAD_ID_LIMIT = 2000
 const METADATA_HEADERS = ['Subject', 'From', 'Date', 'List-Unsubscribe', 'List-Unsubscribe-Post']
 
 // Gmail system labels we never surface as chips. Everything else that is a
@@ -81,9 +91,7 @@ function compareLabels(a, b) {
 // (e.g. Ads) contributes only the copies still sitting in the inbox — matching
 // exactly what the label modal lists.
 async function countInboxUnread(gmail, labelId) {
-    const request = isNoLabelId(labelId)
-        ? { labelIds: ['INBOX', 'UNREAD'], q: NO_LABEL_SEARCH_QUERY }
-        : { labelIds: labelId === 'INBOX' ? ['INBOX', 'UNREAD'] : [labelId, 'INBOX', 'UNREAD'] }
+    const request = { labelIds: labelId === 'INBOX' ? ['INBOX', 'UNREAD'] : [labelId, 'INBOX', 'UNREAD'] }
     const response = await gmail.users.messages.list({ userId: 'me', ...request, maxResults: 100 })
     const messages = Array.isArray(response?.data?.messages) ? response.data.messages : []
     // Exact for the realistic inbox range; if a page overflows, fall back to the
@@ -154,6 +162,72 @@ async function collectLabelThreadIds(gmail, labelId, limit = LABEL_THREAD_ID_LIM
     return { ids, hasMore: !!pageToken }
 }
 
+// Inbox thread ids that carry the given user label on ANY message (label ∩ inbox),
+// resolved at the thread level so a label living only on a sent/archived message of an
+// inbox thread still counts. Backs a label's chip count.
+async function collectInboxLabelThreadIds(gmail, labelId, inboxThreadIds) {
+    if (!inboxThreadIds || inboxThreadIds.size === 0) return []
+    const { ids: labelThreadIds } = await collectLabelThreadIds(gmail, labelId)
+    return labelThreadIds.filter(id => inboxThreadIds.has(id))
+}
+
+// Unread inbox thread ids (ids only, no per-message fetch). Used to count the unread
+// "no label" threads by set difference, the same thread-level way the total is counted.
+async function collectUnreadInboxThreadIds(gmail, limit = INBOX_THREAD_ID_LIMIT) {
+    const ids = new Set()
+    let pageToken
+    do {
+        const response = await gmail.users.threads.list({
+            userId: 'me',
+            labelIds: ['INBOX', 'UNREAD'],
+            maxResults: 100,
+            pageToken,
+        })
+        const threads = Array.isArray(response?.data?.threads) ? response.data.threads : []
+        for (const thread of threads) {
+            if (thread?.id) ids.add(thread.id)
+        }
+        pageToken = response?.data?.nextPageToken || null
+    } while (pageToken && ids.size < limit)
+    return ids
+}
+
+// Thread ids anywhere in the mailbox that carry a user label on ANY message (ids only) —
+// Gmail's has:userlabels set, the exact complement of the has:nouserlabels bucket. Resolved
+// at the thread level (no labelIds filter) so a thread labeled only on a sent/archived
+// message is still included; subtracting it from the inbox yields the No-label bucket,
+// independent of how many label chips we inspect (MAX_LABELS_TO_INSPECT).
+async function collectLabeledThreadIds(gmail, limit = LABELED_THREAD_ID_LIMIT) {
+    const ids = new Set()
+    let pageToken
+    do {
+        const response = await gmail.users.threads.list({
+            userId: 'me',
+            q: HAS_USER_LABELS_SEARCH_QUERY,
+            maxResults: 100,
+            pageToken,
+        })
+        const threads = Array.isArray(response?.data?.threads) ? response.data.threads : []
+        for (const thread of threads) {
+            if (thread?.id) ids.add(thread.id)
+        }
+        pageToken = response?.data?.nextPageToken || null
+    } while (pageToken && ids.size < limit)
+    return ids
+}
+
+// The members of a thread-id set that carry no user label, preserving the set's iteration
+// order (newest first) so list/sweep can paginate the result by offset. `.length` gives the
+// No-label count.
+function filterUnlabeledThreadIds(threadIds, labeledThreadIds) {
+    const result = []
+    if (!threadIds) return result
+    for (const id of threadIds) {
+        if (!labeledThreadIds.has(id)) result.push(id)
+    }
+    return result
+}
+
 // Counts threads (conversations) sitting in the inbox that carry the given label,
 // read or unread — the number a user thinks of as "emails left to deal with".
 // `inboxThreadIds` is the shared inbox thread-id set (see collectInboxThreadIds);
@@ -162,28 +236,7 @@ async function countInboxThreads(gmail, labelId, inboxThreadIds) {
     if (labelId === 'INBOX') {
         return inboxThreadIds ? inboxThreadIds.size : 0
     }
-    if (isNoLabelId(labelId)) {
-        // "No user labels" is a per-thread property Gmail can filter directly, so this
-        // bucket stays a single scoped query.
-        const response = await gmail.users.threads.list({
-            userId: 'me',
-            labelIds: ['INBOX'],
-            q: NO_LABEL_SEARCH_QUERY,
-            maxResults: 100,
-        })
-        const threads = Array.isArray(response?.data?.threads) ? response.data.threads : []
-        if (response?.data?.nextPageToken) {
-            return Math.max(threads.length, Number(response?.data?.resultSizeEstimate || threads.length))
-        }
-        return threads.length
-    }
-    if (!inboxThreadIds || inboxThreadIds.size === 0) return 0
-    const { ids: labelThreadIds } = await collectLabelThreadIds(gmail, labelId)
-    let count = 0
-    for (const id of labelThreadIds) {
-        if (inboxThreadIds.has(id)) count += 1
-    }
-    return count
+    return (await collectInboxLabelThreadIds(gmail, labelId, inboxThreadIds)).length
 }
 
 async function getGmailLabelSummary(userId, projectId) {
@@ -217,7 +270,9 @@ async function getGmailLabelSummary(userId, projectId) {
             }
         })
     )
-    const noLabel = await buildNoLabelSummary(gmail)
+    // No-label = inbox threads minus the has:userlabels set (see buildNoLabelSummary),
+    // resolved at the thread level independently of the top-N labels inspected above.
+    const noLabel = await buildNoLabelSummary(gmail, inboxThreadIds)
 
     // Keep only labels with inbox threads, but always keep INBOX so the line
     // can render its Inbox Zero state.
@@ -289,17 +344,23 @@ function isNoLabelId(labelId) {
 }
 
 function listParamsForLabel(labelId) {
-    if (isNoLabelId(labelId)) return { labelIds: ['INBOX'], q: NO_LABEL_SEARCH_QUERY }
     if (!labelId || labelId === 'INBOX') return { labelIds: ['INBOX'] }
     return { labelIds: [labelId, 'INBOX'] }
 }
 
-async function buildNoLabelSummary(gmail) {
+// The no-label bucket is the inbox threads that carry no user label on any message.
+// Both counts subtract the has:userlabels thread set from the inbox (total) and
+// unread-inbox (unread) thread sets, so a thread already filed under a label — even via a
+// sent/archived message — never leaks in, and the result doesn't depend on how many label
+// chips the summary inspected.
+async function buildNoLabelSummary(gmail, inboxThreadIds) {
     try {
-        const [threadCount, unreadCount] = await Promise.all([
-            countInboxThreads(gmail, NO_LABEL_ID),
-            countInboxUnread(gmail, NO_LABEL_ID),
+        const [labeledThreadIds, unreadInboxThreadIds] = await Promise.all([
+            collectLabeledThreadIds(gmail),
+            collectUnreadInboxThreadIds(gmail),
         ])
+        const threadCount = filterUnlabeledThreadIds(inboxThreadIds, labeledThreadIds).length
+        const unreadCount = filterUnlabeledThreadIds(unreadInboxThreadIds, labeledThreadIds).length
         return {
             labelId: NO_LABEL_ID,
             name: 'No label',
@@ -415,8 +476,28 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
         return { messages, nextPageToken }
     }
 
-    // The inbox itself and the no-label bucket are already inbox-scoped by their Gmail
-    // query, so a single paged threads.list is exact.
+    if (isNoLabelId(labelId)) {
+        // No-label = inbox threads carrying no user label anywhere, resolved at the thread
+        // level as (inbox − has:userlabels). This excludes a thread filed under a label even
+        // when the label sits on a sent/archived message, is independent of the top-N labels
+        // the chip summary inspects, and paginates by offset exactly like the label buckets —
+        // so the modal shows exactly what the chip counts.
+        const [inboxThreadIds, labeledThreadIds] = await Promise.all([
+            collectInboxThreadIds(gmail),
+            collectLabeledThreadIds(gmail),
+        ])
+        const targetThreadIds = filterUnlabeledThreadIds(inboxThreadIds, labeledThreadIds)
+        const offset = parseInboxLabelPageToken(pageToken)
+        const pageIds = targetThreadIds.slice(offset, offset + MESSAGES_PER_PAGE)
+        const messages = await fetchThreadRows(gmail, pageIds, labelId, emailAddress)
+        const nextOffset = offset + MESSAGES_PER_PAGE
+        const nextPageToken =
+            nextOffset < targetThreadIds.length ? `${INBOX_LABEL_PAGE_TOKEN_PREFIX}${nextOffset}` : null
+        return { messages, nextPageToken }
+    }
+
+    // The inbox itself is already inbox-scoped by its Gmail query, so a single paged
+    // threads.list is exact.
     const listResponse = await gmail.users.threads.list({
         userId: 'me',
         ...listParamsForLabel(labelId),
@@ -607,8 +688,26 @@ async function sweepLabel(userId, projectId, labelId, action) {
     const matchesMutation = message =>
         (Array.isArray(message?.labelIds) ? message.labelIds : []).includes(mutationLabelId)
 
-    // The inbox itself and the no-label bucket are defined by being in the inbox, so
-    // their scoped [INBOX] (+ has:nouserlabels) query already selects the right threads.
+    if (isNoLabelId(labelId)) {
+        // Sweep only genuinely-unlabeled inbox threads, resolved at the thread level as
+        // (inbox − has:userlabels), then strip INBOX/UNREAD from their inbox messages. This
+        // mirrors the user-label sweep below and guarantees an "Archive all" / "Mark all
+        // read" on No-label never touches mail already filed under a label (even one on a
+        // sent/archived message).
+        const [inboxThreadIds, labeledThreadIds] = await Promise.all([
+            collectInboxThreadIds(gmail),
+            collectLabeledThreadIds(gmail),
+        ])
+        const targetThreadIds = filterUnlabeledThreadIds(inboxThreadIds, labeledThreadIds)
+        const cappedThreadIds = targetThreadIds.slice(0, SWEEP_LIMIT)
+        const ids = await collectMessageIdsFromThreads(gmail, cappedThreadIds, matchesMutation)
+        if (ids.length > 0) await batchModifyMessages(gmail, ids, { removeLabelIds: [mutationLabelId] })
+        const remaining = ids.length >= SWEEP_LIMIT || targetThreadIds.length > cappedThreadIds.length
+        return { processed: ids.length, remaining }
+    }
+
+    // The inbox itself is defined by being in the inbox, so its scoped [INBOX] query
+    // already selects the right threads.
     if (!isUserLabelBucket(labelId)) {
         const { ids, hasMore } = await collectThreadMessageIds(gmail, listParamsForLabel(labelId), matchesMutation)
         if (ids.length > 0) await batchModifyMessages(gmail, ids, { removeLabelIds: [mutationLabelId] })
