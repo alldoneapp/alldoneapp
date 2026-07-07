@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { TouchableOpacity } from 'react-native'
+import { ActivityIndicator, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import EmailLabelModal from './EmailLabelModal'
@@ -137,7 +137,7 @@ describe('EmailLabelModal', () => {
         expect(openUrlInNewTab).toHaveBeenCalledWith('https://account/google/a@gmail.com')
     })
 
-    it('closes immediately and routes selection actions to the connection owning each selected thread', async () => {
+    it('keeps the modal open on selection archive, routes to the owning connection, and drops the archived row', async () => {
         const closePopover = jest.fn()
         performEmailLineAction.mockResolvedValue({ processed: 1 })
 
@@ -156,12 +156,54 @@ describe('EmailLabelModal', () => {
         const archiveButton = touchableContaining(tree, 'Archive')
         await act(async () => {
             archiveButton.props.onPress()
+            await new Promise(resolve => setTimeout(resolve, 0))
+        })
+
+        // The modal stays open; only the owning connection's action fires.
+        expect(closePopover).not.toHaveBeenCalled()
+        expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'archive', messageIds: ['m1', 'm1b'] })
+        expect(performEmailLineAction).not.toHaveBeenCalledWith('c2', expect.anything())
+
+        // Once the archive resolves, the archived row drops out while the rest still renders.
+        const texts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
+        expect(texts).not.toContain('One')
+        expect(texts).toContain('Two')
+    })
+
+    it('shows a per-row spinner while a selection archive is in flight, then removes the row', async () => {
+        let resolveAction
+        performEmailLineAction.mockReturnValue(new Promise(resolve => (resolveAction = resolve)))
+
+        const tree = await renderModal()
+
+        const selectRow = tree.root.findAll(
+            node =>
+                node.type === TouchableOpacity &&
+                (node.props.accessibilityLabel === 'Select' || node.props.accessibilityLabel === 'Deselect')
+        )[0]
+        await act(async () => {
+            selectRow.props.onPress()
             await Promise.resolve()
         })
 
-        expect(closePopover).toHaveBeenCalled()
-        expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'archive', messageIds: ['m1', 'm1b'] })
-        expect(performEmailLineAction).not.toHaveBeenCalledWith('c2', expect.anything())
+        await act(async () => {
+            touchableContaining(tree, 'Archive').props.onPress()
+            await Promise.resolve()
+        })
+
+        // While in flight the row stays put and shows a spinner.
+        expect(tree.root.findAllByType(ActivityIndicator).length).toBeGreaterThan(0)
+        const during = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
+        expect(during).toContain('One')
+
+        await act(async () => {
+            resolveAction({ processed: 1 })
+            await new Promise(resolve => setTimeout(resolve, 0))
+        })
+
+        const after = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
+        expect(after).not.toContain('One')
+        expect(tree.root.findAllByType(ActivityIndicator).length).toBe(0)
     })
 
     it('drops a re-labeled row but keeps the modal open, deferring the summary refresh until close', async () => {

@@ -60,6 +60,7 @@ export default function EmailRow({
     labelOptions,
     currentLabelId,
     selected,
+    pending,
     onToggleSelect,
     onOpen,
     onRelabeled,
@@ -134,7 +135,11 @@ export default function EmailRow({
         URLTrigger.processUrl(NavigationService, getDvMainTabLink(createdTask.projectId, createdTask.taskId, 'tasks'))
     }
 
-    const checkbox = (
+    const checkbox = pending ? (
+        <View style={localStyles.checkboxArea}>
+            <ActivityIndicator size="small" color={colors.Primary100} />
+        </View>
+    ) : (
         <TouchableOpacity
             style={localStyles.checkboxArea}
             onPress={() => onToggleSelect && onToggleSelect(row)}
@@ -146,9 +151,10 @@ export default function EmailRow({
 
     const content = (
         <TouchableOpacity
-            style={localStyles.content}
-            onPress={() => onToggleSelect && onToggleSelect(row)}
-            activeOpacity={0.7}
+            style={[localStyles.content, pending && localStyles.dimmed]}
+            onPress={pending ? undefined : () => onToggleSelect && onToggleSelect(row)}
+            activeOpacity={pending ? 1 : 0.7}
+            disabled={pending}
         >
             <View style={localStyles.topLine}>
                 {row.isUnread && <View style={localStyles.unreadDot} />}
@@ -339,7 +345,10 @@ export default function EmailRow({
     )
 
     const actions = (
-        <View style={[localStyles.actions, smallScreen && localStyles.actionsMobile]}>
+        <View
+            style={[localStyles.actions, smallScreen && localStyles.actionsMobile, pending && localStyles.dimmed]}
+            pointerEvents={pending ? 'none' : 'auto'}
+        >
             <TouchableOpacity
                 style={localStyles.actionButton}
                 onPress={() => setReasoningOpen(open => !open)}
@@ -451,6 +460,9 @@ const localStyles = StyleSheet.create({
     checkboxArea: {
         paddingRight: 12,
         justifyContent: 'center',
+    },
+    dimmed: {
+        opacity: 0.4,
     },
     content: {
         flex: 1,

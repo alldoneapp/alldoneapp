@@ -42,6 +42,9 @@ function EmailLabelModal({
     const [loading, setLoading] = useState(() => !getCachedEmailLineSections(group?.key))
     const [loadingMoreKey, setLoadingMoreKey] = useState(null)
     const [selectedIds, setSelectedIds] = useState(() => new Set())
+    // Selection keys whose archive/mark-read is in flight: their rows show a spinner and stay
+    // put until the action resolves, so the modal can stay open instead of closing.
+    const [pendingActionIds, setPendingActionIds] = useState(() => new Set())
     // Connections whose chip counts went stale from a relabel while the modal was open. We flush
     // the summary refresh on close (see handleRelabeled) rather than immediately, so relabeling the
     // last email of a label doesn't unmount its chip — and this popover with it — mid-feedback.
@@ -173,41 +176,87 @@ function EmailLabelModal({
         }
     }
 
+    // Selection-bar actions keep the modal open: the acted-on rows show a per-row spinner,
+    // the selection bar collapses, and each connection resolves independently. On success an
+    // archived row drops out of the list and a mark-read row loses its unread state. The chip
+    // count refresh is deferred to modal close (see handleRelabeled) so archiving a label's
+    // last email can't unmount its chip — and this popover — mid-action.
     const runSelectionAction = action => {
         if (selectedIds.size === 0) return
+        const keysByConnection = {}
         const messageIdsByConnection = {}
         sections.forEach(section => {
             section.messages.forEach(row => {
-                if (selectedIds.has(selectionKey(section.connectionId, section.labelId, row.messageId))) {
-                    if (!messageIdsByConnection[section.connectionId]) {
-                        messageIdsByConnection[section.connectionId] = new Set()
-                    }
-                    ;(row.messageIds || [row.messageId]).forEach(messageId =>
-                        messageIdsByConnection[section.connectionId].add(messageId)
-                    )
+                const key = selectionKey(section.connectionId, section.labelId, row.messageId)
+                if (!selectedIds.has(key)) return
+                if (!messageIdsByConnection[section.connectionId]) {
+                    messageIdsByConnection[section.connectionId] = new Set()
+                    keysByConnection[section.connectionId] = new Set()
                 }
+                keysByConnection[section.connectionId].add(key)
+                ;(row.messageIds || [row.messageId]).forEach(messageId =>
+                    messageIdsByConnection[section.connectionId].add(messageId)
+                )
             })
         })
-        closePopover()
-        // Archived rows leave the inbox: drop them from the cache so reopening the label
-        // shows the pruned list immediately. Mark-read keeps rows in the inbox, so its
-        // cache stays as-is (the background summary refresh updates the counts).
-        if (action === 'archive') {
-            const pruned = sections.map(section => ({
-                ...section,
-                messages: section.messages.filter(
-                    row => !selectedIds.has(selectionKey(section.connectionId, section.labelId, row.messageId))
-                ),
-            }))
-            cacheEmailLineSections(group?.key, pruned)
-        }
+
+        // Move the selected rows into a loading state and collapse the selection bar.
+        setPendingActionIds(previous => {
+            const next = new Set(previous)
+            Object.values(keysByConnection).forEach(keys => keys.forEach(key => next.add(key)))
+            return next
+        })
+        setSelectedIds(new Set())
+
         Object.keys(messageIdsByConnection).forEach(connectionId => {
+            const keys = keysByConnection[connectionId]
             performEmailLineAction(connectionId, {
                 action,
                 messageIds: [...messageIdsByConnection[connectionId]],
-            }).catch(error => {
-                if (__DEV__) console.warn('[EmailLine] Background selection action failed:', error?.message || error)
             })
+                .then(() => {
+                    setSections(previous => {
+                        const next = previous.map(section => {
+                            if (section.connectionId !== connectionId) return section
+                            if (action === 'archive') {
+                                // Archived rows leave the inbox: drop them from the list.
+                                return {
+                                    ...section,
+                                    messages: section.messages.filter(
+                                        row =>
+                                            !keys.has(
+                                                selectionKey(section.connectionId, section.labelId, row.messageId)
+                                            )
+                                    ),
+                                }
+                            }
+                            // Mark-read keeps the row but clears its unread dot/bold state.
+                            return {
+                                ...section,
+                                messages: section.messages.map(row =>
+                                    keys.has(selectionKey(section.connectionId, section.labelId, row.messageId))
+                                        ? { ...row, isUnread: false }
+                                        : row
+                                ),
+                            }
+                        })
+                        cacheEmailLineSections(group?.key, next)
+                        return next
+                    })
+                    pendingSummaryRefreshRef.current.add(connectionId)
+                })
+                .catch(error => {
+                    // Leave the rows in place on failure so nothing silently vanishes.
+                    if (__DEV__)
+                        console.warn('[EmailLine] Background selection action failed:', error?.message || error)
+                })
+                .finally(() => {
+                    setPendingActionIds(previous => {
+                        const next = new Set(previous)
+                        keys.forEach(key => next.delete(key))
+                        return next
+                    })
+                })
         })
     }
 
@@ -232,9 +281,11 @@ function EmailLabelModal({
     const totalMessages = sections.reduce((total, section) => total + section.messages.length, 0)
     const labelingDisabled = entries.some(entry => labelingDisabledByConnectionId?.[entry.connectionId])
 
-    const allSelectionKeys = sections.flatMap(section =>
-        section.messages.map(row => selectionKey(section.connectionId, section.labelId, row.messageId))
-    )
+    const allSelectionKeys = sections
+        .flatMap(section =>
+            section.messages.map(row => selectionKey(section.connectionId, section.labelId, row.messageId))
+        )
+        .filter(key => !pendingActionIds.has(key))
     const allSelected = allSelectionKeys.length > 0 && allSelectionKeys.every(key => selectedIds.has(key))
     const toggleSelectAll = () => {
         setSelectedIds(() => (allSelected ? new Set() : new Set(allSelectionKeys)))
@@ -334,6 +385,9 @@ function EmailLabelModal({
                                     labelOptions={labelOptionsByConnectionId?.[section.connectionId] || []}
                                     currentLabelId={section.labelId}
                                     selected={selectedIds.has(
+                                        selectionKey(section.connectionId, section.labelId, row.messageId)
+                                    )}
+                                    pending={pendingActionIds.has(
                                         selectionKey(section.connectionId, section.labelId, row.messageId)
                                     )}
                                     onToggleSelect={selectedRow =>
