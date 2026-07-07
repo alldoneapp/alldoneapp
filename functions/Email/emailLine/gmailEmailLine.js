@@ -119,21 +119,31 @@ function parseInboxLabelPageToken(pageToken) {
     return Number.isFinite(offset) && offset > 0 ? offset : 0
 }
 
-// Thread ids currently in the inbox (ids only, no per-message fetch). Reused across a
-// summary's label counts and by the sweep, so we compute it once and intersect.
+// Thread ids currently in the inbox, derived from the MESSAGES that actually carry the INBOX
+// label (messages.list), NOT Gmail's thread-level threads.list index. Reused across a summary's
+// label counts, the modal list, and the sweep, so we compute it once and intersect.
+//
+// Why message-level and not threads.list({labelIds:['INBOX']}): Gmail's thread-level INBOX index
+// can keep returning a thread after its inbox message was archived (the thread lingers in the
+// listing with no message left carrying INBOX). Trusting it made a label chip count — and list —
+// threads that "Archive all" then couldn't clear, because the sweep works on message-level INBOX
+// labels and found nothing to strip (processed=0). Deriving membership from the messages keeps
+// count/list/sweep consistent with what can actually be archived, and still catches split threads:
+// a label sitting on a sent reply while a received message stays in the inbox — that received
+// message carries INBOX, so messages.list returns it and its thread is included.
 async function collectInboxThreadIds(gmail, limit = INBOX_THREAD_ID_LIMIT) {
     const ids = new Set()
     let pageToken
     do {
-        const response = await gmail.users.threads.list({
+        const response = await gmail.users.messages.list({
             userId: 'me',
             labelIds: ['INBOX'],
             maxResults: 100,
             pageToken,
         })
-        const threads = Array.isArray(response?.data?.threads) ? response.data.threads : []
-        for (const thread of threads) {
-            if (thread?.id) ids.add(thread.id)
+        const messages = Array.isArray(response?.data?.messages) ? response.data.messages : []
+        for (const message of messages) {
+            if (message?.threadId) ids.add(message.threadId)
         }
         pageToken = response?.data?.nextPageToken || null
     } while (pageToken && ids.size < limit)
