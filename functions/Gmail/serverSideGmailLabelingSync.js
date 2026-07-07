@@ -436,7 +436,7 @@ async function acquireSyncLock(userId, projectId, gmailEmail = '') {
         transaction.set(
             stateRef,
             {
-                ...buildDefaultState(projectId, gmailEmail),
+                type: 'gmailLabelingState',
                 projectId,
                 gmailEmail,
                 status: 'running',
