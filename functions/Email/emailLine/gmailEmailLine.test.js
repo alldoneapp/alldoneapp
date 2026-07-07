@@ -309,7 +309,11 @@ describe('gmailEmailLine', () => {
         expect(mockBatchModify.mock.calls[0][0].requestBody.removeLabelIds).toEqual(['UNREAD'])
     })
 
-    test('sweepLabel archives inbox messages across visible labeled threads', async () => {
+    test('sweepLabel archive clears INBOX from every message of the target threads', async () => {
+        // The threads are resolved as in the inbox (threads.list ∩ label). Archive strips INBOX
+        // from ALL their messages — not only those a per-message read reports as INBOX-labeled —
+        // so it works even when threads.get returns stale/incomplete labelIds. removeLabelIds is
+        // a no-op on a message (m_labeled_archived) that lacks INBOX.
         mockThreadsList.mockResolvedValue({ data: { threads: [{ id: 't1' }] } })
         mockThreadsGet.mockResolvedValue({
             data: {
@@ -327,11 +331,11 @@ describe('gmailEmailLine', () => {
 
         expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
         expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_ads'] }))
-        expect(result.processed).toBe(2)
+        expect(result.processed).toBe(3)
         expect(mockBatchModify).toHaveBeenCalledWith(
             expect.objectContaining({
                 requestBody: {
-                    ids: ['m_inbox_sibling', 'm_labeled_inbox'],
+                    ids: ['m_labeled_archived', 'm_inbox_sibling', 'm_labeled_inbox'],
                     removeLabelIds: ['INBOX'],
                 },
             })
@@ -414,12 +418,35 @@ describe('gmailEmailLine', () => {
 
         const result = await sweepLabel('u', 'p', 'Label_ads', 'archiveAll')
 
-        // Only t_convo is both labeled and in the inbox; t_archived is labeled but not in
-        // the inbox, t_other is in the inbox but not labeled.
+        // Only t_convo is both labeled and in the inbox; t_archived is labeled but not in the
+        // inbox, t_other is in the inbox but not labeled. Archive clears INBOX from all of
+        // t_convo's messages — the sent reply is a no-op, the inbox sibling is archived.
+        expect(result.processed).toBe(2)
+        expect(mockBatchModify).toHaveBeenCalledWith(
+            expect.objectContaining({
+                requestBody: { ids: ['sent_reply', 'inbox_sibling'], removeLabelIds: ['INBOX'] },
+            })
+        )
+    })
+
+    test('sweepLabel archive clears a thread whose per-message read shows no INBOX (stale read)', async () => {
+        // The "chip shows N but Archive all does nothing" bug: the thread is in the inbox
+        // (threads.list) and carries the label, but a stale threads.get returns no INBOX on any
+        // message. Archive must still strip INBOX so the thread actually leaves the inbox — the
+        // write hits Gmail's real state. Before the fix, filtering by the stale read stripped
+        // nothing (processed=0).
+        mockThreadsList.mockResolvedValue({ data: { threads: [{ id: 't_stuck' }] } })
+        mockThreadsGet.mockResolvedValue({
+            data: { id: 't_stuck', messages: [{ id: 'm1', labelIds: ['Label_ads', 'CATEGORY_PERSONAL'] }] },
+        })
+        mockBatchModify.mockResolvedValue({})
+
+        const result = await sweepLabel('u', 'p', 'Label_ads', 'archiveAll')
+
         expect(result.processed).toBe(1)
         expect(mockBatchModify).toHaveBeenCalledWith(
             expect.objectContaining({
-                requestBody: { ids: ['inbox_sibling'], removeLabelIds: ['INBOX'] },
+                requestBody: { ids: ['m1'], removeLabelIds: ['INBOX'] },
             })
         )
     })
