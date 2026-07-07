@@ -101,9 +101,14 @@ function isUserLabelBucket(labelId) {
     return !!labelId && labelId !== 'INBOX' && !isNoLabelId(labelId)
 }
 
-function threadHasInboxMessage(threadData) {
-    const messages = Array.isArray(threadData?.messages) ? threadData.messages : []
-    return messages.some(message => (Array.isArray(message?.labelIds) ? message.labelIds : []).includes('INBOX'))
+// The list paginates a user label's inbox threads over the resolved id set (see
+// listMessagesForLabel), so its page token just carries the next offset.
+const INBOX_LABEL_PAGE_TOKEN_PREFIX = 'inbox-label:'
+
+function parseInboxLabelPageToken(pageToken) {
+    if (typeof pageToken !== 'string' || !pageToken.startsWith(INBOX_LABEL_PAGE_TOKEN_PREFIX)) return 0
+    const offset = Number.parseInt(pageToken.slice(INBOX_LABEL_PAGE_TOKEN_PREFIX.length), 10)
+    return Number.isFinite(offset) && offset > 0 ? offset : 0
 }
 
 // Thread ids currently in the inbox (ids only, no per-message fetch). Reused across a
@@ -289,15 +294,6 @@ function listParamsForLabel(labelId) {
     return { labelIds: [labelId, 'INBOX'] }
 }
 
-// Thread-list params for surfacing a label's inbox threads. A user label is matched on
-// the label alone (thread-level) so threads that carry it on a non-inbox message still
-// come back; the caller drops any that have no inbox message. The inbox and no-label
-// buckets keep their already-inbox-scoped queries.
-function threadListParamsForLabel(labelId) {
-    if (isUserLabelBucket(labelId)) return { labelIds: [labelId] }
-    return listParamsForLabel(labelId)
-}
-
 async function buildNoLabelSummary(gmail) {
     try {
         const [threadCount, unreadCount] = await Promise.all([
@@ -375,19 +371,60 @@ function buildThreadRow(thread = {}, threadRef = {}, labelId, emailAddress) {
     }
 }
 
+// Fetches the given threads (metadata) and builds a display row for each.
+async function fetchThreadRows(gmail, threadIds, labelId, emailAddress) {
+    const rows = await Promise.all(
+        threadIds.map(async id => {
+            try {
+                const detail = await gmail.users.threads.get({
+                    userId: 'me',
+                    id,
+                    format: 'metadata',
+                    metadataHeaders: METADATA_HEADERS,
+                })
+                return buildThreadRow(detail?.data || {}, { id }, labelId, emailAddress)
+            } catch (error) {
+                return null
+            }
+        })
+    )
+    return rows.filter(Boolean)
+}
+
 async function listMessagesForLabel(userId, projectId, labelId, { pageToken, emailAddress } = {}) {
     const gmail = await getGmailClient(userId, projectId)
-    const listParams = threadListParamsForLabel(labelId)
+
+    // A user label's inbox threads can carry the label on a non-inbox (sent) message and
+    // can be old enough to fall outside the most-recent page of the label. A single
+    // [label, INBOX] page both misses split-label threads and only sees the newest ones,
+    // so it disagreed with the chip count. Instead resolve the full "in the inbox AND
+    // carrying the label" set the same way the count does (thread-level intersection) and
+    // paginate over it by offset — so the modal shows exactly what the chip counts.
+    if (isUserLabelBucket(labelId)) {
+        const [inboxThreadIds, { ids: labelThreadIds }] = await Promise.all([
+            collectInboxThreadIds(gmail),
+            collectLabelThreadIds(gmail, labelId),
+        ])
+        const targetThreadIds = labelThreadIds.filter(id => inboxThreadIds.has(id))
+        const offset = parseInboxLabelPageToken(pageToken)
+        const pageIds = targetThreadIds.slice(offset, offset + MESSAGES_PER_PAGE)
+        const messages = await fetchThreadRows(gmail, pageIds, labelId, emailAddress)
+        const nextOffset = offset + MESSAGES_PER_PAGE
+        const nextPageToken =
+            nextOffset < targetThreadIds.length ? `${INBOX_LABEL_PAGE_TOKEN_PREFIX}${nextOffset}` : null
+        return { messages, nextPageToken }
+    }
+
+    // The inbox itself and the no-label bucket are already inbox-scoped by their Gmail
+    // query, so a single paged threads.list is exact.
     const listResponse = await gmail.users.threads.list({
         userId: 'me',
-        ...listParams,
+        ...listParamsForLabel(labelId),
         maxResults: MESSAGES_PER_PAGE,
         pageToken: pageToken || undefined,
     })
-
     const threadRefs = Array.isArray(listResponse?.data?.threads) ? listResponse.data.threads : []
     const nextPageToken = listResponse?.data?.nextPageToken || null
-
     const messages = await Promise.all(
         threadRefs.map(async ref => {
             try {
@@ -397,22 +434,13 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
                     format: 'metadata',
                     metadataHeaders: METADATA_HEADERS,
                 })
-                const threadData = detail?.data || {}
-                // A user label is queried label-only, so it can return threads whose
-                // label sits on a message that has since left the inbox. The email line
-                // only surfaces threads still in the inbox, so drop the rest.
-                if (isUserLabelBucket(labelId) && !threadHasInboxMessage(threadData)) return null
-                return buildThreadRow(threadData, ref, labelId, emailAddress)
+                return buildThreadRow(detail?.data || {}, ref, labelId, emailAddress)
             } catch (error) {
                 return null
             }
         })
     )
-
-    return {
-        messages: messages.filter(Boolean),
-        nextPageToken,
-    }
+    return { messages: messages.filter(Boolean), nextPageToken }
 }
 
 // Ids of the newest unread inbox messages — a single list call, no per-message fetches.
