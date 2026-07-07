@@ -118,6 +118,8 @@ function normalizeGmailMessage(message = {}, maxBodyLength = 8000) {
         references: getHeaderValue(headers, 'References'),
         inReplyTo: getHeaderValue(headers, 'In-Reply-To'),
         rfcMessageId: getHeaderValue(headers, 'Message-Id'),
+        // Canonical bulk-mail marker — the classifier prompt treats it as a strong Ads signal.
+        listUnsubscribe: getHeaderValue(headers, 'List-Unsubscribe'),
         snippet: typeof message.snippet === 'string' ? message.snippet : '',
         bodyText,
         attachments,

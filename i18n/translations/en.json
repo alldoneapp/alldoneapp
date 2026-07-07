@@ -2060,6 +2060,8 @@
     "Add a note (optional)": "Add a note (optional)",
     "Learned rules from your feedback": "Learned rules from your feedback",
     "LearnedRulesDescription": "Rules the AI learned from your label feedback. They are always applied when labeling emails. Edit or clear them anytime.",
+    "Auto-archive Ads": "Auto-archive Ads",
+    "AutoArchiveAdsDescription": "Automatically archive emails classified as Ads so they skip your inbox. They keep the Ads label in Gmail.",
     "Unsubscribe": "Unsubscribe",
     "Email reply draft": "Email reply draft",
     "Task from email": "Task from email",

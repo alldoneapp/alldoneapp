@@ -224,7 +224,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
             })
         )
         expect(labels[2].description).toContain('promotional')
-        expect(labels[2].description).toContain('Do not use this label for newsletters')
+        expect(labels[2].description).toContain('A recurring newsletter the user intentionally subscribed to')
+        expect(labels[2].description).toContain('Never use Ads for transactional email')
     })
 
     test('builds the default project follow-up prompt with the label name', () => {
@@ -281,7 +282,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
         )
 
         expect(config.prompt).toContain('active Alldone project or the Ads label')
-        expect(config.prompt).toContain('do not use Ads for newsletters')
+        expect(config.prompt).toContain('Never use Ads for transactional email')
         expect(config.labelDefinitions).toHaveLength(2)
         expect(config.labelDefinitions[0]).toEqual(
             expect.objectContaining({

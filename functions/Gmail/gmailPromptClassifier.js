@@ -176,6 +176,13 @@ function buildConsistencyOptionsFromLabels(labelDefinitions = []) {
         .map(label => ({ key: label.key, names: [label.gmailLabelName || '', label.key] }))
 }
 
+// Optional "who is the user" section — helps judge relevance (cold outreach vs a real
+// business opportunity, which newsletters the user plausibly subscribed to).
+function buildUserDescriptionSection(config = {}) {
+    const description = typeof config.userDescription === 'string' ? config.userDescription.trim() : ''
+    return description ? `About the user (context for judging relevance):\n${description}\n\n` : ''
+}
+
 async function verifyClassificationConsistency(
     openai,
     {
@@ -191,6 +198,7 @@ async function verifyClassificationConsistency(
 ) {
     const userContent =
         `Prompt:\n${config.prompt}\n\n` +
+        buildUserDescriptionSection(config) +
         `Configured labels:\n${JSON.stringify(labelDefinitions, null, 2)}\n\n` +
         `Email:\n${JSON.stringify(message, null, 2)}\n\n` +
         `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}\n\n` +
@@ -250,6 +258,7 @@ async function classifyGmailMessage({ config, message }) {
 
     const firstUserContent =
         `Prompt:\n${config.prompt}\n\n` +
+        buildUserDescriptionSection(config) +
         `Configured labels:\n${JSON.stringify(labelDefinitions, null, 2)}\n\n` +
         `Email:\n${JSON.stringify(message, null, 2)}\n\n` +
         `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}\n\n` +

@@ -57,14 +57,25 @@ const ALDDONE_MANAGED_LABEL_PREFIX = 'Alldone/'
 const GMAIL_LABELING_MIN_GOLD_TO_CLASSIFY = 1
 const DEFAULT_SYNC_INTERVAL_MINUTES = 5
 
+// Single source of truth for the Ads decision boundary — used verbatim as the Ads
+// label description AND embedded in the default-mode prompt so the two cannot drift.
+// Mirrored in components/.../GmailLabelingSettings.helpers.js for the client preview.
+const DEFAULT_ADS_LABEL_GUIDANCE =
+    'Use Ads for promotional, marketing, sales, spam, or unsolicited commercial email, including personalized cold sales outreach. ' +
+    'A recurring newsletter the user intentionally subscribed to (editorial or digest content) is not Ads; a one-off promotion, discount, or product pitch is Ads, even from a familiar sender. ' +
+    'Never use Ads for transactional email such as receipts, invoices, order or shipping confirmations, or account, billing, and security notifications. ' +
+    'An email that is a reply in an existing conversation (inReplyTo or references is set) is never Ads. ' +
+    "Gmail's CATEGORY_PROMOTIONS label id and a List-Unsubscribe header are strong Ads signals. " +
+    'If an email matches both a project label and Ads, prefer the project label unless the email is pure bulk marketing.'
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
-    'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer precision over recall: if the email could belong to multiple project labels, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. Use Ads for promotional, spam, sales, marketing, or unsolicited commercial email, but do not use Ads for newsletters with useful or interesting content that the user intentionally subscribed to. Use the configured confidence threshold: only return a match when the best label is at or above that threshold. Confidence for a match means confidence in the selected label; confidence for no match means confidence that no configured label matches. Do not return no match when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; return the matching configured label instead.'
+    'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer precision over recall: if the email could belong to multiple project labels, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
+    DEFAULT_ADS_LABEL_GUIDANCE +
+    ' Use the configured confidence threshold: only return a match when the best label is at or above that threshold. Confidence for a match means confidence in the selected label; confidence for no match means confidence that no configured label matches. Do not return no match when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; return the matching configured label instead.'
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
 const DEFAULT_ADS_LABEL_DEFINITION = {
     key: 'ads',
     gmailLabelName: 'Ads',
-    description:
-        'Use this label for promotional, spam, sales, marketing, or unsolicited commercial email. Do not use this label for newsletters with useful or interesting content that the user intentionally subscribed to.',
+    description: DEFAULT_ADS_LABEL_GUIDANCE,
     directionScope: GMAIL_DIRECTION_SCOPE_INCOMING,
     autoArchive: false,
     postLabelPrompt: '',
@@ -302,13 +313,25 @@ function appendLearnedRulesToPrompt(prompt = '', learnedRules = '') {
     return [prompt, `User feedback rules (always apply):\n${rules}`].filter(Boolean).join('\n\n')
 }
 
+// The user's global self-description gives the classifier the context it needs to
+// judge relevance (e.g. cold outreach vs a genuine business opportunity, which
+// newsletters the user plausibly subscribed to). The cap is a runaway-cost guard —
+// the description is embedded in EVERY per-email classification call — sized so it
+// never bites for normal profiles.
+function resolveUserDescriptionForClassifier(userData = {}) {
+    const description = typeof userData.extendedDescription === 'string' ? userData.extendedDescription.trim() : ''
+    return description.slice(0, 15000)
+}
+
 async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
+    const userDescription = resolveUserDescriptionForClassifier(userData)
     const promptMode = normalizePromptMode(config.promptMode, GMAIL_LABELING_PROMPT_MODE_CUSTOM)
     if (promptMode !== GMAIL_LABELING_PROMPT_MODE_DEFAULT) {
         return {
             ...config,
             promptMode: GMAIL_LABELING_PROMPT_MODE_CUSTOM,
             prompt: appendLearnedRulesToPrompt(config.prompt, config.learnedRules),
+            userDescription,
         }
     }
 
@@ -317,11 +340,20 @@ async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
         throw new Error('Default Gmail labeling requires at least one active project.')
     }
 
+    // The built-in Ads label is regenerated every sync; the user's auto-archive choice
+    // for it lives on the config and is applied here.
+    const labelDefinitions = defaultConfig.labelDefinitions.map(label =>
+        label.key === DEFAULT_ADS_LABEL_DEFINITION.key
+            ? { ...label, autoArchive: config.adsAutoArchive === true }
+            : label
+    )
+
     return {
         ...config,
         promptMode: GMAIL_LABELING_PROMPT_MODE_DEFAULT,
         prompt: appendLearnedRulesToPrompt(defaultConfig.prompt, config.learnedRules),
-        labelDefinitions: defaultConfig.labelDefinitions,
+        labelDefinitions,
+        userDescription,
     }
 }
 

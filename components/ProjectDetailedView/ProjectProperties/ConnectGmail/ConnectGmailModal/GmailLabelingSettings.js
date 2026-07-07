@@ -652,7 +652,25 @@ export default function GmailLabelingSettings({
                             </View>
 
                             {isDefaultPromptMode ? (
-                                <DefaultLabelingPreview preview={defaultConfigPreview} />
+                                <>
+                                    <View style={localStyles.section}>
+                                        <View style={localStyles.switchRow}>
+                                            <Text style={[localStyles.inputLabel, localStyles.rowText]}>
+                                                {translate('Auto-archive Ads')}
+                                            </Text>
+                                            <Switch
+                                                active={config.adsAutoArchive}
+                                                activeSwitch={() => updateConfig({ adsAutoArchive: true })}
+                                                deactiveSwitch={() => updateConfig({ adsAutoArchive: false })}
+                                                disabled={!canManage}
+                                            />
+                                        </View>
+                                        <Text style={localStyles.helperText}>
+                                            {translate('AutoArchiveAdsDescription')}
+                                        </Text>
+                                    </View>
+                                    <DefaultLabelingPreview preview={defaultConfigPreview} />
+                                </>
                             ) : (
                                 <>
                                     <View style={localStyles.section}>

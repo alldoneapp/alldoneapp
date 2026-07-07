@@ -2035,6 +2035,8 @@
     "Add a note (optional)": "Añadir una nota (opcional)",
     "Learned rules from your feedback": "Reglas aprendidas de tus comentarios",
     "LearnedRulesDescription": "Reglas que la IA aprendió de tus comentarios sobre etiquetas. Se aplican siempre al etiquetar correos. Puedes editarlas o borrarlas en cualquier momento.",
+    "Auto-archive Ads": "Archivar anuncios automáticamente",
+    "AutoArchiveAdsDescription": "Archiva automáticamente los correos clasificados como anuncios para que no pasen por tu bandeja de entrada. Conservan la etiqueta Ads en Gmail.",
     "Unsubscribe": "Cancelar suscripción",
     "Email reply draft": "Borrador de respuesta",
     "Task from email": "Tarea desde correo",

@@ -1600,6 +1600,8 @@
     "Add a note (optional)": "Notiz hinzufügen (optional)",
     "Learned rules from your feedback": "Aus deinem Feedback gelernte Regeln",
     "LearnedRulesDescription": "Regeln, die die KI aus deinem Label-Feedback gelernt hat. Sie werden beim Beschriften von E-Mails immer angewendet. Du kannst sie jederzeit bearbeiten oder löschen.",
+    "Auto-archive Ads": "Werbung automatisch archivieren",
+    "AutoArchiveAdsDescription": "Als Werbung eingestufte E-Mails automatisch archivieren, damit sie deinen Posteingang überspringen. Das Ads-Label bleibt in Gmail erhalten.",
     "Unsubscribe": "Abbestellen",
     "Email reply draft": "E-Mail-Antwortentwurf",
     "Task from email": "Aufgabe aus E-Mail",

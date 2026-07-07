@@ -114,7 +114,7 @@ describe('GmailLabelingSettings helpers', () => {
         expect(preview.prompt).toContain('active Alldone project or the Ads label')
         expect(preview.prompt).toContain('configured confidence threshold')
         expect(preview.prompt).toContain('Do not return no match')
-        expect(preview.prompt).toContain('do not use Ads for newsletters')
+        expect(preview.prompt).toContain('Never use Ads for transactional email')
         expect(preview.labelDefinitions.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)', 'Ads'])
         expect(preview.labelDefinitions[0].description).toContain('Website launch')
         expect(preview.labelDefinitions[0].description).not.toContain('Project description: Project Description')
@@ -133,7 +133,9 @@ describe('GmailLabelingSettings helpers', () => {
             })
         )
         expect(preview.labelDefinitions[2].description).toContain('promotional')
-        expect(preview.labelDefinitions[2].description).toContain('Do not use this label for newsletters')
+        expect(preview.labelDefinitions[2].description).toContain(
+            'A recurring newsletter the user intentionally subscribed to'
+        )
     })
 
     test('builds default project follow-up prompt with the label name', () => {

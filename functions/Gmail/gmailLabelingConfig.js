@@ -117,6 +117,7 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
         labelDefinitions: getStarterLabelDefinitions(),
         learnedRules: '',
+        adsAutoArchive: false,
     }
 }
 
@@ -216,6 +217,7 @@ function normalizeConfigInput(projectId, input = {}, gmailEmail = '') {
             typeof input.learnedRules === 'string'
                 ? input.learnedRules.trim().slice(0, MAX_LEARNED_RULES_LENGTH)
                 : null,
+        adsAutoArchive: typeof input.adsAutoArchive === 'boolean' ? input.adsAutoArchive : null,
     }
 }
 
@@ -289,10 +291,13 @@ function buildConfigWriteData(userId, projectId, configInput, gmailEmail = '', e
 
     const now = admin.firestore.Timestamp.now()
 
-    // A payload without learnedRules (older client, partial save) must not wipe the
-    // feedback-learned rules — keep whatever is already stored.
+    // A payload without learnedRules/adsAutoArchive (older client, partial save) must
+    // not wipe the stored values — keep whatever is already there.
     if (normalizedConfig.learnedRules === null) {
         normalizedConfig.learnedRules = typeof existingData?.learnedRules === 'string' ? existingData.learnedRules : ''
+    }
+    if (normalizedConfig.adsAutoArchive === null) {
+        normalizedConfig.adsAutoArchive = existingData?.adsAutoArchive === true
     }
 
     return {
