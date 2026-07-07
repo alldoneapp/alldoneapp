@@ -313,9 +313,9 @@ const localStyles = StyleSheet.create({
         marginRight: 8,
     },
     doneButton: {
-        height: 24,
-        paddingHorizontal: 12,
-        borderRadius: 12,
+        height: 20,
+        paddingHorizontal: 8,
+        borderRadius: 10,
         borderWidth: 1,
         borderColor: colors.Grey400,
         backgroundColor: '#ffffff',
@@ -323,8 +323,8 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
     },
     doneButtonMobile: {
-        width: 20,
-        height: 20,
+        width: 18,
+        height: 18,
         paddingHorizontal: 0,
         justifyContent: 'center',
     },
