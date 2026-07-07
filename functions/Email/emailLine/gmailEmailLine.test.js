@@ -221,19 +221,83 @@ describe('gmailEmailLine', () => {
         expect(mockBatchModify.mock.calls[0][0].requestBody.removeLabelIds).toEqual(['UNREAD'])
     })
 
-    test('sweepLabel caps at 500 and reports remaining', async () => {
-        // Always return a full page with a nextPageToken → would be infinite; the
-        // SWEEP_LIMIT must stop it.
-        mockMessagesList.mockImplementation(async () => ({
+    test('sweepLabel archives inbox messages across visible labeled threads', async () => {
+        mockThreadsList.mockResolvedValue({ data: { threads: [{ id: 't1' }] } })
+        mockThreadsGet.mockResolvedValue({
             data: {
-                messages: Array.from({ length: 100 }, (_, i) => ({ id: `x${Math.random()}${i}` })),
+                id: 't1',
+                messages: [
+                    { id: 'm_labeled_archived', labelIds: ['Label_ads'] },
+                    { id: 'm_inbox_sibling', labelIds: ['INBOX'] },
+                    { id: 'm_labeled_inbox', labelIds: ['Label_ads', 'INBOX'] },
+                ],
+            },
+        })
+        mockBatchModify.mockResolvedValue({})
+
+        const result = await sweepLabel('u', 'p', 'Label_ads', 'archiveAll')
+
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_ads', 'INBOX'] }))
+        expect(result.processed).toBe(2)
+        expect(mockBatchModify).toHaveBeenCalledWith(
+            expect.objectContaining({
+                requestBody: {
+                    ids: ['m_inbox_sibling', 'm_labeled_inbox'],
+                    removeLabelIds: ['INBOX'],
+                },
+            })
+        )
+    })
+
+    test('sweepLabel marks unread messages across visible labeled threads', async () => {
+        mockThreadsList.mockResolvedValue({ data: { threads: [{ id: 't1' }] } })
+        mockThreadsGet.mockResolvedValue({
+            data: {
+                id: 't1',
+                messages: [
+                    { id: 'm_read_labeled', labelIds: ['Label_ads', 'INBOX'] },
+                    { id: 'm_unread_sibling', labelIds: ['INBOX', 'UNREAD'] },
+                    { id: 'm_unread_labeled', labelIds: ['Label_ads', 'INBOX', 'UNREAD'] },
+                ],
+            },
+        })
+        mockBatchModify.mockResolvedValue({})
+
+        const result = await sweepLabel('u', 'p', 'Label_ads', 'markAllRead')
+
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_ads', 'INBOX'] }))
+        expect(result.processed).toBe(2)
+        expect(mockBatchModify).toHaveBeenCalledWith(
+            expect.objectContaining({
+                requestBody: {
+                    ids: ['m_unread_sibling', 'm_unread_labeled'],
+                    removeLabelIds: ['UNREAD'],
+                },
+            })
+        )
+    })
+
+    test('sweepLabel caps at 500 and reports remaining', async () => {
+        // A single visible thread page can contain more matching messages than
+        // SWEEP_LIMIT; the cap must stop mutation and report work remaining.
+        mockThreadsList.mockImplementation(async () => ({
+            data: {
+                threads: Array.from({ length: 100 }, (_, i) => ({ id: `t${i}` })),
                 nextPageToken: 'more',
             },
         }))
+        mockThreadsGet.mockImplementation(async ({ id }) => ({
+            data: {
+                id,
+                messages: Array.from({ length: 10 }, (_, i) => ({ id: `${id}-m${i}`, labelIds: ['INBOX'] })),
+            },
+        }))
         mockBatchModify.mockResolvedValue({})
+
         const result = await sweepLabel('u', 'p', 'Label_ads', 'archiveAll')
         expect(result.processed).toBe(500)
         expect(result.remaining).toBe(true)
         expect(mockBatchModify.mock.calls[0][0].requestBody.removeLabelIds).toEqual(['INBOX'])
+        expect(mockBatchModify).toHaveBeenCalledTimes(5)
     })
 })

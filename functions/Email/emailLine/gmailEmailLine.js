@@ -345,32 +345,71 @@ async function markMessagesRead(userId, projectId, messageIds) {
     return { processed: messageIds.length }
 }
 
-// Collects up to SWEEP_LIMIT message ids matching the given label filter.
-async function collectMessageIds(gmail, labelIds) {
+// The email line lists Gmail threads, not individual messages. Gmail can return a
+// thread for [label, INBOX] even when one message has the user label and a newer
+// sibling has INBOX, so sweeps must mutate inbox/unread messages across the
+// whole visible thread.
+async function collectThreadMessageIds(gmail, labelIds, shouldModifyMessage) {
     const ids = []
+    const seen = new Set()
     let pageToken
+    let stoppedAtLimit = false
+
     do {
-        const response = await gmail.users.messages.list({
+        const response = await gmail.users.threads.list({
             userId: 'me',
             labelIds,
             maxResults: BATCH_MODIFY_CHUNK,
             pageToken,
         })
-        const refs = Array.isArray(response?.data?.messages) ? response.data.messages : []
-        refs.forEach(ref => ids.push(ref.id))
-        pageToken = response?.data?.nextPageToken
-    } while (pageToken && ids.length < SWEEP_LIMIT)
-    return { ids: ids.slice(0, SWEEP_LIMIT), hasMore: !!pageToken }
+        const refs = Array.isArray(response?.data?.threads) ? response.data.threads : []
+        const nextPageToken = response?.data?.nextPageToken || null
+        const threads = await Promise.all(
+            refs.map(async ref => {
+                try {
+                    const detail = await gmail.users.threads.get({
+                        userId: 'me',
+                        id: ref.id,
+                        format: 'minimal',
+                    })
+                    return detail?.data || null
+                } catch (error) {
+                    return null
+                }
+            })
+        )
+
+        for (const thread of threads) {
+            const messages = Array.isArray(thread?.messages) ? thread.messages : []
+            for (const message of messages) {
+                if (ids.length >= SWEEP_LIMIT) {
+                    stoppedAtLimit = true
+                    break
+                }
+                const id = message?.id
+                if (!id || seen.has(id) || !shouldModifyMessage(message)) continue
+                seen.add(id)
+                ids.push(id)
+            }
+            if (stoppedAtLimit) break
+        }
+
+        pageToken = nextPageToken
+    } while (!stoppedAtLimit && pageToken && ids.length < SWEEP_LIMIT)
+
+    return { ids, hasMore: stoppedAtLimit || !!pageToken }
 }
 
 async function sweepLabel(userId, projectId, labelId, action) {
     const gmail = await getGmailClient(userId, projectId)
     const isArchive = action === 'archiveAll'
-    const labelIds = isArchive ? labelIdsForList(labelId) : [labelId, 'UNREAD']
-    const { ids, hasMore } = await collectMessageIds(gmail, labelIds)
+    const mutationLabelId = isArchive ? 'INBOX' : 'UNREAD'
+    const { ids, hasMore } = await collectThreadMessageIds(gmail, labelIdsForList(labelId), message =>
+        (Array.isArray(message?.labelIds) ? message.labelIds : []).includes(mutationLabelId)
+    )
     if (ids.length > 0) {
         await batchModifyMessages(gmail, ids, {
-            removeLabelIds: isArchive ? ['INBOX'] : ['UNREAD'],
+            removeLabelIds: [mutationLabelId],
         })
     }
     return { processed: ids.length, remaining: hasMore }

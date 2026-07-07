@@ -67,13 +67,15 @@ export default function EmailRow({ row, connectionId, labelOptions, selected, on
     const unsubscribeUrl = resolveUnsubscribeUrl(row)
     const hasReasoning = !!row.reasoning
     const confidencePercent = Number.isFinite(row.confidence) ? Math.round(row.confidence * 100) : null
+    const correctLabelText = translate('Correct label')
+    const inboxOnlyText = translate('Inbox only')
     const explanationText = row.reasoning || translate('No project or label explanation was recorded for this email.')
     const feedbackLabelOptions = normalizeLabelOptions(labelOptions).filter(option => option !== row.labelName)
     const feedbackDropdownOptions = [
-        { value: null, label: translate('Inbox only') },
+        { value: null, label: inboxOnlyText },
         ...feedbackLabelOptions.map(option => ({ value: option, label: option })),
     ]
-    const feedbackLabelText = feedbackLabel || translate('Inbox only')
+    const feedbackLabelText = feedbackLabel || inboxOnlyText
 
     const sendFeedback = async () => {
         setFeedbackDropdownOpen(false)
@@ -190,7 +192,7 @@ export default function EmailRow({ row, connectionId, labelOptions, selected, on
                                         >
                                             <View style={localStyles.feedbackDropdownTextBlock}>
                                                 <Text style={[styles.caption2, localStyles.feedbackDropdownCaption]}>
-                                                    {translate('Correct label')}
+                                                    {correctLabelText}
                                                 </Text>
                                                 <Text
                                                     style={[styles.caption1, localStyles.feedbackDropdownValue]}
@@ -224,9 +226,7 @@ export default function EmailRow({ row, connectionId, labelOptions, selected, on
                                                                 setFeedbackLabel(option.value)
                                                                 setFeedbackDropdownOpen(false)
                                                             }}
-                                                            accessibilityLabel={translate(
-                                                                `Correct label: ${option.label}`
-                                                            )}
+                                                            accessibilityLabel={`${correctLabelText}: ${option.label}`}
                                                         >
                                                             <Text
                                                                 style={[
