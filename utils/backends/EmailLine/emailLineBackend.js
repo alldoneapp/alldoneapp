@@ -121,8 +121,11 @@ const MAX_SWEEP_ROUNDS = 20
 // loop until it reports nothing remaining; a final forced summary fetch replaces
 // the optimistic numbers with the real ones.
 export async function performEmailLineSweepInBackground(projectId, labelId, action) {
-    if (!projectId || !labelId || !action) return
+    if (!projectId || !labelId || !action) return 0
     const summary = store.getState().emailLineSummaryByProject[projectId]
+    // Snapshot the label so we can restore its count if the sweep turns out to clear
+    // nothing (or fails): otherwise the optimistic zero would falsely read as "done".
+    const originalLabel = (summary?.labels || []).find(label => label.labelId === labelId) || null
     if (summary) {
         const labels = (summary.labels || []).map(label =>
             label.labelId === labelId
@@ -136,6 +139,8 @@ export async function performEmailLineSweepInBackground(projectId, labelId, acti
         )
         store.dispatch(setEmailLineSummary(projectId, { ...summary, labels }))
     }
+    let totalProcessed = 0
+    let failed = false
     try {
         for (let round = 0; round < MAX_SWEEP_ROUNDS; round++) {
             const result = await runHttpsCallableFunction('emailLineActionSecondGen', {
@@ -143,13 +148,34 @@ export async function performEmailLineSweepInBackground(projectId, labelId, acti
                 action,
                 labelId,
             })
+            totalProcessed += Number(result?.processed) || 0
             if (!result?.remaining) break
         }
     } catch (error) {
+        failed = true
         if (__DEV__) console.warn('[EmailLine] Background sweep failed:', error?.message || error)
-    } finally {
-        await fetchEmailLineSummary(projectId, { force: true })
     }
+    // Empty (or failed) sweep: put the chip back the way it was so the still-present
+    // emails don't silently disappear from the line. A sweep that did clear messages
+    // keeps its optimistic zero until the forced refresh confirms the real counts.
+    if ((failed || totalProcessed === 0) && originalLabel) {
+        const current = store.getState().emailLineSummaryByProject[projectId]
+        if (current) {
+            const labels = (current.labels || []).map(label =>
+                label.labelId === labelId
+                    ? {
+                          ...label,
+                          sweeping: false,
+                          threadCount: originalLabel.threadCount,
+                          unreadCount: originalLabel.unreadCount,
+                      }
+                    : label
+            )
+            store.dispatch(setEmailLineSummary(projectId, { ...current, labels }))
+        }
+    }
+    await fetchEmailLineSummary(projectId, { force: true })
+    return totalProcessed
 }
 
 // action ∈ { archive, markRead, archiveAll, markAllRead, draftReply, createTask }.
