@@ -10,6 +10,7 @@ import MainModal from './MainModal'
 import {
     BASE_NUMBER_OF_MILESTONES_TO_SHOW_SELECTED_PROJECT,
     getNewDefaultGoal,
+    getNewGoalScheduleDefaults,
     getOwnerId,
 } from '../../../GoalsView/GoalsHelper'
 import GoalMilestoneRangeModal from '../GoalMilestoneRangeModal/GoalMilestoneRangeModal'
@@ -28,8 +29,11 @@ import {
 } from '../../../../utils/GoalMilestonesHelper'
 
 const getNewInitialDefaultGoal = projectId => {
-    const newGoal = getNewDefaultGoal(BACKLOG_DATE_NUMERIC)
+    const scheduleDefaults = getNewGoalScheduleDefaults(projectId)
+    const baseDate = scheduleDefaults.isDynamic ? scheduleDefaults.milestoneDate : BACKLOG_DATE_NUMERIC
+    const newGoal = getNewDefaultGoal(baseDate)
     newGoal.ownerId = getOwnerId(projectId, newGoal.assigneesIds[0])
+    newGoal.scheduleMode = scheduleDefaults.scheduleMode
     return newGoal
 }
 

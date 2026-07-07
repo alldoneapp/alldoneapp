@@ -19,13 +19,17 @@ const DEFAULT_SETTINGS = {
     includeWeekends: false,
     bufferBeforeMinutes: 0,
     bufferAfterMinutes: 0,
+    additionalGuestEmails: [],
 }
 
 const numericFields = new Set(['durationMinutes', 'slotIntervalMinutes', 'bufferBeforeMinutes', 'bufferAfterMinutes'])
 const durationOptions = [15, 30, 60]
 
+const formatGuestEmails = list => (Array.isArray(list) ? list.join('\n') : '')
+
 export default function PublicBookingSettings() {
     const [settings, setSettings] = useState(DEFAULT_SETTINGS)
+    const [guestEmailsText, setGuestEmailsText] = useState('')
     const [publicUrl, setPublicUrl] = useState('')
     const [connectedCalendarCount, setConnectedCalendarCount] = useState(0)
     const [loading, setLoading] = useState(true)
@@ -37,6 +41,7 @@ export default function PublicBookingSettings() {
         try {
             const result = await getBookingSettings()
             setSettings({ ...DEFAULT_SETTINGS, ...(result.settings || {}) })
+            setGuestEmailsText(formatGuestEmails(result.settings?.additionalGuestEmails))
             setPublicUrl(result.publicUrl || '')
             setConnectedCalendarCount(result.connectedCalendarCount || 0)
         } catch (loadError) {
@@ -58,6 +63,12 @@ export default function PublicBookingSettings() {
             ...current,
             [field]: numericFields.has(field) ? value.replace(/[^0-9]/g, '') : value,
         }))
+    }
+
+    const updateGuestEmails = value => {
+        setMessage('')
+        setError('')
+        setGuestEmailsText(value)
     }
 
     const toggleDuration = duration => {
@@ -98,8 +109,9 @@ export default function PublicBookingSettings() {
         setMessage('')
         setError('')
         try {
-            const result = await saveBookingSettings(settings)
+            const result = await saveBookingSettings({ ...settings, additionalGuestEmails: guestEmailsText })
             setSettings({ ...DEFAULT_SETTINGS, ...(result.settings || {}) })
+            setGuestEmailsText(formatGuestEmails(result.settings?.additionalGuestEmails))
             setPublicUrl(result.publicUrl || '')
             setConnectedCalendarCount(result.connectedCalendarCount || 0)
             setMessage(translate('Booking settings saved'))
@@ -190,6 +202,22 @@ export default function PublicBookingSettings() {
                             active={settings.includeWeekends}
                             activeSwitch={() => updateField('includeWeekends', true)}
                             deactiveSwitch={() => updateField('includeWeekends', false)}
+                        />
+                    </View>
+
+                    <View style={localStyles.guestSection}>
+                        <Text style={localStyles.label}>{translate('Additional guests')}</Text>
+                        <Text style={localStyles.guestHint}>{translate('Additional guests description')}</Text>
+                        <TextInput
+                            value={guestEmailsText}
+                            onChangeText={updateGuestEmails}
+                            style={[localStyles.input, localStyles.textArea]}
+                            multiline
+                            placeholder={translate('Additional guests placeholder')}
+                            placeholderTextColor={colors.Text03}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            keyboardType="email-address"
                         />
                     </View>
 
@@ -303,6 +331,20 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 12,
+    },
+    guestSection: {
+        marginTop: 16,
+    },
+    guestHint: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginBottom: 8,
+    },
+    textArea: {
+        height: 84,
+        paddingTop: 10,
+        paddingBottom: 10,
+        textAlignVertical: 'top',
     },
     weekendLabel: {
         ...styles.caption2,

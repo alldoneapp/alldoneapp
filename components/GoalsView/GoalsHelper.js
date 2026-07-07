@@ -21,6 +21,7 @@ import {
     GOAL_SCHEDULE_MODE_FIXED,
     MILESTONE_TYPE_LINEAR,
     MILESTONE_TYPE_FIXED,
+    getLinearMilestonePeriods,
     normalizeGoalMilestonesConfig,
     normalizeGoalScheduleMode,
     normalizeMilestoneType,
@@ -292,6 +293,25 @@ export const getNewDefaultGoal = milestoneDate => {
         scheduleMode: GOAL_SCHEDULE_MODE_FIXED,
     }
     return goal
+}
+
+// When a project runs on automatic (linear) milestones, new goals created from the quick
+// "add task line" inline creator and the add-goal popup should default to a *dynamic* goal
+// anchored to the active linear milestone — mirroring the goals board "add into milestone"
+// flow. A dynamic goal parked at the backlog date would not match any milestone bucket (the
+// backlog bucket only surfaces fixed goals), so we anchor it to the current linear period.
+export const getNewGoalScheduleDefaults = projectId => {
+    const project = ProjectHelper.getProjectById(projectId)
+    const config = normalizeGoalMilestonesConfig(project?.goalMilestonesConfig)
+    if (config.mode !== GOAL_MILESTONES_MODE_LINEAR) {
+        return { isDynamic: false, scheduleMode: GOAL_SCHEDULE_MODE_FIXED, milestoneDate: null }
+    }
+    const [activePeriod] = getLinearMilestonePeriods(config, Date.now(), 1)
+    return {
+        isDynamic: true,
+        scheduleMode: GOAL_SCHEDULE_MODE_DYNAMIC,
+        milestoneDate: activePeriod ? activePeriod.date : BACKLOG_DATE_NUMERIC,
+    }
 }
 
 export const getNewDefaultGoalMilestone = () => {

@@ -8,7 +8,16 @@ import styles, { colors } from '../../styles/global'
 import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
 import { CREATE_TASK_MODAL_THEME, MENTION_MODAL_GOALS_TAB } from '../../Feeds/CommentsTextInput/textInputHelper'
 import PlusButton from '../Common/PlusButton'
-import { getNewDefaultGoal, getOwnerId } from '../../GoalsView/GoalsHelper'
+import {
+    getNewDefaultGoal,
+    getNewGoalScheduleDefaults,
+    getOwnerId,
+    GOAL_SCHEDULE_MODE_DYNAMIC,
+    GOAL_SCHEDULE_MODE_FIXED,
+    MILESTONE_TYPE_LINEAR,
+    normalizeGoalScheduleMode,
+    normalizeMilestoneType,
+} from '../../GoalsView/GoalsHelper'
 import DateRangeWrapper from '../../GoalsView/EditGoalsComponents/DateRangeWrapper'
 import AssigneesWrapper from '../../GoalsView/EditGoalsComponents/AssigneesWrapper'
 import { BACKLOG_DATE_NUMERIC } from '../../TaskListView/Utils/TasksHelper'
@@ -38,9 +47,13 @@ export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectI
         if (selectItemToMention) selectItemToMention(goal, MENTION_MODAL_GOALS_TAB, projectId, true)
     }
 
-    const updateDateRange = (date, rangeEdgePropertyName) => {
-        if (goal[rangeEdgePropertyName] !== date) {
-            addGoal({ ...goal, [rangeEdgePropertyName]: date })
+    const updateDateRange = (date, rangeEdgePropertyName, milestone) => {
+        const scheduleMode =
+            normalizeMilestoneType(milestone?.milestoneType) === MILESTONE_TYPE_LINEAR
+                ? GOAL_SCHEDULE_MODE_DYNAMIC
+                : GOAL_SCHEDULE_MODE_FIXED
+        if (goal[rangeEdgePropertyName] !== date || normalizeGoalScheduleMode(goal.scheduleMode) !== scheduleMode) {
+            addGoal({ ...goal, [rangeEdgePropertyName]: date, scheduleMode })
         }
     }
 
@@ -67,10 +80,16 @@ export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectI
 
     useEffect(() => {
         const ownerId = getOwnerId(projectId, getNewDefaultGoal(BACKLOG_DATE_NUMERIC).assigneesIds[0])
+        const scheduleDefaults = getNewGoalScheduleDefaults(projectId)
         Backend.getActiveMilestone(projectId, ownerId).then(activeMilestone => {
-            const baseDate = activeMilestone ? activeMilestone.date : BACKLOG_DATE_NUMERIC
+            const baseDate = scheduleDefaults.isDynamic
+                ? scheduleDefaults.milestoneDate
+                : activeMilestone
+                ? activeMilestone.date
+                : BACKLOG_DATE_NUMERIC
             const goal = getNewDefaultGoal(baseDate)
             goal.ownerId = ownerId
+            goal.scheduleMode = scheduleDefaults.scheduleMode
             setBaseDate(baseDate)
             setGoal(goal)
         })

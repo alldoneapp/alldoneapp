@@ -19,11 +19,14 @@ const DEFAULT_BOOKING_SETTINGS = {
     includeWeekends: false,
     bufferBeforeMinutes: 0,
     bufferAfterMinutes: 0,
+    additionalGuestEmails: [],
 }
 
 const MAX_BOOKING_RANGE_DAYS = 31
 const MAX_PUBLIC_SLOT_OPTIONS = 96
 const ALLOWED_BOOKING_DURATIONS = [15, 30, 60]
+const MAX_ADDITIONAL_GUESTS = 10
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function getHostingUrl() {
     const configured = process.env.HOSTING_URL || process.env.FUNCTIONS_HOSTING_URL || ''
@@ -65,6 +68,20 @@ function normalizeBoundedInteger(value, fallback, min, max) {
 function normalizeClockTime(value, fallback) {
     const normalized = safeTrim(value) || fallback
     return /^([01]\d|2[0-3]):[0-5]\d$/.test(normalized) ? normalized : fallback
+}
+
+function normalizeGuestEmails(value) {
+    const rawList = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[\s,;]+/) : []
+    const seen = new Set()
+    const result = []
+    for (const entry of rawList) {
+        const email = safeTrim(entry).toLowerCase()
+        if (!email || seen.has(email) || !EMAIL_REGEX.test(email)) continue
+        seen.add(email)
+        result.push(email)
+        if (result.length >= MAX_ADDITIONAL_GUESTS) break
+    }
+    return result
 }
 
 function normalizeAvailableDurations(value) {
@@ -116,6 +133,7 @@ function normalizeBookingSettings(input = {}, userData = {}) {
         includeWeekends: input.includeWeekends === true,
         bufferBeforeMinutes: normalizeBoundedInteger(input.bufferBeforeMinutes, defaults.bufferBeforeMinutes, 0, 240),
         bufferAfterMinutes: normalizeBoundedInteger(input.bufferAfterMinutes, defaults.bufferAfterMinutes, 0, 240),
+        additionalGuestEmails: normalizeGuestEmails(input.additionalGuestEmails),
         timeZone: moment.tz.zone(safeTrim(input.timeZone))
             ? safeTrim(input.timeZone)
             : resolveUserIanaTimeZone(userData),
@@ -156,6 +174,9 @@ function buildPublicBookingPage(userId, userData, settings) {
             includeWeekends: settings.includeWeekends,
             bufferBeforeMinutes: settings.bufferBeforeMinutes,
             bufferAfterMinutes: settings.bufferAfterMinutes,
+            // Host-private: consumed server-side in handleBook to add fixed guests to the
+            // event. Never returned to visitors (handleGetPage whitelists the fields it exposes).
+            additionalGuestEmails: normalizeGuestEmails(settings.additionalGuestEmails),
             timeZone: resolveUserIanaTimeZone(userData),
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),

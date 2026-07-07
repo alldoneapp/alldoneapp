@@ -11,6 +11,7 @@ const {
     resolvePublicDuration,
     slugify,
 } = require('./bookingSettings')
+const { sendBookingNotificationToHost, sendBookingConfirmationToVisitor } = require('./bookingEmails')
 
 function setCommonHeaders(res) {
     res.set('Cache-Control', 'no-store')
@@ -61,12 +62,17 @@ function isValidIsoDateTime(value) {
 function normalizeSlotKey(value, timeZone) {
     const parsed = moment.parseZone(value)
     if (!parsed.isValid()) return ''
-    return parsed.clone().tz(timeZone || 'UTC').format()
+    return parsed
+        .clone()
+        .tz(timeZone || 'UTC')
+        .format()
 }
 
 function slotMatchesOption(option, start, end, timeZone) {
-    return normalizeSlotKey(option.start, timeZone) === normalizeSlotKey(start, timeZone) &&
+    return (
+        normalizeSlotKey(option.start, timeZone) === normalizeSlotKey(start, timeZone) &&
         normalizeSlotKey(option.end, timeZone) === normalizeSlotKey(end, timeZone)
+    )
 }
 
 async function loadPublicPageOr404(res, slug) {
@@ -165,15 +171,25 @@ async function assertSlotStillAvailable(page, { start, end, timeZone, durationMi
     const slotStart = moment.parseZone(start)
     const resolvedDurationMinutes = resolvePublicDuration(page.settings, durationMinutes)
     if (!requestedRangeMatchesDuration({ start, end, durationMinutes: resolvedDurationMinutes })) return false
-    const rangeStart = slotStart.clone().tz(timeZone || page.settings.timeZone || 'UTC').startOf('day').format()
-    const rangeEnd = slotStart.clone().tz(timeZone || page.settings.timeZone || 'UTC').endOf('day').format()
+    const rangeStart = slotStart
+        .clone()
+        .tz(timeZone || page.settings.timeZone || 'UTC')
+        .startOf('day')
+        .format()
+    const rangeEnd = slotStart
+        .clone()
+        .tz(timeZone || page.settings.timeZone || 'UTC')
+        .endOf('day')
+        .format()
     const result = await findPublicBookingSlots(page, {
         start: rangeStart,
         end: rangeEnd,
         timeZone: timeZone || page.settings.timeZone,
         durationMinutes: resolvedDurationMinutes,
     })
-    return result.success && (result.options || []).some(option => slotMatchesOption(option, start, end, result.timeZone))
+    return (
+        result.success && (result.options || []).some(option => slotMatchesOption(option, start, end, result.timeZone))
+    )
 }
 
 async function handleBook(req, res) {
@@ -215,6 +231,16 @@ async function handleBook(req, res) {
         return
     }
 
+    // Host-configured fixed guests (block a shared calendar, auto-invite colleagues).
+    // Skip any that duplicate the visitor so the booker isn't added twice.
+    const additionalGuestEmails = Array.isArray(page.settings.additionalGuestEmails)
+        ? page.settings.additionalGuestEmails
+        : []
+    const attendees = [{ email: visitorEmail, displayName: visitorName }]
+    additionalGuestEmails.forEach(guestEmail => {
+        if (guestEmail && guestEmail !== visitorEmail) attendees.push({ email: guestEmail })
+    })
+
     const eventResult = await createCalendarEventForAssistantRequest({
         userId: page.userId,
         summary: `Meeting with ${visitorName}`,
@@ -222,7 +248,7 @@ async function handleBook(req, res) {
         start,
         end,
         timeZone: timeZone || page.settings.timeZone,
-        attendees: [{ email: visitorEmail, displayName: visitorName }],
+        attendees,
     })
 
     if (!eventResult?.success) {
@@ -249,6 +275,33 @@ async function handleBook(req, res) {
         },
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
     })
+
+    // Notify both sides — the host that somebody booked, and the visitor that it's
+    // confirmed. Both fail soft so a mail issue never breaks the confirmed booking.
+    const hostName = safeTrim(page.profile?.displayName)
+    await Promise.all([
+        sendBookingNotificationToHost({
+            userId: page.userId,
+            visitorName,
+            visitorEmail,
+            note,
+            start,
+            end,
+            timeZone: timeZone || page.settings.timeZone,
+            durationMinutes: resolvedDurationMinutes,
+            eventHtmlLink: eventResult.event?.htmlLink || '',
+        }),
+        sendBookingConfirmationToVisitor({
+            visitorName,
+            visitorEmail,
+            hostName,
+            note,
+            start,
+            end,
+            timeZone: timeZone || page.settings.timeZone,
+            durationMinutes: resolvedDurationMinutes,
+        }),
+    ])
 
     json(res, 200, {
         success: true,
