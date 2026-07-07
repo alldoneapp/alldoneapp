@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
 
 import styles, { colors } from '../../styles/global'
@@ -8,6 +8,8 @@ import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import { translate } from '../../../i18n/TranslationService'
 import URLsSettings, { URL_SETTINGS_INTEGRATIONS } from '../../../URLSystem/Settings/URLsSettings'
+import { hideFloatPopup, showFloatPopup } from '../../../redux/actions'
+import { popoverToSafePosition } from '../../../utils/HelperFunctions'
 import {
     CONNECTION_SERVICE_CALENDAR,
     CONNECTION_SERVICE_EMAIL,
@@ -28,8 +30,7 @@ import {
     revokeMicrosoftServerSideAuth,
     startMicrosoftServerSideAuth,
 } from '../../../apis/microsoft/MicrosoftOAuthServerSide'
-import GmailLabelingSettings from '../../ProjectDetailedView/ProjectProperties/ConnectGmail/ConnectGmailModal/GmailLabelingSettings'
-import CalendarProjectRoutingSettings from '../../ProjectDetailedView/ProjectProperties/ConnectCalendar/ConnectCalendarModal/CalendarProjectRoutingSettings'
+import ConnectionSettingsModal from './ConnectionSettingsModal'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 10000 }
 
@@ -96,14 +97,40 @@ function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled 
 }
 
 function ConnectionCard({ service, connection, projects }) {
+    const dispatch = useDispatch()
     const [busy, setBusy] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
+    const settingsOpenRef = useRef(false)
     const [authStatus, setAuthStatus] = useState(null)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const isGoogle = connection.provider !== PROVIDER_MICROSOFT
     const defaultProject = projects.find(project => project.id === connection.defaultProjectId)
     // Labeling is Gmail-only; calendar routing works for both providers.
     const hasSettingsSection = service === CONNECTION_SERVICE_CALENDAR || isGoogle
+
+    const openSettings = () => {
+        if (settingsOpenRef.current) return
+        settingsOpenRef.current = true
+        setSettingsOpen(true)
+        dispatch(showFloatPopup())
+    }
+
+    const closeSettings = () => {
+        if (!settingsOpenRef.current) return
+        settingsOpenRef.current = false
+        setSettingsOpen(false)
+        dispatch(hideFloatPopup())
+    }
+
+    useEffect(() => {
+        return () => {
+            if (settingsOpenRef.current) {
+                settingsOpenRef.current = false
+                dispatch(hideFloatPopup())
+            }
+        }
+    }, [dispatch])
 
     useEffect(() => {
         let isMounted = true
@@ -235,14 +262,35 @@ function ConnectionCard({ service, connection, projects }) {
                     </TouchableOpacity>
                 )}
                 {hasSettingsSection && (
-                    <TouchableOpacity
-                        style={localStyles.textAction}
-                        onPress={() => setSettingsOpen(open => !open)}
-                        disabled={busy}
+                    <Popover
+                        isOpen={settingsOpen}
+                        position={['right', 'bottom', 'left', 'top']}
+                        padding={4}
+                        windowBorderPadding={16}
+                        align="end"
+                        disableReposition={true}
+                        onClickOutside={closeSettings}
+                        contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
+                        containerStyle={{
+                            maxWidth: 'calc(100vw - 32px)',
+                            maxHeight: 'calc(100vh - 32px)',
+                            overflow: 'visible',
+                            zIndex: '9999',
+                        }}
+                        content={
+                            <ConnectionSettingsModal
+                                service={service}
+                                connection={connection}
+                                authStatus={authStatus}
+                                closePopover={closeSettings}
+                            />
+                        }
                     >
-                        <Icon name={settingsOpen ? 'chevron-up' : 'settings'} size={13} color={colors.Primary100} />
-                        <Text style={[styles.caption1, localStyles.textActionLabel]}>{translate('Settings')}</Text>
-                    </TouchableOpacity>
+                        <TouchableOpacity style={localStyles.textAction} onPress={openSettings} disabled={busy}>
+                            <Icon name="settings" size={13} color={colors.Primary100} />
+                            <Text style={[styles.caption1, localStyles.textActionLabel]}>{translate('Settings')}</Text>
+                        </TouchableOpacity>
+                    </Popover>
                 )}
                 <TouchableOpacity style={localStyles.textAction} onPress={disconnect} disabled={busy}>
                     <Icon name="unlink" size={13} color={colors.UtilityRed200} />
@@ -251,27 +299,6 @@ function ConnectionCard({ service, connection, projects }) {
                     </Text>
                 </TouchableOpacity>
             </View>
-
-            {settingsOpen && hasSettingsSection && (
-                <View style={localStyles.settingsArea}>
-                    {authStatus === null ? (
-                        <ActivityIndicator size="small" color={colors.Primary100} />
-                    ) : service === CONNECTION_SERVICE_CALENDAR ? (
-                        <CalendarProjectRoutingSettings
-                            projectId={connection.connectionId}
-                            isConnected={true}
-                            isSignedIn={!!authStatus?.hasCredentials}
-                            connectionEmail={connection.email}
-                        />
-                    ) : (
-                        <GmailLabelingSettings
-                            projectId={connection.connectionId}
-                            isConnected={true}
-                            authStatus={authStatus}
-                        />
-                    )}
-                </View>
-            )}
         </View>
     )
 }
@@ -474,12 +501,6 @@ const localStyles = StyleSheet.create({
     disconnectLabel: {
         color: colors.UtilityRed200,
         marginLeft: 4,
-    },
-    settingsArea: {
-        marginTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: colors.Grey300,
-        paddingTop: 4,
     },
     connectRow: {
         flexDirection: 'row',

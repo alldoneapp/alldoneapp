@@ -56,18 +56,37 @@ describe('microsoftEmailLine', () => {
         await expect(getMicrosoftLabelSummary('user1', 'proj1')).rejects.toThrow(/No connected Microsoft/)
     })
 
-    test('excludes junk/archive folders, keeps inbox + unread folders', async () => {
+    test('excludes junk/archive folders, keeps inbox + folders with items', async () => {
         getConnectedMicrosoftEmailAccounts.mockResolvedValue([
             { projectId: 'proj1', emailAddress: 'me@outlook.com', gmailEmail: 'me@outlook.com', emailDefault: true },
         ])
         mockRequest.mockResolvedValue({
             value: [
-                { id: 'f_inbox', displayName: 'Inbox', wellKnownName: 'inbox', unreadItemCount: 5 },
-                { id: 'f_junk', displayName: 'Junk', wellKnownName: 'junkemail', unreadItemCount: 9 },
-                { id: 'f_archive', displayName: 'Archive', wellKnownName: 'archive', unreadItemCount: 2 },
-                { id: 'f_deleted', displayName: 'Deleted', wellKnownName: 'deleteditems', unreadItemCount: 1 },
-                { id: 'f_clients', displayName: 'Clients', wellKnownName: '', unreadItemCount: 3 },
-                { id: 'f_read', displayName: 'ReadOnly', wellKnownName: '', unreadItemCount: 0 },
+                { id: 'f_inbox', displayName: 'Inbox', wellKnownName: 'inbox', unreadItemCount: 5, totalItemCount: 8 },
+                {
+                    id: 'f_junk',
+                    displayName: 'Junk',
+                    wellKnownName: 'junkemail',
+                    unreadItemCount: 9,
+                    totalItemCount: 9,
+                },
+                {
+                    id: 'f_archive',
+                    displayName: 'Archive',
+                    wellKnownName: 'archive',
+                    unreadItemCount: 2,
+                    totalItemCount: 2,
+                },
+                {
+                    id: 'f_deleted',
+                    displayName: 'Deleted',
+                    wellKnownName: 'deleteditems',
+                    unreadItemCount: 1,
+                    totalItemCount: 1,
+                },
+                { id: 'f_clients', displayName: 'Clients', wellKnownName: '', unreadItemCount: 3, totalItemCount: 4 },
+                { id: 'f_read', displayName: 'AllRead', wellKnownName: '', unreadItemCount: 0, totalItemCount: 6 },
+                { id: 'f_empty', displayName: 'Empty', wellKnownName: '', unreadItemCount: 0, totalItemCount: 0 },
             ],
         })
 
@@ -77,13 +96,15 @@ describe('microsoftEmailLine', () => {
         expect(ids).not.toContain('f_junk')
         expect(ids).not.toContain('f_archive')
         expect(ids).not.toContain('f_deleted')
-        expect(ids).not.toContain('f_read') // 0 unread, non-inbox
+        expect(ids).not.toContain('f_empty') // no items, non-inbox
         expect(ids).toContain('f_inbox')
         expect(ids).toContain('f_clients')
+        expect(ids).toContain('f_read') // fully read folders stay visible until cleared
 
-        // Inbox first, inbox unread reported.
+        // Inbox first, counts reported.
         expect(summary.labels[0].labelId).toBe('f_inbox')
         expect(summary.labels[0].kind).toBe('inbox')
+        expect(summary.labels[0].threadCount).toBe(8)
         expect(summary.inboxUnread).toBe(5)
         expect(summary.emailAddress).toBe('me@outlook.com')
     })

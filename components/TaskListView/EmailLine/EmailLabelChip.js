@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
 
@@ -8,27 +8,32 @@ import EmailLabelModal from './EmailLabelModal/EmailLabelModal'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 
-// A single label/folder pill with its unread count. Tapping it opens a modal
-// listing the inbox emails carrying that label.
-export default function EmailLabelChip({ label, projectId, provider, emailAddress, labelingDisabled, labelOptions }) {
+// A single merged label/folder pill with its inbox thread count summed across all
+// accounts carrying that label. Bold name hints at unread mail. Tapping it opens a
+// modal listing the matching inbox emails of every account, grouped by account.
+export default function EmailLabelChip({ group, labelOptionsByConnectionId, labelingDisabledByConnectionId }) {
     const [isOpen, setIsOpen] = useState(false)
     const smallScreen = useSelector(state => state.smallScreen)
-    if (!label) return null
-    const hasUnread = label.unreadCount > 0
+    if (!group) return null
+    const hasUnread = group.unreadCount > 0
 
     const trigger = (
         <TouchableOpacity
             style={localStyles.chip}
             onPress={() => setIsOpen(true)}
-            accessibilityLabel={`${label.displayName}: ${label.unreadCount}`}
+            accessibilityLabel={`${group.displayName}: ${group.threadCount}`}
         >
             <Text style={[styles.caption1, localStyles.name, hasUnread && localStyles.nameActive]} numberOfLines={1}>
-                {label.displayName}
+                {group.displayName}
             </Text>
-            {hasUnread && (
-                <View style={localStyles.badge}>
-                    <Text style={[styles.caption2, localStyles.badgeText]}>{label.unreadCount}</Text>
-                </View>
+            {group.sweeping ? (
+                <ActivityIndicator size="small" color={colors.Primary100} style={localStyles.sweepSpinner} />
+            ) : (
+                group.threadCount > 0 && (
+                    <View style={[localStyles.badge, !hasUnread && localStyles.badgeRead]}>
+                        <Text style={[styles.caption2, localStyles.badgeText]}>{group.threadCount}</Text>
+                    </View>
+                )
             )}
         </TouchableOpacity>
     )
@@ -44,12 +49,9 @@ export default function EmailLabelChip({ label, projectId, provider, emailAddres
             contentLocation={smallScreen ? null : undefined}
             content={
                 <EmailLabelModal
-                    projectId={projectId}
-                    label={label}
-                    provider={provider}
-                    emailAddress={emailAddress}
-                    labelingDisabled={labelingDisabled}
-                    labelOptions={labelOptions}
+                    group={group}
+                    labelOptionsByConnectionId={labelOptionsByConnectionId}
+                    labelingDisabledByConnectionId={labelingDisabledByConnectionId}
                     closePopover={() => setIsOpen(false)}
                 />
             }
@@ -91,7 +93,14 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    badgeRead: {
+        backgroundColor: colors.Grey400,
+    },
     badgeText: {
         color: '#ffffff',
+    },
+    sweepSpinner: {
+        marginLeft: 6,
+        transform: [{ scale: 0.7 }],
     },
 })

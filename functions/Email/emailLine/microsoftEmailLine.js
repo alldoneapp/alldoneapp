@@ -73,11 +73,14 @@ async function getMicrosoftLabelSummary(userId, projectId) {
                 labelId: folder.id,
                 name: folder.displayName || folder.id,
                 displayName: isInbox ? 'Inbox' : folder.displayName || folder.id,
+                // Graph exposes per-folder message totals, not conversation counts —
+                // acceptable approximation of the Gmail thread count.
+                threadCount: Number(folder.totalItemCount || 0),
                 unreadCount: Number(folder.unreadItemCount || 0),
                 kind: isInbox ? 'inbox' : 'folder',
             }
         })
-        .filter(label => label.unreadCount > 0 || label.kind === 'inbox')
+        .filter(label => label.threadCount > 0 || label.kind === 'inbox')
 
     const inboxUnread = labels.find(label => label.kind === 'inbox')?.unreadCount || 0
 

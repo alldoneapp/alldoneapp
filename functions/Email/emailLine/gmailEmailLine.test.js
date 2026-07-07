@@ -3,6 +3,7 @@ const mockLabelsGet = jest.fn()
 const mockMessagesList = jest.fn()
 const mockMessagesGet = jest.fn()
 const mockBatchModify = jest.fn()
+const mockThreadsList = jest.fn()
 
 jest.mock('googleapis', () => ({
     google: {
@@ -16,6 +17,9 @@ jest.mock('googleapis', () => ({
                     list: (...args) => mockMessagesList(...args),
                     get: (...args) => mockMessagesGet(...args),
                     batchModify: (...args) => mockBatchModify(...args),
+                },
+                threads: {
+                    list: (...args) => mockThreadsList(...args),
                 },
             },
         }),
@@ -43,6 +47,15 @@ const UNREAD_BY_ID = {
     Label_clients: 3,
 }
 
+// Inbox thread counts (read + unread) — deliberately different from the unread
+// counts so assertions can tell the two apart.
+const THREADS_BY_ID = {
+    INBOX: 6,
+    Label_ads: 5,
+    Label_work: 0,
+    Label_clients: 3,
+}
+
 function setupLabels(labels) {
     mockLabelsList.mockResolvedValue({ data: { labels } })
     // Inbox-scoped unread counting: labelIds is [labelId, 'INBOX', 'UNREAD'] for a
@@ -52,6 +65,12 @@ function setupLabels(labels) {
         const primary = labelIds[0]
         const count = UNREAD_BY_ID[primary] || 0
         return { data: { messages: Array.from({ length: count }, (_, i) => ({ id: `${primary}-${i}` })) } }
+    })
+    // Inbox-scoped thread counting: labelIds is [labelId, 'INBOX'] or ['INBOX'].
+    mockThreadsList.mockImplementation(async ({ labelIds }) => {
+        const primary = labelIds[0]
+        const count = THREADS_BY_ID[primary] || 0
+        return { data: { threads: Array.from({ length: count }, (_, i) => ({ id: `${primary}-t${i}` })) } }
     })
 }
 
@@ -66,7 +85,7 @@ describe('gmailEmailLine', () => {
         expect(stripLabelPrefix('Work')).toBe('Work')
     })
 
-    test('excludes system noise, keeps INBOX + user labels with unread', async () => {
+    test('excludes system noise, keeps INBOX + user labels with inbox threads', async () => {
         setupLabels([
             { id: 'INBOX', name: 'INBOX', type: 'system' },
             { id: 'SPAM', name: 'SPAM', type: 'system' },
@@ -87,7 +106,7 @@ describe('gmailEmailLine', () => {
         expect(ids).not.toContain('DRAFT')
         expect(ids).not.toContain('CATEGORY_PROMOTIONS')
 
-        // INBOX always kept; user label with 0 unread dropped.
+        // INBOX always kept; user label with no inbox threads dropped.
         expect(ids).toContain('INBOX')
         expect(ids).not.toContain('Label_work')
         expect(ids).toContain('Label_ads')
@@ -107,7 +126,7 @@ describe('gmailEmailLine', () => {
         expect(summary.inboxUnread).toBe(4)
     })
 
-    test('reports inbox unread and kinds', async () => {
+    test('reports thread + unread counts and kinds', async () => {
         setupLabels([
             { id: 'INBOX', name: 'INBOX', type: 'system' },
             { id: 'Label_ads', name: 'Alldone/Ads', type: 'user' },
@@ -116,8 +135,13 @@ describe('gmailEmailLine', () => {
         const inbox = summary.labels.find(label => label.labelId === 'INBOX')
         const ads = summary.labels.find(label => label.labelId === 'Label_ads')
         expect(inbox.kind).toBe('inbox')
+        expect(inbox.threadCount).toBe(6)
         expect(ads.kind).toBe('user')
         expect(ads.unreadCount).toBe(12)
+        expect(ads.threadCount).toBe(5)
+        // Thread counting never scopes by UNREAD; user labels stay inbox-scoped.
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_ads', 'INBOX'] }))
     })
 
     test('listMessagesForLabel scopes a user label to INBOX and parses headers', async () => {

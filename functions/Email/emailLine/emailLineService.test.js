@@ -31,7 +31,13 @@ jest.mock('../../Gmail/gmailLabelingConfig', () => ({
     })),
     getGmailLabelingStateRef: jest.fn(() => ({
         collection: () => ({
-            doc: id => ({ id }),
+            doc: id => ({
+                id,
+                set: async (value, opts) => {
+                    const prev = mockAuditDocs.get(id) || {}
+                    mockAuditDocs.set(id, opts && opts.merge ? { ...prev, ...value } : value)
+                },
+            }),
             orderBy: () => ({
                 limit: () => ({
                     get: async () => ({
@@ -65,6 +71,11 @@ jest.mock('../../shared/TaskService', () => ({
         initialize: jest.fn(),
         createAndPersistTask: mockCreateAndPersistTask,
     })),
+}))
+
+const mockAddProjectRoutingReasonComment = jest.fn()
+jest.mock('../../shared/projectRoutingCommentHelper', () => ({
+    addProjectRoutingReasonComment: (...args) => mockAddProjectRoutingReasonComment(...args),
 }))
 
 jest.mock('./microsoftEmailLine', () => ({
@@ -113,6 +124,7 @@ describe('emailLineService', () => {
         mockDocs.clear()
         mockAuditDocs.clear()
         gmailEmailLine.getUnreadInboxMessageIds.mockResolvedValue([])
+        mockAddProjectRoutingReasonComment.mockResolvedValue(null)
     })
 
     test('returns a disconnected summary when email is not connected', async () => {
@@ -301,7 +313,13 @@ describe('emailLineService', () => {
             body: 'Please pay invoice 42',
             threadId: 'th1',
         })
-        mockAuditDocs.set('m1', { selectedProjectId: 'proj_target', gmailThreadId: 'th1' })
+        mockAuditDocs.set('m1', {
+            selectedProjectId: 'proj_target',
+            gmailThreadId: 'th1',
+            selectedLabelKey: 'project_target',
+            reasoning: 'Invoice for the target project.',
+            confidence: 0.8,
+        })
         summarizeEmailAsTaskName.mockResolvedValue({ name: 'Pay invoice 42 from Bob', totalTokens: 120 })
         deductGold.mockResolvedValue({ success: true })
         mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 't1' })
@@ -344,6 +362,48 @@ describe('emailLineService', () => {
             goldCost: 5,
         })
         expect(refundGold).not.toHaveBeenCalled()
+
+        // Routing reasoning is posted as a comment on the created task…
+        expect(mockAddProjectRoutingReasonComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'proj_target',
+                taskId: 't1',
+                reasoning: 'Invoice for the target project.',
+                confidence: 0.8,
+                matched: true,
+                source: 'email_line_create_task',
+                routingKey: 'm1',
+                sourceDataField: 'gmailData',
+            })
+        )
+        // …and the audit record remembers the created task for future modal opens.
+        expect(mockAuditDocs.get('m1').taskCreated).toEqual(
+            expect.objectContaining({ taskId: 't1', projectId: 'proj_target', taskName: 'Pay invoice 42 from Bob' })
+        )
+    })
+
+    test('createTask without an audit match explains the default-project fallback', async () => {
+        gmailEmailLine.getMessageContext.mockResolvedValue({ subject: 'Hi', from: 'a@ex.com', body: 'b' })
+        summarizeEmailAsTaskName.mockResolvedValue({ name: 'Do the thing', totalTokens: 50 })
+        deductGold.mockResolvedValue({ success: true })
+        mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 't2' })
+
+        await performEmailLineAction('u', 'p1', {
+            action: 'createTask',
+            messageIds: ['m1'],
+            userData: googleUserData,
+        })
+
+        expect(mockAddProjectRoutingReasonComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'p1',
+                taskId: 't2',
+                matched: false,
+                reasoning: 'it is the default project for me@gmail.com',
+                confidence: null,
+            })
+        )
+        expect(mockAuditDocs.get('m1').taskCreated).toEqual(expect.objectContaining({ taskId: 't2' }))
     })
 
     test('createTask falls back to the connection project and refunds gold on failure', async () => {
@@ -361,6 +421,8 @@ describe('emailLineService', () => {
             5,
             expect.objectContaining({ source: 'email_create_task', note: 'task creation failed' })
         )
+        expect(mockAddProjectRoutingReasonComment).not.toHaveBeenCalled()
+        expect(mockAuditDocs.get('m1')).toBeUndefined()
     })
 
     test('listEmailLineMessages joins labeling audit data onto rows', async () => {
@@ -370,6 +432,7 @@ describe('emailLineService', () => {
             selectedGmailLabelName: 'Alldone/Newsletter',
             reasoning: 'Weekly digest the user subscribed to.',
             confidence: 0.92,
+            taskCreated: { taskId: 't9', projectId: 'p9', taskName: 'Read digest', at: 1 },
         })
         gmailEmailLine.listMessagesForLabel.mockResolvedValue({
             messages: [
@@ -386,9 +449,19 @@ describe('emailLineService', () => {
         expect(first.labelName).toBe('Alldone/Newsletter')
         expect(first.reasoning).toBe('Weekly digest the user subscribed to.')
         expect(first.confidence).toBe(0.92)
+        expect(first.taskCreated).toEqual(expect.objectContaining({ taskId: 't9', projectId: 'p9' }))
         const second = result.messages.find(m => m.messageId === 'm2')
         expect(second.needsReply).toBe(false)
         expect(second.hasAudit).toBe(false)
         expect(second.reasoning).toBe('')
+        expect(second.taskCreated).toBeNull()
+    })
+
+    test('inboxZero uses thread counts when present', async () => {
+        gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
+            labels: [{ labelId: 'INBOX', threadCount: 2, unreadCount: 0, kind: 'inbox' }],
+        })
+        const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData })
+        expect(summary.inboxZero).toBe(false)
     })
 })

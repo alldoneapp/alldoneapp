@@ -10,18 +10,63 @@ export function getEmailLineTodayKey(loggedUser = {}) {
     return getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
 }
 
-export function isEmailLineHiddenToday(loggedUser = {}, projectId) {
-    if (!projectId) return false
-    const hidden = loggedUser.emailLineHiddenTodayByProject?.[projectId]
-    return !!hidden && hidden === getEmailLineTodayKey(loggedUser)
-}
-
-// Account-level variant: the unified line collapses only when EVERY listed connection
-// is hidden for today.
+// The unified line collapses only when EVERY listed connection is hidden for today.
 export function areEmailLineConnectionsHiddenToday(loggedUser = {}, connectionIds = []) {
     if (!connectionIds.length) return false
     const todayKey = getEmailLineTodayKey(loggedUser)
     return connectionIds.every(connectionId => loggedUser.emailLineHiddenTodayByConnection?.[connectionId] === todayKey)
+}
+
+// The number a chip displays: threads currently in the inbox with that label
+// (read or unread). Falls back to the unread count for summaries produced by
+// an older server version that doesn't send threadCount yet.
+export function getLabelDisplayCount(label = {}) {
+    return Number.isFinite(label.threadCount) ? label.threadCount : Number(label.unreadCount || 0)
+}
+
+// Merges the labels of all connected accounts into one chip list, grouped
+// case-insensitively by display name (both accounts' "Inbox" become one chip
+// summing their counts). Each group keeps per-account entries so the modal and
+// its actions can route to the right connection.
+export function mergeLabelsAcrossConnections(connections = [], summariesByKey = {}) {
+    const groups = new Map()
+    connections.forEach(connection => {
+        const summary = summariesByKey[connection.connectionId]
+        if (!summary || summary.authExpired || connection.authInvalid) return
+        ;(summary.labels || []).forEach(label => {
+            const displayName = label.displayName || label.name || label.labelId
+            if (!displayName) return
+            const key = String(displayName).toLowerCase()
+            let group = groups.get(key)
+            if (!group) {
+                group = {
+                    key,
+                    displayName,
+                    isInbox: false,
+                    threadCount: 0,
+                    unreadCount: 0,
+                    sweeping: false,
+                    entries: [],
+                }
+                groups.set(key, group)
+            }
+            group.threadCount += getLabelDisplayCount(label)
+            group.unreadCount += Number(label.unreadCount || 0)
+            if (label.sweeping) group.sweeping = true
+            if (label.kind === 'inbox' || label.labelId === 'INBOX') group.isInbox = true
+            group.entries.push({
+                connectionId: connection.connectionId,
+                provider: connection.provider || summary.provider || '',
+                emailAddress: summary.emailAddress || connection.email || '',
+                labelId: label.labelId,
+                label,
+            })
+        })
+    })
+    return [...groups.values()].sort((a, b) => {
+        if (a.isInbox !== b.isInbox) return a.isInbox ? -1 : 1
+        return a.displayName.localeCompare(b.displayName)
+    })
 }
 
 // Chips are already provider-sorted server-side (Inbox first, then Alldone/*,

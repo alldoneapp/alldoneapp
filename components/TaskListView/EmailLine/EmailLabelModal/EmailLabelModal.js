@@ -7,26 +7,32 @@ import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { withWindowSizeHook } from '../../../../utils/useWindowSize'
 import { MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { translate } from '../../../../i18n/TranslationService'
-import { listEmailLineMessages, performEmailLineAction } from '../../../../utils/backends/EmailLine/emailLineBackend'
+import { getProviderLabel } from '../../../../utils/IntegrationProviders'
+import {
+    listEmailLineMessages,
+    performEmailLineAction,
+    performEmailLineSweepInBackground,
+} from '../../../../utils/backends/EmailLine/emailLineBackend'
 import { getLabelWebUrl, openUrlInNewTab } from '../emailLineHelper'
 import EmailRow from './EmailRow'
 
 const MODAL_MAX_WIDTH = 560
 
+const selectionKey = (connectionId, messageId) => `${connectionId}:${messageId}`
+
+// Lists the inbox emails of ONE merged label group across all accounts carrying
+// that label. With more than one account, each account renders as a section with
+// a slim account header; every row action routes to the row's own connection.
 function EmailLabelModal({
-    projectId,
-    label,
-    provider,
-    emailAddress,
-    labelingDisabled,
-    labelOptions,
+    group,
+    labelOptionsByConnectionId,
+    labelingDisabledByConnectionId,
     closePopover,
     windowSize,
 }) {
-    const [messages, setMessages] = useState([])
-    const [nextPageToken, setNextPageToken] = useState(null)
+    const [sections, setSections] = useState([])
     const [loading, setLoading] = useState(true)
-    const [loadingMore, setLoadingMore] = useState(false)
+    const [loadingMoreKey, setLoadingMoreKey] = useState(null)
     const [selectedIds, setSelectedIds] = useState(() => new Set())
     const [busyAction, setBusyAction] = useState(null)
 
@@ -35,12 +41,28 @@ function EmailLabelModal({
     const width = Math.min(screenWidth - 32, MODAL_MAX_WIDTH)
     const maxHeight = screenHeight - MODAL_MAX_HEIGHT_GAP
 
+    const entries = group?.entries || []
+    const multiAccount = entries.length > 1
+
     const load = async () => {
         setLoading(true)
         try {
-            const result = await listEmailLineMessages(projectId, label.labelId)
-            setMessages(result?.messages || [])
-            setNextPageToken(result?.nextPageToken || null)
+            const results = await Promise.all(
+                entries.map(async entry => {
+                    try {
+                        const result = await listEmailLineMessages(entry.connectionId, entry.labelId)
+                        return {
+                            ...entry,
+                            messages: result?.messages || [],
+                            nextPageToken: result?.nextPageToken || null,
+                        }
+                    } catch (error) {
+                        // One failing account must not blank the whole modal.
+                        return { ...entry, messages: [], nextPageToken: null }
+                    }
+                })
+            )
+            setSections(results)
         } finally {
             setLoading(false)
         }
@@ -49,64 +71,97 @@ function EmailLabelModal({
     useEffect(() => {
         load()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [label.labelId])
+    }, [group?.key])
 
-    const toggleSelect = row => {
+    const toggleSelect = (connectionId, row) => {
+        const key = selectionKey(connectionId, row.messageId)
         setSelectedIds(previous => {
             const next = new Set(previous)
-            next.has(row.messageId) ? next.delete(row.messageId) : next.add(row.messageId)
+            next.has(key) ? next.delete(key) : next.add(key)
             return next
         })
     }
 
-    const openRow = row => {
-        openUrlInNewTab(row.webUrl || getLabelWebUrl(provider, emailAddress, label))
+    const openRow = (section, row) => {
+        openUrlInNewTab(row.webUrl || getLabelWebUrl(section.provider, section.emailAddress, section.label))
     }
 
-    const loadMore = async () => {
-        if (!nextPageToken || loadingMore) return
-        setLoadingMore(true)
+    const loadMore = async section => {
+        if (!section.nextPageToken || loadingMoreKey) return
+        setLoadingMoreKey(section.connectionId)
         try {
-            const result = await listEmailLineMessages(projectId, label.labelId, { pageToken: nextPageToken })
-            setMessages(previous => [...previous, ...(result?.messages || [])])
-            setNextPageToken(result?.nextPageToken || null)
+            const result = await listEmailLineMessages(section.connectionId, section.labelId, {
+                pageToken: section.nextPageToken,
+            })
+            setSections(previous =>
+                previous.map(item =>
+                    item.connectionId === section.connectionId
+                        ? {
+                              ...item,
+                              messages: [...item.messages, ...(result?.messages || [])],
+                              nextPageToken: result?.nextPageToken || null,
+                          }
+                        : item
+                )
+            )
         } finally {
-            setLoadingMore(false)
+            setLoadingMoreKey(null)
         }
     }
 
     const runSelectionAction = async action => {
-        const messageIds = [...selectedIds]
-        if (messageIds.length === 0) return
+        if (selectedIds.size === 0) return
+        const messageIdsByConnection = {}
+        sections.forEach(section => {
+            section.messages.forEach(row => {
+                if (selectedIds.has(selectionKey(section.connectionId, row.messageId))) {
+                    if (!messageIdsByConnection[section.connectionId]) {
+                        messageIdsByConnection[section.connectionId] = []
+                    }
+                    messageIdsByConnection[section.connectionId].push(row.messageId)
+                }
+            })
+        })
         setBusyAction(action)
         try {
-            await performEmailLineAction(projectId, { action, messageIds })
-            setMessages(previous => previous.filter(message => !selectedIds.has(message.messageId)))
+            await Promise.all(
+                Object.keys(messageIdsByConnection).map(connectionId =>
+                    performEmailLineAction(connectionId, { action, messageIds: messageIdsByConnection[connectionId] })
+                )
+            )
+            setSections(previous =>
+                previous.map(section => ({
+                    ...section,
+                    messages: section.messages.filter(
+                        row => !selectedIds.has(selectionKey(section.connectionId, row.messageId))
+                    ),
+                }))
+            )
             setSelectedIds(new Set())
         } finally {
             setBusyAction(null)
         }
     }
 
-    const runSweep = async action => {
-        setBusyAction(action)
-        try {
-            await performEmailLineAction(projectId, { action, labelId: label.labelId })
-            setSelectedIds(new Set())
-            await load()
-        } finally {
-            setBusyAction(null)
-        }
+    // Sweeps close the modal immediately and continue in the background: counts are
+    // optimistically zeroed and the chip shows a spinner until the summary refreshes.
+    const runSweep = action => {
+        closePopover()
+        entries.forEach(entry => {
+            performEmailLineSweepInBackground(entry.connectionId, entry.labelId, action)
+        })
     }
 
     const selectedCount = selectedIds.size
     const isBusy = !!busyAction
+    const totalMessages = sections.reduce((total, section) => total + section.messages.length, 0)
+    const labelingDisabled = entries.some(entry => labelingDisabledByConnectionId?.[entry.connectionId])
 
     return (
         <View style={[localStyles.container, { width, maxHeight }]}>
             <View style={localStyles.header}>
                 <Text style={[styles.title6, localStyles.title]} numberOfLines={1}>
-                    {label.displayName}
+                    {group.displayName}
                 </Text>
                 <TouchableOpacity onPress={closePopover} accessibilityLabel={translate('Close')}>
                     <Icon name="x" size={20} color={colors.Text03} />
@@ -117,13 +172,9 @@ function EmailLabelModal({
                 <TouchableOpacity
                     style={localStyles.sweepButton}
                     onPress={() => runSweep('archiveAll')}
-                    disabled={isBusy || messages.length === 0}
+                    disabled={isBusy || totalMessages === 0}
                 >
-                    {busyAction === 'archiveAll' ? (
-                        <ActivityIndicator size="small" color={colors.Text03} />
-                    ) : (
-                        <Icon name="archive" size={14} color={colors.Text03} />
-                    )}
+                    <Icon name="archive" size={14} color={colors.Text03} />
                     <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Archive all')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -131,11 +182,7 @@ function EmailLabelModal({
                     onPress={() => runSweep('markAllRead')}
                     disabled={isBusy}
                 >
-                    {busyAction === 'markAllRead' ? (
-                        <ActivityIndicator size="small" color={colors.Text03} />
-                    ) : (
-                        <Icon name="check" size={14} color={colors.Text03} />
-                    )}
+                    <Icon name="check" size={14} color={colors.Text03} />
                     <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Mark all read')}</Text>
                 </TouchableOpacity>
             </View>
@@ -145,46 +192,68 @@ function EmailLabelModal({
                     <View style={localStyles.centered}>
                         <ActivityIndicator color={colors.Primary100} />
                     </View>
-                ) : messages.length === 0 ? (
+                ) : totalMessages === 0 ? (
                     <View style={localStyles.centered}>
                         <Text style={[styles.body2, localStyles.emptyText]}>
                             {translate('No emails in inbox with this label')}
                         </Text>
-                        <TouchableOpacity
-                            style={localStyles.openInProviderButton}
-                            onPress={() => openUrlInNewTab(getLabelWebUrl(provider, emailAddress, label))}
-                        >
-                            <Icon name="external-link" size={14} color={colors.Primary100} />
-                            <Text style={[styles.subtitle2, localStyles.openInProviderText]}>
-                                {translate(provider === 'microsoft' ? 'Open in Outlook' : 'Open in Gmail')}
-                            </Text>
-                        </TouchableOpacity>
+                        {entries.map(entry => (
+                            <TouchableOpacity
+                                key={entry.connectionId}
+                                style={localStyles.openInProviderButton}
+                                onPress={() =>
+                                    openUrlInNewTab(getLabelWebUrl(entry.provider, entry.emailAddress, entry.label))
+                                }
+                            >
+                                <Icon name="external-link" size={14} color={colors.Primary100} />
+                                <Text style={[styles.subtitle2, localStyles.openInProviderText]}>
+                                    {translate(entry.provider === 'microsoft' ? 'Open in Outlook' : 'Open in Gmail')}
+                                    {multiAccount ? ` · ${entry.emailAddress}` : ''}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
                     </View>
                 ) : (
-                    <>
-                        {messages.map(row => (
-                            <EmailRow
-                                key={row.messageId}
-                                row={row}
-                                projectId={projectId}
-                                labelOptions={labelOptions}
-                                selected={selectedIds.has(row.messageId)}
-                                onToggleSelect={toggleSelect}
-                                onOpen={openRow}
-                            />
-                        ))}
-                        {nextPageToken && (
-                            <TouchableOpacity style={localStyles.loadMore} onPress={loadMore} disabled={loadingMore}>
-                                {loadingMore ? (
-                                    <ActivityIndicator color={colors.Primary100} />
-                                ) : (
-                                    <Text style={[styles.subtitle2, localStyles.loadMoreText]}>
-                                        {translate('Load more')}
+                    sections.map(section => (
+                        <View key={section.connectionId}>
+                            {multiAccount && section.messages.length > 0 && (
+                                <View style={localStyles.accountHeader}>
+                                    <Text style={[styles.caption2, localStyles.accountHeaderText]} numberOfLines={1}>
+                                        {section.emailAddress}
                                     </Text>
-                                )}
-                            </TouchableOpacity>
-                        )}
-                    </>
+                                    <Text style={[styles.caption2, localStyles.accountHeaderProvider]}>
+                                        {getProviderLabel(section.provider)}
+                                    </Text>
+                                </View>
+                            )}
+                            {section.messages.map(row => (
+                                <EmailRow
+                                    key={selectionKey(section.connectionId, row.messageId)}
+                                    row={row}
+                                    connectionId={section.connectionId}
+                                    labelOptions={labelOptionsByConnectionId?.[section.connectionId] || []}
+                                    selected={selectedIds.has(selectionKey(section.connectionId, row.messageId))}
+                                    onToggleSelect={selectedRow => toggleSelect(section.connectionId, selectedRow)}
+                                    onOpen={selectedRow => openRow(section, selectedRow)}
+                                />
+                            ))}
+                            {section.nextPageToken && (
+                                <TouchableOpacity
+                                    style={localStyles.loadMore}
+                                    onPress={() => loadMore(section)}
+                                    disabled={!!loadingMoreKey}
+                                >
+                                    {loadingMoreKey === section.connectionId ? (
+                                        <ActivityIndicator color={colors.Primary100} />
+                                    ) : (
+                                        <Text style={[styles.subtitle2, localStyles.loadMoreText]}>
+                                            {translate('Load more')}
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    ))
                 )}
             </CustomScrollView>
 
@@ -286,9 +355,24 @@ const localStyles = StyleSheet.create({
     openInProviderButton: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginBottom: 6,
     },
     openInProviderText: {
         color: colors.Primary100,
+        marginLeft: 6,
+    },
+    accountHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingTop: 10,
+        paddingBottom: 2,
+    },
+    accountHeaderText: {
+        color: '#ffffff',
+        flexShrink: 1,
+    },
+    accountHeaderProvider: {
+        color: colors.Text03,
         marginLeft: 6,
     },
     loadMore: {

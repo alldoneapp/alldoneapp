@@ -82,6 +82,47 @@ export async function submitEmailLabelFeedback(projectId, { messageId, correctLa
     })
 }
 
+// Safety cap for background sweeps: the server processes up to 500 messages per
+// call, so 20 rounds cover ~10k messages before we stop looping.
+const MAX_SWEEP_ROUNDS = 20
+
+// Fire-and-forget sweep (archiveAll / markAllRead) for one connection+label: the
+// caller closes its modal immediately. The label's counts are zeroed optimistically
+// and flagged `sweeping` (the chip renders a spinner); the server is called in a
+// loop until it reports nothing remaining; a final forced summary fetch replaces
+// the optimistic numbers with the real ones.
+export async function performEmailLineSweepInBackground(projectId, labelId, action) {
+    if (!projectId || !labelId || !action) return
+    const summary = store.getState().emailLineSummaryByProject[projectId]
+    if (summary) {
+        const labels = (summary.labels || []).map(label =>
+            label.labelId === labelId
+                ? {
+                      ...label,
+                      sweeping: true,
+                      unreadCount: 0,
+                      ...(action === 'archiveAll' ? { threadCount: 0 } : {}),
+                  }
+                : label
+        )
+        store.dispatch(setEmailLineSummary(projectId, { ...summary, labels }))
+    }
+    try {
+        for (let round = 0; round < MAX_SWEEP_ROUNDS; round++) {
+            const result = await runHttpsCallableFunction('emailLineActionSecondGen', {
+                ...buildConnectionKeyPayload(projectId),
+                action,
+                labelId,
+            })
+            if (!result?.remaining) break
+        }
+    } catch (error) {
+        if (__DEV__) console.warn('[EmailLine] Background sweep failed:', error?.message || error)
+    } finally {
+        await fetchEmailLineSummary(projectId, { force: true })
+    }
+}
+
 // action ∈ { archive, markRead, archiveAll, markAllRead, draftReply, createTask }.
 // After a mutating action, force-refresh the summary so chip counts update; draftReply
 // and createTask don't change the inbox, so they skip the refresh.

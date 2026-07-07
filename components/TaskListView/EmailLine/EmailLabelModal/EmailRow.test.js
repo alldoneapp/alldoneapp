@@ -8,6 +8,7 @@ import renderer, { act } from 'react-test-renderer'
 
 import EmailRow from './EmailRow'
 import { openUrlInNewTab } from '../emailLineHelper'
+import URLTrigger from '../../../../URLSystem/URLTrigger'
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn(selector => selector({ smallScreen: false })) }))
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: jest.fn(key => key) }))
@@ -17,6 +18,13 @@ jest.mock('./DraftReplyPopup', () => () => null)
 // cannot transform.
 jest.mock('../../../../utils/backends/EmailLine/emailLineBackend', () => ({
     submitEmailLabelFeedback: jest.fn(),
+    performEmailLineAction: jest.fn(),
+}))
+// URLTrigger transitively imports the redux store as well.
+jest.mock('../../../../URLSystem/URLTrigger', () => ({ __esModule: true, default: { processUrl: jest.fn() } }))
+jest.mock('../../../../utils/NavigationService', () => ({ __esModule: true, default: {} }))
+jest.mock('../../../../utils/LinkingHelper', () => ({
+    getDvMainTabLink: jest.fn((projectId, objectId) => `/projects/${projectId}/tasks/${objectId}/properties`),
 }))
 
 const findByLabel = (tree, label) =>
@@ -34,7 +42,7 @@ describe('EmailRow', () => {
         }
         let tree
         act(() => {
-            tree = renderer.create(<EmailRow row={row} projectId="p1" selected={false} />)
+            tree = renderer.create(<EmailRow row={row} connectionId="c1" selected={false} />)
         })
         const [unsub] = findByLabel(tree, 'Unsubscribe')
         act(() => unsub.props.onPress())
@@ -51,7 +59,7 @@ describe('EmailRow', () => {
         }
         let tree
         act(() => {
-            tree = renderer.create(<EmailRow row={row} projectId="p1" selected={false} />)
+            tree = renderer.create(<EmailRow row={row} connectionId="c1" selected={false} />)
         })
         const [unsub] = findByLabel(tree, 'Unsubscribe')
         act(() => unsub.props.onPress())
@@ -62,12 +70,12 @@ describe('EmailRow', () => {
         const row = { messageId: 'm1', from: 'a@ex.com', subject: 'Hi', unsubscribe: null }
         let tree
         act(() => {
-            tree = renderer.create(<EmailRow row={row} projectId="p1" selected={false} />)
+            tree = renderer.create(<EmailRow row={row} connectionId="c1" selected={false} />)
         })
         expect(findByLabel(tree, 'Unsubscribe')).toHaveLength(0)
     })
 
-    it('expands reasoning and sends wrong-label feedback', async () => {
+    it('shows an always-visible Why? affordance and sends wrong-label feedback', async () => {
         const { submitEmailLabelFeedback } = require('../../../../utils/backends/EmailLine/emailLineBackend')
         submitEmailLabelFeedback.mockResolvedValue({ learnedRules: '- rule' })
         const row = {
@@ -81,9 +89,15 @@ describe('EmailRow', () => {
         let tree
         act(() => {
             tree = renderer.create(
-                <EmailRow row={row} projectId="p1" labelOptions={['Inbox', 'Alldone/Newsletter']} selected={false} />
+                <EmailRow row={row} connectionId="c1" labelOptions={['Inbox', 'Alldone/Newsletter']} selected={false} />
             )
         })
+
+        // The reasoning affordance renders as visible text, not just an icon.
+        const collapsedTexts = tree.root
+            .findAll(node => typeof node.props.children === 'string')
+            .map(n => n.props.children)
+        expect(collapsedTexts).toContain('Why?')
 
         const [toggle] = findByLabel(tree, 'Why this label')
         act(() => toggle.props.onPress())
@@ -105,12 +119,45 @@ describe('EmailRow', () => {
             await Promise.resolve()
         })
 
-        expect(submitEmailLabelFeedback).toHaveBeenCalledWith('p1', {
+        expect(submitEmailLabelFeedback).toHaveBeenCalledWith('c1', {
             messageId: 'm1',
             correctLabel: null,
             note: '',
         })
         const doneTexts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
         expect(doneTexts).toContain('Labeling instructions updated')
+    })
+
+    it('creates a task and turns the + button into a link to it', async () => {
+        const { performEmailLineAction } = require('../../../../utils/backends/EmailLine/emailLineBackend')
+        performEmailLineAction.mockResolvedValue({ taskId: 't1', projectId: 'p9' })
+        const row = { messageId: 'm1', from: 'a@ex.com', subject: 'Hi' }
+        let tree
+        act(() => {
+            tree = renderer.create(<EmailRow row={row} connectionId="c1" selected={false} />)
+        })
+
+        const [create] = findByLabel(tree, 'Create task')
+        await act(async () => {
+            create.props.onPress()
+            await Promise.resolve()
+        })
+
+        expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'createTask', messageIds: ['m1'] })
+        const [done] = findByLabel(tree, 'Task created')
+        act(() => done.props.onPress())
+        expect(URLTrigger.processUrl).toHaveBeenCalledWith(expect.anything(), '/projects/p9/tasks/t1/properties')
+    })
+
+    it('starts in the created state when the server says a task already exists', () => {
+        const row = { messageId: 'm1', from: 'a@ex.com', subject: 'Hi', taskCreated: { taskId: 't1', projectId: 'p9' } }
+        let tree
+        act(() => {
+            tree = renderer.create(<EmailRow row={row} connectionId="c1" selected={false} />)
+        })
+        expect(findByLabel(tree, 'Create task')).toHaveLength(0)
+        const [done] = findByLabel(tree, 'Task created')
+        act(() => done.props.onPress())
+        expect(URLTrigger.processUrl).toHaveBeenCalledWith(expect.anything(), '/projects/p9/tasks/t1/properties')
     })
 })

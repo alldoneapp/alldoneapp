@@ -9,6 +9,9 @@ import CheckBox from '../../../CheckBox'
 import { translate } from '../../../../i18n/TranslationService'
 import { performEmailLineAction, submitEmailLabelFeedback } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import { openUrlInNewTab } from '../emailLineHelper'
+import URLTrigger from '../../../../URLSystem/URLTrigger'
+import NavigationService from '../../../../utils/NavigationService'
+import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import DraftReplyPopup from './DraftReplyPopup'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 10000 }
@@ -34,14 +37,17 @@ function resolveUnsubscribeUrl(row) {
     return null
 }
 
-export default function EmailRow({ row, projectId, labelOptions, selected, onToggleSelect, onOpen }) {
+export default function EmailRow({ row, connectionId, labelOptions, selected, onToggleSelect, onOpen }) {
     const [draftOpen, setDraftOpen] = useState(false)
     const [reasoningOpen, setReasoningOpen] = useState(false)
     const [feedbackOpen, setFeedbackOpen] = useState(false)
     const [feedbackLabel, setFeedbackLabel] = useState(null)
     const [feedbackNote, setFeedbackNote] = useState('')
     const [feedbackState, setFeedbackState] = useState('idle') // idle | sending | done | error
-    const [taskState, setTaskState] = useState('idle') // idle | creating | done | error
+    // A task may already exist for this email from a previous session — the server
+    // persists it on the labeling audit record and returns it as row.taskCreated.
+    const [taskState, setTaskState] = useState(row?.taskCreated ? 'done' : 'idle') // idle | creating | done | error
+    const [createdTask, setCreatedTask] = useState(row?.taskCreated || null)
     const smallScreen = useSelector(state => state.smallScreen)
     if (!row) return null
 
@@ -53,7 +59,7 @@ export default function EmailRow({ row, projectId, labelOptions, selected, onTog
     const sendFeedback = async () => {
         setFeedbackState('sending')
         try {
-            await submitEmailLabelFeedback(projectId, {
+            await submitEmailLabelFeedback(connectionId, {
                 messageId: row.messageId,
                 correctLabel: feedbackLabel,
                 note: feedbackNote,
@@ -67,11 +73,20 @@ export default function EmailRow({ row, projectId, labelOptions, selected, onTog
     const createTask = async () => {
         setTaskState('creating')
         try {
-            await performEmailLineAction(projectId, { action: 'createTask', messageIds: [row.messageId] })
+            const result = await performEmailLineAction(connectionId, {
+                action: 'createTask',
+                messageIds: [row.messageId],
+            })
+            if (result?.taskId) setCreatedTask({ taskId: result.taskId, projectId: result.projectId })
             setTaskState('done')
         } catch (error) {
             setTaskState('error')
         }
+    }
+
+    const openCreatedTask = () => {
+        if (!createdTask?.taskId || !createdTask?.projectId) return
+        URLTrigger.processUrl(NavigationService, getDvMainTabLink(createdTask.projectId, createdTask.taskId, 'tasks'))
     }
 
     return (
@@ -110,11 +125,13 @@ export default function EmailRow({ row, projectId, labelOptions, selected, onTog
                             onPress={() => setReasoningOpen(open => !open)}
                             accessibilityLabel={translate('Why this label')}
                         >
-                            <Icon
-                                name={reasoningOpen ? 'chevron-up' : 'info'}
-                                size={12}
-                                color={reasoningOpen ? colors.Text02 : colors.Text03}
-                            />
+                            {!!row.labelName && (
+                                <Text style={[styles.caption2, localStyles.reasoningTag]} numberOfLines={1}>
+                                    {row.labelName}
+                                </Text>
+                            )}
+                            <Text style={[styles.caption2, localStyles.reasoningLink]}>{translate('Why?')}</Text>
+                            {reasoningOpen && <Icon name="chevron-up" size={12} color={colors.Text02} />}
                         </TouchableOpacity>
                     )}
                 </View>
@@ -228,24 +245,33 @@ export default function EmailRow({ row, projectId, labelOptions, selected, onTog
             </TouchableOpacity>
 
             <View style={localStyles.actions}>
-                <TouchableOpacity
-                    style={localStyles.actionButton}
-                    onPress={createTask}
-                    disabled={taskState === 'creating' || taskState === 'done'}
-                    accessibilityLabel={translate(taskState === 'done' ? 'Task created' : 'Create task')}
-                >
-                    {taskState === 'creating' ? (
-                        <ActivityIndicator size="small" color={colors.Text03} />
-                    ) : taskState === 'done' ? (
+                {taskState === 'done' ? (
+                    <TouchableOpacity
+                        style={localStyles.actionButton}
+                        onPress={openCreatedTask}
+                        disabled={!createdTask?.taskId || !createdTask?.projectId}
+                        accessibilityLabel={translate('Task created')}
+                    >
                         <Icon name="check-square" size={16} color={colors.UtilityGreen300} />
-                    ) : (
-                        <Icon
-                            name="plus-square"
-                            size={16}
-                            color={taskState === 'error' ? colors.UtilityRed200 : colors.Text03}
-                        />
-                    )}
-                </TouchableOpacity>
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity
+                        style={localStyles.actionButton}
+                        onPress={createTask}
+                        disabled={taskState === 'creating'}
+                        accessibilityLabel={translate('Create task')}
+                    >
+                        {taskState === 'creating' ? (
+                            <ActivityIndicator size="small" color={colors.Text03} />
+                        ) : (
+                            <Icon
+                                name="plus-square"
+                                size={16}
+                                color={taskState === 'error' ? colors.UtilityRed200 : colors.Text03}
+                            />
+                        )}
+                    </TouchableOpacity>
+                )}
                 <Popover
                     isOpen={draftOpen}
                     position={['left', 'bottom', 'top', 'right']}
@@ -256,7 +282,7 @@ export default function EmailRow({ row, projectId, labelOptions, selected, onTog
                     contentLocation={smallScreen ? null : undefined}
                     content={
                         <DraftReplyPopup
-                            projectId={projectId}
+                            projectId={connectionId}
                             messageId={row.messageId}
                             closePopover={() => setDraftOpen(false)}
                         />
@@ -329,11 +355,20 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
     },
     reasoningToggle: {
-        width: 20,
-        height: 20,
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        marginLeft: 6,
+        marginLeft: 8,
+        flexShrink: 1,
+    },
+    reasoningTag: {
+        maxWidth: 100,
+        color: colors.Text03,
+        marginRight: 4,
+    },
+    reasoningLink: {
+        color: colors.Text03,
+        textDecorationLine: 'underline',
+        marginRight: 2,
     },
     reasoningBox: {
         marginTop: 6,

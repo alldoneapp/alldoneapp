@@ -82,6 +82,18 @@ async function countInboxUnread(gmail, labelId) {
     return messages.length
 }
 
+// Counts threads (conversations) sitting in the inbox that carry the given label,
+// read or unread — the number a user thinks of as "emails left to deal with".
+async function countInboxThreads(gmail, labelId) {
+    const labelIds = labelId === 'INBOX' ? ['INBOX'] : [labelId, 'INBOX']
+    const response = await gmail.users.threads.list({ userId: 'me', labelIds, maxResults: 100 })
+    const threads = Array.isArray(response?.data?.threads) ? response.data.threads : []
+    if (response?.data?.nextPageToken) {
+        return Math.max(threads.length, Number(response?.data?.resultSizeEstimate || threads.length))
+    }
+    return threads.length
+}
+
 async function getGmailLabelSummary(userId, projectId) {
     const gmail = await getGmailClient(userId, projectId)
     const listResponse = await gmail.users.labels.list({ userId: 'me' })
@@ -92,11 +104,15 @@ async function getGmailLabelSummary(userId, projectId) {
     const detailed = await Promise.all(
         eligible.map(async label => {
             try {
-                const unreadCount = await countInboxUnread(gmail, label.id)
+                const [threadCount, unreadCount] = await Promise.all([
+                    countInboxThreads(gmail, label.id),
+                    countInboxUnread(gmail, label.id),
+                ])
                 return {
                     labelId: label.id,
                     name: label.name || label.id,
                     displayName: label.id === 'INBOX' ? 'Inbox' : stripLabelPrefix(label.name),
+                    threadCount,
                     unreadCount,
                     kind: label.id === 'INBOX' ? 'inbox' : 'user',
                 }
@@ -106,9 +122,9 @@ async function getGmailLabelSummary(userId, projectId) {
         })
     )
 
-    // Keep only labels with unread inbox mail, but always keep INBOX so the line
+    // Keep only labels with inbox threads, but always keep INBOX so the line
     // can render its Inbox Zero state.
-    const labels = detailed.filter(Boolean).filter(label => label.unreadCount > 0 || label.labelId === 'INBOX')
+    const labels = detailed.filter(Boolean).filter(label => label.threadCount > 0 || label.labelId === 'INBOX')
 
     const inboxUnread = labels.find(label => label.labelId === 'INBOX')?.unreadCount || 0
 

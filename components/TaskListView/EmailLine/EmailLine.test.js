@@ -38,12 +38,12 @@ jest.mock('../../../utils/NavigationService', () => ({ __esModule: true, default
 
 jest.mock('./EmailLabelChip', () => ({
     __esModule: true,
-    default: ({ label }) => {
+    default: ({ group }) => {
         const React = require('react')
         const { Text, View } = require('react-native')
         return (
             <View testID="chip">
-                <Text>{`${label.displayName}:${label.unreadCount}`}</Text>
+                <Text>{`${group.displayName}:${group.threadCount}${group.sweeping ? ':sweeping' : ''}`}</Text>
             </View>
         )
     },
@@ -84,39 +84,74 @@ describe('EmailLine', () => {
 
     it('renders nothing when email is not connected', () => {
         mockState = createState({ apisConnected: {} })
-        const tree = renderer.create(<EmailLine projectId={projectId} />).toJSON()
+        const tree = renderer.create(<EmailLine />).toJSON()
         expect(tree).toBeNull()
     })
 
-    it('renders label chips when there are unread labels', () => {
+    it('renders merged label chips with thread counts', () => {
         mockState = createState({
             summary: {
                 connected: true,
                 provider: 'google',
                 labels: [
-                    { labelId: 'INBOX', displayName: 'Inbox', unreadCount: 3, kind: 'inbox' },
-                    { labelId: 'Label_ads', displayName: 'Ads', unreadCount: 7, kind: 'user' },
+                    { labelId: 'INBOX', displayName: 'Inbox', threadCount: 3, unreadCount: 2, kind: 'inbox' },
+                    { labelId: 'Label_ads', displayName: 'Ads', threadCount: 7, unreadCount: 7, kind: 'user' },
                 ],
                 inboxZero: false,
             },
         })
-        const tree = renderer.create(<EmailLine projectId={projectId} />)
+        const tree = renderer.create(<EmailLine />)
         const rendered = textNodes(tree)
         expect(rendered).toContain('Inbox:3')
         expect(rendered).toContain('Ads:7')
     })
 
-    it('shows the Inbox Zero state when there are no unread labels', () => {
+    it('falls back to unread counts for summaries without threadCount', () => {
         mockState = createState({
             summary: {
                 connected: true,
                 provider: 'google',
-                labels: [{ labelId: 'INBOX', displayName: 'Inbox', unreadCount: 0, kind: 'inbox' }],
+                labels: [{ labelId: 'Label_ads', displayName: 'Ads', unreadCount: 5, kind: 'user' }],
+                inboxZero: false,
+            },
+        })
+        const tree = renderer.create(<EmailLine />)
+        expect(textNodes(tree)).toContain('Ads:5')
+    })
+
+    it('shows the Inbox Zero state when there are no inbox threads', () => {
+        mockState = createState({
+            summary: {
+                connected: true,
+                provider: 'google',
+                labels: [{ labelId: 'INBOX', displayName: 'Inbox', threadCount: 0, unreadCount: 0, kind: 'inbox' }],
                 inboxZero: true,
             },
         })
-        const tree = renderer.create(<EmailLine projectId={projectId} />)
+        const tree = renderer.create(<EmailLine />)
         expect(textNodes(tree).some(text => typeof text === 'string' && text.includes('Inbox Zero'))).toBe(true)
+    })
+
+    it('keeps a sweeping label visible while its counts are optimistically zeroed', () => {
+        mockState = createState({
+            summary: {
+                connected: true,
+                provider: 'google',
+                labels: [
+                    {
+                        labelId: 'Label_ads',
+                        displayName: 'Ads',
+                        threadCount: 0,
+                        unreadCount: 0,
+                        sweeping: true,
+                        kind: 'user',
+                    },
+                ],
+                inboxZero: false,
+            },
+        })
+        const tree = renderer.create(<EmailLine />)
+        expect(textNodes(tree)).toContain('Ads:0:sweeping')
     })
 
     it('collapses to a Show again affordance when done for today (hides emails)', () => {
@@ -126,32 +161,25 @@ describe('EmailLine', () => {
             summary: {
                 connected: true,
                 provider: 'google',
-                labels: [{ labelId: 'INBOX', displayName: 'Inbox', unreadCount: 3, kind: 'inbox' }],
+                labels: [{ labelId: 'INBOX', displayName: 'Inbox', threadCount: 3, unreadCount: 3, kind: 'inbox' }],
                 inboxZero: false,
             },
         })
-        const tree = renderer.create(<EmailLine projectId={projectId} />)
+        const tree = renderer.create(<EmailLine />)
         // Emails are hidden; only a "Show again" affordance remains.
         expect(textNodes(tree)).toContain('Show again')
         expect(tree.root.findAllByProps({ testID: 'chip' })).toHaveLength(0)
-    })
-
-    it('also collapses (does not vanish) in the unified All Projects line when done for today', () => {
-        const todayKey = getEmailLineTodayKey({ timezone: 0 })
-        mockState = createState({ hiddenToday: todayKey, summary: { connected: true, labels: [] } })
-        const tree = renderer.create(<EmailLine />)
-        expect(textNodes(tree)).toContain('Show again')
     })
 
     it('shows a Reconnect email state when auth expired', () => {
         mockState = createState({
             summary: { connected: true, provider: '', labels: [], authExpired: true, inboxZero: false },
         })
-        const tree = renderer.create(<EmailLine projectId={projectId} />)
+        const tree = renderer.create(<EmailLine />)
         expect(textNodes(tree)).toContain('Reconnect email')
     })
 
-    it('merges multiple accounts into one line with account captions in All Projects', () => {
+    it('merges same-named labels of multiple accounts into one chip', () => {
         const secondEmail = 'work@outlook.com'
         const secondConnectionId = buildConnectionId('email', 'microsoft', secondEmail)
         mockState = {
@@ -178,20 +206,26 @@ describe('EmailLine', () => {
                 [connectionId]: {
                     connected: true,
                     provider: 'google',
-                    labels: [{ labelId: 'INBOX', displayName: 'Inbox', unreadCount: 2, kind: 'inbox' }],
+                    emailAddress: accountEmail,
+                    labels: [{ labelId: 'INBOX', displayName: 'Inbox', threadCount: 2, unreadCount: 2, kind: 'inbox' }],
                 },
                 [secondConnectionId]: {
                     connected: true,
                     provider: 'microsoft',
-                    labels: [{ labelId: 'f_inbox', displayName: 'Inbox', unreadCount: 5, kind: 'inbox' }],
+                    emailAddress: secondEmail,
+                    labels: [
+                        { labelId: 'f_inbox', displayName: 'Inbox', threadCount: 5, unreadCount: 1, kind: 'inbox' },
+                    ],
                 },
             },
         }
         const tree = renderer.create(<EmailLine />)
         const rendered = textNodes(tree)
-        expect(rendered).toContain('Inbox:2')
-        expect(rendered).toContain('Inbox:5')
-        expect(rendered).toContain(accountEmail)
-        expect(rendered).toContain(secondEmail)
+        expect(rendered).toContain('Inbox:7')
+        expect(rendered).not.toContain('Inbox:2')
+        expect(rendered).not.toContain('Inbox:5')
+        // No per-account captions on the unified line anymore.
+        expect(rendered).not.toContain(accountEmail)
+        expect(rendered).not.toContain(secondEmail)
     })
 })

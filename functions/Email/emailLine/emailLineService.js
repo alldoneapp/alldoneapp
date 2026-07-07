@@ -125,7 +125,9 @@ async function getEmailLineSummary(userId, projectId, options = {}) {
     }
 
     const labels = summary.labels || []
-    const inboxZero = labels.every(label => label.unreadCount === 0)
+    const inboxZero = labels.every(
+        label => (Number.isFinite(label.threadCount) ? label.threadCount : label.unreadCount) === 0
+    )
 
     // "Needs reply" = flagged by the labeling classifier AND still unread in the inbox.
     let needsReplyByMessageId = {}
@@ -208,6 +210,7 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
                 labelName: audit?.selectedGmailLabelName || null,
                 reasoning: audit?.reasoning || '',
                 confidence: Number.isFinite(audit?.confidence) ? audit.confidence : null,
+                taskCreated: audit?.taskCreated || null,
             }
         })
         return { messages, nextPageToken: result?.nextPageToken || null }
@@ -399,6 +402,45 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     if (result?.success === false || !taskId) {
         await refundGold(userId, goldCost, { ...goldContext, note: 'task creation failed' })
         throw new Error(result?.message || 'Failed to create task from email')
+    }
+
+    // Explain the project choice on the task, same as the labeling follow-up flow.
+    // Best-effort: a failed comment must not fail the (already created) task.
+    try {
+        const { addProjectRoutingReasonComment } = require('../../shared/projectRoutingCommentHelper')
+        const matched = !!auditProjectId && targetProjectId === auditProjectId
+        await addProjectRoutingReasonComment({
+            userData,
+            projectId: targetProjectId,
+            taskId,
+            task: result?.task || null,
+            reasoning: matched
+                ? audit?.reasoning || ''
+                : `it is the default project for ${connection.emailAddress || 'this email account'}`,
+            confidence: matched && Number.isFinite(audit?.confidence) ? audit.confidence : null,
+            matched,
+            source: 'email_line_create_task',
+            routingKey: messageId,
+            sourceDataField: 'gmailData',
+            routingData: {
+                messageId,
+                threadId: context.threadId || '',
+                selectedLabelKey: audit?.selectedLabelKey || '',
+                selectedProjectId: auditProjectId || null,
+            },
+        })
+    } catch (error) {
+        console.warn('[emailLine] createTask routing comment failed:', error?.message || error)
+    }
+
+    // Remember on the audit record that this email already has a task, so the modal
+    // shows the created state (with a link) instead of the + button on reopen.
+    try {
+        await getLabelingAuditCollectionRef(userId, projectId)
+            .doc(messageId)
+            .set({ taskCreated: { taskId, projectId: targetProjectId, taskName, at: Date.now() } }, { merge: true })
+    } catch (error) {
+        console.warn('[emailLine] createTask audit stamp failed:', error?.message || error)
     }
 
     return {
