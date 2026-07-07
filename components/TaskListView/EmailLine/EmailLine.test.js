@@ -154,7 +154,7 @@ describe('EmailLine', () => {
         expect(textNodes(tree)).toContain('Ads:0:sweeping')
     })
 
-    it('collapses to a Show again affordance when done for today (hides emails)', () => {
+    it('disappears completely when done for today', () => {
         const todayKey = getEmailLineTodayKey({ timezone: 0 })
         mockState = createState({
             hiddenToday: todayKey,
@@ -165,10 +165,9 @@ describe('EmailLine', () => {
                 inboxZero: false,
             },
         })
-        const tree = renderer.create(<EmailLine />)
-        // Emails are hidden; only a "Show again" affordance remains.
-        expect(textNodes(tree)).toContain('Show again')
-        expect(tree.root.findAllByProps({ testID: 'chip' })).toHaveLength(0)
+        // The way back is "Show email line" in the All Projects "..." menu.
+        const tree = renderer.create(<EmailLine />).toJSON()
+        expect(tree).toBeNull()
     })
 
     it('shows a Reconnect email state when auth expired', () => {

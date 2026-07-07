@@ -1594,6 +1594,7 @@
     "Needs reply": "Antwort nötig",
     "Why this label": "Warum dieses Label",
     "Why?": "Warum?",
+    "Show email line": "E-Mail-Zeile anzeigen",
     "Enable email labeling to get reply detection": "Aktiviere die E-Mail-Beschriftung, um Antwort-Erkennung zu erhalten",
     "Wrong label?": "Falsches Label?",
     "Send feedback": "Feedback senden",
@@ -1812,6 +1813,8 @@
     "Apply": "Anwenden",
     "Auto postpone": "Automatisch verschieben",
     "Auto-postpone tasks": "Aufgaben automatisch verschieben",
+    "Auto-postpone based on priorities": "Automatisch nach Prioritäten verschieben",
+    "Task Priorities": "Aufgabenprioritäten",
     "Auto-postpone tasks description": "Wähle, welche der heutigen Aufgaben automatisch verschoben werden sollen. Sie tauchen später wieder auf.",
     "All today's tasks": "Alle heutigen Aufgaben"
 }

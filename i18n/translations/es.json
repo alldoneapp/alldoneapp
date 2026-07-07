@@ -2029,6 +2029,7 @@
     "Needs reply": "Requiere respuesta",
     "Why this label": "Por qué esta etiqueta",
     "Why?": "¿Por qué?",
+    "Show email line": "Mostrar línea de correo",
     "Enable email labeling to get reply detection": "Activa el etiquetado de correos para detectar respuestas pendientes",
     "Wrong label?": "¿Etiqueta incorrecta?",
     "Send feedback": "Enviar comentario",
@@ -2237,6 +2238,8 @@
     "Do later": "Hacer más tarde",
     "Apply": "Aplicar",
     "Auto-postpone tasks": "Auto-posponer tareas",
+    "Auto-postpone based on priorities": "Auto-posponer según prioridades",
+    "Task Priorities": "Prioridades de tareas",
     "Auto-postpone tasks description": "Elige qué tareas de hoy quieres auto-posponer. Volverán a aparecer más tarde.",
     "All today's tasks": "Todas las tareas de hoy"
 }

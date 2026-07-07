@@ -11,6 +11,9 @@ import { checkIfSelectedAllProjects } from '../../../../SettingsView/ProjectsSet
 import OKRModal from '../../../../TaskListView/OKRs/OKRModal'
 import AutoPostponeTasksModal from '../../../../TaskListView/AutoPostpone/AutoPostponeTasksModal'
 import { DATE_TASK_INDEX, TODAY_DATE } from '../../../../../utils/backends/openTasks'
+import { areEmailLineConnectionsHiddenToday } from '../../../../TaskListView/EmailLine/emailLineHelper'
+import { listEmailConnections } from '../../../../../utils/IntegrationProviders'
+import { clearUserEmailLineHiddenTodayForConnections } from '../../../../../utils/backends/Users/usersFirestore'
 
 export default function TaskHeaderMoreButton({
     projectIdOverride,
@@ -43,6 +46,7 @@ export default function TaskHeaderMoreButton({
         if (!dateSections) return -1
         return dateSections.findIndex(section => section[DATE_TASK_INDEX] === TODAY_DATE)
     })
+    const loggedUser = useSelector(state => state.loggedUser)
     const [showAddOKR, setShowAddOKR] = useState(false)
     const [showAutoPostpone, setShowAutoPostpone] = useState(false)
     const modalRef = useRef()
@@ -52,6 +56,11 @@ export default function TaskHeaderMoreButton({
     const inSelectedProject = !!projectId
     const showAddOKRItem = !!projectId && projectOKRs.length === 0
     const showOrganizeItems = inSelectedProject && todayDateIndex >= 0
+
+    // "Done for today" on the Email line hides it completely; this menu item is the
+    // way to bring it back before the daily reset.
+    const emailConnectionIds = listEmailConnections(loggedUser).map(connection => connection.connectionId)
+    const showEmailLineItem = !inSelectedProject && areEmailLineConnectionsHiddenToday(loggedUser, emailConnectionIds)
 
     const link = inSelectedProject
         ? `${window.location.origin}/projects/${projectId}/user/${userId}/tasks/open`
@@ -198,6 +207,23 @@ export default function TaskHeaderMoreButton({
         if (!inSelectedProject) {
             list.push(shortcut => {
                 return <SyncCalendarModalItem key={'gmbtn-sync-calendar'} shortcut={shortcut} onPress={dismissModal} />
+            })
+        }
+
+        if (showEmailLineItem) {
+            list.push(shortcut => {
+                return (
+                    <ModalItem
+                        key={'gmbtn-show-email-line'}
+                        icon={'mail'}
+                        text={'Show email line'}
+                        shortcut={shortcut}
+                        onPress={() => {
+                            clearUserEmailLineHiddenTodayForConnections(loggedUser.uid, emailConnectionIds)
+                            dismissModal()
+                        }}
+                    />
+                )
             })
         }
 

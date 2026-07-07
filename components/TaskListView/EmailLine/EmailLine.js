@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
+import Popover from 'react-tiny-popover'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
@@ -10,11 +11,11 @@ import SettingsHelper from '../../SettingsView/SettingsHelper'
 import { DV_TAB_SETTINGS_INTEGRATIONS } from '../../../utils/TabNavigationConstants'
 import { listEmailConnections } from '../../../utils/IntegrationProviders'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
-import {
-    setUserEmailLineHiddenTodayForConnections,
-    clearUserEmailLineHiddenTodayForConnections,
-} from '../../../utils/backends/Users/usersFirestore'
+import { setUserEmailLineHiddenTodayForConnections } from '../../../utils/backends/Users/usersFirestore'
 import EmailLabelChip from './EmailLabelChip'
+import EmailLineMenu from './EmailLineMenu'
+
+const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 import {
     areEmailLineConnectionsHiddenToday,
     getEmailLineTodayKey,
@@ -28,7 +29,9 @@ import {
 export default function EmailLine() {
     const loggedUser = useSelector(state => state.loggedUser)
     const summariesByKey = useSelector(state => state.emailLineSummaryByProject)
+    const smallScreen = useSelector(state => state.smallScreen)
     const [showAllChips, setShowAllChips] = useState(false)
+    const [menuOpen, setMenuOpen] = useState(false)
 
     const connections = listEmailConnections(loggedUser)
     const connectionIds = connections.map(connection => connection.connectionId)
@@ -44,12 +47,12 @@ export default function EmailLine() {
 
     if (connections.length === 0) return null
 
+    // Done for today hides the line completely; it comes back via "Show email
+    // line" in the All Projects "..." menu (and automatically the next day).
+    if (hiddenToday) return null
+
     const hideForToday = () => {
         setUserEmailLineHiddenTodayForConnections(loggedUser.uid, connectionIds, getEmailLineTodayKey(loggedUser))
-    }
-
-    const showAgain = () => {
-        clearUserEmailLineHiddenTodayForConnections(loggedUser.uid, connectionIds)
     }
 
     const reload = () => {
@@ -60,31 +63,6 @@ export default function EmailLine() {
 
     const openSettings = () => {
         SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_INTEGRATIONS)
-    }
-
-    // When done for today, collapse to just the header + a "Show again" pill.
-    if (hiddenToday) {
-        return (
-            <View style={localStyles.container}>
-                <View style={localStyles.header}>
-                    <View style={localStyles.headerLeft}>
-                        <Icon name="mail" size={14} color={colors.Text03} style={localStyles.headerIcon} />
-                        <Text style={[styles.caption1, localStyles.headerText]}>{translate('Email')}</Text>
-                    </View>
-                    <View style={localStyles.headerRight}>
-                        <TouchableOpacity
-                            style={localStyles.doneButton}
-                            onPress={showAgain}
-                            disabled={!loggedUser.uid}
-                            accessibilityLabel={translate('Show again')}
-                        >
-                            <Icon name="rotate-ccw" size={12} color={colors.Text03} />
-                            <Text style={[styles.caption1, localStyles.doneButtonText]}>{translate('Show again')}</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </View>
-        )
     }
 
     const summaries = connections.map(connection => summariesByKey[connection.connectionId])
@@ -125,24 +103,32 @@ export default function EmailLine() {
                     >
                         <Icon name="refresh-cw" size={14} color={colors.Text03} />
                     </TouchableOpacity>
-                    <TouchableOpacity
-                        style={localStyles.iconButton}
-                        onPress={openSettings}
-                        accessibilityLabel={translate('Integrations')}
-                    >
-                        <Icon name="settings" size={14} color={colors.Text03} />
-                    </TouchableOpacity>
                 </View>
                 <View style={localStyles.headerRight}>
-                    <TouchableOpacity
-                        style={localStyles.doneButton}
-                        onPress={hideForToday}
-                        disabled={!loggedUser.uid}
-                        accessibilityLabel={translate('Done for today')}
+                    <Popover
+                        isOpen={menuOpen}
+                        position={['bottom', 'top', 'right', 'left']}
+                        align="end"
+                        padding={4}
+                        containerStyle={POPOVER_CONTAINER_STYLE}
+                        onClickOutside={() => setMenuOpen(false)}
+                        contentLocation={smallScreen ? null : undefined}
+                        content={
+                            <EmailLineMenu
+                                closePopover={() => setMenuOpen(false)}
+                                onDoneForToday={hideForToday}
+                                onOpenIntegrations={openSettings}
+                            />
+                        }
                     >
-                        <Icon name="check" size={12} color={colors.Text03} />
-                        <Text style={[styles.caption1, localStyles.doneButtonText]}>{translate('Done for today')}</Text>
-                    </TouchableOpacity>
+                        <TouchableOpacity
+                            style={localStyles.iconButton}
+                            onPress={() => setMenuOpen(true)}
+                            accessibilityLabel={translate('Settings')}
+                        >
+                            <Icon name="settings" size={14} color={colors.Text03} />
+                        </TouchableOpacity>
+                    </Popover>
                 </View>
             </View>
 
@@ -198,6 +184,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     headerIcon: {
         marginRight: 6,
     },
@@ -205,31 +195,12 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginRight: 8,
     },
-    headerRight: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
     iconButton: {
         height: 22,
         paddingHorizontal: 2,
         flexDirection: 'row',
         alignItems: 'center',
         marginRight: 8,
-    },
-    doneButton: {
-        height: 22,
-        borderRadius: 11,
-        backgroundColor: '#ffffff',
-        borderWidth: 1,
-        borderColor: colors.Grey400,
-        paddingHorizontal: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    doneButtonText: {
-        color: colors.Text03,
-        marginLeft: 4,
     },
     chipsRow: {
         flexDirection: 'row',

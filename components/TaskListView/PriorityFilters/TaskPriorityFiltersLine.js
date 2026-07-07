@@ -110,47 +110,9 @@ export default function TaskPriorityFiltersLine({ projectId }) {
 
     return (
         <View style={localStyles.container} testID="task-priority-filters">
-            <TouchableOpacity
-                style={[localStyles.filterItem, isAllSelected && localStyles.filterItemSelected]}
-                onPress={() => dispatch(clearTaskPriorityFilters())}
-                testID="task-priority-filter-all"
-            >
-                <Text style={[localStyles.filterName, isAllSelected && localStyles.filterNameSelected]}>
-                    {translate('All')}
-                </Text>
-                <Text style={[localStyles.filterCount, isAllSelected && localStyles.filterCountSelected]}>{total}</Text>
-            </TouchableOpacity>
-
-            {FILTER_PRIORITY_KEYS.map(priorityKey => {
-                const count = counts[priorityKey] || 0
-                const isSelected = taskPriorityFilters.includes(priorityKey)
-                if (count === 0 && !isSelected) return null
-
-                return (
-                    <TouchableOpacity
-                        key={priorityKey}
-                        style={[localStyles.filterItem, isSelected && localStyles.filterItemSelected]}
-                        onPress={() => togglePriority(priorityKey)}
-                        testID={`task-priority-filter-${priorityKey}`}
-                    >
-                        <View
-                            style={[
-                                localStyles.colorDot,
-                                { backgroundColor: getTaskPriorityColors(priorityKey).foregroundColor },
-                                isSelected && localStyles.colorDotSelected,
-                            ]}
-                        />
-                        <Text style={[localStyles.filterName, isSelected && localStyles.filterNameSelected]}>
-                            {translate(getTaskPriorityLabel(priorityKey))}
-                        </Text>
-                        <Text style={[localStyles.filterCount, isSelected && localStyles.filterCountSelected]}>
-                            {count}
-                        </Text>
-                    </TouchableOpacity>
-                )
-            })}
-
-            <View style={localStyles.autoPostponeContainer}>
+            <View style={localStyles.header}>
+                <Icon name="flag" size={14} color={colors.Text03} style={localStyles.headerIcon} />
+                <Text style={[styles.caption1, localStyles.headerText]}>{translate('Task Priorities')}</Text>
                 {showAutoPostpone ? (
                     <Popover
                         content={
@@ -160,8 +122,8 @@ export default function TaskPriorityFiltersLine({ projectId }) {
                                 initialSelectedPriorities={taskPriorityFilters}
                             />
                         }
-                        align={'end'}
-                        position={['bottom', 'left', 'right', 'top']}
+                        align={'start'}
+                        position={['bottom', 'right', 'left', 'top']}
                         isOpen={true}
                         contentLocation={smallScreenNavigation ? null : undefined}
                         padding={0}
@@ -173,6 +135,50 @@ export default function TaskPriorityFiltersLine({ projectId }) {
                     <AutoPostponeButton onPress={openAutoPostpone} mobile={smallScreenNavigation} />
                 )}
             </View>
+
+            <View style={localStyles.chipsRow}>
+                <TouchableOpacity
+                    style={[localStyles.filterItem, isAllSelected && localStyles.filterItemSelected]}
+                    onPress={() => dispatch(clearTaskPriorityFilters())}
+                    testID="task-priority-filter-all"
+                >
+                    <Text style={[localStyles.filterName, isAllSelected && localStyles.filterNameSelected]}>
+                        {translate('All')}
+                    </Text>
+                    <Text style={[localStyles.filterCount, isAllSelected && localStyles.filterCountSelected]}>
+                        {total}
+                    </Text>
+                </TouchableOpacity>
+
+                {FILTER_PRIORITY_KEYS.map(priorityKey => {
+                    const count = counts[priorityKey] || 0
+                    const isSelected = taskPriorityFilters.includes(priorityKey)
+                    if (count === 0 && !isSelected) return null
+
+                    return (
+                        <TouchableOpacity
+                            key={priorityKey}
+                            style={[localStyles.filterItem, isSelected && localStyles.filterItemSelected]}
+                            onPress={() => togglePriority(priorityKey)}
+                            testID={`task-priority-filter-${priorityKey}`}
+                        >
+                            <View
+                                style={[
+                                    localStyles.colorDot,
+                                    { backgroundColor: getTaskPriorityColors(priorityKey).foregroundColor },
+                                    isSelected && localStyles.colorDotSelected,
+                                ]}
+                            />
+                            <Text style={[localStyles.filterName, isSelected && localStyles.filterNameSelected]}>
+                                {translate(getTaskPriorityLabel(priorityKey))}
+                            </Text>
+                            <Text style={[localStyles.filterCount, isSelected && localStyles.filterCountSelected]}>
+                                {count}
+                            </Text>
+                        </TouchableOpacity>
+                    )
+                })}
+            </View>
         </View>
     )
 }
@@ -183,13 +189,12 @@ function AutoPostponeButton({ onPress, mobile }) {
             style={[localStyles.autoPostponeButton, mobile && localStyles.autoPostponeButtonMobile]}
             onPress={onPress}
             testID="task-priority-auto-postpone"
+            accessibilityLabel={translate('Auto-postpone based on priorities')}
         >
-            <View style={localStyles.autoPostponeIcon}>
-                <Icon name="coffee" size={16} color={colors.Text03} />
-            </View>
+            <Icon name="coffee" size={12} color={colors.Text03} />
             {!mobile && (
-                <Text style={[styles.subtitle2, localStyles.autoPostponeText, windowTagStyle()]}>
-                    {translate('Auto-postpone tasks')}
+                <Text style={[styles.caption1, localStyles.autoPostponeText, windowTagStyle()]}>
+                    {translate('Auto-postpone based on priorities')}
                 </Text>
             )}
         </TouchableOpacity>
@@ -198,11 +203,27 @@ function AutoPostponeButton({ onPress, mobile }) {
 
 const localStyles = StyleSheet.create({
     container: {
+        marginTop: 8,
+        marginBottom: 8,
+    },
+    header: {
+        minHeight: 24,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    headerIcon: {
+        marginRight: 6,
+    },
+    headerText: {
+        flex: 1,
+        color: colors.Text03,
+        marginRight: 8,
+    },
+    chipsRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         alignItems: 'center',
         marginTop: 8,
-        marginBottom: 8,
     },
     filterItem: {
         flexDirection: 'row',
@@ -242,32 +263,23 @@ const localStyles = StyleSheet.create({
     filterCountSelected: {
         color: 'white',
     },
-    autoPostponeContainer: {
-        marginLeft: 'auto',
-        marginBottom: 8,
-    },
     autoPostponeButton: {
-        flexDirection: 'row',
-        borderRadius: 50,
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: 24,
-        alignSelf: 'flex-start',
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: '#ffffff',
         borderWidth: 1,
-        borderColor: colors.Text03,
-        paddingHorizontal: 4,
+        borderColor: colors.Grey400,
+        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     autoPostponeButtonMobile: {
         width: 24,
-        height: 24,
-    },
-    autoPostponeIcon: {
-        flexDirection: 'row',
-        alignSelf: 'center',
+        paddingHorizontal: 0,
     },
     autoPostponeText: {
         color: colors.Text03,
-        marginLeft: 6,
-        marginRight: 4,
+        marginLeft: 4,
     },
 })
