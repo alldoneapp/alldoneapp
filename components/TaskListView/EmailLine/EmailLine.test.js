@@ -7,7 +7,7 @@ import { Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import EmailLine from './EmailLine'
-import { getEmailLineTodayKey } from './emailLineHelper'
+import { EMAIL_LINE_NO_LABEL_ID, getEmailLineTodayKey } from './emailLineHelper'
 import { buildConnectionId } from '../../../utils/IntegrationProviders'
 import SettingsHelper from '../../SettingsView/SettingsHelper'
 import NavigationService from '../../../utils/NavigationService'
@@ -82,6 +82,8 @@ const textNodes = tree =>
 const findButtonByLabel = (tree, label) =>
     tree.root.findAllByType(TouchableOpacity).find(node => node.props.accessibilityLabel === label)
 
+const hasLiveDot = tree => tree.root.findAllByProps({ accessibilityLabel: 'Email labeling active' }).length > 0
+
 describe('EmailLine', () => {
     beforeEach(() => {
         jest.clearAllMocks()
@@ -102,14 +104,22 @@ describe('EmailLine', () => {
                 labels: [
                     { labelId: 'INBOX', displayName: 'Inbox', threadCount: 3, unreadCount: 2, kind: 'inbox' },
                     { labelId: 'Label_ads', displayName: 'Ads', threadCount: 7, unreadCount: 7, kind: 'user' },
+                    {
+                        labelId: EMAIL_LINE_NO_LABEL_ID,
+                        displayName: 'No label',
+                        threadCount: 2,
+                        unreadCount: 1,
+                        kind: 'no_label',
+                    },
                 ],
                 inboxZero: false,
             },
         })
         const tree = renderer.create(<EmailLine />)
         const rendered = textNodes(tree)
-        expect(rendered).toContain('Inbox:7')
+        expect(rendered).toContain('Inbox:9')
         expect(rendered).toContain('Ads:7')
+        expect(rendered).toContain('No label:2')
     })
 
     it('falls back to unread counts for summaries without threadCount', () => {
@@ -158,6 +168,34 @@ describe('EmailLine', () => {
         })
         const tree = renderer.create(<EmailLine />)
         expect(textNodes(tree)).toContain('Ads:0:sweeping')
+    })
+
+    it('shows the pulsating live dot while labeling is active', () => {
+        mockState = createState({
+            summary: {
+                connected: true,
+                provider: 'google',
+                labelingEnabled: true,
+                labels: [{ labelId: 'INBOX', displayName: 'Inbox', threadCount: 3, unreadCount: 2, kind: 'inbox' }],
+                inboxZero: false,
+            },
+        })
+        const tree = renderer.create(<EmailLine />)
+        expect(hasLiveDot(tree)).toBe(true)
+    })
+
+    it('hides the live dot when labeling is not enabled', () => {
+        mockState = createState({
+            summary: {
+                connected: true,
+                provider: 'google',
+                labelingEnabled: false,
+                labels: [{ labelId: 'INBOX', displayName: 'Inbox', threadCount: 3, unreadCount: 2, kind: 'inbox' }],
+                inboxZero: false,
+            },
+        })
+        const tree = renderer.create(<EmailLine />)
+        expect(hasLiveDot(tree)).toBe(false)
     })
 
     it('disappears completely when done for today', () => {

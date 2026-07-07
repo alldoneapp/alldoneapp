@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import React, { useEffect, useRef, useState } from 'react'
+import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../styles/global'
@@ -14,6 +14,7 @@ import { setUserEmailLineHiddenTodayForConnections } from '../../../utils/backen
 import EmailLabelChip from './EmailLabelChip'
 
 import {
+    EMAIL_LINE_NO_LABEL_ID,
     areEmailLineConnectionsHiddenToday,
     getEmailLineTodayKey,
     mergeLabelsAcrossConnections,
@@ -22,6 +23,52 @@ import {
 
 function isInboxLabel(label = {}) {
     return label.kind === 'inbox' || label.labelId === 'INBOX' || label.displayName === 'Inbox'
+}
+
+function isLabelFeedbackOption(label = {}) {
+    return (
+        !isInboxLabel(label) &&
+        label.kind !== 'no_label' &&
+        label.labelId !== EMAIL_LINE_NO_LABEL_ID &&
+        label.displayName !== 'No label'
+    )
+}
+
+// A gently pulsating green dot shown in the Email header while labeling is
+// active, signaling that incoming emails are being parsed in the background.
+// The steady core reads as "live"; the halo pings outward and fades to convey
+// ongoing activity. Animation is skipped under tests to avoid leaking timers.
+function EmailLabelingLiveDot() {
+    const pulse = useRef(new Animated.Value(0)).current
+
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'test') return undefined
+        const animation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulse, {
+                    toValue: 1,
+                    duration: 1600,
+                    easing: Easing.out(Easing.ease),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
+            ])
+        )
+        animation.start()
+        return () => animation.stop()
+    }, [pulse])
+
+    const haloOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0] })
+    const haloScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 2.1] })
+
+    return (
+        <View style={localStyles.liveDot} accessibilityLabel={translate('Email labeling active')}>
+            <Animated.View
+                style={[localStyles.liveDotHalo, { opacity: haloOpacity, transform: [{ scale: haloScale }] }]}
+            />
+            <View style={localStyles.liveDotCore} />
+        </View>
+    )
 }
 
 // The unified Email line (All Projects only): ALL connected accounts merged into
@@ -66,6 +113,9 @@ export default function EmailLine() {
 
     const summaries = connections.map(connection => summariesByKey[connection.connectionId])
     const loadedSummaries = summaries.filter(Boolean)
+    // Any account whose labeling classifier is enabled means emails are being
+    // parsed in the background — surface that as the live dot in the header.
+    const labelingActive = loadedSummaries.some(summary => summary.labelingEnabled === true)
     const expiredConnections = connections.filter(
         (connection, index) => summaries[index]?.authExpired || connection.authInvalid
     )
@@ -85,7 +135,7 @@ export default function EmailLine() {
         labelOptionsByConnectionId[connection.connectionId] =
             summary?.labelOptions ||
             (summary?.labels || [])
-                .filter(label => !isInboxLabel(label))
+                .filter(isLabelFeedbackOption)
                 .map(label => label.displayName)
                 .filter(Boolean)
         labelingDisabledByConnectionId[connection.connectionId] =
@@ -98,6 +148,7 @@ export default function EmailLine() {
                 <View style={localStyles.headerLeft}>
                     <Icon name="mail" size={14} color={colors.Text03} style={localStyles.headerIcon} />
                     <Text style={[styles.caption1, localStyles.headerText]}>{translate('Email')}</Text>
+                    {labelingActive && <EmailLabelingLiveDot />}
                     <TouchableOpacity
                         style={localStyles.iconButton}
                         onPress={reload}
@@ -189,6 +240,26 @@ const localStyles = StyleSheet.create({
     headerText: {
         color: colors.Text03,
         marginRight: 8,
+    },
+    liveDot: {
+        width: 14,
+        height: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 8,
+    },
+    liveDotHalo: {
+        position: 'absolute',
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        backgroundColor: colors.UtilityGreen200,
+    },
+    liveDotCore: {
+        width: 7,
+        height: 7,
+        borderRadius: 3.5,
+        backgroundColor: colors.UtilityGreen200,
     },
     iconButton: {
         height: 22,

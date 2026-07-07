@@ -61,6 +61,10 @@ function isInboxLabel(label = {}) {
     return label.kind === 'inbox' || label.labelId === 'INBOX' || label.displayName === 'Inbox'
 }
 
+function isNoLabel(label = {}) {
+    return label.kind === 'no_label' || label.labelId === '__NO_LABEL__' || label.displayName === 'No label'
+}
+
 async function loadUserData(userId, providedUserData) {
     if (providedUserData) return providedUserData
     const userDoc = await admin.firestore().doc(`users/${userId}`).get()
@@ -268,7 +272,7 @@ async function getEmailLineSummary(userId, projectId, options = {}) {
             ...new Set([
                 ...configuredLabelOptions,
                 ...labels
-                    .filter(label => !isInboxLabel(label))
+                    .filter(label => !isInboxLabel(label) && !isNoLabel(label))
                     .map(label => label.displayName)
                     .filter(Boolean),
             ]),

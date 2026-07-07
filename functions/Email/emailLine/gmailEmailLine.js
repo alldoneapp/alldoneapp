@@ -5,6 +5,8 @@ const { getAccessToken, getOAuth2Client } = require('../../GoogleOAuth/googleOAu
 const { parseListUnsubscribe, chunk } = require('./emailLineShared')
 
 const MESSAGES_PER_PAGE = 25
+const NO_LABEL_ID = '__NO_LABEL__'
+const NO_LABEL_SEARCH_QUERY = 'has:nouserlabels'
 // Hard cap on how many messages a single sweep invocation touches.
 const SWEEP_LIMIT = 500
 const BATCH_MODIFY_CHUNK = 100
@@ -71,8 +73,10 @@ function compareLabels(a, b) {
 // (e.g. Ads) contributes only the copies still sitting in the inbox — matching
 // exactly what the label modal lists.
 async function countInboxUnread(gmail, labelId) {
-    const labelIds = labelId === 'INBOX' ? ['INBOX', 'UNREAD'] : [labelId, 'INBOX', 'UNREAD']
-    const response = await gmail.users.messages.list({ userId: 'me', labelIds, maxResults: 100 })
+    const request = isNoLabelId(labelId)
+        ? { labelIds: ['INBOX', 'UNREAD'], q: NO_LABEL_SEARCH_QUERY }
+        : { labelIds: labelId === 'INBOX' ? ['INBOX', 'UNREAD'] : [labelId, 'INBOX', 'UNREAD'] }
+    const response = await gmail.users.messages.list({ userId: 'me', ...request, maxResults: 100 })
     const messages = Array.isArray(response?.data?.messages) ? response.data.messages : []
     // Exact for the realistic inbox range; if a page overflows, fall back to the
     // estimate as a floor so a very large count isn't understated.
@@ -85,8 +89,8 @@ async function countInboxUnread(gmail, labelId) {
 // Counts threads (conversations) sitting in the inbox that carry the given label,
 // read or unread — the number a user thinks of as "emails left to deal with".
 async function countInboxThreads(gmail, labelId) {
-    const labelIds = labelId === 'INBOX' ? ['INBOX'] : [labelId, 'INBOX']
-    const response = await gmail.users.threads.list({ userId: 'me', labelIds, maxResults: 100 })
+    const request = listParamsForLabel(labelId)
+    const response = await gmail.users.threads.list({ userId: 'me', ...request, maxResults: 100 })
     const threads = Array.isArray(response?.data?.threads) ? response.data.threads : []
     if (response?.data?.nextPageToken) {
         return Math.max(threads.length, Number(response?.data?.resultSizeEstimate || threads.length))
@@ -121,10 +125,12 @@ async function getGmailLabelSummary(userId, projectId) {
             }
         })
     )
+    const noLabel = await buildNoLabelSummary(gmail)
 
     // Keep only labels with inbox threads, but always keep INBOX so the line
     // can render its Inbox Zero state.
     const labels = detailed.filter(Boolean).filter(label => label.threadCount > 0 || label.labelId === 'INBOX')
+    if (noLabel.threadCount > 0) labels.push(noLabel)
 
     const inboxUnread = labels.find(label => label.labelId === 'INBOX')?.unreadCount || 0
 
@@ -186,9 +192,40 @@ function buildGmailMessageUrl(emailAddress, messageId) {
     )}&continue=${encodeURIComponent(continueUrl)}&service=mail`
 }
 
-function labelIdsForList(labelId) {
-    if (!labelId || labelId === 'INBOX') return ['INBOX']
-    return [labelId, 'INBOX']
+function isNoLabelId(labelId) {
+    return labelId === NO_LABEL_ID
+}
+
+function listParamsForLabel(labelId) {
+    if (isNoLabelId(labelId)) return { labelIds: ['INBOX'], q: NO_LABEL_SEARCH_QUERY }
+    if (!labelId || labelId === 'INBOX') return { labelIds: ['INBOX'] }
+    return { labelIds: [labelId, 'INBOX'] }
+}
+
+async function buildNoLabelSummary(gmail) {
+    try {
+        const [threadCount, unreadCount] = await Promise.all([
+            countInboxThreads(gmail, NO_LABEL_ID),
+            countInboxUnread(gmail, NO_LABEL_ID),
+        ])
+        return {
+            labelId: NO_LABEL_ID,
+            name: 'No label',
+            displayName: 'No label',
+            threadCount,
+            unreadCount,
+            kind: 'no_label',
+        }
+    } catch (error) {
+        return {
+            labelId: NO_LABEL_ID,
+            name: 'No label',
+            displayName: 'No label',
+            threadCount: 0,
+            unreadCount: 0,
+            kind: 'no_label',
+        }
+    }
 }
 
 function getMessageTimestamp(message = {}) {
@@ -244,9 +281,10 @@ function buildThreadRow(thread = {}, threadRef = {}, labelId, emailAddress) {
 
 async function listMessagesForLabel(userId, projectId, labelId, { pageToken, emailAddress } = {}) {
     const gmail = await getGmailClient(userId, projectId)
+    const listParams = listParamsForLabel(labelId)
     const listResponse = await gmail.users.threads.list({
         userId: 'me',
-        labelIds: labelIdsForList(labelId),
+        ...listParams,
         maxResults: MESSAGES_PER_PAGE,
         pageToken: pageToken || undefined,
     })
@@ -349,7 +387,7 @@ async function markMessagesRead(userId, projectId, messageIds) {
 // thread for [label, INBOX] even when one message has the user label and a newer
 // sibling has INBOX, so sweeps must mutate inbox/unread messages across the
 // whole visible thread.
-async function collectThreadMessageIds(gmail, labelIds, shouldModifyMessage) {
+async function collectThreadMessageIds(gmail, listParams, shouldModifyMessage) {
     const ids = []
     const seen = new Set()
     let pageToken
@@ -358,7 +396,7 @@ async function collectThreadMessageIds(gmail, labelIds, shouldModifyMessage) {
     do {
         const response = await gmail.users.threads.list({
             userId: 'me',
-            labelIds,
+            ...listParams,
             maxResults: BATCH_MODIFY_CHUNK,
             pageToken,
         })
@@ -404,7 +442,7 @@ async function sweepLabel(userId, projectId, labelId, action) {
     const gmail = await getGmailClient(userId, projectId)
     const isArchive = action === 'archiveAll'
     const mutationLabelId = isArchive ? 'INBOX' : 'UNREAD'
-    const { ids, hasMore } = await collectThreadMessageIds(gmail, labelIdsForList(labelId), message =>
+    const { ids, hasMore } = await collectThreadMessageIds(gmail, listParamsForLabel(labelId), message =>
         (Array.isArray(message?.labelIds) ? message.labelIds : []).includes(mutationLabelId)
     )
     if (ids.length > 0) {
@@ -427,6 +465,7 @@ module.exports = {
     getUnreadInboxMessages,
     stripLabelPrefix,
     buildGmailMessageUrl,
+    NO_LABEL_ID,
     EXCLUDED_SYSTEM_LABEL_IDS,
     MAX_LABELS_TO_INSPECT,
     SWEEP_LIMIT,

@@ -3,11 +3,6 @@
 const admin = require('firebase-admin')
 
 const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
-const {
-    CONNECTION_SERVICE_EMAIL,
-    getConnection,
-    resolveEmailConnection,
-} = require('../Integrations/providerConnections')
 const { extractJsonFromText, isGpt5ReasoningModel, mapAssistantModelToOpenAIModel } = require('./gmailPromptClassifier')
 const { MAX_LEARNED_RULES_LENGTH, getGmailLabelingStateRef } = require('./gmailLabelingConfig')
 
@@ -56,38 +51,8 @@ function describeLabelOptions(labelDefinitions = []) {
     }))
 }
 
-function getLegacyProjectIdsForEmailConnection(userData = {}, connection = {}) {
-    if (!connection || connection.provider !== 'google' || !connection.emailAddress) return []
-    const targetEmail = String(connection.emailAddress || '')
-        .trim()
-        .toLowerCase()
-    const apisConnected = userData?.apisConnected || {}
-    return Object.keys(apisConnected).filter(projectId => {
-        const resolved = resolveEmailConnection(apisConnected[projectId] || {})
-        return (
-            resolved.connected &&
-            resolved.provider === 'google' &&
-            String(resolved.emailAddress || '')
-                .trim()
-                .toLowerCase() === targetEmail
-        )
-    })
-}
-
-function getGmailLabelingLookupKeys(userData = {}, key = '') {
-    const keys = [key]
-    if (typeof key === 'string' && key.startsWith('email_')) {
-        const connection = getConnection(userData, CONNECTION_SERVICE_EMAIL, key)
-        if (connection?.provider === 'google') {
-            if (connection.defaultProjectId) keys.push(connection.defaultProjectId)
-            keys.push(...getLegacyProjectIdsForEmailConnection(userData, connection))
-        }
-    }
-    return [...new Set(keys.filter(Boolean))]
-}
-
 async function resolveFeedbackLabelingContext({ userId, userData, projectId, messageId }) {
-    const { loadConfig, loadAuditEntry } = require('./serverSideGmailLabelingSync')
+    const { loadConfig, loadAuditEntry, getGmailLabelingLookupKeys } = require('./serverSideGmailLabelingSync')
     const lookupKeys = getGmailLabelingLookupKeys(userData, projectId)
     let firstConfiguredContext = null
 

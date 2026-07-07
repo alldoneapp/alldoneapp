@@ -2,6 +2,7 @@ import {
     splitChipsForDisplay,
     areEmailLineConnectionsHiddenToday,
     getEmailAccountWebUrl,
+    EMAIL_LINE_NO_LABEL_ID,
     getEmailLineTodayKey,
     getLabelDisplayCount,
     getLabelWebUrl,
@@ -65,6 +66,13 @@ describe('emailLineHelper', () => {
                 labels: [
                     { labelId: 'INBOX', displayName: 'Inbox', threadCount: 3, unreadCount: 1, kind: 'inbox' },
                     { labelId: 'Label_ads', displayName: 'Ads', threadCount: 2, unreadCount: 2, kind: 'user' },
+                    {
+                        labelId: EMAIL_LINE_NO_LABEL_ID,
+                        displayName: 'No label',
+                        threadCount: 4,
+                        unreadCount: 1,
+                        kind: 'no_label',
+                    },
                 ],
             },
             c2: {
@@ -76,15 +84,20 @@ describe('emailLineHelper', () => {
             },
         }
         const groups = mergeLabelsAcrossConnections(connections, summariesByKey)
-        expect(groups).toHaveLength(3)
+        expect(groups).toHaveLength(4)
         expect(groups[0].displayName).toBe('Inbox')
         expect(groups[0].isInbox).toBe(true)
-        expect(groups[0].threadCount).toBe(7)
-        expect(groups[0].unreadCount).toBe(3)
-        expect(groups[0].entries.map(entry => entry.labelId)).toEqual(['Label_ads', 'f_clients'])
+        expect(groups[0].threadCount).toBe(11)
+        expect(groups[0].unreadCount).toBe(4)
+        expect(groups[0].entries.map(entry => entry.labelId)).toEqual([
+            'Label_ads',
+            EMAIL_LINE_NO_LABEL_ID,
+            'f_clients',
+        ])
         expect(groups[1].displayName).toBe('Ads')
         expect(groups[1].entries).toHaveLength(1)
         expect(groups[2].displayName).toBe('Clients')
+        expect(groups[3].displayName).toBe('No label')
     })
 
     test('mergeLabelsAcrossConnections skips auth-expired accounts and flags sweeping groups', () => {
@@ -126,6 +139,16 @@ describe('emailLineHelper', () => {
     test('getLabelWebUrl returns the Outlook webmail for Microsoft', () => {
         const url = getLabelWebUrl('microsoft', 'me@outlook.com', { labelId: 'f1', kind: 'folder' })
         expect(url).toBe('https://outlook.office.com/mail/')
+    })
+
+    test('getLabelWebUrl builds a Gmail no-label search deep link', () => {
+        const url = getLabelWebUrl('google', 'me@gmail.com', {
+            labelId: EMAIL_LINE_NO_LABEL_ID,
+            displayName: 'No label',
+            kind: 'no_label',
+        })
+        expect(url).toContain('accounts.google.com/AccountChooser')
+        expect(decodeURIComponent(decodeURIComponent(url))).toContain('in:inbox has:nouserlabels')
     })
 
     test('getEmailAccountWebUrl opens Gmail through the selected account', () => {

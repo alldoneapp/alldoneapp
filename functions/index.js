@@ -4233,7 +4233,7 @@ exports.upsertGmailLabelingConfigSecondGen = onCall(
             const gmailEmail =
                 connection?.emailAddress || userData.apisConnected?.[key]?.gmailEmail || userData.email || ''
             const { upsertGmailLabelingConfig } = require('./Gmail/serverSideGmailLabelingSync')
-            const savedConfig = await upsertGmailLabelingConfig(auth.uid, key, config || {}, gmailEmail)
+            const savedConfig = await upsertGmailLabelingConfig(auth.uid, key, config || {}, gmailEmail, userData)
             return { config: savedConfig }
         } catch (error) {
             console.error('Error saving Gmail labeling config:', error)
@@ -4263,7 +4263,7 @@ exports.getGmailLabelingConfigSecondGen = onCall(
             const gmailEmail =
                 connection?.emailAddress || userData.apisConnected?.[key]?.gmailEmail || userData.email || ''
             const { getGmailLabelingConfigWithState } = require('./Gmail/serverSideGmailLabelingSync')
-            return await getGmailLabelingConfigWithState(auth.uid, key, gmailEmail)
+            return await getGmailLabelingConfigWithState(auth.uid, key, gmailEmail, userData)
         } catch (error) {
             console.error('Error loading Gmail labeling config:', error)
             if (error instanceof HttpsError) throw error

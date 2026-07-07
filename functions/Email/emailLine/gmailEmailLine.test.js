@@ -40,6 +40,7 @@ const {
     archiveMessages,
     markMessagesRead,
     sweepLabel,
+    NO_LABEL_ID,
 } = require('./gmailEmailLine')
 
 const UNREAD_BY_ID = {
@@ -47,6 +48,7 @@ const UNREAD_BY_ID = {
     Label_ads: 12,
     Label_work: 0,
     Label_clients: 3,
+    [NO_LABEL_ID]: 2,
 }
 
 // Inbox thread counts (read + unread) — deliberately different from the unread
@@ -56,6 +58,7 @@ const THREADS_BY_ID = {
     Label_ads: 5,
     Label_work: 0,
     Label_clients: 3,
+    [NO_LABEL_ID]: 2,
 }
 
 function setupLabels(labels) {
@@ -63,14 +66,14 @@ function setupLabels(labels) {
     // Inbox-scoped unread counting: labelIds is [labelId, 'INBOX', 'UNREAD'] for a
     // user label, or ['INBOX', 'UNREAD'] for the inbox itself. The primary label
     // id is always first, so map it to the configured count.
-    mockMessagesList.mockImplementation(async ({ labelIds }) => {
-        const primary = labelIds[0]
+    mockMessagesList.mockImplementation(async ({ labelIds, q }) => {
+        const primary = q === 'has:nouserlabels' ? NO_LABEL_ID : labelIds[0]
         const count = UNREAD_BY_ID[primary] || 0
         return { data: { messages: Array.from({ length: count }, (_, i) => ({ id: `${primary}-${i}` })) } }
     })
     // Inbox-scoped thread counting: labelIds is [labelId, 'INBOX'] or ['INBOX'].
-    mockThreadsList.mockImplementation(async ({ labelIds }) => {
-        const primary = labelIds[0]
+    mockThreadsList.mockImplementation(async ({ labelIds, q }) => {
+        const primary = q === 'has:nouserlabels' ? NO_LABEL_ID : labelIds[0]
         const count = THREADS_BY_ID[primary] || 0
         return { data: { threads: Array.from({ length: count }, (_, i) => ({ id: `${primary}-t${i}` })) } }
     })
@@ -123,8 +126,8 @@ describe('gmailEmailLine', () => {
         ])
 
         const summary = await getGmailLabelSummary('user1', 'proj1')
-        expect(summary.labels.map(label => label.labelId)).toEqual(['INBOX', 'Label_ads', 'Label_clients'])
-        expect(summary.labels.map(label => label.displayName)).toEqual(['Inbox', 'Ads', 'Acme'])
+        expect(summary.labels.map(label => label.labelId)).toEqual(['INBOX', 'Label_ads', 'Label_clients', NO_LABEL_ID])
+        expect(summary.labels.map(label => label.displayName)).toEqual(['Inbox', 'Ads', 'Acme', 'No label'])
         expect(summary.inboxUnread).toBe(4)
     })
 
@@ -141,9 +144,16 @@ describe('gmailEmailLine', () => {
         expect(ads.kind).toBe('user')
         expect(ads.unreadCount).toBe(12)
         expect(ads.threadCount).toBe(5)
+        const noLabel = summary.labels.find(label => label.labelId === NO_LABEL_ID)
+        expect(noLabel).toEqual(
+            expect.objectContaining({ displayName: 'No label', threadCount: 2, unreadCount: 2, kind: 'no_label' })
+        )
         // Thread counting never scopes by UNREAD; user labels stay inbox-scoped.
         expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
         expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_ads', 'INBOX'] }))
+        expect(mockThreadsList).toHaveBeenCalledWith(
+            expect.objectContaining({ labelIds: ['INBOX'], q: 'has:nouserlabels' })
+        )
     })
 
     test('listMessagesForLabel scopes a user label to inbox threads and parses headers', async () => {
@@ -204,6 +214,14 @@ describe('gmailEmailLine', () => {
         mockThreadsList.mockResolvedValue({ data: { threads: [] } })
         await listMessagesForLabel('u', 'p', 'INBOX', {})
         expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
+    })
+
+    test('listMessagesForLabel no-label bucket queries unlabeled inbox threads', async () => {
+        mockThreadsList.mockResolvedValue({ data: { threads: [] } })
+        await listMessagesForLabel('u', 'p', NO_LABEL_ID, {})
+        expect(mockThreadsList).toHaveBeenCalledWith(
+            expect.objectContaining({ labelIds: ['INBOX'], q: 'has:nouserlabels' })
+        )
     })
 
     test('archiveMessages removes INBOX and chunks batchModify at 100', async () => {
@@ -299,5 +317,14 @@ describe('gmailEmailLine', () => {
         expect(result.remaining).toBe(true)
         expect(mockBatchModify.mock.calls[0][0].requestBody.removeLabelIds).toEqual(['INBOX'])
         expect(mockBatchModify).toHaveBeenCalledTimes(5)
+    })
+
+    test('sweepLabel supports the no-label bucket', async () => {
+        mockThreadsList.mockResolvedValue({ data: { threads: [] } })
+        const result = await sweepLabel('u', 'p', NO_LABEL_ID, 'archiveAll')
+        expect(result.processed).toBe(0)
+        expect(mockThreadsList).toHaveBeenCalledWith(
+            expect.objectContaining({ labelIds: ['INBOX'], q: 'has:nouserlabels' })
+        )
     })
 })

@@ -3,6 +3,7 @@ import { Linking, Platform } from 'react-native'
 import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../OKRs/okrHelper'
 
 export const MAX_VISIBLE_CHIPS = 8
+export const EMAIL_LINE_NO_LABEL_ID = '__NO_LABEL__'
 
 // Today key for the "Done for today" behavior. Reuses the OKR timezone-aware
 // day key so the email line hides/resets on the same daily boundary as OKRs.
@@ -98,6 +99,8 @@ function buildGmailLabelUrl(emailAddress, label) {
     let fragment
     if (label.labelId === 'INBOX' || label.kind === 'inbox') {
         fragment = '#inbox'
+    } else if (label.labelId === EMAIL_LINE_NO_LABEL_ID || label.kind === 'no_label') {
+        fragment = `#search/${encodeURIComponent('in:inbox has:nouserlabels')}`
     } else {
         const query = /\s/.test(label.name) ? `label:"${label.name}"` : `label:${label.name}`
         fragment = `#search/${encodeURIComponent(query)}`

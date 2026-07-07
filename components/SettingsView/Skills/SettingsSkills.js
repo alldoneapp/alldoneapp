@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import Popover from 'react-tiny-popover'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
@@ -19,6 +19,11 @@ export default function SettingsSkills() {
     const [skills, setSkills] = useState([])
     const [loading, setLoading] = useState(true)
     const [overlaySkill, setOverlaySkill] = useState(null)
+    const [expandedSkills, setExpandedSkills] = useState({})
+
+    const toggleSkillExpanded = skillKey => {
+        setExpandedSkills(prev => ({ ...prev, [skillKey]: !prev[skillKey] }))
+    }
 
     useEffect(() => {
         URLsSettings.push(URL_SETTINGS_SKILLS)
@@ -75,39 +80,74 @@ export default function SettingsSkills() {
                 skills.map(skill => {
                     const overlayLabel = getSkillPersonalOverlayLabel(skill)
                     const canEditOverlay = isTaskPrioritizationSkill(skill)
+                    const skillKey = skill.uid || skill.name
+                    const body = typeof skill.body === 'string' ? skill.body.trim() : ''
+                    const isExpanded = !!expandedSkills[skillKey]
 
                     return (
-                        <View key={skill.uid || skill.name} style={localStyles.skillRow}>
-                            <View style={localStyles.skillMain}>
-                                <View style={localStyles.skillTitleRow}>
-                                    <Text style={localStyles.skillTitle}>{skill.displayName || skill.name}</Text>
-                                    {!!overlayLabel && (
-                                        <View style={localStyles.overlayBadge}>
-                                            <Text style={localStyles.overlayBadgeText}>{translate(overlayLabel)}</Text>
+                        <View key={skillKey} style={localStyles.skillRow}>
+                            <View style={localStyles.skillTopRow}>
+                                <View style={localStyles.skillMain}>
+                                    <View style={localStyles.skillTitleRow}>
+                                        <Text style={localStyles.skillTitle}>{skill.displayName || skill.name}</Text>
+                                        {!!overlayLabel && (
+                                            <View style={localStyles.overlayBadge}>
+                                                <Text style={localStyles.overlayBadgeText}>
+                                                    {translate(overlayLabel)}
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <Text style={localStyles.skillDescription}>{skill.description}</Text>
+                                    <Text style={localStyles.runtimeText}>
+                                        {translate(getSkillRuntimeLabelKey(skill))}
+                                    </Text>
+                                </View>
+                                {canEditOverlay && (
+                                    <Popover
+                                        content={
+                                            <TaskPriorityLearningOverlayModal skill={skill} closeModal={closeOverlay} />
+                                        }
+                                        align="end"
+                                        position={['bottom', 'left', 'right', 'top']}
+                                        onClickOutside={closeOverlay}
+                                        isOpen={overlaySkill?.uid === skill.uid}
+                                    >
+                                        <Button
+                                            type="secondary"
+                                            icon="settings"
+                                            title={translate('Edit learned rules')}
+                                            onPress={() => setOverlaySkill(skill)}
+                                            disabled={overlaySkill?.uid === skill.uid}
+                                        />
+                                    </Popover>
+                                )}
+                            </View>
+                            {!!body && (
+                                <View style={localStyles.skillBodySection}>
+                                    <TouchableOpacity
+                                        style={localStyles.disclosureRow}
+                                        onPress={() => toggleSkillExpanded(skillKey)}
+                                        accessibilityRole="button"
+                                    >
+                                        <Icon
+                                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                                            size={16}
+                                            color={colors.Primary100}
+                                            style={localStyles.disclosureIcon}
+                                        />
+                                        <Text style={localStyles.disclosureText}>
+                                            {translate(
+                                                isExpanded ? 'Hide full instructions' : 'Show full instructions'
+                                            )}
+                                        </Text>
+                                    </TouchableOpacity>
+                                    {isExpanded && (
+                                        <View style={localStyles.skillBodyContainer}>
+                                            <Text style={localStyles.skillBodyText}>{body}</Text>
                                         </View>
                                     )}
                                 </View>
-                                <Text style={localStyles.skillDescription}>{skill.description}</Text>
-                                <Text style={localStyles.runtimeText}>{translate(getSkillRuntimeLabelKey(skill))}</Text>
-                            </View>
-                            {canEditOverlay && (
-                                <Popover
-                                    content={
-                                        <TaskPriorityLearningOverlayModal skill={skill} closeModal={closeOverlay} />
-                                    }
-                                    align="end"
-                                    position={['bottom', 'left', 'right', 'top']}
-                                    onClickOutside={closeOverlay}
-                                    isOpen={overlaySkill?.uid === skill.uid}
-                                >
-                                    <Button
-                                        type="secondary"
-                                        icon="settings"
-                                        title={translate('Edit learned rules')}
-                                        onPress={() => setOverlaySkill(skill)}
-                                        disabled={overlaySkill?.uid === skill.uid}
-                                    />
-                                </Popover>
                             )}
                         </View>
                     )
@@ -165,9 +205,8 @@ const localStyles = StyleSheet.create({
         marginBottom: 12,
     },
     skillRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        flexDirection: 'column',
+        alignItems: 'stretch',
         borderWidth: 1,
         borderColor: colors.Grey300,
         borderRadius: 4,
@@ -175,9 +214,40 @@ const localStyles = StyleSheet.create({
         marginBottom: 12,
         backgroundColor: '#FFFFFF',
     },
+    skillTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
     skillMain: {
         flex: 1,
         paddingRight: 16,
+    },
+    skillBodySection: {
+        marginTop: 12,
+    },
+    disclosureRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    disclosureIcon: {
+        marginRight: 6,
+    },
+    disclosureText: {
+        ...styles.subtitle2,
+        color: colors.Primary100,
+    },
+    skillBodyContainer: {
+        marginTop: 12,
+        padding: 12,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.Grey300,
+        backgroundColor: colors.Grey100,
+    },
+    skillBodyText: {
+        ...styles.body2,
+        color: colors.Text01,
     },
     skillTitleRow: {
         flexDirection: 'row',

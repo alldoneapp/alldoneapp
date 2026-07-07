@@ -104,6 +104,7 @@ const assistantsFirestore = require('../Firestore/assistantsFirestore')
 const { deductGold } = require('../Gold/goldHelper')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+const { buildConnectionId } = require('../Integrations/providerConnections')
 const {
     buildDefaultActiveProjectLabelDefinitions,
     buildDefaultProjectFollowUpPrompt,
@@ -113,8 +114,10 @@ const {
     executePostLabelPrompt,
     getDefaultAssistantIdForProject,
     getExternalRecipientEmails,
+    getGmailLabelingLookupKeys,
     processSingleMessage,
     resolveEffectiveGmailLabelingConfig,
+    resolveEffectiveLabelingConfig,
 } = require('./serverSideGmailLabelingSync')
 
 function buildDefaultCollectionMock(path) {
@@ -885,5 +888,94 @@ describe('serverSideGmailLabelingSync helpers', () => {
             { merge: true }
         )
         expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
+    })
+})
+
+describe('canonical labeling config resolution (account-level ↔ project key)', () => {
+    const USER_ID = 'user-1'
+    const GMAIL = 'person@gmail.com'
+    // A single Google account connected on two legacy projects; `-MChwoc` holds the default.
+    const USER_DATA = {
+        apisConnected: {
+            '-MChwoc': { gmail: true, gmailEmail: GMAIL, gmailDefault: true },
+            legacyProject: { gmail: true, gmailEmail: GMAIL },
+        },
+    }
+    const CONNECTION_ID = buildConnectionId('email', 'google', GMAIL)
+
+    function mockConfigDocs(configDocsByDocId) {
+        admin.firestore.mockImplementation(() => ({
+            collection: jest.fn(colPath => {
+                if (colPath !== 'users') return buildDefaultCollectionMock(colPath)
+                return {
+                    doc: jest.fn(() => ({
+                        collection: jest.fn(() => ({
+                            doc: jest.fn(docId => ({
+                                get: jest.fn().mockResolvedValue(configDocsByDocId[docId] || { exists: false }),
+                            })),
+                        })),
+                    })),
+                }
+            }),
+        }))
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    test('expands an account-level connection key to its project keys (writer/reader agree)', () => {
+        expect(getGmailLabelingLookupKeys(USER_DATA, CONNECTION_ID)).toEqual([
+            CONNECTION_ID,
+            '-MChwoc',
+            'legacyProject',
+        ])
+    })
+
+    test('leaves a plain project key unexpanded', () => {
+        expect(getGmailLabelingLookupKeys(USER_DATA, '-MChwoc')).toEqual(['-MChwoc'])
+    })
+
+    test('reading under the connection key resolves to the existing project-keyed config (the bug)', async () => {
+        mockConfigDocs({
+            [`gmailLabeling_${CONNECTION_ID}`]: { exists: false },
+            'gmailLabeling_-MChwoc': {
+                exists: true,
+                data: () => ({ enabled: true, projectId: '-MChwoc', learnedRules: '- learned rule' }),
+            },
+        })
+
+        const resolved = await resolveEffectiveLabelingConfig(USER_ID, USER_DATA, CONNECTION_ID)
+
+        expect(resolved.resolvedKey).toBe('-MChwoc')
+        expect(resolved.exists).toBe(true)
+        expect(resolved.config.learnedRules).toBe('- learned rule')
+    })
+
+    test('prefers the account-level doc when it exists (migrated user)', async () => {
+        mockConfigDocs({
+            [`gmailLabeling_${CONNECTION_ID}`]: {
+                exists: true,
+                data: () => ({ enabled: true, connectionId: CONNECTION_ID, learnedRules: '- account rule' }),
+            },
+            'gmailLabeling_-MChwoc': {
+                exists: true,
+                data: () => ({ enabled: false, projectId: '-MChwoc', migratedTo: CONNECTION_ID }),
+            },
+        })
+
+        const resolved = await resolveEffectiveLabelingConfig(USER_ID, USER_DATA, CONNECTION_ID)
+
+        expect(resolved.resolvedKey).toBe(CONNECTION_ID)
+        expect(resolved.config.learnedRules).toBe('- account rule')
+    })
+
+    test('falls back to the requested key when no config exists yet', async () => {
+        mockConfigDocs({})
+
+        const resolved = await resolveEffectiveLabelingConfig(USER_ID, USER_DATA, CONNECTION_ID)
+
+        expect(resolved.resolvedKey).toBe(CONNECTION_ID)
+        expect(resolved.exists).toBe(false)
     })
 })

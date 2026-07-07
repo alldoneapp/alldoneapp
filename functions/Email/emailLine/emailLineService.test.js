@@ -171,6 +171,20 @@ describe('emailLineService', () => {
         expect(summary.emailAddress).toBe('me@gmail.com')
     })
 
+    test('summary excludes Inbox and No label from label feedback options', async () => {
+        gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
+            labels: [
+                { labelId: 'INBOX', displayName: 'Inbox', threadCount: 4, unreadCount: 1, kind: 'inbox' },
+                { labelId: '__NO_LABEL__', displayName: 'No label', threadCount: 2, unreadCount: 1, kind: 'no_label' },
+                { labelId: 'Label_ads', displayName: 'Ads', threadCount: 2, unreadCount: 1, kind: 'user' },
+            ],
+        })
+
+        const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData })
+
+        expect(summary.labelOptions).toEqual(['Ads'])
+    })
+
     test('dispatches to the Microsoft provider', async () => {
         microsoftEmailLine.getMicrosoftLabelSummary.mockResolvedValue({
             labels: [{ labelId: 'f_inbox', unreadCount: 3, kind: 'inbox' }],

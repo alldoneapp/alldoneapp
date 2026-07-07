@@ -69,8 +69,8 @@ export default function OpenTasksViewAllProjects() {
         >
             <AllProjectsLine />
             <AssistantLine useAssistantProjectContext={false} />
-            <TaskPriorityFiltersLine projectId={null} />
             <EmailLine />
+            <TaskPriorityFiltersLine projectId={null} />
             {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {sortedLoggedUserProjectIds.map(projectId => {
                 let thisProjectIsTheFirstProject = false

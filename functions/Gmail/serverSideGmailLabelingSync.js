@@ -8,6 +8,7 @@ const {
     CONNECTION_SERVICE_EMAIL,
     findConnectionsForProject,
     getConnection,
+    resolveEmailConnection,
 } = require('../Integrations/providerConnections')
 const {
     addBaseInstructions,
@@ -385,33 +386,101 @@ async function loadState(userId, projectId, gmailEmail = '') {
     }
 }
 
-async function upsertGmailLabelingConfig(userId, key, configInput, gmailEmail = '') {
-    const { ref, config, exists } = await loadConfig(userId, key, gmailEmail)
-    const writeData = buildConfigWriteData(userId, key, configInput, gmailEmail, exists ? config : null)
-    // Connection-keyed configs record the connection id and keep `projectId` pointing at
-    // the connection's real default project (consumers and the scheduled scanner rely on it).
+async function loadUserData(userId, providedUserData = null) {
+    if (providedUserData) return providedUserData
+    const userDoc = await admin.firestore().collection('users').doc(userId).get()
+    return userDoc.exists ? userDoc.data() || {} : {}
+}
+
+// An account-level (email_…) connection and one or more legacy per-project keys can all
+// address the SAME Gmail labeling config. These two helpers mirror the expansion the feedback
+// writer uses so the read, save, and feedback paths resolve to one canonical config doc.
+function getLegacyProjectIdsForEmailConnection(userData = {}, connection = {}) {
+    if (!connection || connection.provider !== 'google' || !connection.emailAddress) return []
+    const targetEmail = String(connection.emailAddress || '')
+        .trim()
+        .toLowerCase()
+    const apisConnected = userData?.apisConnected || {}
+    return Object.keys(apisConnected).filter(projectId => {
+        const resolved = resolveEmailConnection(apisConnected[projectId] || {})
+        return (
+            resolved.connected &&
+            resolved.provider === 'google' &&
+            String(resolved.emailAddress || '')
+                .trim()
+                .toLowerCase() === targetEmail
+        )
+    })
+}
+
+function getGmailLabelingLookupKeys(userData = {}, key = '') {
+    const keys = [key]
     if (typeof key === 'string' && key.startsWith('email_')) {
-        writeData.connectionId = key
-        const userDoc = await admin.firestore().collection('users').doc(userId).get()
-        const userData = userDoc.exists ? userDoc.data() || {} : {}
         const connection = getConnection(userData, CONNECTION_SERVICE_EMAIL, key)
+        if (connection?.provider === 'google') {
+            if (connection.defaultProjectId) keys.push(connection.defaultProjectId)
+            keys.push(...getLegacyProjectIdsForEmailConnection(userData, connection))
+        }
+    }
+    return [...new Set(keys.filter(Boolean))]
+}
+
+// Resolve the canonical config doc for a key: the first lookup key whose config already
+// exists (the requested key is checked first, so a migrated account-level doc always wins
+// over its disabled legacy doc). Falls back to the requested key so a brand-new config is
+// still created under it. Without this, opening the settings panel under the account-level
+// connection id reads a non-existent `gmailLabeling_email_…` doc and shows an empty config,
+// while feedback and the scheduled sync operate on the project-keyed doc.
+async function resolveEffectiveLabelingConfig(userId, userData, key, gmailEmail = '') {
+    const lookupKeys = getGmailLabelingLookupKeys(userData, key)
+    let fallback = null
+    for (const lookupKey of lookupKeys) {
+        const loaded = await loadConfig(userId, lookupKey, gmailEmail)
+        if (loaded.exists) return { resolvedKey: lookupKey, ...loaded }
+        if (!fallback) fallback = { resolvedKey: lookupKey, ...loaded }
+    }
+    return fallback || { resolvedKey: key, ...(await loadConfig(userId, key, gmailEmail)) }
+}
+
+async function upsertGmailLabelingConfig(userId, key, configInput, gmailEmail = '', userData = null) {
+    const resolvedUserData = await loadUserData(userId, userData)
+    const { resolvedKey, ref, config, exists } = await resolveEffectiveLabelingConfig(
+        userId,
+        resolvedUserData,
+        key,
+        gmailEmail
+    )
+    const writeData = buildConfigWriteData(userId, resolvedKey, configInput, gmailEmail, exists ? config : null)
+    // A brand-new config created under an account-level connection id records the connection id
+    // and keeps `projectId` pointing at the connection's real default project (consumers and the
+    // scheduled scanner rely on it). When we resolve to an existing project-keyed doc,
+    // buildConfigWriteData already stamps the correct projectId, so we leave it alone.
+    if (typeof resolvedKey === 'string' && resolvedKey.startsWith('email_')) {
+        writeData.connectionId = resolvedKey
+        const connection = getConnection(resolvedUserData, CONNECTION_SERVICE_EMAIL, resolvedKey)
         if (connection?.defaultProjectId) writeData.projectId = connection.defaultProjectId
     }
     await ref.set(writeData, { merge: true })
     return writeData
 }
 
-async function getGmailLabelingConfigWithState(userId, projectId, gmailEmail = '') {
-    const [{ config, exists }, { state }, userDoc] = await Promise.all([
-        loadConfig(userId, projectId, gmailEmail),
-        loadState(userId, projectId, gmailEmail),
-        admin.firestore().collection('users').doc(userId).get(),
+async function getGmailLabelingConfigWithState(userId, projectId, gmailEmail = '', userData = null) {
+    const resolvedUserData = await loadUserData(userId, userData)
+    // Resolve to the canonical config doc first so the account-level connection view reads the
+    // same project-keyed config (and its state + audit entries) that feedback and sync write.
+    const { resolvedKey, config, exists } = await resolveEffectiveLabelingConfig(
+        userId,
+        resolvedUserData,
+        projectId,
+        gmailEmail
+    )
+    const [{ state }, recentAuditEntries, defaultConfigPreview] = await Promise.all([
+        loadState(userId, resolvedKey, gmailEmail),
+        loadRecentAuditEntries(userId, resolvedKey),
+        buildDefaultActiveProjectsGmailLabelingConfig(resolvedUserData),
     ])
-    const recentAuditEntries = await loadRecentAuditEntries(userId, projectId)
-    const userData = userDoc.exists ? userDoc.data() || {} : {}
-    const defaultConfigPreview = await buildDefaultActiveProjectsGmailLabelingConfig(userData)
     return {
-        config: exists ? config : getDefaultGmailLabelingConfig(projectId, gmailEmail),
+        config: exists ? config : getDefaultGmailLabelingConfig(resolvedKey, gmailEmail),
         defaultConfigPreview,
         state,
         recentAuditEntries,
@@ -1975,6 +2044,7 @@ module.exports = {
     createPostLabelPromptHash,
     executePostLabelPrompt,
     getGmailLabelingConfigWithState,
+    getGmailLabelingLookupKeys,
     getDefaultAssistantIdForProject,
     getExternalRecipientEmails,
     loadAuditEntry,
@@ -1982,6 +2052,7 @@ module.exports = {
     processEnabledGmailLabelingConfigs,
     processSingleMessage,
     resolveEffectiveGmailLabelingConfig,
+    resolveEffectiveLabelingConfig,
     resolvePostLabelAssistantContext,
     syncGmailLabeling,
     upsertGmailLabelingConfig,
