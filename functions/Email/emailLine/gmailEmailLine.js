@@ -191,42 +191,79 @@ function labelIdsForList(labelId) {
     return [labelId, 'INBOX']
 }
 
+function getMessageTimestamp(message = {}) {
+    const internalDate = Number(message.internalDate || 0)
+    if (Number.isFinite(internalDate) && internalDate > 0) return internalDate
+    const headerDate = Date.parse(getHeader(message.payload?.headers || [], 'Date'))
+    return Number.isFinite(headerDate) ? headerDate : 0
+}
+
+function pickThreadDisplayMessage(messages = [], labelId) {
+    const sorted = [...messages].sort((a, b) => getMessageTimestamp(b) - getMessageTimestamp(a))
+    const hasLabel = message => {
+        const labelIds = Array.isArray(message.labelIds) ? message.labelIds : []
+        return labelId === 'INBOX' ? labelIds.includes('INBOX') : labelIds.includes(labelId)
+    }
+    const isInbox = message => (Array.isArray(message.labelIds) ? message.labelIds : []).includes('INBOX')
+
+    return (
+        sorted.find(message => hasLabel(message) && isInbox(message)) ||
+        sorted.find(isInbox) ||
+        sorted.find(hasLabel) ||
+        sorted[0] ||
+        null
+    )
+}
+
+function buildThreadRow(thread = {}, threadRef = {}, labelId, emailAddress) {
+    const threadMessages = Array.isArray(thread.messages) ? thread.messages : []
+    const messageIds = threadMessages.map(message => message.id).filter(Boolean)
+    const displayMessage = pickThreadDisplayMessage(threadMessages, labelId)
+    if (!displayMessage) return null
+
+    const headers = displayMessage.payload?.headers || []
+    const unsubscribeSource =
+        threadMessages.find(message => getHeader(message.payload?.headers || [], 'List-Unsubscribe')) || displayMessage
+
+    return {
+        messageId: displayMessage.id || threadRef.id,
+        messageIds,
+        threadId: thread.id || displayMessage.threadId || threadRef.id || '',
+        subject: getHeader(headers, 'Subject'),
+        from: getHeader(headers, 'From'),
+        date: getHeader(headers, 'Date'),
+        snippet: displayMessage.snippet || thread.snippet || '',
+        isUnread: threadMessages.some(message =>
+            (Array.isArray(message.labelIds) ? message.labelIds : []).includes('UNREAD')
+        ),
+        webUrl: buildGmailMessageUrl(emailAddress, displayMessage.id || threadRef.id),
+        needsReply: false,
+        unsubscribe: parseListUnsubscribe(getHeader(unsubscribeSource.payload?.headers || [], 'List-Unsubscribe')),
+    }
+}
+
 async function listMessagesForLabel(userId, projectId, labelId, { pageToken, emailAddress } = {}) {
     const gmail = await getGmailClient(userId, projectId)
-    const listResponse = await gmail.users.messages.list({
+    const listResponse = await gmail.users.threads.list({
         userId: 'me',
         labelIds: labelIdsForList(labelId),
         maxResults: MESSAGES_PER_PAGE,
         pageToken: pageToken || undefined,
     })
 
-    const messageRefs = Array.isArray(listResponse?.data?.messages) ? listResponse.data.messages : []
+    const threadRefs = Array.isArray(listResponse?.data?.threads) ? listResponse.data.threads : []
     const nextPageToken = listResponse?.data?.nextPageToken || null
 
     const messages = await Promise.all(
-        messageRefs.map(async ref => {
+        threadRefs.map(async ref => {
             try {
-                const detail = await gmail.users.messages.get({
+                const detail = await gmail.users.threads.get({
                     userId: 'me',
                     id: ref.id,
                     format: 'metadata',
                     metadataHeaders: METADATA_HEADERS,
                 })
-                const data = detail?.data || {}
-                const headers = data.payload?.headers || []
-                const labelIds = Array.isArray(data.labelIds) ? data.labelIds : []
-                return {
-                    messageId: data.id || ref.id,
-                    threadId: data.threadId || ref.threadId || '',
-                    subject: getHeader(headers, 'Subject'),
-                    from: getHeader(headers, 'From'),
-                    date: getHeader(headers, 'Date'),
-                    snippet: data.snippet || '',
-                    isUnread: labelIds.includes('UNREAD'),
-                    webUrl: buildGmailMessageUrl(emailAddress, data.id || ref.id),
-                    needsReply: false,
-                    unsubscribe: parseListUnsubscribe(getHeader(headers, 'List-Unsubscribe')),
-                }
+                return buildThreadRow(detail?.data || {}, ref, labelId, emailAddress)
             } catch (error) {
                 return null
             }

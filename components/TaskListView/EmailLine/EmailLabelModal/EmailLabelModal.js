@@ -18,7 +18,8 @@ import EmailRow from './EmailRow'
 
 const MODAL_MAX_WIDTH = 560
 
-const selectionKey = (connectionId, messageId) => `${connectionId}:${messageId}`
+const sectionKey = section => `${section.connectionId}:${section.labelId || ''}`
+const selectionKey = (connectionId, labelId, messageId) => `${connectionId}:${labelId || ''}:${messageId}`
 
 // Lists the inbox emails of ONE merged label group across all accounts carrying
 // that label. With more than one account, each account renders as a section with
@@ -34,7 +35,6 @@ function EmailLabelModal({
     const [loading, setLoading] = useState(true)
     const [loadingMoreKey, setLoadingMoreKey] = useState(null)
     const [selectedIds, setSelectedIds] = useState(() => new Set())
-    const [busyAction, setBusyAction] = useState(null)
 
     const screenWidth = windowSize?.[0] || Dimensions.get('window').width
     const screenHeight = windowSize?.[1] || Dimensions.get('window').height
@@ -73,8 +73,8 @@ function EmailLabelModal({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [group?.key])
 
-    const toggleSelect = (connectionId, row) => {
-        const key = selectionKey(connectionId, row.messageId)
+    const toggleSelect = (connectionId, labelId, row) => {
+        const key = selectionKey(connectionId, labelId, row.messageId)
         setSelectedIds(previous => {
             const next = new Set(previous)
             next.has(key) ? next.delete(key) : next.add(key)
@@ -88,14 +88,15 @@ function EmailLabelModal({
 
     const loadMore = async section => {
         if (!section.nextPageToken || loadingMoreKey) return
-        setLoadingMoreKey(section.connectionId)
+        const key = sectionKey(section)
+        setLoadingMoreKey(key)
         try {
             const result = await listEmailLineMessages(section.connectionId, section.labelId, {
                 pageToken: section.nextPageToken,
             })
             setSections(previous =>
                 previous.map(item =>
-                    item.connectionId === section.connectionId
+                    sectionKey(item) === key
                         ? {
                               ...item,
                               messages: [...item.messages, ...(result?.messages || [])],
@@ -109,38 +110,30 @@ function EmailLabelModal({
         }
     }
 
-    const runSelectionAction = async action => {
+    const runSelectionAction = action => {
         if (selectedIds.size === 0) return
         const messageIdsByConnection = {}
         sections.forEach(section => {
             section.messages.forEach(row => {
-                if (selectedIds.has(selectionKey(section.connectionId, row.messageId))) {
+                if (selectedIds.has(selectionKey(section.connectionId, section.labelId, row.messageId))) {
                     if (!messageIdsByConnection[section.connectionId]) {
-                        messageIdsByConnection[section.connectionId] = []
+                        messageIdsByConnection[section.connectionId] = new Set()
                     }
-                    messageIdsByConnection[section.connectionId].push(row.messageId)
+                    ;(row.messageIds || [row.messageId]).forEach(messageId =>
+                        messageIdsByConnection[section.connectionId].add(messageId)
+                    )
                 }
             })
         })
-        setBusyAction(action)
-        try {
-            await Promise.all(
-                Object.keys(messageIdsByConnection).map(connectionId =>
-                    performEmailLineAction(connectionId, { action, messageIds: messageIdsByConnection[connectionId] })
-                )
-            )
-            setSections(previous =>
-                previous.map(section => ({
-                    ...section,
-                    messages: section.messages.filter(
-                        row => !selectedIds.has(selectionKey(section.connectionId, row.messageId))
-                    ),
-                }))
-            )
-            setSelectedIds(new Set())
-        } finally {
-            setBusyAction(null)
-        }
+        closePopover()
+        Object.keys(messageIdsByConnection).forEach(connectionId => {
+            performEmailLineAction(connectionId, {
+                action,
+                messageIds: [...messageIdsByConnection[connectionId]],
+            }).catch(error => {
+                if (__DEV__) console.warn('[EmailLine] Background selection action failed:', error?.message || error)
+            })
+        })
     }
 
     // Sweeps close the modal immediately and continue in the background: counts are
@@ -153,7 +146,6 @@ function EmailLabelModal({
     }
 
     const selectedCount = selectedIds.size
-    const isBusy = !!busyAction
     const totalMessages = sections.reduce((total, section) => total + section.messages.length, 0)
     const labelingDisabled = entries.some(entry => labelingDisabledByConnectionId?.[entry.connectionId])
 
@@ -172,16 +164,12 @@ function EmailLabelModal({
                 <TouchableOpacity
                     style={localStyles.sweepButton}
                     onPress={() => runSweep('archiveAll')}
-                    disabled={isBusy || totalMessages === 0}
+                    disabled={totalMessages === 0}
                 >
                     <Icon name="archive" size={14} color={colors.Text03} />
                     <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Archive all')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                    style={localStyles.sweepButton}
-                    onPress={() => runSweep('markAllRead')}
-                    disabled={isBusy}
-                >
+                <TouchableOpacity style={localStyles.sweepButton} onPress={() => runSweep('markAllRead')}>
                     <Icon name="check" size={14} color={colors.Text03} />
                     <Text style={[styles.caption1, localStyles.sweepText]}>{translate('Mark all read')}</Text>
                 </TouchableOpacity>
@@ -215,7 +203,7 @@ function EmailLabelModal({
                     </View>
                 ) : (
                     sections.map(section => (
-                        <View key={section.connectionId}>
+                        <View key={sectionKey(section)}>
                             {multiAccount && section.messages.length > 0 && (
                                 <View style={localStyles.accountHeader}>
                                     <Text style={[styles.caption2, localStyles.accountHeaderText]} numberOfLines={1}>
@@ -228,12 +216,16 @@ function EmailLabelModal({
                             )}
                             {section.messages.map(row => (
                                 <EmailRow
-                                    key={selectionKey(section.connectionId, row.messageId)}
+                                    key={selectionKey(section.connectionId, section.labelId, row.messageId)}
                                     row={row}
                                     connectionId={section.connectionId}
                                     labelOptions={labelOptionsByConnectionId?.[section.connectionId] || []}
-                                    selected={selectedIds.has(selectionKey(section.connectionId, row.messageId))}
-                                    onToggleSelect={selectedRow => toggleSelect(section.connectionId, selectedRow)}
+                                    selected={selectedIds.has(
+                                        selectionKey(section.connectionId, section.labelId, row.messageId)
+                                    )}
+                                    onToggleSelect={selectedRow =>
+                                        toggleSelect(section.connectionId, section.labelId, selectedRow)
+                                    }
                                     onOpen={selectedRow => openRow(section, selectedRow)}
                                 />
                             ))}
@@ -243,7 +235,7 @@ function EmailLabelModal({
                                     onPress={() => loadMore(section)}
                                     disabled={!!loadingMoreKey}
                                 >
-                                    {loadingMoreKey === section.connectionId ? (
+                                    {loadingMoreKey === sectionKey(section) ? (
                                         <ActivityIndicator color={colors.Primary100} />
                                     ) : (
                                         <Text style={[styles.subtitle2, localStyles.loadMoreText]}>
@@ -272,25 +264,16 @@ function EmailLabelModal({
                         {translate('N selected', { count: selectedCount })}
                     </Text>
                     <View style={localStyles.selectionActions}>
-                        <TouchableOpacity
-                            style={localStyles.textButton}
-                            onPress={() => runSelectionAction('markRead')}
-                            disabled={isBusy}
-                        >
+                        <TouchableOpacity style={localStyles.textButton} onPress={() => runSelectionAction('markRead')}>
                             <Text style={[styles.subtitle2, localStyles.cancelText]}>{translate('Mark read')}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[localStyles.textButton, localStyles.primaryButton]}
                             onPress={() => runSelectionAction('archive')}
-                            disabled={isBusy}
                         >
-                            {busyAction === 'archive' ? (
-                                <ActivityIndicator size="small" color="#ffffff" />
-                            ) : (
-                                <Text style={[styles.subtitle2, localStyles.primaryButtonText]}>
-                                    {translate('Archive')}
-                                </Text>
-                            )}
+                            <Text style={[styles.subtitle2, localStyles.primaryButtonText]}>
+                                {translate('Archive')}
+                            </Text>
                         </TouchableOpacity>
                     </View>
                 </View>

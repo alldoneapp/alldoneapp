@@ -67,7 +67,17 @@ const group = {
 }
 
 const messagesByConnection = {
-    c1: [{ messageId: 'm1', from: 'a@ex.com', subject: 'One', snippet: 's', isUnread: true, webUrl: 'u1' }],
+    c1: [
+        {
+            messageId: 'm1',
+            messageIds: ['m1', 'm1b'],
+            from: 'a@ex.com',
+            subject: 'One',
+            snippet: 's',
+            isUnread: true,
+            webUrl: 'u1',
+        },
+    ],
     c2: [{ messageId: 'm2', from: 'b@ex.com', subject: 'Two', snippet: 's', isUnread: false, webUrl: 'u2' }],
 }
 
@@ -105,10 +115,11 @@ describe('EmailLabelModal', () => {
         expect(texts).toContain('b@outlook.com')
     })
 
-    it('routes selection actions to the connection owning each selected message', async () => {
+    it('closes immediately and routes selection actions to the connection owning each selected thread', async () => {
+        const closePopover = jest.fn()
         performEmailLineAction.mockResolvedValue({ processed: 1 })
 
-        const tree = await renderModal()
+        const tree = await renderModal(closePopover)
 
         const selectRow = tree.root.findAll(
             node =>
@@ -126,7 +137,8 @@ describe('EmailLabelModal', () => {
             await Promise.resolve()
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'archive', messageIds: ['m1'] })
+        expect(closePopover).toHaveBeenCalled()
+        expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'archive', messageIds: ['m1', 'm1b'] })
         expect(performEmailLineAction).not.toHaveBeenCalledWith('c2', expect.anything())
     })
 

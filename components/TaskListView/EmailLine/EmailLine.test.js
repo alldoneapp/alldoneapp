@@ -102,7 +102,7 @@ describe('EmailLine', () => {
         })
         const tree = renderer.create(<EmailLine />)
         const rendered = textNodes(tree)
-        expect(rendered).toContain('Inbox:3')
+        expect(rendered).toContain('Inbox:7')
         expect(rendered).toContain('Ads:7')
     })
 
@@ -206,14 +206,18 @@ describe('EmailLine', () => {
                     connected: true,
                     provider: 'google',
                     emailAddress: accountEmail,
-                    labels: [{ labelId: 'INBOX', displayName: 'Inbox', threadCount: 2, unreadCount: 2, kind: 'inbox' }],
+                    labels: [
+                        { labelId: 'INBOX', displayName: 'Inbox', threadCount: 20, unreadCount: 2, kind: 'inbox' },
+                        { labelId: 'Label_ads', displayName: 'Ads', threadCount: 2, unreadCount: 2, kind: 'user' },
+                    ],
                 },
                 [secondConnectionId]: {
                     connected: true,
                     provider: 'microsoft',
                     emailAddress: secondEmail,
                     labels: [
-                        { labelId: 'f_inbox', displayName: 'Inbox', threadCount: 5, unreadCount: 1, kind: 'inbox' },
+                        { labelId: 'f_inbox', displayName: 'Inbox', threadCount: 50, unreadCount: 1, kind: 'inbox' },
+                        { labelId: 'f_ads', displayName: 'Ads', threadCount: 5, unreadCount: 1, kind: 'folder' },
                     ],
                 },
             },
@@ -221,8 +225,9 @@ describe('EmailLine', () => {
         const tree = renderer.create(<EmailLine />)
         const rendered = textNodes(tree)
         expect(rendered).toContain('Inbox:7')
-        expect(rendered).not.toContain('Inbox:2')
-        expect(rendered).not.toContain('Inbox:5')
+        expect(rendered).toContain('Ads:7')
+        expect(rendered).not.toContain('Inbox:20')
+        expect(rendered).not.toContain('Inbox:50')
         // No per-account captions on the unified line anymore.
         expect(rendered).not.toContain(accountEmail)
         expect(rendered).not.toContain(secondEmail)

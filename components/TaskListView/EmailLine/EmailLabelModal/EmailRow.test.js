@@ -75,7 +75,7 @@ describe('EmailRow', () => {
         expect(findByLabel(tree, 'Unsubscribe')).toHaveLength(0)
     })
 
-    it('shows an always-visible Why? affordance and sends wrong-label feedback', async () => {
+    it('shows a visible reason action and sends wrong-label feedback', async () => {
         const { submitEmailLabelFeedback } = require('../../../../utils/backends/EmailLine/emailLineBackend')
         submitEmailLabelFeedback.mockResolvedValue({ learnedRules: '- rule' })
         const row = {
@@ -92,12 +92,6 @@ describe('EmailRow', () => {
                 <EmailRow row={row} connectionId="c1" labelOptions={['Inbox', 'Alldone/Newsletter']} selected={false} />
             )
         })
-
-        // The reasoning affordance renders as visible text, not just an icon.
-        const collapsedTexts = tree.root
-            .findAll(node => typeof node.props.children === 'string')
-            .map(n => n.props.children)
-        expect(collapsedTexts).toContain('Why?')
 
         const [toggle] = findByLabel(tree, 'Why this label')
         act(() => toggle.props.onPress())
@@ -128,10 +122,29 @@ describe('EmailRow', () => {
         expect(doneTexts).toContain('Labeling instructions updated')
     })
 
+    it('keeps the reason action visible when no explanation was recorded', () => {
+        const row = {
+            messageId: 'm1',
+            from: 'a@ex.com',
+            subject: 'Hi',
+        }
+        let tree
+        act(() => {
+            tree = renderer.create(<EmailRow row={row} connectionId="c1" selected={false} />)
+        })
+
+        const [toggle] = findByLabel(tree, 'Why this label')
+        act(() => toggle.props.onPress())
+
+        const texts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
+        expect(texts).toContain('No project or label explanation was recorded for this email.')
+        expect(findByLabel(tree, 'Wrong label?')).toHaveLength(0)
+    })
+
     it('creates a task and turns the + button into a link to it', async () => {
         const { performEmailLineAction } = require('../../../../utils/backends/EmailLine/emailLineBackend')
         performEmailLineAction.mockResolvedValue({ taskId: 't1', projectId: 'p9' })
-        const row = { messageId: 'm1', from: 'a@ex.com', subject: 'Hi' }
+        const row = { messageId: 'm1', messageIds: ['m1', 'm2'], from: 'a@ex.com', subject: 'Hi' }
         let tree
         act(() => {
             tree = renderer.create(<EmailRow row={row} connectionId="c1" selected={false} />)
@@ -143,7 +156,7 @@ describe('EmailRow', () => {
             await Promise.resolve()
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'createTask', messageIds: ['m1'] })
+        expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'createTask', messageIds: ['m1', 'm2'] })
         const [done] = findByLabel(tree, 'Task created')
         act(() => done.props.onPress())
         expect(URLTrigger.processUrl).toHaveBeenCalledWith(expect.anything(), '/projects/p9/tasks/t1/properties')

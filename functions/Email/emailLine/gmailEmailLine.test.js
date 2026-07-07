@@ -4,6 +4,7 @@ const mockMessagesList = jest.fn()
 const mockMessagesGet = jest.fn()
 const mockBatchModify = jest.fn()
 const mockThreadsList = jest.fn()
+const mockThreadsGet = jest.fn()
 
 jest.mock('googleapis', () => ({
     google: {
@@ -20,6 +21,7 @@ jest.mock('googleapis', () => ({
                 },
                 threads: {
                     list: (...args) => mockThreadsList(...args),
+                    get: (...args) => mockThreadsGet(...args),
                 },
             },
         }),
@@ -144,29 +146,53 @@ describe('gmailEmailLine', () => {
         expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_ads', 'INBOX'] }))
     })
 
-    test('listMessagesForLabel scopes a user label to INBOX and parses headers', async () => {
-        mockMessagesList.mockResolvedValue({ data: { messages: [{ id: 'm1', threadId: 't1' }], nextPageToken: 'np' } })
-        mockMessagesGet.mockResolvedValue({
+    test('listMessagesForLabel scopes a user label to inbox threads and parses headers', async () => {
+        mockThreadsList.mockResolvedValue({ data: { threads: [{ id: 't1' }], nextPageToken: 'np' } })
+        mockThreadsGet.mockResolvedValue({
             data: {
-                id: 'm1',
-                threadId: 't1',
+                id: 't1',
                 snippet: 'hello',
-                labelIds: ['INBOX', 'UNREAD', 'Label_ads'],
-                payload: {
-                    headers: [
-                        { name: 'Subject', value: 'Deal' },
-                        { name: 'From', value: 'Ann <ann@ex.com>' },
-                        { name: 'List-Unsubscribe', value: '<https://ex.com/u>' },
-                    ],
-                },
+                messages: [
+                    {
+                        id: 'm1',
+                        threadId: 't1',
+                        internalDate: '2000',
+                        snippet: 'hello',
+                        labelIds: ['INBOX', 'UNREAD'],
+                        payload: {
+                            headers: [
+                                { name: 'Subject', value: 'Deal' },
+                                { name: 'From', value: 'Ann <ann@ex.com>' },
+                            ],
+                        },
+                    },
+                    {
+                        id: 'm0',
+                        threadId: 't1',
+                        internalDate: '1000',
+                        labelIds: ['Label_ads'],
+                        payload: {
+                            headers: [{ name: 'List-Unsubscribe', value: '<https://ex.com/u>' }],
+                        },
+                    },
+                ],
             },
         })
 
         const result = await listMessagesForLabel('u', 'p', 'Label_ads', { emailAddress: 'me@gmail.com' })
 
-        expect(mockMessagesList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_ads', 'INBOX'] }))
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_ads', 'INBOX'] }))
+        expect(mockThreadsGet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                id: 't1',
+                format: 'metadata',
+            })
+        )
         expect(result.nextPageToken).toBe('np')
         const row = result.messages[0]
+        expect(row.messageId).toBe('m1')
+        expect(row.messageIds).toEqual(['m1', 'm0'])
+        expect(row.threadId).toBe('t1')
         expect(row.subject).toBe('Deal')
         expect(row.from).toBe('Ann <ann@ex.com>')
         expect(row.isUnread).toBe(true)
@@ -175,9 +201,9 @@ describe('gmailEmailLine', () => {
     })
 
     test('listMessagesForLabel INBOX label queries only INBOX', async () => {
-        mockMessagesList.mockResolvedValue({ data: { messages: [] } })
+        mockThreadsList.mockResolvedValue({ data: { threads: [] } })
         await listMessagesForLabel('u', 'p', 'INBOX', {})
-        expect(mockMessagesList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
+        expect(mockThreadsList).toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['INBOX'] }))
     })
 
     test('archiveMessages removes INBOX and chunks batchModify at 100', async () => {

@@ -23,6 +23,36 @@ function getLabelingAuditCollectionRef(userId, projectId) {
     return getGmailLabelingStateRef(userId, projectId).collection('messages')
 }
 
+function getLegacyProjectIdsForEmailConnection(userData = {}, connection = {}) {
+    if (!connection || connection.provider !== 'google' || !connection.emailAddress) return []
+    const targetEmail = String(connection.emailAddress || '')
+        .trim()
+        .toLowerCase()
+    const targetProvider = String(connection.provider || '')
+        .trim()
+        .toLowerCase()
+    const apisConnected = userData?.apisConnected || {}
+    return Object.keys(apisConnected).filter(projectId => {
+        const resolved = resolveEmailConnection(apisConnected[projectId] || {})
+        return (
+            resolved.connected &&
+            resolved.provider === targetProvider &&
+            String(resolved.emailAddress || '')
+                .trim()
+                .toLowerCase() === targetEmail
+        )
+    })
+}
+
+function getGmailLabelingLookupKeys(userData = {}, key = '', connection = null) {
+    const keys = [key]
+    if (connection?.provider === 'google') {
+        if (connection.defaultProjectId) keys.push(connection.defaultProjectId)
+        keys.push(...getLegacyProjectIdsForEmailConnection(userData, connection))
+    }
+    return [...new Set(keys.filter(Boolean))]
+}
+
 function getProviderModule(provider) {
     return provider === 'microsoft' ? microsoftEmailLine : gmailEmailLine
 }
@@ -39,17 +69,29 @@ function resolveProvider(userData, key) {
     if (typeof key === 'string' && key.startsWith('email_')) {
         const connection = getConnection(userData, CONNECTION_SERVICE_EMAIL, key)
         if (connection) {
-            return { connected: true, provider: connection.provider, emailAddress: connection.emailAddress }
+            return {
+                connected: true,
+                provider: connection.provider,
+                emailAddress: connection.emailAddress,
+                defaultProjectId: connection.defaultProjectId || '',
+            }
         }
         return { connected: false, provider: '', emailAddress: '' }
     }
 
     const legacyResolved = resolveEmailConnection(userData?.apisConnected?.[key] || {})
-    if (legacyResolved.connected) return legacyResolved
+    if (legacyResolved.connected) return { ...legacyResolved, defaultProjectId: key }
 
     // A project whose connection was created account-level only (new connect flow).
     const [match] = findConnectionsForProject(userData, CONNECTION_SERVICE_EMAIL, key)
-    if (match) return { connected: true, provider: match.provider, emailAddress: match.emailAddress }
+    if (match) {
+        return {
+            connected: true,
+            provider: match.provider,
+            emailAddress: match.emailAddress,
+            defaultProjectId: match.defaultProjectId || key,
+        }
+    }
     return legacyResolved
 }
 
@@ -57,15 +99,22 @@ function resolveProvider(userData, key) {
 // detector, no gold charge. Only emails the labeling sync has processed carry a flag,
 // so coverage requires labeling to be enabled. Never throws — a read failure must not
 // break the summary.
-async function loadNeedsReplyFlagsFromAudit(userId, projectId) {
+async function loadNeedsReplyFlagsFromAudit(userId, projectIds) {
+    const lookupKeys = Array.isArray(projectIds) ? projectIds : [projectIds]
     try {
-        const snapshot = await getLabelingAuditCollectionRef(userId, projectId)
-            .orderBy('processedAt', 'desc')
-            .limit(NEEDS_REPLY_AUDIT_WINDOW)
-            .get()
         const flags = {}
-        snapshot.docs.forEach(doc => {
-            if (doc.data()?.needsReply === true) flags[doc.id] = true
+        const snapshots = await Promise.all(
+            lookupKeys.map(projectId =>
+                getLabelingAuditCollectionRef(userId, projectId)
+                    .orderBy('processedAt', 'desc')
+                    .limit(NEEDS_REPLY_AUDIT_WINDOW)
+                    .get()
+            )
+        )
+        snapshots.forEach(snapshot => {
+            snapshot.docs.forEach(doc => {
+                if (doc.data()?.needsReply === true) flags[doc.id] = true
+            })
         })
         return flags
     } catch (error) {
@@ -77,14 +126,39 @@ async function loadNeedsReplyFlagsFromAudit(userId, projectId) {
 // Batch-join labeling audit records onto message rows by message id (label name,
 // reasoning, confidence, needsReply). Labeling is Gmail-only; other providers simply
 // find no audit docs. Never throws — the join is enrichment, not a requirement.
-async function loadAuditEntriesByMessageId(userId, projectId, messageIds = []) {
+function scoreAuditEntry(audit = {}) {
+    let score = 0
+    if (typeof audit.reasoning === 'string' && audit.reasoning.trim()) score += 4
+    if (audit.selectedLabelKey || audit.selectedGmailLabelName || audit.selectedProjectId) score += 2
+    if (audit.taskCreated) score += 1
+    return score
+}
+
+async function loadAuditEntriesByMessageId(userId, projectIds, messageIds = []) {
     if (!messageIds.length) return {}
+    const lookupKeys = Array.isArray(projectIds) ? projectIds : [projectIds]
     try {
-        const refs = messageIds.map(messageId => getLabelingAuditCollectionRef(userId, projectId).doc(messageId))
+        const refMetadata = []
+        lookupKeys.forEach(projectId => {
+            messageIds.forEach(messageId => {
+                refMetadata.push({
+                    projectId,
+                    messageId,
+                    ref: getLabelingAuditCollectionRef(userId, projectId).doc(messageId),
+                })
+            })
+        })
+        const refs = refMetadata.map(entry => entry.ref)
         const snapshots = await admin.firestore().getAll(...refs)
         const byId = {}
-        snapshots.forEach(snapshot => {
-            if (snapshot.exists) byId[snapshot.id] = snapshot.data()
+        snapshots.forEach((snapshot, index) => {
+            if (!snapshot.exists) return
+            const metadata = refMetadata[index]
+            const audit = { ...snapshot.data(), __auditKey: metadata.projectId }
+            const existing = byId[metadata.messageId]
+            if (!existing || scoreAuditEntry(audit) > scoreAuditEntry(existing)) {
+                byId[metadata.messageId] = audit
+            }
         })
         return byId
     } catch (error) {
@@ -133,14 +207,19 @@ async function getEmailLineSummary(userId, projectId, options = {}) {
     let needsReplyByMessageId = {}
     let labelingEnabled = false
     if (includeNeedsReply && connection.provider !== 'microsoft') {
-        const [auditFlags, unreadIds, configSnap] = await Promise.all([
-            loadNeedsReplyFlagsFromAudit(userId, projectId),
+        const auditLookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
+        const [auditFlags, unreadIds, configSnaps] = await Promise.all([
+            loadNeedsReplyFlagsFromAudit(userId, auditLookupKeys),
             gmailEmailLine.getUnreadInboxMessageIds(userId, projectId, NEEDS_REPLY_AUDIT_WINDOW).catch(() => null),
-            getGmailLabelingConfigRef(userId, projectId)
-                .get()
-                .catch(() => null),
+            Promise.all(
+                auditLookupKeys.map(key =>
+                    getGmailLabelingConfigRef(userId, key)
+                        .get()
+                        .catch(() => null)
+                )
+            ),
         ])
-        labelingEnabled = !!configSnap?.exists && configSnap.data()?.enabled === true
+        labelingEnabled = configSnaps.some(configSnap => !!configSnap?.exists && configSnap.data()?.enabled === true)
         if (unreadIds === null) {
             needsReplyByMessageId = auditFlags
         } else {
@@ -187,7 +266,7 @@ function resolveConnectionProjectId(userData, key) {
 // Returns { messages, nextPageToken }
 async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
     const { pageToken, userData: providedUserData } = options
-    const { connection } = await resolveConnectionOrThrow(userId, projectId, providedUserData)
+    const { connection, userData } = await resolveConnectionOrThrow(userId, projectId, providedUserData)
     const provider = getProviderModule(connection.provider)
     try {
         const result = await provider.listMessagesForLabel(userId, projectId, labelId, {
@@ -195,15 +274,27 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
             emailAddress: connection.emailAddress,
         })
         const rows = result?.messages || []
-        const auditById = await loadAuditEntriesByMessageId(
-            userId,
-            projectId,
-            rows.map(message => message.messageId)
-        )
+        const auditLookupIds = [
+            ...new Set(
+                rows
+                    .flatMap(message => [
+                        message.messageId,
+                        ...(Array.isArray(message.messageIds) ? message.messageIds : []),
+                    ])
+                    .filter(Boolean)
+            ),
+        ]
+        const auditLookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
+        const auditById = await loadAuditEntriesByMessageId(userId, auditLookupKeys, auditLookupIds)
         const messages = rows.map(message => {
-            const audit = auditById[message.messageId]
+            const auditMessageId =
+                (message.messageId && auditById[message.messageId] && message.messageId) ||
+                (Array.isArray(message.messageIds) ? message.messageIds.find(id => auditById[id]) : '') ||
+                ''
+            const audit = auditById[auditMessageId]
             return {
                 ...message,
+                auditMessageId,
                 needsReply: audit?.needsReply === true,
                 hasAudit: !!audit,
                 labelKey: audit?.selectedLabelKey || null,
@@ -311,23 +402,26 @@ async function getTaskService() {
 // project: the label's mapped project from the audit record when the user is still a
 // member, else the connection's project. Gold is deducted after summarization and
 // refunded if task persistence fails (mirrors draftReply).
-async function createTaskFromEmail({ userId, projectId, connection, userData, messageId }) {
-    if (!messageId) throw new Error('messageId is required for createTask')
+async function createTaskFromEmail({ userId, projectId, connection, userData, messageId, messageIds }) {
+    const candidateMessageIds = [
+        ...new Set([messageId, ...(Array.isArray(messageIds) ? messageIds : [])].filter(Boolean)),
+    ]
+    if (candidateMessageIds.length === 0) throw new Error('messageId is required for createTask')
     const provider = getProviderModule(connection.provider)
+    const auditLookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
+    const auditById = await loadAuditEntriesByMessageId(userId, auditLookupKeys, candidateMessageIds)
+    const selectedMessageId = candidateMessageIds.find(id => auditById[id]) || candidateMessageIds[0]
+    const audit = auditById[selectedMessageId] || null
 
     let context
     try {
-        context = await provider.getMessageContext(userId, projectId, messageId)
+        context = await provider.getMessageContext(userId, projectId, selectedMessageId)
     } catch (error) {
         if (isAuthError(error)) throw new EmailLineAuthError()
         throw error
     }
 
-    const [auditById, summary] = await Promise.all([
-        loadAuditEntriesByMessageId(userId, projectId, [messageId]),
-        summarizeEmailAsTaskName({ context, language: userData?.language || userData?.appLanguage }),
-    ])
-    const audit = auditById[messageId] || null
+    const summary = await summarizeEmailAsTaskName({ context, language: userData?.language || userData?.appLanguage })
 
     const taskName = summary.name || context.subject || 'Follow up on email'
 
@@ -343,7 +437,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     const webUrl =
         connection.provider === 'microsoft'
             ? context.webUrl || ''
-            : gmailEmailLine.buildGmailMessageUrl(connection.emailAddress, messageId)
+            : gmailEmailLine.buildGmailMessageUrl(connection.emailAddress, selectedMessageId)
 
     const gmailData = {
         origin: 'gmail_label_follow_up',
@@ -352,7 +446,8 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         projectId: connectionProjectId,
         taskProjectId: targetProjectId,
         selectedProjectId: auditProjectId,
-        messageId,
+        messageId: selectedMessageId,
+        messageIds: candidateMessageIds,
         threadId: context.threadId || audit?.gmailThreadId || '',
         webUrl,
         archiveOnComplete: true,
@@ -365,7 +460,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     const goldContext = {
         source: GOLD_SOURCE_CREATE_TASK,
         projectId: targetProjectId,
-        objectId: messageId,
+        objectId: selectedMessageId,
         channel: connection.provider,
     }
 
@@ -420,10 +515,11 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
             confidence: matched && Number.isFinite(audit?.confidence) ? audit.confidence : null,
             matched,
             source: 'email_line_create_task',
-            routingKey: messageId,
+            routingKey: selectedMessageId,
             sourceDataField: 'gmailData',
             routingData: {
-                messageId,
+                messageId: selectedMessageId,
+                messageIds: candidateMessageIds,
                 threadId: context.threadId || '',
                 selectedLabelKey: audit?.selectedLabelKey || '',
                 selectedProjectId: auditProjectId || null,
@@ -436,8 +532,8 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     // Remember on the audit record that this email already has a task, so the modal
     // shows the created state (with a link) instead of the + button on reopen.
     try {
-        await getLabelingAuditCollectionRef(userId, projectId)
-            .doc(messageId)
+        await getLabelingAuditCollectionRef(userId, audit?.__auditKey || projectId)
+            .doc(selectedMessageId)
             .set({ taskCreated: { taskId, projectId: targetProjectId, taskName, at: Date.now() } }, { merge: true })
     } catch (error) {
         console.warn('[emailLine] createTask audit stamp failed:', error?.message || error)
@@ -483,6 +579,7 @@ async function performEmailLineAction(userId, projectId, params = {}) {
                     connection,
                     userData,
                     messageId: Array.isArray(messageIds) ? messageIds[0] : messageIds,
+                    messageIds,
                 })
             default:
                 throw new Error(`Unsupported email line action: ${action}`)

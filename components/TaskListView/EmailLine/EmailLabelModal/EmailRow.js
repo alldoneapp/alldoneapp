@@ -54,6 +54,7 @@ export default function EmailRow({ row, connectionId, labelOptions, selected, on
     const unsubscribeUrl = resolveUnsubscribeUrl(row)
     const hasReasoning = !!row.reasoning
     const confidencePercent = Number.isFinite(row.confidence) ? Math.round(row.confidence * 100) : null
+    const explanationText = row.reasoning || translate('No project or label explanation was recorded for this email.')
     const feedbackLabelOptions = (labelOptions || []).filter(option => option !== row.labelName)
 
     const sendFeedback = async () => {
@@ -75,7 +76,7 @@ export default function EmailRow({ row, connectionId, labelOptions, selected, on
         try {
             const result = await performEmailLineAction(connectionId, {
                 action: 'createTask',
-                messageIds: [row.messageId],
+                messageIds: row.messageIds || [row.messageId],
             })
             if (result?.taskId) setCreatedTask({ taskId: result.taskId, projectId: result.projectId })
             setTaskState('done')
@@ -119,21 +120,6 @@ export default function EmailRow({ row, connectionId, labelOptions, selected, on
                             </Text>
                         </View>
                     )}
-                    {hasReasoning && (
-                        <TouchableOpacity
-                            style={localStyles.reasoningToggle}
-                            onPress={() => setReasoningOpen(open => !open)}
-                            accessibilityLabel={translate('Why this label')}
-                        >
-                            {!!row.labelName && (
-                                <Text style={[styles.caption2, localStyles.reasoningTag]} numberOfLines={1}>
-                                    {row.labelName}
-                                </Text>
-                            )}
-                            <Text style={[styles.caption2, localStyles.reasoningLink]}>{translate('Why?')}</Text>
-                            {reasoningOpen && <Icon name="chevron-up" size={12} color={colors.Text02} />}
-                        </TouchableOpacity>
-                    )}
                 </View>
                 <Text style={[styles.body2, localStyles.subject]} numberOfLines={1}>
                     {row.subject || translate('No subject')}
@@ -143,7 +129,7 @@ export default function EmailRow({ row, connectionId, labelOptions, selected, on
                         {row.snippet}
                     </Text>
                 )}
-                {hasReasoning && reasoningOpen && (
+                {reasoningOpen && (
                     <View style={localStyles.reasoningBox}>
                         {!!row.labelName && (
                             <Text style={[styles.caption2, localStyles.reasoningLabel]}>
@@ -152,83 +138,90 @@ export default function EmailRow({ row, connectionId, labelOptions, selected, on
                                     : `${row.labelName} · ${confidencePercent}%`}
                             </Text>
                         )}
-                        <Text style={[styles.caption1, localStyles.reasoningText]}>{row.reasoning}</Text>
+                        <Text style={[styles.caption1, localStyles.reasoningText]}>{explanationText}</Text>
 
-                        {feedbackState === 'done' ? (
-                            <View style={localStyles.feedbackDoneRow}>
-                                <Icon name="check" size={12} color={colors.UtilityGreen300} />
-                                <Text style={[styles.caption2, localStyles.feedbackDoneText]}>
-                                    {translate('Labeling instructions updated')}
-                                </Text>
-                            </View>
-                        ) : !feedbackOpen ? (
-                            <TouchableOpacity
-                                style={localStyles.feedbackLink}
-                                onPress={() => setFeedbackOpen(true)}
-                                accessibilityLabel={translate('Wrong label?')}
-                            >
-                                <Text style={[styles.caption2, localStyles.feedbackLinkText]}>
-                                    {translate('Wrong label?')}
-                                </Text>
-                            </TouchableOpacity>
-                        ) : (
-                            <View style={localStyles.feedbackForm}>
-                                {feedbackLabelOptions.length > 0 && (
-                                    <View style={localStyles.feedbackPills}>
-                                        {feedbackLabelOptions.map(option => (
-                                            <TouchableOpacity
-                                                key={option}
-                                                style={[
-                                                    localStyles.feedbackPill,
-                                                    feedbackLabel === option && localStyles.feedbackPillSelected,
-                                                ]}
-                                                onPress={() =>
-                                                    setFeedbackLabel(previous => (previous === option ? null : option))
-                                                }
-                                            >
-                                                <Text
-                                                    style={[
-                                                        styles.caption2,
-                                                        localStyles.feedbackPillText,
-                                                        feedbackLabel === option &&
-                                                            localStyles.feedbackPillTextSelected,
-                                                    ]}
-                                                    numberOfLines={1}
-                                                >
-                                                    {option}
+                        {hasReasoning && (
+                            <>
+                                {feedbackState === 'done' ? (
+                                    <View style={localStyles.feedbackDoneRow}>
+                                        <Icon name="check" size={12} color={colors.UtilityGreen300} />
+                                        <Text style={[styles.caption2, localStyles.feedbackDoneText]}>
+                                            {translate('Labeling instructions updated')}
+                                        </Text>
+                                    </View>
+                                ) : !feedbackOpen ? (
+                                    <TouchableOpacity
+                                        style={localStyles.feedbackLink}
+                                        onPress={() => setFeedbackOpen(true)}
+                                        accessibilityLabel={translate('Wrong label?')}
+                                    >
+                                        <Text style={[styles.caption2, localStyles.feedbackLinkText]}>
+                                            {translate('Wrong label?')}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ) : (
+                                    <View style={localStyles.feedbackForm}>
+                                        {feedbackLabelOptions.length > 0 && (
+                                            <View style={localStyles.feedbackPills}>
+                                                {feedbackLabelOptions.map(option => (
+                                                    <TouchableOpacity
+                                                        key={option}
+                                                        style={[
+                                                            localStyles.feedbackPill,
+                                                            feedbackLabel === option &&
+                                                                localStyles.feedbackPillSelected,
+                                                        ]}
+                                                        onPress={() =>
+                                                            setFeedbackLabel(previous =>
+                                                                previous === option ? null : option
+                                                            )
+                                                        }
+                                                    >
+                                                        <Text
+                                                            style={[
+                                                                styles.caption2,
+                                                                localStyles.feedbackPillText,
+                                                                feedbackLabel === option &&
+                                                                    localStyles.feedbackPillTextSelected,
+                                                            ]}
+                                                            numberOfLines={1}
+                                                        >
+                                                            {option}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        )}
+                                        <TextInput
+                                            style={[styles.caption1, localStyles.feedbackInput]}
+                                            value={feedbackNote}
+                                            onChangeText={setFeedbackNote}
+                                            placeholder={translate('Add a note (optional)')}
+                                            placeholderTextColor={colors.Text03}
+                                        />
+                                        <View style={localStyles.feedbackActions}>
+                                            {feedbackState === 'error' && (
+                                                <Text style={[styles.caption2, localStyles.feedbackErrorText]}>
+                                                    {translate('Something went wrong')}
                                                 </Text>
+                                            )}
+                                            <TouchableOpacity
+                                                style={localStyles.feedbackSendButton}
+                                                onPress={sendFeedback}
+                                                disabled={feedbackState === 'sending'}
+                                            >
+                                                {feedbackState === 'sending' ? (
+                                                    <ActivityIndicator size="small" color="#ffffff" />
+                                                ) : (
+                                                    <Text style={[styles.caption2, localStyles.feedbackSendText]}>
+                                                        {translate('Send feedback')}
+                                                    </Text>
+                                                )}
                                             </TouchableOpacity>
-                                        ))}
+                                        </View>
                                     </View>
                                 )}
-                                <TextInput
-                                    style={[styles.caption1, localStyles.feedbackInput]}
-                                    value={feedbackNote}
-                                    onChangeText={setFeedbackNote}
-                                    placeholder={translate('Add a note (optional)')}
-                                    placeholderTextColor={colors.Text03}
-                                />
-                                <View style={localStyles.feedbackActions}>
-                                    {feedbackState === 'error' && (
-                                        <Text style={[styles.caption2, localStyles.feedbackErrorText]}>
-                                            {translate('Something went wrong')}
-                                        </Text>
-                                    )}
-                                    <TouchableOpacity
-                                        style={localStyles.feedbackSendButton}
-                                        onPress={sendFeedback}
-                                        disabled={feedbackState === 'sending'}
-                                    >
-                                        {feedbackState === 'sending' ? (
-                                            <ActivityIndicator size="small" color="#ffffff" />
-                                        ) : (
-                                            <Text style={[styles.caption2, localStyles.feedbackSendText]}>
-                                                {translate('Send feedback')}
-                                            </Text>
-                                        )}
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
+                            </>
                         )}
                     </View>
                 )}
@@ -245,6 +238,13 @@ export default function EmailRow({ row, connectionId, labelOptions, selected, on
             </TouchableOpacity>
 
             <View style={localStyles.actions}>
+                <TouchableOpacity
+                    style={localStyles.actionButton}
+                    onPress={() => setReasoningOpen(open => !open)}
+                    accessibilityLabel={translate('Why this label')}
+                >
+                    <Icon name="help-circle" size={16} color={hasReasoning ? colors.Primary100 : colors.Text03} />
+                </TouchableOpacity>
                 {taskState === 'done' ? (
                     <TouchableOpacity
                         style={localStyles.actionButton}
@@ -353,22 +353,6 @@ const localStyles = StyleSheet.create({
     },
     readText: {
         color: colors.Text03,
-    },
-    reasoningToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginLeft: 8,
-        flexShrink: 1,
-    },
-    reasoningTag: {
-        maxWidth: 100,
-        color: colors.Text03,
-        marginRight: 4,
-    },
-    reasoningLink: {
-        color: colors.Text03,
-        textDecorationLine: 'underline',
-        marginRight: 2,
     },
     reasoningBox: {
         marginTop: 6,

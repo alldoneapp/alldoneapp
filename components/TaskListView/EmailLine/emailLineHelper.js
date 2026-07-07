@@ -25,9 +25,10 @@ export function getLabelDisplayCount(label = {}) {
 }
 
 // Merges the labels of all connected accounts into one chip list, grouped
-// case-insensitively by display name (both accounts' "Inbox" become one chip
-// summing their counts). Each group keeps per-account entries so the modal and
-// its actions can route to the right connection.
+// case-insensitively by display name. The Inbox chip is an aggregate of the
+// surfaced label buckets, so its count visually equals the other chips added up.
+// Each group keeps per-account entries so the modal and its actions can route to
+// the right connection.
 export function mergeLabelsAcrossConnections(connections = [], summariesByKey = {}) {
     const groups = new Map()
     connections.forEach(connection => {
@@ -63,7 +64,17 @@ export function mergeLabelsAcrossConnections(connections = [], summariesByKey = 
             })
         })
     })
-    return [...groups.values()].sort((a, b) => {
+    const mergedGroups = [...groups.values()]
+    const inboxGroup = mergedGroups.find(group => group.isInbox)
+    if (inboxGroup) {
+        const labelGroups = mergedGroups.filter(group => !group.isInbox)
+        inboxGroup.threadCount = labelGroups.reduce((total, group) => total + group.threadCount, 0)
+        inboxGroup.unreadCount = labelGroups.reduce((total, group) => total + group.unreadCount, 0)
+        inboxGroup.sweeping = inboxGroup.sweeping || labelGroups.some(group => group.sweeping)
+        inboxGroup.entries = labelGroups.flatMap(group => group.entries)
+    }
+
+    return mergedGroups.sort((a, b) => {
         if (a.isInbox !== b.isInbox) return a.isInbox ? -1 : 1
         return a.displayName.localeCompare(b.displayName)
     })

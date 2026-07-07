@@ -103,12 +103,10 @@ export default function EmailLine() {
                     >
                         <Icon name="refresh-cw" size={14} color={colors.Text03} />
                     </TouchableOpacity>
-                </View>
-                <View style={localStyles.headerRight}>
                     <Popover
                         isOpen={menuOpen}
                         position={['bottom', 'top', 'right', 'left']}
-                        align="end"
+                        align="start"
                         padding={4}
                         containerStyle={POPOVER_CONTAINER_STYLE}
                         onClickOutside={() => setMenuOpen(false)}
@@ -129,6 +127,16 @@ export default function EmailLine() {
                             <Icon name="settings" size={14} color={colors.Text03} />
                         </TouchableOpacity>
                     </Popover>
+                </View>
+                <View style={localStyles.headerRight}>
+                    <TouchableOpacity
+                        style={localStyles.doneButton}
+                        onPress={hideForToday}
+                        accessibilityLabel={translate('Done for today')}
+                    >
+                        <Icon name="check" size={14} color={colors.Text03} style={localStyles.doneIcon} />
+                        <Text style={[styles.caption1, localStyles.doneText]}>{translate('done for today')}</Text>
+                    </TouchableOpacity>
                 </View>
             </View>
 
@@ -172,6 +180,7 @@ export default function EmailLine() {
 const localStyles = StyleSheet.create({
     container: {
         paddingTop: 12,
+        paddingBottom: 8,
     },
     header: {
         minHeight: 24,
@@ -187,6 +196,7 @@ const localStyles = StyleSheet.create({
     headerRight: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'flex-end',
     },
     headerIcon: {
         marginRight: 6,
@@ -201,6 +211,22 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginRight: 8,
+    },
+    doneButton: {
+        height: 24,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.Grey400,
+        backgroundColor: '#ffffff',
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    doneIcon: {
+        marginRight: 6,
+    },
+    doneText: {
+        color: colors.Text03,
     },
     chipsRow: {
         flexDirection: 'row',

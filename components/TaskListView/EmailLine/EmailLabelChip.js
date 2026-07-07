@@ -30,7 +30,7 @@ export default function EmailLabelChip({ group, labelOptionsByConnectionId, labe
                 <ActivityIndicator size="small" color={colors.Primary100} style={localStyles.sweepSpinner} />
             ) : (
                 group.threadCount > 0 && (
-                    <View style={[localStyles.badge, !hasUnread && localStyles.badgeRead]}>
+                    <View style={localStyles.badge}>
                         <Text style={[styles.caption2, localStyles.badgeText]}>{group.threadCount}</Text>
                     </View>
                 )
@@ -92,9 +92,6 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Primary100,
         alignItems: 'center',
         justifyContent: 'center',
-    },
-    badgeRead: {
-        backgroundColor: colors.Grey400,
     },
     badgeText: {
         color: '#ffffff',

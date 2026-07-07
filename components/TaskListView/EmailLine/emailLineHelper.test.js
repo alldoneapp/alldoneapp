@@ -53,7 +53,7 @@ describe('emailLineHelper', () => {
         expect(getLabelDisplayCount({})).toBe(0)
     })
 
-    test('mergeLabelsAcrossConnections merges same-named labels across accounts', () => {
+    test('mergeLabelsAcrossConnections merges same-named labels and makes Inbox the label total', () => {
         const connections = [
             { connectionId: 'c1', provider: 'google', email: 'a@gmail.com' },
             { connectionId: 'c2', provider: 'microsoft', email: 'b@outlook.com' },
@@ -68,18 +68,22 @@ describe('emailLineHelper', () => {
             },
             c2: {
                 emailAddress: 'b@outlook.com',
-                labels: [{ labelId: 'f_inbox', displayName: 'Inbox', threadCount: 4, unreadCount: 0, kind: 'inbox' }],
+                labels: [
+                    { labelId: 'f_inbox', displayName: 'Inbox', threadCount: 4, unreadCount: 0, kind: 'inbox' },
+                    { labelId: 'f_clients', displayName: 'Clients', threadCount: 5, unreadCount: 1, kind: 'folder' },
+                ],
             },
         }
         const groups = mergeLabelsAcrossConnections(connections, summariesByKey)
-        expect(groups).toHaveLength(2)
+        expect(groups).toHaveLength(3)
         expect(groups[0].displayName).toBe('Inbox')
         expect(groups[0].isInbox).toBe(true)
         expect(groups[0].threadCount).toBe(7)
-        expect(groups[0].unreadCount).toBe(1)
-        expect(groups[0].entries.map(entry => entry.connectionId)).toEqual(['c1', 'c2'])
+        expect(groups[0].unreadCount).toBe(3)
+        expect(groups[0].entries.map(entry => entry.labelId)).toEqual(['Label_ads', 'f_clients'])
         expect(groups[1].displayName).toBe('Ads')
         expect(groups[1].entries).toHaveLength(1)
+        expect(groups[2].displayName).toBe('Clients')
     })
 
     test('mergeLabelsAcrossConnections skips auth-expired accounts and flags sweeping groups', () => {

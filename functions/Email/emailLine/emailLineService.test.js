@@ -14,11 +14,15 @@ jest.mock('firebase-admin', () => ({
             },
         }),
         getAll: async (...refs) =>
-            refs.map(ref => ({
-                id: ref.id,
-                exists: mockAuditDocs.has(ref.id),
-                data: () => mockAuditDocs.get(ref.id),
-            })),
+            refs.map(ref => {
+                const path = ref.path || ref.id
+                const data = mockAuditDocs.has(path) ? mockAuditDocs.get(path) : mockAuditDocs.get(ref.id)
+                return {
+                    id: ref.id,
+                    exists: data !== undefined,
+                    data: () => data,
+                }
+            }),
     }),
 }))
 
@@ -29,19 +33,28 @@ jest.mock('../../Gmail/gmailLabelingConfig', () => ({
             return { exists: data !== undefined, data: () => data }
         },
     })),
-    getGmailLabelingStateRef: jest.fn(() => ({
+    getGmailLabelingStateRef: jest.fn((userId, projectId) => ({
         collection: () => ({
             doc: id => ({
                 id,
+                path: `audit:${projectId}:${id}`,
                 set: async (value, opts) => {
-                    const prev = mockAuditDocs.get(id) || {}
-                    mockAuditDocs.set(id, opts && opts.merge ? { ...prev, ...value } : value)
+                    const path = `audit:${projectId}:${id}`
+                    const prev = mockAuditDocs.get(path) || mockAuditDocs.get(id) || {}
+                    const next = opts && opts.merge ? { ...prev, ...value } : value
+                    mockAuditDocs.set(path, next)
+                    mockAuditDocs.set(id, next)
                 },
             }),
             orderBy: () => ({
                 limit: () => ({
                     get: async () => ({
-                        docs: [...mockAuditDocs.entries()].map(([id, data]) => ({ id, data: () => data })),
+                        docs: [...mockAuditDocs.entries()]
+                            .filter(([id]) => !id.startsWith('audit:') || id.startsWith(`audit:${projectId}:`))
+                            .map(([id, data]) => ({
+                                id: id.startsWith('audit:') ? id.split(':').pop() : id,
+                                data: () => data,
+                            })),
                     }),
                 }),
             }),
@@ -114,6 +127,16 @@ const { createGmailReplyDraftForAssistantRequest } = require('../../Gmail/assist
 const { getEmailLineSummary, listEmailLineMessages, performEmailLineAction } = require('./emailLineService')
 
 const googleUserData = { apisConnected: { p1: { email: true, emailProvider: 'google', gmailEmail: 'me@gmail.com' } } }
+const googleConnectionUserData = {
+    ...googleUserData,
+    emailConnections: {
+        email_google_test: {
+            provider: 'google',
+            emailAddress: 'me@gmail.com',
+            defaultProjectId: 'p1',
+        },
+    },
+}
 const microsoftUserData = {
     apisConnected: { p1: { email: true, emailProvider: 'microsoft', emailAddress: 'me@outlook.com' } },
 }
@@ -406,6 +429,102 @@ describe('emailLineService', () => {
         expect(mockAuditDocs.get('m1').taskCreated).toEqual(expect.objectContaining({ taskId: 't2' }))
     })
 
+    test('createTask chooses the audited message from a thread row for project reasoning', async () => {
+        const userData = {
+            ...googleUserData,
+            projectIds: ['p1', 'proj_target'],
+        }
+        gmailEmailLine.getMessageContext.mockResolvedValue({
+            subject: 'Project update',
+            from: 'bob@ex.com',
+            body: 'Target project update',
+            threadId: 'th1',
+        })
+        mockAuditDocs.set('m_audit', {
+            selectedProjectId: 'proj_target',
+            gmailThreadId: 'th1',
+            selectedLabelKey: 'project_target',
+            reasoning: 'This thread is about the target project.',
+            confidence: 0.7,
+        })
+        summarizeEmailAsTaskName.mockResolvedValue({ name: 'Review project update', totalTokens: 50 })
+        deductGold.mockResolvedValue({ success: true })
+        mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 't3' })
+
+        await performEmailLineAction('u', 'p1', {
+            action: 'createTask',
+            messageIds: ['m_visible', 'm_audit'],
+            userData,
+        })
+
+        expect(gmailEmailLine.getMessageContext).toHaveBeenCalledWith('u', 'p1', 'm_audit')
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'proj_target',
+                gmailData: expect.objectContaining({
+                    messageId: 'm_audit',
+                    messageIds: ['m_visible', 'm_audit'],
+                    selectedProjectId: 'proj_target',
+                }),
+            }),
+            expect.anything()
+        )
+        expect(mockAddProjectRoutingReasonComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'proj_target',
+                taskId: 't3',
+                reasoning: 'This thread is about the target project.',
+                routingKey: 'm_audit',
+                routingData: expect.objectContaining({
+                    messageId: 'm_audit',
+                    messageIds: ['m_visible', 'm_audit'],
+                }),
+            })
+        )
+        expect(mockAuditDocs.get('m_audit').taskCreated).toEqual(expect.objectContaining({ taskId: 't3' }))
+    })
+
+    test('createTask finds legacy project-keyed audit when called with a connection id', async () => {
+        const userData = {
+            ...googleConnectionUserData,
+            projectIds: ['p1', 'proj_target'],
+        }
+        gmailEmailLine.getMessageContext.mockResolvedValue({
+            subject: 'Project update',
+            from: 'bob@ex.com',
+            body: 'Target project update',
+            threadId: 'th1',
+        })
+        mockAuditDocs.set('audit:p1:m_audit', {
+            selectedProjectId: 'proj_target',
+            gmailThreadId: 'th1',
+            selectedLabelKey: 'project_target',
+            reasoning: 'Legacy audit says this belongs to the target project.',
+            confidence: 0.77,
+        })
+        summarizeEmailAsTaskName.mockResolvedValue({ name: 'Review project update', totalTokens: 50 })
+        deductGold.mockResolvedValue({ success: true })
+        mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 't4' })
+
+        await performEmailLineAction('u', 'email_google_test', {
+            action: 'createTask',
+            messageIds: ['m_visible', 'm_audit'],
+            userData,
+        })
+
+        expect(gmailEmailLine.getMessageContext).toHaveBeenCalledWith('u', 'email_google_test', 'm_audit')
+        expect(mockAddProjectRoutingReasonComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'proj_target',
+                taskId: 't4',
+                reasoning: 'Legacy audit says this belongs to the target project.',
+                confidence: 0.77,
+                routingKey: 'm_audit',
+            })
+        )
+        expect(mockAuditDocs.get('audit:p1:m_audit').taskCreated).toEqual(expect.objectContaining({ taskId: 't4' }))
+    })
+
     test('createTask falls back to the connection project and refunds gold on failure', async () => {
         gmailEmailLine.getMessageContext.mockResolvedValue({ subject: 'Hi', from: 'a@ex.com', body: 'b' })
         summarizeEmailAsTaskName.mockResolvedValue({ name: 'Do the thing', totalTokens: 50 })
@@ -436,16 +555,17 @@ describe('emailLineService', () => {
         })
         gmailEmailLine.listMessagesForLabel.mockResolvedValue({
             messages: [
-                { messageId: 'm1', subject: 'Q?' },
+                { messageId: 'm_visible', messageIds: ['m_visible', 'm1'], subject: 'Q?' },
                 { messageId: 'm2', subject: 'FYI' },
             ],
             nextPageToken: null,
         })
 
         const result = await listEmailLineMessages('u', 'p1', 'INBOX', { userData: googleUserData })
-        const first = result.messages.find(m => m.messageId === 'm1')
+        const first = result.messages.find(m => m.messageId === 'm_visible')
         expect(first.needsReply).toBe(true)
         expect(first.hasAudit).toBe(true)
+        expect(first.auditMessageId).toBe('m1')
         expect(first.labelName).toBe('Alldone/Newsletter')
         expect(first.reasoning).toBe('Weekly digest the user subscribed to.')
         expect(first.confidence).toBe(0.92)
@@ -455,6 +575,34 @@ describe('emailLineService', () => {
         expect(second.hasAudit).toBe(false)
         expect(second.reasoning).toBe('')
         expect(second.taskCreated).toBeNull()
+    })
+
+    test('listEmailLineMessages reads legacy project-keyed audit for connection-keyed email line', async () => {
+        mockAuditDocs.set('audit:p1:m1', {
+            needsReply: true,
+            selectedLabelKey: 'ads',
+            selectedGmailLabelName: 'Ads',
+            reasoning: 'Legacy audit says this is promotional.',
+            confidence: 0.91,
+        })
+        gmailEmailLine.listMessagesForLabel.mockResolvedValue({
+            messages: [{ messageId: 'm_visible', messageIds: ['m_visible', 'm1'], subject: 'Promo' }],
+            nextPageToken: null,
+        })
+
+        const result = await listEmailLineMessages('u', 'email_google_test', 'Ads', {
+            userData: googleConnectionUserData,
+        })
+
+        expect(result.messages[0]).toEqual(
+            expect.objectContaining({
+                auditMessageId: 'm1',
+                hasAudit: true,
+                labelName: 'Ads',
+                reasoning: 'Legacy audit says this is promotional.',
+                confidence: 0.91,
+            })
+        )
     })
 
     test('inboxZero uses thread counts when present', async () => {
