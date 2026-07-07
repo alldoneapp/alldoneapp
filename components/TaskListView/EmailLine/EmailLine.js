@@ -323,7 +323,8 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
     },
     doneButtonMobile: {
-        width: 24,
+        width: 20,
+        height: 20,
         paddingHorizontal: 0,
         justifyContent: 'center',
     },
