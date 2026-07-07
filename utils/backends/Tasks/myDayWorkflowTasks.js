@@ -3,6 +3,7 @@ import moment from 'moment'
 import { getDb, globalWatcherUnsub, mapTaskData } from '../firestore'
 import { setMyDayWorkflowTasks } from '../../../redux/actions'
 import store from '../../../redux/store'
+import { compareTasksByPriorityThenCompleted } from '../../TaskPriority'
 
 function addTaskToContainers(tasks, subtasksMap, task) {
     const { parentId } = task
@@ -34,6 +35,7 @@ export async function watchPendingTasksToReview(projectId, userId, watcherKey) {
                     addTaskToContainers(tasks, subtasksMap, task)
                 }
             })
+            tasks.sort(compareTasksByPriorityThenCompleted)
             store.dispatch(setMyDayWorkflowTasks(projectId, tasks, subtasksMap))
         })
 }

@@ -163,7 +163,7 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
         }
 
         for (let { date, currentStepId } of listsToSort) {
-            tasks[date][currentStepId].sort(TasksHelper.sortWorkflowAndDoneTasksFn)
+            tasks[date][currentStepId].sort(TasksHelper.sortWorkflowTasksFn)
         }
 
         for (let parentId of subtasksListToSortParentsId) {

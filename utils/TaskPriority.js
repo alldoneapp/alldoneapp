@@ -51,3 +51,8 @@ export const sortTasksByPriority = (tasks, focusedTaskId = null) => {
         })
         .map(item => item.task)
 }
+
+export const compareTasksByPriorityThenCompleted = (a, b) => {
+    const priorityDifference = getTaskPriorityRank(b?.priority) - getTaskPriorityRank(a?.priority)
+    return priorityDifference || (b?.completed || 0) - (a?.completed || 0)
+}

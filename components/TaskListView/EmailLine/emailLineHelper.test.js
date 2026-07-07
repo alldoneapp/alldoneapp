@@ -1,6 +1,7 @@
 import {
     splitChipsForDisplay,
     areEmailLineConnectionsHiddenToday,
+    getEmailAccountWebUrl,
     getEmailLineTodayKey,
     getLabelDisplayCount,
     getLabelWebUrl,
@@ -125,5 +126,16 @@ describe('emailLineHelper', () => {
     test('getLabelWebUrl returns the Outlook webmail for Microsoft', () => {
         const url = getLabelWebUrl('microsoft', 'me@outlook.com', { labelId: 'f1', kind: 'folder' })
         expect(url).toBe('https://outlook.office.com/mail/')
+    })
+
+    test('getEmailAccountWebUrl opens Gmail through the selected account', () => {
+        const url = getEmailAccountWebUrl('google', 'me@gmail.com')
+        expect(url).toContain('accounts.google.com/AccountChooser')
+        expect(url).toContain(encodeURIComponent('me@gmail.com'))
+        expect(url).not.toContain('#search')
+    })
+
+    test('getEmailAccountWebUrl returns the Outlook account entry point for Microsoft', () => {
+        expect(getEmailAccountWebUrl('microsoft', 'me@outlook.com')).toBe('https://outlook.office.com/mail/')
     })
 })

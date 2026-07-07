@@ -13,7 +13,7 @@ import {
     performEmailLineAction,
     performEmailLineSweepInBackground,
 } from '../../../../utils/backends/EmailLine/emailLineBackend'
-import { getLabelWebUrl, openUrlInNewTab } from '../emailLineHelper'
+import { getEmailAccountWebUrl, getLabelWebUrl, openUrlInNewTab } from '../emailLineHelper'
 import EmailRow from './EmailRow'
 
 const MODAL_MAX_WIDTH = 560
@@ -42,8 +42,6 @@ function EmailLabelModal({
     const maxHeight = screenHeight - MODAL_MAX_HEIGHT_GAP
 
     const entries = group?.entries || []
-    const multiAccount = entries.length > 1
-
     const load = async () => {
         setLoading(true)
         try {
@@ -84,6 +82,10 @@ function EmailLabelModal({
 
     const openRow = (section, row) => {
         openUrlInNewTab(row.webUrl || getLabelWebUrl(section.provider, section.emailAddress, section.label))
+    }
+
+    const openAccount = section => {
+        openUrlInNewTab(getEmailAccountWebUrl(section.provider, section.emailAddress))
     }
 
     const loadMore = async section => {
@@ -190,13 +192,13 @@ function EmailLabelModal({
                                 key={entry.connectionId}
                                 style={localStyles.openInProviderButton}
                                 onPress={() =>
-                                    openUrlInNewTab(getLabelWebUrl(entry.provider, entry.emailAddress, entry.label))
+                                    openUrlInNewTab(getEmailAccountWebUrl(entry.provider, entry.emailAddress))
                                 }
                             >
                                 <Icon name="external-link" size={14} color={colors.Primary100} />
                                 <Text style={[styles.subtitle2, localStyles.openInProviderText]}>
-                                    {translate(entry.provider === 'microsoft' ? 'Open in Outlook' : 'Open in Gmail')}
-                                    {multiAccount ? ` · ${entry.emailAddress}` : ''}
+                                    {translate('Open email account')}
+                                    {entry.emailAddress ? ` · ${entry.emailAddress}` : ''}
                                 </Text>
                             </TouchableOpacity>
                         ))}
@@ -204,16 +206,23 @@ function EmailLabelModal({
                 ) : (
                     sections.map(section => (
                         <View key={sectionKey(section)}>
-                            {multiAccount && section.messages.length > 0 && (
-                                <View style={localStyles.accountHeader}>
-                                    <Text style={[styles.caption2, localStyles.accountHeaderText]} numberOfLines={1}>
-                                        {section.emailAddress}
+                            <View style={localStyles.accountHeader}>
+                                <Text style={[styles.caption2, localStyles.accountHeaderText]} numberOfLines={1}>
+                                    {[getProviderLabel(section.provider), section.emailAddress]
+                                        .filter(Boolean)
+                                        .join(' · ')}
+                                </Text>
+                                <TouchableOpacity
+                                    style={localStyles.accountOpenButton}
+                                    onPress={() => openAccount(section)}
+                                    accessibilityLabel={translate('Open email account')}
+                                >
+                                    <Icon name="external-link" size={12} color={colors.Primary100} />
+                                    <Text style={[styles.caption2, localStyles.accountOpenButtonText]}>
+                                        {translate('Open account')}
                                     </Text>
-                                    <Text style={[styles.caption2, localStyles.accountHeaderProvider]}>
-                                        {getProviderLabel(section.provider)}
-                                    </Text>
-                                </View>
-                            )}
+                                </TouchableOpacity>
+                            </View>
                             {section.messages.map(row => (
                                 <EmailRow
                                     key={selectionKey(section.connectionId, section.labelId, row.messageId)}
@@ -347,16 +356,24 @@ const localStyles = StyleSheet.create({
     accountHeader: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
         paddingTop: 10,
         paddingBottom: 2,
     },
     accountHeaderText: {
         color: '#ffffff',
         flexShrink: 1,
+        paddingRight: 8,
     },
-    accountHeaderProvider: {
-        color: colors.Text03,
-        marginLeft: 6,
+    accountOpenButton: {
+        height: 24,
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 0,
+    },
+    accountOpenButtonText: {
+        color: colors.Primary100,
+        marginLeft: 4,
     },
     loadMore: {
         height: 40,

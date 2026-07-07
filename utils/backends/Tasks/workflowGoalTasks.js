@@ -71,7 +71,7 @@ const processTasks = (projectId, docs) => {
 
     Object.keys(tasksByDate).forEach(date => {
         Object.keys(tasksByDate[date]).forEach(currentStepId => {
-            tasksByDate[date][currentStepId].sort(TasksHelper.sortWorkflowAndDoneTasksFn)
+            tasksByDate[date][currentStepId].sort(TasksHelper.sortWorkflowTasksFn)
         })
     })
 

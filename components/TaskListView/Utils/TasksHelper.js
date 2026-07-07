@@ -32,7 +32,7 @@ import ProjectHelper, {
     PROJECT_PRIVATE,
 } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import SearchHelper from '../../../utils/SearchHelper'
-import { TASK_PRIORITY_NONE } from '../../../utils/TaskPriority'
+import { compareTasksByPriorityThenCompleted, TASK_PRIORITY_NONE } from '../../../utils/TaskPriority'
 import URLsTasks, {
     URL_ALL_PROJECTS_TASKS,
     URL_ALL_PROJECTS_TASKS_DONE,
@@ -1583,6 +1583,8 @@ class TasksHelper {
     static sortWorkflowAndDoneTasksFn = (a, b) => {
         return b.completed - a.completed
     }
+
+    static sortWorkflowTasksFn = compareTasksByPriorityThenCompleted
 
     static getDueDateAndEstimationsByObserversIds = observersIds => {
         const dueDateByObserversIds = {}

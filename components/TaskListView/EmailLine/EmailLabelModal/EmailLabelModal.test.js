@@ -32,6 +32,7 @@ jest.mock('../../../../utils/backends/EmailLine/emailLineBackend', () => ({
 }))
 
 jest.mock('../emailLineHelper', () => ({
+    getEmailAccountWebUrl: jest.fn((provider, emailAddress) => `https://account/${provider}/${emailAddress}`),
     getLabelWebUrl: jest.fn(() => 'https://mail'),
     openUrlInNewTab: jest.fn(),
 }))
@@ -111,8 +112,25 @@ describe('EmailLabelModal', () => {
         const texts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
         expect(texts).toContain('One')
         expect(texts).toContain('Two')
-        expect(texts).toContain('a@gmail.com')
-        expect(texts).toContain('b@outlook.com')
+        expect(texts).toContain('Google · a@gmail.com')
+        expect(texts).toContain('Microsoft · b@outlook.com')
+    })
+
+    it('opens the source email account from each account header', async () => {
+        const { getEmailAccountWebUrl, openUrlInNewTab } = require('../emailLineHelper')
+        const tree = await renderModal()
+
+        const openAccountButton = tree.root
+            .findAllByType(TouchableOpacity)
+            .find(node => node.props.accessibilityLabel === 'Open email account')
+
+        await act(async () => {
+            openAccountButton.props.onPress()
+            await Promise.resolve()
+        })
+
+        expect(getEmailAccountWebUrl).toHaveBeenCalledWith('google', 'a@gmail.com')
+        expect(openUrlInNewTab).toHaveBeenCalledWith('https://account/google/a@gmail.com')
     })
 
     it('closes immediately and routes selection actions to the connection owning each selected thread', async () => {

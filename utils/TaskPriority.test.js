@@ -1,4 +1,9 @@
-import { TASK_PRIORITY_NONE, normalizeTaskPriority, sortTasksByPriority } from './TaskPriority'
+import {
+    TASK_PRIORITY_NONE,
+    compareTasksByPriorityThenCompleted,
+    normalizeTaskPriority,
+    sortTasksByPriority,
+} from './TaskPriority'
 
 describe('TaskPriority', () => {
     test('normalizes missing and invalid legacy values to none', () => {
@@ -40,5 +45,23 @@ describe('TaskPriority', () => {
         ]
 
         expect(sortTasksByPriority(tasks, 'focus').map(task => task.id)).toEqual(['focus', 'must', 'should'])
+    })
+
+    test('compares workflow tasks by priority before completed date', () => {
+        const tasks = [
+            { id: 'recent-should', priority: 'should_do', completed: 400 },
+            { id: 'old-must', priority: 'must_do', completed: 100 },
+            { id: 'recent-could', priority: 'could_do', completed: 500 },
+            { id: 'new-must', priority: 'must_do', completed: 300 },
+            { id: 'old-should', priority: 'should_do', completed: 200 },
+        ]
+
+        expect([...tasks].sort(compareTasksByPriorityThenCompleted).map(task => task.id)).toEqual([
+            'new-must',
+            'old-must',
+            'recent-should',
+            'old-should',
+            'recent-could',
+        ])
     })
 })

@@ -109,6 +109,21 @@ function buildGmailLabelUrl(emailAddress, label) {
     )}&continue=${encodeURIComponent(continueUrl)}&service=mail`
 }
 
+function buildGmailAccountUrl(emailAddress) {
+    const continueUrl = 'https://mail.google.com/mail/u/0/'
+    if (!emailAddress) return continueUrl
+    return `https://accounts.google.com/AccountChooser?Email=${encodeURIComponent(
+        emailAddress
+    )}&continue=${encodeURIComponent(continueUrl)}&service=mail`
+}
+
+export function getEmailAccountWebUrl(provider, emailAddress) {
+    if (provider === 'microsoft') {
+        return 'https://outlook.office.com/mail/'
+    }
+    return buildGmailAccountUrl(emailAddress)
+}
+
 // Interim/fallback destination for a label: open the provider webmail focused
 // on that label/folder in a new tab.
 export function getLabelWebUrl(provider, emailAddress, label) {
