@@ -15,6 +15,7 @@ const { createTaskSomedaySelectedFeed } = require('../Feeds/tasksFeeds')
 const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { earnGold } = require('../Gold/goldHelper')
+const { captureTaskPriorityTaskUpdateFeedback } = require('../Assistant/taskPriorityLearning')
 
 const GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN = 'gmail_label_follow_up'
 const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
@@ -357,6 +358,18 @@ const syncLinkedNoteTitle = async (projectId, oldTask, newTask) => {
     })
 }
 
+const captureTaskPriorityFeedbackSafely = async (projectId, taskId, oldTask, newTask) => {
+    try {
+        await captureTaskPriorityTaskUpdateFeedback({ projectId, taskId, oldTask, newTask })
+    } catch (error) {
+        console.warn('Task priority learning feedback capture failed', {
+            projectId,
+            taskId,
+            error: error.message,
+        })
+    }
+}
+
 const onUpdateTask = async (taskId, projectId, change) => {
     const promises = []
 
@@ -400,6 +413,7 @@ const onUpdateTask = async (taskId, projectId, change) => {
     promises.push(syncLinkedNoteTitle(projectId, oldTask, newTask))
     promises.push(archiveGmailTaskIfNeeded(projectId, taskId, oldTask, newTask))
     promises.push(awardGoldForTaskProgress(projectId, taskId, oldTask, newTask))
+    promises.push(captureTaskPriorityFeedbackSafely(projectId, taskId, oldTask, newTask))
 
     // Handle recurring task creation when task is completed
     // Skip assistant tasks - they have their own recurring logic in assistantRecurringTasks.js

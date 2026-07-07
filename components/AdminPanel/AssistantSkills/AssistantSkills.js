@@ -28,7 +28,9 @@ export default function AssistantSkills() {
 
     useEffect(() => {
         const watcherKey = v4()
-        watchGlobalAssistantSkills(watcherKey, setSkills)
+        watchGlobalAssistantSkills(watcherKey, catalogSkills => {
+            setSkills(catalogSkills.filter(skill => skill.source?.type !== 'builtin'))
+        })
         return () => {
             unwatch(watcherKey)
         }

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
@@ -13,9 +12,7 @@ import { listEmailConnections } from '../../../utils/IntegrationProviders'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
 import { setUserEmailLineHiddenTodayForConnections } from '../../../utils/backends/Users/usersFirestore'
 import EmailLabelChip from './EmailLabelChip'
-import EmailLineMenu from './EmailLineMenu'
 
-const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 import {
     areEmailLineConnectionsHiddenToday,
     getEmailLineTodayKey,
@@ -23,15 +20,17 @@ import {
     splitChipsForDisplay,
 } from './emailLineHelper'
 
+function isInboxLabel(label = {}) {
+    return label.kind === 'inbox' || label.labelId === 'INBOX' || label.displayName === 'Inbox'
+}
+
 // The unified Email line (All Projects only): ALL connected accounts merged into
 // one line, labels grouped by display name across accounts. Summaries stay keyed
 // per connection in redux; the merge happens at render time.
 export default function EmailLine() {
     const loggedUser = useSelector(state => state.loggedUser)
     const summariesByKey = useSelector(state => state.emailLineSummaryByProject)
-    const smallScreen = useSelector(state => state.smallScreen)
     const [showAllChips, setShowAllChips] = useState(false)
-    const [menuOpen, setMenuOpen] = useState(false)
 
     const connections = listEmailConnections(loggedUser)
     const connectionIds = connections.map(connection => connection.connectionId)
@@ -83,9 +82,12 @@ export default function EmailLine() {
     const labelingDisabledByConnectionId = {}
     connections.forEach(connection => {
         const summary = summariesByKey[connection.connectionId]
-        labelOptionsByConnectionId[connection.connectionId] = (summary?.labels || [])
-            .map(label => label.displayName)
-            .filter(Boolean)
+        labelOptionsByConnectionId[connection.connectionId] =
+            summary?.labelOptions ||
+            (summary?.labels || [])
+                .filter(label => !isInboxLabel(label))
+                .map(label => label.displayName)
+                .filter(Boolean)
         labelingDisabledByConnectionId[connection.connectionId] =
             !!summary && connection.provider !== 'microsoft' && summary.labelingEnabled === false
     })
@@ -103,30 +105,13 @@ export default function EmailLine() {
                     >
                         <Icon name="refresh-cw" size={14} color={colors.Text03} />
                     </TouchableOpacity>
-                    <Popover
-                        isOpen={menuOpen}
-                        position={['bottom', 'top', 'right', 'left']}
-                        align="start"
-                        padding={4}
-                        containerStyle={POPOVER_CONTAINER_STYLE}
-                        onClickOutside={() => setMenuOpen(false)}
-                        contentLocation={smallScreen ? null : undefined}
-                        content={
-                            <EmailLineMenu
-                                closePopover={() => setMenuOpen(false)}
-                                onDoneForToday={hideForToday}
-                                onOpenIntegrations={openSettings}
-                            />
-                        }
+                    <TouchableOpacity
+                        style={localStyles.iconButton}
+                        onPress={openSettings}
+                        accessibilityLabel={translate('Settings')}
                     >
-                        <TouchableOpacity
-                            style={localStyles.iconButton}
-                            onPress={() => setMenuOpen(true)}
-                            accessibilityLabel={translate('Settings')}
-                        >
-                            <Icon name="settings" size={14} color={colors.Text03} />
-                        </TouchableOpacity>
-                    </Popover>
+                        <Icon name="settings" size={14} color={colors.Text03} />
+                    </TouchableOpacity>
                 </View>
                 <View style={localStyles.headerRight}>
                     <TouchableOpacity
@@ -135,7 +120,7 @@ export default function EmailLine() {
                         accessibilityLabel={translate('Done for today')}
                     >
                         <Icon name="check" size={14} color={colors.Text03} style={localStyles.doneIcon} />
-                        <Text style={[styles.caption1, localStyles.doneText]}>{translate('done for today')}</Text>
+                        <Text style={[styles.caption1, localStyles.doneText]}>{translate('Done for today')}</Text>
                     </TouchableOpacity>
                 </View>
             </View>

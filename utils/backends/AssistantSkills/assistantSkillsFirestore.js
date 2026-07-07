@@ -2,6 +2,10 @@ import { getDb, getId, globalWatcherUnsub, runHttpsCallableFunction } from '../f
 import store from '../../../redux/store'
 import { startLoadingData, stopLoadingData } from '../../../redux/actions'
 import { GLOBAL_PROJECT_ID } from '../../../components/AdminPanel/Assistants/assistantsHelper'
+import {
+    BUILT_IN_ASSISTANT_SKILLS,
+    mergeBuiltInAssistantSkills,
+} from '../../AssistantSkills/builtInAssistantSkills'
 
 const updateEditionData = data => {
     const { loggedUser } = store.getState()
@@ -14,6 +18,9 @@ function getSkillsCollectionPath() {
 }
 
 export async function getAssistantSkillData(skillId) {
+    const builtInSkill = BUILT_IN_ASSISTANT_SKILLS.find(skill => skill.uid === skillId || skill.name === skillId)
+    if (builtInSkill) return builtInSkill
+
     const skill = (await getDb().doc(`${getSkillsCollectionPath()}/${skillId}`).get()).data()
     if (skill) skill.uid = skillId
     return skill
@@ -28,7 +35,7 @@ export async function getGlobalAssistantSkills() {
         skill.uid = doc.id
         skills.push(skill)
     })
-    return skills
+    return mergeBuiltInAssistantSkills(skills)
 }
 
 export function watchGlobalAssistantSkills(watcherKey, callback) {
@@ -44,7 +51,7 @@ export function watchGlobalAssistantSkills(watcherKey, callback) {
                 skill.uid = doc.id
                 skills.push(skill)
             })
-            callback(skills)
+            callback(mergeBuiltInAssistantSkills(skills))
             if (firstSnap) {
                 firstSnap = false
                 store.dispatch(stopLoadingData())

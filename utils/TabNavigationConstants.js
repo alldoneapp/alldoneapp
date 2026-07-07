@@ -156,6 +156,7 @@ export const DV_TAB_SETTINGS_PREMIUM = 'SETTINGS_PREMIUM'
 export const DV_TAB_SETTINGS_EXPORT = 'SETTINGS_EXPORT'
 export const DV_TAB_SETTINGS_MCP = 'SETTINGS_MCP'
 export const DV_TAB_SETTINGS_INTEGRATIONS = 'SETTINGS_INTEGRATIONS'
+export const DV_TAB_SETTINGS_SKILLS = 'SETTINGS_SKILLS'
 
 /**
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -248,6 +249,7 @@ export const NAVBAR_ITEM_MAP = {
     [DV_TAB_SETTINGS_SHORTCUTS]: 'Shortcuts',
     [DV_TAB_SETTINGS_PREMIUM]: 'Premium',
     [DV_TAB_SETTINGS_INTEGRATIONS]: 'Integrations',
+    [DV_TAB_SETTINGS_SKILLS]: 'Skills',
     [DV_TAB_SETTINGS_EXPORT]: 'Export',
     [DV_TAB_SETTINGS_MCP]: 'MCP',
     // Chat

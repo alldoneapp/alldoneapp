@@ -632,7 +632,31 @@ const toolSchemas = {
                         type: 'string',
                         enum: ['must_do', 'should_do', 'could_do', 'do_later', 'none'],
                         description:
-                            'Set task priority. must_do sorts before should_do, then could_do, then do_later, then none. A non-empty comment is required when assigning must_do, should_do, could_do, or do_later (not for none). Use do_later for low-priority tasks to get to later, or none to clear priority.',
+                            'Set task priority. must_do sorts before should_do, then could_do, then do_later, then none. A non-empty comment is required when assigning must_do, should_do, could_do, or do_later (not for none). Use do_later for low-priority tasks to get to later, or none to clear priority. When the task-prioritization skill is available, load it before assigning priority.',
+                    },
+                    priorityConfidence: {
+                        type: 'number',
+                        description:
+                            'Optional confidence from 0 to 1 for the priority decision. Use this only when setting priority.',
+                    },
+                    priorityReasonCodes: {
+                        type: 'array',
+                        items: {
+                            type: 'string',
+                            enum: [
+                                'due',
+                                'overdue',
+                                'okr',
+                                'calendar_fit',
+                                'commitment',
+                                'dependency',
+                                'quick_win',
+                                'low_value',
+                                'unclear',
+                            ],
+                        },
+                        description:
+                            'Optional short reason codes for the priority decision. Use this only when setting priority.',
                     },
                     comment: {
                         type: 'string',

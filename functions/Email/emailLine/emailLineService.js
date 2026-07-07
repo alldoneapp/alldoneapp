@@ -57,6 +57,10 @@ function getProviderModule(provider) {
     return provider === 'microsoft' ? microsoftEmailLine : gmailEmailLine
 }
 
+function isInboxLabel(label = {}) {
+    return label.kind === 'inbox' || label.labelId === 'INBOX' || label.displayName === 'Inbox'
+}
+
 async function loadUserData(userId, providedUserData) {
     if (providedUserData) return providedUserData
     const userDoc = await admin.firestore().doc(`users/${userId}`).get()
@@ -167,6 +171,31 @@ async function loadAuditEntriesByMessageId(userId, projectIds, messageIds = []) 
     }
 }
 
+async function loadConfiguredLabelOptions(userId, userData, projectId, connection) {
+    if (connection.provider !== 'google') return []
+    const lookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
+    try {
+        const { resolveEffectiveGmailLabelingConfig } = require('../../Gmail/serverSideGmailLabelingSync')
+        for (const key of lookupKeys) {
+            const configSnap = await getGmailLabelingConfigRef(userId, key)
+                .get()
+                .catch(() => null)
+            if (!configSnap?.exists) continue
+            const effectiveConfig = await resolveEffectiveGmailLabelingConfig(configSnap.data() || {}, userData)
+            return [
+                ...new Set(
+                    (effectiveConfig.labelDefinitions || [])
+                        .map(label => (typeof label.gmailLabelName === 'string' ? label.gmailLabelName.trim() : ''))
+                        .filter(Boolean)
+                ),
+            ]
+        }
+    } catch (error) {
+        console.warn('[emailLine] configured label options read failed:', error?.message || error)
+    }
+    return []
+}
+
 // Returns { provider, emailAddress, labels, needsReplyCount, needsReplyByMessageId, inboxZero, scannedAt }
 async function getEmailLineSummary(userId, projectId, options = {}) {
     const { userData: providedUserData, includeNeedsReply } = options
@@ -199,6 +228,7 @@ async function getEmailLineSummary(userId, projectId, options = {}) {
     }
 
     const labels = summary.labels || []
+    const configuredLabelOptions = await loadConfiguredLabelOptions(userId, userData, projectId, connection)
     const inboxZero = labels.every(
         label => (Number.isFinite(label.threadCount) ? label.threadCount : label.unreadCount) === 0
     )
@@ -234,6 +264,15 @@ async function getEmailLineSummary(userId, projectId, options = {}) {
         provider: connection.provider,
         emailAddress: summary.emailAddress || connection.emailAddress || '',
         labels,
+        labelOptions: [
+            ...new Set([
+                ...configuredLabelOptions,
+                ...labels
+                    .filter(label => !isInboxLabel(label))
+                    .map(label => label.displayName)
+                    .filter(Boolean),
+            ]),
+        ],
         needsReplyCount: Object.keys(needsReplyByMessageId).length,
         needsReplyByMessageId,
         labelingEnabled,

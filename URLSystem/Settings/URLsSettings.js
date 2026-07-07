@@ -76,6 +76,11 @@ export const URL_SETTINGS_MCP = 'SETTINGS_MCP'
 export const URL_SETTINGS_INTEGRATIONS = 'SETTINGS_INTEGRATIONS'
 
 /**
+ * /settings/skills
+ */
+export const URL_SETTINGS_SKILLS = 'SETTINGS_SKILLS'
+
+/**
  * URL System for Settings
  */
 class URLsSettings {
@@ -143,6 +148,8 @@ class URLsSettings {
                 return `settings/mcp`
             case URL_SETTINGS_INTEGRATIONS:
                 return `settings/integrations`
+            case URL_SETTINGS_SKILLS:
+                return `settings/skills`
         }
     }
 
@@ -192,6 +199,9 @@ class URLsSettings {
                 break
             case URL_SETTINGS_INTEGRATIONS:
                 document.title = `Alldone.app - Settings - Integrations`
+                break
+            case URL_SETTINGS_SKILLS:
+                document.title = `Alldone.app - Settings - AI Skills`
                 break
         }
     }

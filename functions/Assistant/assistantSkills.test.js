@@ -6,6 +6,11 @@ const {
     getSandboxSkillsDir,
 } = require('./assistantSkills')
 const { parseRepoUrl, parseSkillFrontmatter, selectSkillManifests } = require('./assistantSkillsImport')
+const {
+    TASK_PRIORITIZATION_SKILL,
+    TASK_PRIORITIZATION_SKILL_ID,
+    mergeBuiltInAssistantSkills,
+} = require('./builtInAssistantSkills')
 
 describe('isValidSkillName', () => {
     it('accepts spec-compliant slugs', () => {
@@ -57,6 +62,20 @@ describe('buildSkillsIndexBlock', () => {
         expect(block).toContain('- a-skill: When doing A')
         expect(block).toContain('- b-skill: When doing B')
         expect(block).toContain('load_skill')
+    })
+})
+
+describe('built-in assistant skills', () => {
+    it('defines the task-prioritization skill with a stable id', () => {
+        expect(TASK_PRIORITIZATION_SKILL.uid).toBe(TASK_PRIORITIZATION_SKILL_ID)
+        expect(TASK_PRIORITIZATION_SKILL.name).toBe('task-prioritization')
+        expect(TASK_PRIORITIZATION_SKILL.personalOverlayType).toBe('taskPriorityLearning')
+    })
+
+    it('adds the task-prioritization skill when missing from a catalog list', () => {
+        const merged = mergeBuiltInAssistantSkills([{ uid: 'other', name: 'other-skill' }])
+        expect(merged.map(skill => skill.uid)).toContain(TASK_PRIORITIZATION_SKILL_ID)
+        expect(merged.map(skill => skill.uid)).toContain('other')
     })
 })
 

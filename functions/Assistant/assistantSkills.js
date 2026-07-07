@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const { findBuiltInSkill } = require('./builtInAssistantSkills')
 
 const GLOBAL_PROJECT_ID = 'globalProject'
 const SKILLS_COLLECTION_PATH = `assistantSkills/${GLOBAL_PROJECT_ID}/items`
@@ -27,9 +28,12 @@ async function loadSkillsByIds(enabledSkillIds) {
     const db = admin.firestore()
     const ids = [...new Set(enabledSkillIds.filter(id => typeof id === 'string' && id))]
     if (ids.length === 0) return []
-    const refs = ids.map(id => db.doc(`${SKILLS_COLLECTION_PATH}/${id}`))
+    const builtInSkills = ids.map(findBuiltInSkill).filter(Boolean)
+    const firestoreIds = ids.filter(id => !findBuiltInSkill(id))
+    const refs = firestoreIds.map(id => db.doc(`${SKILLS_COLLECTION_PATH}/${id}`))
+    if (refs.length === 0) return builtInSkills
     const docs = await db.getAll(...refs)
-    const skills = []
+    const skills = [...builtInSkills]
     docs.forEach(doc => {
         if (!doc.exists) return
         const skill = { ...doc.data(), uid: doc.id }

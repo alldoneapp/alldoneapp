@@ -89,7 +89,12 @@ describe('EmailRow', () => {
         let tree
         act(() => {
             tree = renderer.create(
-                <EmailRow row={row} connectionId="c1" labelOptions={['Inbox', 'Alldone/Newsletter']} selected={false} />
+                <EmailRow
+                    row={row}
+                    connectionId="c1"
+                    labelOptions={['Ads', 'Alldone/Newsletter', 'Bookkeeping']}
+                    selected={false}
+                />
             )
         })
 
@@ -103,6 +108,19 @@ describe('EmailRow', () => {
         const [wrong] = findByLabel(tree, 'Wrong label?')
         act(() => wrong.props.onPress())
 
+        const [selectLabel] = findByLabel(tree, 'Select correct label')
+        act(() => selectLabel.props.onPress())
+
+        const optionTexts = tree.root
+            .findAll(node => typeof node.props.children === 'string')
+            .map(n => n.props.children)
+        expect(optionTexts).toContain('Inbox only')
+        expect(optionTexts).toContain('Ads')
+        expect(optionTexts).toContain('Bookkeeping')
+
+        const [adsOption] = findByLabel(tree, 'Correct label: Ads')
+        act(() => adsOption.props.onPress())
+
         // Ancestor touchables (the row content) also contain the text — take the innermost.
         const send = tree.root
             .findAll(node => node.type === TouchableOpacity)
@@ -115,7 +133,7 @@ describe('EmailRow', () => {
 
         expect(submitEmailLabelFeedback).toHaveBeenCalledWith('c1', {
             messageId: 'm1',
-            correctLabel: null,
+            correctLabel: 'Ads',
             note: '',
         })
         const doneTexts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
@@ -139,6 +157,42 @@ describe('EmailRow', () => {
         const texts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
         expect(texts).toContain('No project or label explanation was recorded for this email.')
         expect(findByLabel(tree, 'Wrong label?')).toHaveLength(0)
+    })
+
+    it('sends null feedback when Inbox only is selected', async () => {
+        const { submitEmailLabelFeedback } = require('../../../../utils/backends/EmailLine/emailLineBackend')
+        submitEmailLabelFeedback.mockResolvedValue({ learnedRules: '- rule' })
+        const row = {
+            messageId: 'm1',
+            from: 'a@ex.com',
+            subject: 'Hi',
+            reasoning: 'This looked like a newsletter.',
+            labelName: 'Ads',
+        }
+        let tree
+        act(() => {
+            tree = renderer.create(<EmailRow row={row} connectionId="c1" labelOptions={['Ads']} selected={false} />)
+        })
+
+        act(() => findByLabel(tree, 'Why this label')[0].props.onPress())
+        act(() => findByLabel(tree, 'Wrong label?')[0].props.onPress())
+        act(() => findByLabel(tree, 'Select correct label')[0].props.onPress())
+        act(() => findByLabel(tree, 'Correct label: Inbox only')[0].props.onPress())
+
+        const send = tree.root
+            .findAll(node => node.type === TouchableOpacity)
+            .filter(node => node.findAll(child => child.props.children === 'Send feedback').length > 0)
+            .pop()
+        await act(async () => {
+            send.props.onPress()
+            await Promise.resolve()
+        })
+
+        expect(submitEmailLabelFeedback).toHaveBeenCalledWith('c1', {
+            messageId: 'm1',
+            correctLabel: null,
+            note: '',
+        })
     })
 
     it('creates a task and turns the + button into a link to it', async () => {

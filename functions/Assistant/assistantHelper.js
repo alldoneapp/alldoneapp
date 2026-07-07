@@ -5615,6 +5615,11 @@ async function executeToolNatively(
                         updateAll: toolArgs.updateAll || false, // Enable bulk update if requested
                         feedUser,
                         commentFromAssistant: !!assistantId,
+                        assistantId,
+                        assistantRunId: toolRuntimeContext?.runId || toolRuntimeContext?.assistantRunLockId || null,
+                        messageId: toolRuntimeContext?.messageId || null,
+                        priorityConfidence: normalizedToolArgs.priorityConfidence,
+                        priorityReasonCodes: normalizedToolArgs.priorityReasonCodes,
                         // Comments written via update_task should show up in the task's feed/chat
                         // history but must not mark the thread/comments as unread (no unread badge,
                         // push, or email). See TaskCommentService.addComment's `silent` handling.
@@ -7017,6 +7022,11 @@ async function executeToolNatively(
                 assistantId,
             })
             const { loadChatSkillByName } = require('./assistantSkills')
+            const { isTaskPrioritizationSkill } = require('./builtInAssistantSkills')
+            const {
+                appendTaskPriorityLearningToInstructions,
+                getTaskPriorityLearningContextMessage,
+            } = require('./taskPriorityLearning')
             const { skill, availableSkillNames } = await loadChatSkillByName(projectId, assistantId, toolArgs.name)
             if (!skill) {
                 return {
@@ -7025,10 +7035,18 @@ async function executeToolNatively(
                     availableSkills: availableSkillNames,
                 }
             }
+            let instructions = skill.body || ''
+            if (isTaskPrioritizationSkill(skill)) {
+                const rulesMessage = await getTaskPriorityLearningContextMessage({
+                    db: admin.firestore(),
+                    userId: requestUserId || creatorId,
+                })
+                instructions = appendTaskPriorityLearningToInstructions(instructions, rulesMessage)
+            }
             return {
                 success: true,
                 name: skill.name,
-                instructions: skill.body || '',
+                instructions,
                 note:
                     'Follow these skill instructions while completing the current request. They complement (do not replace) your assistant instructions.',
             }
@@ -10706,6 +10724,16 @@ async function addBaseInstructions(
             )
             if (chatSkills.length > 0) {
                 messages.push(['system', parseTextForUseLiKePrompt(buildSkillsIndexBlock(chatSkills))])
+                if (
+                    Array.isArray(allowedTools) &&
+                    allowedTools.includes('update_task') &&
+                    chatSkills.some(skill => skill.name === 'task-prioritization')
+                ) {
+                    messages.push([
+                        'system',
+                        'Before assigning or changing task priority through update_task, call load_skill with name "task-prioritization" and follow the returned instructions.',
+                    ])
+                }
                 console.log('🧩 SKILLS CONTEXT: Added skills index', {
                     projectId: assistantContext.projectId,
                     assistantId: assistantContext.assistantId,

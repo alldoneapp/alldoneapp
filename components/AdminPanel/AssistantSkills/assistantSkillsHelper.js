@@ -1,4 +1,9 @@
 import store from '../../../redux/store'
+import {
+    TASK_PRIORITIZATION_OVERLAY_TYPE,
+    TASK_PRIORITIZATION_SKILL_ID,
+    supportsPersonalOverlay,
+} from '../../../utils/AssistantSkills/builtInAssistantSkills'
 
 export const SKILL_SOURCE_CUSTOM = 'custom'
 export const SKILL_SOURCE_IMPORT = 'import'
@@ -45,6 +50,19 @@ export function isVmOnlySkill(skill) {
 
 export function getSkillRuntimeLabelKey(skill) {
     return isVmOnlySkill(skill) ? 'VM only' : 'Chat + VM'
+}
+
+export function getSkillPersonalOverlayType(skill) {
+    if (supportsPersonalOverlay(skill)) return TASK_PRIORITIZATION_OVERLAY_TYPE
+    return ''
+}
+
+export function getSkillPersonalOverlayLabel(skill) {
+    return getSkillPersonalOverlayType(skill) ? 'Personal overlay' : ''
+}
+
+export function isTaskPrioritizationSkill(skill) {
+    return skill?.uid === TASK_PRIORITIZATION_SKILL_ID || skill?.name === TASK_PRIORITIZATION_SKILL_ID
 }
 
 export function normalizeEnabledSkillIds(enabledSkillIds) {

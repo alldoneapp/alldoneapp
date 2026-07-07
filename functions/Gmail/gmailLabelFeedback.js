@@ -3,6 +3,11 @@
 const admin = require('firebase-admin')
 
 const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
+const {
+    CONNECTION_SERVICE_EMAIL,
+    getConnection,
+    resolveEmailConnection,
+} = require('../Integrations/providerConnections')
 const { extractJsonFromText, isGpt5ReasoningModel, mapAssistantModelToOpenAIModel } = require('./gmailPromptClassifier')
 const { MAX_LEARNED_RULES_LENGTH, getGmailLabelingStateRef } = require('./gmailLabelingConfig')
 
@@ -49,6 +54,61 @@ function describeLabelOptions(labelDefinitions = []) {
         gmailLabelName: label.gmailLabelName,
         description: label.description,
     }))
+}
+
+function getLegacyProjectIdsForEmailConnection(userData = {}, connection = {}) {
+    if (!connection || connection.provider !== 'google' || !connection.emailAddress) return []
+    const targetEmail = String(connection.emailAddress || '')
+        .trim()
+        .toLowerCase()
+    const apisConnected = userData?.apisConnected || {}
+    return Object.keys(apisConnected).filter(projectId => {
+        const resolved = resolveEmailConnection(apisConnected[projectId] || {})
+        return (
+            resolved.connected &&
+            resolved.provider === 'google' &&
+            String(resolved.emailAddress || '')
+                .trim()
+                .toLowerCase() === targetEmail
+        )
+    })
+}
+
+function getGmailLabelingLookupKeys(userData = {}, key = '') {
+    const keys = [key]
+    if (typeof key === 'string' && key.startsWith('email_')) {
+        const connection = getConnection(userData, CONNECTION_SERVICE_EMAIL, key)
+        if (connection?.provider === 'google') {
+            if (connection.defaultProjectId) keys.push(connection.defaultProjectId)
+            keys.push(...getLegacyProjectIdsForEmailConnection(userData, connection))
+        }
+    }
+    return [...new Set(keys.filter(Boolean))]
+}
+
+async function resolveFeedbackLabelingContext({ userId, userData, projectId, messageId }) {
+    const { loadConfig, loadAuditEntry } = require('./serverSideGmailLabelingSync')
+    const lookupKeys = getGmailLabelingLookupKeys(userData, projectId)
+    let firstConfiguredContext = null
+
+    for (const key of lookupKeys) {
+        const configContext = await loadConfig(userId, key)
+        if (!configContext.exists) continue
+        if (!firstConfiguredContext) firstConfiguredContext = { key, ...configContext }
+
+        const auditEntry = await loadAuditEntry(userId, key, messageId)
+        if (auditEntry) return { key, ...configContext, auditEntry }
+    }
+
+    if (!firstConfiguredContext) {
+        const error = new Error('Enable email labeling before giving label feedback')
+        error.code = 'LABELING_NOT_CONFIGURED'
+        throw error
+    }
+
+    const error = new Error('This email has not been processed by the labeling sync yet')
+    error.code = 'AUDIT_ENTRY_NOT_FOUND'
+    throw error
 }
 
 async function reviseLearnedRules({ currentRules, labelDefinitions, auditEntry, verdict, correctLabel, note }) {
@@ -120,23 +180,15 @@ async function submitEmailLabelFeedback({ userId, userData, projectId, messageId
     if (!normalizedVerdict) throw new Error('Unsupported feedback verdict')
     if (!messageId || typeof messageId !== 'string') throw new Error('messageId is required')
 
-    const { loadConfig, loadAuditEntry, resolveEffectiveGmailLabelingConfig } = require('./serverSideGmailLabelingSync')
+    const { resolveEffectiveGmailLabelingConfig } = require('./serverSideGmailLabelingSync')
+    const { key: feedbackProjectId, config, ref: configRef, auditEntry } = await resolveFeedbackLabelingContext({
+        userId,
+        userData,
+        projectId,
+        messageId,
+    })
 
-    const { config, exists, ref: configRef } = await loadConfig(userId, projectId)
-    if (!exists) {
-        const error = new Error('Enable email labeling before giving label feedback')
-        error.code = 'LABELING_NOT_CONFIGURED'
-        throw error
-    }
-
-    const auditEntry = await loadAuditEntry(userId, projectId, messageId)
-    if (!auditEntry) {
-        const error = new Error('This email has not been processed by the labeling sync yet')
-        error.code = 'AUDIT_ENTRY_NOT_FOUND'
-        throw error
-    }
-
-    await enforceDailyFeedbackCap(userId, projectId)
+    await enforceDailyFeedbackCap(userId, feedbackProjectId)
 
     const feedbackEvent = {
         verdict: normalizedVerdict,
@@ -147,7 +199,7 @@ async function submitEmailLabelFeedback({ userId, userData, projectId, messageId
         at: admin.firestore.Timestamp.now(),
     }
 
-    const auditRef = getGmailLabelingStateRef(userId, projectId).collection('messages').doc(messageId)
+    const auditRef = getGmailLabelingStateRef(userId, feedbackProjectId).collection('messages').doc(messageId)
     await auditRef.set({ feedback: admin.firestore.FieldValue.arrayUnion(feedbackEvent) }, { merge: true })
 
     const effectiveConfig = await resolveEffectiveGmailLabelingConfig(config, userData)

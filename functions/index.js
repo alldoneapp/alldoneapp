@@ -2780,6 +2780,34 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
     }
 )
 
+exports.onCreateTaskCommentSecondGen = onDocumentCreated(
+    {
+        document: 'chatComments/{projectId}/tasks/{taskId}/comments/{commentId}',
+        timeoutSeconds: 120,
+        memory: '256MB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { captureTaskPriorityCommentFeedback } = require('./Assistant/taskPriorityLearning')
+        const { projectId, taskId, commentId } = event.params
+        try {
+            await captureTaskPriorityCommentFeedback({
+                projectId,
+                taskId,
+                commentId,
+                commentData: event.data.data() || {},
+            })
+        } catch (error) {
+            console.warn('Task priority learning comment feedback capture failed', {
+                projectId,
+                taskId,
+                commentId,
+                error: error.message,
+            })
+        }
+    }
+)
+
 exports.onDeleteTaskSecondGen = onDocumentDeleted(
     {
         document: 'items/{projectId}/tasks/{taskId}',

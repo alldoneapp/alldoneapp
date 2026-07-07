@@ -62,6 +62,10 @@ jest.mock('../../Gmail/gmailLabelingConfig', () => ({
     })),
 }))
 
+jest.mock('../../Gmail/serverSideGmailLabelingSync', () => ({
+    resolveEffectiveGmailLabelingConfig: jest.fn(config => config),
+}))
+
 jest.mock('./gmailEmailLine', () => ({
     getGmailLabelSummary: jest.fn(),
     listMessagesForLabel: jest.fn(),
@@ -288,16 +292,23 @@ describe('emailLineService', () => {
         gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
             labels: [{ labelId: 'INBOX', unreadCount: 2, kind: 'inbox' }],
         })
+        mockDocs.set('labelingConfig', {
+            enabled: true,
+            labelDefinitions: [
+                { key: 'ads', gmailLabelName: 'Ads' },
+                { key: 'project_juno', gmailLabelName: 'JTL Software - Project Juno' },
+            ],
+        })
         mockAuditDocs.set('m1', { needsReply: true })
         mockAuditDocs.set('m2', { needsReply: false })
         mockAuditDocs.set('m3', { needsReply: true }) // flagged but no longer unread
         gmailEmailLine.getUnreadInboxMessageIds.mockResolvedValue(['m1', 'm2'])
-        mockDocs.set('labelingConfig', { enabled: true })
 
         const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData, includeNeedsReply: true })
         expect(summary.needsReplyByMessageId).toEqual({ m1: true })
         expect(summary.needsReplyCount).toBe(1)
         expect(summary.labelingEnabled).toBe(true)
+        expect(summary.labelOptions).toEqual(['Ads', 'JTL Software - Project Juno'])
         // No separate detector, no gold charge.
         expect(deductGold).not.toHaveBeenCalled()
     })

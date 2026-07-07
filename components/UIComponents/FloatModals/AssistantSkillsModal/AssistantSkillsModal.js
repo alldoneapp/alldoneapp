@@ -8,10 +8,17 @@ import CustomScrollView from '../../../UIControls/CustomScrollView'
 import CheckBox from '../../../CheckBox'
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
-import { getSkillRuntimeLabelKey } from '../../../AdminPanel/AssistantSkills/assistantSkillsHelper'
+import Icon from '../../../Icon'
+import {
+    getSkillPersonalOverlayLabel,
+    getSkillRuntimeLabelKey,
+    isTaskPrioritizationSkill,
+} from '../../../AdminPanel/AssistantSkills/assistantSkillsHelper'
+import TaskPriorityLearningOverlayModal from '../TaskPriorityLearningOverlayModal/TaskPriorityLearningOverlayModal'
 
 export default function AssistantSkillsModal({ skills, enabledSkillIds, onApply, closeModal }) {
     const [selectedSkills, setSelectedSkills] = useState(() => new Set(enabledSkillIds))
+    const [overlaySkill, setOverlaySkill] = useState(null)
 
     const toggleSkill = skillId => {
         setSelectedSkills(prev => {
@@ -30,6 +37,15 @@ export default function AssistantSkillsModal({ skills, enabledSkillIds, onApply,
         closeModal()
     }
 
+    if (overlaySkill) {
+        return (
+            <TaskPriorityLearningOverlayModal
+                skill={overlaySkill}
+                closeModal={() => setOverlaySkill(null)}
+            />
+        )
+    }
+
     return (
         <View style={localStyles.wrapper}>
             <View style={[localStyles.container, applyPopoverWidth()]}>
@@ -44,25 +60,43 @@ export default function AssistantSkillsModal({ skills, enabledSkillIds, onApply,
                     )}
                     {skills.map(skill => {
                         const checked = selectedSkills.has(skill.uid)
+                        const overlayLabel = getSkillPersonalOverlayLabel(skill)
+                        const canEditOverlay = isTaskPrioritizationSkill(skill)
                         return (
-                            <TouchableOpacity
-                                key={skill.uid}
-                                style={localStyles.option}
-                                onPress={() => toggleSkill(skill.uid)}
-                            >
-                                <CheckBox checked={checked} />
-                                <View style={localStyles.optionText}>
-                                    <Text style={localStyles.optionLabel} numberOfLines={1}>
-                                        {skill.displayName || skill.name}
+                            <View key={skill.uid} style={localStyles.option}>
+                                <TouchableOpacity style={localStyles.optionToggle} onPress={() => toggleSkill(skill.uid)}>
+                                    <CheckBox checked={checked} />
+                                    <View style={localStyles.optionText}>
+                                        <View style={localStyles.optionLabelRow}>
+                                            <Text style={localStyles.optionLabel} numberOfLines={1}>
+                                                {skill.displayName || skill.name}
+                                            </Text>
+                                            {!!overlayLabel && (
+                                                <View style={localStyles.overlayBadge}>
+                                                    <Text style={localStyles.overlayBadgeText}>
+                                                        {translate(overlayLabel)}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                        </View>
                                         <Text style={localStyles.optionRuntime}>
-                                            {`  ${translate(getSkillRuntimeLabelKey(skill))}`}
+                                            {translate(getSkillRuntimeLabelKey(skill))}
                                         </Text>
-                                    </Text>
-                                    <Text style={localStyles.optionDescription} numberOfLines={2}>
-                                        {skill.description}
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
+                                        <Text style={localStyles.optionDescription} numberOfLines={2}>
+                                            {skill.description}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                                {canEditOverlay && (
+                                    <TouchableOpacity
+                                        style={localStyles.overlayButton}
+                                        onPress={() => setOverlaySkill(skill)}
+                                        accessible={false}
+                                    >
+                                        <Icon name="settings" size={18} color={colors.Text03} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
                         )
                     })}
                 </CustomScrollView>
@@ -110,12 +144,24 @@ const localStyles = StyleSheet.create({
         alignItems: 'flex-start',
         paddingVertical: 8,
     },
+    optionToggle: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        flex: 1,
+    },
     optionText: {
         marginLeft: 12,
         flexShrink: 1,
+        flex: 1,
+    },
+    optionLabelRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap',
     },
     optionLabel: {
         color: '#FFFFFF',
+        marginRight: 6,
     },
     optionRuntime: {
         color: colors.Text03,
@@ -128,6 +174,23 @@ const localStyles = StyleSheet.create({
     emptyText: {
         color: colors.Text03,
         marginBottom: 8,
+    },
+    overlayBadge: {
+        borderRadius: 4,
+        backgroundColor: colors.UtilityGreen100,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+    },
+    overlayBadgeText: {
+        color: colors.UtilityGreen300,
+        fontSize: 11,
+    },
+    overlayButton: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 8,
     },
     actions: {
         flexDirection: 'row',

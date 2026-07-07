@@ -3,12 +3,15 @@
  */
 
 import React from 'react'
-import { Text } from 'react-native'
-import renderer from 'react-test-renderer'
+import { Text, TouchableOpacity } from 'react-native'
+import renderer, { act } from 'react-test-renderer'
 
 import EmailLine from './EmailLine'
 import { getEmailLineTodayKey } from './emailLineHelper'
 import { buildConnectionId } from '../../../utils/IntegrationProviders'
+import SettingsHelper from '../../SettingsView/SettingsHelper'
+import NavigationService from '../../../utils/NavigationService'
+import { DV_TAB_SETTINGS_INTEGRATIONS } from '../../../utils/TabNavigationConstants'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(selector => selector(mockState)),
@@ -75,6 +78,9 @@ const textNodes = tree =>
         const children = node.props.children
         return Array.isArray(children) ? children.join('') : children
     })
+
+const findButtonByLabel = (tree, label) =>
+    tree.root.findAllByType(TouchableOpacity).find(node => node.props.accessibilityLabel === label)
 
 describe('EmailLine', () => {
     beforeEach(() => {
@@ -176,6 +182,18 @@ describe('EmailLine', () => {
         })
         const tree = renderer.create(<EmailLine />)
         expect(textNodes(tree)).toContain('Reconnect email')
+    })
+
+    it('opens Integrations settings from the settings button', () => {
+        const tree = renderer.create(<EmailLine />)
+        const settingsButton = findButtonByLabel(tree, 'Settings')
+
+        act(() => settingsButton.props.onPress())
+
+        expect(SettingsHelper.processURLSettingsTab).toHaveBeenCalledWith(
+            NavigationService,
+            DV_TAB_SETTINGS_INTEGRATIONS
+        )
     })
 
     it('merges same-named labels of multiple accounts into one chip', () => {

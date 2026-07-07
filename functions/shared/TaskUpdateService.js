@@ -191,6 +191,17 @@ class TaskUpdateService {
             }
         }
 
+        await this.recordPriorityDecisionIfNeeded({
+            userId,
+            currentTask,
+            projectId,
+            projectName,
+            updateFields: normalizedUpdateFields,
+            options,
+            commentResult: updateResult.commentResult || null,
+            updatedTask: updateResult.task || null,
+        })
+
         // Add search transparency if auto-selected
         if (searchResult.decision === 'auto_select') {
             updateResult.searchInfo = {
@@ -397,6 +408,17 @@ class TaskUpdateService {
                     }
                 }
 
+                await this.recordPriorityDecisionIfNeeded({
+                    userId,
+                    currentTask: task,
+                    projectId: taskProjectId,
+                    projectName: taskProjectName,
+                    updateFields,
+                    options,
+                    commentResult,
+                    updatedTask: updateResult.task || null,
+                })
+
                 updated.push({
                     id: task.id,
                     name: task.name,
@@ -481,6 +503,56 @@ class TaskUpdateService {
             fromAssistant,
             silent,
         })
+    }
+
+    async recordPriorityDecisionIfNeeded({
+        userId,
+        currentTask,
+        projectId,
+        projectName,
+        updateFields,
+        options,
+        commentResult,
+        updatedTask,
+    }) {
+        const priority = updateFields?.priority
+        const didChangePriority = priority !== undefined && priority !== currentTask?.priority
+        const shouldRecord =
+            didChangePriority && ['must_do', 'should_do', 'could_do', 'do_later'].includes(priority) && options?.commentFromAssistant
+        if (!shouldRecord) return
+
+        try {
+            const { recordAssistantPriorityDecision } = require('../Assistant/taskPriorityLearning')
+            await recordAssistantPriorityDecision({
+                db: this.options.database,
+                userId,
+                projectId,
+                projectName,
+                task: updatedTask || { ...currentTask, priority },
+                previousPriority: currentTask?.priority,
+                aiPriority: priority,
+                aiReason: updateFields.comment || '',
+                assistantId: options.assistantId || options.feedUser?.uid || '',
+                assistantRunId: options.assistantRunId || null,
+                messageId: options.messageId || null,
+                priorityConfidence: options.priorityConfidence,
+                priorityReasonCodes: options.priorityReasonCodes,
+                commentWriteStatus: commentResult
+                    ? commentResult.success === false
+                        ? 'failed'
+                        : 'written'
+                    : updateFields.comment
+                    ? 'not_written'
+                    : 'not_required',
+            })
+        } catch (error) {
+            console.warn('TaskUpdateService: failed to record task priority decision', {
+                userId,
+                projectId,
+                taskId: currentTask?.id,
+                error: error.message,
+            })
+        }
     }
 
     /**
