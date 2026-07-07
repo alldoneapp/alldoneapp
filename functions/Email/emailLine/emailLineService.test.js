@@ -75,6 +75,7 @@ jest.mock('./gmailEmailLine', () => ({
     getMessageContext: jest.fn(),
     getUnreadInboxMessageIds: jest.fn(),
     buildGmailMessageUrl: jest.fn(() => 'https://gmail/message'),
+    stripLabelPrefix: jest.fn(name => (typeof name === 'string' ? name.split('/').pop() : '')),
 }))
 
 jest.mock('./taskSummarizer', () => ({
@@ -182,7 +183,7 @@ describe('emailLineService', () => {
 
         const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData })
 
-        expect(summary.labelOptions).toEqual(['Ads'])
+        expect(summary.labelOptions).toEqual([{ gmailLabelName: 'Ads', displayName: 'Ads' }])
     })
 
     test('dispatches to the Microsoft provider', async () => {
@@ -322,7 +323,10 @@ describe('emailLineService', () => {
         expect(summary.needsReplyByMessageId).toEqual({ m1: true })
         expect(summary.needsReplyCount).toBe(1)
         expect(summary.labelingEnabled).toBe(true)
-        expect(summary.labelOptions).toEqual(['Ads', 'JTL Software - Project Juno'])
+        expect(summary.labelOptions).toEqual([
+            { gmailLabelName: 'Ads', displayName: 'Ads' },
+            { gmailLabelName: 'JTL Software - Project Juno', displayName: 'JTL Software - Project Juno' },
+        ])
         // No separate detector, no gold charge.
         expect(deductGold).not.toHaveBeenCalled()
     })

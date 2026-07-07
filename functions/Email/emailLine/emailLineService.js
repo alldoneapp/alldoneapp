@@ -175,6 +175,9 @@ async function loadAuditEntriesByMessageId(userId, projectIds, messageIds = []) 
     }
 }
 
+// Returns every configured label as { gmailLabelName, displayName } — the FULL set the feedback UI
+// can move an email to, independent of which labels currently have inbox threads. `gmailLabelName`
+// is the real Gmail label name the server resolves the id from; `displayName` is what the UI shows.
 async function loadConfiguredLabelOptions(userId, userData, projectId, connection) {
     if (connection.provider !== 'google') return []
     const lookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
@@ -186,18 +189,34 @@ async function loadConfiguredLabelOptions(userId, userData, projectId, connectio
                 .catch(() => null)
             if (!configSnap?.exists) continue
             const effectiveConfig = await resolveEffectiveGmailLabelingConfig(configSnap.data() || {}, userData)
-            return [
-                ...new Set(
-                    (effectiveConfig.labelDefinitions || [])
-                        .map(label => (typeof label.gmailLabelName === 'string' ? label.gmailLabelName.trim() : ''))
-                        .filter(Boolean)
-                ),
-            ]
+            return (effectiveConfig.labelDefinitions || [])
+                .map(label => (typeof label.gmailLabelName === 'string' ? label.gmailLabelName.trim() : ''))
+                .filter(Boolean)
+                .map(gmailLabelName => ({
+                    gmailLabelName,
+                    displayName: gmailEmailLine.stripLabelPrefix(gmailLabelName),
+                }))
         }
     } catch (error) {
         console.warn('[emailLine] configured label options read failed:', error?.message || error)
     }
     return []
+}
+
+// Merge the configured labels with the labels that currently carry threads (some may be plain Gmail
+// labels not in the config), deduped by Gmail label name so each move target appears once.
+function mergeLabelOptions(configuredLabelOptions, labels) {
+    const byName = new Map()
+    const add = (gmailLabelName, displayName) => {
+        const name = typeof gmailLabelName === 'string' ? gmailLabelName.trim() : ''
+        if (!name || byName.has(name)) return
+        byName.set(name, { gmailLabelName: name, displayName: displayName || name })
+    }
+    configuredLabelOptions.forEach(option => add(option.gmailLabelName, option.displayName))
+    labels
+        .filter(label => !isInboxLabel(label) && !isNoLabel(label))
+        .forEach(label => add(label.name || label.displayName, label.displayName))
+    return [...byName.values()]
 }
 
 // Returns { provider, emailAddress, labels, needsReplyCount, needsReplyByMessageId, inboxZero, scannedAt }
@@ -268,15 +287,7 @@ async function getEmailLineSummary(userId, projectId, options = {}) {
         provider: connection.provider,
         emailAddress: summary.emailAddress || connection.emailAddress || '',
         labels,
-        labelOptions: [
-            ...new Set([
-                ...configuredLabelOptions,
-                ...labels
-                    .filter(label => !isInboxLabel(label) && !isNoLabel(label))
-                    .map(label => label.displayName)
-                    .filter(Boolean),
-            ]),
-        ],
+        labelOptions: mergeLabelOptions(configuredLabelOptions, labels),
         needsReplyCount: Object.keys(needsReplyByMessageId).length,
         needsReplyByMessageId,
         labelingEnabled,
@@ -596,6 +607,12 @@ async function performEmailLineAction(userId, projectId, params = {}) {
     const { connection, userData } = await resolveConnectionOrThrow(userId, projectId, providedUserData)
     const provider = getProviderModule(connection.provider)
 
+    const messageIdCount = Array.isArray(messageIds) ? messageIds.length : messageIds ? 1 : 0
+    console.log(
+        `[emailLine] action=${action} provider=${connection.provider} project=${projectId} ` +
+            `label=${labelId || '-'} messageIds=${messageIdCount}`
+    )
+
     try {
         switch (action) {
             case 'archive':
@@ -603,9 +620,15 @@ async function performEmailLineAction(userId, projectId, params = {}) {
             case 'markRead':
                 return await provider.markMessagesRead(userId, projectId, messageIds)
             case 'archiveAll':
-            case 'markAllRead':
+            case 'markAllRead': {
                 if (!labelId) throw new Error('labelId is required for sweep actions')
-                return await provider.sweepLabel(userId, projectId, labelId, action)
+                const sweepResult = await provider.sweepLabel(userId, projectId, labelId, action)
+                console.log(
+                    `[emailLine] sweep ${action} project=${projectId} label=${labelId} ` +
+                        `processed=${sweepResult?.processed ?? 0} remaining=${!!sweepResult?.remaining}`
+                )
+                return sweepResult
+            }
             case 'draftReply':
                 return await draftReply({
                     userId,

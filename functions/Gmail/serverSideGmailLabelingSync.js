@@ -1302,15 +1302,17 @@ function buildThreadLabelModification({ currentLabelId, targetLabelId, targetAut
 
 // Re-label a whole Gmail thread in response to a user's label correction from the feedback UI.
 // Removes the label the thread currently sits under (currentLabelId) and applies the corrected
-// label (targetLabelId), mirroring the sync's auto-archive behavior for the corrected label. A
-// null targetLabelId means "Inbox only": the managed label is removed and the thread returns to a
+// label, resolved BY NAME (targetLabelName) so any configured label can be a target — including
+// ones with no current inbox emails, or that Gmail hasn't created yet (createOrGetGmailLabelId
+// creates it on demand). Mirrors the sync's auto-archive behavior for the corrected label. A null
+// targetLabelName means "Inbox only": the managed label is removed and the thread returns to a
 // plain inbox. Operates on the whole thread in one call (threads.modify) so every message moves,
 // matching how the email line groups threads. Returns the resolved target label name/key + archive
 // state so the caller can update the audit record and the client can move the row.
 async function applyGmailThreadLabelCorrection(
     userId,
     projectId,
-    { threadId, currentLabelId, targetLabelId, labelDefinitions = [] }
+    { threadId, currentLabelId, targetLabelName, labelDefinitions = [] }
 ) {
     if (!threadId) throw new Error('threadId is required to re-label an email')
 
@@ -1318,20 +1320,18 @@ async function applyGmailThreadLabelCorrection(
     const gmail = await getGmailClient(userId, connectionProjectId || projectId)
     const labelMap = await loadExistingLabelMap(gmail)
 
-    // Labels created by the sync are keyed by their Gmail label name, so we can recover the
-    // corrected label's name/key/auto-archive by matching its Gmail id against the config.
+    const normalizedTargetName =
+        typeof targetLabelName === 'string' && targetLabelName.trim() ? normalizeLabelName(targetLabelName) : null
+
+    let targetLabelId = null
     let targetGmailLabelName = null
     let targetLabelKey = null
     let targetAutoArchive = false
-    if (targetLabelId) {
-        for (const [name, id] of labelMap.entries()) {
-            if (id === targetLabelId) {
-                targetGmailLabelName = name
-                break
-            }
-        }
+    if (normalizedTargetName) {
+        targetLabelId = await createOrGetGmailLabelId(gmail, labelMap, normalizedTargetName)
+        targetGmailLabelName = normalizedTargetName
         const targetDefinition = (labelDefinitions || []).find(
-            definition => findExistingLabelId(labelMap, normalizeLabelName(definition.gmailLabelName)) === targetLabelId
+            definition => normalizeLabelName(definition.gmailLabelName) === normalizedTargetName
         )
         if (targetDefinition) {
             targetLabelKey = targetDefinition.key || null

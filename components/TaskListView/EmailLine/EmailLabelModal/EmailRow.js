@@ -38,18 +38,18 @@ function resolveUnsubscribeUrl(row) {
     return null
 }
 
-// Options are { labelId, displayName } pairs; dedupe by labelId and drop the row's current label.
+// Options are { gmailLabelName, displayName } pairs; dedupe by name and drop the row's current label.
 function normalizeLabelOptions(labelOptions = [], currentLabelName = '') {
     const seen = new Set()
     return labelOptions
         .map(option => ({
-            labelId: option?.labelId || null,
+            gmailLabelName: typeof option?.gmailLabelName === 'string' ? option.gmailLabelName.trim() : '',
             displayName: typeof option?.displayName === 'string' ? option.displayName.trim() : '',
         }))
         .filter(option => {
-            if (!option.labelId || !option.displayName || option.displayName === currentLabelName) return false
-            if (seen.has(option.labelId)) return false
-            seen.add(option.labelId)
+            if (!option.gmailLabelName || !option.displayName || option.displayName === currentLabelName) return false
+            if (seen.has(option.gmailLabelName)) return false
+            seen.add(option.gmailLabelName)
             return true
         })
 }
@@ -69,7 +69,7 @@ export default function EmailRow({
     const [feedbackOpen, setFeedbackOpen] = useState(false)
     const [feedbackDropdownOpen, setFeedbackDropdownOpen] = useState(false)
     const [feedbackLabel, setFeedbackLabel] = useState(null)
-    const [feedbackLabelId, setFeedbackLabelId] = useState(null)
+    const [feedbackLabelName, setFeedbackLabelName] = useState(null)
     const [feedbackNote, setFeedbackNote] = useState('')
     const [feedbackState, setFeedbackState] = useState('idle') // idle | sending | done | error
     // A task may already exist for this email from a previous session — the server
@@ -87,10 +87,10 @@ export default function EmailRow({
     const explanationText = row.reasoning || translate('No project or label explanation was recorded for this email.')
     const feedbackLabelOptions = normalizeLabelOptions(labelOptions, row.labelName)
     const feedbackDropdownOptions = [
-        { value: null, labelId: null, label: inboxOnlyText },
+        { value: null, gmailLabelName: null, label: inboxOnlyText },
         ...feedbackLabelOptions.map(option => ({
             value: option.displayName,
-            labelId: option.labelId,
+            gmailLabelName: option.gmailLabelName,
             label: option.displayName,
         })),
     ]
@@ -103,7 +103,7 @@ export default function EmailRow({
             await submitEmailLabelFeedback(connectionId, {
                 messageId: row.messageId,
                 correctLabel: feedbackLabel,
-                correctLabelId: feedbackLabelId,
+                correctLabelName: feedbackLabelName,
                 currentLabelId: currentLabelId || null,
                 note: feedbackNote,
             })
@@ -208,69 +208,81 @@ export default function EmailRow({
                                     </TouchableOpacity>
                                 ) : (
                                     <View style={localStyles.feedbackForm}>
-                                        <TouchableOpacity
-                                            style={localStyles.feedbackDropdownTrigger}
-                                            onPress={() => setFeedbackDropdownOpen(open => !open)}
-                                            accessibilityLabel={translate('Select correct label')}
-                                        >
-                                            <View style={localStyles.feedbackDropdownTextBlock}>
-                                                <Text style={[styles.caption2, localStyles.feedbackDropdownCaption]}>
-                                                    {correctLabelText}
-                                                </Text>
-                                                <Text
-                                                    style={[styles.caption1, localStyles.feedbackDropdownValue]}
-                                                    numberOfLines={1}
+                                        <Popover
+                                            isOpen={feedbackDropdownOpen}
+                                            position={['bottom', 'top']}
+                                            align="start"
+                                            padding={4}
+                                            containerStyle={POPOVER_CONTAINER_STYLE}
+                                            onClickOutside={() => setFeedbackDropdownOpen(false)}
+                                            contentLocation={smallScreen ? null : undefined}
+                                            content={
+                                                <CustomScrollView
+                                                    style={localStyles.feedbackDropdown}
+                                                    showsVerticalScrollIndicator={false}
                                                 >
-                                                    {feedbackLabelText}
-                                                </Text>
-                                            </View>
-                                            <Icon
-                                                name={feedbackDropdownOpen ? 'chevron-up' : 'chevron-down'}
-                                                size={14}
-                                                color={colors.Text03}
-                                            />
-                                        </TouchableOpacity>
-                                        {feedbackDropdownOpen && (
-                                            <CustomScrollView
-                                                style={localStyles.feedbackDropdown}
-                                                showsVerticalScrollIndicator={false}
-                                            >
-                                                {feedbackDropdownOptions.map(option => {
-                                                    const selectedOption = feedbackLabel === option.value
-                                                    return (
-                                                        <TouchableOpacity
-                                                            key={option.value || 'inbox'}
-                                                            style={[
-                                                                localStyles.feedbackDropdownItem,
-                                                                selectedOption &&
-                                                                    localStyles.feedbackDropdownItemSelected,
-                                                            ]}
-                                                            onPress={() => {
-                                                                setFeedbackLabel(option.value)
-                                                                setFeedbackLabelId(option.labelId)
-                                                                setFeedbackDropdownOpen(false)
-                                                            }}
-                                                            accessibilityLabel={`${correctLabelText}: ${option.label}`}
-                                                        >
-                                                            <Text
+                                                    {feedbackDropdownOptions.map(option => {
+                                                        const selectedOption = feedbackLabel === option.value
+                                                        return (
+                                                            <TouchableOpacity
+                                                                key={option.value || 'inbox'}
                                                                 style={[
-                                                                    styles.caption1,
-                                                                    localStyles.feedbackDropdownItemText,
+                                                                    localStyles.feedbackDropdownItem,
                                                                     selectedOption &&
-                                                                        localStyles.feedbackDropdownItemTextSelected,
+                                                                        localStyles.feedbackDropdownItemSelected,
                                                                 ]}
-                                                                numberOfLines={1}
+                                                                onPress={() => {
+                                                                    setFeedbackLabel(option.value)
+                                                                    setFeedbackLabelName(option.gmailLabelName)
+                                                                    setFeedbackDropdownOpen(false)
+                                                                }}
+                                                                accessibilityLabel={`${correctLabelText}: ${option.label}`}
                                                             >
-                                                                {option.label}
-                                                            </Text>
-                                                            {selectedOption && (
-                                                                <Icon name="check" size={12} color="#ffffff" />
-                                                            )}
-                                                        </TouchableOpacity>
-                                                    )
-                                                })}
-                                            </CustomScrollView>
-                                        )}
+                                                                <Text
+                                                                    style={[
+                                                                        styles.caption1,
+                                                                        localStyles.feedbackDropdownItemText,
+                                                                        selectedOption &&
+                                                                            localStyles.feedbackDropdownItemTextSelected,
+                                                                    ]}
+                                                                    numberOfLines={1}
+                                                                >
+                                                                    {option.label}
+                                                                </Text>
+                                                                {selectedOption && (
+                                                                    <Icon name="check" size={12} color="#ffffff" />
+                                                                )}
+                                                            </TouchableOpacity>
+                                                        )
+                                                    })}
+                                                </CustomScrollView>
+                                            }
+                                        >
+                                            <TouchableOpacity
+                                                style={localStyles.feedbackDropdownTrigger}
+                                                onPress={() => setFeedbackDropdownOpen(open => !open)}
+                                                accessibilityLabel={translate('Select correct label')}
+                                            >
+                                                <View style={localStyles.feedbackDropdownTextBlock}>
+                                                    <Text
+                                                        style={[styles.caption2, localStyles.feedbackDropdownCaption]}
+                                                    >
+                                                        {correctLabelText}
+                                                    </Text>
+                                                    <Text
+                                                        style={[styles.caption1, localStyles.feedbackDropdownValue]}
+                                                        numberOfLines={1}
+                                                    >
+                                                        {feedbackLabelText}
+                                                    </Text>
+                                                </View>
+                                                <Icon
+                                                    name={feedbackDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                                                    size={14}
+                                                    color={colors.Text03}
+                                                />
+                                            </TouchableOpacity>
+                                        </Popover>
                                         {feedbackLabelOptions.length === 0 && (
                                             <View style={localStyles.feedbackOnlyInboxHint}>
                                                 <Icon name="info" size={12} color={colors.Text03} />

@@ -29,6 +29,10 @@ jest.mock('../../../../utils/backends/EmailLine/emailLineBackend', () => ({
     listEmailLineMessages: jest.fn(),
     performEmailLineAction: jest.fn(),
     performEmailLineSweepInBackground: jest.fn(),
+    fetchEmailLineSummary: jest.fn(() => Promise.resolve(null)),
+    invalidateEmailLineSummaryCooldown: jest.fn(),
+    getCachedEmailLineSections: jest.fn(() => null),
+    cacheEmailLineSections: jest.fn(),
 }))
 
 jest.mock('../emailLineHelper', () => ({

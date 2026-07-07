@@ -9,7 +9,9 @@ import { MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { translate } from '../../../../i18n/TranslationService'
 import { getProviderLabel } from '../../../../utils/IntegrationProviders'
 import {
+    cacheEmailLineSections,
     fetchEmailLineSummary,
+    getCachedEmailLineSections,
     invalidateEmailLineSummaryCooldown,
     listEmailLineMessages,
     performEmailLineAction,
@@ -33,8 +35,10 @@ function EmailLabelModal({
     closePopover,
     windowSize,
 }) {
-    const [sections, setSections] = useState([])
-    const [loading, setLoading] = useState(true)
+    // Seed from the last-loaded cache so reopening a label shows its emails instantly.
+    // Only show the spinner when there's nothing cached to render meanwhile.
+    const [sections, setSections] = useState(() => getCachedEmailLineSections(group?.key) || [])
+    const [loading, setLoading] = useState(() => !getCachedEmailLineSections(group?.key))
     const [loadingMoreKey, setLoadingMoreKey] = useState(null)
     const [selectedIds, setSelectedIds] = useState(() => new Set())
 
@@ -44,8 +48,10 @@ function EmailLabelModal({
     const maxHeight = screenHeight - MODAL_MAX_HEIGHT_GAP
 
     const entries = group?.entries || []
+    // Background refresh: if we already rendered cached rows we keep them on screen
+    // (no spinner) and just swap in the fresh results when they arrive.
     const load = async () => {
-        setLoading(true)
+        if (!getCachedEmailLineSections(group?.key)) setLoading(true)
         try {
             const results = await Promise.all(
                 entries.map(async entry => {
@@ -57,18 +63,34 @@ function EmailLabelModal({
                             nextPageToken: result?.nextPageToken || null,
                         }
                     } catch (error) {
-                        // One failing account must not blank the whole modal.
-                        return { ...entry, messages: [], nextPageToken: null }
+                        // A failing account must not blank the modal: keep its cached rows
+                        // (if any) rather than wiping them out on a transient error.
+                        const cachedSection = getCachedEmailLineSections(group?.key)?.find(
+                            item =>
+                                item.connectionId === entry.connectionId &&
+                                (item.labelId || '') === (entry.labelId || '')
+                        )
+                        return {
+                            ...entry,
+                            messages: cachedSection?.messages || [],
+                            nextPageToken: cachedSection?.nextPageToken || null,
+                        }
                     }
                 })
             )
             setSections(results)
+            cacheEmailLineSections(group?.key, results)
         } finally {
             setLoading(false)
         }
     }
 
     useEffect(() => {
+        // Re-seed from this group's cache before refreshing, so switching labels never
+        // flashes the previous label's emails and shows a spinner only when nothing is cached.
+        const cached = getCachedEmailLineSections(group?.key)
+        setSections(cached || [])
+        setLoading(!cached)
         load()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [group?.key])
@@ -90,13 +112,13 @@ function EmailLabelModal({
     // section immediately so it leaves the old label, then refresh the summary so the chip counts
     // and the destination label update.
     const handleRelabeled = (section, row) => {
-        setSections(previous =>
-            previous.map(item =>
-                sectionKey(item) === sectionKey(section)
-                    ? { ...item, messages: item.messages.filter(message => message.messageId !== row.messageId) }
-                    : item
-            )
+        const next = sections.map(item =>
+            sectionKey(item) === sectionKey(section)
+                ? { ...item, messages: item.messages.filter(message => message.messageId !== row.messageId) }
+                : item
         )
+        setSections(next)
+        cacheEmailLineSections(group?.key, next)
         invalidateEmailLineSummaryCooldown(section.connectionId)
         fetchEmailLineSummary(section.connectionId, { force: true }).catch(() => {})
     }
@@ -113,8 +135,8 @@ function EmailLabelModal({
             const result = await listEmailLineMessages(section.connectionId, section.labelId, {
                 pageToken: section.nextPageToken,
             })
-            setSections(previous =>
-                previous.map(item =>
+            setSections(previous => {
+                const next = previous.map(item =>
                     sectionKey(item) === key
                         ? {
                               ...item,
@@ -123,7 +145,9 @@ function EmailLabelModal({
                           }
                         : item
                 )
-            )
+                cacheEmailLineSections(group?.key, next)
+                return next
+            })
         } finally {
             setLoadingMoreKey(null)
         }
@@ -145,6 +169,18 @@ function EmailLabelModal({
             })
         })
         closePopover()
+        // Archived rows leave the inbox: drop them from the cache so reopening the label
+        // shows the pruned list immediately. Mark-read keeps rows in the inbox, so its
+        // cache stays as-is (the background summary refresh updates the counts).
+        if (action === 'archive') {
+            const pruned = sections.map(section => ({
+                ...section,
+                messages: section.messages.filter(
+                    row => !selectedIds.has(selectionKey(section.connectionId, section.labelId, row.messageId))
+                ),
+            }))
+            cacheEmailLineSections(group?.key, pruned)
+        }
         Object.keys(messageIdsByConnection).forEach(connectionId => {
             performEmailLineAction(connectionId, {
                 action,
@@ -159,6 +195,14 @@ function EmailLabelModal({
     // optimistically zeroed and the chip shows a spinner until the summary refreshes.
     const runSweep = action => {
         closePopover()
+        // Archive-all empties the label, so clear its cached rows now — reopening shows the
+        // empty state instantly instead of flashing the about-to-be-archived list.
+        if (action === 'archiveAll') {
+            cacheEmailLineSections(
+                group?.key,
+                sections.map(section => ({ ...section, messages: [] }))
+            )
+        }
         entries.forEach(entry => {
             performEmailLineSweepInBackground(entry.connectionId, entry.labelId, action)
         })

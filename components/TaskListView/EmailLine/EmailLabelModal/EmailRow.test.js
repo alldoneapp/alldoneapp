@@ -14,6 +14,15 @@ jest.mock('react-redux', () => ({ useSelector: jest.fn(selector => selector({ sm
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: jest.fn(key => key) }))
 jest.mock('../emailLineHelper', () => ({ openUrlInNewTab: jest.fn() }))
 jest.mock('./DraftReplyPopup', () => () => null)
+// The label dropdown renders as a react-tiny-popover; render its trigger + (when open) its
+// content inline so the option list is assertable in react-test-renderer (the real lib portals
+// content through react-dom, which never lands in the RTR tree).
+jest.mock('react-tiny-popover', () => {
+    const React = require('react')
+    const Popover = ({ isOpen, content, children }) =>
+        React.createElement(React.Fragment, null, children, isOpen ? content : null)
+    return { __esModule: true, default: Popover, Popover }
+})
 // The backend transitively imports the redux store (and react-hot-keys), which jest
 // cannot transform.
 jest.mock('../../../../utils/backends/EmailLine/emailLineBackend', () => ({
@@ -93,9 +102,9 @@ describe('EmailRow', () => {
                     row={row}
                     connectionId="c1"
                     labelOptions={[
-                        { labelId: 'L_ads', displayName: 'Ads' },
-                        { labelId: 'L_news', displayName: 'Alldone/Newsletter' },
-                        { labelId: 'L_book', displayName: 'Bookkeeping' },
+                        { gmailLabelName: 'Ads', displayName: 'Ads' },
+                        { gmailLabelName: 'Alldone/Newsletter', displayName: 'Alldone/Newsletter' },
+                        { gmailLabelName: 'Bookkeeping', displayName: 'Bookkeeping' },
                     ]}
                     currentLabelId="L_news"
                     selected={false}
@@ -139,7 +148,7 @@ describe('EmailRow', () => {
         expect(submitEmailLabelFeedback).toHaveBeenCalledWith('c1', {
             messageId: 'm1',
             correctLabel: 'Ads',
-            correctLabelId: 'L_ads',
+            correctLabelName: 'Ads',
             currentLabelId: 'L_news',
             note: '',
         })
@@ -182,7 +191,7 @@ describe('EmailRow', () => {
                 <EmailRow
                     row={row}
                     connectionId="c1"
-                    labelOptions={[{ labelId: 'L_ads', displayName: 'Ads' }]}
+                    labelOptions={[{ gmailLabelName: 'Ads', displayName: 'Ads' }]}
                     currentLabelId="L_ads"
                     selected={false}
                 />
@@ -206,7 +215,7 @@ describe('EmailRow', () => {
         expect(submitEmailLabelFeedback).toHaveBeenCalledWith('c1', {
             messageId: 'm1',
             correctLabel: null,
-            correctLabelId: null,
+            correctLabelName: null,
             currentLabelId: 'L_ads',
             note: '',
         })

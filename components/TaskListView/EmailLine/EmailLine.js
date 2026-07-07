@@ -14,25 +14,11 @@ import { setUserEmailLineHiddenTodayForConnections } from '../../../utils/backen
 import EmailLabelChip from './EmailLabelChip'
 
 import {
-    EMAIL_LINE_NO_LABEL_ID,
     areEmailLineConnectionsHiddenToday,
     getEmailLineTodayKey,
     mergeLabelsAcrossConnections,
     splitChipsForDisplay,
 } from './emailLineHelper'
-
-function isInboxLabel(label = {}) {
-    return label.kind === 'inbox' || label.labelId === 'INBOX' || label.displayName === 'Inbox'
-}
-
-function isLabelFeedbackOption(label = {}) {
-    return (
-        !isInboxLabel(label) &&
-        label.kind !== 'no_label' &&
-        label.labelId !== EMAIL_LINE_NO_LABEL_ID &&
-        label.displayName !== 'No label'
-    )
-}
 
 // A gently pulsating green dot shown in the Email header while labeling is
 // active, signaling that incoming emails are being parsed in the background.
@@ -132,12 +118,17 @@ export default function EmailLine() {
     const labelingDisabledByConnectionId = {}
     connections.forEach(connection => {
         const summary = summariesByKey[connection.connectionId]
-        // Carry the Gmail label id alongside the display name so the feedback row can re-label the
-        // email directly (move it to that label's id), not just record a name for learned rules.
-        labelOptionsByConnectionId[connection.connectionId] = (summary?.labels || [])
-            .filter(isLabelFeedbackOption)
-            .map(label => ({ labelId: label.labelId, displayName: label.displayName }))
-            .filter(option => option.labelId && option.displayName)
+        // Use the summary's full labelOptions (every configured label, not just ones with current
+        // threads) so feedback can move an email to any label. Each option carries `gmailLabelName`
+        // for the server to resolve/create the label, and `displayName` for the UI. Older cached
+        // summaries stored plain-name strings, so normalize those too.
+        labelOptionsByConnectionId[connection.connectionId] = (summary?.labelOptions || [])
+            .map(option =>
+                typeof option === 'string'
+                    ? { gmailLabelName: option, displayName: option }
+                    : { gmailLabelName: option?.gmailLabelName, displayName: option?.displayName }
+            )
+            .filter(option => option.gmailLabelName && option.displayName)
         labelingDisabledByConnectionId[connection.connectionId] =
             !!summary && connection.provider !== 'microsoft' && summary.labelingEnabled === false
     })

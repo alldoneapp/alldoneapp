@@ -60,6 +60,27 @@ export function invalidateEmailLineSummaryCooldown(projectId) {
     if (projectId) summaryCooldownCache.delete(projectId)
 }
 
+// In-memory cache of the last-loaded message sections per merged label group, keyed
+// by the group key (the stable lowercase display name from mergeLabelsAcrossConnections).
+// Lets the label modal render its emails instantly on reopen while a fresh Gmail fetch
+// runs in the background, instead of showing a spinner every time. Lives for the module
+// lifetime (same as the Redux summary), so it survives modal close/reopen within a session.
+const emailLineMessagesCache = new Map()
+
+export function getCachedEmailLineSections(groupKey) {
+    if (!groupKey) return null
+    return emailLineMessagesCache.get(groupKey)?.sections || null
+}
+
+export function cacheEmailLineSections(groupKey, sections) {
+    if (!groupKey) return
+    if (!sections) {
+        emailLineMessagesCache.delete(groupKey)
+        return
+    }
+    emailLineMessagesCache.set(groupKey, { sections, cachedAt: Date.now() })
+}
+
 export async function listEmailLineMessages(projectId, labelId, { pageToken } = {}) {
     if (!projectId || !labelId) return { messages: [], nextPageToken: null }
     return runHttpsCallableFunction('listEmailLineMessagesSecondGen', {
@@ -71,12 +92,12 @@ export async function listEmailLineMessages(projectId, labelId, { pageToken } = 
 
 // Marks an email's label decision as wrong (optionally naming the correct label). When move
 // context is provided the server also re-labels the email's Gmail thread directly, so it leaves
-// the wrong label section immediately. `correctLabelId` is the target Gmail label id, or null for
-// "Inbox only"; `currentLabelId` is the label section the email is currently in. Returns the
-// updated learned-rules block plus whether the thread was re-labeled.
+// the wrong label section immediately. `correctLabelName` is the target Gmail label name (resolved/
+// created server-side), or null for "Inbox only"; `currentLabelId` is the label section the email
+// is currently in. Returns the updated learned-rules block plus whether the thread was re-labeled.
 export async function submitEmailLabelFeedback(
     projectId,
-    { messageId, correctLabel, note, correctLabelId, currentLabelId } = {}
+    { messageId, correctLabel, note, correctLabelName, currentLabelId } = {}
 ) {
     if (!projectId || !messageId) return null
     return runHttpsCallableFunction('submitEmailLabelFeedbackSecondGen', {
@@ -85,7 +106,7 @@ export async function submitEmailLabelFeedback(
         verdict: 'wrong',
         correctLabel,
         note,
-        correctLabelId,
+        correctLabelName,
         currentLabelId,
     })
 }

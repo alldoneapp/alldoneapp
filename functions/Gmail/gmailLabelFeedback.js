@@ -156,7 +156,7 @@ async function submitEmailLabelFeedback({
     verdict,
     correctLabel,
     note,
-    correctLabelId,
+    correctLabelName,
     currentLabelId,
 }) {
     const normalizedVerdict = verdict === 'wrong' ? 'wrong' : null
@@ -190,21 +190,19 @@ async function submitEmailLabelFeedback({
 
     const effectiveConfig = await resolveEffectiveGmailLabelingConfig(config, userData)
 
-    // Re-label the thread when the client sent move context (`currentLabelId`) and the target
-    // actually differs. `correctLabelId === null` is an explicit "Inbox only" move; `undefined`
-    // means an older client that only wants to record feedback, so we skip the move.
+    // Re-label the thread when the client sent move context. The target is resolved by NAME server
+    // side (any configured label, created if needed). `correctLabelName === null` is an explicit
+    // "Inbox only" move; `undefined` means an older client that only wants to record feedback, so
+    // we skip the move.
     let relabel = null
-    const targetLabelId = typeof correctLabelId === 'string' && correctLabelId.trim() ? correctLabelId.trim() : null
-    const wantsRelabel =
-        typeof currentLabelId === 'string' &&
-        currentLabelId.trim() &&
-        correctLabelId !== undefined &&
-        targetLabelId !== currentLabelId.trim()
+    const targetLabelName =
+        typeof correctLabelName === 'string' && correctLabelName.trim() ? correctLabelName.trim() : null
+    const wantsRelabel = typeof currentLabelId === 'string' && currentLabelId.trim() && correctLabelName !== undefined
     if (wantsRelabel && auditEntry.gmailThreadId) {
         relabel = await applyGmailThreadLabelCorrection(userId, feedbackProjectId, {
             threadId: auditEntry.gmailThreadId,
             currentLabelId: currentLabelId.trim(),
-            targetLabelId,
+            targetLabelName,
             labelDefinitions: effectiveConfig.labelDefinitions || [],
         })
         await auditRef.set(
