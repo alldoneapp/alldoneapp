@@ -165,13 +165,34 @@ async function archiveGmailTaskIfNeeded(projectId, taskId, oldTask, newTask) {
 
     try {
         const gmail = await getGmailClient(newTask.userId, gmailData.projectId || projectId)
-        await gmail.users.messages.modify({
+        // Archive the message's whole THREAD (threads.modify), like Gmail's own archive
+        // button. Message-level INBOX removal leaves the thread in the inbox when a
+        // sibling message still carries INBOX, and is a permanent no-op on a ghost inbox
+        // thread whose messages carry no INBOX at all (see archiveThreads in
+        // functions/Email/emailLine/gmailEmailLine.js).
+        const detail = await gmail.users.messages.get({
             userId: 'me',
             id: gmailData.messageId,
-            requestBody: {
-                removeLabelIds: ['INBOX'],
-            },
+            format: 'minimal',
         })
+        const threadId = detail?.data?.threadId
+        if (threadId) {
+            await gmail.users.threads.modify({
+                userId: 'me',
+                id: threadId,
+                requestBody: {
+                    removeLabelIds: ['INBOX'],
+                },
+            })
+        } else {
+            await gmail.users.messages.modify({
+                userId: 'me',
+                id: gmailData.messageId,
+                requestBody: {
+                    removeLabelIds: ['INBOX'],
+                },
+            })
+        }
 
         await updateTaskGmailArchiveStatus(projectId, taskId, gmailData, {
             ...archiveStatusBase,

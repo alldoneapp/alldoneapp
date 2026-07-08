@@ -102,8 +102,10 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
         jest.clearAllMocks()
     })
 
-    test('archives Gmail-origin message when task is completed', async () => {
-        const modify = jest.fn(() => Promise.resolve())
+    test("archives the Gmail-origin message's thread when task is completed", async () => {
+        const messagesGet = jest.fn(() => Promise.resolve({ data: { id: 'msg-1', threadId: 'thread-1' } }))
+        const messagesModify = jest.fn(() => Promise.resolve())
+        const threadsModify = jest.fn(() => Promise.resolve())
         const setCredentials = jest.fn()
 
         getAccessToken.mockResolvedValue('token-1')
@@ -111,7 +113,11 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
         google.gmail.mockReturnValue({
             users: {
                 messages: {
-                    modify,
+                    get: messagesGet,
+                    modify: messagesModify,
+                },
+                threads: {
+                    modify: threadsModify,
                 },
             },
         })
@@ -122,13 +128,16 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
         })
 
         expect(getAccessToken).toHaveBeenCalledWith('user-1', 'gmail-project', 'gmail')
-        expect(modify).toHaveBeenCalledWith({
+        // Archived at the THREAD level (like Gmail's archive button) so split threads and
+        // ghost inbox threads actually leave the inbox; message-level modify not used.
+        expect(threadsModify).toHaveBeenCalledWith({
             userId: 'me',
-            id: 'msg-1',
+            id: 'thread-1',
             requestBody: {
                 removeLabelIds: ['INBOX'],
             },
         })
+        expect(messagesModify).not.toHaveBeenCalled()
         expect(admin.__mock.doc).toHaveBeenCalledWith('items/project-1/tasks/task-1')
         expect(admin.__mock.update).toHaveBeenCalledWith({
             gmailData: expect.objectContaining({
@@ -142,6 +151,41 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
                     messageId: 'msg-1',
                 }),
             }),
+        })
+    })
+
+    test('falls back to message-level archive when the thread id cannot be resolved', async () => {
+        const messagesGet = jest.fn(() => Promise.resolve({ data: { id: 'msg-1' } }))
+        const messagesModify = jest.fn(() => Promise.resolve())
+        const threadsModify = jest.fn(() => Promise.resolve())
+        const setCredentials = jest.fn()
+
+        getAccessToken.mockResolvedValue('token-1')
+        getOAuth2Client.mockReturnValue({ setCredentials })
+        google.gmail.mockReturnValue({
+            users: {
+                messages: {
+                    get: messagesGet,
+                    modify: messagesModify,
+                },
+                threads: {
+                    modify: threadsModify,
+                },
+            },
+        })
+
+        await archiveGmailTaskIfNeeded('project-1', 'task-1', baseTask, {
+            ...baseTask,
+            done: true,
+        })
+
+        expect(threadsModify).not.toHaveBeenCalled()
+        expect(messagesModify).toHaveBeenCalledWith({
+            userId: 'me',
+            id: 'msg-1',
+            requestBody: {
+                removeLabelIds: ['INBOX'],
+            },
         })
     })
 
@@ -186,8 +230,9 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
         expect(admin.__mock.update).not.toHaveBeenCalled()
     })
 
-    test('archives Gmail-origin message when task is postponed', async () => {
-        const modify = jest.fn(() => Promise.resolve())
+    test("archives the Gmail-origin message's thread when task is postponed", async () => {
+        const messagesGet = jest.fn(() => Promise.resolve({ data: { id: 'msg-1', threadId: 'thread-1' } }))
+        const threadsModify = jest.fn(() => Promise.resolve())
         const setCredentials = jest.fn()
 
         getAccessToken.mockResolvedValue('token-1')
@@ -195,7 +240,10 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
         google.gmail.mockReturnValue({
             users: {
                 messages: {
-                    modify,
+                    get: messagesGet,
+                },
+                threads: {
+                    modify: threadsModify,
                 },
             },
         })
@@ -206,9 +254,9 @@ describe('onUpdateTaskFunctions Gmail archive handling', () => {
         })
 
         expect(getAccessToken).toHaveBeenCalledWith('user-1', 'gmail-project', 'gmail')
-        expect(modify).toHaveBeenCalledWith({
+        expect(threadsModify).toHaveBeenCalledWith({
             userId: 'me',
-            id: 'msg-1',
+            id: 'thread-1',
             requestBody: {
                 removeLabelIds: ['INBOX'],
             },

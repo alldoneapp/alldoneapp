@@ -12,9 +12,13 @@ const NO_LABEL_ID = '__NO_LABEL__'
 // contained a later unlabeled reply. This is independent of MAX_LABELS_TO_INSPECT (it's one
 // query, not per-label enumeration). See collectLabeledThreadIds.
 const HAS_USER_LABELS_SEARCH_QUERY = 'has:userlabels'
-// Hard cap on how many messages a single sweep invocation touches.
+// Hard cap on how many messages (mark-read) or threads (archive) a single sweep
+// invocation touches.
 const SWEEP_LIMIT = 500
 const BATCH_MODIFY_CHUNK = 100
+// threads.modify is one call per thread (unlike messages.batchModify); bound the
+// concurrent calls so a large sweep doesn't trip Gmail's per-user rate limits.
+const THREAD_MODIFY_CHUNK = 20
 // A user label can sit on a message that is NOT in the inbox (a sent reply, an older
 // archived message) while the thread still lives in the inbox via a different message.
 // Gmail's labelIds filter matches per-message, so a [label, INBOX] query misses those
@@ -579,10 +583,49 @@ async function batchModifyMessages(gmail, messageIds, requestBody) {
     }
 }
 
+// Archiving happens at the THREAD level (threads.modify), never by batch-stripping INBOX
+// from individual messages. Production karsten@alldone.app showed Gmail "ghost" inbox
+// threads: no message carried INBOX anymore, yet the thread kept appearing in the inbox —
+// in the Gmail UI, in in:inbox search, and in threads.list({labelIds:['INBOX']}). Against
+// those, messages.batchModify(removeLabelIds:['INBOX']) is a successful no-op (nothing to
+// remove), so "Archive all" reported processed>0 while the threads never left.
+// threads.modify updates the thread's own inbox membership as well as its messages and
+// verifiably dislodged the stuck threads where two message-level sweeps had failed.
+async function archiveThreads(gmail, threadIds) {
+    for (const ids of chunk(threadIds, THREAD_MODIFY_CHUNK)) {
+        await Promise.all(
+            ids.map(id =>
+                gmail.users.threads.modify({
+                    userId: 'me',
+                    id,
+                    requestBody: { removeLabelIds: ['INBOX'] },
+                })
+            )
+        )
+    }
+}
+
+// The email line lists threads, so the row-level archive must archive the row's whole
+// conversation (like Gmail's own archive button) — and only thread-level modify can clear
+// a ghost inbox thread (see archiveThreads). Resolve each message to its thread first.
 async function archiveMessages(userId, projectId, messageIds) {
     if (!Array.isArray(messageIds) || messageIds.length === 0) return { processed: 0 }
     const gmail = await getGmailClient(userId, projectId)
-    await batchModifyMessages(gmail, messageIds, { removeLabelIds: ['INBOX'] })
+    const threadIds = []
+    const seen = new Set()
+    for (const ids of chunk(messageIds, BATCH_MODIFY_CHUNK)) {
+        const details = await Promise.all(
+            ids.map(id => gmail.users.messages.get({ userId: 'me', id, format: 'minimal' }))
+        )
+        for (const detail of details) {
+            const threadId = detail?.data?.threadId
+            if (threadId && !seen.has(threadId)) {
+                seen.add(threadId)
+                threadIds.push(threadId)
+            }
+        }
+    }
+    await archiveThreads(gmail, threadIds)
     return { processed: messageIds.length }
 }
 
@@ -681,63 +724,62 @@ async function collectMessageIdsFromThreads(gmail, threadIds, shouldModifyMessag
     return ids
 }
 
+// Archive sweeps work on THREADS (threads.modify per target thread, see archiveThreads):
+// the target set is resolved at the thread level anyway, and only a thread-level modify
+// dislodges a ghost inbox thread whose messages carry no INBOX — the state that made
+// message-level sweeps report processed>0 while nothing left the inbox. Mark-read sweeps
+// stay message-level: they collect the target threads' UNREAD messages and batch-clear
+// them, matching the message-level unread counts on the chip.
 async function sweepLabel(userId, projectId, labelId, action) {
     const gmail = await getGmailClient(userId, projectId)
     const isArchive = action === 'archiveAll'
-    const mutationLabelId = isArchive ? 'INBOX' : 'UNREAD'
-    const matchesMutation = message =>
-        (Array.isArray(message?.labelIds) ? message.labelIds : []).includes(mutationLabelId)
-    // For archive we strip INBOX from EVERY message of the resolved (inbox ∩ label) threads,
-    // not only those a per-message threads.get reports as INBOX-labeled. threads.list already
-    // proved these threads are in the inbox, but a per-thread threads.get can return stale or
-    // incomplete labelIds (a Gmail read-consistency quirk) — filtering by them made "Archive
-    // all" strip nothing (processed=0) while the chip still counted the threads. removeLabelIds
-    // is a no-op on a message that lacks the label, so clearing all messages is safe and
-    // reliably archives the thread. Mark-read stays label-filtered (only unread messages).
-    const shouldModify = isArchive ? () => true : matchesMutation
+    const matchesUnread = message => (Array.isArray(message?.labelIds) ? message.labelIds : []).includes('UNREAD')
+
+    // Archives threads (archive) or clears UNREAD from the threads' messages (mark-read),
+    // given the full resolved target set; caps at SWEEP_LIMIT threads per round. Archived
+    // threads leave the inbox, so a follow-up round re-scans a smaller set and converges.
+    const sweepThreads = async targetThreadIds => {
+        const cappedThreadIds = targetThreadIds.slice(0, SWEEP_LIMIT)
+        if (isArchive) {
+            await archiveThreads(gmail, cappedThreadIds)
+            return { processed: cappedThreadIds.length, remaining: targetThreadIds.length > cappedThreadIds.length }
+        }
+        const ids = await collectMessageIdsFromThreads(gmail, cappedThreadIds, matchesUnread)
+        if (ids.length > 0) await batchModifyMessages(gmail, ids, { removeLabelIds: ['UNREAD'] })
+        const remaining = ids.length >= SWEEP_LIMIT || targetThreadIds.length > cappedThreadIds.length
+        return { processed: ids.length, remaining }
+    }
 
     if (isNoLabelId(labelId)) {
         // Sweep only genuinely-unlabeled inbox threads, resolved at the thread level as
-        // (inbox − has:userlabels), then strip INBOX/UNREAD from their inbox messages. This
-        // mirrors the user-label sweep below and guarantees an "Archive all" / "Mark all
-        // read" on No-label never touches mail already filed under a label (even one on a
-        // sent/archived message).
+        // (inbox − has:userlabels). This mirrors the user-label sweep below and guarantees
+        // an "Archive all" / "Mark all read" on No-label never touches mail already filed
+        // under a label (even one on a sent/archived message).
         const [inboxThreadIds, labeledThreadIds] = await Promise.all([
             collectInboxThreadIds(gmail),
             collectLabeledThreadIds(gmail),
         ])
-        const targetThreadIds = filterUnlabeledThreadIds(inboxThreadIds, labeledThreadIds)
-        const cappedThreadIds = targetThreadIds.slice(0, SWEEP_LIMIT)
-        const ids = await collectMessageIdsFromThreads(gmail, cappedThreadIds, shouldModify)
-        if (ids.length > 0) await batchModifyMessages(gmail, ids, { removeLabelIds: [mutationLabelId] })
-        const remaining = ids.length >= SWEEP_LIMIT || targetThreadIds.length > cappedThreadIds.length
-        return { processed: ids.length, remaining }
+        return sweepThreads(filterUnlabeledThreadIds(inboxThreadIds, labeledThreadIds))
     }
 
     // The inbox itself is defined by being in the inbox, so its scoped [INBOX] query
     // already selects the right threads.
     if (!isUserLabelBucket(labelId)) {
-        const { ids, hasMore } = await collectThreadMessageIds(gmail, listParamsForLabel(labelId), shouldModify)
-        if (ids.length > 0) await batchModifyMessages(gmail, ids, { removeLabelIds: [mutationLabelId] })
+        if (isArchive) return sweepThreads([...(await collectInboxThreadIds(gmail))])
+        const { ids, hasMore } = await collectThreadMessageIds(gmail, listParamsForLabel(labelId), matchesUnread)
+        if (ids.length > 0) await batchModifyMessages(gmail, ids, { removeLabelIds: ['UNREAD'] })
         return { processed: ids.length, remaining: hasMore }
     }
 
     // A user label can sit on a non-inbox message (a sent reply), so resolve the threads
-    // that are BOTH in the inbox and carry the label (thread-level intersection), then
-    // strip INBOX/UNREAD from their inbox messages. This is what makes "Archive all"
-    // work on conversation threads whose label is only on a sent reply.
+    // that are BOTH in the inbox and carry the label (thread-level intersection). This is
+    // what makes "Archive all" work on conversation threads whose label is only on a
+    // sent reply.
     const [inboxThreadIds, { ids: labelThreadIds }] = await Promise.all([
         collectInboxThreadIds(gmail),
         collectLabelThreadIds(gmail, labelId),
     ])
-    const targetThreadIds = labelThreadIds.filter(id => inboxThreadIds.has(id))
-    const cappedThreadIds = targetThreadIds.slice(0, SWEEP_LIMIT)
-    const ids = await collectMessageIdsFromThreads(gmail, cappedThreadIds, shouldModify)
-    if (ids.length > 0) await batchModifyMessages(gmail, ids, { removeLabelIds: [mutationLabelId] })
-    // Archived threads leave the inbox, so a follow-up round re-scans a smaller set and
-    // converges; flag more work when we hit either cap.
-    const remaining = ids.length >= SWEEP_LIMIT || targetThreadIds.length > cappedThreadIds.length
-    return { processed: ids.length, remaining }
+    return sweepThreads(labelThreadIds.filter(id => inboxThreadIds.has(id)))
 }
 
 module.exports = {
