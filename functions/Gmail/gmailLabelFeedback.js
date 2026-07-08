@@ -142,6 +142,100 @@ async function reviseLearnedRules({ currentRules, labelDefinitions, auditEntry, 
     return revised.slice(0, MAX_LEARNED_RULES_LENGTH)
 }
 
+function normalizeAuditEntryForPostLabelPrompt(auditEntry = {}, messageId = '') {
+    return {
+        messageId: auditEntry.gmailMessageId || auditEntry.messageId || messageId || auditEntry.id || '',
+        threadId: auditEntry.gmailThreadId || auditEntry.threadId || '',
+        internalDate: auditEntry.internalDate || '',
+        from: auditEntry.from || '',
+        to: auditEntry.to || '',
+        cc: auditEntry.cc || '',
+        bcc: auditEntry.bcc || '',
+        date: auditEntry.date || '',
+        subject: auditEntry.subject || '',
+        snippet: auditEntry.snippet || '',
+        bodyText: auditEntry.bodyText || auditEntry.snippet || '',
+    }
+}
+
+function findLabelDefinitionForRelabel(labelDefinitions = [], relabel = {}) {
+    if (relabel?.targetLabelKey) {
+        const keyMatch = labelDefinitions.find(definition => definition.key === relabel.targetLabelKey)
+        if (keyMatch) return keyMatch
+    }
+
+    const targetName =
+        typeof relabel?.targetGmailLabelName === 'string' && relabel.targetGmailLabelName.trim()
+            ? relabel.targetGmailLabelName.trim()
+            : ''
+    if (!targetName) return null
+
+    return (
+        labelDefinitions.find(definition => {
+            const definitionName =
+                typeof definition?.gmailLabelName === 'string' && definition.gmailLabelName.trim()
+                    ? definition.gmailLabelName.trim()
+                    : ''
+            return definitionName === targetName
+        }) || null
+    )
+}
+
+async function executeFeedbackPostLabelPrompt({
+    userId,
+    userData,
+    feedbackProjectId,
+    config,
+    effectiveConfig,
+    auditEntry,
+    messageId,
+    relabel,
+}) {
+    const { executePostLabelPrompt } = require('./serverSideGmailLabelingSync')
+    const selectedDefinition = findLabelDefinitionForRelabel(effectiveConfig.labelDefinitions || [], relabel)
+    const prompt =
+        typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
+
+    if (!selectedDefinition || !prompt) return null
+
+    const normalizedMessage = normalizeAuditEntryForPostLabelPrompt(auditEntry, messageId)
+    const direction = auditEntry.direction || 'incoming'
+    const gmailEmail = config.gmailEmail || auditEntry.gmailEmail || userData.email || ''
+    const selectedProjectId =
+        typeof selectedDefinition.sourceProjectId === 'string' && selectedDefinition.sourceProjectId.trim()
+            ? selectedDefinition.sourceProjectId.trim()
+            : null
+    const targetContactEmails =
+        direction === 'outgoing' && Array.isArray(auditEntry.recipientEmails) && auditEntry.recipientEmails.length > 0
+            ? auditEntry.recipientEmails
+            : ['']
+    const postLabelActions = []
+
+    for (const targetContactEmail of targetContactEmails) {
+        const action = await executePostLabelPrompt({
+            userId,
+            userData,
+            selectedDefinition,
+            normalizedMessage,
+            gmailEmail,
+            direction,
+            targetContactEmail,
+            forceExecute: true,
+            existingAuditEntry: auditEntry,
+            reasoning: auditEntry.reasoning || '',
+            confidence: auditEntry.confidence ?? null,
+            connectionProjectId: feedbackProjectId,
+            selectedProjectId,
+        })
+        postLabelActions.push(action)
+    }
+
+    return {
+        postLabelAction: postLabelActions[0] || null,
+        postLabelActions,
+    }
+}
+
 // Applies the user's correction in two ways: (1) immediately re-labels the email's Gmail thread so
 // it leaves the wrong label section right away, and (2) folds the correction into the config's
 // learnedRules block, which resolveEffectiveGmailLabelingConfig appends to the classifier prompt on
@@ -195,6 +289,7 @@ async function submitEmailLabelFeedback({
     // "Inbox only" move; `undefined` means an older client that only wants to record feedback, so
     // we skip the move.
     let relabel = null
+    let postLabelPromptResult = null
     const targetLabelName =
         typeof correctLabelName === 'string' && correctLabelName.trim() ? correctLabelName.trim() : null
     const wantsRelabel = typeof currentLabelId === 'string' && currentLabelId.trim() && correctLabelName !== undefined
@@ -215,6 +310,26 @@ async function submitEmailLabelFeedback({
             },
             { merge: true }
         )
+
+        postLabelPromptResult = await executeFeedbackPostLabelPrompt({
+            userId,
+            userData,
+            feedbackProjectId,
+            config,
+            effectiveConfig,
+            auditEntry,
+            messageId,
+            relabel,
+        })
+        if (postLabelPromptResult?.postLabelAction) {
+            await auditRef.set(
+                {
+                    postLabelAction: postLabelPromptResult.postLabelAction,
+                    postLabelActions: postLabelPromptResult.postLabelActions,
+                },
+                { merge: true }
+            )
+        }
     }
 
     let learnedRules = typeof config.learnedRules === 'string' ? config.learnedRules : ''
@@ -239,6 +354,7 @@ async function submitEmailLabelFeedback({
         relabeled: !!relabel,
         targetLabelId: relabel?.targetLabelId || null,
         archived: relabel?.archived || false,
+        postLabelActionStatus: postLabelPromptResult?.postLabelAction?.status || null,
     }
 }
 

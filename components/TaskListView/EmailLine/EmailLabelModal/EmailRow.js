@@ -127,6 +127,8 @@ export default function EmailRow({
             const result = await performEmailLineAction(connectionId, {
                 action: 'createTask',
                 messageIds: row.messageIds || [row.messageId],
+                labelId: currentLabelId || null,
+                labelName: currentLabelName || null,
             })
             if (result?.taskId) setCreatedTask({ taskId: result.taskId, projectId: result.projectId })
             setTaskState('done')

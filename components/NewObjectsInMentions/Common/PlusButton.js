@@ -9,10 +9,12 @@ import {
     TASK_PARENT_GOAL_MODAL_ID,
 } from '../../ModalsManager/modalsManager'
 
-export default function PlusButton({ onPress, disabled, modalId }) {
+export default function PlusButton({ onPress, disabled, modalId, processing }) {
     const mentionModalStack = useSelector(state => state.mentionModalStack)
 
     const onPressEnter = e => {
+        if (disabled || processing) return
+
         if (
             e.key === 'Enter' &&
             mentionModalStack[0] === modalId &&
@@ -31,13 +33,14 @@ export default function PlusButton({ onPress, disabled, modalId }) {
 
     return (
         <Button
-            icon={'plus'}
+            icon={processing ? '' : 'plus'}
             iconColor={'#ffffff'}
             type={'primary'}
             onPress={onPress}
-            shortcutText={'Enter'}
-            forceShowShortcut={true}
-            disabled={disabled}
+            shortcutText={processing ? '' : 'Enter'}
+            forceShowShortcut={!processing}
+            disabled={disabled || processing}
+            processing={processing}
         />
     )
 }

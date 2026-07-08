@@ -203,6 +203,70 @@ async function loadConfiguredLabelOptions(userId, userData, projectId, connectio
     return []
 }
 
+function normalizeLabelText(value = '') {
+    return String(value || '').trim()
+}
+
+function labelsMatch(left = '', right = '') {
+    const normalizedLeft = normalizeLabelText(left)
+    const normalizedRight = normalizeLabelText(right)
+    if (!normalizedLeft || !normalizedRight) return false
+    if (normalizedLeft === normalizedRight) return true
+    return gmailEmailLine.stripLabelPrefix(normalizedLeft) === gmailEmailLine.stripLabelPrefix(normalizedRight)
+}
+
+function findDefinitionProjectForLabel(labelDefinitions = [], { selectedLabelKey = '', selectedLabelName = '' } = {}) {
+    const definition = labelDefinitions.find(label => {
+        if (selectedLabelKey && label.key === selectedLabelKey) return true
+        return labelsMatch(label.gmailLabelName, selectedLabelName)
+    })
+
+    const sourceProjectId =
+        typeof definition?.sourceProjectId === 'string' && definition.sourceProjectId.trim()
+            ? definition.sourceProjectId.trim()
+            : ''
+    if (!sourceProjectId) return null
+
+    return {
+        projectId: sourceProjectId,
+        labelKey: definition.key || selectedLabelKey || '',
+        gmailLabelName: definition.gmailLabelName || selectedLabelName || '',
+    }
+}
+
+async function resolveConfiguredProjectForEmailLabel({ userId, userData, projectId, connection, audit, labelName }) {
+    if (connection.provider !== 'google') return null
+
+    const selectedLabelKey = normalizeLabelText(audit?.selectedLabelKey)
+    const selectedLabelName = normalizeLabelText(audit?.selectedGmailLabelName) || normalizeLabelText(labelName)
+    if (!selectedLabelKey && !selectedLabelName) return null
+
+    const lookupKeys = [audit?.__auditKey, ...getGmailLabelingLookupKeys(userData, projectId, connection)].filter(
+        Boolean
+    )
+    const uniqueLookupKeys = [...new Set(lookupKeys)]
+
+    try {
+        const { resolveEffectiveGmailLabelingConfig } = require('../../Gmail/serverSideGmailLabelingSync')
+        for (const lookupKey of uniqueLookupKeys) {
+            const configSnap = await getGmailLabelingConfigRef(userId, lookupKey)
+                .get()
+                .catch(() => null)
+            if (!configSnap?.exists) continue
+            const effectiveConfig = await resolveEffectiveGmailLabelingConfig(configSnap.data() || {}, userData)
+            const matchedProject = findDefinitionProjectForLabel(effectiveConfig.labelDefinitions || [], {
+                selectedLabelKey,
+                selectedLabelName,
+            })
+            if (matchedProject) return matchedProject
+        }
+    } catch (error) {
+        console.warn('[emailLine] configured label project lookup failed:', error?.message || error)
+    }
+
+    return null
+}
+
 // Merge the configured labels with the labels that currently carry threads (some may be plain Gmail
 // labels not in the config), deduped by Gmail label name so each move target appears once.
 function mergeLabelOptions(configuredLabelOptions, labels) {
@@ -317,6 +381,33 @@ function resolveConnectionProjectId(userData, key) {
     return key
 }
 
+function truncateContextText(value, maxLength = 2000) {
+    return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+}
+
+async function loadReplyGroundingContext({ userId, userData = {}, projectId }) {
+    const resolvedProjectId = resolveConnectionProjectId(userData, projectId)
+    const projectDoc = resolvedProjectId
+        ? await admin
+              .firestore()
+              .doc(`projects/${resolvedProjectId}`)
+              .get()
+              .catch(() => null)
+        : null
+    const project = projectDoc?.exists ? projectDoc.data() || {} : {}
+    const projectUserData = project?.usersData?.[userId] || {}
+
+    return {
+        userName: truncateContextText(userData.displayName || userData.name || '', 200),
+        globalUserDescription: truncateContextText(userData.extendedDescription || userData.description || ''),
+        projectName: truncateContextText(project.name || '', 200),
+        projectUserDescription: truncateContextText(
+            projectUserData.extendedDescription || projectUserData.description || ''
+        ),
+        projectDescription: truncateContextText(project.description || ''),
+    }
+}
+
 // Returns { messages, nextPageToken }
 async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
     const { pageToken, userData: providedUserData } = options
@@ -383,6 +474,7 @@ async function draftReply({ userId, projectId, connection, userData, messageId, 
         context,
         guidance,
         language: userData?.language || userData?.appLanguage,
+        groundingContext: await loadReplyGroundingContext({ userId, userData, projectId }),
     })
     if (!composed.body) throw new Error('Failed to compose a reply draft')
 
@@ -456,7 +548,7 @@ async function getTaskService() {
 // project: the label's mapped project from the audit record when the user is still a
 // member, else the connection's project. Gold is deducted after summarization and
 // refunded if task persistence fails (mirrors draftReply).
-async function createTaskFromEmail({ userId, projectId, connection, userData, messageId, messageIds }) {
+async function createTaskFromEmail({ userId, projectId, connection, userData, messageId, messageIds, labelName }) {
     const candidateMessageIds = [
         ...new Set([messageId, ...(Array.isArray(messageIds) ? messageIds : [])].filter(Boolean)),
     ]
@@ -485,8 +577,20 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         typeof audit?.selectedProjectId === 'string' && audit.selectedProjectId.trim()
             ? audit.selectedProjectId.trim()
             : ''
+    const configuredLabelProject = auditProjectId
+        ? null
+        : await resolveConfiguredProjectForEmailLabel({
+              userId,
+              userData,
+              projectId,
+              connection,
+              audit,
+              labelName,
+          })
+    const configuredLabelProjectId = configuredLabelProject?.projectId || ''
+    const labelProjectId = auditProjectId || configuredLabelProjectId
     const targetProjectId =
-        auditProjectId && memberProjectIds.includes(auditProjectId) ? auditProjectId : connectionProjectId
+        labelProjectId && memberProjectIds.includes(labelProjectId) ? labelProjectId : connectionProjectId
 
     const webUrl =
         connection.provider === 'microsoft'
@@ -499,7 +603,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         gmailEmail: connection.emailAddress || '',
         projectId: connectionProjectId,
         taskProjectId: targetProjectId,
-        selectedProjectId: auditProjectId,
+        selectedProjectId: labelProjectId,
         messageId: selectedMessageId,
         messageIds: candidateMessageIds,
         threadId: context.threadId || audit?.gmailThreadId || '',
@@ -557,14 +661,15 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     // Best-effort: a failed comment must not fail the (already created) task.
     try {
         const { addProjectRoutingReasonComment } = require('../../shared/projectRoutingCommentHelper')
-        const matched = !!auditProjectId && targetProjectId === auditProjectId
+        const matched = !!labelProjectId && targetProjectId === labelProjectId
+        const selectedLabelName = audit?.selectedGmailLabelName || configuredLabelProject?.gmailLabelName || ''
         await addProjectRoutingReasonComment({
             userData,
             projectId: targetProjectId,
             taskId,
             task: result?.task || null,
             reasoning: matched
-                ? audit?.reasoning || ''
+                ? audit?.reasoning || `The email is in the ${selectedLabelName || 'configured'} Gmail label.`
                 : `it is the default project for ${connection.emailAddress || 'this email account'}`,
             confidence: matched && Number.isFinite(audit?.confidence) ? audit.confidence : null,
             matched,
@@ -575,8 +680,8 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
                 messageId: selectedMessageId,
                 messageIds: candidateMessageIds,
                 threadId: context.threadId || '',
-                selectedLabelKey: audit?.selectedLabelKey || '',
-                selectedProjectId: auditProjectId || null,
+                selectedLabelKey: audit?.selectedLabelKey || configuredLabelProject?.labelKey || '',
+                selectedProjectId: labelProjectId || null,
             },
         })
     } catch (error) {
@@ -603,7 +708,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
 
 // Handles archive / markRead / archiveAll / markAllRead / draftReply / createTask.
 async function performEmailLineAction(userId, projectId, params = {}) {
-    const { action, messageIds, labelId, guidance, userData: providedUserData } = params
+    const { action, messageIds, labelId, labelName, guidance, userData: providedUserData } = params
     const { connection, userData } = await resolveConnectionOrThrow(userId, projectId, providedUserData)
     const provider = getProviderModule(connection.provider)
 
@@ -646,6 +751,7 @@ async function performEmailLineAction(userId, projectId, params = {}) {
                     userData,
                     messageId: Array.isArray(messageIds) ? messageIds[0] : messageIds,
                     messageIds,
+                    labelName,
                 })
             default:
                 throw new Error(`Unsupported email line action: ${action}`)

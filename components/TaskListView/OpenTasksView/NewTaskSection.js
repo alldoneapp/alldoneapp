@@ -30,8 +30,8 @@ export default function NewTaskSection({
     )
     const addTaskSectionToOpenData = useSelector(state => state.addTaskSectionToOpenData)
     const newItemRef = useRef(null)
-    const [activeGoal, setActiveGoal] = useState(null)
-    const activeGoalIdRef = useRef(null)
+    const [activeGoal, setActiveGoal] = useState(originalParentGoal || null)
+    const activeGoalIdRef = useRef(originalParentGoal?.id || null)
 
     const dateIsToday = dateFormated === TODAY_DATE
     const date = dateIsToday ? moment() : moment(dateFormated, 'YYYYMMDD')
@@ -94,17 +94,15 @@ export default function NewTaskSection({
         const { projectId: projectIdToOpen, goalId, dateFormated: dateFormatedToOpen } = addTaskSectionToOpenData
 
         if (projectId === projectIdToOpen && dateFormatedToOpen === dateFormated) {
+            const shouldOpenThisSection = goalId
+                ? originalParentGoal && goalId === originalParentGoal.id
+                : !originalParentGoal
+
+            if (!shouldOpenThisSection) return
+
             dispatch(setAddTaskSectionToOpenData(null))
             const inputIsOpen = newItemRef.current.modalIsVisible()
-            if (goalId) {
-                if (originalParentGoal && goalId === originalParentGoal.id) {
-                    if (!inputIsOpen) newItemRef.current.openModal(true)
-                }
-            } else {
-                if (!originalParentGoal) {
-                    if (!inputIsOpen) newItemRef.current.openModal(true)
-                }
-            }
+            if (!inputIsOpen) newItemRef.current.openModal(true)
         }
     }
 

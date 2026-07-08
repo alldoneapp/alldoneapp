@@ -181,13 +181,14 @@ export async function performEmailLineSweepInBackground(projectId, labelId, acti
 // action ∈ { archive, markRead, archiveAll, markAllRead, draftReply, createTask }.
 // After a mutating action, force-refresh the summary so chip counts update; draftReply
 // and createTask don't change the inbox, so they skip the refresh.
-export async function performEmailLineAction(projectId, { action, messageIds, labelId, guidance } = {}) {
+export async function performEmailLineAction(projectId, { action, messageIds, labelId, labelName, guidance } = {}) {
     if (!projectId || !action) return null
     const result = await runHttpsCallableFunction('emailLineActionSecondGen', {
         ...buildConnectionKeyPayload(projectId),
         action,
         messageIds,
         labelId,
+        labelName,
         guidance,
     })
     if (action !== 'draftReply' && action !== 'createTask') {

@@ -22,6 +22,24 @@ describe('replyComposer', () => {
         expect(content).toContain('German')
     })
 
+    test('buildUserContent includes user and project context when provided', () => {
+        const content = buildUserContent({
+            context: { subject: 'Hi', body: 'Question?' },
+            groundingContext: {
+                userName: 'Anna',
+                globalUserDescription: 'Prefers concise replies.',
+                projectName: 'Client launch',
+                projectUserDescription: 'Handles stakeholder updates.',
+                projectDescription: 'Launching the new site.',
+            },
+        })
+
+        expect(content).toContain('Prefers concise replies.')
+        expect(content).toContain('Client launch')
+        expect(content).toContain('Launching the new site.')
+        expect(content).toContain('do not invent facts')
+    })
+
     test('buildUserContent falls back to a generic instruction without guidance', () => {
         const content = buildUserContent({ context: { subject: 'Hi' } })
         expect(content).toContain('Write an appropriate, helpful reply.')

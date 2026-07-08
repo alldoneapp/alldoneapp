@@ -101,8 +101,8 @@ function EmailChipsSkeleton() {
 // per connection in redux; the merge happens at render time.
 export default function EmailLine() {
     const loggedUser = useSelector(state => state.loggedUser)
-    const summariesByKey = useSelector(state => state.emailLineSummaryByProject)
-    const loadingByKey = useSelector(state => state.emailLineLoadingByProject)
+    const summariesByKey = useSelector(state => state.emailLineSummaryByProject) || {}
+    const loadingByKey = useSelector(state => state.emailLineLoadingByProject) || {}
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [showAllChips, setShowAllChips] = useState(false)
 
@@ -205,14 +205,15 @@ export default function EmailLine() {
                         onPress={hideForToday}
                         accessibilityLabel={translate('Done for today')}
                     >
-                        <Icon
-                            name="check"
-                            size={12}
-                            color={colors.Text03}
-                            style={mobile ? undefined : localStyles.doneIcon}
-                        />
-                        {!mobile && (
-                            <Text style={[styles.caption1, localStyles.doneText]}>{translate('Done for today')}</Text>
+                        {mobile ? (
+                            <Icon name="check" size={12} color={colors.Text03} />
+                        ) : (
+                            <>
+                                <Icon name="check" size={12} color={colors.Text03} style={localStyles.doneIcon} />
+                                <Text style={[styles.caption1, localStyles.doneText]}>
+                                    {translate('Done for today')}
+                                </Text>
+                            </>
                         )}
                     </TouchableOpacity>
                 </View>
@@ -313,26 +314,23 @@ const localStyles = StyleSheet.create({
         marginRight: 8,
     },
     doneButton: {
-        height: 20,
-        paddingHorizontal: 8,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: colors.Grey400,
-        backgroundColor: '#ffffff',
+        height: 22,
+        paddingHorizontal: 2,
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
     },
     doneButtonMobile: {
-        width: 18,
-        height: 18,
+        width: 22,
+        height: 22,
         paddingHorizontal: 0,
         justifyContent: 'center',
     },
-    doneIcon: {
-        marginRight: 6,
-    },
     doneText: {
         color: colors.Text03,
+    },
+    doneIcon: {
+        marginRight: 4,
     },
     chipsRow: {
         flexDirection: 'row',

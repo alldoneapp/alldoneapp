@@ -191,11 +191,15 @@ function AutoPostponeButton({ onPress, mobile }) {
             testID="task-priority-auto-postpone"
             accessibilityLabel={translate('Auto-postpone based on priorities')}
         >
-            <Icon name="coffee" size={12} color={colors.Text03} />
-            {!mobile && (
-                <Text style={[styles.caption1, localStyles.autoPostponeText, windowTagStyle()]}>
-                    {translate('Auto-postpone based on priorities')}
-                </Text>
+            {mobile ? (
+                <Icon name="coffee" size={12} color={colors.Text03} />
+            ) : (
+                <>
+                    <Icon name="coffee" size={12} color={colors.Text03} style={localStyles.autoPostponeIcon} />
+                    <Text style={[styles.caption1, localStyles.autoPostponeText, windowTagStyle()]}>
+                        {translate('Auto-postpone based on priorities')}
+                    </Text>
+                </>
             )}
         </TouchableOpacity>
     )
@@ -265,11 +269,7 @@ const localStyles = StyleSheet.create({
     },
     autoPostponeButton: {
         height: 22,
-        borderRadius: 11,
-        backgroundColor: '#ffffff',
-        borderWidth: 1,
-        borderColor: colors.Grey400,
-        paddingHorizontal: 8,
+        paddingHorizontal: 2,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -280,6 +280,8 @@ const localStyles = StyleSheet.create({
     },
     autoPostponeText: {
         color: colors.Text03,
-        marginLeft: 4,
+    },
+    autoPostponeIcon: {
+        marginRight: 4,
     },
 })

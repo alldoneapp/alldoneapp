@@ -270,7 +270,12 @@ describe('EmailRow', () => {
             await Promise.resolve()
         })
 
-        expect(performEmailLineAction).toHaveBeenCalledWith('c1', { action: 'createTask', messageIds: ['m1', 'm2'] })
+        expect(performEmailLineAction).toHaveBeenCalledWith('c1', {
+            action: 'createTask',
+            messageIds: ['m1', 'm2'],
+            labelId: null,
+            labelName: null,
+        })
         const [done] = findByLabel(tree, 'Task created')
         act(() => done.props.onPress())
         expect(URLTrigger.processUrl).toHaveBeenCalledWith(expect.anything(), '/projects/p9/tasks/t1/properties')

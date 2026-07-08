@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { isEqual } from 'lodash'
 import { StyleSheet, View } from 'react-native'
 
@@ -37,17 +37,32 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectItemToMention, modalId, mentionText }) {
     const [goal, setGoal] = useState(null)
     const [baseDate, setBaseDate] = useState(null)
+    const [sendingData, setSendingData] = useState(false)
+    const sendingDataRef = useRef(false)
 
     const onChangeText = extendedName => {
         setGoal(goal => ({ ...goal, extendedName }))
     }
 
     const addGoal = async newGoal => {
-        const goal = await Backend.uploadNewGoal(projectId, newGoal, baseDate, true, false)
-        if (selectItemToMention) selectItemToMention(goal, MENTION_MODAL_GOALS_TAB, projectId, true)
+        if (sendingDataRef.current || !newGoal.extendedName.trim()) return
+
+        sendingDataRef.current = true
+        setSendingData(true)
+
+        try {
+            const goal = await Backend.uploadNewGoal(projectId, newGoal, baseDate, true, false)
+            if (selectItemToMention) selectItemToMention(goal, MENTION_MODAL_GOALS_TAB, projectId, true)
+        } catch (error) {
+            sendingDataRef.current = false
+            setSendingData(false)
+            throw error
+        }
     }
 
     const updateDateRange = (date, rangeEdgePropertyName, milestone) => {
+        if (sendingData) return
+
         const scheduleMode =
             normalizeMilestoneType(milestone?.milestoneType) === MILESTONE_TYPE_LINEAR
                 ? GOAL_SCHEDULE_MODE_DYNAMIC
@@ -58,6 +73,8 @@ export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectI
     }
 
     const updateAssignees = (assigneesIds, assigneesCapacity) => {
+        if (sendingData) return
+
         if (assigneesIds.length > 0) {
             addGoal({
                 ...goal,
@@ -69,6 +86,8 @@ export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectI
     }
 
     const setPrivacy = (isPrivate, isPublicFor) => {
+        if (sendingData) return
+
         if (!isEqual(goal.isPublicFor, isPublicFor)) {
             delalyPrivacyModalClose
                 ? setTimeout(() => {
@@ -105,7 +124,7 @@ export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectI
         }
     }
 
-    const disableButtons = goal && !goal.extendedName.trim()
+    const disableButtons = !goal || !goal.extendedName.trim() || sendingData
 
     const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
     return (
@@ -127,6 +146,7 @@ export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectI
                             projectId={projectId}
                             styleTheme={CREATE_TASK_MODAL_THEME}
                             externalAlignment={{ paddingLeft: 0, paddingRight: 0 }}
+                            disabledEdition={sendingData}
                             forceTriggerEnterActionForBreakLines={enterKeyAction}
                         />
                     </View>
@@ -156,7 +176,12 @@ export default function CreateGoal({ projectId, delalyPrivacyModalClose, selectI
                         />
                     </View>
                     <View>
-                        <PlusButton onPress={() => addGoal({ ...goal })} disabled={disableButtons} modalId={modalId} />
+                        <PlusButton
+                            onPress={() => addGoal({ ...goal })}
+                            disabled={disableButtons}
+                            modalId={modalId}
+                            processing={sendingData}
+                        />
                     </View>
                 </View>
             </View>

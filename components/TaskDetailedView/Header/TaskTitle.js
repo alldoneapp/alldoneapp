@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import styles, { colors } from '../../styles/global'
 import Backend from '../../../utils/BackendBridge'
 import SocialTextInput from '../../SocialTextInput'
@@ -9,18 +9,11 @@ import { DV_TAB_TASK_CHAT, DV_TAB_TASK_NOTE } from '../../../utils/TabNavigation
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../TaskListView/Utils/TasksHelper'
 import { setTaskName } from '../../../utils/backends/Tasks/tasksFirestore'
-import Icon from '../../Icon'
-import { getGmailTaskWebUrl, isGmailLabelFollowUpTask } from '../../../utils/Gmail/gmailTaskUtils'
+import { isGmailLabelFollowUpTask } from '../../../utils/Gmail/gmailTaskUtils'
+import GmailTag from '../../Tags/GmailTag'
 
 export const TITLE_TASK = 0
 export const TITLE_NOTE = 2
-
-function openGmailTaskLink(task, event) {
-    event?.stopPropagation?.()
-    event?.preventDefault?.()
-    const webUrl = getGmailTaskWebUrl(task)
-    if (webUrl) return window.open(webUrl, '_blank')
-}
 
 class TaskTitle extends Component {
     constructor(props) {
@@ -92,14 +85,12 @@ class TaskTitle extends Component {
                 <View style={localStyles.upperContainer} />
                 <View style={[localStyles.bottomContainer, { top: taskTitleInEditMode ? -4 : 0 }]}>
                     {isGmailLabelFollowUpTask(task) && (
-                        <TouchableOpacity
-                            style={localStyles.gmailTag}
-                            onPress={event => openGmailTaskLink(task, event)}
-                            accessibilityLabel={'social-text-block'}
-                        >
-                            <Icon name={'envelope-open'} size={12} color={colors.Text03} />
-                            <Text style={localStyles.gmailTagText}>Email</Text>
-                        </TouchableOpacity>
+                        <GmailTag
+                            gmailData={task.gmailData}
+                            propStyles={localStyles.gmailTag}
+                            showLabel
+                            iconSize={12}
+                        />
                     )}
                     <View
                         style={{
@@ -186,20 +177,8 @@ const localStyles = StyleSheet.create({
         alignContent: 'flex-start',
     },
     gmailTag: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.Gray300,
-        borderRadius: 12,
-        height: 24,
-        paddingHorizontal: 8,
         marginTop: 4,
         marginRight: 8,
-    },
-    gmailTagText: {
-        ...styles.subtitle2,
-        color: colors.Text03,
-        marginLeft: 4,
     },
     ellipsis: {
         ...styles.title4,

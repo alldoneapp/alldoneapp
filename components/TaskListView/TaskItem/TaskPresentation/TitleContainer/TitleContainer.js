@@ -1,17 +1,10 @@
 import React from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 
-import styles, { colors } from '../../../../styles/global'
+import styles from '../../../../styles/global'
 import SocialText from '../../../../UIControls/SocialText/SocialText'
-import Icon from '../../../../Icon'
-import { getGmailTaskWebUrl, isGmailLabelFollowUpTask } from '../../../../../utils/Gmail/gmailTaskUtils'
-
-function openGmailTaskLink(task, event) {
-    event?.stopPropagation?.()
-    event?.preventDefault?.()
-    const webUrl = getGmailTaskWebUrl(task)
-    if (webUrl) return window.open(webUrl, '_blank')
-}
+import { isGmailLabelFollowUpTask } from '../../../../../utils/Gmail/gmailTaskUtils'
+import GmailTag from '../../../../Tags/GmailTag'
 
 export default function TitleContainer({
     task,
@@ -28,15 +21,7 @@ export default function TitleContainer({
     leadingPriorityTag,
 }) {
     const gmailTag = isGmailLabelFollowUpTask(task) ? (
-        <TouchableOpacity
-            style={localStyles.gmailTag}
-            onPress={event => openGmailTaskLink(task, event)}
-            accessibilityLabel={'social-text-block'}
-        >
-            <Icon name={'envelope-open'} size={12} color={colors.Text03} />
-            <View style={localStyles.gmailTagSpacer} />
-            <Text style={[styles.subtitle2, localStyles.gmailTagText]}>Email</Text>
-        </TouchableOpacity>
+        <GmailTag gmailData={task.gmailData} propStyles={localStyles.gmailTag} showLabel iconSize={12} />
     ) : null
 
     // In the by-time view the priority chip is rendered in the left time area
@@ -112,19 +97,6 @@ const localStyles = StyleSheet.create({
         maxHeight: 90,
     },
     gmailTag: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.Gray300,
-        borderRadius: 12,
-        height: 24,
-        paddingHorizontal: 8,
         marginRight: 8,
-    },
-    gmailTagSpacer: {
-        width: 4,
-    },
-    gmailTagText: {
-        color: colors.Text03,
     },
 })

@@ -10,13 +10,37 @@ const REPLY_OPENAI_MODEL = 'gpt-5.4-mini'
 const REPLY_SYSTEM_PROMPT =
     'You draft concise, professional email replies on behalf of the user. Return ONLY the reply body text — no subject line, no quoted original message, no "Dear"/signature placeholders unless clearly warranted. Match the tone and language of the original message, keep it natural and human, and do not invent facts or commitments the user did not ask for.'
 
-function buildUserContent({ context = {}, guidance, language }) {
+function hasText(value) {
+    return typeof value === 'string' && value.trim()
+}
+
+function buildUserContent({ context = {}, guidance, language, groundingContext = {} }) {
     const parts = [
         'Original email to reply to:',
         `From: ${context.from || 'unknown'}`,
         `Subject: ${context.subject || '(no subject)'}`,
         `Body:\n${context.body || context.snippet || '(no body available)'}`,
     ]
+    if (
+        hasText(groundingContext.globalUserDescription) ||
+        hasText(groundingContext.projectUserDescription) ||
+        hasText(groundingContext.projectDescription)
+    ) {
+        parts.push(
+            '\nUser and project context for tone, preferences, and business background. Use this context only when it helps the reply; do not invent facts, promises, dates, or commitments from it.'
+        )
+        if (hasText(groundingContext.userName)) parts.push(`User: ${groundingContext.userName.trim()}`)
+        if (hasText(groundingContext.globalUserDescription)) {
+            parts.push(`Global user description:\n${groundingContext.globalUserDescription.trim()}`)
+        }
+        if (hasText(groundingContext.projectName)) parts.push(`Project: ${groundingContext.projectName.trim()}`)
+        if (hasText(groundingContext.projectUserDescription)) {
+            parts.push(`Project-specific user description:\n${groundingContext.projectUserDescription.trim()}`)
+        }
+        if (hasText(groundingContext.projectDescription)) {
+            parts.push(`Project description:\n${groundingContext.projectDescription.trim()}`)
+        }
+    }
     if (guidance && guidance.trim()) {
         parts.push(`\nThe user's guidance for the reply (follow it):\n${guidance.trim()}`)
     } else {
@@ -28,7 +52,7 @@ function buildUserContent({ context = {}, guidance, language }) {
 }
 
 // Returns { body, totalTokens }. Throws when the OpenAI key is unavailable.
-async function composeReply({ context, guidance, language } = {}) {
+async function composeReply({ context, guidance, language, groundingContext } = {}) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
     if (!openAiKey) throw new Error('OpenAI key unavailable for reply composition')
@@ -38,7 +62,7 @@ async function composeReply({ context, guidance, language } = {}) {
         model: REPLY_OPENAI_MODEL,
         messages: [
             { role: 'system', content: REPLY_SYSTEM_PROMPT },
-            { role: 'user', content: buildUserContent({ context, guidance, language }) },
+            { role: 'user', content: buildUserContent({ context, guidance, language, groundingContext }) },
         ],
     })
 

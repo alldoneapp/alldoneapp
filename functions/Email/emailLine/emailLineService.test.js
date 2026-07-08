@@ -251,16 +251,36 @@ describe('emailLineService', () => {
             webUrl: 'https://mail/draft',
             targetSubject: 'Re: Hi',
         })
+        const userData = {
+            ...googleUserData,
+            displayName: 'Anna',
+            extendedDescription: 'Prefers concise replies.',
+        }
+        mockDocs.set('projects/p1', {
+            name: 'Client launch',
+            description: 'Launching the new site.',
+            usersData: { u: { extendedDescription: 'Handles stakeholder updates.' } },
+        })
 
         const result = await performEmailLineAction('u', 'p1', {
             action: 'draftReply',
             messageIds: ['m1'],
             guidance: 'be brief',
-            userData: googleUserData,
+            userData,
         })
 
         expect(composeReply).toHaveBeenCalledWith(
-            expect.objectContaining({ guidance: 'be brief', context: expect.objectContaining({ subject: 'Hi' }) })
+            expect.objectContaining({
+                guidance: 'be brief',
+                context: expect.objectContaining({ subject: 'Hi' }),
+                groundingContext: expect.objectContaining({
+                    userName: 'Anna',
+                    globalUserDescription: 'Prefers concise replies.',
+                    projectName: 'Client launch',
+                    projectUserDescription: 'Handles stakeholder updates.',
+                    projectDescription: 'Launching the new site.',
+                }),
+            })
         )
         expect(deductGold).toHaveBeenCalledWith(
             'u',
@@ -456,6 +476,62 @@ describe('emailLineService', () => {
             })
         )
         expect(mockAuditDocs.get('m1').taskCreated).toEqual(expect.objectContaining({ taskId: 't2' }))
+    })
+
+    test('createTask uses the current configured label project when no audit project was stamped', async () => {
+        const userData = {
+            ...googleUserData,
+            projectIds: ['p1', 'proj_client'],
+        }
+        mockDocs.set('labelingConfig', {
+            labelDefinitions: [
+                {
+                    key: 'project_client',
+                    gmailLabelName: 'Client Project',
+                    sourceProjectId: 'proj_client',
+                },
+            ],
+        })
+        gmailEmailLine.getMessageContext.mockResolvedValue({
+            subject: 'Client request',
+            from: 'client@ex.com',
+            body: 'Please handle this',
+            threadId: 'th1',
+        })
+        summarizeEmailAsTaskName.mockResolvedValue({ name: 'Handle client request', totalTokens: 50 })
+        deductGold.mockResolvedValue({ success: true })
+        mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 't_label' })
+
+        const result = await performEmailLineAction('u', 'p1', {
+            action: 'createTask',
+            messageIds: ['m1'],
+            labelName: 'Client Project',
+            userData,
+        })
+
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'proj_client',
+                gmailData: expect.objectContaining({
+                    selectedProjectId: 'proj_client',
+                    taskProjectId: 'proj_client',
+                }),
+            }),
+            expect.objectContaining({ projectId: 'proj_client' })
+        )
+        expect(mockAddProjectRoutingReasonComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'proj_client',
+                taskId: 't_label',
+                matched: true,
+                reasoning: 'The email is in the Client Project Gmail label.',
+                routingData: expect.objectContaining({
+                    selectedLabelKey: 'project_client',
+                    selectedProjectId: 'proj_client',
+                }),
+            })
+        )
+        expect(result).toEqual(expect.objectContaining({ taskId: 't_label', projectId: 'proj_client' }))
     })
 
     test('createTask chooses the audited message from a thread row for project reasoning', async () => {

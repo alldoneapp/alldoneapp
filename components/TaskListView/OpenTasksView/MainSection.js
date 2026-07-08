@@ -92,6 +92,7 @@ export default function MainSection({
     const optimisticFocusGoalId = useSelector(state => state.optimisticFocusGoalId)
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
     const [tmpGoalsById, setTmpGoalsById] = useState({})
+    const tmpGoalsByIdRef = React.useRef({})
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
 
@@ -154,6 +155,20 @@ export default function MainSection({
         }
     }
 
+    const addTmpGoal = goal => {
+        if (tmpGoalsByIdRef.current[goal.id]) unwatch(goal.id)
+        setTmpGoalsById(state => {
+            return { ...state, [goal.id]: goal }
+        })
+        watchGoal(projectId, goal.id, goal.id, tmpGoal => {
+            updateTmpGoal(goal.id, tmpGoal)
+        })
+    }
+
+    useEffect(() => {
+        tmpGoalsByIdRef.current = tmpGoalsById
+    }, [tmpGoalsById])
+
     useEffect(() => {
         const tmpGoalIdsToRemove = []
         const goalsData = [...emptyGoals, ...mainTasks]
@@ -176,7 +191,7 @@ export default function MainSection({
 
     useEffect(() => {
         return () => {
-            for (const goalId in tmpGoalsById) {
+            for (const goalId in tmpGoalsByIdRef.current) {
                 unwatch(goalId)
             }
         }
@@ -191,9 +206,8 @@ export default function MainSection({
         } = selectedGoalDataInTasksListWhenAddTask
         if (projectId === goalProjectId && dateFormated === goalDateFormated) {
             if (isNewGoal) {
-                setTimeout(() => {
-                    dispatch(setAddTaskSectionToOpenData({ projectId, goalId: goal.id, dateFormated }))
-                }, 1000)
+                addTmpGoal(goal)
+                dispatch(setAddTaskSectionToOpenData({ projectId, goalId: goal.id, dateFormated }))
             } else if (goal) {
                 let goalAlreadyExist = false
 
@@ -209,12 +223,7 @@ export default function MainSection({
                 if (!goalAlreadyExist) {
                     const fullGoal = await getGoalData(projectId, goal.id)
                     if (fullGoal) {
-                        setTmpGoalsById(state => {
-                            return { ...state, [fullGoal.id]: fullGoal }
-                        })
-                        watchGoal(projectId, fullGoal.id, fullGoal.id, tmpGoal => {
-                            updateTmpGoal(fullGoal.id, tmpGoal)
-                        })
+                        addTmpGoal(fullGoal)
                     }
                 }
 
@@ -244,14 +253,25 @@ export default function MainSection({
     const { mainItemsAmount, showMainListShowMore } = getMainItemsData()
     const showTheFullList = !showMainListShowMore || pressedShowMoreMainSection
     let globalAmountToRender = showTheFullList ? mainItemsAmount + tmpGoals.length : numberTodayTasks
+    const goalsByIdWithTmpGoals = { ...goalsById, ...tmpGoalsById }
 
-    const goalsPositionId = sortGoalTasksGorups(projectId, openMilestones, doneMilestones, goalsById, currentUserId, [
-        ...mainTasks,
-        ...emptyGoals.map(goal => [goal.id]),
-        ...tmpGoals.map(goal => [goal.id]),
-    ])
+    const goalsPositionId = sortGoalTasksGorups(
+        projectId,
+        openMilestones,
+        doneMilestones,
+        goalsByIdWithTmpGoals,
+        currentUserId,
+        [...mainTasks, ...emptyGoals.map(goal => [goal.id]), ...tmpGoals.map(goal => [goal.id])]
+    )
 
     if (!goalsPositionId) return null
+
+    const lastGoalPosition = Math.max(...Object.values(goalsPositionId))
+    tmpGoals.forEach((goal, index) => {
+        if (goalsPositionId[goal.id] === undefined) {
+            goalsPositionId[goal.id] = lastGoalPosition + index + 1
+        }
+    })
 
     let sortedMainTasks = [
         ...mainTasks,

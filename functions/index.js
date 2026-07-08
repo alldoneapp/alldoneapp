@@ -3411,7 +3411,7 @@ exports.emailLineActionSecondGen = onCall(
         const { data, auth } = request
         if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
 
-        const { action, messageIds, labelId, guidance } = data || {}
+        const { action, messageIds, labelId, labelName, guidance } = data || {}
         if (!action) throw new HttpsError('invalid-argument', 'action is required')
 
         try {
@@ -3421,6 +3421,7 @@ exports.emailLineActionSecondGen = onCall(
                 action,
                 messageIds,
                 labelId,
+                labelName,
                 guidance,
                 userData,
             })
