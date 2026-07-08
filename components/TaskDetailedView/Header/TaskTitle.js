@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../../styles/global'
 import Backend from '../../../utils/BackendBridge'
 import SocialTextInput from '../../SocialTextInput'
@@ -162,7 +162,7 @@ const localStyles = StyleSheet.create({
         flex: 1,
         minHeight: 64,
         maxHeight: 800,
-        overflowY: 'hidden',
+        overflow: 'hidden',
     },
     upperContainer: {
         height: 32,
