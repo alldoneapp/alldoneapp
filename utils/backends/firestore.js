@@ -46,7 +46,7 @@ import { updateXpByCreateProject } from '../Levels'
 import store from '../../redux/store'
 
 import HelperFunctions, { chronoEntriesOrder } from '../HelperFunctions'
-import { normalizeTaskPriority } from '../TaskPriority'
+import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
 import {
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
@@ -1997,7 +1997,14 @@ export const setTaskParentGoalFeedsChain = async (projectId, taskId, newParentGo
     batch.commit()
 }
 
-export const setTaskDueDateFeedsChain = async (projectId, taskId, dueDate, task, isObservedTask) => {
+export const setTaskDueDateFeedsChain = async (
+    projectId,
+    taskId,
+    dueDate,
+    task,
+    isObservedTask,
+    didResetPriority = false
+) => {
     const { currentUser } = store.getState()
     const batch = new BatchWrapper(db)
     await createTaskDueDateChangedFeed(
@@ -2014,6 +2021,9 @@ export const setTaskDueDateFeedsChain = async (projectId, taskId, dueDate, task,
             : task.dueDate === Number.MAX_SAFE_INTEGER,
         isObservedTask
     )
+    if (didResetPriority && normalizeTaskPriority(task.priority) !== TASK_PRIORITY_NONE) {
+        await createTaskPriorityChangedFeed(projectId, task, taskId, task.priority, TASK_PRIORITY_NONE, batch)
+    }
     const followTaskData = {
         followObjectsType: FOLLOWER_TASKS_TYPE,
         followObjectId: taskId,
@@ -2049,7 +2059,7 @@ export async function setTaskDueDateMultiple(tasks, dueDate) {
     await batch.commit()
 }
 
-export const setTaskToBacklogFeedsChain = async (projectId, taskId, task, isObservedTask) => {
+export const setTaskToBacklogFeedsChain = async (projectId, taskId, task, isObservedTask, didResetPriority = false) => {
     const { currentUser } = store.getState()
     const batch = new BatchWrapper(db)
     await createTaskDueDateChangedFeed(
@@ -2064,6 +2074,9 @@ export const setTaskToBacklogFeedsChain = async (projectId, taskId, task, isObse
         false,
         isObservedTask
     )
+    if (didResetPriority && normalizeTaskPriority(task.priority) !== TASK_PRIORITY_NONE) {
+        await createTaskPriorityChangedFeed(projectId, task, taskId, task.priority, TASK_PRIORITY_NONE, batch)
+    }
     const followTaskData = {
         followObjectsType: FOLLOWER_TASKS_TYPE,
         followObjectId: taskId,

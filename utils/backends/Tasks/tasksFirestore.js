@@ -118,7 +118,7 @@ import { updateXpByDoneForAllReviewers, updateXpByDoneTask } from '../../Levels'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { isDayRateTimeLogTask, reconcileExistingDayRateTimeLog } from '../../DayRateTimeLogHelper'
-import { getTaskPriorityRank, normalizeTaskPriority } from '../../TaskPriority'
+import { TASK_PRIORITY_NONE, getTaskPriorityRank, normalizeTaskPriority } from '../../TaskPriority'
 
 import { getDvMainTabLink } from '../../LinkingHelper'
 import { isPrivateNote } from '../../../components/NotesView/NotesHelper'
@@ -1010,8 +1010,10 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
 
     if (task.dueDate > oldTask.dueDate) {
         taskToStore.timesPostponed = firebase.firestore.FieldValue.increment(1)
+        taskToStore.priority = TASK_PRIORITY_NONE
         Object.assign(taskToStore, getRecurrenceOriginalDueDateUpdate(oldTask, oldTask.dueDate, task.dueDate))
         subtasksUpdateData.timesPostponed = firebase.firestore.FieldValue.increment(1)
+        subtasksUpdateData.priority = TASK_PRIORITY_NONE
         logEvent('task_postponed')
     }
 
@@ -2126,13 +2128,15 @@ export async function setTaskDueDate(
     const commonFields = {
         sortIndex: fromSetTaskFocus ? generateSortIndexForTaskInFocusInTime() : newSortIndex,
     }
+    const didResetPriority = !isObservedTask && !fromSetTaskFocus && dueDate > task.dueDate
     // APPLY FIX HERE: Add !fromSetTaskFocus to the condition
-    if (!isObservedTask && !fromSetTaskFocus && dueDate > task.dueDate) {
+    if (didResetPriority) {
         // REMOVE LOGGING HERE
         // console.log(
         //     `[setTaskDueDate] Incrementing timesPostponed for task ${taskId}. Old dueDate=${task.dueDate}, New dueDate=${dueDate}`
         // )
         commonFields.timesPostponed = firebase.firestore.FieldValue.increment(1)
+        commonFields.priority = TASK_PRIORITY_NONE
         Object.assign(commonFields, getRecurrenceOriginalDueDateUpdate(task, task.dueDate, dueDate, isObservedTask))
         logEvent('task_postponed')
         // REMOVE LOGGING HERE (else block)
@@ -2168,7 +2172,11 @@ export async function setTaskDueDate(
 
         const subtasksUpdate =
             !isObservedTask && dueDate > task.dueDate
-                ? { ...updateData, timesPostponed: firebase.firestore.FieldValue.increment(1) }
+                ? {
+                      ...updateData,
+                      priority: TASK_PRIORITY_NONE,
+                      timesPostponed: firebase.firestore.FieldValue.increment(1),
+                  }
                 : updateData
         updateSubtasksState(projectId, task.subtaskIds, subtasksUpdate, batch)
     }
@@ -2197,7 +2205,7 @@ export async function setTaskDueDate(
         await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, taskId)
     }
 
-    setTaskDueDateFeedsChain(projectId, taskId, dueDate, task, isObservedTask)
+    setTaskDueDateFeedsChain(projectId, taskId, dueDate, task, isObservedTask, didResetPriority)
 }
 
 export async function setTaskAlert(projectId, taskId, alertEnabled, alertTime, task, externalBatch) {
@@ -2269,6 +2277,9 @@ export async function setTaskToBacklog(projectId, taskId, task, isObservedTask, 
         sortIndex,
         timesPostponed: firebase.firestore.FieldValue.increment(1),
     }
+    if (!isObservedTask) {
+        commonFields.priority = TASK_PRIORITY_NONE
+    }
     if (task.parentId) {
         await deleteSubTaskFromParent(projectId, taskId, task, batch)
         updateTaskData(
@@ -2297,7 +2308,11 @@ export async function setTaskToBacklog(projectId, taskId, task, isObservedTask, 
             batch
         )
 
-        const subtasksUpdate = { ...updateData, timesPostponed: firebase.firestore.FieldValue.increment(1) }
+        const subtasksUpdate = {
+            ...updateData,
+            ...(isObservedTask ? {} : { priority: TASK_PRIORITY_NONE }),
+            timesPostponed: firebase.firestore.FieldValue.increment(1),
+        }
         updateSubtasksState(projectId, task.subtaskIds, subtasksUpdate, batch)
     }
 
@@ -2316,7 +2331,7 @@ export async function setTaskToBacklog(projectId, taskId, task, isObservedTask, 
         await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, taskId)
     }
 
-    setTaskToBacklogFeedsChain(projectId, taskId, task, isObservedTask)
+    setTaskToBacklogFeedsChain(projectId, taskId, task, isObservedTask, !isObservedTask)
 }
 
 export async function setTaskShared(projectId, taskId, shared) {

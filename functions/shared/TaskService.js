@@ -12,6 +12,7 @@
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
 let TaskModelBuilder, TaskValidator, TaskFeedGenerator, getNextTaskId
+const TASK_PRIORITY_NONE = 'none'
 
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
@@ -704,6 +705,17 @@ class TaskService {
             TaskValidator.validateOptionalFields({ priority })
             updateData.priority = priority
             changes.push(priority === 'none' ? 'priority cleared' : `priority to "${priority}"`)
+        }
+        if (
+            priority === undefined &&
+            dueDate !== undefined &&
+            Number.isFinite(Number(dueDate)) &&
+            Number.isFinite(Number(currentTask.dueDate)) &&
+            Number(dueDate) > Number(currentTask.dueDate) &&
+            currentTask.priority !== TASK_PRIORITY_NONE
+        ) {
+            updateData.priority = TASK_PRIORITY_NONE
+            changes.push('priority cleared')
         }
         if (userId !== undefined) {
             updateData.userId = String(userId)

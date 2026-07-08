@@ -43,6 +43,46 @@ describe('TaskService priority updates', () => {
         expect(deferred.changes).toContain('priority to "do_later"')
     })
 
+    test('clears priority when moving a due date later', async () => {
+        const currentTask = {
+            id: 'task-1',
+            name: 'Launch',
+            priority: 'must_do',
+            dueDate: Date.UTC(2026, 0, 1),
+            userId: 'user-1',
+        }
+        const postponed = await taskService.updateTask({
+            taskId: 'task-1',
+            projectId: 'project-1',
+            currentTask,
+            dueDate: Date.UTC(2026, 0, 2),
+        })
+
+        expect(postponed.updateData.priority).toBe('none')
+        expect(postponed.changes).toContain('priority cleared')
+    })
+
+    test('keeps an explicit priority when moving a due date later', async () => {
+        const currentTask = {
+            id: 'task-1',
+            name: 'Launch',
+            priority: 'must_do',
+            dueDate: Date.UTC(2026, 0, 1),
+            userId: 'user-1',
+        }
+        const postponed = await taskService.updateTask({
+            taskId: 'task-1',
+            projectId: 'project-1',
+            currentTask,
+            dueDate: Date.UTC(2026, 0, 2),
+            priority: 'should_do',
+        })
+
+        expect(postponed.updateData.priority).toBe('should_do')
+        expect(postponed.changes).toContain('priority to "should_do"')
+        expect(postponed.changes.filter(change => change === 'priority cleared')).toHaveLength(0)
+    })
+
     test('rejects unsupported priority values', async () => {
         await expect(
             taskService.updateTask({

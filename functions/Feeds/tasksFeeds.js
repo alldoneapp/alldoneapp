@@ -35,6 +35,24 @@ const {
 } = require('../Utils/HelperFunctionsCloud')
 const { shrinkTagText } = require('../Utils/parseTextUtils')
 
+const TASK_PRIORITY_NONE = 'none'
+const TASK_PRIORITIES = new Set([TASK_PRIORITY_NONE, 'do_later', 'could_do', 'should_do', 'must_do'])
+const TASK_PRIORITY_LABEL = {
+    [TASK_PRIORITY_NONE]: 'No priority',
+    do_later: 'Do later',
+    could_do: 'Could do',
+    should_do: 'Should do',
+    must_do: 'Must do',
+}
+
+function normalizeTaskPriority(priority) {
+    return TASK_PRIORITIES.has(priority) ? priority : TASK_PRIORITY_NONE
+}
+
+function getTaskPriorityLabel(priority) {
+    return TASK_PRIORITY_LABEL[normalizeTaskPriority(priority)]
+}
+
 async function createTaskCreatedFeed(
     projectId,
     task,
@@ -273,6 +291,50 @@ async function createTaskDueDateChangedFeed(
     if (isSubtask) {
         await updateTasksFeedsAmountOfSubtasks(projectId, parentId, taskId, currentDateFormated, -1, batch)
     }
+}
+
+async function createTaskPriorityChangedFeed(
+    projectId,
+    taskId,
+    oldPriority,
+    newPriority,
+    batch,
+    feedUser,
+    needGenerateNotification
+) {
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const taskFeedObject = await loadFeedObject(projectId, taskId, 'tasks', currentMilliseconds, batch)
+    if (!taskFeedObject) return
+
+    const normalizedOldPriority = normalizeTaskPriority(oldPriority)
+    const normalizedNewPriority = normalizeTaskPriority(newPriority)
+    const isSubtask = taskFeedObject.parentId ? true : false
+    const { feed, feedId } = generateFeedModel({
+        feedType: FEED_TASK_UPDATED,
+        lastChangeDate: currentMilliseconds,
+        entryText: `changed ${isSubtask ? 'subtask' : 'task'} priority • From ${getTaskPriorityLabel(
+            normalizedOldPriority
+        )} to ${getTaskPriorityLabel(normalizedNewPriority)}`,
+        feedUser,
+        objectId: taskId,
+        isPublicFor: taskFeedObject.isPublicFor,
+    })
+
+    taskFeedObject.priority = normalizedNewPriority
+
+    await proccessFeed(
+        projectId,
+        currentDateFormated,
+        [],
+        taskId,
+        'tasks',
+        taskFeedObject,
+        feedId,
+        feed,
+        feedUser,
+        batch,
+        needGenerateNotification
+    )
 }
 
 async function createTaskParentGoalChangedFeed(
@@ -653,6 +715,7 @@ module.exports = {
     createTaskPrivacyChangedFeed,
     createTaskDescriptionChangedFeed,
     createTaskDueDateChangedFeed,
+    createTaskPriorityChangedFeed,
     createTaskParentGoalChangedFeed,
     createTaskHighlightedChangedFeed,
     createTaskRecurrenceChangedFeed,

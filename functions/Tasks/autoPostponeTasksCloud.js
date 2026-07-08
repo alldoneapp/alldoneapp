@@ -2,7 +2,7 @@ const admin = require('firebase-admin')
 const moment = require('moment-timezone')
 
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
-const { createTaskDueDateChangedFeed } = require('../Feeds/tasksFeeds')
+const { createTaskDueDateChangedFeed, createTaskPriorityChangedFeed } = require('../Feeds/tasksFeeds')
 const { tryAddFollower } = require('../Followers/followerHelper')
 const { FOLLOWER_TASKS_TYPE } = require('../Followers/FollowerConstants')
 const { loadFeedsGlobalState } = require('../GlobalState/globalState')
@@ -21,6 +21,8 @@ const AUTO_POSTPONE_AFTER_DAYS_OVERDUE_NEVER = 0
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 const ALLOWED_AUTO_POSTPONE_VALUES = new Set([0, 1, 2, 3, 5, 7, 14, 30])
 const RECURRENCE_NEVER = 'never'
+const TASK_PRIORITY_NONE = 'none'
+const NON_EMPTY_TASK_PRIORITIES = new Set(['do_later', 'could_do', 'should_do', 'must_do'])
 
 function normalizeAutoPostponeAfterDaysOverdue(value) {
     const parsedValue = Number(value)
@@ -339,6 +341,7 @@ async function autoPostponeTaskCloud({
 
     if (isPostponingPrimaryDueDate) {
         updateData.timesPostponed = admin.firestore.FieldValue.increment(1)
+        updateData.priority = TASK_PRIORITY_NONE
         if (shouldSaveRecurrenceOriginalDueDate(task, task.dueDate, newDueDate)) {
             updateData.recurrenceOriginalDueDate = task.dueDate
         }
@@ -381,6 +384,7 @@ async function autoPostponeTaskCloud({
         task.subtaskIds.forEach(subtaskId => {
             batch.update(admin.firestore().doc(`items/${projectId}/tasks/${subtaskId}`), {
                 dueDate: newDueDate,
+                priority: TASK_PRIORITY_NONE,
                 timesPostponed: admin.firestore.FieldValue.increment(1),
                 lastEditionDate: now,
                 lastEditorId: editorUserId,
@@ -400,6 +404,17 @@ async function autoPostponeTaskCloud({
         feedUser,
         false
     )
+    if (isPostponingPrimaryDueDate && NON_EMPTY_TASK_PRIORITIES.has(task.priority)) {
+        await createTaskPriorityChangedFeed(
+            projectId,
+            task.id,
+            task.priority,
+            TASK_PRIORITY_NONE,
+            batch,
+            feedUser,
+            false
+        )
+    }
 
     await tryAddFollower(
         projectId,

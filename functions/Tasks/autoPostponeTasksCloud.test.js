@@ -40,6 +40,7 @@ jest.mock('../BatchWrapper/batchWrapper', () => ({
 
 jest.mock('../Feeds/tasksFeeds', () => ({
     createTaskDueDateChangedFeed: jest.fn(() => Promise.resolve()),
+    createTaskPriorityChangedFeed: jest.fn(() => Promise.resolve()),
 }))
 
 jest.mock('../Followers/followerHelper', () => ({
@@ -68,7 +69,7 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     generateSortIndex: jest.fn(() => 123456789),
 }))
 
-const { createTaskDueDateChangedFeed } = require('../Feeds/tasksFeeds')
+const { createTaskDueDateChangedFeed, createTaskPriorityChangedFeed } = require('../Feeds/tasksFeeds')
 const { tryAddFollower } = require('../Followers/followerHelper')
 const {
     AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT,
@@ -180,6 +181,7 @@ describe('autoPostponeTasksCloud', () => {
             task: {
                 id: 'task-1',
                 dueDate: Date.UTC(2026, 0, 1, 10, 0, 0),
+                priority: 'must_do',
                 timesPostponed: 0,
                 subtaskIds: ['subtask-1'],
                 dueDateByObserversIds: {},
@@ -198,6 +200,7 @@ describe('autoPostponeTasksCloud', () => {
             expect.any(Object),
             expect.objectContaining({
                 dueDate: Date.UTC(2026, 0, 5, 0, 5, 0),
+                priority: 'none',
                 timesPostponed: { __increment__: 1 },
                 lastEditorId: 'user-1',
             })
@@ -207,10 +210,20 @@ describe('autoPostponeTasksCloud', () => {
             expect.any(Object),
             expect.objectContaining({
                 dueDate: Date.UTC(2026, 0, 5, 0, 5, 0),
+                priority: 'none',
                 timesPostponed: { __increment__: 1 },
             })
         )
         expect(createTaskDueDateChangedFeed).toHaveBeenCalled()
+        expect(createTaskPriorityChangedFeed).toHaveBeenCalledWith(
+            'project-1',
+            'task-1',
+            'must_do',
+            'none',
+            batch,
+            { uid: 'user-1' },
+            false
+        )
         expect(tryAddFollower).toHaveBeenCalled()
     })
 
@@ -222,6 +235,7 @@ describe('autoPostponeTasksCloud', () => {
             task: {
                 id: 'task-1',
                 dueDate: Date.UTC(2026, 0, 1, 10, 0, 0),
+                priority: 'must_do',
                 timesPostponed: 3,
                 subtaskIds: ['subtask-1'],
                 dueDateByObserversIds: { 'user-1': Date.UTC(2026, 0, 1, 10, 0, 0) },
@@ -238,11 +252,18 @@ describe('autoPostponeTasksCloud', () => {
         expect(batch.update).toHaveBeenCalledTimes(1)
         expect(batch.update).toHaveBeenCalledWith(
             expect.any(Object),
+            expect.not.objectContaining({
+                priority: 'none',
+            })
+        )
+        expect(batch.update).toHaveBeenCalledWith(
+            expect.any(Object),
             expect.objectContaining({
                 'dueDateByObserversIds.user-1': Date.UTC(2026, 0, 5, 0, 5, 0),
                 lastEditorId: 'user-1',
             })
         )
+        expect(createTaskPriorityChangedFeed).not.toHaveBeenCalled()
     })
 
     test('promotes postponed subtasks and attributes edits to the authenticated actor', async () => {
@@ -258,6 +279,7 @@ describe('autoPostponeTasksCloud', () => {
                 id: 'task-1',
                 parentId: 'parent-1',
                 dueDate: Date.UTC(2026, 0, 1, 10, 0, 0),
+                priority: 'should_do',
                 timesPostponed: 0,
                 subtaskIds: [],
                 isPublicFor: [0, 'target-1'],
@@ -287,9 +309,19 @@ describe('autoPostponeTasksCloud', () => {
                 parentId: null,
                 isSubtask: false,
                 dueDate: Date.UTC(2026, 0, 5, 0, 5, 0),
+                priority: 'none',
                 timesPostponed: { __increment__: 1 },
                 lastEditorId: 'actor-1',
             })
+        )
+        expect(createTaskPriorityChangedFeed).toHaveBeenCalledWith(
+            'project-1',
+            'task-1',
+            'should_do',
+            'none',
+            batch,
+            { uid: 'actor-1' },
+            false
         )
     })
 
