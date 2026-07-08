@@ -384,6 +384,7 @@ function EmailLabelModal({
                                     connectionId={section.connectionId}
                                     labelOptions={labelOptionsByConnectionId?.[section.connectionId] || []}
                                     currentLabelId={section.labelId}
+                                    currentLabelName={section.label?.name || section.label?.displayName || ''}
                                     selected={selectedIds.has(
                                         selectionKey(section.connectionId, section.labelId, row.messageId)
                                     )}

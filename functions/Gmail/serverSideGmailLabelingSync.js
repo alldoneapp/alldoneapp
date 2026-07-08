@@ -27,6 +27,7 @@ const {
     GMAIL_DIRECTION_SCOPE_BOTH,
     GMAIL_DIRECTION_SCOPE_INCOMING,
     GMAIL_DIRECTION_SCOPE_OUTGOING,
+    DEFAULT_SYNC_INTERVAL_MINUTES,
     DEFAULT_GMAIL_LABELING_MODEL,
     buildConfigWriteData,
     buildDefaultState,
@@ -57,7 +58,6 @@ const ALDDONE_MANAGED_LABEL_PREFIX = 'Alldone/'
 // full flow. This constant is also used as the minimum charge when real token
 // cost rounds to 0 Gold, so every labeled email is reflected in the log.
 const GMAIL_LABELING_MIN_GOLD_TO_CLASSIFY = 1
-const DEFAULT_SYNC_INTERVAL_MINUTES = 5
 
 // Single source of truth for the Ads decision boundary — used verbatim as the Ads
 // label description AND embedded in the default-mode prompt so the two cannot drift.

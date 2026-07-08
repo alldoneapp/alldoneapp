@@ -38,16 +38,20 @@ function resolveUnsubscribeUrl(row) {
     return null
 }
 
-// Options are { gmailLabelName, displayName } pairs; dedupe by name and drop the row's current label.
-function normalizeLabelOptions(labelOptions = [], currentLabelName = '') {
+// Options are { gmailLabelName, displayName } pairs; dedupe by name and drop the
+// actual bucket label. The audit label shown on the row may be only a prediction,
+// especially inside the synthetic "No label" bucket.
+function normalizeLabelOptions(labelOptions = [], excludedLabelName = '') {
     const seen = new Set()
+    const excluded = typeof excludedLabelName === 'string' ? excludedLabelName.trim() : ''
     return labelOptions
         .map(option => ({
             gmailLabelName: typeof option?.gmailLabelName === 'string' ? option.gmailLabelName.trim() : '',
             displayName: typeof option?.displayName === 'string' ? option.displayName.trim() : '',
         }))
         .filter(option => {
-            if (!option.gmailLabelName || !option.displayName || option.displayName === currentLabelName) return false
+            if (!option.gmailLabelName || !option.displayName) return false
+            if (excluded && (option.displayName === excluded || option.gmailLabelName === excluded)) return false
             if (seen.has(option.gmailLabelName)) return false
             seen.add(option.gmailLabelName)
             return true
@@ -59,6 +63,7 @@ export default function EmailRow({
     connectionId,
     labelOptions,
     currentLabelId,
+    currentLabelName,
     selected,
     pending,
     onToggleSelect,
@@ -86,7 +91,7 @@ export default function EmailRow({
     const correctLabelText = translate('Correct label')
     const inboxOnlyText = translate('Inbox only')
     const explanationText = row.reasoning || translate('No project or label explanation was recorded for this email.')
-    const feedbackLabelOptions = normalizeLabelOptions(labelOptions, row.labelName)
+    const feedbackLabelOptions = normalizeLabelOptions(labelOptions, currentLabelName)
     const feedbackDropdownOptions = [
         { value: null, gmailLabelName: null, label: inboxOnlyText },
         ...feedbackLabelOptions.map(option => ({

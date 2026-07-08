@@ -1,4 +1,5 @@
 const {
+    DEFAULT_SYNC_INTERVAL_MINUTES,
     GMAIL_LABELING_PROMPT_MODE_CUSTOM,
     GMAIL_LABELING_PROMPT_MODE_DEFAULT,
     findLabelIdByName,
@@ -12,6 +13,13 @@ describe('gmailLabelingConfig', () => {
         const config = normalizeConfigInput('project-1', {})
 
         expect(config.model).toBe('MODEL_GPT5_4_NANO')
+    })
+
+    test('defaults Gmail labeling sync interval to 30 minutes', () => {
+        const config = normalizeConfigInput('project-1', {})
+
+        expect(DEFAULT_SYNC_INTERVAL_MINUTES).toBe(30)
+        expect(config.syncIntervalMinutes).toBe(30)
     })
 
     test('defaults new Gmail labeling configs to default prompt mode', () => {

@@ -107,6 +107,7 @@ describe('EmailRow', () => {
                         { gmailLabelName: 'Bookkeeping', displayName: 'Bookkeeping' },
                     ]}
                     currentLabelId="L_news"
+                    currentLabelName="Alldone/Newsletter"
                     selected={false}
                 />
             )
@@ -154,6 +155,39 @@ describe('EmailRow', () => {
         })
         const doneTexts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
         expect(doneTexts).toContain('Labeling instructions updated')
+    })
+
+    it('offers an audit-suggested label when the current bucket is No label', () => {
+        const row = {
+            messageId: 'm1',
+            from: 'a@ex.com',
+            subject: 'Hi',
+            reasoning: 'The conversation matches the consulting project.',
+            labelName: 'Alldone Consulting',
+            confidence: 0.86,
+        }
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <EmailRow
+                    row={row}
+                    connectionId="c1"
+                    labelOptions={[
+                        { gmailLabelName: 'Alldone Consulting', displayName: 'Alldone Consulting' },
+                        { gmailLabelName: 'Ads', displayName: 'Ads' },
+                    ]}
+                    currentLabelId="__NO_LABEL__"
+                    currentLabelName="No label"
+                    selected={false}
+                />
+            )
+        })
+
+        act(() => findByLabel(tree, 'Why this label')[0].props.onPress())
+        act(() => findByLabel(tree, 'Wrong label?')[0].props.onPress())
+        act(() => findByLabel(tree, 'Select correct label')[0].props.onPress())
+
+        expect(findByLabel(tree, 'Correct label: Alldone Consulting')).toHaveLength(1)
     })
 
     it('keeps the reason action visible when no explanation was recorded', () => {
