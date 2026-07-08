@@ -29,7 +29,15 @@ function getDraftMessageId(gmailData) {
     return gmailData?.messageId || (Array.isArray(gmailData?.messageIds) ? gmailData.messageIds[0] : '')
 }
 
-const GmailTag = ({ gmailData, propStyles, showLabel, label = 'Email', iconSize = 16 }) => {
+const GmailTag = ({
+    gmailData,
+    propStyles,
+    showLabel,
+    label = 'Email',
+    iconSize = 16,
+    sourceProjectId,
+    sourceTaskId,
+}) => {
     const [isOpen, setIsOpen] = useState(false)
     const [draftOpen, setDraftOpen] = useState(false)
     const resolvedGmailData = getGmailTaskData(gmailData)
@@ -90,7 +98,13 @@ const GmailTag = ({ gmailData, propStyles, showLabel, label = 'Email', iconSize 
             onClickOutside={closePopover}
             content={
                 draftOpen ? (
-                    <DraftReplyPopup projectId={connectionKey} messageId={messageId} closePopover={closePopover} />
+                    <DraftReplyPopup
+                        projectId={connectionKey}
+                        messageId={messageId}
+                        sourceProjectId={sourceProjectId}
+                        sourceTaskId={sourceTaskId}
+                        closePopover={closePopover}
+                    />
                 ) : (
                     <View style={localStyles.menu}>
                         <TouchableOpacity style={localStyles.menuItem} onPress={openLink}>

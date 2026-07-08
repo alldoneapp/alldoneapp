@@ -92,8 +92,17 @@ jest.mock('../../shared/TaskService', () => ({
 }))
 
 const mockAddProjectRoutingReasonComment = jest.fn()
+const mockGetDefaultAssistantIdForProject = jest.fn()
 jest.mock('../../shared/projectRoutingCommentHelper', () => ({
     addProjectRoutingReasonComment: (...args) => mockAddProjectRoutingReasonComment(...args),
+    getDefaultAssistantIdForProject: (...args) => mockGetDefaultAssistantIdForProject(...args),
+}))
+
+const mockTaskCommentServiceAddComment = jest.fn()
+jest.mock('../../shared/TaskCommentService', () => ({
+    TaskCommentService: jest.fn(() => ({
+        addComment: mockTaskCommentServiceAddComment,
+    })),
 }))
 
 jest.mock('./microsoftEmailLine', () => ({
@@ -153,6 +162,8 @@ describe('emailLineService', () => {
         mockAuditDocs.clear()
         gmailEmailLine.getUnreadInboxMessageIds.mockResolvedValue([])
         mockAddProjectRoutingReasonComment.mockResolvedValue(null)
+        mockGetDefaultAssistantIdForProject.mockResolvedValue('assistant-1')
+        mockTaskCommentServiceAddComment.mockResolvedValue({ commentId: 'draft-comment-1' })
     })
 
     test('returns a disconnected summary when email is not connected', async () => {
@@ -253,8 +264,10 @@ describe('emailLineService', () => {
         })
         const userData = {
             ...googleUserData,
+            defaultProjectId: 'p1',
             displayName: 'Anna',
             extendedDescription: 'Prefers concise replies.',
+            projectIds: ['p1'],
         }
         mockDocs.set('projects/p1', {
             name: 'Client launch',
@@ -266,6 +279,8 @@ describe('emailLineService', () => {
             action: 'draftReply',
             messageIds: ['m1'],
             guidance: 'be brief',
+            sourceProjectId: 'p1',
+            sourceTaskId: 'task-1',
             userData,
         })
 
@@ -292,7 +307,22 @@ describe('emailLineService', () => {
             messageId: 'm1',
             body: 'Sure',
         })
-        expect(result).toEqual({ draftUrl: 'https://mail/draft', subject: 'Re: Hi', goldCost: 5 })
+        expect(mockTaskCommentServiceAddComment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'p1',
+                taskId: 'task-1',
+                comment: 'I created a draft reply for this email: https://mail/draft',
+                actor: expect.objectContaining({ uid: 'assistant-1' }),
+                fromAssistant: true,
+                silent: true,
+            })
+        )
+        expect(result).toEqual({
+            draftUrl: 'https://mail/draft',
+            subject: 'Re: Hi',
+            goldCost: 5,
+            commentId: 'draft-comment-1',
+        })
         expect(refundGold).not.toHaveBeenCalled()
     })
 

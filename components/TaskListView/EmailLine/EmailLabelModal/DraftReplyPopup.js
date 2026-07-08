@@ -8,7 +8,7 @@ import { performEmailLineAction } from '../../../../utils/backends/EmailLine/ema
 import { openUrlInNewTab } from '../emailLineHelper'
 
 // Inline popover to draft an AI reply for a single email with optional guidance.
-export default function DraftReplyPopup({ projectId, messageId, closePopover }) {
+export default function DraftReplyPopup({ projectId, messageId, sourceProjectId, sourceTaskId, closePopover }) {
     const [guidance, setGuidance] = useState('')
     const [status, setStatus] = useState('idle') // idle | drafting | done | error
     const [draftUrl, setDraftUrl] = useState('')
@@ -19,11 +19,16 @@ export default function DraftReplyPopup({ projectId, messageId, closePopover }) 
         setStatus('drafting')
         setErrorText('')
         try {
-            const result = await performEmailLineAction(projectId, {
+            const payload = {
                 action: 'draftReply',
                 messageIds: [messageId],
                 guidance,
-            })
+            }
+            if (sourceProjectId && sourceTaskId) {
+                payload.sourceProjectId = sourceProjectId
+                payload.sourceTaskId = sourceTaskId
+            }
+            const result = await performEmailLineAction(projectId, payload)
             setDraftUrl(result?.draftUrl || '')
             setStatus('done')
         } catch (error) {

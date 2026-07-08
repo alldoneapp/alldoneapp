@@ -385,6 +385,11 @@ function truncateContextText(value, maxLength = 2000) {
     return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
 }
 
+function isUserProject(userData = {}, projectId = '') {
+    const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
+    return projectIds.length === 0 || projectIds.includes(projectId)
+}
+
 async function loadReplyGroundingContext({ userId, userData = {}, projectId }) {
     const resolvedProjectId = resolveConnectionProjectId(userData, projectId)
     const projectDoc = resolvedProjectId
@@ -405,6 +410,37 @@ async function loadReplyGroundingContext({ userId, userData = {}, projectId }) {
             projectUserData.extendedDescription || projectUserData.description || ''
         ),
         projectDescription: truncateContextText(project.description || ''),
+    }
+}
+
+async function addDraftReplyLinkComment({ userId, userData = {}, sourceProjectId, sourceTaskId, draftUrl }) {
+    if (!sourceProjectId || !sourceTaskId || !draftUrl) return null
+    if (!isUserProject(userData, sourceProjectId)) return null
+
+    try {
+        const { getDefaultAssistantIdForProject } = require('../../shared/projectRoutingCommentHelper')
+        const assistantProjectId = userData.defaultProjectId || sourceProjectId
+        const assistantId = await getDefaultAssistantIdForProject(userData, assistantProjectId)
+        if (!assistantId) return null
+
+        const { TaskCommentService } = require('../../shared/TaskCommentService')
+        const taskCommentService = new TaskCommentService({ database: admin.firestore() })
+        return await taskCommentService.addComment({
+            projectId: sourceProjectId,
+            taskId: sourceTaskId,
+            comment: `I created a draft reply for this email: ${draftUrl}`,
+            actor: { uid: assistantId, id: assistantId, displayName: 'Assistant' },
+            fromAssistant: true,
+            silent: true,
+        })
+    } catch (error) {
+        console.warn('[emailLine] draft reply comment failed:', {
+            userId,
+            sourceProjectId,
+            sourceTaskId,
+            error: error?.message || error,
+        })
+        return null
     }
 }
 
@@ -458,7 +494,16 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
 
 // Composes an AI reply, charges Gold, then creates a provider draft. Gold is
 // deducted only after successful composition and refunded if draft creation fails.
-async function draftReply({ userId, projectId, connection, userData, messageId, guidance }) {
+async function draftReply({
+    userId,
+    projectId,
+    connection,
+    userData,
+    messageId,
+    guidance,
+    sourceProjectId,
+    sourceTaskId,
+}) {
     if (!messageId) throw new Error('messageId is required for draftReply')
     const provider = getProviderModule(connection.provider)
 
@@ -515,10 +560,20 @@ async function draftReply({ userId, projectId, connection, userData, messageId, 
         throw new Error(draft?.message || 'Failed to create reply draft')
     }
 
+    const draftUrl = draft.webUrl || ''
+    const commentResult = await addDraftReplyLinkComment({
+        userId,
+        userData,
+        sourceProjectId,
+        sourceTaskId,
+        draftUrl,
+    })
+
     return {
-        draftUrl: draft.webUrl || '',
+        draftUrl,
         subject: draft.targetSubject || context.subject || '',
         goldCost,
+        commentId: commentResult?.commentId || null,
     }
 }
 
@@ -708,7 +763,16 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
 
 // Handles archive / markRead / archiveAll / markAllRead / draftReply / createTask.
 async function performEmailLineAction(userId, projectId, params = {}) {
-    const { action, messageIds, labelId, labelName, guidance, userData: providedUserData } = params
+    const {
+        action,
+        messageIds,
+        labelId,
+        labelName,
+        guidance,
+        sourceProjectId,
+        sourceTaskId,
+        userData: providedUserData,
+    } = params
     const { connection, userData } = await resolveConnectionOrThrow(userId, projectId, providedUserData)
     const provider = getProviderModule(connection.provider)
 
@@ -742,6 +806,8 @@ async function performEmailLineAction(userId, projectId, params = {}) {
                     userData,
                     messageId: Array.isArray(messageIds) ? messageIds[0] : messageIds,
                     guidance,
+                    sourceProjectId,
+                    sourceTaskId,
                 })
             case 'createTask':
                 return await createTaskFromEmail({

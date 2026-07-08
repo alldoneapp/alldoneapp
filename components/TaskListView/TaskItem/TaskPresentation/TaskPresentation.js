@@ -302,6 +302,8 @@ function TaskPresentation(
                                     <GmailTag
                                         gmailData={task.gmailData}
                                         propStyles={{ marginTop: 8, marginLeft: 12 }}
+                                        sourceProjectId={projectId}
+                                        sourceTaskId={task.id}
                                     />
                                 )}
                                 {!inMyDayAndNotSubtask && task?.alertEnabled && (

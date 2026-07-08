@@ -51,6 +51,36 @@ describe('DraftReplyPopup', () => {
         expect(openUrlInNewTab).toHaveBeenCalledWith('https://mail/draft')
     })
 
+    it('passes source task metadata when provided', async () => {
+        performEmailLineAction.mockResolvedValue({ draftUrl: 'https://mail/draft' })
+
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <DraftReplyPopup
+                    projectId="p1"
+                    messageId="m1"
+                    sourceProjectId="task-project"
+                    sourceTaskId="task-1"
+                    closePopover={() => {}}
+                />
+            )
+        })
+
+        await act(async () => {
+            touchableContaining(tree, 'Draft reply').props.onPress()
+            await Promise.resolve()
+        })
+
+        expect(performEmailLineAction).toHaveBeenCalledWith('p1', {
+            action: 'draftReply',
+            messageIds: ['m1'],
+            guidance: '',
+            sourceProjectId: 'task-project',
+            sourceTaskId: 'task-1',
+        })
+    })
+
     it('shows a not-enough-gold error', async () => {
         performEmailLineAction.mockRejectedValue(new Error('INSUFFICIENT_GOLD'))
 
