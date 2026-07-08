@@ -1450,6 +1450,7 @@ async function processSingleMessage({
         direction,
         matched: classifierResult.matched,
         labelKey: classifierResult.labelKey || null,
+        rawLabelKey: classifierResult.rawLabelKey || null,
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
         tokenUsage: classifierResult.usage || null,

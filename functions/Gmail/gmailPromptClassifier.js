@@ -5,6 +5,7 @@ const {
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_GMAIL_LABELING_MODEL,
     DEFAULT_GMAIL_CONSISTENCY_MODEL,
+    slugifyLabelKey,
 } = require('./gmailLabelingConfig')
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
 
@@ -61,19 +62,64 @@ function extractJsonFromText(text = '') {
     return null
 }
 
-function coerceClassifierResult(result, validLabelKeys = [], confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD) {
-    const labelKey = typeof result?.labelKey === 'string' ? result.labelKey.trim() : null
+// Resolve the model-returned labelKey to a configured label key. Models sometimes return
+// the Gmail label NAME ("Privat", "Ads") or a differently-cased/spaced variant of the key
+// instead of the exact configured key ("privat", "urgent_client"). An exact-match-only
+// lookup silently turned those into no-match results even though the reasoning argued for
+// the label, so the email ended up with an explanation but no label applied.
+function resolveConfiguredLabelKey(rawLabelKey, labelDefinitions = []) {
+    const raw = typeof rawLabelKey === 'string' ? rawLabelKey.trim() : ''
+    if (!raw) return null
+
+    const definitions = (Array.isArray(labelDefinitions) ? labelDefinitions : []).filter(
+        label => label && typeof label.key === 'string' && label.key
+    )
+
+    const exactKey = definitions.find(label => label.key === raw)
+    if (exactKey) return exactKey.key
+
+    // Config validation rejects keys/label names that collide case-insensitively, so the
+    // relaxed lookups below are unambiguous.
+    const lookup = raw.toLowerCase()
+    const caseInsensitiveKey = definitions.find(label => label.key.toLowerCase() === lookup)
+    if (caseInsensitiveKey) return caseInsensitiveKey.key
+
+    const byLabelName = definitions.find(
+        label => typeof label.gmailLabelName === 'string' && label.gmailLabelName.trim().toLowerCase() === lookup
+    )
+    if (byLabelName) return byLabelName.key
+
+    // "JTL Software" -> "jtl_software"
+    const slug = slugifyLabelKey(raw)
+    if (slug) {
+        const bySlug = definitions.find(
+            label => slugifyLabelKey(label.key) === slug || slugifyLabelKey(label.gmailLabelName || '') === slug
+        )
+        if (bySlug) return bySlug.key
+    }
+
+    return null
+}
+
+function coerceClassifierResult(result, labelDefinitions = [], confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD) {
+    const rawLabelKey = typeof result?.labelKey === 'string' && result.labelKey.trim() ? result.labelKey.trim() : null
+    const labelKey = resolveConfiguredLabelKey(rawLabelKey, labelDefinitions)
+    const rawMatched = !!result?.matched
     const confidence = Number.isFinite(result?.confidence) ? Number(result.confidence) : 0
     const reasoning = typeof result?.reasoning === 'string' ? result.reasoning.trim() : ''
-    const matched = !!result?.matched && !!labelKey && validLabelKeys.includes(labelKey)
+    const matched = rawMatched && !!labelKey
     // needsReply is independent of the label decision, so it survives the no-match branch.
     const needsReply = result?.needsReply === true
     const usage = result?.usage || null
 
+    // rawLabelKey/rawMatched preserve the model's pre-coercion decision so demotions are
+    // diagnosable from logs and can trigger the consistency audit.
     if (!matched || confidence < confidenceThreshold) {
         return {
             matched: false,
             labelKey: null,
+            rawLabelKey,
+            rawMatched,
             confidence,
             reasoning: reasoning || 'No configured label clearly matched.',
             needsReply,
@@ -84,6 +130,8 @@ function coerceClassifierResult(result, validLabelKeys = [], confidenceThreshold
     return {
         matched: true,
         labelKey,
+        rawLabelKey,
+        rawMatched,
         confidence,
         reasoning,
         needsReply,
@@ -123,6 +171,17 @@ function noMatchReasoningSuggestsPositiveMatch(reasoning = '') {
         /\b(strong|specific) (match|evidence)\b/,
         /\bproject-specific\b.*\b(link|url|reference)\b/,
         /\bunder the\b.*\bproject id\b/,
+        // Assertive "this deserves label X" phrasings seen in production no-match results,
+        // e.g. "so it should be labeled as Privat rather than Ads" and
+        // "This fits the Privat label guidance for house/home/apartment search alerts".
+        // Deliberately NOT a bare label-name mention: no-match reasonings legitimately name
+        // labels while ruling them out ("does not mention Privat or JTL Software").
+        /\b(should|would|could|ought to|deserves? to) be labell?ed\b/,
+        /\blabell?ed as\b/,
+        /\blabel (it|this|the (email|message)) as\b/,
+        /\bfits the\b[^.!?]*\blabel\b/,
+        /\bmatches the\b[^.!?]*\blabel\b/,
+        /\bbelongs (to|under|in)\b/,
     ].some(pattern => pattern.test(text))
 }
 
@@ -185,16 +244,7 @@ function buildUserDescriptionSection(config = {}) {
 
 async function verifyClassificationConsistency(
     openai,
-    {
-        selectedModel,
-        isReasoningModel,
-        config,
-        message,
-        labelDefinitions,
-        validLabelKeys,
-        confidenceThreshold,
-        firstResult,
-    }
+    { selectedModel, isReasoningModel, config, message, labelDefinitions, confidenceThreshold, firstResult }
 ) {
     const userContent =
         `Prompt:\n${config.prompt}\n\n` +
@@ -223,7 +273,7 @@ async function verifyClassificationConsistency(
         userContent,
     })
 
-    const verified = coerceClassifierResult({ ...parsed }, validLabelKeys, confidenceThreshold)
+    const verified = coerceClassifierResult({ ...parsed }, labelDefinitions, confidenceThreshold)
     return { verified, usage, parsed }
 }
 
@@ -231,7 +281,6 @@ async function classifyGmailMessage({ config, message }) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
     const labelDefinitions = Array.isArray(config?.labelDefinitions) ? config.labelDefinitions : []
-    const validLabelKeys = labelDefinitions.map(label => label.key)
     const confidenceThreshold = normalizeConfidenceThreshold(config?.confidenceThreshold)
 
     if (!openAiKey || labelDefinitions.length === 0) {
@@ -271,15 +320,31 @@ async function classifyGmailMessage({ config, message }) {
         userContent: firstUserContent,
     })
 
-    const firstResult = coerceClassifierResult({ ...parsed, usage: firstUsage }, validLabelKeys, confidenceThreshold)
+    const firstResult = coerceClassifierResult({ ...parsed, usage: firstUsage }, labelDefinitions, confidenceThreshold)
+
+    // Surface demotions: the model named a label (or claimed a match) but the normalized
+    // outcome is no-match — an unresolvable key, a below-threshold confidence, or a
+    // self-contradictory raw output. Without this log the raw decision is unrecoverable.
+    if (!firstResult.matched && (firstResult.rawLabelKey || firstResult.rawMatched)) {
+        console.warn('[gmailLabeling] First-pass classifier result demoted to no-match', {
+            rawMatched: firstResult.rawMatched,
+            rawLabelKey: firstResult.rawLabelKey,
+            confidence: firstResult.confidence,
+            confidenceThreshold,
+        })
+    }
 
     // Self-consistency check: when the model's reasoning references a configured label that is
-    // inconsistent with the normalized outcome, or the model reports zero confidence, run a
-    // stronger second pass to reconcile. This covers matched-but-wrong-key,
-    // no-match-with-project-reasoning, and unusable zero-confidence results.
+    // inconsistent with the normalized outcome, the model reports zero confidence, or a raw
+    // labelKey was demoted to no-match, run a stronger second pass to reconcile. This covers
+    // matched-but-wrong-key, no-match-with-project-reasoning, and unusable zero-confidence
+    // results.
     const hasZeroConfidence = firstResult.confidence === 0
     const shouldInspectReasoning =
-        firstResult.matched || hasZeroConfidence || noMatchReasoningSuggestsPositiveMatch(firstResult.reasoning)
+        firstResult.matched ||
+        hasZeroConfidence ||
+        !!firstResult.rawLabelKey ||
+        noMatchReasoningSuggestsPositiveMatch(firstResult.reasoning)
     const crossReference = shouldInspectReasoning
         ? reasoningReferencesDifferentOption(
               firstResult.reasoning,
@@ -287,7 +352,12 @@ async function classifyGmailMessage({ config, message }) {
               buildConsistencyOptionsFromLabels(labelDefinitions)
           )
         : null
-    const consistencyTrigger = crossReference || (hasZeroConfidence ? { type: 'zero_confidence' } : null)
+    const demotedRawLabelKey =
+        !firstResult.matched && firstResult.rawLabelKey
+            ? { type: 'demoted_label_key', rawLabelKey: firstResult.rawLabelKey }
+            : null
+    const consistencyTrigger =
+        crossReference || (hasZeroConfidence ? { type: 'zero_confidence' } : null) || demotedRawLabelKey
     if (!consistencyTrigger) {
         return firstResult
     }
@@ -299,7 +369,6 @@ async function classifyGmailMessage({ config, message }) {
             config,
             message,
             labelDefinitions,
-            validLabelKeys,
             confidenceThreshold,
             firstResult,
         })
@@ -318,6 +387,7 @@ async function classifyGmailMessage({ config, message }) {
                     trigger: consistencyTrigger,
                     auditModel,
                     originalLabelKey: firstResult.labelKey,
+                    originalRawLabelKey: firstResult.rawLabelKey || null,
                     originalConfidence: firstResult.confidence,
                 },
             }
@@ -344,6 +414,7 @@ async function classifyGmailMessage({ config, message }) {
                 trigger: consistencyTrigger,
                 auditModel,
                 originalLabelKey: firstResult.labelKey,
+                originalRawLabelKey: firstResult.rawLabelKey || null,
                 originalConfidence: firstResult.confidence,
             },
         }
