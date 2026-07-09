@@ -19,7 +19,9 @@ describe('replyComposer', () => {
         })
         expect(content).toContain('a@ex.com')
         expect(content).toContain('Be brief and say yes')
-        expect(content).toContain('German')
+        expect(content).toContain('User app language for background context only: German.')
+        expect(content).toContain('write the reply in that same language')
+        expect(content).not.toContain('Write the reply in this language: German.')
     })
 
     test('buildUserContent includes user and project context when provided', () => {
@@ -53,6 +55,24 @@ describe('replyComposer', () => {
         const result = await composeReply({ context: { subject: 'Hi', body: 'x' }, guidance: 'ok' })
         expect(result.body).toBe('Sure, that works.')
         expect(result.totalTokens).toBe(123)
+    })
+
+    test('composeReply instructs the model to match the original email language over app language', async () => {
+        mockCreate.mockResolvedValue({
+            choices: [{ message: { content: 'Gerne, das passt.' } }],
+            usage: { total_tokens: 42 },
+        })
+
+        await composeReply({
+            context: { subject: 'Termin', body: 'Hallo Anna, passt dir der Termin morgen?' },
+            language: 'English',
+        })
+
+        const userMessage = mockCreate.mock.calls[0][0].messages.find(message => message.role === 'user').content
+        expect(userMessage).toContain('Hallo Anna')
+        expect(userMessage).toContain('write the reply in that same language')
+        expect(userMessage).toContain('User app language for background context only: English.')
+        expect(userMessage).not.toContain('Write the reply in this language: English.')
     })
 
     test('composeReply throws when the OpenAI key is missing', async () => {

@@ -67,7 +67,7 @@ export default function OpenTasksViewAllProjects() {
                     : isMiddleScreen && localStyles.containerForTablet,
             ]}
         >
-            <AllProjectsLine />
+            <AllProjectsLine showEmailLabels={true} />
             <AssistantLine useAssistantProjectContext={false} />
             <EmailLine />
             <TaskPriorityFiltersLine projectId={null} />

@@ -45,6 +45,7 @@ export function mergeLabelsAcrossConnections(connections = [], summariesByKey = 
                     key,
                     displayName,
                     isInbox: false,
+                    projectId: null,
                     threadCount: 0,
                     unreadCount: 0,
                     sweeping: false,
@@ -56,6 +57,9 @@ export function mergeLabelsAcrossConnections(connections = [], summariesByKey = 
             group.unreadCount += Number(label.unreadCount || 0)
             if (label.sweeping) group.sweeping = true
             if (label.kind === 'inbox' || label.labelId === 'INBOX') group.isInbox = true
+            // The Alldone project this label maps to (default-mode project labels only). The
+            // server stamps it via the labeling config; the first account that carries it wins.
+            if (!group.projectId && label.projectId) group.projectId = label.projectId
             group.entries.push({
                 connectionId: connection.connectionId,
                 provider: connection.provider || summary.provider || '',
@@ -79,6 +83,47 @@ export function mergeLabelsAcrossConnections(connections = [], summariesByKey = 
         if (a.isInbox !== b.isInbox) return a.isInbox ? -1 : 1
         return a.displayName.localeCompare(b.displayName)
     })
+}
+
+// A merged group is worth a chip when it has inbox threads (or is mid-sweep with an
+// optimistically-zeroed count). The Inbox aggregate is excluded here — it belongs only to the
+// standalone Email line, not the per-project/all-projects header chips.
+function isChipWorthy(group) {
+    return !group.isInbox && (group.threadCount > 0 || group.sweeping)
+}
+
+// The label chips that belong to a specific project's header line: labels the server mapped to
+// this project via its labeling config (default-mode project labels).
+export function getEmailLabelGroupsForProject(groups = [], projectId) {
+    if (!projectId) return []
+    return groups.filter(group => isChipWorthy(group) && group.projectId === projectId)
+}
+
+// The label chips that belong to the "All Projects" header line: everything not tied to a
+// project — Ads, No label, and any custom/unmapped label.
+export function getUnassignedEmailLabelGroups(groups = []) {
+    return groups.filter(group => isChipWorthy(group) && !group.projectId)
+}
+
+// Per-connection maps the label modal needs: the full set of move-target labels and whether
+// labeling is disabled for that account. Shared by the standalone Email line and the header
+// chips so both feed EmailLabelChip the same props.
+export function buildLabelOptionMaps(connections = [], summariesByKey = {}) {
+    const labelOptionsByConnectionId = {}
+    const labelingDisabledByConnectionId = {}
+    connections.forEach(connection => {
+        const summary = summariesByKey[connection.connectionId]
+        labelOptionsByConnectionId[connection.connectionId] = (summary?.labelOptions || [])
+            .map(option =>
+                typeof option === 'string'
+                    ? { gmailLabelName: option, displayName: option }
+                    : { gmailLabelName: option?.gmailLabelName, displayName: option?.displayName }
+            )
+            .filter(option => option.gmailLabelName && option.displayName)
+        labelingDisabledByConnectionId[connection.connectionId] =
+            !!summary && connection.provider !== 'microsoft' && summary.labelingEnabled === false
+    })
+    return { labelOptionsByConnectionId, labelingDisabledByConnectionId }
 }
 
 // Chips are already provider-sorted server-side (Inbox first, then Alldone/*,

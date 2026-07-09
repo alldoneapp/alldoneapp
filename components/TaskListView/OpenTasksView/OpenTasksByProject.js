@@ -157,6 +157,7 @@ export default function OpenTasksByProject({
                         showAddTask={!isAssistant}
                         setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                         showRootSectionNavigation={inSelectedProject}
+                        showEmailLabels={!isAssistant}
                     />
                     {showAssistantLine && (
                         <View style={{ marginTop: 0 }}>

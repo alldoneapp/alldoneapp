@@ -90,8 +90,6 @@ class TaskTitle extends Component {
                             propStyles={localStyles.gmailTag}
                             showLabel
                             iconSize={12}
-                            sourceProjectId={projectId}
-                            sourceTaskId={task.id}
                         />
                     )}
                     <View

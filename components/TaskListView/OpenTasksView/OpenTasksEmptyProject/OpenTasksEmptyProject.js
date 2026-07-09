@@ -20,6 +20,7 @@ export default function OpenTasksEmptyProject({
                 showAddTask={true}
                 setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                 showRootSectionNavigation={showRootSectionNavigation}
+                showEmailLabels={true}
             />
             <OpenTasksDateHeaderEmptyProject projectId={projectId} />
             <NewTaskSection projectId={projectId} />

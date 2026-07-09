@@ -27,6 +27,7 @@ export default function ProjectHeader({
     showAddGoal,
     setPressedShowMoreMainSection,
     showRootSectionNavigation = false,
+    showEmailLabels = false,
 }) {
     const dispatch = useDispatch()
 
@@ -75,6 +76,7 @@ export default function ProjectHeader({
                         projectId={projectId}
                         badge={badge}
                         userInHeader={userInHeader}
+                        showEmailLabels={showEmailLabels}
                     />
                     <TagsArea
                         projectId={projectId}

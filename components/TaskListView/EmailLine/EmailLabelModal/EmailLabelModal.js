@@ -40,6 +40,10 @@ function EmailLabelModal({
     // Only show the spinner when there's nothing cached to render meanwhile.
     const [sections, setSections] = useState(() => getCachedEmailLineSections(group?.key) || [])
     const [loading, setLoading] = useState(() => !getCachedEmailLineSections(group?.key))
+    // Whether a fresh fetch is currently in flight. Used to show the spinner when the cached
+    // rows we're about to render would contradict the chip's thread count (see showLoading
+    // below) — so the popup never displays a number that mismatches the chip while loading.
+    const [refreshing, setRefreshing] = useState(true)
     const [loadingMoreKey, setLoadingMoreKey] = useState(null)
     const [selectedIds, setSelectedIds] = useState(() => new Set())
     // Selection keys whose archive/mark-read is in flight: their rows show a spinner and stay
@@ -61,6 +65,7 @@ function EmailLabelModal({
     // (no spinner) and just swap in the fresh results when they arrive.
     const load = async () => {
         if (!getCachedEmailLineSections(group?.key)) setLoading(true)
+        setRefreshing(true)
         try {
             const results = await Promise.all(
                 entries.map(async entry => {
@@ -91,6 +96,7 @@ function EmailLabelModal({
             cacheEmailLineSections(group?.key, results)
         } finally {
             setLoading(false)
+            setRefreshing(false)
         }
     }
 
@@ -100,6 +106,7 @@ function EmailLabelModal({
         const cached = getCachedEmailLineSections(group?.key)
         setSections(cached || [])
         setLoading(!cached)
+        setRefreshing(true)
         load()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [group?.key])
@@ -281,6 +288,16 @@ function EmailLabelModal({
     const totalMessages = sections.reduce((total, section) => total + section.messages.length, 0)
     const labelingDisabled = entries.some(entry => labelingDisabledByConnectionId?.[entry.connectionId])
 
+    // The chip promises `expectedCount` inbox threads. While a fresh fetch is in flight, only keep
+    // the cached rows on screen if they still add up to that number (or there are more pages that
+    // explain the gap). If the cache is stale enough to contradict the chip — e.g. the count moved
+    // since it was stored — show the spinner instead so the popup never displays a thread count that
+    // mismatches the chip mid-load. `refreshing` always resolves, so this can't get stuck.
+    const expectedCount = Number.isFinite(group?.threadCount) ? group.threadCount : null
+    const hasMorePages = sections.some(section => section.nextPageToken)
+    const cachedMismatchesChip = expectedCount !== null && !hasMorePages && totalMessages !== expectedCount
+    const showLoading = loading || (refreshing && cachedMismatchesChip)
+
     const allSelectionKeys = sections
         .flatMap(section =>
             section.messages.map(row => selectionKey(section.connectionId, section.labelId, row.messageId))
@@ -332,7 +349,7 @@ function EmailLabelModal({
             </View>
 
             <CustomScrollView style={localStyles.list} showsVerticalScrollIndicator={false}>
-                {loading ? (
+                {showLoading ? (
                     <View style={localStyles.centered}>
                         <ActivityIndicator color={colors.Primary100} />
                     </View>

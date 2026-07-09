@@ -11727,6 +11727,19 @@ async function getOpenTasksContextMessage(userId, userTimezoneOffset = null) {
     }
 }
 
+function formatCurrentNoteContextMessage(noteContext) {
+    if (!noteContext?.content) return ''
+
+    return [
+        'The current chat is attached to this note.',
+        'The full current note is already included below, so do not call get_note to retrieve this same note unless the user asks you to verify newer data.',
+        noteContext.url,
+        noteContext.content,
+    ]
+        .filter(Boolean)
+        .join('\n\n')
+}
+
 // Optimized context fetching with parallel operations
 async function getOptimizedContextMessages(
     messageId,
@@ -11784,6 +11797,20 @@ async function getOptimizedContextMessages(
         parallelPromises.push(Promise.resolve(null))
     }
 
+    // In note chats, include the current note itself so the assistant does not need to call get_note.
+    if (objectType === 'notes' && userId && projectId && objectId) {
+        parallelPromises.push(
+            Promise.resolve()
+                .then(async () => {
+                    const { fetchNoteContentAsMarkdown } = require('./noteContextHelper')
+                    return await fetchNoteContentAsMarkdown(projectId, objectId, userId)
+                })
+                .catch(() => null)
+        )
+    } else {
+        parallelPromises.push(Promise.resolve(null))
+    }
+
     // Fetch open task counts for all projects (including overdue) in parallel
     if (userId) {
         parallelPromises.push(getOpenTasksContextMessage(userId, userTimezoneOffset))
@@ -11791,7 +11818,7 @@ async function getOptimizedContextMessages(
         parallelPromises.push(Promise.resolve(null))
     }
 
-    const [commentDocs, chatData, notesContext, openTasksData] = await Promise.all(parallelPromises)
+    const [commentDocs, chatData, notesContext, currentNoteContext, openTasksData] = await Promise.all(parallelPromises)
 
     // Collect messages from conversation history
     const messages = []
@@ -11863,6 +11890,11 @@ async function getOptimizedContextMessages(
             'system',
             `This conversation is about a ${objectTypeLabel} titled: "${parseTextForUseLiKePrompt(chatData.title)}"`,
         ])
+    }
+
+    const currentNoteContextMessage = formatCurrentNoteContextMessage(currentNoteContext)
+    if (currentNoteContextMessage) {
+        messages.push(['system', currentNoteContextMessage])
     }
 
     // Add open task counts context if available

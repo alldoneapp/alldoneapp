@@ -46,7 +46,10 @@ function buildUserContent({ context = {}, guidance, language, groundingContext =
     } else {
         parts.push('\nWrite an appropriate, helpful reply.')
     }
-    if (language) parts.push(`\nWrite the reply in this language: ${language}.`)
+    parts.push(
+        '\nDetect the language of the original email and write the reply in that same language. If the email mixes languages, use the main language of the sender message being answered. Do not default to the user app language.'
+    )
+    if (language) parts.push(`User app language for background context only: ${language}.`)
     parts.push('\nReturn only the reply body text.')
     return parts.join('\n')
 }

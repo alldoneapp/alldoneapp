@@ -16,6 +16,14 @@ const { extractMediaContextFromText } = require('../Utils/parseTextUtils')
 
 const mockCreateAndPersistTask = jest.fn()
 const mockCreateAndPersistNote = jest.fn()
+const mockFetchMentionedNotesContext = jest.fn(async () => '')
+const mockFetchNoteContentAsMarkdown = jest.fn(async (projectId, noteId) => ({
+    noteId,
+    title: 'Launch notes',
+    content: '## Note: Launch notes\n\nShip checklist and unresolved rollout risks.',
+    markdown: '## Note: Launch notes\n\nShip checklist and unresolved rollout risks.',
+    url: `https://app.alldone.app/projects/${projectId}/notes/${noteId}/editor`,
+}))
 
 jest.mock('../shared/ProjectService', () => ({
     ProjectService: jest.fn().mockImplementation(() => ({
@@ -162,6 +170,10 @@ jest.mock('./userMemoryHelper', () => {
         updateUserMemory: jest.fn(),
     }
 })
+jest.mock('./noteContextHelper', () => ({
+    fetchMentionedNotesContext: mockFetchMentionedNotesContext,
+    fetchNoteContentAsMarkdown: mockFetchNoteContentAsMarkdown,
+}))
 jest.mock('../GAnalytics/GAnalytics', () => ({
     logEvent: jest.fn(),
 }))
@@ -3381,6 +3393,74 @@ describe('assistant thread compaction tool', () => {
         expect(flattened).toContain('Operations done. Marketing next.')
         expect(flattened).toContain('Recent assistant update')
         expect(flattened).not.toContain('Old assistant update')
+    })
+
+    test('includes the current note in assistant context for note chats', async () => {
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+
+            if (path === 'chatComments/project-1/notes/note-1/comments/comment-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({
+                        commentText: 'Can you summarize this?',
+                    }),
+                })
+            }
+
+            if (path === 'user-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({
+                        projectIds: [],
+                    }),
+                })
+            }
+
+            return Promise.resolve({
+                exists: false,
+                data: () => ({}),
+            })
+        })
+
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'comment-1',
+                    ref: { path: 'comment-1-ref' },
+                    data: () => ({
+                        commentText: 'Can you summarize this?',
+                        fromAssistant: false,
+                        created: 300,
+                        lastChangeDate: 300,
+                    }),
+                },
+            ],
+        })
+
+        const contextMessages = await getOptimizedContextMessages(
+            'comment-1',
+            'project-1',
+            'notes',
+            'note-1',
+            'en',
+            'Project Bot',
+            'Be helpful.',
+            [],
+            null,
+            'user-1',
+            'assistant-1'
+        )
+
+        const flattened = contextMessages
+            .map(message => (typeof message[1] === 'string' ? message[1] : JSON.stringify(message[1])))
+            .join('\n')
+
+        expect(mockFetchNoteContentAsMarkdown).toHaveBeenCalledWith('project-1', 'note-1', 'user-1')
+        expect(flattened).toContain('The current chat is attached to this note.')
+        expect(flattened).toContain('do not call get_note to retrieve this same note')
+        expect(flattened).toContain('## Note: Launch notes')
+        expect(flattened).toContain('Ship checklist and unresolved rollout risks.')
     })
 
     test('rebuilds continuation conversation from compacted state after the tool runs', () => {

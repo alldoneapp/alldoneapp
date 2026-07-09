@@ -1,7 +1,10 @@
 import {
     splitChipsForDisplay,
     areEmailLineConnectionsHiddenToday,
+    buildLabelOptionMaps,
     getEmailAccountWebUrl,
+    getEmailLabelGroupsForProject,
+    getUnassignedEmailLabelGroups,
     EMAIL_LINE_NO_LABEL_ID,
     getEmailLineTodayKey,
     getLabelDisplayCount,
@@ -130,6 +133,92 @@ describe('emailLineHelper', () => {
         expect(groups).toHaveLength(1)
         expect(groups[0].displayName).toBe('X')
         expect(groups[0].sweeping).toBe(true)
+    })
+
+    test('mergeLabelsAcrossConnections carries the server projectId onto its group', () => {
+        const connections = [{ connectionId: 'c1', provider: 'google', email: 'a@gmail.com' }]
+        const summariesByKey = {
+            c1: {
+                emailAddress: 'a@gmail.com',
+                labels: [
+                    { labelId: 'INBOX', displayName: 'Inbox', threadCount: 5, unreadCount: 1, kind: 'inbox' },
+                    {
+                        labelId: 'Label_mk',
+                        displayName: 'Marketing',
+                        threadCount: 3,
+                        unreadCount: 1,
+                        kind: 'user',
+                        projectId: 'proj_marketing',
+                    },
+                    { labelId: 'Label_ads', displayName: 'Ads', threadCount: 2, unreadCount: 0, kind: 'user' },
+                ],
+            },
+        }
+        const groups = mergeLabelsAcrossConnections(connections, summariesByKey)
+        const byName = Object.fromEntries(groups.map(group => [group.displayName, group]))
+        expect(byName['Marketing'].projectId).toBe('proj_marketing')
+        expect(byName['Ads'].projectId).toBe(null)
+        expect(byName['Inbox'].projectId).toBe(null)
+    })
+
+    describe('header chip partitioning', () => {
+        const groups = [
+            { key: 'inbox', displayName: 'Inbox', isInbox: true, projectId: null, threadCount: 9, sweeping: false },
+            {
+                key: 'mk',
+                displayName: 'Marketing',
+                isInbox: false,
+                projectId: 'proj_mk',
+                threadCount: 3,
+                sweeping: false,
+            },
+            { key: 'ops', displayName: 'Ops', isInbox: false, projectId: 'proj_ops', threadCount: 0, sweeping: true },
+            { key: 'ads', displayName: 'Ads', isInbox: false, projectId: null, threadCount: 2, sweeping: false },
+            { key: 'no', displayName: 'No label', isInbox: false, projectId: null, threadCount: 4, sweeping: false },
+            {
+                key: 'empty',
+                displayName: 'Empty',
+                isInbox: false,
+                projectId: 'proj_mk',
+                threadCount: 0,
+                sweeping: false,
+            },
+        ]
+
+        test('getEmailLabelGroupsForProject returns only that project’s chip-worthy labels', () => {
+            expect(getEmailLabelGroupsForProject(groups, 'proj_mk').map(g => g.displayName)).toEqual(['Marketing'])
+            expect(getEmailLabelGroupsForProject(groups, 'proj_ops').map(g => g.displayName)).toEqual(['Ops'])
+            expect(getEmailLabelGroupsForProject(groups, undefined)).toEqual([])
+        })
+
+        test('getUnassignedEmailLabelGroups returns Ads/No label but never Inbox or project labels', () => {
+            expect(getUnassignedEmailLabelGroups(groups).map(g => g.displayName)).toEqual(['Ads', 'No label'])
+        })
+    })
+
+    test('buildLabelOptionMaps normalizes options and flags disabled labeling per connection', () => {
+        const connections = [
+            { connectionId: 'c1', provider: 'google' },
+            { connectionId: 'c2', provider: 'microsoft' },
+        ]
+        const summariesByKey = {
+            c1: {
+                labelOptions: ['Ads', { gmailLabelName: 'Marketing', displayName: 'Marketing' }, { displayName: 'x' }],
+                labelingEnabled: false,
+            },
+            c2: { labelOptions: [{ gmailLabelName: 'Clients', displayName: 'Clients' }], labelingEnabled: false },
+        }
+        const { labelOptionsByConnectionId, labelingDisabledByConnectionId } = buildLabelOptionMaps(
+            connections,
+            summariesByKey
+        )
+        expect(labelOptionsByConnectionId.c1).toEqual([
+            { gmailLabelName: 'Ads', displayName: 'Ads' },
+            { gmailLabelName: 'Marketing', displayName: 'Marketing' },
+        ])
+        expect(labelingDisabledByConnectionId.c1).toBe(true)
+        // Microsoft accounts never report labeling as disabled.
+        expect(labelingDisabledByConnectionId.c2).toBe(false)
     })
 
     test('getLabelWebUrl builds a Gmail account-chooser deep link for a user label', () => {

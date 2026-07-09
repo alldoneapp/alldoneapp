@@ -12,7 +12,7 @@ const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 // A single merged label/folder pill with its inbox thread count summed across all
 // accounts carrying that label. Bold name hints at unread mail. Tapping it opens a
 // modal listing the matching inbox emails of every account, grouped by account.
-export default function EmailLabelChip({ group, labelOptionsByConnectionId, labelingDisabledByConnectionId }) {
+export default function EmailLabelChip({ group, labelOptionsByConnectionId, labelingDisabledByConnectionId, style }) {
     const [isOpen, setIsOpen] = useState(false)
     const smallScreen = useSelector(state => state.smallScreen)
     if (!group) return null
@@ -20,7 +20,7 @@ export default function EmailLabelChip({ group, labelOptionsByConnectionId, labe
 
     const trigger = (
         <TouchableOpacity
-            style={localStyles.chip}
+            style={[localStyles.chip, style]}
             onPress={() => setIsOpen(true)}
             accessibilityLabel={`${group.displayName}: ${group.threadCount}`}
         >

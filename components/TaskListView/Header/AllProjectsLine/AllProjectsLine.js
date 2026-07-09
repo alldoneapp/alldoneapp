@@ -9,8 +9,9 @@ import AddTaskTag from '../../../Tags/AddTaskTag'
 import Avatar from '../../../Avatar'
 import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import ToggleByTime from '../../ToggleByTime'
+import AllProjectsEmailLabelChips from '../../EmailLine/AllProjectsEmailLabelChips'
 
-export default function AllProjectsLine({ showActions = true }) {
+export default function AllProjectsLine({ showActions = true, showEmailLabels = false }) {
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
@@ -30,6 +31,7 @@ export default function AllProjectsLine({ showActions = true }) {
                 />
                 <AllProjectData />
                 <ToggleByTime containerStyle={localStyles.toggleByTimeInline} />
+                {showEmailLabels && <AllProjectsEmailLabelChips />}
             </View>
             <View style={localStyles.leftContainer}>
                 {showActions && inOpenSection && (

@@ -197,6 +197,53 @@ describe('emailLineService', () => {
         expect(summary.labelOptions).toEqual([{ gmailLabelName: 'Ads', displayName: 'Ads' }])
     })
 
+    test('summary stamps project labels with their sourceProjectId and leaves Ads/Inbox/No label unmapped', async () => {
+        gmailEmailLine.getGmailLabelSummary.mockResolvedValue({
+            labels: [
+                {
+                    labelId: 'INBOX',
+                    name: 'INBOX',
+                    displayName: 'Inbox',
+                    threadCount: 5,
+                    unreadCount: 1,
+                    kind: 'inbox',
+                },
+                {
+                    labelId: 'Label_mk',
+                    name: 'Marketing',
+                    displayName: 'Marketing',
+                    threadCount: 3,
+                    unreadCount: 1,
+                    kind: 'user',
+                },
+                { labelId: 'Label_ads', name: 'Ads', displayName: 'Ads', threadCount: 2, unreadCount: 0, kind: 'user' },
+                {
+                    labelId: '__NO_LABEL__',
+                    name: '__NO_LABEL__',
+                    displayName: 'No label',
+                    threadCount: 4,
+                    unreadCount: 1,
+                    kind: 'no_label',
+                },
+            ],
+        })
+        mockDocs.set('labelingConfig', {
+            enabled: true,
+            labelDefinitions: [
+                { key: 'project_mk', gmailLabelName: 'Marketing', sourceProjectId: 'proj_marketing' },
+                { key: 'ads', gmailLabelName: 'Ads' },
+            ],
+        })
+
+        const summary = await getEmailLineSummary('u', 'p1', { userData: googleUserData })
+
+        const byDisplay = Object.fromEntries(summary.labels.map(label => [label.displayName, label]))
+        expect(byDisplay['Marketing'].projectId).toBe('proj_marketing')
+        expect(byDisplay['Ads'].projectId).toBeUndefined()
+        expect(byDisplay['Inbox'].projectId).toBeUndefined()
+        expect(byDisplay['No label'].projectId).toBeUndefined()
+    })
+
     test('dispatches to the Microsoft provider', async () => {
         microsoftEmailLine.getMicrosoftLabelSummary.mockResolvedValue({
             labels: [{ labelId: 'f_inbox', unreadCount: 3, kind: 'inbox' }],

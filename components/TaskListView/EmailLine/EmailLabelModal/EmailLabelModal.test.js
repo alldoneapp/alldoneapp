@@ -8,6 +8,7 @@ import renderer, { act } from 'react-test-renderer'
 
 import EmailLabelModal from './EmailLabelModal'
 import {
+    getCachedEmailLineSections,
     listEmailLineMessages,
     performEmailLineAction,
     performEmailLineSweepInBackground,
@@ -103,6 +104,8 @@ const touchableContaining = (tree, text) =>
 describe('EmailLabelModal', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        // clearAllMocks doesn't reset implementations, so restore the no-cache default each test.
+        getCachedEmailLineSections.mockReturnValue(null)
         listEmailLineMessages.mockImplementation(connectionId =>
             Promise.resolve({ messages: messagesByConnection[connectionId] || [], nextPageToken: null })
         )
@@ -240,6 +243,80 @@ describe('EmailLabelModal', () => {
         expect(invalidateEmailLineSummaryCooldown).toHaveBeenCalledWith('c1')
         expect(fetchEmailLineSummary).toHaveBeenCalledWith('c1', { force: true })
         expect(fetchEmailLineSummary).not.toHaveBeenCalledWith('c2', expect.anything())
+    })
+
+    const singleGroup = {
+        key: 'work',
+        displayName: 'Work',
+        isInbox: false,
+        threadCount: 5,
+        unreadCount: 0,
+        sweeping: false,
+        entries: [
+            {
+                connectionId: 'c1',
+                provider: 'google',
+                emailAddress: 'a@gmail.com',
+                labelId: 'L_work',
+                label: { labelId: 'L_work', displayName: 'Work' },
+            },
+        ],
+    }
+    const workRows = [{ messageId: 'w1', from: 'x@ex.com', subject: 'Work One', snippet: 's', isUnread: true }]
+    const cachedWorkSections = messages => [
+        {
+            connectionId: 'c1',
+            labelId: 'L_work',
+            provider: 'google',
+            emailAddress: 'a@gmail.com',
+            label: singleGroup.entries[0].label,
+            messages,
+            nextPageToken: null,
+        },
+    ]
+    const stringChildren = tree =>
+        tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
+
+    it('shows the spinner while refreshing when cached rows would contradict the chip count', async () => {
+        // Cache holds 1 row, but the chip promises 5: rendering it would mismatch the chip number.
+        getCachedEmailLineSections.mockReturnValue(cachedWorkSections(workRows))
+        let resolveList
+        listEmailLineMessages.mockReturnValue(new Promise(resolve => (resolveList = resolve)))
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(<EmailLabelModal group={singleGroup} closePopover={() => {}} />)
+            await Promise.resolve()
+        })
+
+        // Refresh in flight + cached total (1) ≠ chip count (5): show the spinner, hide the stale rows.
+        expect(tree.root.findAllByType(ActivityIndicator).length).toBeGreaterThan(0)
+        expect(stringChildren(tree)).not.toContain('Work One')
+
+        // Fresh results land: the spinner clears and the rows render.
+        await act(async () => {
+            resolveList({ messages: workRows, nextPageToken: null })
+            await new Promise(resolve => setTimeout(resolve, 0))
+        })
+        expect(tree.root.findAllByType(ActivityIndicator).length).toBe(0)
+        expect(stringChildren(tree)).toContain('Work One')
+    })
+
+    it('renders cached rows instantly without a spinner when they match the chip count', async () => {
+        // Chip count equals the cached row count → safe to render immediately during the refresh.
+        const matchingGroup = { ...singleGroup, threadCount: 1 }
+        getCachedEmailLineSections.mockReturnValue(cachedWorkSections(workRows))
+        // Keep the refresh in flight so we assert the pre-refresh render.
+        listEmailLineMessages.mockReturnValue(new Promise(() => {}))
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(<EmailLabelModal group={matchingGroup} closePopover={() => {}} />)
+            await Promise.resolve()
+        })
+
+        expect(stringChildren(tree)).toContain('Work One')
+        expect(tree.root.findAllByType(ActivityIndicator).length).toBe(0)
     })
 
     it('closes immediately on sweep and runs it in the background for every account', async () => {

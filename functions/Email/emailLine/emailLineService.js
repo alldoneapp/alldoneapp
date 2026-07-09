@@ -175,10 +175,11 @@ async function loadAuditEntriesByMessageId(userId, projectIds, messageIds = []) 
     }
 }
 
-// Returns every configured label as { gmailLabelName, displayName } — the FULL set the feedback UI
-// can move an email to, independent of which labels currently have inbox threads. `gmailLabelName`
-// is the real Gmail label name the server resolves the id from; `displayName` is what the UI shows.
-async function loadConfiguredLabelOptions(userId, userData, projectId, connection) {
+// The effective labeling label definitions for this connection (default- or custom-mode).
+// Each definition carries `gmailLabelName` and, for default-mode project labels, a
+// `sourceProjectId` that ties the label to an Alldone project — used both for the feedback
+// options and to stamp each summary label with its owning project.
+async function loadConfiguredLabelDefinitions(userId, userData, projectId, connection) {
     if (connection.provider !== 'google') return []
     const lookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
     try {
@@ -189,18 +190,40 @@ async function loadConfiguredLabelOptions(userId, userData, projectId, connectio
                 .catch(() => null)
             if (!configSnap?.exists) continue
             const effectiveConfig = await resolveEffectiveGmailLabelingConfig(configSnap.data() || {}, userData)
-            return (effectiveConfig.labelDefinitions || [])
-                .map(label => (typeof label.gmailLabelName === 'string' ? label.gmailLabelName.trim() : ''))
-                .filter(Boolean)
-                .map(gmailLabelName => ({
-                    gmailLabelName,
-                    displayName: gmailEmailLine.stripLabelPrefix(gmailLabelName),
-                }))
+            return Array.isArray(effectiveConfig.labelDefinitions) ? effectiveConfig.labelDefinitions : []
         }
     } catch (error) {
-        console.warn('[emailLine] configured label options read failed:', error?.message || error)
+        console.warn('[emailLine] configured label definitions read failed:', error?.message || error)
     }
     return []
+}
+
+// Returns every configured label as { gmailLabelName, displayName } — the FULL set the feedback UI
+// can move an email to, independent of which labels currently have inbox threads. `gmailLabelName`
+// is the real Gmail label name the server resolves the id from; `displayName` is what the UI shows.
+function buildLabelOptionsFromDefinitions(labelDefinitions = []) {
+    return labelDefinitions
+        .map(label => (typeof label.gmailLabelName === 'string' ? label.gmailLabelName.trim() : ''))
+        .filter(Boolean)
+        .map(gmailLabelName => ({
+            gmailLabelName,
+            displayName: gmailEmailLine.stripLabelPrefix(gmailLabelName),
+        }))
+}
+
+// Stamps each summary label with the Alldone project it maps to (default-mode project labels
+// carry a `sourceProjectId` in the config). Inbox and No-label are synthetic buckets with no
+// project; Ads and custom labels have no `sourceProjectId`, so they stay unmapped. The client
+// uses this to place a label's chip on its project's header line instead of All Projects.
+function attachLabelProjectIds(labels = [], labelDefinitions = [], connection = {}) {
+    if (connection.provider !== 'google' || !labelDefinitions.length) return labels
+    return labels.map(label => {
+        if (isInboxLabel(label) || isNoLabel(label)) return label
+        const matched = findDefinitionProjectForLabel(labelDefinitions, {
+            selectedLabelName: label.name || label.displayName,
+        })
+        return matched?.projectId ? { ...label, projectId: matched.projectId } : label
+    })
 }
 
 function normalizeLabelText(value = '') {
@@ -314,8 +337,10 @@ async function getEmailLineSummary(userId, projectId, options = {}) {
         throw error
     }
 
-    const labels = summary.labels || []
-    const configuredLabelOptions = await loadConfiguredLabelOptions(userId, userData, projectId, connection)
+    const rawLabels = summary.labels || []
+    const labelDefinitions = await loadConfiguredLabelDefinitions(userId, userData, projectId, connection)
+    const configuredLabelOptions = buildLabelOptionsFromDefinitions(labelDefinitions)
+    const labels = attachLabelProjectIds(rawLabels, labelDefinitions, connection)
     const inboxZero = labels.every(
         label => (Number.isFinite(label.threadCount) ? label.threadCount : label.unreadCount) === 0
     )

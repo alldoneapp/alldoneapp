@@ -21,14 +21,7 @@ export default function TitleContainer({
     leadingPriorityTag,
 }) {
     const gmailTag = isGmailLabelFollowUpTask(task) ? (
-        <GmailTag
-            gmailData={task.gmailData}
-            propStyles={localStyles.gmailTag}
-            showLabel
-            iconSize={12}
-            sourceProjectId={projectId}
-            sourceTaskId={task.id}
-        />
+        <GmailTag gmailData={task.gmailData} propStyles={localStyles.gmailTag} showLabel iconSize={12} />
     ) : null
 
     // In the by-time view the priority chip is rendered in the left time area
