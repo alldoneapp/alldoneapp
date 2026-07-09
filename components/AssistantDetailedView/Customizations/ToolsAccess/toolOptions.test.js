@@ -33,6 +33,14 @@ describe('assistant tool options', () => {
         expect(TOOL_LABEL_BY_KEY.find_calendar_availability).toBe('Find free Calendar times')
     })
 
+    test('includes chat comments in selectable assistant permissions', () => {
+        expect(TOOL_OPTIONS).toEqual(
+            expect.arrayContaining([{ key: 'add_chat_comment', labelKey: 'Add chat comment' }])
+        )
+        expect(TOOL_LABEL_BY_KEY.add_chat_comment).toBe('Add chat comment')
+        expect(DEFAULT_ALLOWED_TOOLS).toContain('add_chat_comment')
+    })
+
     test('keeps get_updates stable during normalization', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })

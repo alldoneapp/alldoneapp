@@ -82,6 +82,17 @@ Located in `functions/`. Uses Firebase Functions v2 syntax:
 
 Always consider i18n. Translations in `i18n/translations/` (en.json, de.json, es.json). Use TranslationService for new strings.
 
+### Assistant Tool Checklist
+
+When adding a new assistant tool, wire every layer, not just the backend schema:
+
+-   Define the schema in `functions/Assistant/toolSchemas.js` and add/adjust `functions/Assistant/toolSchemas.test.js`.
+-   Implement native execution in `functions/Assistant/assistantHelper.js`, including permission/runtime-context checks, conversation-safe results, and focused tests in `functions/Assistant/assistantHelper.test.js`.
+-   Add the tool to the assistant settings UI in `components/AssistantDetailedView/Customizations/ToolsAccess/toolOptions.js` so it can be enabled per assistant. Decide deliberately whether it belongs in `DEFAULT_ALLOWED_TOOLS` or `OPT_IN_ONLY_TOOLS`, then cover that in `toolOptions.test.js`.
+-   Add local strings for the tool label in `i18n/translations/en.json`, `de.json`, and `es.json`.
+-   Check channel-specific allowlists before assuming the tool is available everywhere. Gmail labeling follow-up uses the normal assistant `allowedTools`, while email replies and realtime/WhatsApp flows may have separate safe-tool filters or schema adapters.
+-   If prompts mention the tool, ensure the responsible assistant can actually enable it in Tools Access; otherwise the prompt can ask for an action the runtime will block.
+
 ### Modals and Popups
 
 Handle event propagation carefully. Set proper z-index and container `<div>` elements.
