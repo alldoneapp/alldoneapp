@@ -22,6 +22,7 @@ export default function AllProjectsEmailLabelChips() {
                     group={group}
                     labelOptionsByConnectionId={labelOptionsByConnectionId}
                     labelingDisabledByConnectionId={labelingDisabledByConnectionId}
+                    compact
                     style={localStyles.chip}
                 />
             ))}

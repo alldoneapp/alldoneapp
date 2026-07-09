@@ -12,7 +12,13 @@ const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 // A single merged label/folder pill with its inbox thread count summed across all
 // accounts carrying that label. Bold name hints at unread mail. Tapping it opens a
 // modal listing the matching inbox emails of every account, grouped by account.
-export default function EmailLabelChip({ group, labelOptionsByConnectionId, labelingDisabledByConnectionId, style }) {
+export default function EmailLabelChip({
+    group,
+    labelOptionsByConnectionId,
+    labelingDisabledByConnectionId,
+    style,
+    compact = false,
+}) {
     const [isOpen, setIsOpen] = useState(false)
     const smallScreen = useSelector(state => state.smallScreen)
     if (!group) return null
@@ -20,7 +26,7 @@ export default function EmailLabelChip({ group, labelOptionsByConnectionId, labe
 
     const trigger = (
         <TouchableOpacity
-            style={[localStyles.chip, style]}
+            style={[localStyles.chip, compact && localStyles.chipCompact, style]}
             onPress={() => setIsOpen(true)}
             accessibilityLabel={`${group.displayName}: ${group.threadCount}`}
         >
@@ -31,7 +37,7 @@ export default function EmailLabelChip({ group, labelOptionsByConnectionId, labe
                 <ActivityIndicator size="small" color={colors.Primary100} style={localStyles.sweepSpinner} />
             ) : (
                 group.threadCount > 0 && (
-                    <View style={localStyles.badge}>
+                    <View style={[localStyles.badge, compact && localStyles.badgeCompact]}>
                         <Text style={[styles.caption2, localStyles.badgeText]}>{group.threadCount}</Text>
                     </View>
                 )
@@ -82,6 +88,12 @@ const localStyles = StyleSheet.create({
         marginRight: 8,
         marginBottom: 8,
     },
+    chipCompact: {
+        maxWidth: 140,
+        paddingLeft: 6,
+        paddingRight: 4,
+        borderColor: colors.Text03,
+    },
     name: {
         color: colors.Text03,
         flexShrink: 1,
@@ -98,6 +110,13 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Grey300,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    badgeCompact: {
+        minWidth: 16,
+        height: 16,
+        paddingHorizontal: 4,
+        borderRadius: 8,
+        marginLeft: 4,
     },
     badgeText: {
         color: colors.Text02,

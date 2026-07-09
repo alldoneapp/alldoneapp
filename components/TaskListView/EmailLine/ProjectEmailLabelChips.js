@@ -24,6 +24,7 @@ export default function ProjectEmailLabelChips({ projectId }) {
                     group={group}
                     labelOptionsByConnectionId={labelOptionsByConnectionId}
                     labelingDisabledByConnectionId={labelingDisabledByConnectionId}
+                    compact
                     style={localStyles.chip}
                 />
             ))}
@@ -33,13 +34,18 @@ export default function ProjectEmailLabelChips({ projectId }) {
 
 const localStyles = StyleSheet.create({
     row: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        flexShrink: 0,
-    },
-    // Single-line header row: drop the wrap margin and space the chip off the project name.
-    chip: {
+        justifyContent: 'flex-end',
+        flexShrink: 1,
+        minWidth: 0,
         marginLeft: 8,
+        marginRight: 8,
+    },
+    // Single-line header row: drop the wrap margin so the pill matches the other header tags.
+    chip: {
+        marginLeft: 0,
         marginRight: 0,
         marginBottom: 0,
     },

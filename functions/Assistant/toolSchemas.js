@@ -388,7 +388,7 @@ const toolSchemas = {
                     chatTitle: {
                         type: 'string',
                         description:
-                            'Topic title to find or create, for example "Daily email management 10.07.2027". Required unless chatId is provided.',
+                            'Topic title to find or create, for example "Daily emails Project Alpha 10.07.2027". Required unless chatId is provided.',
                     },
                     chatId: {
                         type: 'string',

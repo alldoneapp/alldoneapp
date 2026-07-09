@@ -433,6 +433,15 @@ describe('assistant attachment handoff helpers', () => {
         )
         expect(mockDocSet).toHaveBeenCalledWith(
             expect.objectContaining({
+                chatId: result.chatId,
+                chatType: 'topics',
+                followed: true,
+                creatorId: 'assistant-1',
+                creatorType: 'assistant',
+            })
+        )
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
                 usersFollowing: { __op: 'arrayUnion', values: ['user-1'] },
             }),
             { merge: true }

@@ -3578,6 +3578,14 @@ async function addChatCommentFromAssistantTool({
 
     await Promise.all([
         commentRef.set(commentData),
+        db.doc(`chatNotifications/${projectId}/${userId}/${commentId}`).set({
+            chatId: resolved.chatId,
+            chatType: 'topics',
+            followed: true,
+            date: now,
+            creatorId: assistantId,
+            creatorType: 'assistant',
+        }),
         db.doc(`chatObjects/${projectId}/chats/${resolved.chatId}`).set(
             {
                 lastEditionDate: now,

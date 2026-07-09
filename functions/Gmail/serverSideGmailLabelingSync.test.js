@@ -237,6 +237,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
         const prompt = buildDefaultProjectFollowUpPrompt('Alldone Product')
 
         expect(prompt).toContain('project Alldone Product')
+        expect(prompt).toContain('topic chat "Daily emails Alldone Product [today')
         expect(prompt).toContain('actual task for the user')
         expect(prompt).toContain('only interesting, informational')
         expect(prompt).toContain('hello@cal.com')
