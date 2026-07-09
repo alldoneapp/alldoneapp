@@ -157,34 +157,39 @@ export default function EmailRow({
     )
 
     const content = (
-        <TouchableOpacity
-            style={[localStyles.content, pending && localStyles.dimmed]}
-            onPress={pending ? undefined : () => onToggleSelect && onToggleSelect(row)}
-            activeOpacity={pending ? 1 : 0.7}
-            disabled={pending}
-        >
-            <View style={localStyles.topLine}>
-                {row.isUnread && <View style={localStyles.unreadDot} />}
-                <Text
-                    style={[styles.subtitle2, localStyles.sender, !row.isUnread && localStyles.readText]}
-                    numberOfLines={1}
-                >
-                    {parseSenderName(row.from) || translate('Unknown sender')}
+        <View style={[localStyles.content, pending && localStyles.dimmed]}>
+            <TouchableOpacity
+                style={localStyles.infoBlock}
+                onPress={pending ? undefined : () => onOpen && onOpen(row)}
+                activeOpacity={pending ? 1 : 0.7}
+                disabled={pending}
+                accessibilityLabel={translate('Open')}
+            >
+                <View style={localStyles.topLine}>
+                    {row.isUnread && <View style={localStyles.unreadDot} />}
+                    <Text
+                        style={[styles.subtitle2, localStyles.sender, !row.isUnread && localStyles.readText]}
+                        numberOfLines={1}
+                    >
+                        {parseSenderName(row.from) || translate('Unknown sender')}
+                    </Text>
+                    {row.needsReply && (
+                        <View style={localStyles.needsReplyTag}>
+                            <Text style={[styles.caption2, localStyles.needsReplyTagText]}>
+                                {translate('Needs reply')}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+                <Text style={[styles.body2, localStyles.subject]} numberOfLines={1}>
+                    {row.subject || translate('No subject')}
                 </Text>
-                {row.needsReply && (
-                    <View style={localStyles.needsReplyTag}>
-                        <Text style={[styles.caption2, localStyles.needsReplyTagText]}>{translate('Needs reply')}</Text>
-                    </View>
+                {!!row.snippet && (
+                    <Text style={[styles.caption1, localStyles.snippet]} numberOfLines={1}>
+                        {row.snippet}
+                    </Text>
                 )}
-            </View>
-            <Text style={[styles.body2, localStyles.subject]} numberOfLines={1}>
-                {row.subject || translate('No subject')}
-            </Text>
-            {!!row.snippet && (
-                <Text style={[styles.caption1, localStyles.snippet]} numberOfLines={1}>
-                    {row.snippet}
-                </Text>
-            )}
+            </TouchableOpacity>
             {reasoningOpen && (
                 <View style={localStyles.reasoningBox}>
                     {!!row.labelName && (
@@ -348,7 +353,7 @@ export default function EmailRow({
                     <Text style={[styles.caption2, localStyles.unsubscribeText]}>{translate('Unsubscribe')}</Text>
                 </TouchableOpacity>
             )}
-        </TouchableOpacity>
+        </View>
     )
 
     const actions = (
@@ -474,6 +479,11 @@ const localStyles = StyleSheet.create({
     content: {
         flex: 1,
         paddingRight: 8,
+    },
+    // The sender/subject/snippet block is the tap target that opens the email; kept separate
+    // from the reasoning/feedback area below so only this part opens a new tab.
+    infoBlock: {
+        alignSelf: 'stretch',
     },
     topLine: {
         flexDirection: 'row',

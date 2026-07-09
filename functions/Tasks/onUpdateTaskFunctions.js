@@ -1,7 +1,6 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
 const { isEqual } = require('lodash')
-const { google } = require('googleapis')
 
 const { updateGoalDynamicProgress, updateGoalEditionData } = require('../Goals/goalsFirestore')
 const { TASKS_OBJECTS_TYPE, updateRecord, createRecord, deleteRecord } = require('../AlgoliaGlobalSearchHelper')
@@ -13,11 +12,9 @@ const { getActiveTaskRoundedStartAndEndDates } = require('../MyDay/myDayHelperCl
 const { createRecurringTaskInCloudFunction } = require('./recurringTasksCloud')
 const { createTaskSomedaySelectedFeed } = require('../Feeds/tasksFeeds')
 const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
-const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { earnGold } = require('../Gold/goldHelper')
 const { captureTaskPriorityTaskUpdateFeedback } = require('../Assistant/taskPriorityLearning')
 
-const GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN = 'gmail_label_follow_up'
 const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
 
 const getRewardGoldAmount = (maxGold, rewardKey) => {
@@ -112,101 +109,6 @@ const buildTaskProgressReward = (taskId, oldTask = {}, newTask = {}) => {
     })
 
     return reward
-}
-
-const isGmailTaskWithArchiveOnComplete = (gmailData = null) => {
-    return (
-        gmailData &&
-        gmailData.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN &&
-        typeof gmailData.messageId === 'string' &&
-        gmailData.messageId.trim() !== '' &&
-        gmailData.archiveOnComplete === true
-    )
-}
-
-async function getGmailClient(userId, projectId) {
-    const accessToken = await getAccessToken(userId, projectId, 'gmail')
-    const oauth2Client = getOAuth2Client()
-    oauth2Client.setCredentials({ access_token: accessToken })
-    return google.gmail({ version: 'v1', auth: oauth2Client })
-}
-
-async function updateTaskGmailArchiveStatus(projectId, taskId, gmailData, archiveStatus) {
-    await admin
-        .firestore()
-        .doc(`items/${projectId}/tasks/${taskId}`)
-        .update({
-            gmailData: {
-                ...gmailData,
-                archiveStatus,
-            },
-        })
-}
-
-const shouldArchiveGmailTask = (oldTask, newTask) => {
-    const completedNow = !oldTask.done && newTask.done
-    const postponedNow =
-        typeof oldTask.dueDate === 'number' && typeof newTask.dueDate === 'number' && newTask.dueDate > oldTask.dueDate
-
-    return completedNow || postponedNow
-}
-
-async function archiveGmailTaskIfNeeded(projectId, taskId, oldTask, newTask) {
-    if (!shouldArchiveGmailTask(oldTask, newTask)) return
-
-    const gmailData = newTask.gmailData || null
-    if (!isGmailTaskWithArchiveOnComplete(gmailData)) return
-    if (gmailData.archiveStatus?.state === 'completed') return
-
-    const archiveStatusBase = {
-        attemptedAt: Date.now(),
-        messageId: gmailData.messageId,
-    }
-
-    try {
-        const gmail = await getGmailClient(newTask.userId, gmailData.projectId || projectId)
-        // Archive the message's whole THREAD (threads.modify), like Gmail's own archive
-        // button. Message-level INBOX removal leaves the thread in the inbox when a
-        // sibling message still carries INBOX, and is a permanent no-op on a ghost inbox
-        // thread whose messages carry no INBOX at all (see archiveThreads in
-        // functions/Email/emailLine/gmailEmailLine.js).
-        const detail = await gmail.users.messages.get({
-            userId: 'me',
-            id: gmailData.messageId,
-            format: 'minimal',
-        })
-        const threadId = detail?.data?.threadId
-        if (threadId) {
-            await gmail.users.threads.modify({
-                userId: 'me',
-                id: threadId,
-                requestBody: {
-                    removeLabelIds: ['INBOX'],
-                },
-            })
-        } else {
-            await gmail.users.messages.modify({
-                userId: 'me',
-                id: gmailData.messageId,
-                requestBody: {
-                    removeLabelIds: ['INBOX'],
-                },
-            })
-        }
-
-        await updateTaskGmailArchiveStatus(projectId, taskId, gmailData, {
-            ...archiveStatusBase,
-            state: 'completed',
-            completedAt: Date.now(),
-            error: '',
-        })
-    } catch (error) {
-        await updateTaskGmailArchiveStatus(projectId, taskId, gmailData, {
-            ...archiveStatusBase,
-            state: 'failed',
-            error: error.message || 'Failed to archive Gmail message.',
-        })
-    }
 }
 
 const awardGoldForTaskProgress = async (projectId, taskId, oldTask, newTask) => {
@@ -432,7 +334,6 @@ const onUpdateTask = async (taskId, projectId, change) => {
         promises.push(clearUserTaskInFocusIfMatch(oldTask.userId, taskId))
     }
     promises.push(syncLinkedNoteTitle(projectId, oldTask, newTask))
-    promises.push(archiveGmailTaskIfNeeded(projectId, taskId, oldTask, newTask))
     promises.push(awardGoldForTaskProgress(projectId, taskId, oldTask, newTask))
     promises.push(captureTaskPriorityFeedbackSafely(projectId, taskId, oldTask, newTask))
 
@@ -507,9 +408,6 @@ const onUpdateTask = async (taskId, projectId, change) => {
 }
 
 module.exports = {
-    archiveGmailTaskIfNeeded,
     buildTaskProgressReward,
-    isGmailTaskWithArchiveOnComplete,
     onUpdateTask,
-    shouldArchiveGmailTask,
 }

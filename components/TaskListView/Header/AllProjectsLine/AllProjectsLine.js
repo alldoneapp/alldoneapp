@@ -75,8 +75,10 @@ const localStyles = StyleSheet.create({
         maxHeight: 24,
     },
     rightContainer: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
+        minWidth: 0,
     },
     avatar: {
         marginRight: 10,

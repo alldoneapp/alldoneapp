@@ -1,6 +1,8 @@
 const mockDocs = new Map()
 // In-memory stand-in for the labeling audit subcollection (messageId -> audit data).
 const mockAuditDocs = new Map()
+// In-memory stand-in for the tasks collection: `items/{projectId}/tasks` path -> [{ id, data }].
+const mockTaskDocs = new Map()
 jest.mock('firebase-admin', () => ({
     firestore: () => ({
         doc: path => ({
@@ -23,6 +25,18 @@ jest.mock('firebase-admin', () => ({
                     data: () => data,
                 }
             }),
+        collection: path => ({
+            where: (field, op, values) => ({
+                get: async () => {
+                    const entries = mockTaskDocs.get(path) || []
+                    const matches = entries.filter(entry => {
+                        const value = field.split('.').reduce((acc, key) => (acc == null ? acc : acc[key]), entry.data)
+                        return op === 'in' ? Array.isArray(values) && values.includes(value) : value === values
+                    })
+                    return { forEach: cb => matches.forEach(entry => cb({ id: entry.id, data: () => entry.data })) }
+                },
+            }),
+        }),
     }),
 }))
 
@@ -160,6 +174,7 @@ describe('emailLineService', () => {
         jest.clearAllMocks()
         mockDocs.clear()
         mockAuditDocs.clear()
+        mockTaskDocs.clear()
         gmailEmailLine.getUnreadInboxMessageIds.mockResolvedValue([])
         mockAddProjectRoutingReasonComment.mockResolvedValue(null)
         mockGetDefaultAssistantIdForProject.mockResolvedValue('assistant-1')
@@ -751,12 +766,53 @@ describe('emailLineService', () => {
         expect(first.labelName).toBe('Alldone/Newsletter')
         expect(first.reasoning).toBe('Weekly digest the user subscribed to.')
         expect(first.confidence).toBe(0.92)
-        expect(first.taskCreated).toEqual(expect.objectContaining({ taskId: 't9', projectId: 'p9' }))
+        // Live tasks are authoritative for the indicator: a stale audit `taskCreated`
+        // stamp with no matching task in the collection is ignored (self-heals on delete).
+        expect(first.taskCreated).toBeNull()
         const second = result.messages.find(m => m.messageId === 'm2')
         expect(second.needsReply).toBe(false)
         expect(second.hasAudit).toBe(false)
         expect(second.reasoning).toBe('')
         expect(second.taskCreated).toBeNull()
+    })
+
+    test('listEmailLineMessages marks a row from a live task (matched on any thread message id)', async () => {
+        // Task lives in the connection's project, keyed on a non-primary thread message id.
+        mockTaskDocs.set('items/p1/tasks', [
+            {
+                id: 'task-live',
+                data: { name: 'Reply to the digest', gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' } },
+            },
+        ])
+        gmailEmailLine.listMessagesForLabel.mockResolvedValue({
+            messages: [{ messageId: 'm_visible', messageIds: ['m_visible', 'm1'], subject: 'Q?' }],
+            nextPageToken: null,
+        })
+
+        const result = await listEmailLineMessages('u', 'p1', 'INBOX', { userData: googleUserData })
+
+        expect(result.messages[0].taskCreated).toEqual({
+            taskId: 'task-live',
+            projectId: 'p1',
+            taskName: 'Reply to the digest',
+        })
+    })
+
+    test('listEmailLineMessages ignores a live task from a different email account', async () => {
+        mockTaskDocs.set('items/p1/tasks', [
+            {
+                id: 'task-other',
+                data: { name: 'Other inbox', gmailData: { messageId: 'm1', gmailEmail: 'other@gmail.com' } },
+            },
+        ])
+        gmailEmailLine.listMessagesForLabel.mockResolvedValue({
+            messages: [{ messageId: 'm_visible', messageIds: ['m_visible', 'm1'], subject: 'Q?' }],
+            nextPageToken: null,
+        })
+
+        const result = await listEmailLineMessages('u', 'p1', 'INBOX', { userData: googleUserData })
+
+        expect(result.messages[0].taskCreated).toBeNull()
     })
 
     test('listEmailLineMessages reads legacy project-keyed audit for connection-keyed email line', async () => {

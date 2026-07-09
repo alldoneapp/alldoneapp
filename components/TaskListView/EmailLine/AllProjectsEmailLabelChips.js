@@ -32,9 +32,12 @@ export default function AllProjectsEmailLabelChips() {
 
 const localStyles = StyleSheet.create({
     row: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        flexShrink: 0,
+        justifyContent: 'flex-end',
+        flexShrink: 1,
+        minWidth: 0,
     },
     chip: {
         marginLeft: 8,

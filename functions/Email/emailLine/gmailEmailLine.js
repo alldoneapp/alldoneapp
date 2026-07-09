@@ -53,8 +53,20 @@ const EXCLUDED_SYSTEM_LABEL_IDS = new Set([
     'CATEGORY_FORUMS',
 ])
 
-// Cap how many labels we fan out inbox-unread count queries for, to keep the summary cheap.
-const MAX_LABELS_TO_INSPECT = 25
+// Cap how many labels we fan out inbox count queries for. The eligible labels are sorted
+// INBOX → Alldone/* → alphabetical and then truncated to this many, so the cap must comfortably
+// exceed a realistic mailbox's label count — otherwise a label past the cut (e.g. one starting
+// with "P") gets no thread count and therefore no chip at all, even with mail sitting in the
+// inbox. Accounts that sync IMAP/Superhuman/Apple-Mail pseudo-folders as Gmail user labels can
+// easily carry 30–40 labels, so 25 silently dropped real ones. Raising the ceiling is bounded by
+// LABEL_DETAIL_CONCURRENCY below, which throttles the per-label fan-out so a label-heavy mailbox
+// can't burst enough threads.list/messages.list calls at once to trip Gmail's per-user rate limit.
+const MAX_LABELS_TO_INSPECT = 60
+// Per-label detail lookups (countInboxThreads + countInboxUnread ≈ 15 Gmail quota units each) run
+// in waves of this size rather than all at once. With the ceiling above a mailbox could otherwise
+// fire ~60 label lookups concurrently (~900 units) and hit Gmail's ~250 unit/user/sec limit; a
+// small wave keeps the instantaneous burst well under that while still counting labels in parallel.
+const LABEL_DETAIL_CONCURRENCY = 8
 const ALLDONE_LABEL_PREFIX = 'Alldone/'
 
 async function getGmailClient(userId, projectId) {
@@ -254,26 +266,34 @@ async function getGmailLabelSummary(userId, projectId) {
     // so labels whose only inbox presence is via a non-inbox (sent) message still count.
     const inboxThreadIds = await collectInboxThreadIds(gmail)
 
-    const detailed = await Promise.all(
-        eligible.map(async label => {
-            try {
-                const [threadCount, unreadCount] = await Promise.all([
-                    countInboxThreads(gmail, label.id, inboxThreadIds),
-                    countInboxUnread(gmail, label.id),
-                ])
-                return {
-                    labelId: label.id,
-                    name: label.name || label.id,
-                    displayName: label.id === 'INBOX' ? 'Inbox' : stripLabelPrefix(label.name),
-                    threadCount,
-                    unreadCount,
-                    kind: label.id === 'INBOX' ? 'inbox' : 'user',
+    // Fan out per-label counts in bounded waves (see LABEL_DETAIL_CONCURRENCY) so a mailbox with
+    // many labels doesn't burst dozens of Gmail list calls at once and trip the per-user rate
+    // limit. chunk() preserves order, and Promise.all preserves order within each wave, so the
+    // resulting array stays in the sorted eligible order.
+    const detailed = []
+    for (const labelWave of chunk(eligible, LABEL_DETAIL_CONCURRENCY)) {
+        const waveResults = await Promise.all(
+            labelWave.map(async label => {
+                try {
+                    const [threadCount, unreadCount] = await Promise.all([
+                        countInboxThreads(gmail, label.id, inboxThreadIds),
+                        countInboxUnread(gmail, label.id),
+                    ])
+                    return {
+                        labelId: label.id,
+                        name: label.name || label.id,
+                        displayName: label.id === 'INBOX' ? 'Inbox' : stripLabelPrefix(label.name),
+                        threadCount,
+                        unreadCount,
+                        kind: label.id === 'INBOX' ? 'inbox' : 'user',
+                    }
+                } catch (error) {
+                    return null
                 }
-            } catch (error) {
-                return null
-            }
-        })
-    )
+            })
+        )
+        detailed.push(...waveResults)
+    }
     // No-label = inbox threads minus the has:userlabels set (see buildNoLabelSummary),
     // resolved at the thread level independently of the top-N labels inspected above.
     const noLabel = await buildNoLabelSummary(gmail, inboxThreadIds)

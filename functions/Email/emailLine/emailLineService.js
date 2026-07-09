@@ -175,6 +175,84 @@ async function loadAuditEntriesByMessageId(userId, projectIds, messageIds = []) 
     }
 }
 
+// Firestore `in` accepts at most 30 values per query.
+const TASK_MESSAGE_ID_QUERY_CHUNK = 30
+
+function chunkArray(items = [], size = TASK_MESSAGE_ID_QUERY_CHUNK) {
+    const chunks = []
+    for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
+    return chunks
+}
+
+// Authoritatively reconcile emails against the tasks collection so the modal shows
+// whether a task already exists for each email — even across close/reopen. Both the
+// labeling follow-up flow and the "＋ create task" button stamp `gmailData.messageId`
+// on the created task, so a query by that field is the source of truth: it finds open
+// AND done tasks (a completed task's doc stays in `items/{projectId}/tasks`) and misses
+// deleted tasks (they are hard-deleted), so the indicator self-heals when a task is
+// removed. Scoped to the projects an email-derived task can land in — the connection's
+// project plus any label-mapped project seen on the audit records — so it relies only on
+// Firestore's automatic single-field index (no new composite/collection-group index).
+// Returns a { [messageId]: { taskId, projectId, taskName } } map, or `null` if the
+// reconcile failed (so the caller can fall back to the audit stamp instead of hiding a
+// real task).
+async function loadTasksByMessageId(userId, connection, userData, projectId, messageIds = [], auditById = {}) {
+    if (!messageIds.length) return {}
+
+    const memberProjectIds = Array.isArray(userData?.projectIds) ? userData.projectIds : []
+    const candidateProjectSet = new Set()
+    const connectionProjectId = resolveConnectionProjectId(userData, projectId)
+    if (connectionProjectId) candidateProjectSet.add(connectionProjectId)
+    Object.values(auditById).forEach(audit => {
+        const selectedProjectId = typeof audit?.selectedProjectId === 'string' ? audit.selectedProjectId.trim() : ''
+        if (selectedProjectId) candidateProjectSet.add(selectedProjectId)
+        const stampedProjectId =
+            typeof audit?.taskCreated?.projectId === 'string' ? audit.taskCreated.projectId.trim() : ''
+        if (stampedProjectId) candidateProjectSet.add(stampedProjectId)
+    })
+    // An email-derived task always lands in a project the user belongs to; only read those.
+    const candidateProjects = [...candidateProjectSet].filter(
+        candidate => !memberProjectIds.length || memberProjectIds.includes(candidate)
+    )
+    if (!candidateProjects.length) return {}
+
+    const connectionEmail = String(connection?.emailAddress || '')
+        .trim()
+        .toLowerCase()
+    const byMessageId = {}
+    try {
+        const db = admin.firestore()
+        for (const candidateProjectId of candidateProjects) {
+            for (const chunk of chunkArray(messageIds)) {
+                const snapshot = await db
+                    .collection(`items/${candidateProjectId}/tasks`)
+                    .where('gmailData.messageId', 'in', chunk)
+                    .get()
+                snapshot.forEach(doc => {
+                    const task = doc.data() || {}
+                    const taskMessageId = task?.gmailData?.messageId
+                    if (!taskMessageId || byMessageId[taskMessageId]) return
+                    // A Gmail message id is unique per account; guard against an unrelated
+                    // task in a shared project by matching the connection's account email.
+                    const taskEmail = String(task?.gmailData?.gmailEmail || '')
+                        .trim()
+                        .toLowerCase()
+                    if (connectionEmail && taskEmail && taskEmail !== connectionEmail) return
+                    byMessageId[taskMessageId] = {
+                        taskId: doc.id,
+                        projectId: candidateProjectId,
+                        taskName: task?.name || '',
+                    }
+                })
+            }
+        }
+        return byMessageId
+    } catch (error) {
+        console.warn('[emailLine] task reconcile failed:', error?.message || error)
+        return null
+    }
+}
+
 // The effective labeling label definitions for this connection (default- or custom-mode).
 // Each definition carries `gmailLabelName` and, for default-mode project labels, a
 // `sourceProjectId` that ties the label to an Alldone project — used both for the feedback
@@ -492,12 +570,30 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
         ]
         const auditLookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
         const auditById = await loadAuditEntriesByMessageId(userId, auditLookupKeys, auditLookupIds)
+        // Live tasks are the source of truth for the "task created" indicator. `null` means
+        // the reconcile failed — fall back to the audit stamp rather than hide a real task.
+        const taskByMessageId = await loadTasksByMessageId(
+            userId,
+            connection,
+            userData,
+            projectId,
+            auditLookupIds,
+            auditById
+        )
+        const reconcileFailed = taskByMessageId === null
         const messages = rows.map(message => {
             const auditMessageId =
                 (message.messageId && auditById[message.messageId] && message.messageId) ||
                 (Array.isArray(message.messageIds) ? message.messageIds.find(id => auditById[id]) : '') ||
                 ''
             const audit = auditById[auditMessageId]
+            const rowMessageIds = [
+                message.messageId,
+                ...(Array.isArray(message.messageIds) ? message.messageIds : []),
+            ].filter(Boolean)
+            const taskCreated = reconcileFailed
+                ? audit?.taskCreated || null
+                : rowMessageIds.map(id => taskByMessageId[id]).find(Boolean) || null
             return {
                 ...message,
                 auditMessageId,
@@ -507,7 +603,7 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
                 labelName: audit?.selectedGmailLabelName || null,
                 reasoning: audit?.reasoning || '',
                 confidence: Number.isFinite(audit?.confidence) ? audit.confidence : null,
-                taskCreated: audit?.taskCreated || null,
+                taskCreated,
             }
         })
         return { messages, nextPageToken: result?.nextPageToken || null }

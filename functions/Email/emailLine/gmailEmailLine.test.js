@@ -170,6 +170,73 @@ describe('gmailEmailLine', () => {
         expect(mockThreadsList).not.toHaveBeenCalledWith(expect.objectContaining({ q: 'has:nouserlabels' }))
     })
 
+    test('inspects labels past the old 25-cap so an alphabetically-late label still gets a chip', async () => {
+        // Regression: MAX_LABELS_TO_INSPECT truncates the sorted eligible labels, so a label that
+        // sorts past the cut got no thread count and therefore no chip — even with inbox mail.
+        // 30 filler labels sort before "Privat" (all start with 'a'), putting it at position ~32
+        // (INBOX + 30 fillers + Privat) — past the old cap of 25 but within the raised ceiling.
+        const fillers = Array.from({ length: 30 }, (_, i) => ({
+            id: `Label_fill_${String(i).padStart(2, '0')}`,
+            name: `aaa ${String(i).padStart(2, '0')}`,
+            type: 'user',
+        }))
+        mockLabelsList.mockResolvedValue({
+            data: {
+                labels: [
+                    { id: 'INBOX', name: 'INBOX', type: 'system' },
+                    ...fillers,
+                    { id: 'Label_privat', name: 'Privat', type: 'user' },
+                ],
+            },
+        })
+        mockMessagesList.mockResolvedValue({ data: { messages: [] } })
+        // t_a is unlabeled; t_b carries Privat. Only Privat (and INBOX) have inbox threads.
+        mockThreadsList.mockImplementation(async ({ labelIds = [], q }) => {
+            if (q === 'has:userlabels') return { data: { threads: makeThreadRefs(['t_b']) } }
+            const primary = labelIds[0]
+            if (primary === 'INBOX') return { data: { threads: makeThreadRefs(['t_a', 't_b']) } }
+            if (primary === 'Label_privat') return { data: { threads: makeThreadRefs(['t_b']) } }
+            return { data: { threads: [] } }
+        })
+
+        const summary = await getGmailLabelSummary('user1', 'proj1')
+        const privat = summary.labels.find(label => label.labelId === 'Label_privat')
+        expect(privat).toEqual(expect.objectContaining({ displayName: 'Privat', threadCount: 1, kind: 'user' }))
+    })
+
+    test('still truncates at MAX_LABELS_TO_INSPECT: a label past the ceiling gets no chip', async () => {
+        // The cap still exists — this locks the throttle-bounded ceiling. 65 fillers sort before
+        // "Privat" (position ~67 with INBOX), past MAX_LABELS_TO_INSPECT (60), so it is never
+        // inspected and never surfaced even though it carries an inbox thread.
+        const fillers = Array.from({ length: 65 }, (_, i) => ({
+            id: `Label_fill_${String(i).padStart(2, '0')}`,
+            name: `aaa ${String(i).padStart(2, '0')}`,
+            type: 'user',
+        }))
+        mockLabelsList.mockResolvedValue({
+            data: {
+                labels: [
+                    { id: 'INBOX', name: 'INBOX', type: 'system' },
+                    ...fillers,
+                    { id: 'Label_privat', name: 'Privat', type: 'user' },
+                ],
+            },
+        })
+        mockMessagesList.mockResolvedValue({ data: { messages: [] } })
+        mockThreadsList.mockImplementation(async ({ labelIds = [], q }) => {
+            if (q === 'has:userlabels') return { data: { threads: makeThreadRefs(['t_b']) } }
+            const primary = labelIds[0]
+            if (primary === 'INBOX') return { data: { threads: makeThreadRefs(['t_a', 't_b']) } }
+            if (primary === 'Label_privat') return { data: { threads: makeThreadRefs(['t_b']) } }
+            return { data: { threads: [] } }
+        })
+
+        const summary = await getGmailLabelSummary('user1', 'proj1')
+        expect(summary.labels.find(label => label.labelId === 'Label_privat')).toBeUndefined()
+        // Never even queried for its threads — it was truncated before the count fan-out.
+        expect(mockThreadsList).not.toHaveBeenCalledWith(expect.objectContaining({ labelIds: ['Label_privat'] }))
+    })
+
     test('listMessagesForLabel returns inbox∩label threads (incl. label on a non-inbox message) and parses headers', async () => {
         // t1 carries the label on a sent (non-inbox) message but is still in the inbox via
         // a sibling → it must surface. t_archived has the label but is not in the inbox →

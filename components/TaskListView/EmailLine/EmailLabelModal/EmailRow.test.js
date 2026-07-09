@@ -42,6 +42,54 @@ const findByLabel = (tree, label) =>
 describe('EmailRow', () => {
     beforeEach(() => jest.clearAllMocks())
 
+    it('opens the email in a new tab on body tap without selecting it', () => {
+        const row = { messageId: 'm1', from: 'a@ex.com', subject: 'Hi', snippet: 'Hello there' }
+        const onOpen = jest.fn()
+        const onToggleSelect = jest.fn()
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <EmailRow
+                    row={row}
+                    connectionId="c1"
+                    selected={false}
+                    onOpen={onOpen}
+                    onToggleSelect={onToggleSelect}
+                />
+            )
+        })
+        // The body tap target is the touchable holding the subject; the external-link "Open"
+        // action button carries the same label but only wraps an icon.
+        const [body] = findByLabel(tree, 'Open').filter(
+            node => node.findAll(child => child.props.children === 'Hi').length > 0
+        )
+        act(() => body.props.onPress())
+        expect(onOpen).toHaveBeenCalledWith(row)
+        expect(onToggleSelect).not.toHaveBeenCalled()
+    })
+
+    it('selects the email only when the checkbox is tapped', () => {
+        const row = { messageId: 'm1', from: 'a@ex.com', subject: 'Hi' }
+        const onOpen = jest.fn()
+        const onToggleSelect = jest.fn()
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <EmailRow
+                    row={row}
+                    connectionId="c1"
+                    selected={false}
+                    onOpen={onOpen}
+                    onToggleSelect={onToggleSelect}
+                />
+            )
+        })
+        const [checkbox] = findByLabel(tree, 'Select')
+        act(() => checkbox.props.onPress())
+        expect(onToggleSelect).toHaveBeenCalledWith(row)
+        expect(onOpen).not.toHaveBeenCalled()
+    })
+
     it('opens the https unsubscribe link', () => {
         const row = {
             messageId: 'm1',

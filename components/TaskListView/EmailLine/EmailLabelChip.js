@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
 
 import styles, { colors } from '../../styles/global'
+import Icon from '../../Icon'
 import EmailLabelModal from './EmailLabelModal/EmailLabelModal'
 import { shouldIgnoreEmailLabelModalDismiss } from './emailLineHelper'
 
@@ -21,18 +22,34 @@ export default function EmailLabelChip({
 }) {
     const [isOpen, setIsOpen] = useState(false)
     const smallScreen = useSelector(state => state.smallScreen)
+    const mobile = useSelector(state => state.smallScreenNavigation)
     if (!group) return null
     const hasUnread = group.unreadCount > 0
+    // On the tight header lines (compact chips) mobile drops the label name and keeps just the
+    // mail icon + count. The full-width standalone Email line keeps its names so labels stay
+    // distinguishable.
+    const iconOnly = compact && mobile
 
     const trigger = (
         <TouchableOpacity
-            style={[localStyles.chip, compact && localStyles.chipCompact, style]}
+            style={[localStyles.chip, compact && localStyles.chipCompact, iconOnly && localStyles.chipIconOnly, style]}
             onPress={() => setIsOpen(true)}
             accessibilityLabel={`${group.displayName}: ${group.threadCount}`}
         >
-            <Text style={[styles.caption1, localStyles.name, hasUnread && localStyles.nameActive]} numberOfLines={1}>
-                {group.displayName}
-            </Text>
+            <Icon
+                name="mail"
+                size={13}
+                color={hasUnread ? colors.Text01 : colors.Text03}
+                style={[localStyles.mailIcon, iconOnly && localStyles.mailIconOnly]}
+            />
+            {!iconOnly && (
+                <Text
+                    style={[styles.caption1, localStyles.name, hasUnread && localStyles.nameActive]}
+                    numberOfLines={1}
+                >
+                    {group.displayName}
+                </Text>
+            )}
             {group.sweeping ? (
                 <ActivityIndicator size="small" color={colors.Primary100} style={localStyles.sweepSpinner} />
             ) : (
@@ -92,7 +109,20 @@ const localStyles = StyleSheet.create({
         maxWidth: 140,
         paddingLeft: 6,
         paddingRight: 4,
+        // Match the header "Add task" button: Text03 outline with no solid fill.
         borderColor: colors.Text03,
+        backgroundColor: 'transparent',
+    },
+    chipIconOnly: {
+        // No label text — just the mail icon + count, so the pill hugs its content.
+        maxWidth: undefined,
+    },
+    mailIcon: {
+        marginRight: 6,
+    },
+    mailIconOnly: {
+        // Label text is hidden, so the count badge follows the icon directly.
+        marginRight: 0,
     },
     name: {
         color: colors.Text03,
