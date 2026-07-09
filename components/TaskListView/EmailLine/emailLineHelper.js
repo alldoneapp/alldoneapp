@@ -85,24 +85,25 @@ export function mergeLabelsAcrossConnections(connections = [], summariesByKey = 
     })
 }
 
-// A merged group is worth a chip when it has inbox threads (or is mid-sweep with an
-// optimistically-zeroed count). The Inbox aggregate is excluded here — it belongs only to the
-// standalone Email line, not the per-project/all-projects header chips.
-function isChipWorthy(group) {
-    return !group.isInbox && (group.threadCount > 0 || group.sweeping)
+// A merged group has mail worth a chip when it currently holds inbox threads (or is mid-sweep
+// with an optimistically-zeroed count).
+function hasThreads(group) {
+    return group.threadCount > 0 || group.sweeping
 }
 
 // The label chips that belong to a specific project's header line: labels the server mapped to
-// this project via its labeling config (default-mode project labels).
+// this project via its labeling config (default-mode project labels). The Inbox aggregate is
+// never shown per project.
 export function getEmailLabelGroupsForProject(groups = [], projectId) {
     if (!projectId) return []
-    return groups.filter(group => isChipWorthy(group) && group.projectId === projectId)
+    return groups.filter(group => hasThreads(group) && !group.isInbox && group.projectId === projectId)
 }
 
-// The label chips that belong to the "All Projects" header line: everything not tied to a
-// project — Ads, No label, and any custom/unmapped label.
+// The label chips that belong to the "All Projects" header line: the Inbox aggregate plus every
+// label not tied to a project — Ads, No label, and any custom/unmapped label. Project-mapped
+// labels appear on their own project line instead.
 export function getUnassignedEmailLabelGroups(groups = []) {
-    return groups.filter(group => isChipWorthy(group) && !group.projectId)
+    return groups.filter(group => hasThreads(group) && !group.projectId)
 }
 
 // Per-connection maps the label modal needs: the full set of move-target labels and whether

@@ -5,9 +5,9 @@ import EmailLabelChip from './EmailLabelChip'
 import useEmailLabelGroups from './useEmailLabelGroups'
 import { getUnassignedEmailLabelGroups } from './emailLineHelper'
 
-// The email-label chips shown inline on the "All Projects" header line: every label not tied to
-// a project — Ads, No label, and any custom/unmapped label. Project-mapped labels appear on
-// their own project line instead. Renders nothing when there are no such labels.
+// The email-label chips shown inline on the "All Projects" header line: the Inbox aggregate plus
+// every label not tied to a project — Ads, No label, and any custom/unmapped label. Project-mapped
+// labels appear on their own project line instead. Renders nothing when there are no such labels.
 export default function AllProjectsEmailLabelChips() {
     const { groups, labelOptionsByConnectionId, labelingDisabledByConnectionId } = useEmailLabelGroups()
 

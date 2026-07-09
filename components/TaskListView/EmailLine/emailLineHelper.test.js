@@ -191,8 +191,8 @@ describe('emailLineHelper', () => {
             expect(getEmailLabelGroupsForProject(groups, undefined)).toEqual([])
         })
 
-        test('getUnassignedEmailLabelGroups returns Ads/No label but never Inbox or project labels', () => {
-            expect(getUnassignedEmailLabelGroups(groups).map(g => g.displayName)).toEqual(['Ads', 'No label'])
+        test('getUnassignedEmailLabelGroups returns Inbox + Ads/No label but never project labels', () => {
+            expect(getUnassignedEmailLabelGroups(groups).map(g => g.displayName)).toEqual(['Inbox', 'Ads', 'No label'])
         })
     })
 

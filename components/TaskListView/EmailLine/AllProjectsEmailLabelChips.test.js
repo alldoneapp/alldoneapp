@@ -41,7 +41,7 @@ const render = groups => {
 const chipLabels = tree => tree.root.findAllByType(Text).map(node => node.props.children)
 
 describe('AllProjectsEmailLabelChips', () => {
-    test('renders only unassigned chip-worthy labels, never Inbox or project labels', () => {
+    test('renders the Inbox aggregate + unassigned labels, never project labels', () => {
         const tree = render([
             { key: 'inbox', displayName: 'Inbox', isInbox: true, projectId: null, threadCount: 9, sweeping: false },
             {
@@ -55,12 +55,12 @@ describe('AllProjectsEmailLabelChips', () => {
             { key: 'ads', displayName: 'Ads', isInbox: false, projectId: null, threadCount: 2, sweeping: false },
             { key: 'no', displayName: 'No label', isInbox: false, projectId: null, threadCount: 4, sweeping: false },
         ])
-        expect(chipLabels(tree)).toEqual(['Ads', 'No label'])
+        expect(chipLabels(tree)).toEqual(['Inbox', 'Ads', 'No label'])
     })
 
-    test('renders nothing when every label maps to a project', () => {
+    test('renders nothing at inbox zero when every label maps to a project', () => {
         const tree = render([
-            { key: 'inbox', displayName: 'Inbox', isInbox: true, projectId: null, threadCount: 9, sweeping: false },
+            { key: 'inbox', displayName: 'Inbox', isInbox: true, projectId: null, threadCount: 0, sweeping: false },
             {
                 key: 'mk',
                 displayName: 'Marketing',
