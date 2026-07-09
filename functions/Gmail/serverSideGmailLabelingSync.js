@@ -70,9 +70,9 @@ const DEFAULT_ADS_LABEL_GUIDANCE =
     "Gmail's CATEGORY_PROMOTIONS label id and a List-Unsubscribe header are strong Ads signals. " +
     'If an email matches both a project label and Ads, prefer the project label unless the email is pure bulk marketing.'
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
-    'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer precision over recall: if the email could belong to multiple project labels, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
+    'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer the strongest specific project label when the evidence is clear. If the email is work-relevant but it is not clear which project label fits best, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
     DEFAULT_ADS_LABEL_GUIDANCE +
-    ' Use the configured confidence threshold: only return a match when the best label is at or above that threshold. Confidence for a match means confidence in the selected label; confidence for no match means confidence that no configured label matches. Do not return no match when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; return the matching configured label instead.'
+    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead.'
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
 const DEFAULT_ADS_LABEL_DEFINITION = {
     key: 'ads',
@@ -217,7 +217,7 @@ function getUniqueProjectLabelNames(projects = []) {
     })
 }
 
-function buildDefaultProjectLabelDescription(project = {}, labelName = '') {
+function buildDefaultProjectLabelDescription(project = {}, labelName = '', isDefaultProject = false) {
     const projectName = typeof project.name === 'string' && project.name.trim() ? project.name.trim() : labelName
     const description =
         typeof project.description === 'string'
@@ -227,31 +227,38 @@ function buildDefaultProjectLabelDescription(project = {}, labelName = '') {
                   .trim()
             : ''
 
+    const defaultProjectGuidance = isDefaultProject
+        ? ' This is the default project label; use it when an email is work-relevant but no other project label is clearly stronger.'
+        : ''
+
     if (description) {
-        return `Use this label for emails related to the Alldone project "${projectName}". ${description}. Match messages about this project's work, stakeholders, goals, deadlines, tasks, decisions, updates, or deliverables.`
+        return `Use this label for emails related to the Alldone project "${projectName}". ${description}. Match messages about this project's work, stakeholders, goals, deadlines, tasks, decisions, updates, or deliverables.${defaultProjectGuidance}`
     }
 
-    return `Use this label for emails clearly related to the Alldone project "${projectName}". Match direct references to the project, its work, stakeholders, tasks, deadlines, decisions, updates, or deliverables.`
+    return `Use this label for emails clearly related to the Alldone project "${projectName}". Match direct references to the project, its work, stakeholders, tasks, deadlines, decisions, updates, or deliverables.${defaultProjectGuidance}`
 }
 
 function buildDefaultProjectFollowUpPrompt(labelName = '') {
     const projectLabel = labelName || 'the matched project'
     return [
-        `Only if its an inbound email create a new task based in the project ${projectLabel} based on this email in the following format: "[one sentence summary of what the email is about] ".`,
+        `If it is an inbound email and it means an actual task for the user, create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
+        `If it is useful but only informational, add one concise comment to the topic chat "Daily email management [today's date]" with createIfMissing=true. The comment should be in this format: "LINK: Email from [sender name] ([sender email]): [one-line summary]". Use the Gmail web URL from the email context as LINK. Do not create a task when the email is only interesting, informational, or useful context for the user.`,
         `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
     ].join('\n')
 }
 
-function buildDefaultActiveProjectLabelDefinitions(projects = []) {
+function buildDefaultActiveProjectLabelDefinitions(projects = [], defaultProjectId = '') {
     const labelNames = getUniqueProjectLabelNames(projects)
+    const normalizedDefaultProjectId = typeof defaultProjectId === 'string' ? defaultProjectId.trim() : ''
 
     const projectLabels = projects.map((project, index) => {
         const gmailLabelName = labelNames[index]
         const projectKey = slugifyLabelKey(project.id || gmailLabelName) || `project_${index + 1}`
+        const isDefaultProject = !!normalizedDefaultProjectId && project.id === normalizedDefaultProjectId
         return {
             key: `project_${projectKey}`,
             gmailLabelName,
-            description: buildDefaultProjectLabelDescription(project, gmailLabelName),
+            description: buildDefaultProjectLabelDescription(project, gmailLabelName, isDefaultProject),
             directionScope: GMAIL_DIRECTION_SCOPE_BOTH,
             autoArchive: false,
             postLabelPrompt: buildDefaultProjectFollowUpPrompt(gmailLabelName),
@@ -298,11 +305,11 @@ async function loadActiveProjectsForDefaultLabels(userData = {}) {
         .filter(Boolean)
 }
 
-async function buildDefaultActiveProjectsGmailLabelingConfig(userData = {}) {
+async function buildDefaultActiveProjectsGmailLabelingConfig(userData = {}, defaultProjectId = '') {
     const projects = await loadActiveProjectsForDefaultLabels(userData)
     return {
         prompt: DEFAULT_ACTIVE_PROJECTS_PROMPT,
-        labelDefinitions: buildDefaultActiveProjectLabelDefinitions(projects),
+        labelDefinitions: buildDefaultActiveProjectLabelDefinitions(projects, defaultProjectId),
     }
 }
 
@@ -337,7 +344,13 @@ async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
         }
     }
 
-    const defaultConfig = await buildDefaultActiveProjectsGmailLabelingConfig(userData)
+    const defaultProjectId =
+        typeof config.projectId === 'string' && config.projectId.trim()
+            ? config.projectId.trim()
+            : typeof userData.defaultProjectId === 'string'
+            ? userData.defaultProjectId.trim()
+            : ''
+    const defaultConfig = await buildDefaultActiveProjectsGmailLabelingConfig(userData, defaultProjectId)
     if (config.enabled && defaultConfig.labelDefinitions.length === 0) {
         throw new Error('Default Gmail labeling requires at least one active project.')
     }
@@ -475,10 +488,19 @@ async function getGmailLabelingConfigWithState(userId, projectId, gmailEmail = '
         projectId,
         gmailEmail
     )
+    const connectionDefaultProjectId =
+        typeof projectId === 'string' && projectId.startsWith('email_')
+            ? getConnection(resolvedUserData, CONNECTION_SERVICE_EMAIL, projectId)?.defaultProjectId || ''
+            : ''
+    const previewDefaultProjectId =
+        connectionDefaultProjectId ||
+        (typeof config?.projectId === 'string' && config.projectId.trim() ? config.projectId.trim() : '') ||
+        resolvedKey ||
+        (typeof resolvedUserData.defaultProjectId === 'string' ? resolvedUserData.defaultProjectId.trim() : '')
     const [{ state }, recentAuditEntries, defaultConfigPreview] = await Promise.all([
         loadState(userId, resolvedKey, gmailEmail),
         loadRecentAuditEntries(userId, resolvedKey),
-        buildDefaultActiveProjectsGmailLabelingConfig(resolvedUserData),
+        buildDefaultActiveProjectsGmailLabelingConfig(resolvedUserData, previewDefaultProjectId),
     ])
     return {
         config: exists ? config : getDefaultGmailLabelingConfig(resolvedKey, gmailEmail),

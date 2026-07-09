@@ -14,9 +14,9 @@ const DEFAULT_ADS_LABEL_GUIDANCE =
     "Gmail's CATEGORY_PROMOTIONS label id and a List-Unsubscribe header are strong Ads signals. " +
     'If an email matches both a project label and Ads, prefer the project label unless the email is pure bulk marketing.'
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
-    'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer precision over recall: if the email could belong to multiple project labels, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
+    'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer the strongest specific project label when the evidence is clear. If the email is work-relevant but it is not clear which project label fits best, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
     DEFAULT_ADS_LABEL_GUIDANCE +
-    ' Use the configured confidence threshold: only return a match when the best label is at or above that threshold. Confidence for a match means confidence in the selected label; confidence for no match means confidence that no configured label matches. Do not return no match when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; return the matching configured label instead.'
+    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead.'
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = 'incoming'
 const DEFAULT_ADS_LABEL_DEFINITION = {
     key: 'ads',
@@ -27,7 +27,7 @@ const DEFAULT_ADS_LABEL_DEFINITION = {
     postLabelPrompt: '',
 }
 const DEFAULT_CUSTOM_GMAIL_LABELING_PROMPT =
-    'Read each Gmail message and assign exactly one of the configured Gmail labels when it clearly matches. Messages may be incoming or outgoing depending on the rule scope. Prefer precision over recall. If no label clearly matches at the configured confidence threshold, return no match. Confidence for a match means confidence in the selected label; confidence for no match means confidence that no configured label matches. Do not return no match when your reasoning identifies a configured label, client, sender domain, or project-specific link. Focus on participants, subject, deadlines, action requests, decisions, deliverables, and business relevance.'
+    'Read each Gmail message and assign exactly one of the configured Gmail labels when it clearly matches. Messages may be incoming or outgoing depending on the rule scope. Prefer the strongest specific label when the evidence is clear. Use the configured confidence threshold for specific label matches. If the email is work-relevant but it is not clear which label fits best, use the default project as the label. Use matched:false only when the email is not work-relevant and no configured label applies. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured label, client, sender domain, or project-specific link. Focus on participants, subject, deadlines, action requests, decisions, deliverables, and business relevance.'
 const STARTER_CUSTOM_LABEL_DEFINITIONS = [
     {
         key: 'newsletter',
@@ -140,7 +140,7 @@ function sanitizeConfigForSave(config) {
     }
 }
 
-function buildDefaultProjectLabelDescription(project = {}, labelName = '') {
+function buildDefaultProjectLabelDescription(project = {}, labelName = '', isDefaultProject = false) {
     const projectName = typeof project.name === 'string' && project.name.trim() ? project.name.trim() : labelName
     const description =
         typeof project.description === 'string'
@@ -150,17 +150,22 @@ function buildDefaultProjectLabelDescription(project = {}, labelName = '') {
                   .trim()
             : ''
 
+    const defaultProjectGuidance = isDefaultProject
+        ? ' This is the default project label; use it when an email is work-relevant but no other project label is clearly stronger.'
+        : ''
+
     if (description) {
-        return `Use this label for emails related to the Alldone project "${projectName}". ${description}. Match messages about this project's work, stakeholders, goals, deadlines, tasks, decisions, updates, or deliverables.`
+        return `Use this label for emails related to the Alldone project "${projectName}". ${description}. Match messages about this project's work, stakeholders, goals, deadlines, tasks, decisions, updates, or deliverables.${defaultProjectGuidance}`
     }
 
-    return `Use this label for emails clearly related to the Alldone project "${projectName}". Match direct references to the project, its work, stakeholders, tasks, deadlines, decisions, updates, or deliverables.`
+    return `Use this label for emails clearly related to the Alldone project "${projectName}". Match direct references to the project, its work, stakeholders, tasks, deadlines, decisions, updates, or deliverables.${defaultProjectGuidance}`
 }
 
 function buildDefaultProjectFollowUpPrompt(labelName = '') {
     const projectLabel = labelName || 'the matched project'
     return [
-        `Only if its an inbound email create a new task based in the project ${projectLabel} based on this email in the following format: "[one sentence summary of what the email is about] ".`,
+        `If it is an inbound email and it means an actual task for the user, create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
+        `If it is useful but only informational, add one concise comment to the topic chat "Daily email management [today's date]" with createIfMissing=true. The comment should be in this format: "LINK: Email from [sender name] ([sender email]): [one-line summary]". Use the Gmail web URL from the email context as LINK. Do not create a task when the email is only interesting, informational, or useful context for the user.`,
         `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
     ].join('\n')
 }
@@ -172,8 +177,9 @@ function slugifyLabelKey(value = '') {
         .replace(/^_+|_+$/g, '')
 }
 
-function buildDefaultConfigPreviewFromProjects(projects = []) {
+function buildDefaultConfigPreviewFromProjects(projects = [], defaultProjectId = '') {
     const counts = new Map()
+    const normalizedDefaultProjectId = typeof defaultProjectId === 'string' ? defaultProjectId.trim() : ''
     const labelDefinitions = projects
         .filter(project => project && project.active !== false && !project.isTemplate && !project.parentTemplateId)
         .map((project, index) => {
@@ -186,11 +192,12 @@ function buildDefaultConfigPreviewFromProjects(projects = []) {
             counts.set(lookup, nextCount)
             const gmailLabelName = nextCount === 1 ? baseLabelName : `${baseLabelName} (${nextCount})`
             const projectKey = slugifyLabelKey(project.id || gmailLabelName) || `project_${index + 1}`
+            const isDefaultProject = !!normalizedDefaultProjectId && project.id === normalizedDefaultProjectId
 
             return {
                 key: `project_${projectKey}`,
                 gmailLabelName,
-                description: buildDefaultProjectLabelDescription(project, gmailLabelName),
+                description: buildDefaultProjectLabelDescription(project, gmailLabelName, isDefaultProject),
                 directionScope: 'both',
                 autoArchive: false,
                 postLabelPrompt: buildDefaultProjectFollowUpPrompt(gmailLabelName),

@@ -5,6 +5,7 @@ const {
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_GMAIL_LABELING_MODEL,
     DEFAULT_GMAIL_CONSISTENCY_MODEL,
+    GMAIL_LABELING_PROMPT_MODE_DEFAULT,
     slugifyLabelKey,
 } = require('./gmailLabelingConfig')
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
@@ -15,7 +16,7 @@ const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
 // Second-pass auditor used when the first-pass reasoning looks inconsistent with the
 // label it chose (e.g. it chose the "Bechtle" label but the reasoning describes "JTL").
 const GMAIL_CONSISTENCY_SYSTEM_PROMPT =
-    'You audit a Gmail label classification for self-consistency. You are given the email, the configured labels, and a first-pass decision (its chosen label, confidence, and reasoning). Decide the FINAL best label. If the email and the reasoning actually point to a different configured label than the one chosen, switch to the correct label. If no configured label clearly matches, return no match. The reasoning you return MUST justify and be consistent with the final label you choose. Return strict JSON only with keys matched, labelKey, confidence, reasoning, needsReply. Never invent labels. Confidence must be a number between 0 and 1. needsReply is true only when the email is an incoming personal message that expects a reply from the recipient; newsletters, notifications, receipts, marketing, and automated or no-reply senders never need a reply, and outgoing messages never need a reply.'
+    'You audit a Gmail label classification for self-consistency. You are given the email, the configured labels, and a first-pass decision (its chosen label, confidence, and reasoning). Decide the FINAL best label. If the email and the reasoning actually point to a different configured label than the one chosen, switch to the correct label. Use matched:false only when the prompt and configured labels do not provide a suitable final label. The reasoning you return MUST justify and be consistent with the final label you choose. Return strict JSON only with keys matched, labelKey, confidence, reasoning, needsReply. Never invent labels. Confidence must be a number between 0 and 1. needsReply is true only when the email is an incoming personal message that expects a reply from the recipient; newsletters, notifications, receipts, marketing, and automated or no-reply senders never need a reply, and outgoing messages never need a reply.'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
     'MODEL_GPT5_1',
@@ -242,6 +243,14 @@ function buildUserDescriptionSection(config = {}) {
     return description ? `About the user (context for judging relevance):\n${description}\n\n` : ''
 }
 
+function buildNoMatchResponseGuidance(config = {}) {
+    if (config.promptMode === GMAIL_LABELING_PROMPT_MODE_DEFAULT) {
+        return 'If the email is work-relevant but no specific non-default project label matches clearly, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label.'
+    }
+
+    return 'Use matched:false only when the prompt and configured labels do not provide a suitable label.'
+}
+
 async function verifyClassificationConsistency(
     openai,
     { selectedModel, isReasoningModel, config, message, labelDefinitions, confidenceThreshold, firstResult }
@@ -263,7 +272,9 @@ async function verifyClassificationConsistency(
             2
         )}\n\n` +
         'Re-check the decision. If the email and reasoning actually point to a different configured label, switch to it. ' +
-        'If no configured label clearly matches, return matched:false. The reasoning must be consistent with the final labelKey you choose. ' +
+        `${buildNoMatchResponseGuidance(
+            config
+        )} The reasoning must be consistent with the final labelKey you choose. ` +
         'Return JSON exactly like {"matched":true,"labelKey":"newsletter","confidence":0.92,"reasoning":"...","needsReply":false}.'
 
     const { parsed, usage } = await runClassifierCompletion(openai, {
@@ -311,7 +322,10 @@ async function classifyGmailMessage({ config, message }) {
         `Configured labels:\n${JSON.stringify(labelDefinitions, null, 2)}\n\n` +
         `Email:\n${JSON.stringify(message, null, 2)}\n\n` +
         `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}\n\n` +
-        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","confidence":0.92,"reasoning":"...","needsReply":false}. If no label matches clearly, return {"matched":false,"labelKey":null,"confidence":0.2,"reasoning":"...","needsReply":false}'
+        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","confidence":0.92,"reasoning":"...","needsReply":false}. ' +
+        `${buildNoMatchResponseGuidance(
+            config
+        )} If returning no match, use JSON like {"matched":false,"labelKey":null,"confidence":0.2,"reasoning":"...","needsReply":false}.`
 
     const { parsed, usage: firstUsage } = await runClassifierCompletion(openai, {
         selectedModel,

@@ -67,6 +67,24 @@ describe('Gmail assistant tool schemas', () => {
     })
 })
 
+describe('Chat assistant tool schemas', () => {
+    test('exposes add_chat_comment only when allowed', () => {
+        expect(getToolSchemas(['add_chat_comment']).map(schema => schema.function.name)).toEqual(['add_chat_comment'])
+        expect(getToolSchemas(['create_task']).map(schema => schema.function.name)).toEqual(['create_task'])
+    })
+
+    test('defines topic comment fields', () => {
+        const properties = toolSchemas.add_chat_comment.function.parameters.properties
+
+        expect(toolSchemas.add_chat_comment.function.parameters.required).toEqual(['comment'])
+        expect(properties.chatTitle.type).toBe('string')
+        expect(properties.chatId.type).toBe('string')
+        expect(properties.chatType.enum).toEqual(['topics'])
+        expect(properties.createIfMissing.type).toBe('boolean')
+        expect(toolSchemas.add_chat_comment.function.description).toContain('creates a topic chat')
+    })
+})
+
 describe('User memory assistant tool schemas', () => {
     test('exposes update_user_memory only when allowed', () => {
         expect(getToolSchemas(['update_user_memory']).map(schema => schema.function.name)).toEqual([

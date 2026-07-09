@@ -3397,6 +3397,244 @@ async function resolveProjectTargetForDescriptionUpdate(
     }
 }
 
+function normalizeChatCommentToolText(value, fieldName) {
+    const normalized = typeof value === 'string' ? value.trim() : ''
+    if (!normalized) {
+        throw new Error(`${fieldName} is required`)
+    }
+    return normalized
+}
+
+function buildDeterministicGmailChatCommentId(chatId = '', gmailContext = {}) {
+    const messageId = typeof gmailContext?.messageId === 'string' ? gmailContext.messageId.trim() : ''
+    if (!messageId) return ''
+
+    return `gmail-${crypto.createHash('sha1').update(`${chatId}:${messageId}`).digest('hex').slice(0, 24)}`
+}
+
+async function findTopicChatByTitle(db, projectId, chatTitle) {
+    const snapshot = await db.collection(`chatObjects/${projectId}/chats`).where('title', '==', chatTitle).get()
+
+    const matches = snapshot.docs
+        .map(doc => ({ id: doc.id, ...(doc.data() || {}) }))
+        .filter(chat => (chat.type || 'topics') === 'topics')
+
+    if (matches.length > 1) {
+        const options = matches
+            .slice(0, 5)
+            .map(chat => `"${chat.title}" (${chat.id})`)
+            .join(', ')
+        throw new Error(`Multiple topic chats match "${chatTitle}": ${options}. Please use chatId.`)
+    }
+
+    return matches[0] || null
+}
+
+async function resolveTopicChatForCommentTool({
+    db,
+    projectId,
+    assistantId,
+    userId,
+    chatId = '',
+    chatTitle = '',
+    createIfMissing = false,
+}) {
+    const normalizedChatId = typeof chatId === 'string' ? chatId.trim() : ''
+    const normalizedChatTitle = typeof chatTitle === 'string' ? chatTitle.trim() : ''
+
+    if (normalizedChatId) {
+        const chatRef = db.doc(`chatObjects/${projectId}/chats/${normalizedChatId}`)
+        const chatDoc = await chatRef.get()
+        if (!chatDoc.exists) {
+            throw new Error(`Topic chat not found: "${normalizedChatId}"`)
+        }
+        const chat = chatDoc.data() || {}
+        if ((chat.type || 'topics') !== 'topics') {
+            throw new Error('add_chat_comment currently supports topic chats only.')
+        }
+        return {
+            chatId: normalizedChatId,
+            chatTitle: chat.title || normalizedChatTitle || normalizedChatId,
+            created: false,
+        }
+    }
+
+    if (!normalizedChatTitle) {
+        throw new Error('chatTitle is required when chatId is not provided.')
+    }
+
+    const existingChat = await findTopicChatByTitle(db, projectId, normalizedChatTitle)
+    if (existingChat) {
+        return {
+            chatId: existingChat.id,
+            chatTitle: existingChat.title || normalizedChatTitle,
+            created: false,
+        }
+    }
+
+    if (!createIfMissing) {
+        throw new Error(`Topic chat "${normalizedChatTitle}" was not found. Set createIfMissing=true to create it.`)
+    }
+
+    const newChatId = uuidv4()
+    const now = Date.now()
+    await db.doc(`chatObjects/${projectId}/chats/${newChatId}`).set({
+        id: newChatId,
+        title: normalizedChatTitle,
+        type: 'topics',
+        isPublicFor: [FEED_PUBLIC_FOR_ALL],
+        assistantId: assistantId || null,
+        creatorId: userId,
+        created: now,
+        lastEditionDate: now,
+        lastEditorId: userId,
+        usersFollowing: [userId],
+        members: [userId],
+        hasStar: '#ffffff',
+        stickyData: { days: 0, stickyEndDate: 0 },
+        commentsData: {
+            amount: 0,
+            lastComment: '',
+            lastCommentOwnerId: '',
+            lastCommentType: '',
+        },
+        isAssistantEnabled: true,
+    })
+
+    return {
+        chatId: newChatId,
+        chatTitle: normalizedChatTitle,
+        created: true,
+    }
+}
+
+async function addChatCommentFromAssistantTool({
+    projectId,
+    projectName = '',
+    chatId,
+    chatTitle,
+    comment,
+    assistantId,
+    userId,
+    createIfMissing = false,
+    gmailContext = null,
+}) {
+    const db = admin.firestore()
+    const resolvedComment = normalizeChatCommentToolText(comment, 'comment')
+    const resolved = await resolveTopicChatForCommentTool({
+        db,
+        projectId,
+        assistantId,
+        userId,
+        chatId,
+        chatTitle,
+        createIfMissing,
+    })
+    const now = Date.now()
+    const deterministicCommentId = buildDeterministicGmailChatCommentId(resolved.chatId, gmailContext)
+    const commentId = deterministicCommentId || uuidv4()
+    const commentRef = db.doc(`chatComments/${projectId}/topics/${resolved.chatId}/comments/${commentId}`)
+
+    if (deterministicCommentId) {
+        const existingComment = await commentRef.get()
+        if (existingComment.exists) {
+            return {
+                success: true,
+                skippedDuplicate: true,
+                projectId,
+                projectName,
+                chatId: resolved.chatId,
+                chatTitle: resolved.chatTitle,
+                commentId,
+                chatUrl: `${getBaseUrl()}/projects/${projectId}/chats/${resolved.chatId}/chat`,
+                message: `Comment already exists in topic "${resolved.chatTitle}".`,
+            }
+        }
+    }
+
+    const commentData = {
+        commentText: resolvedComment,
+        originalContent: resolvedComment,
+        commentType: STAYWARD_COMMENT,
+        lastChangeDate: admin.firestore.Timestamp.now(),
+        created: now,
+        creatorId: assistantId,
+        fromAssistant: true,
+        source: gmailContext?.origin === 'gmail_label_follow_up' ? 'gmail_label_follow_up' : 'assistant_tool',
+    }
+
+    if (gmailContext?.origin === 'gmail_label_follow_up') {
+        commentData.gmailData = {
+            origin: gmailContext.origin,
+            gmailEmail: gmailContext.gmailEmail || '',
+            messageId: gmailContext.messageId || '',
+            threadId: gmailContext.threadId || '',
+            webUrl: gmailContext.webUrl || '',
+            direction: gmailContext.direction || '',
+            targetContactEmail: gmailContext.targetContactEmail || '',
+            targetContactName: gmailContext.targetContactName || '',
+        }
+    }
+
+    await Promise.all([
+        commentRef.set(commentData),
+        db.doc(`chatObjects/${projectId}/chats/${resolved.chatId}`).set(
+            {
+                lastEditionDate: now,
+                lastEditorId: assistantId,
+                members: admin.firestore.FieldValue.arrayUnion(userId, assistantId),
+                usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
+                'commentsData.lastComment': resolvedComment.substring(0, 200),
+                'commentsData.lastCommentOwnerId': assistantId,
+                'commentsData.lastCommentType': STAYWARD_COMMENT,
+                'commentsData.amount': admin.firestore.FieldValue.increment(1),
+            },
+            { merge: true }
+        ),
+        db
+            .doc(`followers/${projectId}/topics/${resolved.chatId}`)
+            .set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+        db.doc(`usersFollowing/${projectId}/entries/${userId}`).set(
+            {
+                topics: {
+                    [resolved.chatId]: true,
+                },
+            },
+            { merge: true }
+        ),
+        db.doc(`users/${userId}`).update({
+            [`lastAssistantCommentData.${projectId}`]: {
+                objectType: 'topics',
+                objectId: resolved.chatId,
+                creatorId: assistantId,
+                creatorType: 'assistant',
+                date: now,
+            },
+            [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                objectType: 'topics',
+                objectId: resolved.chatId,
+                creatorId: assistantId,
+                creatorType: 'assistant',
+                date: now,
+                projectId,
+            },
+        }),
+    ])
+
+    return {
+        success: true,
+        skippedDuplicate: false,
+        projectId,
+        projectName,
+        chatId: resolved.chatId,
+        chatTitle: resolved.chatTitle,
+        commentId,
+        chatCreated: resolved.created,
+        chatUrl: `${getBaseUrl()}/projects/${projectId}/chats/${resolved.chatId}/chat`,
+        message: `Comment added to topic "${resolved.chatTitle}".`,
+    }
+}
+
 const getHappinessRatingTextForTool = rating => {
     const labels = {
         1: '1/5 very unhappy',
@@ -5046,6 +5284,55 @@ async function executeToolNatively(
             console.log('💬 GET_CHATS TOOL: Results', {
                 chatsReturned: result.count,
                 appliedFilters: result.appliedFilters,
+            })
+
+            return result
+        }
+
+        case 'add_chat_comment': {
+            const db = admin.firestore()
+            const chatType = typeof toolArgs.chatType === 'string' ? toolArgs.chatType.trim().toLowerCase() : 'topics'
+            if (chatType !== 'topics') {
+                throw new Error('add_chat_comment currently supports topic chats only.')
+            }
+
+            const targetProject = await resolveProjectTargetForDescriptionUpdate(
+                db,
+                creatorId,
+                projectId,
+                toolArgs.projectId,
+                toolArgs.projectName
+            )
+
+            console.log('💬 ADD_CHAT_COMMENT TOOL: Request params', {
+                userId: creatorId,
+                contextProjectId: projectId || null,
+                targetProjectId: targetProject.id,
+                targetProjectName: targetProject.name || null,
+                chatId: toolArgs.chatId || null,
+                chatTitle: toolArgs.chatTitle || null,
+                createIfMissing: toolArgs.createIfMissing === true,
+                hasGmailContext: toolRuntimeContext?.gmailContext?.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN,
+            })
+
+            const result = await addChatCommentFromAssistantTool({
+                projectId: targetProject.id,
+                projectName: targetProject.name || '',
+                chatId: toolArgs.chatId || '',
+                chatTitle: toolArgs.chatTitle || '',
+                comment: toolArgs.comment || '',
+                assistantId,
+                userId: creatorId,
+                createIfMissing: toolArgs.createIfMissing === true,
+                gmailContext: toolRuntimeContext?.gmailContext || null,
+            })
+
+            console.log('💬 ADD_CHAT_COMMENT TOOL: Result', {
+                projectId: result.projectId,
+                chatId: result.chatId,
+                commentId: result.commentId,
+                chatCreated: result.chatCreated || false,
+                skippedDuplicate: result.skippedDuplicate || false,
             })
 
             return result
@@ -10586,6 +10873,12 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When you call create_task, decide which project should receive the task. If you target a project with projectId or projectName, or if you intentionally keep the task in the current/default project, include create_task.projectRoutingReason with a short reason for that project choice. The server will store that reason as an internal task comment. Do not repeat that routing explanation in your visible chat reply unless the user asks.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes('add_chat_comment')) {
+        messages.push([
+            'system',
+            'When the user asks you to add, log, or record something in a chat/topic, use add_chat_comment. For daily topic requests, pass the exact requested topic title as chatTitle and set createIfMissing=true only when the user wants the topic created if absent. For Gmail follow-up context, use add_chat_comment for useful informational emails that are not real todos; keep the comment to one concise line and let the server attach Gmail metadata.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('create_note')) {

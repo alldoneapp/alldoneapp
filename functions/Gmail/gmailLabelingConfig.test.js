@@ -33,7 +33,8 @@ describe('gmailLabelingConfig', () => {
 
         expect(config.prompt).toContain('configured confidence threshold')
         expect(config.prompt).toContain('Confidence for a match means confidence in the selected label')
-        expect(config.prompt).toContain('Do not return no match')
+        expect(config.prompt).toContain('use the default project as the label')
+        expect(config.prompt).toContain('Do not use matched:false')
     })
 
     test('normalizes valid prompt modes', () => {

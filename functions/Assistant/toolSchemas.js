@@ -376,6 +376,57 @@ const toolSchemas = {
         },
     },
 
+    add_chat_comment: {
+        type: 'function',
+        function: {
+            name: 'add_chat_comment',
+            description:
+                'Adds a visible comment to an existing topic chat, or creates a topic chat and adds the comment when createIfMissing is true. Use this when the user asks to record an update, add a note to a chat/topic, maintain a daily management topic, or log informational context that should not become a task. For Gmail follow-up prompts, use this for useful informational emails that are not real todos.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    chatTitle: {
+                        type: 'string',
+                        description:
+                            'Topic title to find or create, for example "Daily email management 10.07.2027". Required unless chatId is provided.',
+                    },
+                    chatId: {
+                        type: 'string',
+                        description:
+                            'Optional existing topic chat ID. If provided, the tool writes to this exact chat after access checks.',
+                    },
+                    chatType: {
+                        type: 'string',
+                        enum: ['topics'],
+                        description:
+                            'Chat type to update. Currently only "topics" is supported; task comments should use update_task.',
+                    },
+                    comment: {
+                        type: 'string',
+                        description:
+                            'The comment text to add. Keep it concise. In Gmail follow-up context, include a one-line email summary; the server may add source metadata from the Gmail context.',
+                    },
+                    createIfMissing: {
+                        type: 'boolean',
+                        description:
+                            'If true and no topic with chatTitle exists, create a new topic in the target project before adding the comment. Defaults to false.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional target project ID. If both projectId and projectName are omitted, uses the current assistant project.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            'Optional target project name. If multiple projects match, the tool returns an ambiguity error. If both projectId and projectName are provided, projectId takes precedence.',
+                    },
+                },
+                required: ['comment'],
+            },
+        },
+    },
+
     get_updates: {
         type: 'function',
         function: {

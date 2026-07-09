@@ -105,21 +105,27 @@ describe('GmailLabelingSettings helpers', () => {
     })
 
     test('builds default label preview with project labels, Ads, and project follow-ups', () => {
-        const preview = buildDefaultConfigPreviewFromProjects([
-            { id: 'project-a', name: 'Client', description: 'Project Description: Website launch' },
-            { id: 'project-b', name: 'Client', description: '' },
-            { id: 'archived', name: 'Archived', active: false },
-        ])
+        const preview = buildDefaultConfigPreviewFromProjects(
+            [
+                { id: 'project-a', name: 'Client', description: 'Project Description: Website launch' },
+                { id: 'project-b', name: 'Client', description: '' },
+                { id: 'archived', name: 'Archived', active: false },
+            ],
+            'project-b'
+        )
 
         expect(preview.prompt).toContain('active Alldone project or the Ads label')
         expect(preview.prompt).toContain('configured confidence threshold')
-        expect(preview.prompt).toContain('Do not return no match')
+        expect(preview.prompt).toContain('use the default project label')
+        expect(preview.prompt).toContain('Do not use matched:false')
         expect(preview.prompt).toContain('Never use Ads for transactional email')
         expect(preview.labelDefinitions.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)', 'Ads'])
         expect(preview.labelDefinitions[0].description).toContain('Website launch')
         expect(preview.labelDefinitions[0].description).not.toContain('Project description: Project Description')
+        expect(preview.labelDefinitions[1].description).toContain('This is the default project label')
         expect(preview.labelDefinitions[1].autoArchive).toBe(false)
-        expect(preview.labelDefinitions[1].postLabelPrompt).toContain('Only if its an inbound email')
+        expect(preview.labelDefinitions[1].postLabelPrompt).toContain('it means an actual task for the user')
+        expect(preview.labelDefinitions[1].postLabelPrompt).toContain('only interesting, informational')
         expect(preview.labelDefinitions[1].postLabelPrompt).toContain('update_note')
         expect(preview.labelDefinitions[1].postLabelPrompt).toContain('Client (2)')
         expect(preview.labelDefinitions[1].postLabelPromptDirectionScope).toBe('incoming')
@@ -142,6 +148,8 @@ describe('GmailLabelingSettings helpers', () => {
         const prompt = buildDefaultProjectFollowUpPrompt('Alldone Product')
 
         expect(prompt).toContain('project Alldone Product')
+        expect(prompt).toContain('actual task for the user')
+        expect(prompt).toContain('only interesting, informational')
         expect(prompt).toContain('hello@cal.com')
         expect(prompt).toContain('with a space at the end')
     })

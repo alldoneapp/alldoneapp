@@ -331,7 +331,7 @@ export default function GmailLabelingSettings({
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const [config, setConfig] = useState(() => normalizeConfig(projectId))
     const [defaultConfigPreview, setDefaultConfigPreview] = useState(() =>
-        buildDefaultConfigPreviewFromProjects(loggedUserProjects)
+        buildDefaultConfigPreviewFromProjects(loggedUserProjects, projectId)
     )
     const [syncState, setSyncState] = useState(null)
     const [syncResult, setSyncResult] = useState(null)
@@ -379,7 +379,7 @@ export default function GmailLabelingSettings({
                 const normalizedConfig = normalizeConfig(projectId, result?.config || {}, connectedEmail)
                 setConfig(normalizedConfig)
                 setDefaultConfigPreview(
-                    result?.defaultConfigPreview || buildDefaultConfigPreviewFromProjects(loggedUserProjects)
+                    result?.defaultConfigPreview || buildDefaultConfigPreviewFromProjects(loggedUserProjects, projectId)
                 )
                 setSyncState(result?.state || null)
                 setRecentAuditEntries(Array.isArray(result?.recentAuditEntries) ? result.recentAuditEntries : [])
@@ -411,7 +411,7 @@ export default function GmailLabelingSettings({
     ])
 
     useEffect(() => {
-        const nextPreview = buildDefaultConfigPreviewFromProjects(loggedUserProjects)
+        const nextPreview = buildDefaultConfigPreviewFromProjects(loggedUserProjects, projectId)
         if (!defaultConfigPreview?.labelDefinitions?.length && nextPreview.labelDefinitions.length > 0) {
             setDefaultConfigPreview(nextPreview)
         }

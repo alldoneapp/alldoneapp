@@ -215,7 +215,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(labels[0].description).not.toContain('Project description: Project Description')
         expect(labels[0].directionScope).toBe('both')
         expect(labels[0].autoArchive).toBe(false)
-        expect(labels[0].postLabelPrompt).toContain('Only if its an inbound email')
+        expect(labels[0].postLabelPrompt).toContain('actual task for the user')
+        expect(labels[0].postLabelPrompt).toContain('only interesting, informational')
         expect(labels[0].postLabelPrompt).toContain('update_note')
         expect(labels[0].postLabelPromptDirectionScope).toBe('incoming')
         expect(labels[2]).toEqual(
@@ -236,6 +237,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
         const prompt = buildDefaultProjectFollowUpPrompt('Alldone Product')
 
         expect(prompt).toContain('project Alldone Product')
+        expect(prompt).toContain('actual task for the user')
+        expect(prompt).toContain('only interesting, informational')
         expect(prompt).toContain('hello@cal.com')
         expect(prompt).toContain('with a space at the end')
     })

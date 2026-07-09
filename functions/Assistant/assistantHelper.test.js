@@ -221,6 +221,7 @@ jest.mock('firebase-admin', () => ({
             Timestamp: { now: jest.fn(() => ({ seconds: 0, nanoseconds: 0 })) },
             FieldValue: {
                 increment: jest.fn(value => ({ __op: 'increment', value })),
+                arrayUnion: jest.fn((...values) => ({ __op: 'arrayUnion', values })),
                 delete: jest.fn(() => ({ __op: 'delete' })),
             },
         }
@@ -371,6 +372,67 @@ describe('assistant attachment handoff helpers', () => {
             if (previousProjectId === undefined) delete process.env.GCLOUD_PROJECT
             else process.env.GCLOUD_PROJECT = previousProjectId
         }
+    })
+
+    test('adds a comment to a newly created topic chat', async () => {
+        ProjectService.mockImplementationOnce(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Inbox' }]),
+        }))
+        mockCollectionGet.mockResolvedValueOnce({ docs: [] })
+
+        const result = await executeToolNatively(
+            'add_chat_comment',
+            {
+                chatTitle: 'Daily email management 10.07.2027',
+                comment: 'LINK: Email from Peter (peter@web.de): Peter sent the updated contract draft.',
+                createIfMissing: true,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result).toMatchObject({
+            success: true,
+            projectId: 'project-1',
+            projectName: 'Inbox',
+            chatTitle: 'Daily email management 10.07.2027',
+            chatCreated: true,
+            skippedDuplicate: false,
+        })
+        expect(result.chatUrl).toContain('/projects/project-1/chats/')
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                title: 'Daily email management 10.07.2027',
+                type: 'topics',
+                creatorId: 'user-1',
+                assistantId: 'assistant-1',
+            })
+        )
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: 'LINK: Email from Peter (peter@web.de): Peter sent the updated contract draft.',
+                creatorId: 'assistant-1',
+                fromAssistant: true,
+                source: 'assistant_tool',
+            })
+        )
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                usersFollowing: { __op: 'arrayUnion', values: ['user-1'] },
+            }),
+            { merge: true }
+        )
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                topics: {
+                    [result.chatId]: true,
+                },
+            }),
+            { merge: true }
+        )
     })
 
     test('requires exact tool URLs in follow-up responses', () => {
@@ -545,6 +607,7 @@ describe('assistant attachment handoff helpers', () => {
             dueDate: 1774974000000,
             humanReadableId: 'AT-1',
             sortIndex: 5,
+            priority: 'none',
             parentGoal: 'goal-1',
             calendarTime: '10:00',
             comments: [
