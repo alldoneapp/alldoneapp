@@ -173,6 +173,36 @@ export const getDefaultAssistantInProjectById = projectId => {
     return getDefaultAssistantInProject(project)
 }
 
+// Resolve the assistant that should automatically work on an object in the given project
+// when the user triggers assistant help WITHOUT explicitly choosing one (e.g. the task list
+// bot button). Unlike `getDefaultAssistantInProject` — which drives what the assistant picker
+// shows by default and therefore prefers the global default — this prefers the task's own
+// project so the button "just works" with that project's assistant. Preference order:
+//   1. The project's own default assistant: an assistant in that project flagged `isDefault`,
+//      otherwise the project's configured `project.assistantId` (project or global assistant).
+//   2. The overall/global default assistant (`state.defaultAssistant`, derived from the user's
+//      default project) as a fallback.
+// Returns the resolved assistant object, or `null` when none can be resolved.
+export const resolveDefaultAssistantForProject = projectId => {
+    const { projectAssistants, defaultAssistant } = store.getState()
+
+    // 1. The project's own default assistant.
+    const assistantsInProject = (projectAssistants && projectAssistants[projectId]) || []
+    const flaggedDefault = assistantsInProject.find(assistant => assistant.isDefault)
+    if (flaggedDefault) return flaggedDefault
+
+    const project = ProjectHelper.getProjectById(projectId)
+    if (project && project.assistantId) {
+        const projectAssistant = getAssistantInProject(projectId, project.assistantId)
+        if (projectAssistant) return projectAssistant
+    }
+
+    // 2. Fallback to the overall/global default assistant.
+    if (defaultAssistant && defaultAssistant.uid) return defaultAssistant
+
+    return null
+}
+
 const getDefaultAssistantInProject = project => {
     // Always default to the default assistant from the user's default project, not the
     // per-project assistant. The project assistant (project.assistantId) is still selectable

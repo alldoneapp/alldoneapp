@@ -2269,5 +2269,7 @@
     "Auto-postpone based on priorities": "Auto-posponer según prioridades",
     "Task Priorities": "Prioridades de tareas",
     "Auto-postpone tasks description": "Elige qué tareas de hoy quieres auto-posponer. Volverán a aparecer más tarde.",
-    "All today's tasks": "Todas las tareas de hoy"
+    "All today's tasks": "Todas las tareas de hoy",
+    "No assistant available": "No hay ningún asistente disponible",
+    "This project has no default assistant yet, and no global default is set. Add an assistant before letting it work on your tasks.": "Este proyecto aún no tiene un asistente predeterminado y no hay ninguno global configurado. Añade un asistente antes de que pueda trabajar en tus tareas."
 }
