@@ -94,11 +94,9 @@ describe('emailLineHelper', () => {
         expect(groups[0].isInbox).toBe(true)
         expect(groups[0].threadCount).toBe(11)
         expect(groups[0].unreadCount).toBe(4)
-        expect(groups[0].entries.map(entry => entry.labelId)).toEqual([
-            'Label_ads',
-            EMAIL_LINE_NO_LABEL_ID,
-            'f_clients',
-        ])
+        // Inbox borrows the labels' counts but keeps each account's own inbox bucket as its
+        // entries, so opening it lists the inbox itself rather than every label in turn.
+        expect(groups[0].entries.map(entry => entry.labelId)).toEqual(['INBOX', 'f_inbox'])
         expect(groups[1].displayName).toBe('Ads')
         expect(groups[1].entries).toHaveLength(1)
         expect(groups[2].displayName).toBe('Clients')

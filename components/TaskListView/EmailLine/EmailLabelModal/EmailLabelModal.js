@@ -287,6 +287,17 @@ function EmailLabelModal({
     const totalMessages = sections.reduce((total, section) => total + section.messages.length, 0)
     const labelingDisabled = entries.some(entry => labelingDisabledByConnectionId?.[entry.connectionId])
 
+    // The empty state offers one link per connected account. A group can hold more than one entry
+    // for the same account (two labels whose display names collapse to the same leaf, e.g.
+    // "Clients/Acme" and "Acme"), so dedupe by connection instead of listing an entry each.
+    const accountEntries = []
+    const seenConnectionIds = new Set()
+    entries.forEach(entry => {
+        if (seenConnectionIds.has(entry.connectionId)) return
+        seenConnectionIds.add(entry.connectionId)
+        accountEntries.push(entry)
+    })
+
     // A blocking spinner is only needed on the first load. On subsequent opens, stale rows are
     // more useful than an empty modal while the background refresh catches up with the chip.
     const showLoading = loading
@@ -357,7 +368,7 @@ function EmailLabelModal({
                         <Text style={[styles.body2, localStyles.emptyText]}>
                             {translate('No emails in inbox with this label')}
                         </Text>
-                        {entries.map(entry => (
+                        {accountEntries.map(entry => (
                             <TouchableOpacity
                                 key={entry.connectionId}
                                 style={localStyles.openInProviderButton}

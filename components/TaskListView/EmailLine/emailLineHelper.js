@@ -72,11 +72,16 @@ export function mergeLabelsAcrossConnections(connections = [], summariesByKey = 
     const mergedGroups = [...groups.values()]
     const inboxGroup = mergedGroups.find(group => group.isInbox)
     if (inboxGroup) {
+        // Counts only: the Inbox chip reads as the label chips added up. Its `entries` must stay
+        // the accounts' own inbox buckets (labelId INBOX / f_inbox). Pointing them at the label
+        // buckets instead made opening Inbox fan out one heavy label query per account × label —
+        // each resolving a label∩inbox thread set plus 25 threads.get — which bursts far past
+        // Gmail's per-user rate limit and, because both the provider and the modal swallow
+        // per-item failures, silently renders an empty inbox.
         const labelGroups = mergedGroups.filter(group => !group.isInbox)
         inboxGroup.threadCount = labelGroups.reduce((total, group) => total + group.threadCount, 0)
         inboxGroup.unreadCount = labelGroups.reduce((total, group) => total + group.unreadCount, 0)
         inboxGroup.sweeping = inboxGroup.sweeping || labelGroups.some(group => group.sweeping)
-        inboxGroup.entries = labelGroups.flatMap(group => group.entries)
     }
 
     return mergedGroups.sort((a, b) => {

@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { ActivityIndicator, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import EmailLabelModal from './EmailLabelModal'
@@ -87,10 +87,10 @@ const messagesByConnection = {
     c2: [{ messageId: 'm2', from: 'b@ex.com', subject: 'Two', snippet: 's', isUnread: false, webUrl: 'u2' }],
 }
 
-const renderModal = async (closePopover = () => {}) => {
+const renderModal = async (closePopover = () => {}, modalGroup = group) => {
     let tree
     await act(async () => {
-        tree = renderer.create(<EmailLabelModal group={group} closePopover={closePopover} />)
+        tree = renderer.create(<EmailLabelModal group={modalGroup} closePopover={closePopover} />)
         await Promise.resolve()
     })
     return tree
@@ -138,6 +138,31 @@ describe('EmailLabelModal', () => {
 
         expect(getEmailAccountWebUrl).toHaveBeenCalledWith('google', 'a@gmail.com')
         expect(openUrlInNewTab).toHaveBeenCalledWith('https://account/google/a@gmail.com')
+    })
+
+    it('offers one empty-state account link per connection, not per entry', async () => {
+        listEmailLineMessages.mockResolvedValue({ messages: [], nextPageToken: null })
+        const twoLabelsOneAccount = {
+            ...group,
+            key: 'acme',
+            displayName: 'Acme',
+            isInbox: false,
+            entries: [
+                { connectionId: 'c1', provider: 'google', emailAddress: 'a@gmail.com', labelId: 'Label_acme' },
+                { connectionId: 'c1', provider: 'google', emailAddress: 'a@gmail.com', labelId: 'Label_clients_acme' },
+            ],
+        }
+
+        const tree = await renderModal(() => {}, twoLabelsOneAccount)
+
+        const texts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
+        expect(texts).toContain('No emails in inbox with this label')
+        // The link's label and the account address are separate children, so match on the first.
+        const openAccountLinks = tree.root.findAll(
+            node => node.type === Text && node.props.children?.[0] === 'Open email account'
+        )
+        expect(openAccountLinks).toHaveLength(1)
+        expect(openAccountLinks[0].props.children[1]).toBe(' · a@gmail.com')
     })
 
     it('keeps the modal open on selection archive, routes to the owning connection, and drops the archived row', async () => {
