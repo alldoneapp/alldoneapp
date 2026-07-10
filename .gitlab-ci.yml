@@ -190,6 +190,10 @@ deploy:web-dev:
 deploy:cloud:functions:staging:
     image: $CI_REGISTRY_IMAGE/build_functions:latest
     stage: deploy_web
+    # Serialize functions deploys: two pushes in quick succession otherwise run
+    # `firebase deploy` concurrently and the older commit can finish last,
+    # overwriting the newer code (last writer wins per function).
+    resource_group: functions-staging-deploy
     needs:
         - 'build_web_staging'
     before_script:
@@ -231,6 +235,10 @@ deploy:cloud:functions:staging:
 deploy:cloud:functions:production:
     image: $CI_REGISTRY_IMAGE/build_functions:latest
     stage: deploy_web
+    # Serialize functions deploys: two pushes in quick succession otherwise run
+    # `firebase deploy` concurrently and the older commit can finish last,
+    # overwriting the newer code (last writer wins per function).
+    resource_group: functions-production-deploy
     needs:
         - 'build_web_production'
     before_script:
