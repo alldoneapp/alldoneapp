@@ -2053,6 +2053,8 @@
     "No emails in inbox with this label": "No emails in inbox with this label",
     "Couldn't load emails": "Couldn't load emails",
     "Some emails couldn't be loaded from N": "Some emails couldn't be loaded from {{accounts}}",
+    "Actionable": "Actionable",
+    "Informational": "Informational",
     "Retry": "Retry",
     "Open in Gmail": "Open in Gmail",
     "Open in Outlook": "Open in Outlook",

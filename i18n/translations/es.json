@@ -2027,6 +2027,8 @@
     "No emails in inbox with this label": "No hay correos en la bandeja con esta etiqueta",
     "Couldn't load emails": "No se pudieron cargar los correos",
     "Some emails couldn't be loaded from N": "No se pudieron cargar algunos correos de {{accounts}}",
+    "Actionable": "Requiere acción",
+    "Informational": "Informativo",
     "Retry": "Reintentar",
     "Open in Gmail": "Abrir en Gmail",
     "Open in Outlook": "Abrir en Outlook",
