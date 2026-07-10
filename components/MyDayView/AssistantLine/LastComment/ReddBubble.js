@@ -27,7 +27,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
     },
     text: {
-        color: colors.White,
+        color: '#FFFFFF',
         fontSize: 10,
         lineHeight: 12,
         fontWeight: 'bold',
