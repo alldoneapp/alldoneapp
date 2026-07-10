@@ -1782,6 +1782,8 @@
     "Please go to open tasks to add a task for this assistant": "Please go to open tasks to add a task for this assistant",
     "Select assistant": "Select assistant",
     "Select the assistant that will help you": "Select the assistant that will help you",
+    "No assistant available": "No assistant available",
+    "This project has no default assistant yet, and no global default is set. Add an assistant before letting it work on your tasks.": "This project has no default assistant yet, and no global default is set. Add an assistant before letting it work on your tasks.",
     "Just chat with": "Just chat with %{name}",
     "New chat with": "New chat with %{name}",
     "Indexing data": "Indexing data. Please, wait a moment...",
