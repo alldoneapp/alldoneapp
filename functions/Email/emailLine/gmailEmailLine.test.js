@@ -321,6 +321,54 @@ describe('gmailEmailLine', () => {
         expect(mockThreadsList).toHaveBeenCalledTimes(2)
     })
 
+    test('getGmailLabelSummary warms the resolved-set cache so the modal open skips the rescans', async () => {
+        setupLabels([
+            { id: 'INBOX', name: 'INBOX', type: 'system' },
+            { id: 'Label_ads', name: 'Alldone/Ads', type: 'user' },
+        ])
+        mockThreadsGet.mockImplementation(async ({ id }) => ({
+            data: { id, messages: [{ id: `${id}-m`, labelIds: ['INBOX'], payload: { headers: [] } }] },
+        }))
+
+        await getGmailLabelSummary('u', 'p')
+        mockThreadsList.mockClear()
+
+        const result = await listMessagesForLabel('u', 'p', 'Label_ads', {})
+
+        // The summary already resolved inbox∩label; the list must reuse it, not rescan.
+        expect(mockThreadsList).not.toHaveBeenCalled()
+        expect(result.messages.map(row => row.threadId)).toEqual(['t_in0', 't_in1', 't_in2', 't_in3', 't_in4'])
+    })
+
+    test('getGmailLabelSummary warms the No-label bucket cache too', async () => {
+        setupLabels([{ id: 'INBOX', name: 'INBOX', type: 'system' }])
+        mockThreadsGet.mockImplementation(async ({ id }) => ({
+            data: { id, messages: [{ id: `${id}-m`, labelIds: ['INBOX'], payload: { headers: [] } }] },
+        }))
+
+        await getGmailLabelSummary('u', 'p')
+        mockThreadsList.mockClear()
+
+        const result = await listMessagesForLabel('u', 'p', NO_LABEL_ID, {})
+
+        expect(mockThreadsList).not.toHaveBeenCalled()
+        expect(result.messages.map(row => row.threadId)).toEqual(['t_in5'])
+    })
+
+    test('thread-id scans request 500 ids per page', async () => {
+        setupLabels([{ id: 'Label_ads', name: 'Alldone/Ads', type: 'user' }])
+        mockThreadsGet.mockImplementation(async ({ id }) => ({
+            data: { id, messages: [{ id: `${id}-m`, labelIds: ['INBOX'], payload: { headers: [] } }] },
+        }))
+
+        await listMessagesForLabel('u', 'p', 'Label_ads', {})
+
+        expect(mockThreadsList).toHaveBeenCalled()
+        for (const [params] of mockThreadsList.mock.calls) {
+            expect(params.maxResults).toBe(500)
+        }
+    })
+
     test('listMessagesForLabel INBOX label queries only INBOX', async () => {
         mockThreadsList.mockResolvedValue({ data: { threads: [] } })
         await listMessagesForLabel('u', 'p', 'INBOX', {})
