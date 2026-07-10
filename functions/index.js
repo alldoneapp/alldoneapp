@@ -3380,7 +3380,6 @@ exports.listEmailLineMessagesSecondGen = onCall(
         cors: true,
     },
     async request => {
-        const requestStartedAt = Date.now()
         const { data, auth } = request
         if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
 

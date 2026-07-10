@@ -547,7 +547,9 @@ async function addDraftReplyLinkComment({ userId, userData = {}, sourceProjectId
     }
 }
 
-// Returns { messages, nextPageToken }
+// Returns { messages, nextPageToken, partialFailure, failedCount }. `partialFailure` means the
+// provider dropped some rows it could not fetch — without it, a page whose fetches all failed is
+// indistinguishable from a genuinely empty label.
 async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
     const startedAt = Date.now()
     const { pageToken, userData: providedUserData } = options
@@ -614,6 +616,9 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
                 taskCreated,
             }
         })
+        // Providers that never drop rows simply report nothing; normalize so the callable's
+        // JSON response never carries `undefined`.
+        const failedCount = Number(result?.failedCount) || 0
         console.log('[emailLineTiming] service', {
             provider: connection.provider,
             resolveConnectionMs: connectionResolvedAt - startedAt,
@@ -623,9 +628,15 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
             totalMs: Date.now() - startedAt,
             page: pageToken ? 'next' : 'first',
             rowCount: messages.length,
+            failedCount,
             auditLookupCount: auditLookupIds.length,
         })
-        return { messages, nextPageToken: result?.nextPageToken || null }
+        return {
+            messages,
+            nextPageToken: result?.nextPageToken || null,
+            failedCount,
+            partialFailure: !!result?.partialFailure,
+        }
     } catch (error) {
         if (isAuthError(error)) throw new EmailLineAuthError()
         throw error

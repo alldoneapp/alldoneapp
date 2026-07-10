@@ -346,6 +346,66 @@ describe('EmailLabelModal', () => {
         expect(stringChildren(tree)).toContain('Refreshing')
     })
 
+    // A backend that throws must never render as "No emails in inbox with this label" — that
+    // empty state is what made a total outage (every list call throwing) look like an empty label.
+    it('renders the error state with a retry, not the empty state, when every account fails', async () => {
+        listEmailLineMessages.mockRejectedValue(new Error('internal'))
+
+        const tree = await renderModal()
+
+        const texts = stringChildren(tree)
+        expect(texts).toContain("Couldn't load emails")
+        expect(texts).not.toContain('No emails in inbox with this label')
+
+        // The account links stay reachable so the user can still get to their mailbox.
+        const openAccountLinks = tree.root.findAll(
+            node => node.type === Text && node.props.children?.[0] === 'Open email account'
+        )
+        expect(openAccountLinks).toHaveLength(2)
+
+        // Retry re-runs the load; once it succeeds the rows replace the error state.
+        listEmailLineMessages.mockImplementation(connectionId =>
+            Promise.resolve({ messages: messagesByConnection[connectionId] || [], nextPageToken: null })
+        )
+        await act(async () => {
+            touchableContaining(tree, 'Retry').props.onPress()
+            await new Promise(resolve => setTimeout(resolve, 0))
+        })
+
+        expect(stringChildren(tree)).not.toContain("Couldn't load emails")
+        expect(stringChildren(tree)).toContain('One')
+        expect(stringChildren(tree)).toContain('Two')
+    })
+
+    it('renders the empty state for a genuinely empty label', async () => {
+        listEmailLineMessages.mockResolvedValue({ messages: [], nextPageToken: null })
+
+        const tree = await renderModal()
+
+        const texts = stringChildren(tree)
+        expect(texts).toContain('No emails in inbox with this label')
+        expect(texts).not.toContain("Couldn't load emails")
+    })
+
+    it('shows the loaded rows plus a notice naming the accounts when only some sections fail', async () => {
+        // c1 throws outright; c2 succeeds but its provider dropped threads it could not fetch.
+        listEmailLineMessages.mockImplementation(connectionId =>
+            connectionId === 'c1'
+                ? Promise.reject(new Error('internal'))
+                : Promise.resolve({ messages: messagesByConnection.c2, nextPageToken: null, partialFailure: true })
+        )
+
+        const tree = await renderModal()
+
+        const texts = stringChildren(tree)
+        // The healthy account's rows still render — the failure must not blank the modal.
+        expect(texts).toContain('Two')
+        expect(texts).not.toContain("Couldn't load emails")
+        expect(texts).not.toContain('No emails in inbox with this label')
+        // Both the thrown call and the partial provider failure are named in the notice.
+        expect(texts).toContain('Some emails couldn\'t be loaded from N:{"accounts":"a@gmail.com, b@outlook.com"}')
+    })
+
     it('closes immediately on sweep and runs it in the background for every account', async () => {
         const closePopover = jest.fn()
         const tree = await renderModal(closePopover)

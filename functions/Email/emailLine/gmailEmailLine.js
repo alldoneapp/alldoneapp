@@ -472,8 +472,12 @@ function buildThreadRow(thread = {}, threadRef = {}, labelId, emailAddress) {
     }
 }
 
-// Fetches the given threads (metadata) and builds a display row for each.
+// Fetches the given threads (metadata) and builds a display row for each. A thread whose
+// fetch throws (rate limit, transient Gmail error) is dropped from the rows but counted in
+// `failedCount`, so the caller can tell "the label really has no inbox mail" apart from
+// "every thread fetch failed" — both of which otherwise produce zero rows and no error.
 async function fetchThreadRows(gmail, threadIds, labelId, emailAddress) {
+    let failedCount = 0
     const rows = await Promise.all(
         threadIds.map(async id => {
             try {
@@ -485,11 +489,12 @@ async function fetchThreadRows(gmail, threadIds, labelId, emailAddress) {
                 })
                 return buildThreadRow(detail?.data || {}, { id }, labelId, emailAddress)
             } catch (error) {
+                failedCount += 1
                 return null
             }
         })
     )
-    return rows.filter(Boolean)
+    return { rows: rows.filter(Boolean), failedCount }
 }
 
 async function listMessagesForLabel(userId, projectId, labelId, { pageToken, emailAddress } = {}) {
@@ -517,7 +522,7 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
         const threadSetReadyAt = Date.now()
         const offset = parseInboxLabelPageToken(pageToken)
         const pageIds = targetThreadIds.slice(offset, offset + MESSAGES_PER_PAGE)
-        const messages = await fetchThreadRows(gmail, pageIds, labelId, emailAddress)
+        const { rows: messages, failedCount } = await fetchThreadRows(gmail, pageIds, labelId, emailAddress)
         const rowsReadyAt = Date.now()
         const nextOffset = offset + MESSAGES_PER_PAGE
         const nextPageToken =
@@ -531,9 +536,10 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
             totalMs: rowsReadyAt - startedAt,
             targetThreadCount: targetThreadIds.length,
             rowCount: messages.length,
+            failedCount,
             page: pageToken ? 'next' : 'first',
         })
-        return { messages, nextPageToken }
+        return { messages, nextPageToken, failedCount, partialFailure: failedCount > 0 }
     }
 
     if (isNoLabelId(labelId)) {
@@ -555,7 +561,7 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
         const threadSetReadyAt = Date.now()
         const offset = parseInboxLabelPageToken(pageToken)
         const pageIds = targetThreadIds.slice(offset, offset + MESSAGES_PER_PAGE)
-        const messages = await fetchThreadRows(gmail, pageIds, labelId, emailAddress)
+        const { rows: messages, failedCount } = await fetchThreadRows(gmail, pageIds, labelId, emailAddress)
         const rowsReadyAt = Date.now()
         const nextOffset = offset + MESSAGES_PER_PAGE
         const nextPageToken =
@@ -569,9 +575,10 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
             totalMs: rowsReadyAt - startedAt,
             targetThreadCount: targetThreadIds.length,
             rowCount: messages.length,
+            failedCount,
             page: pageToken ? 'next' : 'first',
         })
-        return { messages, nextPageToken }
+        return { messages, nextPageToken, failedCount, partialFailure: failedCount > 0 }
     }
 
     // The inbox itself is already inbox-scoped by its Gmail query, so a single paged
@@ -585,22 +592,8 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
     const threadsListedAt = Date.now()
     const threadRefs = Array.isArray(listResponse?.data?.threads) ? listResponse.data.threads : []
     const nextPageToken = listResponse?.data?.nextPageToken || null
-    const messages = await Promise.all(
-        threadRefs.map(async ref => {
-            try {
-                const detail = await gmail.users.threads.get({
-                    userId: 'me',
-                    id: ref.id,
-                    format: 'metadata',
-                    metadataHeaders: METADATA_HEADERS,
-                })
-                return buildThreadRow(detail?.data || {}, ref, labelId, emailAddress)
-            } catch (error) {
-                return null
-            }
-        })
-    )
-    const filteredMessages = messages.filter(Boolean)
+    const threadIds = threadRefs.map(ref => ref.id).filter(Boolean)
+    const { rows: messages, failedCount } = await fetchThreadRows(gmail, threadIds, labelId, emailAddress)
     const rowsReadyAt = Date.now()
     console.log('[emailLineTiming] gmailLabelList', {
         bucket: 'inbox',
@@ -609,10 +602,11 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
         listThreadsMs: threadsListedAt - clientReadyAt,
         fetchRowsMs: rowsReadyAt - threadsListedAt,
         totalMs: rowsReadyAt - startedAt,
-        rowCount: filteredMessages.length,
+        rowCount: messages.length,
+        failedCount,
         page: pageToken ? 'next' : 'first',
     })
-    return { messages: filteredMessages, nextPageToken }
+    return { messages, nextPageToken, failedCount, partialFailure: failedCount > 0 }
 }
 
 // Ids of the newest unread inbox messages — a single list call, no per-message fetches.

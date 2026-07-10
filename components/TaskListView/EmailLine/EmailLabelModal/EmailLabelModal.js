@@ -60,6 +60,16 @@ function EmailLabelModal({
     const maxHeight = screenHeight - MODAL_MAX_HEIGHT_GAP
 
     const entries = group?.entries || []
+
+    // `failed`/`partialFailure` describe the load that produced these rows, not the rows
+    // themselves, so they never belong in the cross-open cache: a cached `failed` section
+    // would re-render the error state on the next open, before the fresh fetch even runs.
+    const cacheSections = next =>
+        cacheEmailLineSections(
+            group?.key,
+            next.map(({ failed, partialFailure, ...section }) => section)
+        )
+
     // Background refresh: if we already rendered cached rows we keep them on screen
     // (no spinner) and just swap in the fresh results when they arrive.
     const load = async () => {
@@ -74,10 +84,15 @@ function EmailLabelModal({
                             ...entry,
                             messages: result?.messages || [],
                             nextPageToken: result?.nextPageToken || null,
+                            // The call succeeded but the provider couldn't fetch every thread of
+                            // the page, so this section's list is incomplete.
+                            partialFailure: !!result?.partialFailure,
+                            failed: false,
                         }
                     } catch (error) {
                         // A failing account must not blank the modal: keep its cached rows
-                        // (if any) rather than wiping them out on a transient error.
+                        // (if any) rather than wiping them out on a transient error. `failed`
+                        // keeps the empty result from reading as "this label has no mail".
                         const cachedSection = getCachedEmailLineSections(group?.key)?.find(
                             item =>
                                 item.connectionId === entry.connectionId &&
@@ -87,16 +102,27 @@ function EmailLabelModal({
                             ...entry,
                             messages: cachedSection?.messages || [],
                             nextPageToken: cachedSection?.nextPageToken || null,
+                            partialFailure: false,
+                            failed: true,
                         }
                     }
                 })
             )
             setSections(results)
-            cacheEmailLineSections(group?.key, results)
+            // Never cache a wholesale failure: its empty rows would be seeded on the next open
+            // and render as the empty state, hiding the error we just detected.
+            if (!results.every(section => section.failed)) cacheSections(results)
         } finally {
             setLoading(false)
             setRefreshing(false)
         }
+    }
+
+    // The error state's escape hatch: re-run load() with a blocking spinner, since there is
+    // nothing on screen worth preserving.
+    const retry = () => {
+        setLoading(true)
+        load()
     }
 
     useEffect(() => {
@@ -135,7 +161,7 @@ function EmailLabelModal({
                 : item
         )
         setSections(next)
-        cacheEmailLineSections(group?.key, next)
+        cacheSections(next)
         pendingSummaryRefreshRef.current.add(section.connectionId)
     }
 
@@ -174,7 +200,7 @@ function EmailLabelModal({
                           }
                         : item
                 )
-                cacheEmailLineSections(group?.key, next)
+                cacheSections(next)
                 return next
             })
         } finally {
@@ -246,7 +272,7 @@ function EmailLabelModal({
                                 ),
                             }
                         })
-                        cacheEmailLineSections(group?.key, next)
+                        cacheSections(next)
                         return next
                     })
                     pendingSummaryRefreshRef.current.add(connectionId)
@@ -273,10 +299,7 @@ function EmailLabelModal({
         // Archive-all empties the label, so clear its cached rows now — reopening shows the
         // empty state instantly instead of flashing the about-to-be-archived list.
         if (action === 'archiveAll') {
-            cacheEmailLineSections(
-                group?.key,
-                sections.map(section => ({ ...section, messages: [] }))
-            )
+            cacheSections(sections.map(section => ({ ...section, messages: [] })))
         }
         entries.forEach(entry => {
             performEmailLineSweepInBackground(entry.connectionId, entry.labelId, action)
@@ -287,9 +310,21 @@ function EmailLabelModal({
     const totalMessages = sections.reduce((total, section) => total + section.messages.length, 0)
     const labelingDisabled = entries.some(entry => labelingDisabledByConnectionId?.[entry.connectionId])
 
-    // The empty state offers one link per connected account. A group can hold more than one entry
-    // for the same account (two labels whose display names collapse to the same leaf, e.g.
-    // "Clients/Acme" and "Acme"), so dedupe by connection instead of listing an entry each.
+    // A section is incomplete when its list call threw (`failed`) or the provider dropped
+    // threads it couldn't fetch (`partialFailure`). Both mean "there is more mail than this".
+    const incompleteSections = sections.filter(section => section.failed || section.partialFailure)
+    const incompleteAccounts = [
+        ...new Set(incompleteSections.map(section => section.emailAddress || getProviderLabel(section.provider))),
+    ].join(', ')
+    // Nothing loaded from anywhere: an empty list here means the backend failed, not that the
+    // label is empty — say so, and offer a retry rather than a misleading "no emails".
+    const loadFailed =
+        !loading && sections.length > 0 && totalMessages === 0 && sections.every(section => section.failed)
+
+    // The empty and error states offer one link per connected account — the user's escape hatch
+    // into the real mailbox. A group can hold more than one entry for the same account (two labels
+    // whose display names collapse to the same leaf, e.g. "Clients/Acme" and "Acme"), so dedupe by
+    // connection instead of listing an entry each.
     const accountEntries = []
     const seenConnectionIds = new Set()
     entries.forEach(entry => {
@@ -297,6 +332,19 @@ function EmailLabelModal({
         seenConnectionIds.add(entry.connectionId)
         accountEntries.push(entry)
     })
+    const accountLinks = accountEntries.map(entry => (
+        <TouchableOpacity
+            key={entry.connectionId}
+            style={localStyles.openInProviderButton}
+            onPress={() => openUrlInNewTab(getEmailAccountWebUrl(entry.provider, entry.emailAddress))}
+        >
+            <Icon name="external-link" size={14} color={colors.Primary100} />
+            <Text style={[styles.subtitle2, localStyles.openInProviderText]}>
+                {translate('Open email account')}
+                {entry.emailAddress ? ` · ${entry.emailAddress}` : ''}
+            </Text>
+        </TouchableOpacity>
+    ))
 
     // A blocking spinner is only needed on the first load. On subsequent opens, stale rows are
     // more useful than an empty modal while the background refresh catches up with the chip.
@@ -358,31 +406,41 @@ function EmailLabelModal({
                 </TouchableOpacity>
             </View>
 
+            {!showLoading && !loadFailed && incompleteSections.length > 0 && (
+                <View style={localStyles.noticeRow}>
+                    <Icon name="alert-triangle" size={12} color={colors.UtilityRed200} />
+                    <Text style={[styles.caption2, localStyles.noticeText]}>
+                        {translate("Some emails couldn't be loaded from N", { accounts: incompleteAccounts })}
+                    </Text>
+                </View>
+            )}
+
             <CustomScrollView style={localStyles.list} showsVerticalScrollIndicator={false}>
                 {showLoading ? (
                     <View style={localStyles.centered}>
                         <ActivityIndicator color={colors.Primary100} />
+                    </View>
+                ) : loadFailed ? (
+                    // Every account's list call failed: an empty list here would read as "this label
+                    // has no inbox mail", which is exactly the confusion this state exists to prevent.
+                    <View style={localStyles.centered}>
+                        <Text style={[styles.body2, localStyles.emptyText]}>{translate("Couldn't load emails")}</Text>
+                        <TouchableOpacity
+                            style={localStyles.openInProviderButton}
+                            onPress={retry}
+                            accessibilityLabel={translate('Retry')}
+                        >
+                            <Icon name="refresh-cw" size={14} color={colors.Primary100} />
+                            <Text style={[styles.subtitle2, localStyles.openInProviderText]}>{translate('Retry')}</Text>
+                        </TouchableOpacity>
+                        {accountLinks}
                     </View>
                 ) : totalMessages === 0 ? (
                     <View style={localStyles.centered}>
                         <Text style={[styles.body2, localStyles.emptyText]}>
                             {translate('No emails in inbox with this label')}
                         </Text>
-                        {accountEntries.map(entry => (
-                            <TouchableOpacity
-                                key={entry.connectionId}
-                                style={localStyles.openInProviderButton}
-                                onPress={() =>
-                                    openUrlInNewTab(getEmailAccountWebUrl(entry.provider, entry.emailAddress))
-                                }
-                            >
-                                <Icon name="external-link" size={14} color={colors.Primary100} />
-                                <Text style={[styles.subtitle2, localStyles.openInProviderText]}>
-                                    {translate('Open email account')}
-                                    {entry.emailAddress ? ` · ${entry.emailAddress}` : ''}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
+                        {accountLinks}
                     </View>
                 ) : (
                     sections.map(section => (
@@ -597,6 +655,16 @@ const localStyles = StyleSheet.create({
     hintText: {
         color: colors.Text03,
         marginLeft: 4,
+    },
+    noticeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingBottom: 6,
+    },
+    noticeText: {
+        color: colors.UtilityRed200,
+        marginLeft: 4,
+        flexShrink: 1,
     },
     selectionBar: {
         flexDirection: 'row',

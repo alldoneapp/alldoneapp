@@ -321,6 +321,68 @@ describe('gmailEmailLine', () => {
         expect(mockThreadsList).toHaveBeenCalledTimes(2)
     })
 
+    // Rows dropped by a failing threads.get used to vanish silently, so a rate-limited page
+    // returned `{ messages: [] }` with no error — indistinguishable from an empty label.
+    test('listMessagesForLabel reports how many thread fetches failed', async () => {
+        mockThreadsList.mockImplementation(async () => ({ data: { threads: makeThreadRefs(['t1', 't2']) } }))
+        mockThreadsGet.mockImplementation(async ({ id }) => {
+            if (id === 't2') throw new Error('Rate Limit Exceeded')
+            return { data: { id, messages: [{ id: `${id}-m`, labelIds: ['INBOX'], payload: { headers: [] } }] } }
+        })
+
+        const result = await listMessagesForLabel('u', 'p', 'Label_ads', {})
+
+        // The successful row still comes back; the dropped one is accounted for.
+        expect(result.messages).toHaveLength(1)
+        expect(result.failedCount).toBe(1)
+        expect(result.partialFailure).toBe(true)
+    })
+
+    test('listMessagesForLabel flags a page whose thread fetches all failed', async () => {
+        mockThreadsList.mockImplementation(async () => ({ data: { threads: makeThreadRefs(['t1', 't2']) } }))
+        mockThreadsGet.mockRejectedValue(new Error('Rate Limit Exceeded'))
+
+        const result = await listMessagesForLabel('u', 'p', 'Label_ads', {})
+
+        expect(result.messages).toEqual([])
+        expect(result.failedCount).toBe(2)
+        expect(result.partialFailure).toBe(true)
+    })
+
+    test('listMessagesForLabel reports no failure for a genuinely empty label', async () => {
+        mockThreadsList.mockImplementation(async ({ labelIds }) =>
+            labelIds[0] === 'INBOX'
+                ? { data: { threads: makeThreadRefs(['t_inbox_only']) } }
+                : { data: { threads: [] } }
+        )
+
+        const result = await listMessagesForLabel('u', 'p', 'Label_ads', {})
+
+        expect(result.messages).toEqual([])
+        expect(result.failedCount).toBe(0)
+        expect(result.partialFailure).toBe(false)
+        expect(mockThreadsGet).not.toHaveBeenCalled()
+    })
+
+    test('listMessagesForLabel reports failures for the no-label and inbox buckets too', async () => {
+        mockThreadsList.mockImplementation(async ({ labelIds = [], q }) => {
+            if (q === 'has:userlabels') return { data: { threads: [] } }
+            if (labelIds[0] === 'INBOX') return { data: { threads: makeThreadRefs(['t_in0']) } }
+            return { data: { threads: [] } }
+        })
+        mockThreadsGet.mockRejectedValue(new Error('Rate Limit Exceeded'))
+
+        const noLabel = await listMessagesForLabel('u', 'p', NO_LABEL_ID, {})
+        expect(noLabel.messages).toEqual([])
+        expect(noLabel.failedCount).toBe(1)
+        expect(noLabel.partialFailure).toBe(true)
+
+        const inbox = await listMessagesForLabel('u', 'p', 'INBOX', {})
+        expect(inbox.messages).toEqual([])
+        expect(inbox.failedCount).toBe(1)
+        expect(inbox.partialFailure).toBe(true)
+    })
+
     test('getGmailLabelSummary warms the resolved-set cache so the modal open skips the rescans', async () => {
         setupLabels([
             { id: 'INBOX', name: 'INBOX', type: 'system' },
