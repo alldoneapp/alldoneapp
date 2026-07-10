@@ -40,9 +40,8 @@ function EmailLabelModal({
     // Only show the spinner when there's nothing cached to render meanwhile.
     const [sections, setSections] = useState(() => getCachedEmailLineSections(group?.key) || [])
     const [loading, setLoading] = useState(() => !getCachedEmailLineSections(group?.key))
-    // Whether a fresh fetch is currently in flight. Used to show the spinner when the cached
-    // rows we're about to render would contradict the chip's thread count (see showLoading
-    // below) — so the popup never displays a number that mismatches the chip while loading.
+    // Whether a fresh fetch is currently in flight. Cached rows remain usable while this runs;
+    // a compact header indicator communicates that they may be momentarily stale.
     const [refreshing, setRefreshing] = useState(true)
     const [loadingMoreKey, setLoadingMoreKey] = useState(null)
     const [selectedIds, setSelectedIds] = useState(() => new Set())
@@ -288,15 +287,9 @@ function EmailLabelModal({
     const totalMessages = sections.reduce((total, section) => total + section.messages.length, 0)
     const labelingDisabled = entries.some(entry => labelingDisabledByConnectionId?.[entry.connectionId])
 
-    // The chip promises `expectedCount` inbox threads. While a fresh fetch is in flight, only keep
-    // the cached rows on screen if they still add up to that number (or there are more pages that
-    // explain the gap). If the cache is stale enough to contradict the chip — e.g. the count moved
-    // since it was stored — show the spinner instead so the popup never displays a thread count that
-    // mismatches the chip mid-load. `refreshing` always resolves, so this can't get stuck.
-    const expectedCount = Number.isFinite(group?.threadCount) ? group.threadCount : null
-    const hasMorePages = sections.some(section => section.nextPageToken)
-    const cachedMismatchesChip = expectedCount !== null && !hasMorePages && totalMessages !== expectedCount
-    const showLoading = loading || (refreshing && cachedMismatchesChip)
+    // A blocking spinner is only needed on the first load. On subsequent opens, stale rows are
+    // more useful than an empty modal while the background refresh catches up with the chip.
+    const showLoading = loading
 
     const allSelectionKeys = sections
         .flatMap(section =>
@@ -314,6 +307,12 @@ function EmailLabelModal({
                 <Text style={[styles.title6, localStyles.title]} numberOfLines={1}>
                     {group.displayName}
                 </Text>
+                {refreshing && !loading && (
+                    <View style={localStyles.refreshing} accessibilityLabel={translate('Refreshing emails')}>
+                        <ActivityIndicator size="small" color={colors.Text03} />
+                        <Text style={[styles.caption2, localStyles.refreshingText]}>{translate('Refreshing')}</Text>
+                    </View>
+                )}
                 <TouchableOpacity onPress={closePopover} accessibilityLabel={translate('Close')}>
                     <Icon name="x" size={20} color={colors.Text03} />
                 </TouchableOpacity>
@@ -495,6 +494,15 @@ const localStyles = StyleSheet.create({
         color: '#ffffff',
         flex: 1,
         marginRight: 8,
+    },
+    refreshing: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    refreshingText: {
+        color: colors.Text03,
+        marginLeft: 4,
     },
     sweepBar: {
         flexDirection: 'row',

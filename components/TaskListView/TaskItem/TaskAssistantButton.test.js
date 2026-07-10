@@ -8,6 +8,7 @@ const mockDispatch = jest.fn()
 
 jest.mock('react-redux', () => ({
     useDispatch: () => mockDispatch,
+    useSelector: selector => selector({ defaultAssistant: { uid: 'default-assistant' } }),
 }))
 jest.mock('react-hot-keys', () => ({ children }) => children)
 jest.mock('react-tiny-popover', () => ({ children, content, isOpen }) => (
@@ -18,7 +19,6 @@ jest.mock('react-tiny-popover', () => ({ children, content, isOpen }) => (
 ))
 jest.mock('../../Icon', () => 'Icon')
 jest.mock('../../UIComponents/FloatModals/ChangeAssistantModal/AssistantModal', () => 'AssistantModal')
-jest.mock('../EmailLine/EmailLabelModal/DraftReplyPopup', () => 'DraftReplyPopup')
 jest.mock('../../ModalsManager/modalsManager', () => ({
     TASK_ASSISTANT_MODAL_ID: 'task-assistant-modal',
     removeModal: jest.fn(),
@@ -47,9 +47,10 @@ describe('TaskAssistantButton', () => {
         mockDispatch.mockClear()
     })
 
-    test('opens draft reply popup for email tasks', () => {
+    test('opens the task chat with an unsent reply prompt for email tasks', async () => {
         const task = {
             id: 'task-1',
+            assistantId: 'assistant-1',
             gmailData: {
                 connectionId: 'connection-1',
                 messageId: 'message-1',
@@ -57,21 +58,27 @@ describe('TaskAssistantButton', () => {
         }
         const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
 
-        act(() => {
-            tree.root.findByType(TouchableOpacity).props.onPress({
+        await act(async () => {
+            await tree.root.findByType(TouchableOpacity).props.onPress({
                 preventDefault: jest.fn(),
                 stopPropagation: jest.fn(),
             })
         })
 
-        const popup = tree.root.findByType('DraftReplyPopup')
-        expect(popup.props.projectId).toBe('connection-1')
-        expect(popup.props.messageId).toBe('message-1')
-        expect(popup.props.sourceProjectId).toBe('project-1')
-        expect(popup.props.sourceTaskId).toBe('task-1')
+        expect(mockDispatch).toHaveBeenCalledWith([
+            { type: 'selected-nav', value: 'TASK_CHAT' },
+            { type: 'assistant-enabled', value: true },
+            {
+                type: 'trigger-chat-draft',
+                value: {
+                    text: 'Draft a reply to this email in the same language as the email with the following content: ',
+                    chatId: 'task-1',
+                },
+            },
+        ])
     })
 
-    test('opens draft reply popup for gmail follow-up tasks', () => {
+    test('uses the default assistant when an email task has no assistant', async () => {
         const task = {
             id: 'task-1',
             gmailData: {
@@ -82,18 +89,18 @@ describe('TaskAssistantButton', () => {
         }
         const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
 
-        act(() => {
-            tree.root.findByType(TouchableOpacity).props.onPress({
+        await act(async () => {
+            await tree.root.findByType(TouchableOpacity).props.onPress({
                 preventDefault: jest.fn(),
                 stopPropagation: jest.fn(),
             })
         })
 
-        const popup = tree.root.findByType('DraftReplyPopup')
-        expect(popup.props.projectId).toBe('connection-project-1')
-        expect(popup.props.messageId).toBe('message-1')
-        expect(popup.props.sourceProjectId).toBe('project-1')
-        expect(popup.props.sourceTaskId).toBe('task-1')
+        expect(require('../../../utils/NavigationService').navigate).toHaveBeenCalledWith('TaskDetailedView', {
+            task: expect.objectContaining({ assistantId: 'default-assistant', isAssistantEnabled: true }),
+            projectId: 'project-1',
+            assistantId: 'default-assistant',
+        })
     })
 
     test('keeps assistant picker for non-email tasks', () => {

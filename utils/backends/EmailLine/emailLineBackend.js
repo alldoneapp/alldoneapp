@@ -83,11 +83,27 @@ export function cacheEmailLineSections(groupKey, sections) {
 
 export async function listEmailLineMessages(projectId, labelId, { pageToken } = {}) {
     if (!projectId || !labelId) return { messages: [], nextPageToken: null }
-    return runHttpsCallableFunction('listEmailLineMessagesSecondGen', {
-        ...buildConnectionKeyPayload(projectId),
-        labelId,
-        pageToken,
-    })
+    const startedAt = Date.now()
+    try {
+        const result = await runHttpsCallableFunction('listEmailLineMessagesSecondGen', {
+            ...buildConnectionKeyPayload(projectId),
+            labelId,
+            pageToken,
+        })
+        console.log('[emailLineTiming] client', {
+            totalMs: Date.now() - startedAt,
+            page: pageToken ? 'next' : 'first',
+            messageCount: result?.messages?.length || 0,
+        })
+        return result
+    } catch (error) {
+        console.log('[emailLineTiming] clientError', {
+            totalMs: Date.now() - startedAt,
+            page: pageToken ? 'next' : 'first',
+            code: error?.code || 'unknown',
+        })
+        throw error
+    }
 }
 
 // Marks an email's label decision as wrong (optionally naming the correct label). When move
@@ -97,7 +113,7 @@ export async function listEmailLineMessages(projectId, labelId, { pageToken } = 
 // is currently in. Returns the updated learned-rules block plus whether the thread was re-labeled.
 export async function submitEmailLabelFeedback(
     projectId,
-    { messageId, correctLabel, note, correctLabelName, currentLabelId } = {}
+    { messageId, correctLabel, note, correctLabelName, currentLabelId, correctFollowUpType } = {}
 ) {
     if (!projectId || !messageId) return null
     return runHttpsCallableFunction('submitEmailLabelFeedbackSecondGen', {
@@ -108,6 +124,7 @@ export async function submitEmailLabelFeedback(
         note,
         correctLabelName,
         currentLabelId,
+        correctFollowUpType,
     })
 }
 

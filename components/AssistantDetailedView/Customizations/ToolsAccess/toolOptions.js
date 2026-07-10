@@ -5,6 +5,7 @@ export const TOOL_OPTIONS = [
     { key: 'update_note', labelKey: 'Update note' },
     { key: 'update_contact', labelKey: 'Update contact' },
     { key: 'add_chat_comment', labelKey: 'Add chat comment' },
+    { key: 'correct_email_classification', labelKey: 'Correct email classification' },
     { key: 'update_user_memory', labelKey: 'Update user memory' },
     { key: 'update_heartbeat_settings', labelKey: 'Update heartbeat settings' },
     { key: 'update_project_description', labelKey: 'Update project description' },

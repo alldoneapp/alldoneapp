@@ -76,7 +76,9 @@ export default function EmailRow({
     const [feedbackDropdownOpen, setFeedbackDropdownOpen] = useState(false)
     const [feedbackLabel, setFeedbackLabel] = useState(null)
     const [feedbackLabelName, setFeedbackLabelName] = useState(null)
+    const [feedbackLabelChanged, setFeedbackLabelChanged] = useState(false)
     const [feedbackNote, setFeedbackNote] = useState('')
+    const [feedbackFollowUpType, setFeedbackFollowUpType] = useState(row?.followUpType || null)
     const [feedbackState, setFeedbackState] = useState('idle') // idle | sending | done | error
     // A task may already exist for this email from a previous session — the server
     // persists it on the labeling audit record and returns it as row.taskCreated.
@@ -90,6 +92,10 @@ export default function EmailRow({
     const confidencePercent = Number.isFinite(row.confidence) ? Math.round(row.confidence * 100) : null
     const correctLabelText = translate('Correct label')
     const inboxOnlyText = translate('Inbox only')
+    // Prefer the per-email classifier result. The section label is only a fallback for
+    // providers/older rows without an audit record; this distinction matters most in
+    // the synthetic Inbox modal, where messages from several classified labels appear.
+    const displayedLabelName = row.labelName || currentLabelName || inboxOnlyText
     const explanationText = row.reasoning || translate('No project or label explanation was recorded for this email.')
     const feedbackLabelOptions = normalizeLabelOptions(labelOptions, currentLabelName)
     const feedbackDropdownOptions = [
@@ -108,10 +114,15 @@ export default function EmailRow({
         try {
             await submitEmailLabelFeedback(connectionId, {
                 messageId: row.messageId,
-                correctLabel: feedbackLabel,
-                correctLabelName: feedbackLabelName,
-                currentLabelId: currentLabelId || null,
+                ...(feedbackLabelChanged
+                    ? {
+                          correctLabel: feedbackLabel,
+                          correctLabelName: feedbackLabelName,
+                          currentLabelId: currentLabelId || null,
+                      }
+                    : {}),
                 note: feedbackNote,
+                correctFollowUpType: feedbackFollowUpType,
             })
             setFeedbackState('done')
             // The email now lives under the corrected label, so drop it out of this section.
@@ -173,10 +184,10 @@ export default function EmailRow({
                     >
                         {parseSenderName(row.from) || translate('Unknown sender')}
                     </Text>
-                    {row.needsReply && (
-                        <View style={localStyles.needsReplyTag}>
-                            <Text style={[styles.caption2, localStyles.needsReplyTagText]}>
-                                {translate('Needs reply')}
+                    {!!row.followUpType && (
+                        <View style={localStyles.followUpTypeTag}>
+                            <Text style={[styles.caption2, localStyles.followUpTypeTagText]}>
+                                {translate(row.followUpType === 'actionable' ? 'Actionable' : 'Informational')}
                             </Text>
                         </View>
                     )}
@@ -189,6 +200,18 @@ export default function EmailRow({
                         {row.snippet}
                     </Text>
                 )}
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={localStyles.emailLabelTag}
+                onPress={() => setReasoningOpen(open => !open)}
+                disabled={pending}
+                accessibilityLabel={`${translate('Why this label')}: ${displayedLabelName}`}
+            >
+                <Icon name="tag" size={11} color={colors.Primary100} />
+                <Text style={[styles.caption2, localStyles.emailLabelTagText]} numberOfLines={1}>
+                    {displayedLabelName}
+                </Text>
+                <Icon name={reasoningOpen ? 'chevron-up' : 'chevron-down'} size={11} color={colors.Text03} />
             </TouchableOpacity>
             {reasoningOpen && (
                 <View style={localStyles.reasoningBox}>
@@ -214,6 +237,7 @@ export default function EmailRow({
                                     onPress={() => {
                                         setFeedbackOpen(true)
                                         setFeedbackLabel(null)
+                                        setFeedbackLabelChanged(false)
                                     }}
                                     accessibilityLabel={translate('Wrong label?')}
                                 >
@@ -255,6 +279,7 @@ export default function EmailRow({
                                                                 markEmailLabelPickerInteraction()
                                                                 setFeedbackLabel(option.value)
                                                                 setFeedbackLabelName(option.gmailLabelName)
+                                                                setFeedbackLabelChanged(true)
                                                                 setFeedbackDropdownOpen(false)
                                                             }}
                                                             accessibilityLabel={`${correctLabelText}: ${option.label}`}
@@ -310,6 +335,26 @@ export default function EmailRow({
                                             </Text>
                                         </View>
                                     )}
+                                    <View style={localStyles.feedbackClassificationRow}>
+                                        {['actionable', 'informational'].map(type => (
+                                            <TouchableOpacity
+                                                key={type}
+                                                style={[
+                                                    localStyles.feedbackClassificationButton,
+                                                    feedbackFollowUpType === type &&
+                                                        localStyles.feedbackClassificationButtonSelected,
+                                                ]}
+                                                onPress={() => setFeedbackFollowUpType(type)}
+                                                accessibilityLabel={translate(
+                                                    type === 'actionable' ? 'Actionable' : 'Informational'
+                                                )}
+                                            >
+                                                <Text style={[styles.caption2, localStyles.feedbackClassificationText]}>
+                                                    {translate(type === 'actionable' ? 'Actionable' : 'Informational')}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
                                     <TextInput
                                         style={[styles.caption1, localStyles.feedbackInput]}
                                         value={feedbackNote}
@@ -326,7 +371,10 @@ export default function EmailRow({
                                         <TouchableOpacity
                                             style={localStyles.feedbackSendButton}
                                             onPress={sendFeedback}
-                                            disabled={feedbackState === 'sending'}
+                                            disabled={
+                                                feedbackState === 'sending' ||
+                                                (!feedbackLabelChanged && !feedbackFollowUpType)
+                                            }
                                         >
                                             {feedbackState === 'sending' ? (
                                                 <ActivityIndicator size="small" color="#ffffff" />
@@ -500,7 +548,7 @@ const localStyles = StyleSheet.create({
         color: '#ffffff',
         flexShrink: 1,
     },
-    needsReplyTag: {
+    followUpTypeTag: {
         marginLeft: 8,
         paddingHorizontal: 6,
         height: 16,
@@ -509,11 +557,44 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    needsReplyTagText: {
+    followUpTypeTagText: {
         color: colors.UtilityYellow300,
+    },
+    feedbackClassificationRow: {
+        flexDirection: 'row',
+        marginTop: 8,
+    },
+    feedbackClassificationButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        marginRight: 8,
+        borderRadius: 12,
+        backgroundColor: colors.Secondary300,
+    },
+    feedbackClassificationButtonSelected: {
+        backgroundColor: colors.Primary100,
+    },
+    feedbackClassificationText: {
+        color: '#ffffff',
     },
     readText: {
         color: colors.Text03,
+    },
+    emailLabelTag: {
+        alignSelf: 'flex-start',
+        maxWidth: '100%',
+        minHeight: 20,
+        marginTop: 5,
+        paddingHorizontal: 7,
+        borderRadius: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.Secondary300,
+    },
+    emailLabelTagText: {
+        color: colors.Text03,
+        marginHorizontal: 4,
+        flexShrink: 1,
     },
     reasoningBox: {
         marginTop: 6,

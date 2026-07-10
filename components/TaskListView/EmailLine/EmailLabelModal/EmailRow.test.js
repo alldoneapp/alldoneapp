@@ -162,6 +162,7 @@ describe('EmailRow', () => {
         })
 
         const [toggle] = findByLabel(tree, 'Why this label')
+        expect(findByLabel(tree, 'Why this label: Alldone/Newsletter')).toHaveLength(1)
         act(() => toggle.props.onPress())
 
         const texts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
@@ -200,9 +201,41 @@ describe('EmailRow', () => {
             correctLabelName: 'Ads',
             currentLabelId: 'L_news',
             note: '',
+            correctFollowUpType: null,
         })
         const doneTexts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
         expect(doneTexts).toContain('Labeling instructions updated')
+    })
+
+    it('shows the email-specific label and opens the existing correction flow from it', () => {
+        const row = {
+            messageId: 'm1',
+            from: 'a@ex.com',
+            subject: 'Hi',
+            reasoning: 'This email belongs to Ads even though it is shown in the combined inbox.',
+            labelName: 'Ads',
+        }
+        let tree
+        act(() => {
+            tree = renderer.create(<EmailRow row={row} connectionId="c1" currentLabelName="Inbox" selected={false} />)
+        })
+
+        const [label] = findByLabel(tree, 'Why this label: Ads')
+        expect(label).toBeDefined()
+        act(() => label.props.onPress())
+
+        const texts = tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
+        expect(texts).toContain('This email belongs to Ads even though it is shown in the combined inbox.')
+    })
+
+    it('shows the section label when an email has no classification audit', () => {
+        const row = { messageId: 'm1', from: 'a@ex.com', subject: 'Hi' }
+        let tree
+        act(() => {
+            tree = renderer.create(<EmailRow row={row} connectionId="c1" currentLabelName="Inbox" selected={false} />)
+        })
+
+        expect(findByLabel(tree, 'Why this label: Inbox')).toHaveLength(1)
     })
 
     it('offers an audit-suggested label when the current bucket is No label', () => {
@@ -300,6 +333,7 @@ describe('EmailRow', () => {
             correctLabelName: null,
             currentLabelId: 'L_ads',
             note: '',
+            correctFollowUpType: null,
         })
     })
 

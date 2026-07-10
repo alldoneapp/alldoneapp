@@ -769,6 +769,7 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
         webUrl: typeof gmailContext.webUrl === 'string' ? gmailContext.webUrl.trim() : '',
         archiveOnComplete: gmailContext.archiveOnComplete !== false,
         archiveStatus: null,
+        followUpType: gmailContext.followUpType === 'actionable' ? 'actionable' : 'informational',
     }
 }
 
@@ -5300,6 +5301,11 @@ async function executeToolNatively(
         case 'add_chat_comment': {
             const db = admin.firestore()
             const chatType = typeof toolArgs.chatType === 'string' ? toolArgs.chatType.trim().toLowerCase() : 'topics'
+            const gmailTopicChatTitle =
+                toolRuntimeContext?.gmailContext?.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN &&
+                typeof toolRuntimeContext.gmailContext.topicChatTitle === 'string'
+                    ? toolRuntimeContext.gmailContext.topicChatTitle.trim()
+                    : ''
             if (chatType !== 'topics') {
                 throw new Error('add_chat_comment currently supports topic chats only.')
             }
@@ -5326,12 +5332,12 @@ async function executeToolNatively(
             const result = await addChatCommentFromAssistantTool({
                 projectId: targetProject.id,
                 projectName: targetProject.name || '',
-                chatId: toolArgs.chatId || '',
-                chatTitle: toolArgs.chatTitle || '',
+                chatId: gmailTopicChatTitle ? '' : toolArgs.chatId || '',
+                chatTitle: gmailTopicChatTitle || toolArgs.chatTitle || '',
                 comment: toolArgs.comment || '',
                 assistantId,
                 userId: creatorId,
-                createIfMissing: toolArgs.createIfMissing === true,
+                createIfMissing: !!gmailTopicChatTitle || toolArgs.createIfMissing === true,
                 gmailContext: toolRuntimeContext?.gmailContext || null,
             })
 
@@ -5344,6 +5350,44 @@ async function executeToolNatively(
             })
 
             return result
+        }
+
+        case 'correct_email_classification': {
+            const correctedFollowUpType = ['actionable', 'informational'].includes(toolArgs.correctFollowUpType)
+                ? toolArgs.correctFollowUpType
+                : null
+            const correctLabel =
+                typeof toolArgs.correctLabel === 'string' && toolArgs.correctLabel.trim()
+                    ? toolArgs.correctLabel.trim()
+                    : undefined
+            if (!correctedFollowUpType && correctLabel === undefined) {
+                throw new Error('Provide correctLabel, correctFollowUpType, or both.')
+            }
+
+            const userSnapshot = await admin.firestore().collection('users').doc(creatorId).get()
+            if (!userSnapshot.exists) throw new Error('User not found')
+            const { submitEmailLabelFeedback } = require('../Gmail/gmailLabelFeedback')
+            const result = await submitEmailLabelFeedback({
+                userId: creatorId,
+                userData: userSnapshot.data() || {},
+                projectId: toolArgs.projectId,
+                messageId: toolArgs.messageId,
+                verdict: 'wrong',
+                correctLabel,
+                correctFollowUpType: correctedFollowUpType,
+                note: toolArgs.note || '',
+            })
+
+            return {
+                success: true,
+                messageId: toolArgs.messageId,
+                projectId: toolArgs.projectId,
+                correctLabel: correctLabel || null,
+                followUpType: result.followUpType,
+                learnedRules: result.learnedRules,
+                postLabelActionStatus: result.postLabelActionStatus,
+                message: 'Email classification feedback was recorded and learned for similar future emails.',
+            }
         }
 
         case 'get_updates': {
@@ -10887,6 +10931,12 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When the user asks you to add, log, or record something in a chat/topic, use add_chat_comment. For daily topic requests, pass the exact requested topic title as chatTitle and set createIfMissing=true only when the user wants the topic created if absent. For Gmail follow-up context, use add_chat_comment for useful informational emails that are not real todos; keep the comment to one concise line and let the server attach Gmail metadata.',
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.includes('correct_email_classification')) {
+        messages.push([
+            'system',
+            'When the user explicitly corrects the label or actionable/informational handling of an email-created task, use correct_email_classification with the exact Gmail messageId and connection projectId from the task Gmail metadata. Do not treat general discussion as classification feedback. Confirm what was learned after the tool succeeds.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('create_note')) {

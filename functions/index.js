@@ -2044,6 +2044,7 @@ exports.cancelAssistantRunSecondGen = onCall(
         cors: true,
     },
     async request => {
+        const requestStartedAt = Date.now()
         const { data, auth } = request
         if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
 
@@ -3387,8 +3388,17 @@ exports.listEmailLineMessagesSecondGen = onCall(
 
         try {
             const { key, userData } = await assertEmailLineAccess(auth.uid, data || {})
+            const accessCheckedAt = Date.now()
             const { listEmailLineMessages } = require('./Email/emailLine/emailLineService')
-            return await listEmailLineMessages(auth.uid, key, labelId, { pageToken, userData })
+            const result = await listEmailLineMessages(auth.uid, key, labelId, { pageToken, userData })
+            console.log('[emailLineTiming] callable', {
+                accessMs: accessCheckedAt - requestStartedAt,
+                serviceMs: Date.now() - accessCheckedAt,
+                totalMs: Date.now() - requestStartedAt,
+                page: pageToken ? 'next' : 'first',
+                messageCount: result?.messages?.length || 0,
+            })
+            return result
         } catch (error) {
             if (error instanceof HttpsError) throw error
             if (error?.code === 'EMAIL_AUTH_EXPIRED') {
@@ -4286,7 +4296,8 @@ exports.submitEmailLabelFeedbackSecondGen = onCall(
         const { auth, data } = request
         if (!auth) throw new HttpsError('permission-denied', 'User must be authenticated')
 
-        const { messageId, verdict, correctLabel, note, correctLabelName, currentLabelId } = data || {}
+        const { messageId, verdict, correctLabel, note, correctLabelName, currentLabelId, correctFollowUpType } =
+            data || {}
         if (!messageId) throw new HttpsError('invalid-argument', 'messageId is required')
 
         try {
@@ -4303,6 +4314,7 @@ exports.submitEmailLabelFeedbackSecondGen = onCall(
                 note,
                 correctLabelName,
                 currentLabelId,
+                correctFollowUpType,
             })
         } catch (error) {
             console.error('Error submitting email label feedback:', error)

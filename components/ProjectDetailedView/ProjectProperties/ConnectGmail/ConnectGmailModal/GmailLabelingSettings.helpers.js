@@ -164,8 +164,8 @@ function buildDefaultProjectLabelDescription(project = {}, labelName = '', isDef
 function buildDefaultProjectFollowUpPrompt(labelName = '') {
     const projectLabel = labelName || 'the matched project'
     return [
-        `If it is an inbound email and it means an actual task for the user, create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
-        `If it is useful but only informational, add one concise comment to the topic chat "Daily emails ${projectLabel} [today's date]" with createIfMissing=true. The comment should be in this format: "LINK: Email from [sender name] ([sender email]): [one-line summary]". Use the Gmail web URL from the email context as LINK. Do not create a task when the email is only interesting, informational, or useful context for the user.`,
+        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
+        `When followUpType is "informational", never create a task. Always add one concise comment to the topic chat "Daily emails ${projectLabel} [today's date]" with createIfMissing=true. Every informational email gets exactly one comment, including routine, promotional, automated, or redundant ones. The comment should be in this format: "LINK: Email from [sender name] ([sender email]): [one-line summary]". Use the Gmail web URL from the email context as LINK.`,
         `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
     ].join('\n')
 }

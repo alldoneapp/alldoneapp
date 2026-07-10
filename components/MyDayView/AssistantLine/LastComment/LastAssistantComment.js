@@ -23,7 +23,15 @@ import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 
-export default function LastAssistantComment({ projectId, commentText, onPress, objectName, isNew, compact = false }) {
+export default function LastAssistantComment({
+    projectId,
+    commentText,
+    onPress,
+    objectName,
+    isNew,
+    unreadComments,
+    compact = false,
+}) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
 
     const text = shrinkTagText(commentText.replace(/\s\s+/g, ' '), 500)
@@ -42,7 +50,7 @@ export default function LastAssistantComment({ projectId, commentText, onPress, 
                 <Text numberOfLines={1} style={localStyles.compactText}>
                     {text}
                 </Text>
-                {isNew && <ReddBubble />}
+                {isNew && <ReddBubble amount={unreadComments} />}
             </TouchableOpacity>
         )
     }
@@ -135,7 +143,7 @@ export default function LastAssistantComment({ projectId, commentText, onPress, 
                 </View>
             </View>
             <ProjectTagIndicator projectId={projectId} />
-            {isNew && <ReddBubble />}
+            {isNew && <ReddBubble amount={unreadComments} />}
         </TouchableOpacity>
     )
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import Hotkeys from 'react-hot-keys'
 import Popover from 'react-tiny-popover'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
 import Icon from '../../Icon'
 import { colors } from '../../styles/global'
@@ -19,19 +19,16 @@ import { setTaskAssistant } from '../../../utils/backends/Tasks/tasksFirestore'
 import { setObjectAssistantEnabled } from '../../../utils/assistantHelper'
 import NavigationService from '../../../utils/NavigationService'
 import { DV_TAB_TASK_CHAT } from '../../../utils/TabNavigationConstants'
-import DraftReplyPopup from '../EmailLine/EmailLabelModal/DraftReplyPopup'
-import { getDraftConnectionKey, getDraftMessageId } from '../../Tags/GmailTag'
 
 const TASK_START_PROMPT = 'Start working on this task. Feel free to ask questions is anything is unclear'
+const EMAIL_REPLY_PROMPT = 'Draft a reply to this email in the same language as the email with the following content: '
 
 export default function TaskAssistantButton({ projectId, task, disabled, dismissEditMode }) {
     const dispatch = useDispatch()
+    const defaultAssistantId = useSelector(state => state.defaultAssistant?.uid || '')
     const [isOpen, setIsOpen] = useState(false)
     const isOpenRef = useRef(false)
     const isEmailTask = !!task?.gmailData
-    const draftConnectionKey = isEmailTask ? getDraftConnectionKey(task.gmailData) : ''
-    const draftMessageId = isEmailTask ? getDraftMessageId(task.gmailData) : ''
-    const canDraftReply = !isEmailTask || (!!draftConnectionKey && !!draftMessageId)
 
     const closeModal = () => {
         removeModal(TASK_ASSISTANT_MODAL_ID)
@@ -45,11 +42,43 @@ export default function TaskAssistantButton({ projectId, task, disabled, dismiss
     const openModal = e => {
         e?.preventDefault?.()
         e?.stopPropagation?.()
+        if (isEmailTask) {
+            activateEmailAssistant()
+            return
+        }
         if (isOpenRef.current) return
         storeModal(TASK_ASSISTANT_MODAL_ID)
         dispatch(showFloatPopup())
         isOpenRef.current = true
         setIsOpen(true)
+    }
+
+    const activateEmailAssistant = async () => {
+        const assistantId = task.assistantId || defaultAssistantId
+        const updatedTask = { ...task, assistantId, isAssistantEnabled: true }
+        dismissEditMode?.()
+
+        try {
+            await Promise.all([
+                assistantId && task.assistantId !== assistantId
+                    ? setTaskAssistant(projectId, task.id, assistantId, !!task.assistantId)
+                    : Promise.resolve(),
+                setObjectAssistantEnabled(projectId, task.id, 'tasks', true),
+            ])
+        } catch (error) {
+            console.error('Error activating assistant for email task:', error)
+        }
+
+        NavigationService.navigate('TaskDetailedView', {
+            task: updatedTask,
+            projectId,
+            assistantId,
+        })
+        dispatch([
+            setSelectedNavItem(DV_TAB_TASK_CHAT),
+            setAssistantEnabled(true),
+            setTriggerChatDraft({ text: EMAIL_REPLY_PROMPT, chatId: task.id }),
+        ])
     }
 
     const selectAssistant = async assistantId => {
@@ -91,15 +120,7 @@ export default function TaskAssistantButton({ projectId, task, disabled, dismiss
         <View style={localStyles.container}>
             <Popover
                 content={
-                    isEmailTask ? (
-                        <DraftReplyPopup
-                            projectId={draftConnectionKey}
-                            messageId={draftMessageId}
-                            sourceProjectId={projectId}
-                            sourceTaskId={task.id}
-                            closePopover={closeModal}
-                        />
-                    ) : (
+                    !isEmailTask ? (
                         <AssistantModal
                             closeModal={closeModal}
                             projectId={projectId}
@@ -108,7 +129,7 @@ export default function TaskAssistantButton({ projectId, task, disabled, dismiss
                             defaultProjectAssistantAtEnd={true}
                             alwaysUpdateOnSelect={true}
                         />
-                    )
+                    ) : null
                 }
                 isOpen={isOpen}
                 onClickOutside={closeModal}
@@ -120,16 +141,12 @@ export default function TaskAssistantButton({ projectId, task, disabled, dismiss
                         style={localStyles.button}
                         activeOpacity={0.7}
                         onPress={openModal}
-                        disabled={disabled || !canDraftReply}
+                        disabled={disabled}
                         accessibilityLabel={
                             isEmailTask ? 'Draft an email reply for this task' : 'Select an assistant for this task'
                         }
                     >
-                        <Icon
-                            name="cpu"
-                            size={20}
-                            color={disabled || !canDraftReply ? colors.Text03 : colors.Primary100}
-                        />
+                        <Icon name="cpu" size={20} color={disabled ? colors.Text03 : colors.Primary100} />
                     </TouchableOpacity>
                 </Hotkeys>
             </Popover>

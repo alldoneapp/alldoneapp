@@ -42,6 +42,7 @@ const {
     archiveMessages,
     markMessagesRead,
     sweepLabel,
+    invalidateResolvedThreadIds,
     NO_LABEL_ID,
 } = require('./gmailEmailLine')
 
@@ -89,6 +90,7 @@ function setupLabels(labels) {
 
 describe('gmailEmailLine', () => {
     beforeEach(() => {
+        invalidateResolvedThreadIds('u', 'p')
         jest.clearAllMocks()
     })
 
@@ -315,6 +317,8 @@ describe('gmailEmailLine', () => {
         const page2 = await listMessagesForLabel('u', 'p', 'Label_ads', { pageToken: page1.nextPageToken })
         expect(page2.messages).toHaveLength(5)
         expect(page2.nextPageToken).toBeNull()
+        // Page two reuses the resolved inbox/label intersection instead of rescanning both sets.
+        expect(mockThreadsList).toHaveBeenCalledTimes(2)
     })
 
     test('listMessagesForLabel INBOX label queries only INBOX', async () => {

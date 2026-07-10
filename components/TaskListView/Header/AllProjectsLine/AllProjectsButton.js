@@ -19,7 +19,6 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'flex-start',
         flexDirection: 'row',
-        flex: 1,
     },
     text: {
         ...styles.subtitle1,

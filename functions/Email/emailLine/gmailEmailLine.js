@@ -3,6 +3,11 @@
 const { google } = require('googleapis')
 const { getAccessToken, getOAuth2Client } = require('../../GoogleOAuth/googleOAuthHandler')
 const { parseListUnsubscribe, chunk } = require('./emailLineShared')
+const {
+    getCachedResolvedThreadIds,
+    cacheResolvedThreadIds,
+    invalidateResolvedThreadIds,
+} = require('./gmailResolvedThreadCache')
 
 const MESSAGES_PER_PAGE = 25
 const NO_LABEL_ID = '__NO_LABEL__'
@@ -477,7 +482,9 @@ async function fetchThreadRows(gmail, threadIds, labelId, emailAddress) {
 }
 
 async function listMessagesForLabel(userId, projectId, labelId, { pageToken, emailAddress } = {}) {
+    const startedAt = Date.now()
     const gmail = await getGmailClient(userId, projectId)
+    const clientReadyAt = Date.now()
 
     // A user label's inbox threads can carry the label on a non-inbox (sent) message and
     // can be old enough to fall outside the most-recent page of the label. A single
@@ -486,17 +493,35 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
     // carrying the label" set the same way the count does (thread-level intersection) and
     // paginate over it by offset — so the modal shows exactly what the chip counts.
     if (isUserLabelBucket(labelId)) {
-        const [inboxThreadIds, { ids: labelThreadIds }] = await Promise.all([
-            collectInboxThreadIds(gmail),
-            collectLabelThreadIds(gmail, labelId),
-        ])
-        const targetThreadIds = labelThreadIds.filter(id => inboxThreadIds.has(id))
+        let targetThreadIds = getCachedResolvedThreadIds(userId, projectId, labelId)
+        const cacheHit = !!targetThreadIds
+        if (!targetThreadIds) {
+            const [inboxThreadIds, { ids: labelThreadIds }] = await Promise.all([
+                collectInboxThreadIds(gmail),
+                collectLabelThreadIds(gmail, labelId),
+            ])
+            targetThreadIds = labelThreadIds.filter(id => inboxThreadIds.has(id))
+            cacheResolvedThreadIds(userId, projectId, labelId, targetThreadIds)
+        }
+        const threadSetReadyAt = Date.now()
         const offset = parseInboxLabelPageToken(pageToken)
         const pageIds = targetThreadIds.slice(offset, offset + MESSAGES_PER_PAGE)
         const messages = await fetchThreadRows(gmail, pageIds, labelId, emailAddress)
+        const rowsReadyAt = Date.now()
         const nextOffset = offset + MESSAGES_PER_PAGE
         const nextPageToken =
             nextOffset < targetThreadIds.length ? `${INBOX_LABEL_PAGE_TOKEN_PREFIX}${nextOffset}` : null
+        console.log('[emailLineTiming] gmailLabelList', {
+            bucket: 'label',
+            cacheHit,
+            clientMs: clientReadyAt - startedAt,
+            resolveThreadSetMs: threadSetReadyAt - clientReadyAt,
+            fetchRowsMs: rowsReadyAt - threadSetReadyAt,
+            totalMs: rowsReadyAt - startedAt,
+            targetThreadCount: targetThreadIds.length,
+            rowCount: messages.length,
+            page: pageToken ? 'next' : 'first',
+        })
         return { messages, nextPageToken }
     }
 
@@ -506,17 +531,35 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
         // when the label sits on a sent/archived message, is independent of the top-N labels
         // the chip summary inspects, and paginates by offset exactly like the label buckets —
         // so the modal shows exactly what the chip counts.
-        const [inboxThreadIds, labeledThreadIds] = await Promise.all([
-            collectInboxThreadIds(gmail),
-            collectLabeledThreadIds(gmail),
-        ])
-        const targetThreadIds = filterUnlabeledThreadIds(inboxThreadIds, labeledThreadIds)
+        let targetThreadIds = getCachedResolvedThreadIds(userId, projectId, labelId)
+        const cacheHit = !!targetThreadIds
+        if (!targetThreadIds) {
+            const [inboxThreadIds, labeledThreadIds] = await Promise.all([
+                collectInboxThreadIds(gmail),
+                collectLabeledThreadIds(gmail),
+            ])
+            targetThreadIds = filterUnlabeledThreadIds(inboxThreadIds, labeledThreadIds)
+            cacheResolvedThreadIds(userId, projectId, labelId, targetThreadIds)
+        }
+        const threadSetReadyAt = Date.now()
         const offset = parseInboxLabelPageToken(pageToken)
         const pageIds = targetThreadIds.slice(offset, offset + MESSAGES_PER_PAGE)
         const messages = await fetchThreadRows(gmail, pageIds, labelId, emailAddress)
+        const rowsReadyAt = Date.now()
         const nextOffset = offset + MESSAGES_PER_PAGE
         const nextPageToken =
             nextOffset < targetThreadIds.length ? `${INBOX_LABEL_PAGE_TOKEN_PREFIX}${nextOffset}` : null
+        console.log('[emailLineTiming] gmailLabelList', {
+            bucket: 'no-label',
+            cacheHit,
+            clientMs: clientReadyAt - startedAt,
+            resolveThreadSetMs: threadSetReadyAt - clientReadyAt,
+            fetchRowsMs: rowsReadyAt - threadSetReadyAt,
+            totalMs: rowsReadyAt - startedAt,
+            targetThreadCount: targetThreadIds.length,
+            rowCount: messages.length,
+            page: pageToken ? 'next' : 'first',
+        })
         return { messages, nextPageToken }
     }
 
@@ -528,6 +571,7 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
         maxResults: MESSAGES_PER_PAGE,
         pageToken: pageToken || undefined,
     })
+    const threadsListedAt = Date.now()
     const threadRefs = Array.isArray(listResponse?.data?.threads) ? listResponse.data.threads : []
     const nextPageToken = listResponse?.data?.nextPageToken || null
     const messages = await Promise.all(
@@ -545,7 +589,19 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
             }
         })
     )
-    return { messages: messages.filter(Boolean), nextPageToken }
+    const filteredMessages = messages.filter(Boolean)
+    const rowsReadyAt = Date.now()
+    console.log('[emailLineTiming] gmailLabelList', {
+        bucket: 'inbox',
+        cacheHit: false,
+        clientMs: clientReadyAt - startedAt,
+        listThreadsMs: threadsListedAt - clientReadyAt,
+        fetchRowsMs: rowsReadyAt - threadsListedAt,
+        totalMs: rowsReadyAt - startedAt,
+        rowCount: filteredMessages.length,
+        page: pageToken ? 'next' : 'first',
+    })
+    return { messages: filteredMessages, nextPageToken }
 }
 
 // Ids of the newest unread inbox messages — a single list call, no per-message fetches.
@@ -646,6 +702,7 @@ async function archiveMessages(userId, projectId, messageIds) {
         }
     }
     await archiveThreads(gmail, threadIds)
+    invalidateResolvedThreadIds(userId, projectId)
     return { processed: messageIds.length }
 }
 
@@ -779,13 +836,19 @@ async function sweepLabel(userId, projectId, labelId, action) {
             collectInboxThreadIds(gmail),
             collectLabeledThreadIds(gmail),
         ])
-        return sweepThreads(filterUnlabeledThreadIds(inboxThreadIds, labeledThreadIds))
+        const result = await sweepThreads(filterUnlabeledThreadIds(inboxThreadIds, labeledThreadIds))
+        if (isArchive) invalidateResolvedThreadIds(userId, projectId)
+        return result
     }
 
     // The inbox itself is defined by being in the inbox, so its scoped [INBOX] query
     // already selects the right threads.
     if (!isUserLabelBucket(labelId)) {
-        if (isArchive) return sweepThreads([...(await collectInboxThreadIds(gmail))])
+        if (isArchive) {
+            const result = await sweepThreads([...(await collectInboxThreadIds(gmail))])
+            invalidateResolvedThreadIds(userId, projectId)
+            return result
+        }
         const { ids, hasMore } = await collectThreadMessageIds(gmail, listParamsForLabel(labelId), matchesUnread)
         if (ids.length > 0) await batchModifyMessages(gmail, ids, { removeLabelIds: ['UNREAD'] })
         return { processed: ids.length, remaining: hasMore }
@@ -799,7 +862,9 @@ async function sweepLabel(userId, projectId, labelId, action) {
         collectInboxThreadIds(gmail),
         collectLabelThreadIds(gmail, labelId),
     ])
-    return sweepThreads(labelThreadIds.filter(id => inboxThreadIds.has(id)))
+    const result = await sweepThreads(labelThreadIds.filter(id => inboxThreadIds.has(id)))
+    if (isArchive) invalidateResolvedThreadIds(userId, projectId)
+    return result
 }
 
 module.exports = {
@@ -818,4 +883,5 @@ module.exports = {
     EXCLUDED_SYSTEM_LABEL_IDS,
     MAX_LABELS_TO_INSPECT,
     SWEEP_LIMIT,
+    invalidateResolvedThreadIds,
 }

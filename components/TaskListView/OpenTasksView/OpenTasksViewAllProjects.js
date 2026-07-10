@@ -12,6 +12,7 @@ import { checkIfThereAreNewComments } from '../../ChatsView/Utils/ChatHelper'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 import TaskPriorityFiltersLine from '../PriorityFilters/TaskPriorityFiltersLine'
 import EmailLine from '../EmailLine/EmailLine'
+import { EMAIL_LINE_ENABLED } from '../EmailLine/emailLineFeature'
 
 export default function OpenTasksViewAllProjects() {
     const dispatch = useDispatch()
@@ -69,7 +70,7 @@ export default function OpenTasksViewAllProjects() {
         >
             <AllProjectsLine showEmailLabels={true} />
             <AssistantLine useAssistantProjectContext={false} />
-            <EmailLine />
+            {EMAIL_LINE_ENABLED && <EmailLine />}
             <TaskPriorityFiltersLine projectId={null} />
             {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {sortedLoggedUserProjectIds.map(projectId => {

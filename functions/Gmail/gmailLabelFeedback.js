@@ -5,6 +5,7 @@ const admin = require('firebase-admin')
 const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
 const { extractJsonFromText, isGpt5ReasoningModel, mapAssistantModelToOpenAIModel } = require('./gmailPromptClassifier')
 const { MAX_LEARNED_RULES_LENGTH, getGmailLabelingStateRef } = require('./gmailLabelingConfig')
+const { invalidateResolvedThreadIds } = require('../Email/emailLine/gmailResolvedThreadCache')
 
 // Feedback is free — the cap only bounds abuse. Folding a user correction into the
 // learned-rules block is a low-frequency, quality-sensitive judgment task, so it runs on a
@@ -81,7 +82,15 @@ async function resolveFeedbackLabelingContext({ userId, userData, projectId, mes
     throw error
 }
 
-async function reviseLearnedRules({ currentRules, labelDefinitions, auditEntry, verdict, correctLabel, note }) {
+async function reviseLearnedRules({
+    currentRules,
+    labelDefinitions,
+    auditEntry,
+    verdict,
+    correctLabel,
+    correctFollowUpType,
+    note,
+}) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
     if (!openAiKey) throw new Error('Feedback revision unavailable: missing OpenAI key')
@@ -107,7 +116,7 @@ async function reviseLearnedRules({ currentRules, labelDefinitions, auditEntry, 
                 labelKey: auditEntry.selectedLabelKey || null,
                 gmailLabelName: auditEntry.selectedGmailLabelName || null,
                 reasoning: auditEntry.reasoning || '',
-                needsReply: auditEntry.needsReply === true,
+                followUpType: auditEntry.followUpType || 'informational',
             },
             null,
             2
@@ -116,6 +125,7 @@ async function reviseLearnedRules({ currentRules, labelDefinitions, auditEntry, 
             {
                 verdict,
                 correctLabel: correctLabel || null,
+                correctFollowUpType: correctFollowUpType || null,
                 note: note || '',
             },
             null,
@@ -224,6 +234,7 @@ async function executeFeedbackPostLabelPrompt({
             existingAuditEntry: auditEntry,
             reasoning: auditEntry.reasoning || '',
             confidence: auditEntry.confidence ?? null,
+            followUpType: auditEntry.followUpType || 'informational',
             connectionProjectId: feedbackProjectId,
             selectedProjectId,
         })
@@ -252,10 +263,17 @@ async function submitEmailLabelFeedback({
     note,
     correctLabelName,
     currentLabelId,
+    correctFollowUpType,
 }) {
     const normalizedVerdict = verdict === 'wrong' ? 'wrong' : null
     if (!normalizedVerdict) throw new Error('Unsupported feedback verdict')
     if (!messageId || typeof messageId !== 'string') throw new Error('messageId is required')
+    const normalizedCorrectFollowUpType = ['actionable', 'informational'].includes(correctFollowUpType)
+        ? correctFollowUpType
+        : null
+    if (!normalizedCorrectFollowUpType && correctLabel === undefined && correctLabelName === undefined) {
+        throw new Error('A label or follow-up classification correction is required')
+    }
 
     const {
         resolveEffectiveGmailLabelingConfig,
@@ -275,6 +293,8 @@ async function submitEmailLabelFeedback({
         correctLabel: typeof correctLabel === 'string' && correctLabel.trim() ? correctLabel.trim() : null,
         note: typeof note === 'string' ? note.trim().slice(0, 500) : '',
         previousLabelKey: auditEntry.selectedLabelKey || null,
+        previousFollowUpType: auditEntry.followUpType || 'informational',
+        correctFollowUpType: normalizedCorrectFollowUpType,
         userId,
         at: admin.firestore.Timestamp.now(),
     }
@@ -300,6 +320,9 @@ async function submitEmailLabelFeedback({
             targetLabelName,
             labelDefinitions: effectiveConfig.labelDefinitions || [],
         })
+        // The email-line modal briefly caches resolved Gmail label memberships. A correction
+        // changes both its source and destination buckets, so neither may reuse the old set.
+        invalidateResolvedThreadIds(userId, feedbackProjectId)
         await auditRef.set(
             {
                 selectedLabelKey: relabel.targetLabelKey,
@@ -317,7 +340,9 @@ async function submitEmailLabelFeedback({
             feedbackProjectId,
             config,
             effectiveConfig,
-            auditEntry,
+            auditEntry: normalizedCorrectFollowUpType
+                ? { ...auditEntry, followUpType: normalizedCorrectFollowUpType }
+                : auditEntry,
             messageId,
             relabel,
         })
@@ -332,6 +357,39 @@ async function submitEmailLabelFeedback({
         }
     }
 
+    if (normalizedCorrectFollowUpType) {
+        await auditRef.set(
+            {
+                followUpType: normalizedCorrectFollowUpType,
+                correctedFollowUpTypeAt: admin.firestore.Timestamp.now(),
+            },
+            { merge: true }
+        )
+
+        // A classification-only correction still runs the existing label's real follow-up
+        // prompt with the corrected classification supplied as authoritative context.
+        if (!postLabelPromptResult) {
+            const selectedDefinition = (effectiveConfig.labelDefinitions || []).find(
+                definition => definition.key === auditEntry.selectedLabelKey
+            )
+            if (selectedDefinition) {
+                postLabelPromptResult = await executeFeedbackPostLabelPrompt({
+                    userId,
+                    userData,
+                    feedbackProjectId,
+                    config,
+                    effectiveConfig,
+                    auditEntry: { ...auditEntry, followUpType: normalizedCorrectFollowUpType },
+                    messageId,
+                    relabel: {
+                        targetLabelKey: selectedDefinition.key,
+                        targetGmailLabelName: selectedDefinition.gmailLabelName,
+                    },
+                })
+            }
+        }
+    }
+
     let learnedRules = typeof config.learnedRules === 'string' ? config.learnedRules : ''
     try {
         learnedRules = await reviseLearnedRules({
@@ -340,6 +398,7 @@ async function submitEmailLabelFeedback({
             auditEntry,
             verdict: normalizedVerdict,
             correctLabel: feedbackEvent.correctLabel,
+            correctFollowUpType: normalizedCorrectFollowUpType,
             note: feedbackEvent.note,
         })
         await configRef.set({ learnedRules, updatedAt: admin.firestore.Timestamp.now() }, { merge: true })
@@ -355,6 +414,7 @@ async function submitEmailLabelFeedback({
         targetLabelId: relabel?.targetLabelId || null,
         archived: relabel?.archived || false,
         postLabelActionStatus: postLabelPromptResult?.postLabelAction?.status || null,
+        followUpType: normalizedCorrectFollowUpType || auditEntry.followUpType || 'informational',
     }
 }
 

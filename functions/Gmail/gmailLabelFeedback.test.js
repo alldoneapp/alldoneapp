@@ -190,4 +190,35 @@ describe('submitEmailLabelFeedback', () => {
             { merge: true }
         )
     })
+
+    test('learns and executes a follow-up classification correction without relabeling', async () => {
+        const result = await submitEmailLabelFeedback({
+            userId: 'user-1',
+            userData: { email: 'fallback@example.com' },
+            projectId: 'project-1',
+            messageId: 'message-1',
+            verdict: 'wrong',
+            correctFollowUpType: 'actionable',
+            note: 'Direct client requests like this should create tasks.',
+        })
+
+        expect(result).toEqual(
+            expect.objectContaining({
+                relabeled: false,
+                followUpType: 'actionable',
+                postLabelActionStatus: 'completed',
+            })
+        )
+        expect(serverSideGmailLabelingSync.applyGmailThreadLabelCorrection).not.toHaveBeenCalled()
+        expect(serverSideGmailLabelingSync.executePostLabelPrompt).toHaveBeenCalledWith(
+            expect.objectContaining({
+                selectedDefinition: expect.objectContaining({ key: 'old' }),
+                followUpType: 'actionable',
+                forceExecute: true,
+            })
+        )
+        expect(mockCompletionCreate.mock.calls[0][0].messages[1].content).toContain(
+            '"correctFollowUpType": "actionable"'
+        )
+    })
 })

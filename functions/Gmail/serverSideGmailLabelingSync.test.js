@@ -109,6 +109,7 @@ const {
     buildThreadLabelModification,
     buildDefaultActiveProjectLabelDefinitions,
     buildDefaultProjectFollowUpPrompt,
+    buildDefaultProjectFollowUpTopicTitle,
     buildGmailMessageUrl,
     buildPostLabelGmailContext,
     createPostLabelPromptHash,
@@ -186,8 +187,10 @@ describe('serverSideGmailLabelingSync helpers', () => {
             webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
             archiveOnComplete: true,
             direction: 'incoming',
+            followUpType: 'informational',
             targetContactEmail: '',
             targetContactName: '',
+            topicChatTitle: '',
         })
     })
 
@@ -215,8 +218,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(labels[0].description).not.toContain('Project description: Project Description')
         expect(labels[0].directionScope).toBe('both')
         expect(labels[0].autoArchive).toBe(false)
-        expect(labels[0].postLabelPrompt).toContain('actual task for the user')
-        expect(labels[0].postLabelPrompt).toContain('only interesting, informational')
+        expect(labels[0].postLabelPrompt).toContain('followUpType is "actionable"')
+        expect(labels[0].postLabelPrompt).toContain('followUpType is "informational"')
         expect(labels[0].postLabelPrompt).toContain('update_note')
         expect(labels[0].postLabelPromptDirectionScope).toBe('incoming')
         expect(labels[2]).toEqual(
@@ -238,10 +241,25 @@ describe('serverSideGmailLabelingSync helpers', () => {
 
         expect(prompt).toContain('project Alldone Product')
         expect(prompt).toContain('topic chat "Daily emails Alldone Product [today')
-        expect(prompt).toContain('actual task for the user')
-        expect(prompt).toContain('only interesting, informational')
+        expect(prompt).toContain('followUpType is "actionable"')
+        expect(prompt).toContain('followUpType is "informational"')
         expect(prompt).toContain('hello@cal.com')
         expect(prompt).toContain('with a space at the end')
+    })
+
+    test('formats default follow-up topic titles using the user date format and timezone', () => {
+        const now = Date.parse('2026-07-10T00:30:00.000Z')
+
+        expect(
+            buildDefaultProjectFollowUpTopicTitle('Alldone Product', { dateFormat: 'DD.MM.YYYY', timezone: 'UTC' }, now)
+        ).toBe('Daily emails Alldone Product 10.07.2026')
+        expect(
+            buildDefaultProjectFollowUpTopicTitle(
+                'Alldone Product',
+                { dateFormat: 'MM.DD.YYYY', timezone: 'America/Los_Angeles' },
+                now
+            )
+        ).toBe('Daily emails Alldone Product 07.09.2026')
     })
 
     test('resolves default mode to active project labels and excludes inactive project types', async () => {
@@ -508,8 +526,10 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         webUrl: 'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-1',
                         archiveOnComplete: true,
                         direction: 'incoming',
+                        followUpType: 'informational',
                         targetContactEmail: 'sender@example.com',
                         targetContactName: 'Eva-Maria Würz',
+                        topicChatTitle: '',
                     },
                 }),
             })

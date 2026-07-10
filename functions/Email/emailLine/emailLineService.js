@@ -132,7 +132,7 @@ async function loadNeedsReplyFlagsFromAudit(userId, projectIds) {
 }
 
 // Batch-join labeling audit records onto message rows by message id (label name,
-// reasoning, confidence, needsReply). Labeling is Gmail-only; other providers simply
+// reasoning, confidence, followUpType). Labeling is Gmail-only; other providers simply
 // find no audit docs. Never throws — the join is enrichment, not a requirement.
 function scoreAuditEntry(audit = {}) {
     let score = 0
@@ -549,14 +549,17 @@ async function addDraftReplyLinkComment({ userId, userData = {}, sourceProjectId
 
 // Returns { messages, nextPageToken }
 async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
+    const startedAt = Date.now()
     const { pageToken, userData: providedUserData } = options
     const { connection, userData } = await resolveConnectionOrThrow(userId, projectId, providedUserData)
+    const connectionResolvedAt = Date.now()
     const provider = getProviderModule(connection.provider)
     try {
         const result = await provider.listMessagesForLabel(userId, projectId, labelId, {
             pageToken,
             emailAddress: connection.emailAddress,
         })
+        const providerCompletedAt = Date.now()
         const rows = result?.messages || []
         const auditLookupIds = [
             ...new Set(
@@ -570,6 +573,7 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
         ]
         const auditLookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
         const auditById = await loadAuditEntriesByMessageId(userId, auditLookupKeys, auditLookupIds)
+        const auditCompletedAt = Date.now()
         // Live tasks are the source of truth for the "task created" indicator. `null` means
         // the reconcile failed — fall back to the audit stamp rather than hide a real task.
         const taskByMessageId = await loadTasksByMessageId(
@@ -580,6 +584,7 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
             auditLookupIds,
             auditById
         )
+        const tasksCompletedAt = Date.now()
         const reconcileFailed = taskByMessageId === null
         const messages = rows.map(message => {
             const auditMessageId =
@@ -597,7 +602,10 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
             return {
                 ...message,
                 auditMessageId,
-                needsReply: audit?.needsReply === true,
+                followUpType:
+                    audit?.followUpType === 'actionable' || audit?.followUpType === 'informational'
+                        ? audit.followUpType
+                        : null,
                 hasAudit: !!audit,
                 labelKey: audit?.selectedLabelKey || null,
                 labelName: audit?.selectedGmailLabelName || null,
@@ -605,6 +613,17 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
                 confidence: Number.isFinite(audit?.confidence) ? audit.confidence : null,
                 taskCreated,
             }
+        })
+        console.log('[emailLineTiming] service', {
+            provider: connection.provider,
+            resolveConnectionMs: connectionResolvedAt - startedAt,
+            providerListMs: providerCompletedAt - connectionResolvedAt,
+            auditMs: auditCompletedAt - providerCompletedAt,
+            taskReconcileMs: tasksCompletedAt - auditCompletedAt,
+            totalMs: Date.now() - startedAt,
+            page: pageToken ? 'next' : 'first',
+            rowCount: messages.length,
+            auditLookupCount: auditLookupIds.length,
         })
         return { messages, nextPageToken: result?.nextPageToken || null }
     } catch (error) {

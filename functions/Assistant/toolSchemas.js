@@ -427,6 +427,44 @@ const toolSchemas = {
         },
     },
 
+    correct_email_classification: {
+        type: 'function',
+        function: {
+            name: 'correct_email_classification',
+            description:
+                'Corrects how the Gmail labeling system handled a specific email and teaches the shared learned rules. Use only when the user explicitly says the email, or similar future emails, should use a different label or should be actionable instead of informational (or vice versa).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    messageId: {
+                        type: 'string',
+                        description: 'The exact Gmail message ID from the email-created task or Gmail context.',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description: 'The Gmail labeling connection/project ID stored with the source email.',
+                    },
+                    correctLabel: {
+                        type: 'string',
+                        description: 'Optional configured label key or user-facing label name that should be used.',
+                    },
+                    correctFollowUpType: {
+                        type: 'string',
+                        enum: ['actionable', 'informational'],
+                        description:
+                            'Optional corrected follow-up classification. Actionable may create a task; informational must not create a task.',
+                    },
+                    note: {
+                        type: 'string',
+                        description:
+                            'The user correction in their own words, including the pattern that should apply to similar future emails.',
+                    },
+                },
+                required: ['messageId', 'projectId'],
+            },
+        },
+    },
+
     get_updates: {
         type: 'function',
         function: {

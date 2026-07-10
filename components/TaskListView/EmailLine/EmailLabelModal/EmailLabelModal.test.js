@@ -277,8 +277,8 @@ describe('EmailLabelModal', () => {
     const stringChildren = tree =>
         tree.root.findAll(node => typeof node.props.children === 'string').map(n => n.props.children)
 
-    it('shows the spinner while refreshing when cached rows would contradict the chip count', async () => {
-        // Cache holds 1 row, but the chip promises 5: rendering it would mismatch the chip number.
+    it('keeps cached rows visible while refreshing even when the chip count changed', async () => {
+        // Cache holds 1 row, but the chip promises 5: prefer useful stale content over a blank modal.
         getCachedEmailLineSections.mockReturnValue(cachedWorkSections(workRows))
         let resolveList
         listEmailLineMessages.mockReturnValue(new Promise(resolve => (resolveList = resolve)))
@@ -289,9 +289,10 @@ describe('EmailLabelModal', () => {
             await Promise.resolve()
         })
 
-        // Refresh in flight + cached total (1) ≠ chip count (5): show the spinner, hide the stale rows.
+        // The cached row remains interactive and a compact refresh state is visible.
         expect(tree.root.findAllByType(ActivityIndicator).length).toBeGreaterThan(0)
-        expect(stringChildren(tree)).not.toContain('Work One')
+        expect(stringChildren(tree)).toContain('Work One')
+        expect(stringChildren(tree)).toContain('Refreshing')
 
         // Fresh results land: the spinner clears and the rows render.
         await act(async () => {
@@ -316,7 +317,8 @@ describe('EmailLabelModal', () => {
         })
 
         expect(stringChildren(tree)).toContain('Work One')
-        expect(tree.root.findAllByType(ActivityIndicator).length).toBe(0)
+        expect(tree.root.findAllByType(ActivityIndicator).length).toBe(1)
+        expect(stringChildren(tree)).toContain('Refreshing')
     })
 
     it('closes immediately on sweep and runs it in the background for every account', async () => {

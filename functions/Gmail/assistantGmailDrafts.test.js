@@ -8,6 +8,7 @@ const {
     buildMimeMessage,
     buildPlainTextMimeMessage,
     buildGmailDraftUrl,
+    buildGmailThreadUrl,
     buildReferencesHeader,
     normalizeAttachmentList,
     normalizeDraftData,
@@ -123,6 +124,12 @@ describe('assistantGmailDrafts helpers', () => {
         const url = buildGmailDraftUrl('person@example.com', '')
 
         expect(url).toBe('https://mail.google.com/mail/u/0/?authuser=person%40example.com#drafts')
+    })
+
+    test('builds a Gmail URL that opens the normal email thread view', () => {
+        const url = buildGmailThreadUrl('person@example.com', 'message-123')
+
+        expect(url).toBe('https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/message-123')
     })
 
     test('normalizes a Gmail draft payload for editing', () => {

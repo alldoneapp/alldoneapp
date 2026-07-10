@@ -11,12 +11,12 @@ const {
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
 
 const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
-    'You classify Gmail messages into exactly one configured label or no match. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, confidence, reasoning, needsReply. Never invent labels. Confidence must be a number between 0 and 1 and must describe confidence in the returned decision. needsReply is true only when the email is an incoming personal message that expects a reply from the recipient (a direct question, request, decision, or action addressed to them). Newsletters, notifications, receipts, marketing, calendar invites, and automated or no-reply senders never need a reply. Outgoing messages never need a reply. needsReply is independent of whether a label matched.'
+    'You classify Gmail messages into exactly one configured label or no match, and classify the follow-up as actionable or informational. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must always be either "actionable" or "informational". Actionable means the email creates a concrete action, responsibility, decision, deadline, or follow-up for the user. Informational means it does not create a concrete action for the user, including useful updates, notifications, newsletters, automated messages, and irrelevant email. Confidence must be a number between 0 and 1 and must describe confidence in the returned decision.'
 
 // Second-pass auditor used when the first-pass reasoning looks inconsistent with the
 // label it chose (e.g. it chose the "Bechtle" label but the reasoning describes "JTL").
 const GMAIL_CONSISTENCY_SYSTEM_PROMPT =
-    'You audit a Gmail label classification for self-consistency. You are given the email, the configured labels, and a first-pass decision (its chosen label, confidence, and reasoning). Decide the FINAL best label. If the email and the reasoning actually point to a different configured label than the one chosen, switch to the correct label. Use matched:false only when the prompt and configured labels do not provide a suitable final label. The reasoning you return MUST justify and be consistent with the final label you choose. Return strict JSON only with keys matched, labelKey, confidence, reasoning, needsReply. Never invent labels. Confidence must be a number between 0 and 1. needsReply is true only when the email is an incoming personal message that expects a reply from the recipient; newsletters, notifications, receipts, marketing, and automated or no-reply senders never need a reply, and outgoing messages never need a reply.'
+    'You audit a Gmail classification for self-consistency. You are given the email, configured labels, and a first-pass decision including its label and follow-up type. Decide the FINAL best label and whether the email is actionable or informational. If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
     'MODEL_GPT5_1',
@@ -109,8 +109,7 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
     const confidence = Number.isFinite(result?.confidence) ? Number(result.confidence) : 0
     const reasoning = typeof result?.reasoning === 'string' ? result.reasoning.trim() : ''
     const matched = rawMatched && !!labelKey
-    // needsReply is independent of the label decision, so it survives the no-match branch.
-    const needsReply = result?.needsReply === true
+    const followUpType = result?.followUpType === 'actionable' ? 'actionable' : 'informational'
     const usage = result?.usage || null
 
     // rawLabelKey/rawMatched preserve the model's pre-coercion decision so demotions are
@@ -123,7 +122,7 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
             rawMatched,
             confidence,
             reasoning: reasoning || 'No configured label clearly matched.',
-            needsReply,
+            followUpType,
             usage,
         }
     }
@@ -135,7 +134,7 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
         rawMatched,
         confidence,
         reasoning,
-        needsReply,
+        followUpType,
         usage,
     }
 }
@@ -267,6 +266,7 @@ async function verifyClassificationConsistency(
                 labelKey: firstResult.labelKey,
                 confidence: firstResult.confidence,
                 reasoning: firstResult.reasoning,
+                followUpType: firstResult.followUpType,
             },
             null,
             2
@@ -275,7 +275,7 @@ async function verifyClassificationConsistency(
         `${buildNoMatchResponseGuidance(
             config
         )} The reasoning must be consistent with the final labelKey you choose. ` +
-        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","confidence":0.92,"reasoning":"...","needsReply":false}.'
+        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","confidence":0.92,"reasoning":"..."}.'
 
     const { parsed, usage } = await runClassifierCompletion(openai, {
         selectedModel,
@@ -300,7 +300,7 @@ async function classifyGmailMessage({ config, message }) {
             labelKey: null,
             confidence: 0,
             reasoning: 'Classifier unavailable or no labels configured.',
-            needsReply: false,
+            followUpType: 'informational',
         }
     }
 
@@ -322,10 +322,10 @@ async function classifyGmailMessage({ config, message }) {
         `Configured labels:\n${JSON.stringify(labelDefinitions, null, 2)}\n\n` +
         `Email:\n${JSON.stringify(message, null, 2)}\n\n` +
         `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}\n\n` +
-        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","confidence":0.92,"reasoning":"...","needsReply":false}. ' +
+        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","confidence":0.92,"reasoning":"..."}. ' +
         `${buildNoMatchResponseGuidance(
             config
-        )} If returning no match, use JSON like {"matched":false,"labelKey":null,"confidence":0.2,"reasoning":"...","needsReply":false}.`
+        )} If returning no match, use JSON like {"matched":false,"labelKey":null,"followUpType":"informational","confidence":0.2,"reasoning":"..."}.`
 
     const { parsed, usage: firstUsage } = await runClassifierCompletion(openai, {
         selectedModel,

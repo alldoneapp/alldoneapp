@@ -2,6 +2,7 @@
 
 const admin = require('firebase-admin')
 const crypto = require('crypto')
+const moment = require('moment-timezone')
 const { google } = require('googleapis')
 const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const {
@@ -74,6 +75,9 @@ const DEFAULT_ACTIVE_PROJECTS_PROMPT =
     DEFAULT_ADS_LABEL_GUIDANCE +
     ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead.'
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
+const DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER = "[today's date]"
+const DEFAULT_DATE_FORMAT_EUROPE = 'DD.MM.YYYY'
+const DEFAULT_DATE_FORMAT_AMERICA = 'MM.DD.YYYY'
 const DEFAULT_ADS_LABEL_DEFINITION = {
     key: 'ads',
     gmailLabelName: 'Ads',
@@ -241,10 +245,46 @@ function buildDefaultProjectLabelDescription(project = {}, labelName = '', isDef
 function buildDefaultProjectFollowUpPrompt(labelName = '') {
     const projectLabel = labelName || 'the matched project'
     return [
-        `If it is an inbound email and it means an actual task for the user, create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
-        `If it is useful but only informational, add one concise comment to the topic chat "Daily emails ${projectLabel} [today's date]" with createIfMissing=true. The comment should be in this format: "LINK: Email from [sender name] ([sender email]): [one-line summary]". Use the Gmail web URL from the email context as LINK. Do not create a task when the email is only interesting, informational, or useful context for the user.`,
+        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
+        `When followUpType is "informational", never create a task. Always add one concise comment to the topic chat "Daily emails ${projectLabel} ${DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER}" with createIfMissing=true. Every informational email gets exactly one comment, including routine, promotional, automated, or redundant ones. The comment should be in this format: "LINK: Email from [sender name] ([sender email]): [one-line summary]". Use the Gmail web URL from the email context as LINK.`,
         `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
     ].join('\n')
+}
+
+function getDefaultFollowUpDateFormat(userData = {}) {
+    return userData?.dateFormat === DEFAULT_DATE_FORMAT_AMERICA
+        ? DEFAULT_DATE_FORMAT_AMERICA
+        : DEFAULT_DATE_FORMAT_EUROPE
+}
+
+function formatDefaultFollowUpTopicDate(userData = {}, now = Date.now()) {
+    const date = moment(now)
+    const timezone = typeof userData?.timezone === 'string' ? userData.timezone.trim() : ''
+    const localizedDate = timezone && moment.tz.zone(timezone) ? date.tz(timezone) : date
+    return localizedDate.format(getDefaultFollowUpDateFormat(userData))
+}
+
+function buildDefaultProjectFollowUpTopicTitle(labelName = '', userData = {}, now = Date.now()) {
+    const projectLabel = labelName || 'the matched project'
+    return `Daily emails ${projectLabel} ${formatDefaultFollowUpTopicDate(userData, now)}`
+}
+
+function resolveDefaultFollowUpTopicPrompt(prompt = '', selectedDefinition = {}, userData = {}, now = Date.now()) {
+    if (
+        typeof prompt !== 'string' ||
+        !prompt.includes('topic chat "Daily emails ') ||
+        !prompt.includes(DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER)
+    ) {
+        return { prompt, topicChatTitle: '' }
+    }
+
+    const formattedDate = formatDefaultFollowUpTopicDate(userData, now)
+    const projectLabel = selectedDefinition?.gmailLabelName || 'the matched project'
+    const topicChatTitle = `Daily emails ${projectLabel} ${formattedDate}`
+    return {
+        prompt: prompt.replace(DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER, formattedDate),
+        topicChatTitle,
+    }
 }
 
 function buildDefaultActiveProjectLabelDefinitions(projects = [], defaultProjectId = '') {
@@ -962,6 +1002,8 @@ function buildPostLabelAssistantMessages({
     direction = GMAIL_DIRECTION_SCOPE_INCOMING,
     targetContactEmail = '',
     targetContactName = '',
+    followUpType = 'informational',
+    classificationReasoning = '',
 }) {
     const gmailWebUrl = buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId)
     const resolvedTargetContactEmail = getTargetContactEmail(normalizedMessage, direction, targetContactEmail)
@@ -978,6 +1020,8 @@ function buildPostLabelAssistantMessages({
                     `Matched Gmail rule key: ${selectedDefinition.key}`,
                     `Matched Gmail label: ${selectedDefinition.gmailLabelName}`,
                     `Matched Gmail direction scope: ${getDefinitionDirectionScope(selectedDefinition)}`,
+                    `Follow-up type: ${followUpType === 'actionable' ? 'actionable' : 'informational'}`,
+                    `Classification reasoning: ${classificationReasoning || ''}`,
                     `Gmail messageId: ${normalizedMessage.messageId || ''}`,
                     `Gmail threadId: ${normalizedMessage.threadId || ''}`,
                     `Gmail web URL: ${gmailWebUrl || ''}`,
@@ -1007,6 +1051,8 @@ function buildPostLabelGmailContext({
     direction = GMAIL_DIRECTION_SCOPE_INCOMING,
     targetContactEmail = '',
     targetContactName = '',
+    topicChatTitle = '',
+    followUpType = 'informational',
 }) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
@@ -1027,6 +1073,8 @@ function buildPostLabelGmailContext({
         direction,
         targetContactEmail: resolvedTargetContactEmail,
         targetContactName: typeof targetContactName === 'string' ? targetContactName.trim() : '',
+        topicChatTitle: typeof topicChatTitle === 'string' ? topicChatTitle.trim() : '',
+        followUpType: followUpType === 'actionable' ? 'actionable' : 'informational',
     }
 }
 
@@ -1099,12 +1147,14 @@ async function executePostLabelPrompt({
     existingAuditEntry = null,
     reasoning = '',
     confidence = null,
+    followUpType = 'informational',
     connectionProjectId = '',
     selectedProjectId = null,
 }) {
-    const prompt =
+    const configuredPrompt =
         typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
-    const promptHash = createPostLabelPromptHash(selectedDefinition?.key || '', prompt)
+    const { prompt, topicChatTitle } = resolveDefaultFollowUpTopicPrompt(configuredPrompt, selectedDefinition, userData)
+    const promptHash = createPostLabelPromptHash(selectedDefinition?.key || '', configuredPrompt)
     const postLabelPromptDirectionScope =
         typeof selectedDefinition?.postLabelPromptDirectionScope === 'string'
             ? selectedDefinition.postLabelPromptDirectionScope.trim().toLowerCase()
@@ -1171,6 +1221,8 @@ async function executePostLabelPrompt({
             direction,
             targetContactEmail,
             targetContactName,
+            followUpType,
+            classificationReasoning: reasoning,
         })
     )
 
@@ -1184,6 +1236,8 @@ async function executePostLabelPrompt({
             direction,
             targetContactEmail,
             targetContactName,
+            topicChatTitle,
+            followUpType,
         })
         const stream = await interactWithChatStream(messages, assistant.model, assistant.temperature, allowedTools, {
             projectId: assistantProjectId,
@@ -1424,7 +1478,7 @@ async function processSingleMessage({
             autoArchive: false,
             confidence: null,
             reasoning: 'Skipped before classification because the user has insufficient gold.',
-            needsReply: null,
+            followUpType: null,
             applied: false,
             archived: false,
             skippedReason: 'insufficient_gold',
@@ -1484,8 +1538,7 @@ async function processSingleMessage({
         ? calculateGoldCostFromTokens(tokenUsage.totalTokens, config.model)
         : 0
 
-    // Outgoing mail never needs a reply from the user, regardless of what the model returned.
-    const needsReply = direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : classifierResult.needsReply === true
+    const followUpType = classifierResult.followUpType === 'actionable' ? 'actionable' : 'informational'
 
     // Charge the real token-based cost in a single ledger entry. If tokens round
     // to 0 Gold we still charge a minimum of 1 so usage is reflected somewhere.
@@ -1542,7 +1595,7 @@ async function processSingleMessage({
             autoArchive: false,
             confidence: classifierResult.confidence,
             reasoning: classifierResult.reasoning,
-            needsReply,
+            followUpType,
             consistencyCheck: classifierResult.consistencyCheck || null,
             applied: false,
             archived: false,
@@ -1571,7 +1624,7 @@ async function processSingleMessage({
             autoArchive: false,
             confidence: classifierResult.confidence,
             reasoning: classifierResult.reasoning,
-            needsReply,
+            followUpType,
             applied: false,
             archived: false,
             skippedReason: 'missing_label_definition',
@@ -1658,6 +1711,7 @@ async function processSingleMessage({
             existingAuditEntry,
             reasoning: classifierResult.reasoning,
             confidence: classifierResult.confidence,
+            followUpType,
             connectionProjectId: goldProjectId,
             selectedProjectId,
         })
@@ -1678,7 +1732,7 @@ async function processSingleMessage({
         autoArchive: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : !!selectedDefinition.autoArchive,
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
-        needsReply,
+        followUpType,
         consistencyCheck: classifierResult.consistencyCheck || null,
         applied: modifyResult.applied,
         archived: modifyResult.archived,
@@ -2144,10 +2198,12 @@ module.exports = {
     buildDefaultActiveProjectLabelDefinitions,
     buildDefaultActiveProjectsGmailLabelingConfig,
     buildDefaultProjectFollowUpPrompt,
+    buildDefaultProjectFollowUpTopicTitle,
     buildGmailMessageUrl,
     buildPostLabelGmailContext,
     createPostLabelPromptHash,
     executePostLabelPrompt,
+    formatDefaultFollowUpTopicDate,
     getGmailLabelingConfigWithState,
     getGmailLabelingLookupKeys,
     getDefaultAssistantIdForProject,

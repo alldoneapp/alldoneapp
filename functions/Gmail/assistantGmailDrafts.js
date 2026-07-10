@@ -186,6 +186,13 @@ function buildGmailDraftUrl(gmailEmail = '', messageId = '') {
     return `https://mail.google.com/mail/u/0/${authQuery}#drafts${composeQuery}`
 }
 
+function buildGmailThreadUrl(gmailEmail = '', messageId = '') {
+    const normalizedEmail = typeof gmailEmail === 'string' ? gmailEmail.trim().toLowerCase() : ''
+    const authQuery = normalizedEmail ? `?authuser=${encodeURIComponent(normalizedEmail)}` : ''
+    const messagePath = messageId ? `/${encodeURIComponent(messageId)}` : ''
+    return `https://mail.google.com/mail/u/0/${authQuery}#all${messagePath}`
+}
+
 function getBodyOrInstructions({ body, instructions }) {
     const normalizedBody = typeof body === 'string' ? body.trim() : ''
     if (normalizedBody) return normalizedBody
@@ -657,7 +664,12 @@ async function createGmailReplyDraftForAssistantRequest({
         targetSubject: target.normalizedMessage.subject || '',
         to: [replyTo],
         attachments: normalizedAttachments.map(({ base64, ...attachment }) => attachment),
-        webUrl: buildGmailDraftUrl(target.account.gmailEmail || '', draft.message?.id || ''),
+        // Open the regular conversation view. Gmail shows the reply draft inside its
+        // thread there, without forcing the standalone compose popup.
+        webUrl: buildGmailThreadUrl(
+            target.account.gmailEmail || '',
+            target.normalizedMessage.messageId || target.normalizedMessage.threadId || ''
+        ),
         message: `Created a Gmail reply draft in ${target.account.gmailEmail || 'the connected Gmail account'}.`,
     }
 }
@@ -771,6 +783,7 @@ module.exports = {
     buildPlainTextMimeMessage,
     buildMimeMessage,
     buildGmailDraftUrl,
+    buildGmailThreadUrl,
     buildReferencesHeader,
     collectDraftAttachmentParts,
     createGmailDraftForAssistantRequest,

@@ -12,6 +12,7 @@ import OKRModal from '../../../../TaskListView/OKRs/OKRModal'
 import AutoPostponeTasksModal from '../../../../TaskListView/AutoPostpone/AutoPostponeTasksModal'
 import { DATE_TASK_INDEX, TODAY_DATE } from '../../../../../utils/backends/openTasks'
 import { areEmailLineConnectionsHiddenToday } from '../../../../TaskListView/EmailLine/emailLineHelper'
+import { EMAIL_LINE_ENABLED } from '../../../../TaskListView/EmailLine/emailLineFeature'
 import { listEmailConnections } from '../../../../../utils/IntegrationProviders'
 import { clearUserEmailLineHiddenTodayForConnections } from '../../../../../utils/backends/Users/usersFirestore'
 
@@ -60,7 +61,8 @@ export default function TaskHeaderMoreButton({
     // "Done for today" on the Email line hides it completely; this menu item is the
     // way to bring it back before the daily reset.
     const emailConnectionIds = listEmailConnections(loggedUser).map(connection => connection.connectionId)
-    const showEmailLineItem = !inSelectedProject && areEmailLineConnectionsHiddenToday(loggedUser, emailConnectionIds)
+    const showEmailLineItem =
+        EMAIL_LINE_ENABLED && !inSelectedProject && areEmailLineConnectionsHiddenToday(loggedUser, emailConnectionIds)
 
     const link = inSelectedProject
         ? `${window.location.origin}/projects/${projectId}/user/${userId}/tasks/open`

@@ -456,6 +456,41 @@ describe('assistant attachment handoff helpers', () => {
         )
     })
 
+    test('uses the server-provided Gmail follow-up topic title', async () => {
+        ProjectService.mockImplementationOnce(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Inbox' }]),
+        }))
+        mockCollectionGet.mockResolvedValueOnce({ docs: [] })
+
+        const result = await executeToolNatively(
+            'add_chat_comment',
+            {
+                chatId: 'wrong-chat-id',
+                chatTitle: 'Daily emails Inbox 07.10.2026',
+                comment: 'LINK: Email from Peter (peter@web.de): Peter sent the updated contract draft.',
+                createIfMissing: false,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            {
+                gmailContext: {
+                    origin: 'gmail_label_follow_up',
+                    topicChatTitle: 'Daily emails Inbox 10.07.2026',
+                },
+            }
+        )
+
+        expect(result).toMatchObject({
+            success: true,
+            chatTitle: 'Daily emails Inbox 10.07.2026',
+            chatCreated: true,
+        })
+        expect(mockDocSet).toHaveBeenCalledWith(expect.objectContaining({ title: 'Daily emails Inbox 10.07.2026' }))
+    })
+
     test('requires exact tool URLs in follow-up responses', () => {
         expect(getToolResultFollowUpPrompt()).toContain('include that exact URL')
     })

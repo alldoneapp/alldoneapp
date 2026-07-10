@@ -12,6 +12,7 @@ import { listEmailConnections } from '../../../utils/IntegrationProviders'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
 import { setUserEmailLineHiddenTodayForConnections } from '../../../utils/backends/Users/usersFirestore'
 import EmailLabelChip from './EmailLabelChip'
+import { EMAIL_LINE_ENABLED } from './emailLineFeature'
 
 import {
     areEmailLineConnectionsHiddenToday,
@@ -113,10 +114,13 @@ export default function EmailLine() {
     const hiddenToday = areEmailLineConnectionsHiddenToday(loggedUser, connectionIds)
 
     useEffect(() => {
+        if (!EMAIL_LINE_ENABLED) return undefined
         connectionIds.forEach(connectionId => {
             fetchEmailLineSummary(connectionId)
         })
     }, [connectionIdsKey])
+
+    if (!EMAIL_LINE_ENABLED) return null
 
     if (connections.length === 0) return null
 

@@ -11,8 +11,8 @@ import { shouldIgnoreEmailLabelModalDismiss } from './emailLineHelper'
 const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 
 // A single merged label/folder pill with its inbox thread count summed across all
-// accounts carrying that label. Bold name hints at unread mail. Tapping it opens a
-// modal listing the matching inbox emails of every account, grouped by account.
+// accounts carrying that label. Tapping it opens a modal listing the matching inbox
+// emails of every account, grouped by account.
 export default function EmailLabelChip({
     group,
     labelOptionsByConnectionId,
@@ -24,7 +24,6 @@ export default function EmailLabelChip({
     const smallScreen = useSelector(state => state.smallScreen)
     const mobile = useSelector(state => state.smallScreenNavigation)
     if (!group) return null
-    const hasUnread = group.unreadCount > 0
     // On the tight header lines (compact chips) mobile drops the label name and keeps just the
     // mail icon + count. The full-width standalone Email line keeps its names so labels stay
     // distinguishable.
@@ -39,14 +38,11 @@ export default function EmailLabelChip({
             <Icon
                 name="mail"
                 size={13}
-                color={hasUnread ? colors.Text01 : colors.Text03}
+                color={colors.Text03}
                 style={[localStyles.mailIcon, iconOnly && localStyles.mailIconOnly]}
             />
             {!iconOnly && (
-                <Text
-                    style={[styles.caption1, localStyles.name, hasUnread && localStyles.nameActive]}
-                    numberOfLines={1}
-                >
+                <Text style={[styles.caption1, localStyles.name]} numberOfLines={1}>
                     {group.displayName}
                 </Text>
             )}
@@ -98,7 +94,8 @@ const localStyles = StyleSheet.create({
         paddingRight: 6,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: colors.Grey400,
+        // Use the same outline color as the project-line "Add task" control.
+        borderColor: colors.Text03,
         backgroundColor: '#ffffff',
         flexDirection: 'row',
         alignItems: 'center',
@@ -109,8 +106,7 @@ const localStyles = StyleSheet.create({
         maxWidth: 140,
         paddingLeft: 6,
         paddingRight: 4,
-        // Match the header "Add task" button: Text03 outline with no solid fill.
-        borderColor: colors.Text03,
+        // Match the header "Add task" button's transparent treatment.
         backgroundColor: 'transparent',
     },
     chipIconOnly: {
@@ -127,9 +123,6 @@ const localStyles = StyleSheet.create({
     name: {
         color: colors.Text03,
         flexShrink: 1,
-    },
-    nameActive: {
-        color: colors.Text01,
     },
     badge: {
         minWidth: 18,

@@ -743,7 +743,7 @@ describe('emailLineService', () => {
 
     test('listEmailLineMessages joins labeling audit data onto rows', async () => {
         mockAuditDocs.set('m1', {
-            needsReply: true,
+            followUpType: 'informational',
             selectedLabelKey: 'newsletter',
             selectedGmailLabelName: 'Alldone/Newsletter',
             reasoning: 'Weekly digest the user subscribed to.',
@@ -760,7 +760,7 @@ describe('emailLineService', () => {
 
         const result = await listEmailLineMessages('u', 'p1', 'INBOX', { userData: googleUserData })
         const first = result.messages.find(m => m.messageId === 'm_visible')
-        expect(first.needsReply).toBe(true)
+        expect(first.followUpType).toBe('informational')
         expect(first.hasAudit).toBe(true)
         expect(first.auditMessageId).toBe('m1')
         expect(first.labelName).toBe('Alldone/Newsletter')
@@ -770,7 +770,7 @@ describe('emailLineService', () => {
         // stamp with no matching task in the collection is ignored (self-heals on delete).
         expect(first.taskCreated).toBeNull()
         const second = result.messages.find(m => m.messageId === 'm2')
-        expect(second.needsReply).toBe(false)
+        expect(second.followUpType).toBeNull()
         expect(second.hasAudit).toBe(false)
         expect(second.reasoning).toBe('')
         expect(second.taskCreated).toBeNull()

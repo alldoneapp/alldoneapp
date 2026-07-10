@@ -21,6 +21,9 @@ jest.mock('../../../i18n/TranslationService', () => ({
     translate: jest.fn(textKey => textKey),
 }))
 
+// Exercise the preserved UI while the production feature switch is off.
+jest.mock('./emailLineFeature', () => ({ EMAIL_LINE_ENABLED: true }))
+
 jest.mock('../../../utils/backends/EmailLine/emailLineBackend', () => ({
     fetchEmailLineSummary: jest.fn(),
 }))
