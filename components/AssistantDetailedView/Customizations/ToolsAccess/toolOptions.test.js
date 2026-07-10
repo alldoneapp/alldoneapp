@@ -41,6 +41,15 @@ describe('assistant tool options', () => {
         expect(DEFAULT_ALLOWED_TOOLS).toContain('add_chat_comment')
     })
 
+    test('includes email classification corrections in selectable assistant permissions', () => {
+        expect(TOOL_OPTIONS).toEqual(
+            expect.arrayContaining([{ key: 'correct_email_classification', labelKey: 'Correct email classification' }])
+        )
+        expect(TOOL_LABEL_BY_KEY.correct_email_classification).toBe('Correct email classification')
+        expect(DEFAULT_ALLOWED_TOOLS).toContain('correct_email_classification')
+        expect(OPT_IN_ONLY_TOOLS.has('correct_email_classification')).toBe(false)
+    })
+
     test('keeps get_updates stable during normalization', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })
