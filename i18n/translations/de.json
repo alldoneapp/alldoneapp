@@ -1845,7 +1845,5 @@
     "Auto-postpone based on priorities": "Automatisch nach Prioritäten verschieben",
     "Task Priorities": "Aufgabenprioritäten",
     "Auto-postpone tasks description": "Wähle, welche der heutigen Aufgaben automatisch verschoben werden sollen. Sie tauchen später wieder auf.",
-    "All today's tasks": "Alle heutigen Aufgaben",
-    "No assistant available": "Kein Assistent verfügbar",
-    "This project has no default assistant yet, and no global default is set. Add an assistant before letting it work on your tasks.": "Dieses Projekt hat noch keinen Standard-Assistenten und es ist kein globaler Standard festgelegt. Füge einen Assistenten hinzu, bevor er an deinen Aufgaben arbeiten kann."
+    "All today's tasks": "Alle heutigen Aufgaben"
 }

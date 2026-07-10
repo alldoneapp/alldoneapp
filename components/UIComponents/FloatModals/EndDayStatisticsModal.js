@@ -34,6 +34,7 @@ import {
     getEstimationTypeByProjectId,
 } from '../../../utils/EstimationHelper'
 import { setUserStatisticsModalDate } from '../../../utils/backends/Users/usersFirestore'
+import { needToAcknowledgeNewDay } from '../../../utils/NewDayModalHelper'
 import {
     normalizeDayRateTimeLogConfig,
     reconcileProjectDayRateTimeLogsBackfill,
@@ -93,11 +94,7 @@ export default function EndDayStatisticsModal() {
     const dirtyHappinessProjectIdsRef = useRef(new Set())
     const happinessDraftsRef = useRef({})
 
-    const needToShowYesterdayStats = () => {
-        const today = moment()
-        const statsDay = moment(statisticsModalDate)
-        return today.isAfter(statsDay, 'day')
-    }
+    const needToShowYesterdayStats = () => needToAcknowledgeNewDay(statisticsModalDate)
 
     const resetModalState = () => {
         setDoneTasks(0)
@@ -237,7 +234,12 @@ export default function EndDayStatisticsModal() {
             !isAnonymous &&
             (projectIdsAmount === 0 || (!sidebarNumbersAreLoading && loggedUserProjectsAmount === projectIdsAmount)) &&
             !isLoading.current &&
-            (needToShowYesterdayStats() || showNewDayNotification)
+            // Account-scoped trigger: statisticsModalDate lives on the user doc and
+            // syncs across devices, so it is the single source of truth for whether
+            // the new day still needs confirmation. showNewDayNotification (the
+            // per-device midnight timer) stays in the dependency list below purely
+            // as a wake signal that re-evaluates this account state at midnight.
+            needToShowYesterdayStats()
         ) {
             isLoading.current = true
             const endDayStatisticsDate = moment(statisticsModalDate)
@@ -273,6 +275,23 @@ export default function EndDayStatisticsModal() {
         sidebarNumbersAreLoading,
         isAnonymous,
     ])
+
+    // Cross-device reconciliation. The "start new day" confirmation is stored
+    // per user account as statisticsModalDate on the user doc, which syncs to
+    // every device in real time via watchLoggedUser. Once it advances to today
+    // — because the user started the new day here or on another device — there
+    // is nothing left to confirm on this device: clear the per-device
+    // midnight-timer flag (showNewDayNotification) and dismiss any prompt still
+    // open here, so the same user is never asked to confirm the same day twice.
+    // This only ever tears down local state and never writes to Firestore, so
+    // anonymous users, offline use and other users on the same device are safe.
+    useEffect(() => {
+        if (isAnonymous || isSavingStartNewDay.current) return
+        if (needToShowYesterdayStats()) return
+
+        if (showNewDayNotification) store.dispatch(setShowNewDayNotification(false))
+        if (dataLoaded || isLoading.current) resetModalState()
+    }, [statisticsModalDate, showNewDayNotification, isAnonymous, dataLoaded])
 
     useEffect(() => {
         if (!checkIfDataIsLoaded() || isOfflineRef.current || isAnonymous) return
