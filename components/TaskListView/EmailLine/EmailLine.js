@@ -246,6 +246,7 @@ export default function EmailLine() {
                             <EmailLabelChip
                                 key={group.key}
                                 group={group}
+                                allGroups={groups}
                                 labelOptionsByConnectionId={labelOptionsByConnectionId}
                                 labelingDisabledByConnectionId={labelingDisabledByConnectionId}
                             />

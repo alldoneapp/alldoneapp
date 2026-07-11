@@ -72,6 +72,23 @@ const group = {
     ],
 }
 
+const workGroup = {
+    key: 'work',
+    displayName: 'Work',
+    isInbox: false,
+    threadCount: 1,
+    unreadCount: 1,
+    entries: [
+        {
+            connectionId: 'c1',
+            provider: 'google',
+            emailAddress: 'a@gmail.com',
+            labelId: 'Label_work',
+            label: { labelId: 'Label_work', displayName: 'Work', name: 'Alldone/Work', kind: 'user' },
+        },
+    ],
+}
+
 const messagesByConnection = {
     c1: [
         {
@@ -121,6 +138,38 @@ describe('EmailLabelModal', () => {
         expect(texts).toContain('Two')
         expect(texts).toContain('Google · a@gmail.com')
         expect(texts).toContain('Microsoft · b@outlook.com')
+    })
+
+    it('shows every label, preselects the opened label, and switches without closing', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <EmailLabelModal group={workGroup} allGroups={[group, workGroup]} closePopover={() => {}} />
+            )
+            await Promise.resolve()
+        })
+
+        const inboxButton = tree.root.find(
+            node => node.type === TouchableOpacity && node.props.accessibilityLabel === 'Inbox'
+        )
+        const workButton = tree.root.find(
+            node => node.type === TouchableOpacity && node.props.accessibilityLabel === 'Work'
+        )
+        expect(inboxButton.props.accessibilityState).toEqual({ selected: false })
+        expect(workButton.props.accessibilityState).toEqual({ selected: true })
+        expect(listEmailLineMessages).toHaveBeenCalledWith('c1', 'Label_work')
+
+        await act(async () => {
+            inboxButton.props.onPress()
+            await Promise.resolve()
+        })
+
+        expect(
+            tree.root.find(node => node.type === TouchableOpacity && node.props.accessibilityLabel === 'Inbox').props
+                .accessibilityState
+        ).toEqual({ selected: true })
+        expect(listEmailLineMessages).toHaveBeenCalledWith('c1', 'INBOX')
+        expect(listEmailLineMessages).toHaveBeenCalledWith('c2', 'f_inbox')
     })
 
     it('bounds parallel section loads to protect provider rate limits', async () => {

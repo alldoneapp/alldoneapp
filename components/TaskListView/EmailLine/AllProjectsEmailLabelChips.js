@@ -20,6 +20,7 @@ export default function AllProjectsEmailLabelChips() {
                 <EmailLabelChip
                     key={group.key}
                     group={group}
+                    allGroups={groups}
                     labelOptionsByConnectionId={labelOptionsByConnectionId}
                     labelingDisabledByConnectionId={labelingDisabledByConnectionId}
                     compact

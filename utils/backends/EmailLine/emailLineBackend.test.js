@@ -19,7 +19,7 @@ jest.mock('../../IntegrationProviders', () => ({
     buildConnectionKeyPayload: jest.fn(key => ({ connectionId: key })),
 }))
 
-const { performEmailLineSweepInBackground } = require('./emailLineBackend')
+const { listEmailLineMessages, performEmailLineSweepInBackground } = require('./emailLineBackend')
 
 const summaryWithLabel = {
     provider: 'google',
@@ -88,5 +88,34 @@ describe('performEmailLineSweepInBackground', () => {
         await performEmailLineSweepInBackground('c1', 'L1', '')
         expect(mockRunHttpsCallableFunction).not.toHaveBeenCalled()
         expect(mockDispatch).not.toHaveBeenCalled()
+    })
+})
+
+describe('listEmailLineMessages', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    it('coalesces matching in-flight label requests', async () => {
+        let resolveRequest
+        mockRunHttpsCallableFunction.mockReturnValueOnce(new Promise(resolve => (resolveRequest = resolve)))
+
+        const first = listEmailLineMessages('c1', 'L1')
+        const second = listEmailLineMessages('c1', 'L1')
+        expect(mockRunHttpsCallableFunction).toHaveBeenCalledTimes(1)
+
+        resolveRequest({ messages: [{ messageId: 'm1' }], nextPageToken: null })
+        await expect(Promise.all([first, second])).resolves.toEqual([
+            { messages: [{ messageId: 'm1' }], nextPageToken: null },
+            { messages: [{ messageId: 'm1' }], nextPageToken: null },
+        ])
+    })
+
+    it('does not coalesce different labels', async () => {
+        mockRunHttpsCallableFunction.mockResolvedValue({ messages: [] })
+
+        await Promise.all([listEmailLineMessages('c1', 'L1'), listEmailLineMessages('c1', 'L2')])
+
+        expect(mockRunHttpsCallableFunction).toHaveBeenCalledTimes(2)
     })
 })

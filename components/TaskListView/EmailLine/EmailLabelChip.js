@@ -15,6 +15,7 @@ const POPOVER_CONTAINER_STYLE = { zIndex: 9999 }
 // emails of every account, grouped by account.
 export default function EmailLabelChip({
     group,
+    allGroups,
     labelOptionsByConnectionId,
     labelingDisabledByConnectionId,
     style,
@@ -75,6 +76,7 @@ export default function EmailLabelChip({
             content={
                 <EmailLabelModal
                     group={group}
+                    allGroups={allGroups}
                     labelOptionsByConnectionId={labelOptionsByConnectionId}
                     labelingDisabledByConnectionId={labelingDisabledByConnectionId}
                     closePopover={() => setIsOpen(false)}

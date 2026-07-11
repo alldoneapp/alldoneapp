@@ -66,6 +66,7 @@ export function invalidateEmailLineSummaryCooldown(projectId) {
 // runs in the background, instead of showing a spinner every time. Lives for the module
 // lifetime (same as the Redux summary), so it survives modal close/reopen within a session.
 const emailLineMessagesCache = new Map()
+const emailLineMessagesInFlight = new Map()
 
 export function getCachedEmailLineSections(groupKey) {
     if (!groupKey) return null
@@ -83,27 +84,36 @@ export function cacheEmailLineSections(groupKey, sections) {
 
 export async function listEmailLineMessages(projectId, labelId, { pageToken } = {}) {
     if (!projectId || !labelId) return { messages: [], nextPageToken: null }
+    const requestKey = `${projectId}:${labelId}:${pageToken || ''}`
+    const inFlight = emailLineMessagesInFlight.get(requestKey)
+    if (inFlight) return inFlight
     const startedAt = Date.now()
-    try {
-        const result = await runHttpsCallableFunction('listEmailLineMessagesSecondGen', {
-            ...buildConnectionKeyPayload(projectId),
-            labelId,
-            pageToken,
-        })
-        console.log('[emailLineTiming] client', {
-            totalMs: Date.now() - startedAt,
-            page: pageToken ? 'next' : 'first',
-            messageCount: result?.messages?.length || 0,
-        })
-        return result
-    } catch (error) {
-        console.log('[emailLineTiming] clientError', {
-            totalMs: Date.now() - startedAt,
-            page: pageToken ? 'next' : 'first',
-            code: error?.code || 'unknown',
-        })
-        throw error
-    }
+    const request = (async () => {
+        try {
+            const result = await runHttpsCallableFunction('listEmailLineMessagesSecondGen', {
+                ...buildConnectionKeyPayload(projectId),
+                labelId,
+                pageToken,
+            })
+            console.log('[emailLineTiming] client', {
+                totalMs: Date.now() - startedAt,
+                page: pageToken ? 'next' : 'first',
+                messageCount: result?.messages?.length || 0,
+            })
+            return result
+        } catch (error) {
+            console.log('[emailLineTiming] clientError', {
+                totalMs: Date.now() - startedAt,
+                page: pageToken ? 'next' : 'first',
+                code: error?.code || 'unknown',
+            })
+            throw error
+        } finally {
+            if (emailLineMessagesInFlight.get(requestKey) === request) emailLineMessagesInFlight.delete(requestKey)
+        }
+    })()
+    emailLineMessagesInFlight.set(requestKey, request)
+    return request
 }
 
 // Marks an email's label decision as wrong (optionally naming the correct label). When move

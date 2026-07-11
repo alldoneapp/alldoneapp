@@ -49,15 +49,20 @@ async function mapWithConcurrency(items, concurrency, mapper) {
 // a slim account header; every row action routes to the row's own connection.
 function EmailLabelModal({
     group,
+    allGroups,
     labelOptionsByConnectionId,
     labelingDisabledByConnectionId,
     closePopover,
     windowSize,
 }) {
+    const availableGroups = allGroups?.length ? allGroups : group ? [group] : []
+    const [selectedGroupKey, setSelectedGroupKey] = useState(group?.key)
+    const activeGroup = availableGroups.find(item => item.key === selectedGroupKey) || group
+    const activeGroupKeyRef = useRef(activeGroup?.key)
     // Seed from the last-loaded cache so reopening a label shows its emails instantly.
     // Only show the spinner when there's nothing cached to render meanwhile.
-    const [sections, setSections] = useState(() => getCachedEmailLineSections(group?.key) || [])
-    const [loading, setLoading] = useState(() => !getCachedEmailLineSections(group?.key))
+    const [sections, setSections] = useState(() => getCachedEmailLineSections(activeGroup?.key) || [])
+    const [loading, setLoading] = useState(() => !getCachedEmailLineSections(activeGroup?.key))
     // Whether a fresh fetch is currently in flight. Cached rows remain usable while this runs;
     // a compact header indicator communicates that they may be momentarily stale.
     const [refreshing, setRefreshing] = useState(true)
@@ -77,65 +82,96 @@ function EmailLabelModal({
     const width = Math.min(screenWidth - 32, MODAL_MAX_WIDTH)
     const maxHeight = screenHeight - MODAL_MAX_HEIGHT_GAP
 
-    const entries = group?.entries || []
+    const entries = activeGroup?.entries || []
 
     // `failed`/`partialFailure` describe the load that produced these rows, not the rows
     // themselves, so they never belong in the cross-open cache: a cached `failed` section
     // would re-render the error state on the next open, before the fresh fetch even runs.
     const cacheSections = next =>
         cacheEmailLineSections(
-            group?.key,
+            activeGroup?.key,
             next.map(({ failed, partialFailure, ...section }) => section)
         )
 
     // Background refresh: if we already rendered cached rows we keep them on screen
     // (no spinner) and just swap in the fresh results when they arrive.
     const load = async () => {
-        if (!getCachedEmailLineSections(group?.key)) setLoading(true)
+        const loadingGroupKey = activeGroup?.key
+        if (!getCachedEmailLineSections(loadingGroupKey)) setLoading(true)
         setRefreshing(true)
         try {
-            const results = await mapWithConcurrency(
-                entries,
-                SECTION_LOAD_CONCURRENCY,
-                async entry => {
-                    try {
-                        const result = await listEmailLineMessages(entry.connectionId, entry.labelId)
-                        return {
-                            ...entry,
-                            messages: result?.messages || [],
-                            nextPageToken: result?.nextPageToken || null,
-                            // The call succeeded but the provider couldn't fetch every thread of
-                            // the page, so this section's list is incomplete.
-                            partialFailure: !!result?.partialFailure,
-                            failed: false,
-                        }
-                    } catch (error) {
-                        // A failing account must not blank the modal: keep its cached rows
-                        // (if any) rather than wiping them out on a transient error. `failed`
-                        // keeps the empty result from reading as "this label has no mail".
-                        const cachedSection = getCachedEmailLineSections(group?.key)?.find(
-                            item =>
-                                item.connectionId === entry.connectionId &&
-                                (item.labelId || '') === (entry.labelId || '')
-                        )
-                        return {
-                            ...entry,
-                            messages: cachedSection?.messages || [],
-                            nextPageToken: cachedSection?.nextPageToken || null,
-                            partialFailure: false,
-                            failed: true,
-                        }
+            const results = await mapWithConcurrency(entries, SECTION_LOAD_CONCURRENCY, async entry => {
+                try {
+                    const result = await listEmailLineMessages(entry.connectionId, entry.labelId)
+                    return {
+                        ...entry,
+                        messages: result?.messages || [],
+                        nextPageToken: result?.nextPageToken || null,
+                        // The call succeeded but the provider couldn't fetch every thread of
+                        // the page, so this section's list is incomplete.
+                        partialFailure: !!result?.partialFailure,
+                        failed: false,
+                    }
+                } catch (error) {
+                    // A failing account must not blank the modal: keep its cached rows
+                    // (if any) rather than wiping them out on a transient error. `failed`
+                    // keeps the empty result from reading as "this label has no mail".
+                    const cachedSection = getCachedEmailLineSections(loadingGroupKey)?.find(
+                        item =>
+                            item.connectionId === entry.connectionId && (item.labelId || '') === (entry.labelId || '')
+                    )
+                    return {
+                        ...entry,
+                        messages: cachedSection?.messages || [],
+                        nextPageToken: cachedSection?.nextPageToken || null,
+                        partialFailure: false,
+                        failed: true,
                     }
                 }
-            )
+            })
+            if (activeGroupKeyRef.current !== loadingGroupKey) return
             setSections(results)
             // Never cache a wholesale failure: its empty rows would be seeded on the next open
             // and render as the empty state, hiding the error we just detected.
             if (!results.every(section => section.failed)) cacheSections(results)
         } finally {
-            setLoading(false)
-            setRefreshing(false)
+            if (activeGroupKeyRef.current === loadingGroupKey) {
+                setLoading(false)
+                setRefreshing(false)
+            }
         }
+    }
+
+    // Start fetching on press-down so the network request gets a head start before the selected
+    // label re-renders. listEmailLineMessages coalesces this with load() when they overlap.
+    const prefetchGroup = targetGroup => {
+        if (!targetGroup || getCachedEmailLineSections(targetGroup.key)) return
+        mapWithConcurrency(targetGroup.entries || [], SECTION_LOAD_CONCURRENCY, async entry => {
+            try {
+                const result = await listEmailLineMessages(entry.connectionId, entry.labelId)
+                return {
+                    ...entry,
+                    messages: result?.messages || [],
+                    nextPageToken: result?.nextPageToken || null,
+                }
+            } catch (_) {
+                return null
+            }
+        }).then(prefetchedSections => {
+            const successful = prefetchedSections.filter(Boolean)
+            if (successful.length > 0) cacheEmailLineSections(targetGroup.key, successful)
+        })
+    }
+
+    const selectGroup = targetGroup => {
+        if (!targetGroup || targetGroup.key === activeGroup?.key) return
+        activeGroupKeyRef.current = targetGroup.key
+        const cached = getCachedEmailLineSections(targetGroup.key)
+        setSections(cached || [])
+        setLoading(!cached)
+        setRefreshing(true)
+        setSelectedIds(new Set())
+        setSelectedGroupKey(targetGroup.key)
     }
 
     // The error state's escape hatch: re-run load() with a blocking spinner, since there is
@@ -148,12 +184,18 @@ function EmailLabelModal({
     useEffect(() => {
         // Re-seed from this group's cache before refreshing, so switching labels never
         // flashes the previous label's emails and shows a spinner only when nothing is cached.
-        const cached = getCachedEmailLineSections(group?.key)
+        activeGroupKeyRef.current = activeGroup?.key
+        const cached = getCachedEmailLineSections(activeGroup?.key)
         setSections(cached || [])
         setLoading(!cached)
         setRefreshing(true)
         load()
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeGroup?.key])
+
+    useEffect(() => {
+        activeGroupKeyRef.current = group?.key
+        setSelectedGroupKey(group?.key)
     }, [group?.key])
 
     const toggleSelect = (connectionId, labelId, row) => {
@@ -384,7 +426,7 @@ function EmailLabelModal({
         <View style={[localStyles.container, smallScreen && localStyles.containerMobile, { width, maxHeight }]}>
             <View style={localStyles.header}>
                 <Text style={[styles.title6, localStyles.title]} numberOfLines={1}>
-                    {group.displayName}
+                    {activeGroup?.displayName}
                 </Text>
                 {refreshing && !loading && (
                     <View style={localStyles.refreshing} accessibilityLabel={translate('Refreshing emails')}>
@@ -395,6 +437,44 @@ function EmailLabelModal({
                 <TouchableOpacity onPress={closePopover} accessibilityLabel={translate('Close')}>
                     <Icon name="x" size={20} color={colors.Text03} />
                 </TouchableOpacity>
+            </View>
+
+            <View style={localStyles.labelSwitcher}>
+                {availableGroups.map(item => {
+                    const selected = item.key === activeGroup?.key
+                    return (
+                        <TouchableOpacity
+                            key={item.key}
+                            style={[localStyles.labelSwitchButton, selected && localStyles.labelSwitchButtonSelected]}
+                            onPressIn={() => prefetchGroup(item)}
+                            onPress={() => selectGroup(item)}
+                            accessibilityState={{ selected }}
+                            accessibilityLabel={item.displayName}
+                        >
+                            <Text
+                                style={[
+                                    styles.caption1,
+                                    localStyles.labelSwitchText,
+                                    selected && localStyles.labelSwitchTextSelected,
+                                ]}
+                                numberOfLines={1}
+                            >
+                                {item.displayName}
+                            </Text>
+                            {item.threadCount > 0 && (
+                                <Text
+                                    style={[
+                                        styles.caption2,
+                                        localStyles.labelSwitchCount,
+                                        selected && localStyles.labelSwitchCountSelected,
+                                    ]}
+                                >
+                                    {item.threadCount}
+                                </Text>
+                            )}
+                        </TouchableOpacity>
+                    )
+                })}
             </View>
 
             <View style={[localStyles.sweepBar, smallScreen && localStyles.sweepBarMobile]}>
@@ -592,6 +672,39 @@ const localStyles = StyleSheet.create({
     refreshingText: {
         color: colors.Text03,
         marginLeft: 4,
+    },
+    labelSwitcher: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginBottom: 6,
+    },
+    labelSwitchButton: {
+        height: 26,
+        maxWidth: 160,
+        paddingHorizontal: 8,
+        borderRadius: 13,
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: 6,
+        marginBottom: 6,
+        backgroundColor: colors.Secondary300,
+    },
+    labelSwitchButtonSelected: {
+        backgroundColor: colors.Primary100,
+    },
+    labelSwitchText: {
+        color: colors.Text03,
+        flexShrink: 1,
+    },
+    labelSwitchTextSelected: {
+        color: '#ffffff',
+    },
+    labelSwitchCount: {
+        color: colors.Text03,
+        marginLeft: 5,
+    },
+    labelSwitchCountSelected: {
+        color: '#ffffff',
     },
     sweepBar: {
         flexDirection: 'row',
