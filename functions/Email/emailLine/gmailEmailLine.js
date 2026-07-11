@@ -41,6 +41,13 @@ const LABELED_THREAD_ID_LIMIT = 2000
 // sequential pagination, so fetching the caps above takes 2-4 round trips instead of 10-20.
 const THREAD_ID_PAGE_SIZE = 500
 const METADATA_HEADERS = ['Subject', 'From', 'Date', 'List-Unsubscribe', 'List-Unsubscribe-Post']
+// getAccessToken reads the token document, may refresh it, and writes lastUsed. A merged-label
+// modal can invoke several callables for the same account within a few seconds, so doing that work
+// per section dominates the request time and creates unnecessary Firestore traffic. Cache the
+// in-flight/resolved Gmail client briefly inside a warm function instance. Gmail access tokens live
+// much longer than this; the short TTL also bounds how long a reconnect/revocation could be hidden.
+const GMAIL_CLIENT_TTL_MS = 30 * 1000
+const gmailClientCache = new Map()
 
 // Gmail system labels we never surface as chips. Everything else that is a
 // user label (type === 'user') or the INBOX is eligible.
@@ -78,10 +85,24 @@ const LABEL_DETAIL_CONCURRENCY = 8
 const ALLDONE_LABEL_PREFIX = 'Alldone/'
 
 async function getGmailClient(userId, projectId) {
-    const accessToken = await getAccessToken(userId, projectId, 'gmail')
-    const oauth2Client = getOAuth2Client()
-    oauth2Client.setCredentials({ access_token: accessToken })
-    return google.gmail({ version: 'v1', auth: oauth2Client })
+    const key = `${userId}:${projectId}`
+    const cached = gmailClientCache.get(key)
+    if (cached && Date.now() - cached.cachedAt < GMAIL_CLIENT_TTL_MS) return cached.promise
+
+    const promise = (async () => {
+        const accessToken = await getAccessToken(userId, projectId, 'gmail')
+        const oauth2Client = getOAuth2Client()
+        oauth2Client.setCredentials({ access_token: accessToken })
+        return google.gmail({ version: 'v1', auth: oauth2Client })
+    })()
+    gmailClientCache.set(key, { cachedAt: Date.now(), promise })
+    try {
+        return await promise
+    } catch (error) {
+        // Authentication or transient setup failures must be retryable immediately.
+        if (gmailClientCache.get(key)?.promise === promise) gmailClientCache.delete(key)
+        throw error
+    }
 }
 
 function stripLabelPrefix(name = '') {

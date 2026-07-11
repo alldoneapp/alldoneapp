@@ -22,9 +22,27 @@ import { getEmailAccountWebUrl, getLabelWebUrl, openUrlInNewTab } from '../email
 import EmailRow from './EmailRow'
 
 const MODAL_MAX_WIDTH = 560
+// A merged label can span many project connections for the same Gmail account. Loading every
+// section at once creates a burst of threads.list/threads.get calls against that account and can
+// exhaust Gmail's per-user rate limit. Keep a little parallelism for responsiveness, but bound the
+// burst; result order still matches the entries/account-header order.
+const SECTION_LOAD_CONCURRENCY = 2
 
 const sectionKey = section => `${section.connectionId}:${section.labelId || ''}`
 const selectionKey = (connectionId, labelId, messageId) => `${connectionId}:${labelId || ''}:${messageId}`
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+    const results = new Array(items.length)
+    let nextIndex = 0
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+        while (nextIndex < items.length) {
+            const index = nextIndex++
+            results[index] = await mapper(items[index])
+        }
+    })
+    await Promise.all(workers)
+    return results
+}
 
 // Lists the inbox emails of ONE merged label group across all accounts carrying
 // that label. With more than one account, each account renders as a section with
@@ -76,8 +94,10 @@ function EmailLabelModal({
         if (!getCachedEmailLineSections(group?.key)) setLoading(true)
         setRefreshing(true)
         try {
-            const results = await Promise.all(
-                entries.map(async entry => {
+            const results = await mapWithConcurrency(
+                entries,
+                SECTION_LOAD_CONCURRENCY,
+                async entry => {
                     try {
                         const result = await listEmailLineMessages(entry.connectionId, entry.labelId)
                         return {
@@ -106,7 +126,7 @@ function EmailLabelModal({
                             failed: true,
                         }
                     }
-                })
+                }
             )
             setSections(results)
             // Never cache a wholesale failure: its empty rows would be seeded on the next open

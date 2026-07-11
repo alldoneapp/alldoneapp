@@ -123,6 +123,51 @@ describe('EmailLabelModal', () => {
         expect(texts).toContain('Microsoft · b@outlook.com')
     })
 
+    it('bounds parallel section loads to protect provider rate limits', async () => {
+        let active = 0
+        let maxActive = 0
+        const resolvers = []
+        listEmailLineMessages.mockImplementation(
+            () =>
+                new Promise(resolve => {
+                    active += 1
+                    maxActive = Math.max(maxActive, active)
+                    resolvers.push(() => {
+                        active -= 1
+                        resolve({ messages: [], nextPageToken: null })
+                    })
+                })
+        )
+        const manyConnections = {
+            ...group,
+            entries: Array.from({ length: 5 }, (_, index) => ({
+                connectionId: `c${index}`,
+                provider: 'google',
+                emailAddress: `a${index}@gmail.com`,
+                labelId: `label-${index}`,
+            })),
+        }
+
+        let renderPromise
+        await act(async () => {
+            renderPromise = renderer.create(<EmailLabelModal group={manyConnections} closePopover={() => {}} />)
+            await Promise.resolve()
+        })
+        expect(listEmailLineMessages).toHaveBeenCalledTimes(2)
+
+        while (resolvers.length) {
+            const resolve = resolvers.shift()
+            await act(async () => {
+                resolve()
+                await Promise.resolve()
+            })
+        }
+
+        expect(renderPromise).toBeTruthy()
+        expect(listEmailLineMessages).toHaveBeenCalledTimes(5)
+        expect(maxActive).toBe(2)
+    })
+
     it('opens the source email account from each account header', async () => {
         const { getEmailAccountWebUrl, openUrlInNewTab } = require('../emailLineHelper')
         const tree = await renderModal()

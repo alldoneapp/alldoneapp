@@ -36,6 +36,7 @@ jest.mock('../../GoogleOAuth/googleOAuthHandler', () => ({
 }))
 
 const {
+    getGmailClient,
     getGmailLabelSummary,
     stripLabelPrefix,
     listMessagesForLabel,
@@ -45,6 +46,7 @@ const {
     invalidateResolvedThreadIds,
     NO_LABEL_ID,
 } = require('./gmailEmailLine')
+const { getAccessToken } = require('../../GoogleOAuth/googleOAuthHandler')
 
 const UNREAD_BY_ID = {
     INBOX: 4,
@@ -69,6 +71,38 @@ const LABEL_THREAD_IDS = {
 const ALL_LABELED_THREAD_IDS = [...new Set(Object.values(LABEL_THREAD_IDS).flat())]
 
 const makeThreadRefs = ids => ids.map(id => ({ id }))
+
+describe('Gmail client cache', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        getAccessToken.mockResolvedValue('token')
+    })
+
+    it('reuses and coalesces client setup briefly for the same connection', async () => {
+        let resolveToken
+        getAccessToken.mockReturnValueOnce(new Promise(resolve => (resolveToken = resolve)))
+
+        const first = getGmailClient('cache-user', 'email_google_12345678')
+        const second = getGmailClient('cache-user', 'email_google_12345678')
+        expect(getAccessToken).toHaveBeenCalledTimes(1)
+
+        resolveToken('token')
+        const [firstClient, secondClient] = await Promise.all([first, second])
+        expect(firstClient).toBe(secondClient)
+
+        await getGmailClient('cache-user', 'email_google_12345678')
+        expect(getAccessToken).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not share clients between connections', async () => {
+        await Promise.all([
+            getGmailClient('other-cache-user', 'email_google_12345678'),
+            getGmailClient('other-cache-user', 'email_google_87654321'),
+        ])
+
+        expect(getAccessToken).toHaveBeenCalledTimes(2)
+    })
+})
 
 function setupLabels(labels) {
     mockLabelsList.mockResolvedValue({ data: { labels } })
