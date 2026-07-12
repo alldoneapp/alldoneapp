@@ -421,6 +421,14 @@ describe('assistant attachment handoff helpers', () => {
                 type: 'topics',
                 creatorId: 'user-1',
                 assistantId: 'assistant-1',
+                // Regression guard: the topic-creating write must seed the assistant as the
+                // last-comment owner so the chat list never renders the first comment as
+                // "Unknown user". Amount is set to 1 here (not incremented on top of the update).
+                commentsData: expect.objectContaining({
+                    amount: 1,
+                    lastCommentOwnerId: 'assistant-1',
+                    lastComment: 'LINK: Email from Peter (peter@web.de): Peter sent the updated contract draft.',
+                }),
             })
         )
         expect(mockDocSet).toHaveBeenCalledWith(

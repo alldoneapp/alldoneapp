@@ -3439,6 +3439,7 @@ async function resolveTopicChatForCommentTool({
     chatId = '',
     chatTitle = '',
     createIfMissing = false,
+    initialComment = '',
 }) {
     const normalizedChatId = typeof chatId === 'string' ? chatId.trim() : ''
     const normalizedChatTitle = typeof chatTitle === 'string' ? chatTitle.trim() : ''
@@ -3494,10 +3495,15 @@ async function resolveTopicChatForCommentTool({
         hasStar: '#ffffff',
         stickyData: { days: 0, stickyEndDate: 0 },
         commentsData: {
-            amount: 0,
-            lastComment: '',
-            lastCommentOwnerId: '',
-            lastCommentType: '',
+            // Seed the last-comment metadata with the assistant that is about to post the
+            // first comment. Without this, the chat is created with an empty owner and only a
+            // follow-up merge update sets it — a window in which the list view renders the
+            // topic-creating comment as "Unknown user". Seeding it here makes the create
+            // snapshot already correct so subsequent comments and the first one behave alike.
+            amount: 1,
+            lastComment: (typeof initialComment === 'string' ? initialComment : '').substring(0, 200),
+            lastCommentOwnerId: assistantId || userId,
+            lastCommentType: STAYWARD_COMMENT,
         },
         isAssistantEnabled: true,
     })
@@ -3530,6 +3536,7 @@ async function addChatCommentFromAssistantTool({
         chatId,
         chatTitle,
         createIfMissing,
+        initialComment: resolvedComment,
     })
     const now = Date.now()
     const deterministicCommentId = buildDeterministicGmailChatCommentId(resolved.chatId, gmailContext)
@@ -3593,10 +3600,17 @@ async function addChatCommentFromAssistantTool({
                 lastEditorId: assistantId,
                 members: admin.firestore.FieldValue.arrayUnion(userId, assistantId),
                 usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
-                'commentsData.lastComment': resolvedComment.substring(0, 200),
-                'commentsData.lastCommentOwnerId': assistantId,
-                'commentsData.lastCommentType': STAYWARD_COMMENT,
-                'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                // For a freshly-created chat the commentsData (owner, text, type, amount) was
+                // already seeded at creation, so only update these fields for existing chats —
+                // otherwise the amount would be double-incremented for the first comment.
+                ...(resolved.created
+                    ? {}
+                    : {
+                          'commentsData.lastComment': resolvedComment.substring(0, 200),
+                          'commentsData.lastCommentOwnerId': assistantId,
+                          'commentsData.lastCommentType': STAYWARD_COMMENT,
+                          'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                      }),
             },
             { merge: true }
         ),
