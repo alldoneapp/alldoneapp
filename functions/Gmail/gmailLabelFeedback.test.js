@@ -80,6 +80,7 @@ describe('submitEmailLabelFeedback', () => {
         const config = {
             gmailEmail: 'me@example.com',
             learnedRules: '',
+            autoArchiveAllLabeled: true,
             labelDefinitions: [
                 {
                     key: 'old',
@@ -156,6 +157,7 @@ describe('submitEmailLabelFeedback', () => {
                 currentLabelId: 'Label_1',
                 targetLabelName: 'Client',
                 labelDefinitions: expect.any(Array),
+                autoArchiveAllLabeled: true,
             }
         )
         expect(serverSideGmailLabelingSync.executePostLabelPrompt).toHaveBeenCalledWith(

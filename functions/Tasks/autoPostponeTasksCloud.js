@@ -141,23 +141,17 @@ function getDateToMoveTaskInAutoPostpone(timesPostponed, isObservedTask, timezon
     let nextDate = getMomentInTimezone(now, timezoneContext)
 
     if (!timesPostponed || isObservedTask) {
-        nextDate.add(1, 'day')
+        nextDate.add(3, 'days')
     } else if (timesPostponed === 1) {
-        nextDate.add(2, 'day')
+        nextDate.add(1, 'week')
     } else if (timesPostponed === 2) {
-        nextDate.add(4, 'day')
+        nextDate.add(1, 'month')
     } else if (timesPostponed === 3) {
-        nextDate.add(8, 'day')
+        nextDate.add(3, 'months')
     } else if (timesPostponed === 4) {
-        nextDate.add(16, 'day')
+        nextDate.add(6, 'months')
     } else if (timesPostponed === 5) {
-        nextDate.add(32, 'day')
-    } else if (timesPostponed === 6) {
-        nextDate.add(64, 'day')
-    } else if (timesPostponed === 7) {
-        nextDate.add(128, 'day')
-    } else if (timesPostponed === 8) {
-        nextDate.add(256, 'day')
+        nextDate.add(1, 'year')
     } else {
         return BACKLOG_DATE_NUMERIC
     }

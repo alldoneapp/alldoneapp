@@ -3113,23 +3113,17 @@ export const getDateToMoveTaskInAutoPostpone = (timesPostponed, isObservedTask) 
     let date = moment()
 
     if (!timesPostponed || isObservedTask) {
-        date.add(1, 'day')
+        date.add(3, 'days')
     } else if (timesPostponed === 1) {
-        date.add(2, 'day')
+        date.add(1, 'week')
     } else if (timesPostponed === 2) {
-        date.add(4, 'day')
+        date.add(1, 'month')
     } else if (timesPostponed === 3) {
-        date.add(8, 'day')
+        date.add(3, 'months')
     } else if (timesPostponed === 4) {
-        date.add(16, 'day')
+        date.add(6, 'months')
     } else if (timesPostponed === 5) {
-        date.add(32, 'day')
-    } else if (timesPostponed === 6) {
-        date.add(64, 'day')
-    } else if (timesPostponed === 7) {
-        date.add(128, 'day')
-    } else if (timesPostponed === 8) {
-        date.add(256, 'day')
+        date.add(1, 'year')
     } else {
         date = BACKLOG_DATE_NUMERIC
     }

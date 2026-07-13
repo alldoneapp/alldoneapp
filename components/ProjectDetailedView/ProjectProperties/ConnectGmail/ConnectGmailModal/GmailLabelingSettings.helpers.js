@@ -95,6 +95,7 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
         model: config.model || 'MODEL_GPT5_4_NANO',
         processUnreadOnly: typeof config.processUnreadOnly === 'boolean' ? config.processUnreadOnly : true,
         onlyInbox: typeof config.onlyInbox === 'boolean' ? config.onlyInbox : true,
+        autoArchiveAllLabeled: config.autoArchiveAllLabeled === true,
         lookbackDays: Number.isFinite(config.lookbackDays) ? String(config.lookbackDays) : '7',
         syncIntervalMinutes: Number.isFinite(config.syncIntervalMinutes) ? String(config.syncIntervalMinutes) : '5',
         maxMessagesPerRun: Number.isFinite(config.maxMessagesPerRun) ? String(config.maxMessagesPerRun) : '20',
@@ -119,6 +120,7 @@ function sanitizeConfigForSave(config) {
         model: config.model || 'MODEL_GPT5_4_NANO',
         processUnreadOnly: !!config.processUnreadOnly,
         onlyInbox: !!config.onlyInbox,
+        autoArchiveAllLabeled: config.autoArchiveAllLabeled === true,
         lookbackDays: Number.isFinite(parsedLookbackDays)
             ? Math.min(Math.max(parsedLookbackDays, 1), MAX_LOOKBACK_DAYS)
             : 7,

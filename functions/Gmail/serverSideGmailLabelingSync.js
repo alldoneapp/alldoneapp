@@ -1360,6 +1360,13 @@ async function applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchi
     }
 }
 
+function shouldAutoArchiveLabeledMessage(config = {}, labelDefinition = {}, direction = '') {
+    return (
+        direction !== GMAIL_DIRECTION_SCOPE_OUTGOING &&
+        (config.autoArchiveAllLabeled === true || labelDefinition.autoArchive === true)
+    )
+}
+
 // Labels the email line renders as a "section" but that are not removable user labels.
 const NON_REMOVABLE_SECTION_LABEL_IDS = new Set(['INBOX', '__NO_LABEL__'])
 
@@ -1394,7 +1401,7 @@ function buildThreadLabelModification({ currentLabelId, targetLabelId, targetAut
 async function applyGmailThreadLabelCorrection(
     userId,
     projectId,
-    { threadId, currentLabelId, targetLabelName, labelDefinitions = [] }
+    { threadId, currentLabelId, targetLabelName, labelDefinitions = [], autoArchiveAllLabeled = false }
 ) {
     if (!threadId) throw new Error('threadId is required to re-label an email')
 
@@ -1417,7 +1424,9 @@ async function applyGmailThreadLabelCorrection(
         )
         if (targetDefinition) {
             targetLabelKey = targetDefinition.key || null
-            targetAutoArchive = targetDefinition.autoArchive === true
+            targetAutoArchive = autoArchiveAllLabeled === true || targetDefinition.autoArchive === true
+        } else {
+            targetAutoArchive = autoArchiveAllLabeled === true
         }
     }
 
@@ -1653,6 +1662,7 @@ async function processSingleMessage({
         typeof selectedDefinition.sourceProjectId === 'string' && selectedDefinition.sourceProjectId.trim()
             ? selectedDefinition.sourceProjectId.trim()
             : null
+    const autoArchive = shouldAutoArchiveLabeledMessage(config, selectedDefinition, direction)
 
     let labelId
     let modifyResult
@@ -1669,17 +1679,11 @@ async function processSingleMessage({
             selectedLabelKey: selectedDefinition.key,
             selectedGmailLabelName: selectedDefinition.gmailLabelName,
             labelId,
-            autoArchive: !!selectedDefinition.autoArchive,
+            autoArchive,
             direction,
         })
 
-        modifyResult = await applyLabelAndArchive(
-            gmail,
-            normalizedMessage,
-            labelId,
-            selectedDefinition.autoArchive,
-            direction
-        )
+        modifyResult = await applyLabelAndArchive(gmail, normalizedMessage, labelId, autoArchive, direction)
     } catch (error) {
         if (classificationGoldSpent > 0) {
             await refundGold(userId, classificationGoldSpent, {
@@ -1738,7 +1742,7 @@ async function processSingleMessage({
         selectedGmailLabelName: selectedDefinition.gmailLabelName,
         selectedProjectId,
         selectedProjectSource: selectedProjectId ? 'default_project_label' : 'gmail_label',
-        autoArchive: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : !!selectedDefinition.autoArchive,
+        autoArchive,
         confidence: classifierResult.confidence,
         reasoning: classifierResult.reasoning,
         followUpType,
@@ -1830,6 +1834,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         promptMode: effectiveConfig?.promptMode || null,
         processUnreadOnly: effectiveConfig?.processUnreadOnly,
         onlyInbox: effectiveConfig?.onlyInbox,
+        autoArchiveAllLabeled: effectiveConfig?.autoArchiveAllLabeled,
         maxMessagesPerRun: effectiveConfig?.maxMessagesPerRun,
         lookbackDays: effectiveConfig?.lookbackDays,
     })
@@ -2224,6 +2229,7 @@ module.exports = {
     resolveEffectiveGmailLabelingConfig,
     resolveEffectiveLabelingConfig,
     resolvePostLabelAssistantContext,
+    shouldAutoArchiveLabeledMessage,
     syncGmailLabeling,
     upsertGmailLabelingConfig,
 }

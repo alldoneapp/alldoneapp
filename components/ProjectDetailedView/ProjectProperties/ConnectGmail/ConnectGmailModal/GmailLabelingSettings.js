@@ -623,6 +623,18 @@ export default function GmailLabelingSettings({
                                     />
                                 </View>
 
+                                <View style={localStyles.switchRow}>
+                                    <Text style={[localStyles.inputLabel, localStyles.rowText]}>
+                                        {translate('Auto-archive all labeled emails')}
+                                    </Text>
+                                    <Switch
+                                        active={config.autoArchiveAllLabeled}
+                                        activeSwitch={() => updateConfig({ autoArchiveAllLabeled: true })}
+                                        deactiveSwitch={() => updateConfig({ autoArchiveAllLabeled: false })}
+                                        disabled={!canManage}
+                                    />
+                                </View>
+
                                 <Text style={localStyles.inputLabel}>Labeling mode</Text>
                                 <PromptModeSegment
                                     value={config.promptMode}

@@ -120,6 +120,7 @@ const {
     processSingleMessage,
     resolveEffectiveGmailLabelingConfig,
     resolveEffectiveLabelingConfig,
+    shouldAutoArchiveLabeledMessage,
 } = require('./serverSideGmailLabelingSync')
 
 function buildDefaultCollectionMock(path) {
@@ -157,6 +158,18 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(buildGmailMessageUrl('person@example.com', 'msg-123')).toBe(
             'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/msg-123'
         )
+    })
+
+    test('account-wide auto-archive overrides label settings for incoming messages only', () => {
+        expect(
+            shouldAutoArchiveLabeledMessage({ autoArchiveAllLabeled: true }, { autoArchive: false }, 'incoming')
+        ).toBe(true)
+        expect(
+            shouldAutoArchiveLabeledMessage({ autoArchiveAllLabeled: false }, { autoArchive: true }, 'incoming')
+        ).toBe(true)
+        expect(
+            shouldAutoArchiveLabeledMessage({ autoArchiveAllLabeled: true }, { autoArchive: true }, 'outgoing')
+        ).toBe(false)
     })
 
     test('hashes follow-up prompt by rule key and prompt', () => {
@@ -617,7 +630,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(result.goldSpent).toBe(0)
     })
 
-    test('keeps label-only emails audit-only with selected project reasoning', async () => {
+    test('auto-archives matched incoming email when the account-wide setting is on', async () => {
         const auditSet = jest.fn().mockResolvedValue(undefined)
         admin.firestore.mockImplementation(() => ({
             getAll: admin.__mock.getAll,
@@ -680,6 +693,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             labelMap: new Map(),
             config: {
                 model: 'MODEL_GPT5_5',
+                autoArchiveAllLabeled: true,
                 labelDefinitions: [
                     {
                         key: 'client',
@@ -717,6 +731,12 @@ describe('serverSideGmailLabelingSync helpers', () => {
         })
 
         expect(result.labeled).toBe(1)
+        expect(result.archived).toBe(1)
+        expect(gmail.users.messages.modify).toHaveBeenCalledWith(
+            expect.objectContaining({
+                requestBody: expect.objectContaining({ removeLabelIds: ['INBOX'] }),
+            })
+        )
         expect(assistantHelper.collectAssistantTextWithToolCalls).not.toHaveBeenCalled()
         expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
         expect(auditSet).toHaveBeenCalledWith(
@@ -725,6 +745,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 selectedProjectSource: 'default_project_label',
                 reasoning: 'The sender and subject match Client Project.',
                 confidence: 0.91,
+                autoArchive: true,
+                archived: true,
                 postLabelAction: expect.objectContaining({ status: 'skipped' }),
             }),
             { merge: true }

@@ -319,6 +319,7 @@ async function submitEmailLabelFeedback({
             currentLabelId: currentLabelId.trim(),
             targetLabelName,
             labelDefinitions: effectiveConfig.labelDefinitions || [],
+            autoArchiveAllLabeled: effectiveConfig.autoArchiveAllLabeled === true,
         })
         // The email-line modal briefly caches resolved Gmail label memberships. A correction
         // changes both its source and destination buckets, so neither may reuse the old set.

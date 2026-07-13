@@ -50,6 +50,12 @@ describe('GmailLabelingSettings helpers', () => {
         expect(normalizeConfig('project-1').promptMode).toBe(GMAIL_LABELING_PROMPT_MODE_DEFAULT)
     })
 
+    test('defaults account-wide labeled email auto-archive to off and preserves an enabled choice', () => {
+        expect(normalizeConfig('project-1').autoArchiveAllLabeled).toBe(false)
+        expect(normalizeConfig('project-1', { autoArchiveAllLabeled: true }).autoArchiveAllLabeled).toBe(true)
+        expect(sanitizeConfigForSave({ autoArchiveAllLabeled: true }).autoArchiveAllLabeled).toBe(true)
+    })
+
     test('treats legacy saved configs as custom prompt mode', () => {
         const normalized = normalizeConfig('project-1', {
             prompt: 'Legacy custom prompt',

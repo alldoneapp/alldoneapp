@@ -22,6 +22,11 @@ describe('gmailLabelingConfig', () => {
         expect(config.syncIntervalMinutes).toBe(30)
     })
 
+    test('defaults account-wide labeled email auto-archive to off', () => {
+        expect(normalizeConfigInput('project-1', {}).autoArchiveAllLabeled).toBe(false)
+        expect(normalizeConfigInput('project-1', { autoArchiveAllLabeled: true }).autoArchiveAllLabeled).toBe(true)
+    })
+
     test('defaults new Gmail labeling configs to default prompt mode', () => {
         const config = normalizeConfigInput('project-1', {})
 

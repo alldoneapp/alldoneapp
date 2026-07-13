@@ -1370,6 +1370,7 @@
     "Enable Gmail labeling": "Enable Gmail labeling",
     "Process unread only": "Process unread only",
     "Only inbox messages": "Only inbox messages",
+    "Auto-archive all labeled emails": "Auto-archive all labeled emails",
     "Classify incoming Gmail messages into the configured labels.": "Classify incoming Gmail messages into the configured labels.",
     "Classify incoming Gmail messages into the configured labels": "Classify incoming Gmail messages into the configured labels.",
     "Rules": "Rules",

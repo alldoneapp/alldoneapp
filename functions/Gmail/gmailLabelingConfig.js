@@ -111,6 +111,7 @@ function getDefaultGmailLabelingConfig(projectId, gmailEmail = '') {
         model: DEFAULT_GMAIL_LABELING_MODEL,
         processUnreadOnly: true,
         onlyInbox: true,
+        autoArchiveAllLabeled: false,
         lookbackDays: DEFAULT_LOOKBACK_DAYS,
         syncIntervalMinutes: DEFAULT_SYNC_INTERVAL_MINUTES,
         estimatedEmailsPerDay: DEFAULT_ESTIMATED_EMAILS_PER_DAY,
@@ -223,6 +224,10 @@ function normalizeConfigInput(projectId, input = {}, gmailEmail = '') {
         processUnreadOnly:
             typeof input.processUnreadOnly === 'boolean' ? input.processUnreadOnly : defaultConfig.processUnreadOnly,
         onlyInbox: typeof input.onlyInbox === 'boolean' ? input.onlyInbox : defaultConfig.onlyInbox,
+        autoArchiveAllLabeled:
+            typeof input.autoArchiveAllLabeled === 'boolean'
+                ? input.autoArchiveAllLabeled
+                : defaultConfig.autoArchiveAllLabeled,
         lookbackDays: Number.isFinite(input.lookbackDays)
             ? Math.min(Math.max(Math.trunc(input.lookbackDays), 1), MAX_LOOKBACK_DAYS)
             : defaultConfig.lookbackDays,
@@ -320,13 +325,16 @@ function buildConfigWriteData(userId, projectId, configInput, gmailEmail = '', e
 
     const now = admin.firestore.Timestamp.now()
 
-    // A payload without learnedRules/adsAutoArchive (older client, partial save) must
+    // A payload without learnedRules/adsAutoArchive/autoArchiveAllLabeled (older client, partial save) must
     // not wipe the stored values — keep whatever is already there.
     if (normalizedConfig.learnedRules === null) {
         normalizedConfig.learnedRules = typeof existingData?.learnedRules === 'string' ? existingData.learnedRules : ''
     }
     if (normalizedConfig.adsAutoArchive === null) {
         normalizedConfig.adsAutoArchive = existingData?.adsAutoArchive === true
+    }
+    if (typeof configInput.autoArchiveAllLabeled !== 'boolean') {
+        normalizedConfig.autoArchiveAllLabeled = existingData?.autoArchiveAllLabeled === true
     }
 
     return {

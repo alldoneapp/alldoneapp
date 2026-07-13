@@ -13,6 +13,9 @@ import {
     performEmailLineAction,
     performEmailLineSweepInBackground,
 } from '../../../../utils/backends/EmailLine/emailLineBackend'
+import SettingsHelper from '../../../SettingsView/SettingsHelper'
+import NavigationService from '../../../../utils/NavigationService'
+import { DV_TAB_SETTINGS_INTEGRATIONS } from '../../../../utils/TabNavigationConstants'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(selector => selector({ smallScreen: false })),
@@ -46,6 +49,10 @@ jest.mock('../emailLineHelper', () => ({
 jest.mock('../../../../URLSystem/URLTrigger', () => ({ __esModule: true, default: { processUrl: jest.fn() } }))
 jest.mock('../../../../utils/NavigationService', () => ({ __esModule: true, default: {} }))
 jest.mock('../../../../utils/LinkingHelper', () => ({ getDvMainTabLink: jest.fn(() => '/link') }))
+jest.mock('../../../SettingsView/SettingsHelper', () => ({
+    __esModule: true,
+    default: { processURLSettingsTab: jest.fn() },
+}))
 
 const group = {
     key: 'inbox',
@@ -232,6 +239,22 @@ describe('EmailLabelModal', () => {
 
         expect(getEmailAccountWebUrl).toHaveBeenCalledWith('google', 'a@gmail.com')
         expect(openUrlInNewTab).toHaveBeenCalledWith('https://account/google/a@gmail.com')
+    })
+
+    it('closes the modal and opens Integrations settings from the settings button', async () => {
+        const closePopover = jest.fn()
+        const tree = await renderModal(closePopover)
+        const settingsButton = tree.root.find(
+            node => node.type === TouchableOpacity && node.props.accessibilityLabel === 'Settings'
+        )
+
+        act(() => settingsButton.props.onPress())
+
+        expect(closePopover).toHaveBeenCalledTimes(1)
+        expect(SettingsHelper.processURLSettingsTab).toHaveBeenCalledWith(
+            NavigationService,
+            DV_TAB_SETTINGS_INTEGRATIONS
+        )
     })
 
     it('offers one empty-state account link per connection, not per entry', async () => {

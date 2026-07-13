@@ -82,6 +82,7 @@ const {
     getUserWorkstreamIds,
     shouldAutoPostponeTask,
     mergeTaskCandidate,
+    getDateToMoveTaskInAutoPostpone,
     autoPostponeTaskCloud,
     processUserAutoPostpone,
     checkAndAutoPostponeTasks,
@@ -118,6 +119,26 @@ describe('autoPostponeTasksCloud', () => {
         const dueDate = Date.UTC(2026, 0, 1, 10, 0, 0)
 
         expect(getOverdueDays(dueDate, timezoneContext, now)).toBe(3)
+    })
+
+    test('uses the standard auto-postpone progression', () => {
+        const timezoneContext = resolveTimezoneContext({ timezone: 0 })
+        const now = Date.UTC(2026, 0, 15, 12, 0, 0)
+
+        expect(getDateToMoveTaskInAutoPostpone(0, false, timezoneContext, now)).toBe(Date.UTC(2026, 0, 18, 12, 0, 0))
+        expect(getDateToMoveTaskInAutoPostpone(1, false, timezoneContext, now)).toBe(Date.UTC(2026, 0, 22, 12, 0, 0))
+        expect(getDateToMoveTaskInAutoPostpone(2, false, timezoneContext, now)).toBe(Date.UTC(2026, 1, 15, 12, 0, 0))
+        expect(getDateToMoveTaskInAutoPostpone(3, false, timezoneContext, now)).toBe(Date.UTC(2026, 3, 15, 12, 0, 0))
+        expect(getDateToMoveTaskInAutoPostpone(4, false, timezoneContext, now)).toBe(Date.UTC(2026, 6, 15, 12, 0, 0))
+        expect(getDateToMoveTaskInAutoPostpone(5, false, timezoneContext, now)).toBe(Date.UTC(2027, 0, 15, 12, 0, 0))
+        expect(getDateToMoveTaskInAutoPostpone(6, false, timezoneContext, now)).toBe(Number.MAX_SAFE_INTEGER)
+    })
+
+    test('keeps observed tasks on the first auto-postpone step', () => {
+        const timezoneContext = resolveTimezoneContext({ timezone: 0 })
+        const now = Date.UTC(2026, 0, 15, 12, 0, 0)
+
+        expect(getDateToMoveTaskInAutoPostpone(5, true, timezoneContext, now)).toBe(Date.UTC(2026, 0, 18, 12, 0, 0))
     })
 
     test('only processes a user once per local day', () => {
@@ -199,7 +220,7 @@ describe('autoPostponeTasksCloud', () => {
             1,
             expect.any(Object),
             expect.objectContaining({
-                dueDate: Date.UTC(2026, 0, 5, 0, 5, 0),
+                dueDate: Date.UTC(2026, 0, 7, 0, 5, 0),
                 priority: 'none',
                 timesPostponed: { __increment__: 1 },
                 lastEditorId: 'user-1',
@@ -209,7 +230,7 @@ describe('autoPostponeTasksCloud', () => {
             2,
             expect.any(Object),
             expect.objectContaining({
-                dueDate: Date.UTC(2026, 0, 5, 0, 5, 0),
+                dueDate: Date.UTC(2026, 0, 7, 0, 5, 0),
                 priority: 'none',
                 timesPostponed: { __increment__: 1 },
             })
@@ -259,7 +280,7 @@ describe('autoPostponeTasksCloud', () => {
         expect(batch.update).toHaveBeenCalledWith(
             expect.any(Object),
             expect.objectContaining({
-                'dueDateByObserversIds.user-1': Date.UTC(2026, 0, 5, 0, 5, 0),
+                'dueDateByObserversIds.user-1': Date.UTC(2026, 0, 7, 0, 5, 0),
                 lastEditorId: 'user-1',
             })
         )
@@ -308,7 +329,7 @@ describe('autoPostponeTasksCloud', () => {
             expect.objectContaining({
                 parentId: null,
                 isSubtask: false,
-                dueDate: Date.UTC(2026, 0, 5, 0, 5, 0),
+                dueDate: Date.UTC(2026, 0, 7, 0, 5, 0),
                 priority: 'none',
                 timesPostponed: { __increment__: 1 },
                 lastEditorId: 'actor-1',

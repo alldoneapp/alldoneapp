@@ -1394,6 +1394,7 @@
     "Enable Gmail labeling": "Gmail-Kennzeichnung aktivieren",
     "Process unread only": "Nur ungelesene verarbeiten",
     "Only inbox messages": "Nur Posteingangs-Nachrichten",
+    "Auto-archive all labeled emails": "Alle gekennzeichneten E-Mails automatisch archivieren",
     "Classify incoming Gmail messages into the configured labels.": "Klassifizieren Sie eingehende Gmail-Nachrichten in die konfigurierten Labels.",
     "Classify incoming Gmail messages into the configured labels": "Klassifizieren Sie eingehende Gmail-Nachrichten in die konfigurierten Labels.",
     "Rules": "Regeln",

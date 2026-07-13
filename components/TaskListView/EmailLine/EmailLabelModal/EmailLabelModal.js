@@ -9,6 +9,9 @@ import { withWindowSizeHook } from '../../../../utils/useWindowSize'
 import { MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { translate } from '../../../../i18n/TranslationService'
 import { getProviderLabel } from '../../../../utils/IntegrationProviders'
+import NavigationService from '../../../../utils/NavigationService'
+import { DV_TAB_SETTINGS_INTEGRATIONS } from '../../../../utils/TabNavigationConstants'
+import SettingsHelper from '../../../SettingsView/SettingsHelper'
 import {
     cacheEmailLineSections,
     fetchEmailLineSummary,
@@ -244,6 +247,11 @@ function EmailLabelModal({
         openUrlInNewTab(getEmailAccountWebUrl(section.provider, section.emailAddress))
     }
 
+    const openIntegrations = () => {
+        closePopover()
+        SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_INTEGRATIONS)
+    }
+
     const loadMore = async section => {
         if (!section.nextPageToken || loadingMoreKey) return
         const key = sectionKey(section)
@@ -434,9 +442,22 @@ function EmailLabelModal({
                         <Text style={[styles.caption2, localStyles.refreshingText]}>{translate('Refreshing')}</Text>
                     </View>
                 )}
-                <TouchableOpacity onPress={closePopover} accessibilityLabel={translate('Close')}>
-                    <Icon name="x" size={20} color={colors.Text03} />
-                </TouchableOpacity>
+                <View style={localStyles.headerActions}>
+                    <TouchableOpacity
+                        style={localStyles.headerIconButton}
+                        onPress={openIntegrations}
+                        accessibilityLabel={translate('Settings')}
+                    >
+                        <Icon name="settings" size={16} color={colors.Text03} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={localStyles.headerIconButton}
+                        onPress={closePopover}
+                        accessibilityLabel={translate('Close')}
+                    >
+                        <Icon name="x" size={20} color={colors.Text03} />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <View style={localStyles.labelSwitcher}>
@@ -672,6 +693,16 @@ const localStyles = StyleSheet.create({
     refreshingText: {
         color: colors.Text03,
         marginLeft: 4,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    headerIconButton: {
+        width: 28,
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     labelSwitcher: {
         flexDirection: 'row',
