@@ -191,6 +191,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
         ).toEqual({
             origin: 'gmail_label_follow_up',
             gmailEmail: 'person@example.com',
+            connectionId: 'project-1',
             projectId: 'project-1',
             connectionProjectId: 'project-1',
             assistantProjectId: 'project-1',
@@ -530,6 +531,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                     gmailContext: {
                         origin: 'gmail_label_follow_up',
                         gmailEmail: 'person@example.com',
+                        connectionId: 'default-project',
                         projectId: 'default-project',
                         connectionProjectId: 'default-project',
                         assistantProjectId: 'default-project',

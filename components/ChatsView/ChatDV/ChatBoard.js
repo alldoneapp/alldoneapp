@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { KeyboardAvoidingView, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import CustomScrollView from '../../UIControls/CustomScrollView'
@@ -37,8 +37,17 @@ import PagesAmountSubscriptionContainer from './PagesAmountSubscriptionContainer
 import BotMessagePlaceholder from './EditorView/BotMessagePlaceholder'
 import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
-import { markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
+import { getChatCommentsWithLinkedEmails, markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
 import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../Utils/assistantWaiting'
+import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
+import {
+    getLinkedEmailFromMessage,
+    getLinkedEmailsFromMessages,
+    groupLinkedEmailsByConnection,
+} from './linkedEmailActions'
+import Icon from '../../Icon'
+import global, { colors } from '../../styles/global'
+import { translate } from '../../../i18n/TranslationService'
 
 export default function ChatBoard({
     projectId,
@@ -66,6 +75,9 @@ export default function ChatBoard({
     const [serverTime, setServerTime] = useState(null)
     const [waitingForBotAnswer, setWaitingForBotAnswer] = useState(false)
     const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
+    const [archivingEmailKeys, setArchivingEmailKeys] = useState([])
+    const [archivedEmailKeys, setArchivedEmailKeys] = useState([])
+    const [archivingAllEmails, setArchivingAllEmails] = useState(false)
     const scrollViewRef = useRef()
     const lastScrollPositionRef = useRef(0)
     const contentHeightRef = useRef(0)
@@ -73,6 +85,8 @@ export default function ChatBoard({
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
+    const linkedEmails = getLinkedEmailsFromMessages(messages)
+    const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
     const lastMessageLength = messages.length > 0 ? messages[messages.length - 1].commentText.length : 0
 
@@ -110,6 +124,44 @@ export default function ChatBoard({
 
     const onMessageSent = () => {
         setAutoScrollEnabled(true)
+    }
+
+    const archiveLinkedEmails = async emails => {
+        const pendingEmails = emails.filter(
+            email => !archivedEmailKeys.includes(email.key) && !archivingEmailKeys.includes(email.key)
+        )
+        if (pendingEmails.length === 0) return
+
+        const pendingKeys = pendingEmails.map(email => email.key)
+        setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
+        try {
+            const groupedEmails = groupLinkedEmailsByConnection(pendingEmails)
+            await Promise.all(
+                Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
+                    performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
+                )
+            )
+            setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
+        } catch (error) {
+            console.error('Failed to archive linked email', error)
+            alert(`${translate("Email couldn't be archived")}: ${error.message}`)
+        } finally {
+            setArchivingEmailKeys(current => current.filter(key => !pendingKeys.includes(key)))
+        }
+    }
+
+    const archiveAllLinkedEmails = async () => {
+        if (archivingAllEmails) return
+        setArchivingAllEmails(true)
+        try {
+            const allLinkedEmailComments = await getChatCommentsWithLinkedEmails(projectId, chat.type, chat.id)
+            await archiveLinkedEmails(getLinkedEmailsFromMessages(allLinkedEmailComments))
+        } catch (error) {
+            console.error('Failed to load linked emails for archive all', error)
+            alert(`${translate("Emails couldn't be archived")}: ${error.message}`)
+        } finally {
+            setArchivingAllEmails(false)
+        }
     }
 
     const handleScroll = event => {
@@ -241,6 +293,33 @@ export default function ChatBoard({
                 {page < chatPagesAmount && messages.length > 0 && (
                     <ShowMoreButton expand={showEarlier} expandText={'show earlier'} />
                 )}
+                {accessGranted && linkedEmails.length > 0 && (
+                    <View style={localStyles.emailActionsBar}>
+                        <TouchableOpacity
+                            style={localStyles.emailActionButton}
+                            onPress={archiveAllLinkedEmails}
+                            disabled={
+                                unarchivedLinkedEmails.length === 0 ||
+                                archivingEmailKeys.length > 0 ||
+                                archivingAllEmails
+                            }
+                            accessibilityLabel={translate('Archive all emails')}
+                        >
+                            {archivingEmailKeys.length > 0 || archivingAllEmails ? (
+                                <ActivityIndicator size="small" color={colors.Text03} />
+                            ) : (
+                                <Icon
+                                    name={unarchivedLinkedEmails.length === 0 ? 'check' : 'archive'}
+                                    size={14}
+                                    color={colors.Text03}
+                                />
+                            )}
+                            <Text style={localStyles.emailActionText}>
+                                {translate(unarchivedLinkedEmails.length === 0 ? 'Archived' : 'Archive all emails')}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
                 <View>
                     {messages.map((message, index) => {
                         const highlight = index >= amountOfCommentsToNotHighligth
@@ -255,6 +334,15 @@ export default function ChatBoard({
                                 members={members}
                                 objectType={objectType}
                                 highlight={highlight}
+                                linkedEmail={getLinkedEmailFromMessage(message)}
+                                linkedEmailArchiving={
+                                    archivingAllEmails ||
+                                    archivingEmailKeys.includes(getLinkedEmailFromMessage(message)?.key)
+                                }
+                                linkedEmailArchived={archivedEmailKeys.includes(
+                                    getLinkedEmailFromMessage(message)?.key
+                                )}
+                                onArchiveLinkedEmail={archiveLinkedEmails}
                                 setAmountOfNewCommentsToHighligth={setAmountOfNewCommentsToHighligth}
                             />
                         )
@@ -288,5 +376,24 @@ const localStyles = StyleSheet.create({
         paddingTop: 8,
         paddingBottom: 32,
         marginLeft: -13,
+    },
+    emailActionsBar: {
+        alignItems: 'flex-end',
+        paddingHorizontal: 8,
+        paddingBottom: 4,
+    },
+    emailActionButton: {
+        minHeight: 28,
+        paddingHorizontal: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.Gray300,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    emailActionText: {
+        ...global.caption2,
+        color: colors.Text03,
+        marginLeft: 6,
     },
 })

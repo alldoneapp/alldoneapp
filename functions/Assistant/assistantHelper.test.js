@@ -656,6 +656,7 @@ describe('assistant attachment handoff helpers', () => {
             getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Inbox' }]),
         }))
         mockCollectionGet.mockResolvedValueOnce({ docs: [] })
+        mockDocGet.mockResolvedValueOnce({ exists: false })
 
         const result = await executeToolNatively(
             'add_chat_comment',
@@ -673,6 +674,12 @@ describe('assistant attachment handoff helpers', () => {
                 gmailContext: {
                     origin: 'gmail_label_follow_up',
                     topicChatTitle: 'Daily emails Inbox 10.07.2026',
+                    gmailEmail: 'karsten@example.com',
+                    connectionId: 'email_google_123',
+                    connectionProjectId: 'connection-project-1',
+                    messageId: 'message-1',
+                    threadId: 'thread-1',
+                    webUrl: 'https://mail.google.com/message-1',
                 },
             }
         )
@@ -683,6 +690,18 @@ describe('assistant attachment handoff helpers', () => {
             chatCreated: true,
         })
         expect(mockDocSet).toHaveBeenCalledWith(expect.objectContaining({ title: 'Daily emails Inbox 10.07.2026' }))
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                source: 'gmail_label_follow_up',
+                gmailData: expect.objectContaining({
+                    connectionId: 'email_google_123',
+                    projectId: 'connection-project-1',
+                    connectionProjectId: 'connection-project-1',
+                    messageId: 'message-1',
+                    threadId: 'thread-1',
+                }),
+            })
+        )
     })
 
     test('requires exact tool URLs in follow-up responses', () => {

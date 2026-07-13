@@ -27,6 +27,8 @@ import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import { cancelAssistantRun } from '../../../../utils/backends/Assistants/assistantRuns'
+import { translate } from '../../../../i18n/TranslationService'
+import GmailTag from '../../../Tags/GmailTag'
 
 export default function MessageItemContent({
     messageId,
@@ -42,6 +44,12 @@ export default function MessageItemContent({
     setAmountOfNewCommentsToHighligth,
     isLoading,
     assistantRun,
+    linkedEmail,
+    linkedEmailGmailData,
+    linkedEmailArchiving,
+    linkedEmailArchived,
+    onArchiveLinkedEmail,
+    canArchiveLinkedEmail,
 }) {
     const dispatch = useDispatch()
     const activeChatMessageId = useSelector(state => state.activeChatMessageId)
@@ -439,23 +447,53 @@ export default function MessageItemContent({
                             </View>
                         </View>
                     ) : (
-                        processedContent.map((contentPart, index) => {
-                            const lastItem = index === processedContent.length - 1
-                            const { type, text } = contentPart
+                        <>
+                            {processedContent.map((contentPart, index) => {
+                                const lastItem = index === processedContent.length - 1
+                                const { type, text } = contentPart
 
-                            if (type === 'quote') {
-                                return (
-                                    <QuotedText
-                                        key={index}
-                                        projectId={projectId}
-                                        lastItem={lastItem}
-                                        quotedText={text}
+                                if (type === 'quote') {
+                                    return (
+                                        <QuotedText
+                                            key={index}
+                                            projectId={projectId}
+                                            lastItem={lastItem}
+                                            quotedText={text}
+                                        />
+                                    )
+                                } else {
+                                    return renderTextContent(text, lastItem)
+                                }
+                            })}
+                            {canArchiveLinkedEmail && linkedEmail && (
+                                <View style={localStyles.linkedEmailActions}>
+                                    <GmailTag
+                                        gmailData={linkedEmailGmailData}
+                                        showLabel={true}
+                                        propStyles={localStyles.linkedEmailTag}
                                     />
-                                )
-                            } else {
-                                return renderTextContent(text, lastItem)
-                            }
-                        })
+                                    <TouchableOpacity
+                                        style={localStyles.linkedEmailButton}
+                                        onPress={() => onArchiveLinkedEmail([linkedEmail])}
+                                        disabled={linkedEmailArchiving || linkedEmailArchived}
+                                        accessibilityLabel={translate('Archive email')}
+                                    >
+                                        {linkedEmailArchiving ? (
+                                            <ActivityIndicator size="small" color={colors.Text03} />
+                                        ) : (
+                                            <Icon
+                                                name={linkedEmailArchived ? 'check' : 'archive'}
+                                                size={14}
+                                                color={colors.Text03}
+                                            />
+                                        )}
+                                        <Text style={localStyles.linkedEmailButtonText}>
+                                            {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </>
                     )}
                 </View>
             }
@@ -589,6 +627,29 @@ const localStyles = StyleSheet.create({
     },
     inlineElement: {
         marginRight: 6,
+    },
+    linkedEmailActions: {
+        alignSelf: 'flex-start',
+        marginTop: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    linkedEmailTag: {
+        marginRight: 8,
+    },
+    linkedEmailButton: {
+        minHeight: 28,
+        paddingHorizontal: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.Gray300,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    linkedEmailButtonText: {
+        ...global.caption2,
+        color: colors.Text03,
+        marginLeft: 6,
     },
     tableScroller: {
         maxWidth: '100%',

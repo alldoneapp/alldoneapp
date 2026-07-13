@@ -150,6 +150,12 @@ export const watchComments = (projectId, chatType, chatId, watcherKey, amountCom
         })
 }
 
+export async function getChatCommentsWithLinkedEmails(projectId, chatType, chatId) {
+    if (!projectId || !chatType || !chatId) return []
+    const snapshot = await getDb().collection(`chatComments/${projectId}/${chatType}/${chatId}/comments`).get()
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })).filter(comment => comment?.gmailData?.messageId)
+}
+
 export function watchChatNotifications(projectId, userId, watcherKey, callback) {
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`chatNotifications/${projectId}/${userId}`)

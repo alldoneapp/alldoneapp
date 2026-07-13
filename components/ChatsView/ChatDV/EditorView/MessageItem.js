@@ -21,6 +21,10 @@ export default function MessageItem({
     members,
     objectType,
     highlight,
+    linkedEmail,
+    linkedEmailArchiving,
+    linkedEmailArchived,
+    onArchiveLinkedEmail,
     setAmountOfNewCommentsToHighligth,
 }) {
     const dispatch = useDispatch()
@@ -166,6 +170,12 @@ export default function MessageItem({
                         setAmountOfNewCommentsToHighligth={setAmountOfNewCommentsToHighligth}
                         isLoading={effectiveIsLoading}
                         assistantRun={message.assistantRun}
+                        linkedEmail={linkedEmail}
+                        linkedEmailGmailData={message.gmailData}
+                        linkedEmailArchiving={linkedEmailArchiving}
+                        linkedEmailArchived={linkedEmailArchived}
+                        onArchiveLinkedEmail={onArchiveLinkedEmail}
+                        canArchiveLinkedEmail={accessGranted}
                     />
                 </Animated.View>
             </Swipeable>

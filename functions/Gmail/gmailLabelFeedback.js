@@ -235,6 +235,7 @@ async function executeFeedbackPostLabelPrompt({
             reasoning: auditEntry.reasoning || '',
             confidence: auditEntry.confidence ?? null,
             followUpType: auditEntry.followUpType || 'informational',
+            connectionId: feedbackProjectId,
             connectionProjectId: feedbackProjectId,
             selectedProjectId,
         })

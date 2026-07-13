@@ -766,6 +766,7 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
     return {
         origin: GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN,
         gmailEmail: typeof gmailContext.gmailEmail === 'string' ? gmailContext.gmailEmail.trim().toLowerCase() : '',
+        connectionId: typeof gmailContext.connectionId === 'string' ? gmailContext.connectionId.trim() : '',
         projectId: connectionProjectId || targetProjectId || '',
         taskProjectId: targetProjectId || '',
         selectedProjectId: matchedProjectId,
@@ -3574,6 +3575,9 @@ async function addChatCommentFromAssistantTool({
         commentData.gmailData = {
             origin: gmailContext.origin,
             gmailEmail: gmailContext.gmailEmail || '',
+            connectionId: gmailContext.connectionId || gmailContext.connectionProjectId || gmailContext.projectId || '',
+            projectId: gmailContext.connectionProjectId || gmailContext.projectId || '',
+            connectionProjectId: gmailContext.connectionProjectId || gmailContext.projectId || '',
             messageId: gmailContext.messageId || '',
             threadId: gmailContext.threadId || '',
             webUrl: gmailContext.webUrl || '',
