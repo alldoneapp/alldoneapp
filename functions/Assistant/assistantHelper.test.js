@@ -3232,6 +3232,54 @@ describe('assistant settings prompt history', () => {
         mockTransactionUpdate.mockClear()
     })
 
+    test('updates the current assistant from the requesting user default project', async () => {
+        const assistant = {
+            uid: 'assistant-1',
+            allowedTools: ['update_assistant_settings'],
+            instructions: 'Current instructions',
+        }
+        const missingDoc = { exists: false, data: () => ({}) }
+        const userDoc = {
+            exists: true,
+            data: () => ({ defaultProjectId: 'default-project' }),
+        }
+        const assistantDoc = { exists: true, data: () => assistant }
+
+        mockDocGet
+            // Resolve and authorize the caller.
+            .mockResolvedValueOnce(missingDoc)
+            .mockResolvedValueOnce(missingDoc)
+            .mockResolvedValueOnce(userDoc)
+            .mockResolvedValueOnce(assistantDoc)
+            // Resolve the implicit self-update target.
+            .mockResolvedValueOnce(missingDoc)
+            .mockResolvedValueOnce(missingDoc)
+            .mockResolvedValueOnce(userDoc)
+            .mockResolvedValueOnce(assistantDoc)
+            // Re-read the target inside the update transaction.
+            .mockResolvedValueOnce(assistantDoc)
+
+        const result = await executeToolNatively(
+            'update_assistant_settings',
+            { instructions: 'Updated instructions' },
+            'chat-project',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockTransactionUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'assistants/default-project/items/assistant-1' }),
+            expect.objectContaining({ instructions: 'Updated instructions' })
+        )
+        expect(result).toMatchObject({
+            success: true,
+            assistantId: 'assistant-1',
+            targetProjectId: 'default-project',
+            isSelf: true,
+        })
+    })
+
     test('versions instructions changes and caps history at 10 entries', async () => {
         const existingHistory = Array.from({ length: 10 }, (_, index) => ({
             prompt: `Older instructions ${index}`,

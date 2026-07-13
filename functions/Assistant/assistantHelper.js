@@ -3776,14 +3776,18 @@ async function resolveTargetAssistantForSettingsUpdate({
     const normalizedRequestedProjectId = typeof requestedProjectId === 'string' ? requestedProjectId.trim() : ''
 
     if (!normalizedRequestedAssistantId && !normalizedRequestedAssistantName && !normalizedRequestedProjectId) {
-        const resolved = await resolveCurrentAssistantDocForToolExecution(contextProjectId, contextAssistantId)
+        const resolved = await resolveCurrentAssistantDocForToolExecution(
+            contextProjectId,
+            contextAssistantId,
+            requestUserId
+        )
         if (!resolved) {
             throw new Error('Current assistant not found for settings update.')
         }
         return {
             assistant: resolved.assistant,
             assistantRef: resolved.assistantRef,
-            projectId: resolved.source === 'global' ? GLOBAL_PROJECT_ID : contextProjectId,
+            projectId: resolved.projectId || contextProjectId,
             source: resolved.source,
             isSelf: true,
         }
@@ -6676,7 +6680,11 @@ async function executeToolNatively(
         }
 
         case UPDATE_PROJECT_DESCRIPTION_TOOL_KEY: {
-            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(
+                projectId,
+                assistantId,
+                requestUserId
+            )
 
             if (!resolvedAssistant) {
                 throw new Error('Assistant not found for project description update.')
@@ -6717,7 +6725,11 @@ async function executeToolNatively(
         }
 
         case UPDATE_USER_DESCRIPTION_TOOL_KEY: {
-            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(
+                projectId,
+                assistantId,
+                requestUserId
+            )
 
             if (!resolvedAssistant) {
                 throw new Error('Assistant not found for user description update.')
@@ -6772,7 +6784,11 @@ async function executeToolNatively(
 
         case UPDATE_HEARTBEAT_SETTINGS_TOOL_KEY: {
             const hasOwn = key => Object.prototype.hasOwnProperty.call(toolArgs || {}, key)
-            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(
+                projectId,
+                assistantId,
+                requestUserId
+            )
 
             if (!resolvedAssistant) {
                 throw new Error('Assistant not found for heartbeat settings update.')
@@ -6939,7 +6955,11 @@ async function executeToolNatively(
         case UPDATE_ASSISTANT_SETTINGS_TOOL_KEY: {
             const hasOwn = key => Object.prototype.hasOwnProperty.call(toolArgs || {}, key)
 
-            const callerResolved = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+            const callerResolved = await resolveCurrentAssistantDocForToolExecution(
+                projectId,
+                assistantId,
+                requestUserId
+            )
             if (!callerResolved) {
                 throw new Error('Current assistant not found for assistant settings update.')
             }
@@ -7103,7 +7123,11 @@ async function executeToolNatively(
         }
 
         case COMPACT_THREAD_CONTEXT_TOOL_KEY: {
-            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+            const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(
+                projectId,
+                assistantId,
+                requestUserId
+            )
 
             if (!resolvedAssistant) {
                 throw new Error('Assistant not found for thread compaction.')
@@ -10411,7 +10435,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     return settings
 }
 
-async function resolveCurrentAssistantDocForToolExecution(projectId, assistantId) {
+async function resolveCurrentAssistantDocForToolExecution(projectId, assistantId, requestUserId = null) {
     if (!projectId || !assistantId) return null
 
     const db = admin.firestore()
@@ -10427,6 +10451,7 @@ async function resolveCurrentAssistantDocForToolExecution(projectId, assistantId
         return {
             assistant: { ...projectAssistantDoc.data(), uid: assistantId },
             assistantRef: projectAssistantRef,
+            projectId,
             source: 'project',
         }
     }
@@ -10435,7 +10460,32 @@ async function resolveCurrentAssistantDocForToolExecution(projectId, assistantId
         return {
             assistant: { ...globalAssistantDoc.data(), uid: assistantId },
             assistantRef: globalAssistantRef,
+            projectId: GLOBAL_PROJECT_ID,
             source: 'global',
+        }
+    }
+
+    // Assistants from a user's default project can be used in other project chats.
+    // Match getAssistantForChat's lookup so tools operate on the same assistant that
+    // generated the response instead of failing after the model calls the tool.
+    if (requestUserId) {
+        const userDoc = await db
+            .doc(`users/${requestUserId}`)
+            .get()
+            .catch(() => null)
+        const defaultProjectId = userDoc?.exists ? userDoc.data()?.defaultProjectId : null
+
+        if (defaultProjectId && defaultProjectId !== projectId && defaultProjectId !== GLOBAL_PROJECT_ID) {
+            const defaultProjectAssistantRef = db.doc(`assistants/${defaultProjectId}/items/${assistantId}`)
+            const defaultProjectAssistantDoc = await defaultProjectAssistantRef.get().catch(() => null)
+            if (defaultProjectAssistantDoc?.exists) {
+                return {
+                    assistant: { ...defaultProjectAssistantDoc.data(), uid: assistantId },
+                    assistantRef: defaultProjectAssistantRef,
+                    projectId: defaultProjectId,
+                    source: 'default_project',
+                }
+            }
         }
     }
 
@@ -10443,7 +10493,7 @@ async function resolveCurrentAssistantDocForToolExecution(projectId, assistantId
 }
 
 async function getHeartbeatSettingsContextMessage(projectId, assistantId, requestUserId = null) {
-    const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+    const resolvedAssistant = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId, requestUserId)
     if (!resolvedAssistant) return ''
 
     let userData = null
@@ -10462,8 +10512,8 @@ async function getHeartbeatSettingsContextMessage(projectId, assistantId, reques
     })
 }
 
-async function getAssistantSettingsContextMessage(projectId, assistantId) {
-    const resolved = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+async function getAssistantSettingsContextMessage(projectId, assistantId, requestUserId = null) {
+    const resolved = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId, requestUserId)
     if (!resolved) return ''
 
     const assistant = resolved.assistant || {}
@@ -10670,7 +10720,7 @@ async function buildVmThreadContext({
     // than the settings-editing framing of getAssistantSettingsContextMessage.
     if (opts.assistantPersona && assistantId) {
         try {
-            const resolved = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId)
+            const resolved = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId, requestUserId)
             const assistant = resolved?.assistant || {}
             const personaLines = ['Assistant persona (act as this assistant):']
             if (assistant.displayName) personaLines.push(`- Name: ${assistant.displayName}`)
@@ -11034,7 +11084,8 @@ async function addBaseInstructions(
         try {
             const settingsContextMessage = await getAssistantSettingsContextMessage(
                 assistantContext?.projectId,
-                assistantContext?.assistantId
+                assistantContext?.assistantId,
+                assistantContext?.requestUserId
             )
 
             if (settingsContextMessage) {
