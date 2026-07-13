@@ -19,6 +19,9 @@ const GMAIL_CONSISTENCY_SYSTEM_PROMPT =
     'You audit a Gmail classification for self-consistency. You are given the email, configured labels, and a first-pass decision including its label and follow-up type. Decide the FINAL best label and whether the email is actionable or informational. If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
+    'MODEL_GPT5_6_SOL',
+    'MODEL_GPT5_6_TERRA',
+    'MODEL_GPT5_6_LUNA',
     'MODEL_GPT5_1',
     'MODEL_GPT5_2',
     'MODEL_GPT5_5',
@@ -33,6 +36,9 @@ function mapAssistantModelToOpenAIModel(modelKey) {
     if (normalizedKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (normalizedKey === 'MODEL_GPT5_1') return 'gpt-5.1'
     if (normalizedKey === 'MODEL_GPT5_5') return 'gpt-5.5'
+    if (normalizedKey === 'MODEL_GPT5_6_SOL') return 'gpt-5.6-sol'
+    if (normalizedKey === 'MODEL_GPT5_6_TERRA') return 'gpt-5.6-terra'
+    if (normalizedKey === 'MODEL_GPT5_6_LUNA') return 'gpt-5.6-luna'
     if (normalizedKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'
     if (normalizedKey === 'MODEL_GPT5_4_NANO') return 'gpt-5.4-nano'
     return 'gpt-5.2'
@@ -437,7 +443,19 @@ async function classifyGmailMessage({ config, message }) {
             labelKey: firstResult.labelKey,
             error: error.message,
         })
-        return firstResult
+        return {
+            ...firstResult,
+            consistencyCheck: {
+                ran: true,
+                corrected: false,
+                failed: true,
+                trigger: consistencyTrigger,
+                auditModel,
+                originalLabelKey: firstResult.labelKey,
+                originalRawLabelKey: firstResult.rawLabelKey || null,
+                originalConfidence: firstResult.confidence,
+            },
+        }
     }
 }
 

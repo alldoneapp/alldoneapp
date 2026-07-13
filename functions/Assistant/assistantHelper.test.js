@@ -312,6 +312,8 @@ const {
     getSilentModeFinalResponseText,
     storeBotAnswerStream,
     calculateGoldCostFromTokens,
+    normalizeModelKey,
+    getMaxTokensForModel,
 } = require('./assistantHelper')
 
 describe('assistant attachment handoff helpers', () => {
@@ -348,6 +350,13 @@ describe('assistant attachment handoff helpers', () => {
         expect(calculateGoldCostFromTokens(100, 'MODEL_GPT5_5')).toBe(1)
         expect(calculateGoldCostFromTokens(1200, 'MODEL_GPT5_4_NANO')).toBe(1)
         expect(calculateGoldCostFromTokens(2400, 'MODEL_GPT5_4_NANO')).toBe(2)
+        expect(calculateGoldCostFromTokens(500, 'MODEL_GPT5_6_LUNA')).toBe(1)
+        expect(calculateGoldCostFromTokens(200, 'MODEL_GPT5_6_TERRA')).toBe(1)
+    })
+
+    test('defaults missing models to GPT-5.6 Sol with its full context window', () => {
+        expect(normalizeModelKey()).toBe('MODEL_GPT5_6_SOL')
+        expect(getMaxTokensForModel('MODEL_GPT5_6_SOL')).toBe(1050000)
     })
 
     test('returns the canonical URL when creating a note', async () => {

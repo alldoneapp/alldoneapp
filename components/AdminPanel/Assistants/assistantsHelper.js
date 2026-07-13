@@ -13,6 +13,7 @@ export const MODEL_GPT4 = 'MODEL_GPT4'
 export const MODEL_GPT4O = 'MODEL_GPT4O'
 export const MODEL_GPT5_1 = 'MODEL_GPT5_1'
 export const MODEL_GPT5_5 = 'MODEL_GPT5_5'
+export const MODEL_GPT5_6_SOL = 'MODEL_GPT5_6_SOL'
 export const MODEL_GPT5_2 = 'MODEL_GPT5_2'
 export const MODEL_SONAR = 'MODEL_SONAR'
 export const MODEL_SONAR_PRO = 'MODEL_SONAR_PRO'
@@ -46,7 +47,7 @@ export function getNewDefaultAssistant() {
         thirdPartLink: '',
         type: TYPE_PROMPT_BASED,
         instructions: '',
-        model: MODEL_GPT5_5,
+        model: MODEL_GPT5_6_SOL,
         temperature: TEMPERATURE_NORMAL,
         realtimeVoice: 'marin',
         emailSignature: DEFAULT_EMAIL_SIGNATURE,

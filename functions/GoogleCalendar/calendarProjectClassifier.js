@@ -13,6 +13,9 @@ const CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT =
 const INCONSISTENT_ROUTING_REASON = 'Classifier returned inconsistent project routing details.'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
+    'MODEL_GPT5_6_SOL',
+    'MODEL_GPT5_6_TERRA',
+    'MODEL_GPT5_6_LUNA',
     'MODEL_GPT5_1',
     'MODEL_GPT5_2',
     'MODEL_GPT5_5',
@@ -27,6 +30,9 @@ function mapAssistantModelToOpenAIModel(modelKey) {
     if (normalizedKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (normalizedKey === 'MODEL_GPT5_1') return 'gpt-5.1'
     if (normalizedKey === 'MODEL_GPT5_5') return 'gpt-5.5'
+    if (normalizedKey === 'MODEL_GPT5_6_SOL') return 'gpt-5.6-sol'
+    if (normalizedKey === 'MODEL_GPT5_6_TERRA') return 'gpt-5.6-terra'
+    if (normalizedKey === 'MODEL_GPT5_6_LUNA') return 'gpt-5.6-luna'
     if (normalizedKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'
     if (normalizedKey === 'MODEL_GPT5_4_NANO') return 'gpt-5.4-nano'
     return 'gpt-5.2'

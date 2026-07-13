@@ -174,6 +174,7 @@ const GMAIL_LABELING_LEGACY_GPT5_MODELS = new Set([
     'MODEL_GPT5_4',
     'MODEL_GPT5_5',
     'MODEL_GPT5_4_MINI',
+    'MODEL_GPT5_6_LUNA',
 ])
 
 function applyGmailLabelingModelMigration(config = {}) {
@@ -1086,6 +1087,7 @@ async function addRoutingCommentsToCreatedGmailTasks({
     reasoning = '',
     confidence = null,
     selectedProjectId = null,
+    consistencyCheck = null,
 }) {
     if (!Array.isArray(createdTaskResults) || createdTaskResults.length === 0) return []
 
@@ -1102,6 +1104,8 @@ async function addRoutingCommentsToCreatedGmailTasks({
                 projectName: createdTask.projectName || '',
                 reasoning,
                 confidence,
+                secondPassUsed: !!consistencyCheck?.ran,
+                secondPassModel: consistencyCheck?.auditModel || '',
                 source: 'gmail_labeling',
                 routingKey: normalizedMessage.messageId || '',
                 sourceDataField: 'gmailData',
@@ -1112,6 +1116,8 @@ async function addRoutingCommentsToCreatedGmailTasks({
                     selectedGmailLabelName: selectedDefinition.gmailLabelName || '',
                     selectedProjectId: selectedProjectId || null,
                     matched: true,
+                    secondPassUsed: !!consistencyCheck?.ran,
+                    secondPassModel: consistencyCheck?.auditModel || '',
                 },
             })
 
@@ -1150,6 +1156,7 @@ async function executePostLabelPrompt({
     followUpType = 'informational',
     connectionProjectId = '',
     selectedProjectId = null,
+    consistencyCheck = null,
 }) {
     const configuredPrompt =
         typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
@@ -1271,6 +1278,7 @@ async function executePostLabelPrompt({
             reasoning,
             confidence,
             selectedProjectId,
+            consistencyCheck,
         })
         const estimatedNormalGoldCost = calculateGoldCostFromTokens(totalTokens, assistant.model)
         let goldSpent = 0
@@ -1714,6 +1722,7 @@ async function processSingleMessage({
             followUpType,
             connectionProjectId: goldProjectId,
             selectedProjectId,
+            consistencyCheck: classifierResult.consistencyCheck || null,
         })
         postLabelActions.push(action)
         followUpGoldSpent += Number(action?.goldSpent) || 0

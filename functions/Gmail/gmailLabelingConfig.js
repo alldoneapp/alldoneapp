@@ -8,8 +8,9 @@ const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_4_NANO'
 // correlated error — production logs show the auditor re-confirming, and even strengthening,
 // its own mistake (e.g. labelKey "Bechtle" kept at 0.86 -> 0.90 while the reasoning describes
 // "JTL Software - Project Juno"). The audit pass only runs on the rare flagged cases, so a
-// high-capability model here is cheap and gives a genuinely different judgement.
-const DEFAULT_GMAIL_CONSISTENCY_MODEL = 'MODEL_GPT5_5'
+// high-capability model here is cheap and gives a genuinely different judgement. Terra is
+// intentionally stronger than the GPT-5.4 Nano first pass while costing less than Sol.
+const DEFAULT_GMAIL_CONSISTENCY_MODEL = 'MODEL_GPT5_6_TERRA'
 const DEFAULT_MAX_MESSAGES_PER_RUN = 20
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.7
 const DEFAULT_LOOKBACK_DAYS = 7

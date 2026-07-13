@@ -27,6 +27,7 @@ function getOpenAIModelFromAssistantModel(modelKey) {
     if (modelKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (modelKey === 'MODEL_GPT5_1' || modelKey === 'MODEL_GPT5') return 'gpt-5.1'
     if (modelKey === 'MODEL_GPT5_5') return 'gpt-5.5'
+    if (modelKey === 'MODEL_GPT5_6_SOL') return 'gpt-5.6-sol'
     if (modelKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'
     if (modelKey === 'MODEL_GPT5_4_NANO') return 'gpt-5.4-nano'
     if (modelKey === 'MODEL_GPT5_2') return 'gpt-5.2'
@@ -35,7 +36,7 @@ function getOpenAIModelFromAssistantModel(modelKey) {
     if (modelKey === 'MODEL_SONAR_REASONING') return 'sonar-reasoning'
     if (modelKey === 'MODEL_SONAR_REASONING_PRO') return 'sonar-reasoning-pro'
     if (modelKey === 'MODEL_SONAR_DEEP_RESEARCH') return 'sonar-deep-research'
-    return 'gpt-5.5'
+    return 'gpt-5.6-sol'
 }
 
 function getTaskExecutionDescriptor(task) {

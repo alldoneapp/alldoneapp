@@ -109,13 +109,13 @@ describe('startVmJob WhatsApp metadata', () => {
             requestUserId: 'user-1',
         })
 
-        // No model/effort passed → the per-agent defaults (Codex: gpt-5.5 · high) are surfaced.
+        // No model/effort passed → the per-agent defaults (Codex: gpt-5.6-sol · high) are surfaced.
         expect(createInitialStatusMessage).toHaveBeenCalledWith(
             'project-1',
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (gpt-5.5 · high effort) in a VM to work on this…',
+            '🖥️ Spinning up Codex (gpt-5.6-sol · high effort) in a VM to work on this…',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -167,7 +167,7 @@ describe('startVmJob WhatsApp metadata', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (gpt-5.5 · low effort) in a VM to work on this…',
+            '🖥️ Spinning up Codex (gpt-5.6-sol · low effort) in a VM to work on this…',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)

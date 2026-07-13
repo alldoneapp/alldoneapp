@@ -556,6 +556,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
                 projectName: 'Client Project',
                 reasoning: 'The sender and subject match the client project.',
                 confidence: 0.94,
+                secondPassUsed: false,
+                secondPassModel: '',
                 source: 'gmail_labeling',
                 sourceDataField: 'gmailData',
                 routingData: expect.objectContaining({

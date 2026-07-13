@@ -147,6 +147,7 @@ describe('submitEmailLabelFeedback', () => {
                 postLabelActionStatus: 'completed',
             })
         )
+        expect(mockCompletionCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'MODEL_GPT5_6_SOL' }))
         expect(serverSideGmailLabelingSync.applyGmailThreadLabelCorrection).toHaveBeenCalledWith(
             'user-1',
             'project-1',

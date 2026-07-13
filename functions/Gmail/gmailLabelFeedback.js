@@ -14,7 +14,7 @@ const { invalidateResolvedThreadIds } = require('../Email/emailLine/gmailResolve
 // ("Feedback revision produced no rules text"), silently dropping the correction; a stronger
 // model both fixes that and produces better-generalized rules.
 const FEEDBACK_DAILY_CAP = 30
-const FEEDBACK_REVISION_MODEL = 'MODEL_GPT5_5'
+const FEEDBACK_REVISION_MODEL = 'MODEL_GPT5_6_SOL'
 
 const REVISION_SYSTEM_PROMPT =
     'You maintain a compact list of user feedback rules for an AI email labeling assistant. ' +

@@ -41,7 +41,7 @@ jest.mock('./vmJob', () => ({
         return parts.length ? ` (${parts.join(' · ')})` : ''
     },
     DEFAULT_CLAUDE_MODEL: 'opus',
-    DEFAULT_CODEX_MODEL: 'gpt-5.5',
+    DEFAULT_CODEX_MODEL: 'gpt-5.6-sol',
     DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
     DEFAULT_CODEX_REASONING_EFFORT: 'high',
 }))
@@ -145,7 +145,10 @@ describe('VM runner prompt', () => {
 
     test('resolveAgentRunDetails falls back to per-agent defaults when the job omits them', () => {
         expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({ model: 'opus', effort: 'high' })
-        expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({ model: 'gpt-5.5', effort: 'high' })
+        expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({
+            model: 'gpt-5.6-sol',
+            effort: 'high',
+        })
     })
 
     test('resolveAgentRunDetails uses explicit job values when present', () => {

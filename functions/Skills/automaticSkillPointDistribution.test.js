@@ -19,7 +19,7 @@ jest.mock('firebase-admin', () => ({
 jest.mock('../Assistant/assistantHelper', () => ({
     interactWithChatStream: jest.fn(),
     reduceGoldWhenChatWithAI: jest.fn(),
-    normalizeModelKey: jest.fn(model => model || 'MODEL_GPT5_5'),
+    normalizeModelKey: jest.fn(model => model || 'MODEL_GPT5_6_SOL'),
 }))
 
 jest.mock('../Utils/HelperFunctionsCloud', () => ({

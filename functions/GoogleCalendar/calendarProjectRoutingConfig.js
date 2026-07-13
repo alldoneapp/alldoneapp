@@ -7,6 +7,12 @@ const CALENDAR_PROJECT_ROUTING_CONFIG_TYPE = 'calendarProjectRoutingConfig'
 const DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT =
     'Choose exactly one active Alldone project for each Google Calendar event when the event clearly belongs to that project. Use the project descriptions as the primary context. Prefer precision over recall: if the event could belong to multiple projects, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider the event title, description, attendees and their email addresses, organizer, creator, location, meeting links, timing, project names, client names, stakeholders, goals, tasks, decisions, updates, and deliverables. Pay particular attention to the attendees\' and organizer\'s email addresses and especially their domains: a shared company or client domain (for example everyone on "@acme.com") is a strong signal that the event belongs to the project tied to that company or client. Match those domains and individual addresses against the project descriptions, client names, and stakeholders to decide the project.'
 
+function normalizeCalendarProjectRoutingModel(model) {
+    const normalizedModel = typeof model === 'string' ? model.trim() : ''
+    if (!normalizedModel || normalizedModel === 'MODEL_GPT5_6_LUNA') return DEFAULT_GMAIL_LABELING_MODEL
+    return normalizedModel
+}
+
 function getCalendarProjectRoutingConfigDocId(projectId) {
     return `calendarProjectRouting_${projectId}`
 }
@@ -44,8 +50,7 @@ function normalizeCalendarProjectRoutingConfigInput(projectId, input = {}, calen
             typeof input.prompt === 'string' && input.prompt.trim()
                 ? input.prompt.trim()
                 : DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT,
-        model:
-            typeof input.model === 'string' && input.model.trim() ? input.model.trim() : DEFAULT_GMAIL_LABELING_MODEL,
+        model: normalizeCalendarProjectRoutingModel(input.model),
         confidenceThreshold: Number.isFinite(parsedConfidenceThreshold)
             ? Math.min(Math.max(parsedConfidenceThreshold, 0), 1)
             : DEFAULT_CONFIDENCE_THRESHOLD,

@@ -161,6 +161,9 @@ const normalizeRoutingDecision = decision => {
         projectName: typeof decision.projectName === 'string' ? decision.projectName.trim() : '',
         goldSpent: Number.isFinite(decision.goldSpent) ? Number(decision.goldSpent) : 0,
         tokenUsage: decision.tokenUsage || null,
+        secondPassUsed: !!decision.tokenUsage?.auditModel,
+        secondPassModel:
+            typeof decision.tokenUsage?.auditModel === 'string' ? decision.tokenUsage.auditModel.trim() : '',
     }
 }
 
@@ -215,6 +218,8 @@ const addCalendarRoutingCommentIfNeeded = async ({
         reasoning: routingDecision.reasoning,
         confidence: routingDecision.confidence,
         matched: !!routingDecision.matched,
+        secondPassUsed: routingDecision.secondPassUsed,
+        secondPassModel: routingDecision.secondPassModel,
         source: 'calendar_project_routing',
         routingKey: taskId,
         sourceDataField: 'calendarData',
@@ -224,6 +229,8 @@ const addCalendarRoutingCommentIfNeeded = async ({
             matched: !!routingDecision.matched,
             goldSpent: routingDecision.goldSpent || 0,
             tokenUsage: routingDecision.tokenUsage || null,
+            secondPassUsed: routingDecision.secondPassUsed,
+            secondPassModel: routingDecision.secondPassModel,
         },
     })
 }

@@ -275,7 +275,7 @@ describe('calendarProjectClassifier', () => {
         })
 
         expect(create).toHaveBeenCalledTimes(2)
-        expect(create.mock.calls[1][0].model).toBe('gpt-5.5')
+        expect(create.mock.calls[1][0].model).toBe('gpt-5.6-terra')
         expect(create.mock.calls[1][0].messages[2].content).toContain('previous JSON had zero confidence')
         expect(result).toEqual(
             expect.objectContaining({
@@ -285,7 +285,7 @@ describe('calendarProjectClassifier', () => {
                 usage: expect.objectContaining({
                     retriedAfterInconsistentResult: false,
                     retriedAfterZeroConfidence: true,
-                    auditModel: 'gpt-5.5',
+                    auditModel: 'gpt-5.6-terra',
                 }),
             })
         )
@@ -350,7 +350,7 @@ describe('calendarProjectClassifier', () => {
                 reasoning: 'JTL Software - Project Juno still seems relevant.',
                 usage: expect.objectContaining({
                     retriedAfterInconsistentResult: true,
-                    auditModel: 'gpt-5.5',
+                    auditModel: 'gpt-5.6-terra',
                 }),
             })
         )

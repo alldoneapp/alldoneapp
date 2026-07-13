@@ -104,6 +104,28 @@ describe('projectRoutingCommentHelper', () => {
         ).toBe('I chose Product because the task belongs to the product roadmap.')
     })
 
+    test('shows whether the automated second pass was used', () => {
+        expect(
+            buildProjectRoutingReasonComment({
+                projectName: 'Product',
+                reasoning: 'the event mentions the roadmap',
+                confidence: 0.82,
+                secondPassUsed: true,
+                secondPassModel: 'gpt-5.6-terra',
+            })
+        ).toBe(
+            'I chose Product because the event mentions the roadmap. Confidence: 82%. Second pass: used (gpt-5.6-terra).'
+        )
+
+        expect(
+            buildProjectRoutingReasonComment({
+                projectName: 'Product',
+                reasoning: 'the event mentions the roadmap',
+                secondPassUsed: false,
+            })
+        ).toBe('I chose Product because the event mentions the roadmap. Second pass: not used.')
+    })
+
     test('writes comment, task metadata, and creates chat metadata', async () => {
         admin.__mock.doc.mockImplementation(path => {
             const ref = {

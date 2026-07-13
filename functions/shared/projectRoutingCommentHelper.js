@@ -26,19 +26,33 @@ function normalizeReasonClause(reasoning, fallback) {
         .replace(/[.!?]+$/g, '')
 }
 
-function buildProjectRoutingReasonComment({ projectName = '', reasoning = '', confidence = null, matched = true }) {
+function buildProjectRoutingReasonComment({
+    projectName = '',
+    reasoning = '',
+    confidence = null,
+    matched = true,
+    secondPassUsed = null,
+    secondPassModel = '',
+}) {
     const name = normalizeText(projectName) || 'this project'
     const normalizedConfidence = normalizeConfidence(confidence)
     const confidenceText =
         normalizedConfidence === null ? '' : ` Confidence: ${Math.round(normalizedConfidence * 100)}%.`
+    const normalizedSecondPassModel = normalizeText(secondPassModel)
+    const secondPassText =
+        typeof secondPassUsed !== 'boolean'
+            ? ''
+            : secondPassUsed
+            ? ` Second pass: used${normalizedSecondPassModel ? ` (${normalizedSecondPassModel})` : ''}.`
+            : ' Second pass: not used.'
 
     if (!matched) {
         const reason = normalizeReasonClause(reasoning, 'it did not match any of your other projects')
-        return `I kept this in ${name} because ${reason}.${confidenceText}`
+        return `I kept this in ${name} because ${reason}.${confidenceText}${secondPassText}`
     }
 
     const reason = normalizeReasonClause(reasoning, 'it matched the routing criteria')
-    return `I chose ${name} because ${reason}.${confidenceText}`
+    return `I chose ${name} because ${reason}.${confidenceText}${secondPassText}`
 }
 
 async function getDefaultAssistantIdForProject(userData = {}, projectId = '') {
@@ -152,6 +166,8 @@ async function addProjectRoutingReasonComment({
     reasoning = '',
     confidence = null,
     matched = true,
+    secondPassUsed = null,
+    secondPassModel = '',
     source = '',
     routingKey = '',
     routingData = {},
@@ -174,6 +190,8 @@ async function addProjectRoutingReasonComment({
         reasoning,
         confidence,
         matched,
+        secondPassUsed,
+        secondPassModel,
     })
 
     let taskData = task

@@ -240,6 +240,7 @@ describe('User memory assistant tool schemas', () => {
         expect(properties.assistantId.type).toBe('string')
         expect(properties.assistantName.type).toBe('string')
         expect(properties.projectId.type).toBe('string')
+        expect(properties.model.enum).toContain('MODEL_GPT5_6_SOL')
         expect(properties.model.enum).toContain('MODEL_GPT5_5')
         expect(properties.temperature.enum).toContain('TEMPERATURE_NORMAL')
         expect(Object.keys(properties)).not.toContain('allowedTools')

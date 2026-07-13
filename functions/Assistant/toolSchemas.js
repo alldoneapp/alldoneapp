@@ -1147,6 +1147,7 @@ const toolSchemas = {
                     model: {
                         type: 'string',
                         enum: [
+                            'MODEL_GPT5_6_SOL',
                             'MODEL_GPT5_5',
                             'MODEL_GPT5_1',
                             'MODEL_GPT5_2',
@@ -2205,7 +2206,7 @@ const toolSchemas = {
                             'Optional. The specific model to use inside the VM agent. Defaults to the best available model per agent ' +
                             '(Claude Code: Opus alias; Codex: latest GPT model). ' +
                             'Use Claude model ids or aliases (e.g. "opus", "sonnet", "haiku", "claude-opus-4-8") only when agent="claude". ' +
-                            'Use OpenAI model ids (e.g. "gpt-5.5", "gpt-5.4", "gpt-5.3-codex") only when agent="codex".',
+                            'Use OpenAI model ids (e.g. "gpt-5.6-sol", "gpt-5.5", "gpt-5.4") only when agent="codex".',
                     },
                     agentReasoningEffort: {
                         type: 'string',

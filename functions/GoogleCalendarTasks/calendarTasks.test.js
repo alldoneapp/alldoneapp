@@ -198,6 +198,7 @@ describe('calendarTasks routing', () => {
                 reasoning: 'The event mentions the product roadmap.',
                 confidence: 0.88,
                 projectName: 'Product',
+                tokenUsage: { auditModel: 'gpt-5.6-terra' },
             },
             { defaultProjectId: 'default-project' }
         )
@@ -210,6 +211,8 @@ describe('calendarTasks routing', () => {
                 projectName: 'Product',
                 reasoning: 'The event mentions the product roadmap.',
                 confidence: 0.88,
+                secondPassUsed: true,
+                secondPassModel: 'gpt-5.6-terra',
                 source: 'calendar_project_routing',
                 sourceDataField: 'calendarData',
             })

@@ -163,7 +163,7 @@ async function generatePreConfigTaskResult(
         const uid = aiSettings.assistantUid || assistantId
         const instructions = aiSettings.systemMessage || 'You are a helpful assistant.'
         settings = {
-            model: normalizeModelKey(aiSettings.model || 'MODEL_GPT5_5'),
+            model: normalizeModelKey(aiSettings.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || 'TEMPERATURE_NORMAL',
             instructions,
             displayName,
@@ -187,7 +187,7 @@ async function generatePreConfigTaskResult(
             ? assistant.allowedTools
             : []
         settings = {
-            model: normalizeModelKey(aiSettings.model || assistant.model || 'MODEL_GPT5_5'),
+            model: normalizeModelKey(aiSettings.model || assistant.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',
             instructions: fallbackInstructions,
             displayName: fallbackDisplayName,

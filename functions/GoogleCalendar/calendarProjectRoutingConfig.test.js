@@ -27,6 +27,14 @@ describe('calendarProjectRoutingConfig', () => {
         expect(config.calendarEmail).toBe('person@example.com')
     })
 
+    test('migrates the temporary GPT-5.6 Luna first pass back to GPT-5.4 nano', () => {
+        const config = normalizeCalendarProjectRoutingConfigInput('project-1', {
+            model: 'MODEL_GPT5_6_LUNA',
+        })
+
+        expect(config.model).toBe('MODEL_GPT5_4_NANO')
+    })
+
     test('normalizes confidence threshold and trims prompt', () => {
         const config = normalizeCalendarProjectRoutingConfigInput('project-1', {
             enabled: true,
