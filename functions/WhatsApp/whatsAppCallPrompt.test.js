@@ -39,6 +39,16 @@ describe('WhatsApp call prompt', () => {
         expect(instructions).toContain('Do not use generic fillers like "please wait while I process."')
     })
 
+    test('makes calls conversational and permits proactive research only when enabled', () => {
+        const withoutSearch = buildCallBootstrapInstructions(assistant)
+        const withSearch = buildCallBootstrapInstructions({ ...assistant, allowedTools: ['web_search'] })
+
+        expect(withoutSearch).toContain('genuinely conversational companion')
+        expect(withoutSearch).toContain('light humor, playful observations, or a small joke')
+        expect(withoutSearch).not.toContain('occasionally use web_search without an explicit search request')
+        expect(withSearch).toContain('occasionally use web_search without an explicit search request')
+    })
+
     test('does not proactively speak human-readable task IDs during calls', () => {
         const instructions = buildCallBootstrapInstructions(assistant)
 

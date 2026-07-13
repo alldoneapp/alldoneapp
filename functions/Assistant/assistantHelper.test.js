@@ -723,6 +723,37 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('retrieve the existing note with get_notes or search')
     })
 
+    test('uses a conversational style with natural humor across assistant channels', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', [])
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('genuinely conversational companion')
+        expect(systemMessages).toContain('light humor, playful observations, or a small joke')
+        expect(systemMessages).toContain('never forced, repetitive, distracting, or insensitive')
+        expect(systemMessages).not.toContain('occasionally use web_search without an explicit search request')
+    })
+
+    test('allows restrained proactive research when web search is enabled', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['web_search'])
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('occasionally use web_search without an explicit search request')
+        expect(systemMessages).toContain('topic the user is genuinely interested in')
+        expect(systemMessages).toContain('limited, occasional proactive web_search behavior')
+    })
+
     test('commits a deferred silent-mode comment when the final reply is not HEARTBEAT_OK', async () => {
         mockDocGet.mockResolvedValue({ data: () => ({}) })
 

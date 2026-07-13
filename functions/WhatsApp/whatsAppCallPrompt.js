@@ -1,3 +1,5 @@
+const { getConversationStyleInstructions } = require('../Assistant/assistantConversationStyle')
+
 const VOICE_INSTRUCTIONS = [
     'This is a live WhatsApp phone call.',
     'Any earlier conversation is provided to you only as background context (from chat, email, and previous calls). Do not resume, continue, summarize, or act on it unless the caller raises it on this call. Respond only to what the caller actually says, and never assume there is a pending task or output to work on.',
@@ -39,6 +41,7 @@ function buildCallLanguageInstruction(language) {
 function buildCallBootstrapInstructions(assistant, language) {
     return [
         assistant?.instructions,
+        ...getConversationStyleInstructions(assistant?.allowedTools),
         buildCallIdentityInstruction(assistant),
         language ? buildCallLanguageInstruction(language) : null,
         VOICE_INSTRUCTIONS,

@@ -10865,6 +10865,11 @@ async function addBaseInstructions(
     // messages.push(['system', `Speak in ${parseTextForUseLiKePrompt(language || 'English')}`])
     messages.push(['system', `Speak in the same language the user speaks`])
 
+    const { getConversationStyleInstructions } = require('./assistantConversationStyle')
+    getConversationStyleInstructions(allowedTools).forEach(styleInstruction => {
+        messages.push(['system', styleInstruction])
+    })
+
     // Generate current date/time in user's timezone if available
     let currentDateTime
     let timezoneInfo
@@ -10950,9 +10955,12 @@ async function addBaseInstructions(
         messages.push([
             'system',
             `IMPORTANT: You are action-oriented. When users ask you to do something, DO IT IMMEDIATELY - don't just talk about doing it. ` +
-                `However, do NOT call any tools for casual conversation like greetings ("hello", "hi", "hey", "how are you"), thank-yous, or small talk. ` +
+                `However, do NOT call tools merely for routine greetings ("hello", "hi", "hey", "how are you"), thank-yous, or empty small talk. ` +
                 `Only use tools when the user clearly intends an action (e.g. "create a task called X", "add X to my tasks", "search for Y", "remind me to Z"). ` +
-                `When in doubt whether the user wants an action or is just chatting, respond with text only.`,
+                `When in doubt whether the user wants an action or is just chatting, respond with text only. ` +
+                (allowedTools.includes('web_search')
+                    ? `The only exception is the limited, occasional proactive web_search behavior described in your conversational style instructions.`
+                    : ''),
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('search_gmail')) {
