@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { StyleSheet, View, Dimensions, Text } from 'react-native'
+import { ActivityIndicator, StyleSheet, View, Dimensions, Text, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -27,9 +27,21 @@ import BotMessagePlaceholder from './BotMessagePlaceholder'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { getDvChatTabLink } from '../../../../utils/LinkingHelper'
-import { markChatMessagesAsRead, getParentObjectData } from '../../../../utils/backends/Chats/chatsComments'
+import {
+    getChatCommentsWithLinkedEmails,
+    markChatMessagesAsRead,
+    getParentObjectData,
+} from '../../../../utils/backends/Chats/chatsComments'
 import { translate } from '../../../../i18n/TranslationService'
 import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../../../ChatsView/Utils/assistantWaiting'
+import { performEmailLineAction } from '../../../../utils/backends/EmailLine/emailLineBackend'
+import {
+    getLinkedEmailFromMessage,
+    getLinkedEmailsFromMessages,
+    groupLinkedEmailsByConnection,
+} from '../../../ChatsView/ChatDV/linkedEmailActions'
+import Icon from '../../../Icon'
+import SharedHelper from '../../../../utils/SharedHelper'
 
 export default function RichCommentModal({
     projectId,
@@ -75,6 +87,9 @@ export default function RichCommentModal({
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
     const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(false)
     const [initialComment, setInitialComment] = useState(currentComment || '')
+    const [archivingEmailKeys, setArchivingEmailKeys] = useState([])
+    const [archivedEmailKeys, setArchivedEmailKeys] = useState([])
+    const [archivingAllEmails, setArchivingAllEmails] = useState(false)
     const messages = useGetMessages(
         true,
         true,
@@ -91,6 +106,9 @@ export default function RichCommentModal({
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
 
     const comments = sortBy(messages, [item => -item.created])
+    const linkedEmails = getLinkedEmailsFromMessages(comments)
+    const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
+    const canArchiveLinkedEmails = SharedHelper.accessGranted(loggedUser, projectId)
     const hasNewAssistantMessage = hasNewVisibleAssistantMessage(
         comments,
         assistantMessageIdsAtWaitStartRef.current,
@@ -106,6 +124,45 @@ export default function RichCommentModal({
             }
         } else {
             closeModal()
+        }
+    }
+
+    const archiveLinkedEmails = async emails => {
+        const pendingEmails = emails.filter(
+            email => !archivedEmailKeys.includes(email.key) && !archivingEmailKeys.includes(email.key)
+        )
+        if (pendingEmails.length === 0) return
+
+        const pendingKeys = pendingEmails.map(email => email.key)
+        setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
+        try {
+            const groupedEmails = groupLinkedEmailsByConnection(pendingEmails)
+            await Promise.all(
+                Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
+                    performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
+                )
+            )
+            setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
+        } catch (error) {
+            console.error('Failed to archive linked email from comment popup', error)
+            alert(`${translate("Email couldn't be archived")}: ${error.message}`)
+        } finally {
+            setArchivingEmailKeys(current => current.filter(key => !pendingKeys.includes(key)))
+        }
+    }
+
+    const archiveAllLinkedEmails = async () => {
+        if (archivingAllEmails) return
+        setArchivingAllEmails(true)
+        try {
+            const chatType = objectType === 'users' ? 'contacts' : objectType
+            const allLinkedEmailComments = await getChatCommentsWithLinkedEmails(projectId, chatType, objectId)
+            await archiveLinkedEmails(getLinkedEmailsFromMessages(allLinkedEmailComments))
+        } catch (error) {
+            console.error('Failed to load linked emails from comment popup', error)
+            alert(`${translate("Emails couldn't be archived")}: ${error.message}`)
+        } finally {
+            setArchivingAllEmails(false)
         }
     }
 
@@ -309,6 +366,36 @@ export default function RichCommentModal({
                     <View style={localStyles.innerContainer}>
                         {customHeader ? customHeader : <Header title={objectName} />}
 
+                        {canArchiveLinkedEmails && linkedEmails.length > 0 && (
+                            <View style={localStyles.emailActionsBar}>
+                                <TouchableOpacity
+                                    style={localStyles.emailActionButton}
+                                    onPress={archiveAllLinkedEmails}
+                                    disabled={
+                                        unarchivedLinkedEmails.length === 0 ||
+                                        archivingEmailKeys.length > 0 ||
+                                        archivingAllEmails
+                                    }
+                                    accessibilityLabel={translate('Archive all emails')}
+                                >
+                                    {archivingEmailKeys.length > 0 || archivingAllEmails ? (
+                                        <ActivityIndicator size="small" color={colors.UtilityBlue125} />
+                                    ) : (
+                                        <Icon
+                                            name={unarchivedLinkedEmails.length === 0 ? 'check' : 'archive'}
+                                            size={14}
+                                            color={colors.UtilityBlue125}
+                                        />
+                                    )}
+                                    <Text style={localStyles.emailActionText}>
+                                        {translate(
+                                            unarchivedLinkedEmails.length === 0 ? 'Archived' : 'Archive all emails'
+                                        )}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
                         <EditForm
                             ref={editForm}
                             projectId={projectId}
@@ -350,7 +437,15 @@ export default function RichCommentModal({
                         )}
                         <div ref={commentListRef}>
                             {comments && comments.length > 0 && (
-                                <CommentsList projectId={projectId} comments={comments} />
+                                <CommentsList
+                                    projectId={projectId}
+                                    comments={comments}
+                                    canArchiveLinkedEmails={canArchiveLinkedEmails}
+                                    archivingAllEmails={archivingAllEmails}
+                                    archivingEmailKeys={archivingEmailKeys}
+                                    archivedEmailKeys={archivedEmailKeys}
+                                    onArchiveLinkedEmail={archiveLinkedEmails}
+                                />
                             )}
                             {messages.loaded && comments.length === 0 && (
                                 <View style={localStyles.emptyState}>
@@ -413,5 +508,23 @@ const localStyles = StyleSheet.create({
     emptyStateText: {
         ...styles.caption1,
         color: colors.Text04,
+    },
+    emailActionsBar: {
+        alignItems: 'flex-end',
+        marginBottom: 8,
+    },
+    emailActionButton: {
+        minHeight: 28,
+        paddingHorizontal: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.Primary350,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    emailActionText: {
+        ...styles.caption2,
+        color: colors.UtilityBlue125,
+        marginLeft: 6,
     },
 })

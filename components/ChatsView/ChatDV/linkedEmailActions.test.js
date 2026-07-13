@@ -39,6 +39,18 @@ describe('linkedEmailActions', () => {
         expect(getLinkedEmailFromMessage({ gmailData: { messageId: 'message-1' } })).toBeNull()
     })
 
+    test('derives the account key for comments created before connection ids were stored', () => {
+        expect(
+            getLinkedEmailFromMessage({
+                gmailData: { gmailEmail: 'Karsten@Example.com', messageId: 'message-1' },
+            })
+        ).toEqual({
+            key: 'email_google_7bd0f1c0:message-1',
+            connectionProjectId: 'email_google_7bd0f1c0',
+            messageId: 'message-1',
+        })
+    })
+
     test('deduplicates links and groups archive calls by connected account', () => {
         const linkedEmails = getLinkedEmailsFromMessages([
             { gmailData: { projectId: 'project-1', messageId: 'message-1' } },

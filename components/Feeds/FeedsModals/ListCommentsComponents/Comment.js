@@ -1,5 +1,5 @@
 import React from 'react'
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import moment from 'moment'
 import { useSelector } from 'react-redux'
 
@@ -30,6 +30,7 @@ import LinkTag from '../../../Tags/LinkTag'
 import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
+import { translate } from '../../../../i18n/TranslationService'
 
 // Render inline formatted text segments with link/tag parsing
 const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => {
@@ -198,7 +199,16 @@ const renderMarkdownTable = (line, key, isLastLine, projectId, getLinkCounter) =
     )
 }
 
-export default function Comment({ containerStyle, projectId, comment }) {
+export default function Comment({
+    containerStyle,
+    projectId,
+    comment,
+    linkedEmail,
+    canArchiveLinkedEmail,
+    linkedEmailArchiving,
+    linkedEmailArchived,
+    onArchiveLinkedEmail,
+}) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const { commentText, lastChangeDate, creatorId } = comment
@@ -396,6 +406,27 @@ export default function Comment({ containerStyle, projectId, comment }) {
                         return renderTextContent(text, lastItem)
                     }
                 })}
+                {canArchiveLinkedEmail && linkedEmail && (
+                    <TouchableOpacity
+                        style={localStyles.linkedEmailButton}
+                        onPress={() => onArchiveLinkedEmail([linkedEmail])}
+                        disabled={linkedEmailArchiving || linkedEmailArchived}
+                        accessibilityLabel={translate('Archive email')}
+                    >
+                        {linkedEmailArchiving ? (
+                            <ActivityIndicator size="small" color={colors.UtilityBlue125} />
+                        ) : (
+                            <Icon
+                                name={linkedEmailArchived ? 'check' : 'archive'}
+                                size={14}
+                                color={colors.UtilityBlue125}
+                            />
+                        )}
+                        <Text style={localStyles.linkedEmailButtonText}>
+                            {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
+                        </Text>
+                    </TouchableOpacity>
+                )}
             </View>
         </View>
     )
@@ -491,6 +522,22 @@ const localStyles = StyleSheet.create({
     },
     inlineElement: {
         marginRight: 6,
+    },
+    linkedEmailButton: {
+        alignSelf: 'flex-start',
+        minHeight: 28,
+        marginTop: 6,
+        paddingHorizontal: 8,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.Primary350,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    linkedEmailButtonText: {
+        ...styles.caption2,
+        color: colors.UtilityBlue125,
+        marginLeft: 6,
     },
     tableScroller: {
         maxWidth: '100%',

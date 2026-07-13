@@ -1,6 +1,9 @@
+import { buildConnectionId, CONNECTION_SERVICE_EMAIL, PROVIDER_GOOGLE } from '../../../utils/IntegrationProviders'
+
 export function getLinkedEmailFromMessage(message = {}) {
     const gmailData = message?.gmailData
     const messageId = typeof gmailData?.messageId === 'string' ? gmailData.messageId.trim() : ''
+    const gmailEmail = typeof gmailData?.gmailEmail === 'string' ? gmailData.gmailEmail.trim().toLowerCase() : ''
     const connectionProjectId =
         typeof gmailData?.connectionId === 'string' && gmailData.connectionId.trim()
             ? gmailData.connectionId.trim()
@@ -8,6 +11,8 @@ export function getLinkedEmailFromMessage(message = {}) {
             ? gmailData.connectionProjectId.trim()
             : typeof gmailData?.projectId === 'string'
             ? gmailData.projectId.trim()
+            : gmailEmail
+            ? buildConnectionId(CONNECTION_SERVICE_EMAIL, PROVIDER_GOOGLE, gmailEmail)
             : ''
 
     if (!messageId || !connectionProjectId) return null
