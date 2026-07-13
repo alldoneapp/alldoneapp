@@ -72,10 +72,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
         )
     }
 
-    const ALL_DAY_EVENT_DURATION_IN_HOURS = 8
-    const endTimeForAllDayCalendarTasks = moment(firstLoginDateInDay)
-        .add(ALL_DAY_EVENT_DURATION_IN_HOURS, 'hours')
-        .valueOf()
+    const endTimeForAllDayCalendarTasks = firstLoginDateInDay
 
     // Get all unique calendar-connected project IDs from the calendar task data
     const getCalendarConnectedProjectIds = () => {

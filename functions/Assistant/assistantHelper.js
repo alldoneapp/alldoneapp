@@ -2592,8 +2592,9 @@ async function interactWithChatStream(
 
         const requestParams = {
             model: model,
-            messages: messages,
+            input: convertMessagesToResponsesInput(messages),
             stream: true,
+            store: false,
         }
 
         // Let OpenAI manage token limits naturally - don't set max_completion_tokens
@@ -2675,7 +2676,7 @@ async function interactWithChatStream(
                     'Using native tool schemas:',
                     toolSchemas.map(t => t.function.name)
                 )
-                requestParams.tools = toolSchemas
+                requestParams.tools = convertToolsToResponsesFormat(toolSchemas)
             }
         }
 
@@ -2721,7 +2722,7 @@ async function interactWithChatStream(
         // Make the actual API call to OpenAI
         const apiCallStart = Date.now()
         console.log('📞 [TIMING] Calling OpenAI API...')
-        const stream = await openai.chat.completions.create(requestParams)
+        const stream = await openai.responses.create(requestParams)
         const apiCallDuration = Date.now() - apiCallStart
         console.log(`✅ [TIMING] OpenAI API call successful: ${apiCallDuration}ms`)
 
@@ -2737,17 +2738,16 @@ async function interactWithChatStream(
             },
         })
 
-        // Convert OpenAI stream to our expected format
-        return convertOpenAIStream(stream)
+        // Convert Responses typed events to the stream contract used by the rest of the assistant runtime.
+        return convertResponsesStream(stream)
     }
 }
 
 /**
- * Convert OpenAI stream chunks to our expected format
- * Accumulates tool calls across multiple chunks since OpenAI streams them incrementally
+ * Convert Responses API typed events to our expected format.
  */
-async function* convertOpenAIStream(stream) {
-    let accumulatedToolCalls = {}
+async function* convertResponsesStream(stream) {
+    const accumulatedToolCalls = new Map()
     let chunkCount = 0
     let totalContentLength = 0
 
@@ -2757,107 +2757,86 @@ async function* convertOpenAIStream(stream) {
 
     for await (const chunk of stream) {
         chunkCount++
-        const delta = chunk.choices[0]?.delta
-        const finishReason = chunk.choices[0]?.finish_reason
-
-        const logData = {
-            chunkNumber: chunkCount,
-            hasDelta: !!delta,
-            hasContent: !!delta?.content,
-            contentLength: delta?.content?.length || 0,
-            content: delta?.content || '',
-            hasToolCalls: !!delta?.tool_calls,
-            toolCallsCount: delta?.tool_calls?.length || 0,
-            finishReason: finishReason,
-            hasRole: !!delta?.role,
-            role: delta?.role,
-        }
-
-        if (delta?.content) {
-            totalContentLength += delta.content.length
-        }
+        const logData = { chunkNumber: chunkCount, eventType: chunk.type }
 
         if (ENABLE_DETAILED_LOGGING) {
             console.log(`🔧 STREAM CONVERTER: Chunk #${chunkCount}:`, logData)
         }
 
-        if (!delta && !finishReason) continue
-
-        // Handle tool calls - OpenAI streams them in chunks
-        if (delta?.tool_calls) {
-            for (const toolCallChunk of delta.tool_calls) {
-                const index = toolCallChunk.index
-
-                if (!accumulatedToolCalls[index]) {
-                    accumulatedToolCalls[index] = {
-                        id: toolCallChunk.id || '',
-                        type: toolCallChunk.type || 'function',
-                        function: {
-                            name: toolCallChunk.function?.name || '',
-                            arguments: toolCallChunk.function?.arguments || '',
-                        },
-                    }
-                } else {
-                    // Accumulate arguments
-                    if (toolCallChunk.function?.arguments) {
-                        accumulatedToolCalls[index].function.arguments += toolCallChunk.function.arguments
-                    }
-                    if (toolCallChunk.function?.name) {
-                        accumulatedToolCalls[index].function.name += toolCallChunk.function.name
-                    }
-                    if (toolCallChunk.id) {
-                        accumulatedToolCalls[index].id = toolCallChunk.id
-                    }
+        if (chunk.type === 'response.output_text.delta' || chunk.type === 'response.refusal.delta') {
+            totalContentLength += chunk.delta?.length || 0
+            if (chunk.delta) {
+                yield {
+                    content: chunk.delta,
+                    additional_kwargs: {},
                 }
             }
-
-            // Don't yield incomplete tool calls yet
             continue
         }
 
-        // If we have content, yield it
-        if (delta?.content) {
-            yield {
-                content: delta.content,
-                additional_kwargs: {},
-            }
+        if (chunk.type === 'response.output_item.done' && chunk.item?.type === 'function_call') {
+            accumulatedToolCalls.delete(chunk.item.id)
+            accumulatedToolCalls.set(chunk.item.call_id, {
+                id: chunk.item.call_id,
+                type: 'function',
+                function: {
+                    name: chunk.item.name,
+                    arguments: chunk.item.arguments || '{}',
+                },
+            })
+            continue
         }
 
-        // Check if the stream is finishing (finish_reason present)
-        if (finishReason === 'tool_calls') {
-            // Stream is done, yield accumulated tool calls
-            const completedToolCalls = Object.values(accumulatedToolCalls)
-            if (completedToolCalls.length > 0) {
-                if (ENABLE_DETAILED_LOGGING) {
-                    console.log('🔧 STREAM: Yielding completed tool calls:', {
-                        count: completedToolCalls.length,
-                        calls: completedToolCalls.map(tc => ({
-                            id: tc.id,
-                            name: tc.function.name,
-                            argsLength: tc.function.arguments.length,
-                        })),
-                    })
-                }
-                yield {
-                    content: '',
-                    additional_kwargs: {
-                        tool_calls: completedToolCalls,
+        if (chunk.type === 'response.function_call_arguments.done') {
+            const existing = accumulatedToolCalls.get(chunk.item_id)
+            accumulatedToolCalls.set(chunk.item_id, {
+                id: existing?.id || chunk.item_id,
+                type: 'function',
+                function: {
+                    name: chunk.name || existing?.function?.name || '',
+                    arguments: chunk.arguments || existing?.function?.arguments || '{}',
+                },
+            })
+            continue
+        }
+
+        if (chunk.type === 'response.completed') {
+            for (const item of chunk.response?.output || []) {
+                if (item?.type !== 'function_call') continue
+                accumulatedToolCalls.set(item.call_id, {
+                    id: item.call_id,
+                    type: 'function',
+                    function: {
+                        name: item.name,
+                        arguments: item.arguments || '{}',
                     },
-                }
+                })
             }
-            accumulatedToolCalls = {} // Reset for next potential tool calls
-        } else if (finishReason === 'stop') {
-            if (ENABLE_DETAILED_LOGGING) {
-                console.log('🔧 STREAM: Stream finished with reason: stop')
-            }
-        } else if (finishReason === 'length') {
-            if (ENABLE_DETAILED_LOGGING) {
-                console.log('🔧 STREAM: Stream finished with reason: length (max tokens)')
-            }
-        } else if (finishReason) {
-            if (ENABLE_DETAILED_LOGGING) {
-                console.log('🔧 STREAM: Stream finished with reason:', finishReason)
-            }
+            break
+        }
+
+        if (chunk.type === 'error') {
+            throw new Error(chunk.message || 'OpenAI Responses stream failed')
+        }
+        if (chunk.type === 'response.failed') {
+            throw new Error(chunk.response?.error?.message || 'OpenAI response failed')
+        }
+        if (chunk.type === 'response.incomplete') {
+            throw new Error(
+                chunk.response?.incomplete_details?.reason
+                    ? `OpenAI response incomplete: ${chunk.response.incomplete_details.reason}`
+                    : 'OpenAI response incomplete'
+            )
+        }
+    }
+
+    const completedToolCalls = Array.from(accumulatedToolCalls.values())
+    if (completedToolCalls.length > 0) {
+        yield {
+            content: '',
+            additional_kwargs: {
+                tool_calls: completedToolCalls,
+            },
         }
     }
 
@@ -2865,8 +2844,8 @@ async function* convertOpenAIStream(stream) {
         console.log(`🔧 STREAM CONVERTER: Finished processing stream`, {
             totalChunks: chunkCount,
             totalContentLength,
-            hadToolCalls: Object.keys(accumulatedToolCalls).length > 0,
-            toolCallsCount: Object.keys(accumulatedToolCalls).length,
+            hadToolCalls: completedToolCalls.length > 0,
+            toolCallsCount: completedToolCalls.length,
         })
     }
 }
@@ -11630,6 +11609,76 @@ function buildMultimodalUserContent(text, imageUrls = []) {
     return content
 }
 
+function convertMessageContentToResponsesInput(content) {
+    if (!Array.isArray(content)) return content || ''
+
+    return content.map(part => {
+        if (!part || typeof part !== 'object') {
+            return { type: 'input_text', text: String(part || '') }
+        }
+        if (part.type === 'text') {
+            return { type: 'input_text', text: part.text || '' }
+        }
+        if (part.type === 'image_url') {
+            return {
+                type: 'input_image',
+                image_url: part.image_url?.url || part.image_url || '',
+                detail: part.image_url?.detail || part.detail || 'auto',
+            }
+        }
+        return part
+    })
+}
+
+function convertMessagesToResponsesInput(messages) {
+    const input = []
+
+    for (const message of messages || []) {
+        if (!message || typeof message !== 'object') continue
+
+        if (message.role === 'tool') {
+            input.push({
+                type: 'function_call_output',
+                call_id: message.tool_call_id,
+                output: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+            })
+            continue
+        }
+
+        if (message.content || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
+            input.push({
+                role: message.role,
+                content: convertMessageContentToResponsesInput(message.content),
+            })
+        }
+
+        for (const toolCall of message.tool_calls || []) {
+            if (toolCall?.type !== 'function' || !toolCall.function?.name) continue
+            input.push({
+                type: 'function_call',
+                call_id: toolCall.id,
+                name: toolCall.function.name,
+                arguments: toolCall.function.arguments || '{}',
+            })
+        }
+    }
+
+    return input
+}
+
+function convertToolsToResponsesFormat(tools) {
+    return (tools || []).map(tool => {
+        if (tool?.type !== 'function' || !tool.function) return tool
+        return {
+            type: 'function',
+            name: tool.function.name,
+            description: tool.function.description,
+            parameters: tool.function.parameters || null,
+            strict: tool.function.strict ?? false,
+        }
+    })
+}
+
 function getMessageTextForTokenCounting(content) {
     if (!content) return ''
     if (typeof content === 'string') return content
@@ -12189,6 +12238,10 @@ module.exports = {
     THREAD_CONTEXT_MESSAGE_LIMIT,
     calculateTokens,
     buildMultimodalUserContent,
+    convertMessageContentToResponsesInput,
+    convertMessagesToResponsesInput,
+    convertToolsToResponsesFormat,
+    convertResponsesStream,
     normalizeCreateTaskImageUrls,
     buildCreateTaskImageTokens,
     mergeTaskDescriptionWithImages,

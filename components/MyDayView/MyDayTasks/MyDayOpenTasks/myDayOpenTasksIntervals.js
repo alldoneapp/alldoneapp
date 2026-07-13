@@ -1,9 +1,12 @@
 import moment from 'moment'
 
-import { getEstimationToUse, getRoundedStartAndEndDates, roundDate } from './myDayOpenTasksHelper'
+import { getEstimationToUse, roundDate } from './myDayOpenTasksHelper'
 import { orderBy } from 'lodash'
 import { getTaskAutoEstimation } from '../../../TaskListView/Utils/TasksHelper'
 import { getTaskPriorityRank } from '../../../../utils/TaskPriority'
+import { getCalendarTaskStartAndEndTimestamp } from './calendarIntervalsHelper'
+
+export { getCalendarTaskStartAndEndTimestamp } from './calendarIntervalsHelper'
 
 const splitTasksInCalendarAndNotCalendar = tasks => {
     const calendarTasks = []
@@ -17,10 +20,7 @@ const splitTasksInCalendarAndNotCalendar = tasks => {
 }
 
 const sortCalendarTasks = (calendarTasks, firstLoginDateInDay) => {
-    const ALL_DAY_EVENT_DURATION_IN_HOURS = 8
-    const endTimeForAllDayCalendarTasks = moment(firstLoginDateInDay)
-        .add(ALL_DAY_EVENT_DURATION_IN_HOURS, 'hours')
-        .valueOf()
+    const endTimeForAllDayCalendarTasks = firstLoginDateInDay
 
     const sortedCalendarTasks = orderBy(
         calendarTasks,
@@ -41,25 +41,6 @@ const sortCalendarTasks = (calendarTasks, firstLoginDateInDay) => {
     )
 
     return sortedCalendarTasks
-}
-
-export const getCalendarTaskStartAndEndTimestamp = (calendarData, firstLoginDateInDay) => {
-    const { start, end } = calendarData
-
-    let startDateTimestamp
-    let endDateTimestamp
-
-    if (start.dateTime && end.dateTime) {
-        startDateTimestamp = moment(start.dateTime).valueOf()
-        endDateTimestamp = moment(end.dateTime).valueOf()
-    } else {
-        const estimationForAllDayCalendarTasks = 480
-        const { startDate, endDate } = getRoundedStartAndEndDates(firstLoginDateInDay, estimationForAllDayCalendarTasks)
-        startDateTimestamp = startDate
-        endDateTimestamp = endDate
-    }
-
-    return { startDateTimestamp, endDateTimestamp }
 }
 
 const generateCalendarIntervals = (sortedCalendarTasks, firstLoginDateInDay) => {

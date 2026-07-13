@@ -121,6 +121,9 @@ export function getDayRateTimeLogRange(timestamp, timezone) {
 }
 
 export function getDayRateTaskEstimation(task = {}) {
+    const isAllDayCalendarTask = Boolean(task.calendarData?.start?.date && !task.calendarData?.start?.dateTime)
+    if (isAllDayCalendarTask) return 0
+
     const estimations = task.estimations || {}
     const estimation =
         estimations[OPEN_STEP] ??

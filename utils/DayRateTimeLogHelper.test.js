@@ -253,6 +253,18 @@ describe('DayRateTimeLogHelper', () => {
         expect(getDayRateTaskEstimation({ estimations: { '-1': '90' } })).toBe(90)
     })
 
+    it('counts date-only all-day calendar events as zero minutes', () => {
+        expect(
+            getDayRateTaskEstimation({
+                calendarData: {
+                    start: { date: '2026-07-13' },
+                    end: { date: '2026-07-14' },
+                },
+                estimations: { Open: 480 },
+            })
+        ).toBe(0)
+    })
+
     it('tops up against all visible calendar estimation aliases', () => {
         const result = calculateDayRateTimeLogAdjustment(
             [calendarTask(60), { parentId: null, calendarData: { id: 'calendar-event-2' }, estimations: { open: 30 } }],

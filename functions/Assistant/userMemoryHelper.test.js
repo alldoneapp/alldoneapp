@@ -235,4 +235,26 @@ describe('userMemoryHelper', () => {
         expect(result).toContain('User memory for this project:')
         expect(result).toContain('Prefers short summaries')
     })
+
+    test('truncates project user memory at 10000 characters', async () => {
+        const db = createDb({
+            user1: {
+                noteIdsByProject: { projectA: 'note-project-a' },
+            },
+        })
+        const noteService = createNoteService({
+            getStorageContent: jest.fn(async () => 'x'.repeat(11000)),
+        })
+
+        const result = await getUserMemoryContextMessage({
+            db,
+            projectId: 'projectA',
+            requestUserId: 'user1',
+            noteService,
+        })
+
+        const contextContent = result.replace('User memory for this project:\n', '')
+        expect(contextContent).toHaveLength(10003)
+        expect(contextContent).toBe(`${'x'.repeat(10000)}...`)
+    })
 })

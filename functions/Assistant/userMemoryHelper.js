@@ -5,7 +5,7 @@ const { NoteService } = require('../shared/NoteService')
 const { UserHelper } = require('../shared/UserHelper')
 
 const FEED_PUBLIC_FOR_ALL = 0
-const USER_MEMORY_CONTEXT_MAX_CHARS = 4000
+const USER_MEMORY_CONTEXT_MAX_CHARS = 10000
 
 function normalizeMemoryText(text) {
     return String(text || '')

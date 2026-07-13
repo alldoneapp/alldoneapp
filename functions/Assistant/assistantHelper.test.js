@@ -189,6 +189,7 @@ const mockBatchSet = jest.fn()
 const mockBatchUpdate = jest.fn()
 const mockBatchDelete = jest.fn()
 const mockBatchCommit = jest.fn(async () => {})
+const mockResponsesCreate = jest.fn()
 
 jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({ options: { projectId: 'alldonealeph' } })),
@@ -247,7 +248,13 @@ jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     })),
 }))
 
-jest.mock('openai', () => jest.fn())
+jest.mock('openai', () =>
+    jest.fn().mockImplementation(() => ({
+        responses: {
+            create: mockResponsesCreate,
+        },
+    }))
+)
 jest.mock(
     '@dqbd/tiktoken/lite',
     () => ({
@@ -314,7 +321,177 @@ const {
     calculateGoldCostFromTokens,
     normalizeModelKey,
     getMaxTokensForModel,
+    convertMessageContentToResponsesInput,
+    convertMessagesToResponsesInput,
+    convertToolsToResponsesFormat,
+    convertResponsesStream,
+    interactWithChatStream,
 } = require('./assistantHelper')
+
+describe('Responses API compatibility helpers', () => {
+    beforeEach(() => {
+        mockResponsesCreate.mockReset()
+    })
+
+    test('sends assistant generation through the stateless Responses endpoint', async () => {
+        mockResponsesCreate.mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'Hello' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+
+        const stream = await interactWithChatStream([['user', 'Hello']], 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', [])
+        const firstChunk = await stream.next()
+
+        expect(firstChunk.value).toEqual({ content: 'Hello', additional_kwargs: {} })
+        expect(mockResponsesCreate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                model: 'gpt-5.6-sol',
+                input: [{ role: 'user', content: 'Hello' }],
+                stream: true,
+                store: false,
+            })
+        )
+        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('messages')
+    })
+
+    test('maps chat messages, multimodal content, tool calls, and tool outputs to Responses items', () => {
+        expect(
+            convertMessagesToResponsesInput([
+                { role: 'system', content: 'Be helpful.' },
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: 'What is in this image?' },
+                        { type: 'image_url', image_url: { url: 'https://example.com/image.png' } },
+                    ],
+                },
+                {
+                    role: 'assistant',
+                    content: 'I will check.',
+                    tool_calls: [
+                        {
+                            id: 'call-1',
+                            type: 'function',
+                            function: { name: 'get_note', arguments: '{"noteId":"note-1"}' },
+                        },
+                    ],
+                },
+                { role: 'tool', tool_call_id: 'call-1', content: '{"title":"Launch"}' },
+            ])
+        ).toEqual([
+            { role: 'system', content: 'Be helpful.' },
+            {
+                role: 'user',
+                content: [
+                    { type: 'input_text', text: 'What is in this image?' },
+                    { type: 'input_image', image_url: 'https://example.com/image.png', detail: 'auto' },
+                ],
+            },
+            { role: 'assistant', content: 'I will check.' },
+            {
+                type: 'function_call',
+                call_id: 'call-1',
+                name: 'get_note',
+                arguments: '{"noteId":"note-1"}',
+            },
+            { type: 'function_call_output', call_id: 'call-1', output: '{"title":"Launch"}' },
+        ])
+    })
+
+    test('maps Chat Completions function schemas to Responses function schemas without enabling strict mode', () => {
+        expect(
+            convertToolsToResponsesFormat([
+                {
+                    type: 'function',
+                    function: {
+                        name: 'create_task',
+                        description: 'Create a task',
+                        parameters: { type: 'object', properties: { title: { type: 'string' } } },
+                    },
+                },
+            ])
+        ).toEqual([
+            {
+                type: 'function',
+                name: 'create_task',
+                description: 'Create a task',
+                parameters: { type: 'object', properties: { title: { type: 'string' } } },
+                strict: false,
+            },
+        ])
+    })
+
+    test('converts typed Responses stream events to the existing text and tool-call stream contract', async () => {
+        const responseEvents = [
+            { type: 'response.output_text.delta', delta: 'Hello' },
+            {
+                type: 'response.function_call_arguments.done',
+                item_id: 'item-1',
+                name: 'get_tasks',
+                arguments: '{"limit":5}',
+            },
+            {
+                type: 'response.output_item.done',
+                item: {
+                    id: 'item-1',
+                    type: 'function_call',
+                    call_id: 'call-1',
+                    name: 'get_tasks',
+                    arguments: '{"limit":5}',
+                },
+            },
+            {
+                type: 'response.completed',
+                response: {
+                    output: [
+                        {
+                            id: 'item-1',
+                            type: 'function_call',
+                            call_id: 'call-1',
+                            name: 'get_tasks',
+                            arguments: '{"limit":5}',
+                        },
+                    ],
+                },
+            },
+        ]
+
+        const chunks = []
+        const iterator = convertResponsesStream(responseEvents)
+        let next = await iterator.next()
+        while (!next.done) {
+            chunks.push(next.value)
+            next = await iterator.next()
+        }
+
+        expect(chunks).toEqual([
+            { content: 'Hello', additional_kwargs: {} },
+            {
+                content: '',
+                additional_kwargs: {
+                    tool_calls: [
+                        {
+                            id: 'call-1',
+                            type: 'function',
+                            function: { name: 'get_tasks', arguments: '{"limit":5}' },
+                        },
+                    ],
+                },
+            },
+        ])
+    })
+
+    test('surfaces Responses stream failures', async () => {
+        const iterator = convertResponsesStream([{ type: 'error', message: 'Request rejected' }])
+        await expect(iterator.next()).rejects.toThrow('Request rejected')
+    })
+
+    test('maps standalone multimodal content', () => {
+        expect(convertMessageContentToResponsesInput([{ type: 'text', text: 'Hello' }])).toEqual([
+            { type: 'input_text', text: 'Hello' },
+        ])
+    })
+})
 
 describe('assistant attachment handoff helpers', () => {
     beforeEach(() => {
