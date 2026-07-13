@@ -1,6 +1,6 @@
 import moment from 'moment'
 
-import { getEstimationToUse, roundDate } from './myDayOpenTasksHelper'
+import { getEstimationToUse, getRoundedStartAndEndDates, roundDate } from './myDayOpenTasksHelper'
 import { orderBy } from 'lodash'
 import { getTaskAutoEstimation } from '../../../TaskListView/Utils/TasksHelper'
 import { getTaskPriorityRank } from '../../../../utils/TaskPriority'
