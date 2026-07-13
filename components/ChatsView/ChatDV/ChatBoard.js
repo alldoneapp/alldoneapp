@@ -38,6 +38,7 @@ import BotMessagePlaceholder from './EditorView/BotMessagePlaceholder'
 import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
 import { markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
+import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../Utils/assistantWaiting'
 
 export default function ChatBoard({
     projectId,
@@ -69,20 +70,24 @@ export default function ChatBoard({
     const lastScrollPositionRef = useRef(0)
     const contentHeightRef = useRef(0)
     const scrollViewHeightRef = useRef(0)
+    const assistantMessageIdsAtWaitStartRef = useRef(new Set())
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
     const lastMessageLength = messages.length > 0 ? messages[messages.length - 1].commentText.length : 0
 
-    // Keep placeholder visible until assistant message has visible content or an explicit loading state.
-    const hasRecentAssistantMessage =
-        messages.length > 0 &&
-        messages.slice(-3).some(msg => {
-            if (!getAssistant(msg?.creatorId)) return false
-            const hasVisibleText = typeof msg?.commentText === 'string' && msg.commentText.trim().length > 0
-            const hasLoadingState = msg?.isLoading === true
-            return hasVisibleText || hasLoadingState
-        })
+    const startWaitingForBotAnswer = () => {
+        assistantMessageIdsAtWaitStartRef.current = snapshotAssistantMessageIds(messages, getAssistant)
+        setWaitingForBotAnswer(true)
+    }
+
+    // Only a new assistant message can satisfy the wait. Older assistant messages may still be
+    // among the most recent messages while the user's new comment is being persisted.
+    const hasNewAssistantMessage = hasNewVisibleAssistantMessage(
+        messages,
+        assistantMessageIdsAtWaitStartRef.current,
+        getAssistant
+    )
 
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
@@ -164,20 +169,8 @@ export default function ChatBoard({
     }, [chatNotificationsAmount])
 
     useEffect(() => {
-        if (!waitingForBotAnswer || messages.length === 0) return
-
-        // Hide placeholder only after assistant message is visible/loading.
-        for (let i = messages.length - 1; i >= Math.max(0, messages.length - 3); i--) {
-            const message = messages[i]
-            if (!getAssistant(message?.creatorId)) continue
-            const hasVisibleText = typeof message?.commentText === 'string' && message.commentText.trim().length > 0
-            const hasLoadingState = message?.isLoading === true
-            if (hasVisibleText || hasLoadingState) {
-                setWaitingForBotAnswer(false)
-                return
-            }
-        }
-    }, [messages])
+        if (waitingForBotAnswer && hasNewAssistantMessage) setWaitingForBotAnswer(false)
+    }, [waitingForBotAnswer, hasNewAssistantMessage])
 
     useEffect(() => {
         writeBrowserURL()
@@ -188,7 +181,7 @@ export default function ChatBoard({
     }, [])
 
     useEffect(() => {
-        if (triggerBotSpinner) setWaitingForBotAnswer(true)
+        if (triggerBotSpinner) startWaitingForBotAnswer()
     }, [triggerBotSpinner])
 
     useEffect(() => {
@@ -266,7 +259,7 @@ export default function ChatBoard({
                             />
                         )
                     })}
-                    {waitingForBotAnswer && !hasRecentAssistantMessage && (
+                    {waitingForBotAnswer && !hasNewAssistantMessage && (
                         <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
                     )}
                 </View>
@@ -278,7 +271,7 @@ export default function ChatBoard({
                     parentObject={parentObject}
                     chatTitle={chatTitle}
                     members={members}
-                    setWaitingForBotAnswer={setWaitingForBotAnswer}
+                    setWaitingForBotAnswer={startWaitingForBotAnswer}
                     assistantId={assistantId}
                     setAssistantId={setAssistantId}
                     objectType={objectType}

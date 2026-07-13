@@ -29,6 +29,7 @@ import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { getDvChatTabLink } from '../../../../utils/LinkingHelper'
 import { markChatMessagesAsRead, getParentObjectData } from '../../../../utils/backends/Chats/chatsComments'
 import { translate } from '../../../../i18n/TranslationService'
+import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../../../ChatsView/Utils/assistantWaiting'
 
 export default function RichCommentModal({
     projectId,
@@ -71,6 +72,7 @@ export default function RichCommentModal({
     const selectedTab = useSelector(state => state.selectedNavItem)
     const editorOpsRef = useRef([])
     const commentListRef = useRef()
+    const assistantMessageIdsAtWaitStartRef = useRef(new Set())
     const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(false)
     const [initialComment, setInitialComment] = useState(currentComment || '')
     const messages = useGetMessages(
@@ -89,7 +91,11 @@ export default function RichCommentModal({
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
 
     const comments = sortBy(messages, [item => -item.created])
-    const lastMessageid = comments.length > 0 ? comments[0].id : ''
+    const hasNewAssistantMessage = hasNewVisibleAssistantMessage(
+        comments,
+        assistantMessageIdsAtWaitStartRef.current,
+        getAssistant
+    )
 
     const toggleShowFileSelector = () => {
         if (showFileSelector || !checkIsLimitedByTraffic(projectId)) {
@@ -172,7 +178,10 @@ export default function RichCommentModal({
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
         } else {
-            if (shouldTriggerAssistant) setWaitingForBotAnswer(true)
+            if (shouldTriggerAssistant) {
+                assistantMessageIdsAtWaitStartRef.current = snapshotAssistantMessageIds(comments, getAssistant)
+                setWaitingForBotAnswer(true)
+            }
 
             if (inTaskModal) {
                 processDone(comment.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
@@ -212,13 +221,8 @@ export default function RichCommentModal({
     }
 
     useEffect(() => {
-        if (!waitingForBotAnswer || comments.length === 0) return
-        const topComment = comments[0]
-        if (!getAssistant(topComment?.creatorId)) return
-        const hasVisibleText = typeof topComment?.commentText === 'string' && topComment.commentText.trim().length > 0
-        const hasLoadingState = topComment?.isLoading === true
-        if (hasVisibleText || hasLoadingState) setWaitingForBotAnswer(false)
-    }, [lastMessageid])
+        if (waitingForBotAnswer && hasNewAssistantMessage) setWaitingForBotAnswer(false)
+    }, [waitingForBotAnswer, hasNewAssistantMessage])
 
     useEffect(() => {
         if (!isThreadAssistantEnabled) {
@@ -341,14 +345,9 @@ export default function RichCommentModal({
                             isAssistantEnabled={isThreadAssistantEnabled}
                             updateObjectState={updateObjectState}
                         />
-                        {waitingForBotAnswer &&
-                            (!comments.length ||
-                                comments[0].creatorId !== assistantId ||
-                                !(
-                                    (typeof comments[0].commentText === 'string' &&
-                                        comments[0].commentText.trim().length > 0) ||
-                                    comments[0].isLoading === true
-                                )) && <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />}
+                        {waitingForBotAnswer && !hasNewAssistantMessage && (
+                            <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
+                        )}
                         <div ref={commentListRef}>
                             {comments && comments.length > 0 && (
                                 <CommentsList projectId={projectId} comments={comments} />
