@@ -3232,7 +3232,7 @@ describe('assistant settings prompt history', () => {
         mockTransactionUpdate.mockClear()
     })
 
-    test('updates the current assistant from the requesting user default project', async () => {
+    test('updates the current default-project assistant when its id is explicitly repeated', async () => {
         const assistant = {
             uid: 'assistant-1',
             allowedTools: ['update_assistant_settings'],
@@ -3261,7 +3261,7 @@ describe('assistant settings prompt history', () => {
 
         const result = await executeToolNatively(
             'update_assistant_settings',
-            { instructions: 'Updated instructions' },
+            { assistantId: 'assistant-1', instructions: 'Updated instructions' },
             'chat-project',
             'assistant-1',
             'user-1',
@@ -3277,6 +3277,54 @@ describe('assistant settings prompt history', () => {
             assistantId: 'assistant-1',
             targetProjectId: 'default-project',
             isSelf: true,
+        })
+    })
+
+    test('finds an explicitly targeted assistant in another accessible project', async () => {
+        const callerAssistant = {
+            uid: 'assistant-1',
+            allowedTools: ['update_assistant_settings'],
+            instructions: 'Caller instructions',
+        }
+        const targetAssistant = {
+            uid: 'assistant-2',
+            instructions: 'Target instructions',
+        }
+        const missingDoc = { exists: false, data: () => ({}) }
+
+        mockDocGet
+            // Resolve and authorize the caller from the chat project.
+            .mockResolvedValueOnce({ exists: true, data: () => callerAssistant })
+            .mockResolvedValueOnce(missingDoc)
+            // Load the projects accessible to the requesting user.
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({ projectIds: ['chat-project', 'target-project'] }),
+            })
+            // Search chat, global, then the other accessible project.
+            .mockResolvedValueOnce(missingDoc)
+            .mockResolvedValueOnce(missingDoc)
+            .mockResolvedValueOnce({ exists: true, data: () => targetAssistant })
+            // Re-read the target inside the update transaction.
+            .mockResolvedValueOnce({ exists: true, data: () => targetAssistant })
+
+        const result = await executeToolNatively(
+            'update_assistant_settings',
+            { assistantId: 'assistant-2', description: 'Updated target description' },
+            'chat-project',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockTransactionUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'assistants/target-project/items/assistant-2' }),
+            expect.objectContaining({ description: 'Updated target description' })
+        )
+        expect(result).toMatchObject({
+            success: true,
+            targetProjectId: 'target-project',
+            isSelf: false,
         })
     })
 

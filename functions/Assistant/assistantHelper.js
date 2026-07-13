@@ -3793,9 +3793,30 @@ async function resolveTargetAssistantForSettingsUpdate({
         }
     }
 
+    // The model may repeat the current assistantId from the settings context even
+    // though omitting it would mean the same thing. Preserve self-update semantics
+    // so a default-project assistant used in another project chat still resolves.
+    if (normalizedRequestedAssistantId === contextAssistantId && !normalizedRequestedProjectId) {
+        const resolved = await resolveCurrentAssistantDocForToolExecution(
+            contextProjectId,
+            contextAssistantId,
+            requestUserId
+        )
+        if (resolved) {
+            return {
+                assistant: resolved.assistant,
+                assistantRef: resolved.assistantRef,
+                projectId: resolved.projectId || contextProjectId,
+                source: resolved.source,
+                isSelf: true,
+            }
+        }
+    }
+
     const db = admin.firestore()
 
     let accessibleProjectIds = []
+    let defaultProjectId = null
     if (requestUserId) {
         const userDoc = await db
             .doc(`users/${requestUserId}`)
@@ -3803,6 +3824,7 @@ async function resolveTargetAssistantForSettingsUpdate({
             .catch(() => null)
         const userData = userDoc?.exists ? userDoc.data() || {} : {}
         accessibleProjectIds = getAccessibleProjectIdsFromUserData(userData)
+        defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : null
     }
 
     const candidateProjectIds = []
@@ -3821,6 +3843,14 @@ async function resolveTargetAssistantForSettingsUpdate({
         if (!candidateProjectIds.includes(GLOBAL_PROJECT_ID)) {
             candidateProjectIds.push(GLOBAL_PROJECT_ID)
         }
+        if (defaultProjectId && !candidateProjectIds.includes(defaultProjectId)) {
+            candidateProjectIds.push(defaultProjectId)
+        }
+        accessibleProjectIds.forEach(accessibleProjectId => {
+            if (!candidateProjectIds.includes(accessibleProjectId)) {
+                candidateProjectIds.push(accessibleProjectId)
+            }
+        })
     }
 
     const buildResult = (assistantData, ref, projectIdForRef) => ({
