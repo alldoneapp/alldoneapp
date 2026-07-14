@@ -29,6 +29,7 @@ import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import { cancelAssistantRun } from '../../../../utils/backends/Assistants/assistantRuns'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
+import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/EmailLine/emailLineHelper'
 
 export default function MessageItemContent({
     messageId,
@@ -55,6 +56,11 @@ export default function MessageItemContent({
     const activeChatMessageId = useSelector(state => state.activeChatMessageId)
     const loggedUserId = useSelector(state => state.loggedUser?.uid)
     const [cancellingRun, setCancellingRun] = useState(false)
+
+    // Surface a one-tap unsubscribe next to the Archive button for incoming
+    // informational emails that carry List-Unsubscribe metadata. Null when the
+    // email has no safe unsubscribe destination, so the control stays hidden.
+    const linkedEmailUnsubscribeUrl = resolveUnsubscribeUrl(linkedEmailGmailData)
 
     // Helper to check if a comment contains block/special elements that cannot be rendered inline
     const containsBlockOrSpecialElements = text => {
@@ -491,6 +497,18 @@ export default function MessageItemContent({
                                             {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
                                         </Text>
                                     </TouchableOpacity>
+                                    {!!linkedEmailUnsubscribeUrl && (
+                                        <TouchableOpacity
+                                            style={[localStyles.linkedEmailButton, localStyles.linkedEmailUnsubscribe]}
+                                            onPress={() => openUrlInNewTab(linkedEmailUnsubscribeUrl)}
+                                            accessibilityLabel={translate('Unsubscribe')}
+                                        >
+                                            <Icon name="slash" size={14} color={colors.Text03} />
+                                            <Text style={localStyles.linkedEmailButtonText}>
+                                                {translate('Unsubscribe')}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             )}
                         </>
@@ -650,6 +668,9 @@ const localStyles = StyleSheet.create({
         ...global.caption2,
         color: colors.Text03,
         marginLeft: 6,
+    },
+    linkedEmailUnsubscribe: {
+        marginLeft: 8,
     },
     tableScroller: {
         maxWidth: '100%',
