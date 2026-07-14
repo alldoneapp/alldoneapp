@@ -38,7 +38,7 @@ describe('LastComment', () => {
         })
     })
 
-    it('shows a grey notification without marking it as red/new', () => {
+    it('marks a grey preview as an unfollowed notification', () => {
         const tree = renderer.create(
             <LastComment
                 project={project}

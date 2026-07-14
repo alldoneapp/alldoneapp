@@ -3,11 +3,14 @@ import { StyleSheet, Text, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 
-export default function ReddBubble({ amount }) {
+export default function UnreadCommentsBadge({ amount, followed }) {
+    if (!(amount > 0)) return null
+
     const displayedAmount = amount > 99 ? '+99' : amount
+    const backgroundColor = followed ? colors.UtilityRed200 : colors.Gray500
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, { backgroundColor }]} testID="unread-comments-badge">
             <Text style={localStyles.text}>{displayedAmount}</Text>
         </View>
     )
@@ -18,7 +21,6 @@ const localStyles = StyleSheet.create({
         minWidth: 16,
         height: 16,
         paddingHorizontal: 3,
-        backgroundColor: colors.UtilityRed200,
         borderRadius: 100,
         position: 'absolute',
         right: -5,

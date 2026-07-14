@@ -6,6 +6,7 @@ import { watchChat } from '../../../../utils/backends/Chats/chatsFirestore'
 import { unwatch } from '../../../../utils/backends/firestore'
 import LastAssistantCommentWrapper from './LastAssistantCommentWrapper'
 import { watchComments } from '../../../../utils/backends/Chats/chatsComments'
+import { getUnreadCommentsCount } from './unreadCommentsHelper'
 
 export default function LastUserOrAssistantCommentContainer({
     setAModalIsOpen,
@@ -17,9 +18,8 @@ export default function LastUserOrAssistantCommentContainer({
     compact = false,
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
-    const unreadComments = useSelector(
-        state => state.projectChatNotifications[project.id]?.[objectId]?.totalFollowed || 0
-    )
+    const chatNotifications = useSelector(state => state.projectChatNotifications[project.id]?.[objectId])
+    const unreadComments = getUnreadCommentsCount(chatNotifications, isFollowedNotification)
     const [commentText, setCommentText] = useState(null)
     const [chat, setChat] = useState(null)
 
@@ -53,8 +53,9 @@ export default function LastUserOrAssistantCommentContainer({
     return (
         <LastAssistantCommentWrapper
             projectId={project.id}
-            isNew={fromChatNotification && isFollowedNotification}
-            unreadComments={fromChatNotification && isFollowedNotification ? unreadComments : 0}
+            isNew={!!fromChatNotification}
+            unreadComments={fromChatNotification ? unreadComments : 0}
+            isFollowedNotification={isFollowedNotification}
             objectId={objectId}
             objectType={objectType}
             objectName={chat.title}

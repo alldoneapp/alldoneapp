@@ -26,6 +26,7 @@ export default function LastAssistantCommentWrapper({
     commentText,
     isNew,
     unreadComments,
+    isFollowedNotification,
     setAModalIsOpen,
     compact = false,
 }) {
@@ -125,6 +126,7 @@ export default function LastAssistantCommentWrapper({
             <LastAssistantComment
                 isNew={isNew}
                 unreadComments={unreadComments}
+                isFollowedNotification={isFollowedNotification}
                 onPress={openModal}
                 commentText={parsedComment}
                 objectName={parsedObjectName}
@@ -136,6 +138,7 @@ export default function LastAssistantCommentWrapper({
         <LastAssistantComment
             isNew={isNew}
             unreadComments={unreadComments}
+            isFollowedNotification={isFollowedNotification}
             onPress={openModal}
             commentText={parsedComment}
             objectName={parsedObjectName}

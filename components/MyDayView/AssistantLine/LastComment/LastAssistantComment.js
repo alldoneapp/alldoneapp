@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
-import ReddBubble from './ReddBubble'
+import UnreadCommentsBadge from './UnreadCommentsBadge'
 import { shrinkTagText } from '../../../../functions/Utils/parseTextUtils'
 import ProjectTagIndicator from './ProjectTagIndicator'
 import { checkIfSelectedAllProjects } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -30,6 +30,7 @@ export default function LastAssistantComment({
     objectName,
     isNew,
     unreadComments,
+    isFollowedNotification,
     compact = false,
 }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -50,7 +51,7 @@ export default function LastAssistantComment({
                 <Text numberOfLines={1} style={localStyles.compactText}>
                     {text}
                 </Text>
-                {isNew && <ReddBubble amount={unreadComments} />}
+                {isNew && <UnreadCommentsBadge amount={unreadComments} followed={isFollowedNotification} />}
             </TouchableOpacity>
         )
     }
@@ -143,7 +144,7 @@ export default function LastAssistantComment({
                 </View>
             </View>
             <ProjectTagIndicator projectId={projectId} />
-            {isNew && <ReddBubble amount={unreadComments} />}
+            {isNew && <UnreadCommentsBadge amount={unreadComments} followed={isFollowedNotification} />}
         </TouchableOpacity>
     )
 }
