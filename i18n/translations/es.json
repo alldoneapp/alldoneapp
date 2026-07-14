@@ -2310,14 +2310,5 @@
     "Default VM agent": "Agente de VM predeterminado",
     "Choose which agent runs VM tasks when no agent is explicitly requested. An explicit choice always takes priority.": "Elige qué agente ejecuta las tareas de VM cuando no se solicita uno explícitamente. Una selección explícita siempre tiene prioridad.",
     "Could not load the default VM agent.": "No se pudo cargar el agente de VM predeterminado.",
-    "Could not save the default VM agent.": "No se pudo guardar el agente de VM predeterminado.",
-    "Default VM effort": "Esfuerzo de VM predeterminado",
-    "Optionally choose the reasoning effort used when a VM task does not explicitly request one. No default keeps the agent-specific behavior.": "Elige opcionalmente el esfuerzo de razonamiento para las tareas de VM que no soliciten uno. Sin valor predeterminado se mantiene el comportamiento específico del agente.",
-    "No default": "Sin valor predeterminado",
-    "Low effort": "Bajo",
-    "Medium effort": "Medio",
-    "High effort": "Alto",
-    "Extra high effort": "Muy alto",
-    "Could not load VM defaults.": "No se pudieron cargar los valores predeterminados de VM.",
-    "Could not save the default VM effort.": "No se pudo guardar el esfuerzo de VM predeterminado."
+    "Could not save the default VM agent.": "No se pudo guardar el agente de VM predeterminado."
 }

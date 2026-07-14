@@ -2,10 +2,11 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { getFunctions } = require('firebase-admin/functions')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
+const { MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJobConfig')
 const {
     VALID_VM_AGENTS: VALID_AGENTS,
     SYSTEM_DEFAULT_VM_AGENT: DEFAULT_AGENT,
-    resolveVmAgentSettings,
+    resolveVmAgent,
 } = require('./vmAgentSettings')
 
 // Hybrid Gold pricing for a VM run:
@@ -25,9 +26,6 @@ const VM_JOB_GOLD_REFUND_SOURCE = 'vm_execution_refund'
 // Generous expiry — must be larger than the worker's own runtime ceiling so the
 // worker always finalizes the job before cleanupExpiredWebhooks could reap it.
 const VM_JOB_EXPIRY_MS = 90 * 60 * 1000 // 90 minutes
-
-// Safety cap: how many VM jobs a single user may have running at once.
-const MAX_CONCURRENT_VM_JOBS_PER_USER = 3
 
 const REGION = 'europe-west1'
 const RUN_VM_JOB_FUNCTION_NAME = 'runVmJob'
@@ -259,14 +257,13 @@ async function startVmJob({
         return { success: false, message: `agent must be one of: ${VALID_AGENTS.join(', ')}.` }
     }
 
-    const resolvedAgentSettings = await resolveVmAgentSettings(requestUserId, agent, agentReasoningEffort)
-    const selectedAgent = resolvedAgentSettings.agent
+    const selectedAgent = await resolveVmAgent(requestUserId, agent)
     const selectedAgentLabel = getAgentLabel(selectedAgent)
     const modelResult = normalizeAgentModel(selectedAgent, agentModel)
     if (modelResult.error) {
         return { success: false, message: modelResult.error }
     }
-    const effortResult = normalizeAgentReasoningEffort(selectedAgent, resolvedAgentSettings.reasoningEffort)
+    const effortResult = normalizeAgentReasoningEffort(selectedAgent, agentReasoningEffort)
     if (effortResult.error) {
         return { success: false, message: effortResult.error }
     }

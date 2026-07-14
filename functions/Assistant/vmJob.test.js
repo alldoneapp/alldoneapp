@@ -53,18 +53,59 @@ jest.mock('./vmSubscriptionAuth', () => ({
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { deductGold } = require('../Gold/goldHelper')
-const { startVmJob } = require('./vmJob')
+const { startVmJob, MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJob')
+const { MAX_CONCURRENT_VM_JOBS, VM_JOB_QUEUE_RATE_LIMITS } = require('./vmJobConfig')
 
-describe('startVmJob WhatsApp metadata', () => {
+describe('startVmJob', () => {
     beforeEach(() => {
         Object.keys(mockDocs).forEach(key => delete mockDocs[key])
         jest.clearAllMocks()
+        mockCollectionQuery.get.mockResolvedValue({ size: 0 })
+        mockQueueEnqueue.mockResolvedValue(undefined)
         mockHasVmSubscription.mockResolvedValue(false)
         jest.spyOn(crypto, 'randomUUID').mockReturnValue('correlation-1')
     })
 
     afterEach(() => {
         crypto.randomUUID.mockRestore()
+    })
+
+    test('admits five concurrent jobs and rejects the sixth before charging or enqueueing it', async () => {
+        expect(MAX_CONCURRENT_VM_JOBS_PER_USER).toBe(5)
+        expect(MAX_CONCURRENT_VM_JOBS).toBe(5)
+        expect(VM_JOB_QUEUE_RATE_LIMITS).toEqual({
+            maxConcurrentDispatches: 5,
+            maxDispatchesPerSecond: 1,
+        })
+        ;[0, 1, 2, 3, 4, 5].forEach(activeJobs => {
+            mockCollectionQuery.get.mockResolvedValueOnce({ size: activeJobs })
+        })
+        crypto.randomUUID.mockImplementation(() => `correlation-${crypto.randomUUID.mock.calls.length}`)
+
+        const results = []
+        for (let jobNumber = 1; jobNumber <= 6; jobNumber += 1) {
+            results.push(
+                await startVmJob({
+                    objective: `Run job ${jobNumber}`,
+                    taskType: 'prototype',
+                    agent: 'claude',
+                    projectId: 'project-1',
+                    objectType: 'topics',
+                    objectId: `chat-${jobNumber}`,
+                    assistantId: 'assistant-1',
+                    requestUserId: 'user-1',
+                })
+            )
+        }
+
+        expect(results.slice(0, 5).every(result => result.success && result.status === 'started')).toBe(true)
+        expect(results[5]).toEqual({
+            success: false,
+            message: 'You already have 5 VM tasks running. Please wait for one to finish before starting another.',
+        })
+        expect(deductGold).toHaveBeenCalledTimes(5)
+        expect(mockQueueEnqueue).toHaveBeenCalledTimes(5)
+        expect(createInitialStatusMessage).toHaveBeenCalledTimes(5)
     })
 
     test('persists WhatsApp notification target for WhatsApp-originated VM jobs', async () => {
@@ -137,7 +178,7 @@ describe('startVmJob WhatsApp metadata', () => {
     test('uses the requesting user default when the launch omits an agent', async () => {
         mockGetDoc('users/user-1').get.mockResolvedValueOnce({
             exists: true,
-            data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'xhigh' }),
+            data: () => ({ defaultVmAgent: 'codex' }),
         })
 
         await startVmJob({
@@ -151,18 +192,14 @@ describe('startVmJob WhatsApp metadata', () => {
         })
 
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({
-                agent: 'codex',
-                agentModel: 'gpt-5.6-sol',
-                agentReasoningEffort: 'xhigh',
-            })
+            expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-sol' })
         )
     })
 
     test('lets an explicit agent override the requesting user default', async () => {
         mockGetDoc('users/user-1').get.mockResolvedValueOnce({
             exists: true,
-            data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'xhigh' }),
+            data: () => ({ defaultVmAgent: 'codex' }),
         })
 
         await startVmJob({
@@ -176,8 +213,9 @@ describe('startVmJob WhatsApp metadata', () => {
             requestUserId: 'user-1',
         })
 
+        expect(mockGetDoc('users/user-1').get).not.toHaveBeenCalled()
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: 'claude', agentModel: 'opus', agentReasoningEffort: 'xhigh' })
+            expect.objectContaining({ agent: 'claude', agentModel: 'opus' })
         )
     })
 
@@ -193,51 +231,7 @@ describe('startVmJob WhatsApp metadata', () => {
         })
 
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: 'claude', agentModel: 'opus', agentReasoningEffort: 'high' })
-        )
-    })
-
-    test.each(['claude', 'codex'])('applies the user default effort to %s', async selectedAgent => {
-        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
-            exists: true,
-            data: () => ({ defaultVmAgentReasoningEffort: 'high' }),
-        })
-
-        await startVmJob({
-            objective: 'Work on this',
-            taskType: 'prototype',
-            agent: selectedAgent,
-            projectId: 'project-1',
-            objectType: 'topics',
-            objectId: 'chat-1',
-            assistantId: 'assistant-1',
-            requestUserId: 'user-1',
-        })
-
-        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: selectedAgent, agentReasoningEffort: 'high' })
-        )
-    })
-
-    test('lets an explicit effort override the user default', async () => {
-        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
-            exists: true,
-            data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'xhigh' }),
-        })
-
-        await startVmJob({
-            objective: 'Work on this',
-            taskType: 'prototype',
-            agentReasoningEffort: 'low',
-            projectId: 'project-1',
-            objectType: 'topics',
-            objectId: 'chat-1',
-            assistantId: 'assistant-1',
-            requestUserId: 'user-1',
-        })
-
-        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: 'codex', agentReasoningEffort: 'low' })
+            expect.objectContaining({ agent: 'claude', agentModel: 'opus' })
         )
     })
 

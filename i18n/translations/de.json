@@ -1886,14 +1886,5 @@
     "Default VM agent": "Standard-VM-Agent",
     "Choose which agent runs VM tasks when no agent is explicitly requested. An explicit choice always takes priority.": "Wähle, welcher Agent VM-Aufgaben ausführt, wenn kein Agent ausdrücklich angefordert wird. Eine ausdrückliche Auswahl hat immer Vorrang.",
     "Could not load the default VM agent.": "Der Standard-VM-Agent konnte nicht geladen werden.",
-    "Could not save the default VM agent.": "Der Standard-VM-Agent konnte nicht gespeichert werden.",
-    "Default VM effort": "Standard-VM-Aufwand",
-    "Optionally choose the reasoning effort used when a VM task does not explicitly request one. No default keeps the agent-specific behavior.": "Wähle optional den Denkaufwand für VM-Aufgaben, die keinen eigenen Wert anfordern. Ohne Standard bleibt das agentenspezifische Verhalten erhalten.",
-    "No default": "Kein Standard",
-    "Low effort": "Niedrig",
-    "Medium effort": "Mittel",
-    "High effort": "Hoch",
-    "Extra high effort": "Sehr hoch",
-    "Could not load VM defaults.": "Die VM-Standardeinstellungen konnten nicht geladen werden.",
-    "Could not save the default VM effort.": "Der Standard-VM-Aufwand konnte nicht gespeichert werden."
+    "Could not save the default VM agent.": "Der Standard-VM-Agent konnte nicht gespeichert werden."
 }

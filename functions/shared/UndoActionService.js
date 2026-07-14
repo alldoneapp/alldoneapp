@@ -3,8 +3,8 @@ const { isEqual } = require('lodash')
 const ACTION_STATUS_APPLIED = 'applied'
 const ACTION_STATUS_UNDONE = 'undone'
 const DEFAULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
-const MAX_OPERATIONS_PER_ACTION = 450
-const SUPPORTED_OBJECT_TYPES = new Set(['task', 'chat', 'note', 'goal'])
+const MAX_OPERATIONS_PER_ACTION = 100
+const SUPPORTED_OBJECT_TYPES = new Set(['task', 'chat', 'note'])
 const SUPPORTED_OPERATION_KINDS = new Set(['update', 'create'])
 
 const getActionRef = (db, userId, actionId) => db.doc(`users/${userId}/undoActions/${actionId}`)
@@ -18,9 +18,6 @@ const getObjectRef = (db, operation) => {
     }
     if (operation.objectType === 'note') {
         return db.doc(`noteItems/${operation.projectId}/notes/${operation.objectId}`)
-    }
-    if (operation.objectType === 'goal') {
-        return db.doc(`goals/${operation.projectId}/items/${operation.objectId}`)
     }
     throw new Error(`Unsupported undo object type: ${operation.objectType}`)
 }
@@ -60,30 +57,8 @@ const assertObjectVisible = (userId, objectData) => {
     }
 }
 
-const getNestedValue = (objectData, fieldPath) =>
-    String(fieldPath)
-        .split('.')
-        .reduce((value, field) => (value === undefined || value === null ? undefined : value[field]), objectData)
-
-const matchesFields = (objectData, expectedFields = {}, missingFields = []) =>
-    Object.entries(expectedFields).every(([field, expectedValue]) =>
-        isEqual(getNestedValue(objectData, field), expectedValue)
-    ) && missingFields.every(field => getNestedValue(objectData, field) === undefined)
-
-const getMissingFields = (operation, state) => {
-    const key = state === 'after' ? 'afterMissingFields' : 'beforeMissingFields'
-    return Array.isArray(operation[key]) ? operation[key] : []
-}
-
-const getDeleteFieldValue = () => require('firebase-admin').firestore.FieldValue.delete()
-
-const buildReplacement = (fields, missingFields) => {
-    const replacement = { ...fields }
-    missingFields.forEach(field => {
-        replacement[field] = getDeleteFieldValue()
-    })
-    return replacement
-}
+const matchesFields = (objectData, expectedFields = {}) =>
+    Object.entries(expectedFields).every(([field, expectedValue]) => isEqual(objectData?.[field], expectedValue))
 
 const createConflictError = () => {
     const error = new Error('This action cannot be reversed because the object changed again')
@@ -164,17 +139,9 @@ async function reverseAction({ db, userId, actionId, direction }) {
             objectSnapshots.push(await transaction.get(getObjectRef(db, operation)))
         }
 
-        const skippedOperationIndexes = []
-        const previouslySkippedIndexes = Array.isArray(action.skippedOperationIndexes)
-            ? action.skippedOperationIndexes
-            : []
-        const mutations = []
-
         operations.forEach((operation, index) => {
             const snapshot = objectSnapshots[index]
             const objectRef = getObjectRef(db, operation)
-
-            if (previouslySkippedIndexes.includes(index)) return
 
             if (operation.kind === 'create') {
                 if (direction === 'undo') {
@@ -185,49 +152,30 @@ async function reverseAction({ db, userId, actionId, direction }) {
                         throw createConflictError()
                     }
                     assertObjectVisible(userId, snapshot.data())
-                    mutations.push(() => transaction.delete(objectRef))
+                    transaction.delete(objectRef)
                 } else {
                     if (snapshot.exists) throw createConflictError()
-                    mutations.push(() => transaction.set(objectRef, operation.after))
+                    transaction.set(objectRef, operation.after)
                 }
                 return
             }
 
-            if (!snapshot.exists && operation.skipIfMissing) {
-                skippedOperationIndexes.push(index)
-                return
-            }
             if (!snapshot.exists) throw createConflictError()
-            if (operation.requiredCurrentFields && !matchesFields(snapshot.data(), operation.requiredCurrentFields)) {
-                skippedOperationIndexes.push(index)
-                return
-            }
             assertObjectVisible(userId, snapshot.data())
             const expected = direction === 'undo' ? operation.after : operation.before
             const replacement = direction === 'undo' ? operation.before : operation.after
-            const expectedMissingFields = getMissingFields(operation, direction === 'undo' ? 'after' : 'before')
-            const replacementMissingFields = getMissingFields(operation, direction === 'undo' ? 'before' : 'after')
-            if (!matchesFields(snapshot.data(), expected, expectedMissingFields)) throw createConflictError()
-            mutations.push(() => transaction.update(objectRef, buildReplacement(replacement, replacementMissingFields)))
+            if (!matchesFields(snapshot.data(), expected)) throw createConflictError()
+            transaction.update(objectRef, replacement)
         })
-
-        mutations.forEach(applyMutation => applyMutation())
 
         const changedAt = Date.now()
         transaction.update(actionRef, {
             status: nextStatus,
             lastChangedAt: changedAt,
             [direction === 'undo' ? 'undoneAt' : 'redoneAt']: changedAt,
-            skippedOperationIndexes,
         })
 
-        return {
-            success: true,
-            actionId,
-            status: nextStatus,
-            label: action.label,
-            skippedOperationCount: skippedOperationIndexes.length,
-        }
+        return { success: true, actionId, status: nextStatus, label: action.label }
     })
 }
 

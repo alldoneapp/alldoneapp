@@ -9,6 +9,7 @@ const admin = require('firebase-admin')
 const firebaseConfig = require('./firebaseConfig.js')
 const { PLAN_STATUS_PREMIUM } = require('./Payment/premiumHelper')
 const { assertObjectAccess } = require('./shared/privacyAccess')
+const { VM_JOB_QUEUE_RATE_LIMITS } = require('./Assistant/vmJobConfig')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -980,21 +981,6 @@ exports.setDefaultVmAgent = onCall(
         if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
         const { setDefaultVmAgent } = require('./Assistant/vmAgentSettings')
         return await setDefaultVmAgent({ userId: auth.uid, agent: data && data.agent })
-    }
-)
-
-exports.setDefaultVmAgentReasoningEffort = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { setDefaultVmAgentReasoningEffort } = require('./Assistant/vmAgentSettings')
-        return await setDefaultVmAgentReasoningEffort({ userId: auth.uid, effort: data && data.effort })
     }
 )
 
@@ -3793,40 +3779,6 @@ exports.autoReminderTasksSecondGen = onCall(
     }
 )
 
-exports.postponeGoalWithUndoSecondGen = onCall(
-    {
-        timeoutSeconds: 60,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { auth, data } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-
-        try {
-            const { executeGoalPostpone } = require('./Goals/goalPostponeService')
-            return await executeGoalPostpone({ actorUserId: auth.uid, data })
-        } catch (error) {
-            const supportedCodes = new Set([
-                'invalid-argument',
-                'permission-denied',
-                'not-found',
-                'failed-precondition',
-            ])
-            const code = supportedCodes.has(error.code) ? error.code : 'internal'
-            console.error('[postponeGoalWithUndoSecondGen] Failed', {
-                userId: auth.uid,
-                projectId: data?.projectId,
-                goalId: data?.goalId,
-                code,
-                error: error.message,
-            })
-            throw new HttpsError(code, code === 'internal' ? 'Failed to postpone goal' : error.message)
-        }
-    }
-)
-
 exports.reverseUndoActionSecondGen = onCall(
     {
         timeoutSeconds: 60,
@@ -4047,7 +3999,7 @@ exports.runVmJob = onTaskDispatched(
         timeoutSeconds: 1800, // 30 min — Cloud Tasks dispatch ceiling
         memory: '1GiB',
         retryConfig: { maxAttempts: 1 }, // never re-run an expensive VM job
-        rateLimits: { maxConcurrentDispatches: 5 },
+        rateLimits: VM_JOB_QUEUE_RATE_LIMITS,
     },
     async req => {
         const correlationId = req.data && req.data.correlationId

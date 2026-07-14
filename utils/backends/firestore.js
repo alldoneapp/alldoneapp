@@ -3618,9 +3618,6 @@ export function mapUserData(userId, user) {
         assistantEmailEnabled: user.assistantEmailEnabled !== false,
         defaultVmAgent:
             user.defaultVmAgent === 'claude' || user.defaultVmAgent === 'codex' ? user.defaultVmAgent : null,
-        defaultVmAgentReasoningEffort: ['low', 'medium', 'high', 'xhigh'].includes(user.defaultVmAgentReasoningEffort)
-            ? user.defaultVmAgentReasoningEffort
-            : null,
         mcpEnabled: user.mcpEnabled !== false,
         mcpDisabledTools: Array.isArray(user.mcpDisabledTools) ? user.mcpDisabledTools : [],
         lastLogin: user.lastLogin ? user.lastLogin : new Date().getTime(),
@@ -6518,12 +6515,6 @@ export async function getVmAgentSettings() {
 export async function setDefaultVmAgent(agent) {
     const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgent')
     const result = await fn({ agent })
-    return result.data
-}
-
-export async function setDefaultVmAgentReasoningEffort(effort) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgentReasoningEffort')
-    const result = await fn({ effort })
     return result.data
 }
 
