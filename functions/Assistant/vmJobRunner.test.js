@@ -715,6 +715,65 @@ describe('VM runner cancellation monitor', () => {
     })
 })
 
+describe('VM runner timeout handling', () => {
+    test('classifies E2B unknown termination as a runtime timeout', () => {
+        const originalError = new Error('2: [unknown] terminated')
+        originalError.name = 'SandboxError'
+
+        const error = __private__.normalizeVmCommandError(originalError)
+
+        expect(error).toBeInstanceOf(__private__.VmRuntimeTimeoutError)
+        expect(error).toMatchObject({
+            code: 'runtime_timeout',
+            runtimeMs: 25 * 60 * 1000,
+            cause: originalError,
+        })
+        expect(error.message).toBe(
+            'The VM task exceeded its allowed execution time of 25 minutes. Start a new VM task to continue.'
+        )
+    })
+
+    test.each(['deadline exceeded while waiting for the command', 'command timed out', 'sandbox timeout'])(
+        'classifies a known timeout signal: %s',
+        message => {
+            expect(__private__.isE2bSandboxTimeout(new Error(message))).toBe(true)
+        }
+    )
+
+    test.each(['exit status 2', 'signal: killed', 'terminated by user', 'connection reset'])(
+        'preserves a non-timeout termination: %s',
+        message => {
+            const originalError = new Error(message)
+            expect(__private__.normalizeVmCommandError(originalError)).toBe(originalError)
+            expect(__private__.isVmRuntimeTimeoutError(originalError)).toBe(false)
+        }
+    )
+
+    test('formats the configured limit in the user-facing timeout message', () => {
+        expect(__private__.buildVmRuntimeTimeoutText()).toBe(
+            '❌ The VM task exceeded its allowed execution time of 25 minutes. Start a new VM task to continue.'
+        )
+        expect(__private__.buildVmRuntimeTimeoutText(55 * 60 * 1000)).toContain('55 minutes')
+    })
+
+    test('enforces the runtime with a typed timer before E2B termination', async () => {
+        jest.useFakeTimers()
+        const commandHandle = { kill: jest.fn(async () => true) }
+        const timeout = __private__.startVmRuntimeTimeout(commandHandle, 1000)
+        const rejected = expect(timeout.promise).rejects.toMatchObject({
+            code: 'runtime_timeout',
+            runtimeMs: 1000,
+        })
+
+        jest.advanceTimersByTime(1000)
+        await rejected
+
+        expect(commandHandle.kill).toHaveBeenCalledTimes(1)
+        timeout.stop()
+        jest.useRealTimers()
+    })
+})
+
 describe('VM runner artifact presentation', () => {
     test('places generated artifact links before the VM answer', () => {
         const finalText = __private__.buildVmFinalCommentText('Here is the summary.', [

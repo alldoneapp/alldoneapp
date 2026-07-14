@@ -9,7 +9,7 @@ const admin = require('firebase-admin')
 const firebaseConfig = require('./firebaseConfig.js')
 const { PLAN_STATUS_PREMIUM } = require('./Payment/premiumHelper')
 const { assertObjectAccess } = require('./shared/privacyAccess')
-const { VM_JOB_QUEUE_RATE_LIMITS } = require('./Assistant/vmJobConfig')
+const { VM_JOB_QUEUE_RATE_LIMITS, VM_JOB_WORKER_TIMEOUT_SECONDS } = require('./Assistant/vmJobConfig')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -4113,7 +4113,7 @@ exports.vmLlmProxy = onRequest(
 exports.runVmJob = onTaskDispatched(
     {
         region: 'europe-west1',
-        timeoutSeconds: 1800, // 30 min — Cloud Tasks dispatch ceiling
+        timeoutSeconds: VM_JOB_WORKER_TIMEOUT_SECONDS, // 30 min — Cloud Tasks HTTP dispatch ceiling
         memory: '1GiB',
         retryConfig: { maxAttempts: 1 }, // never re-run an expensive VM job
         rateLimits: VM_JOB_QUEUE_RATE_LIMITS,

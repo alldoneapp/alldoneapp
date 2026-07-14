@@ -25,13 +25,8 @@ const {
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
 } = require('./vmJob')
+const { MAX_VM_RUNTIME_MS, E2B_SANDBOX_TIMEOUT_MS } = require('./vmJobConfig')
 
-// Hard ceiling on a single VM run. The worker is an onTaskDispatched function capped
-// at 30 min total (timeoutSeconds 1800 = the Cloud Tasks dispatch-deadline max). We cap
-// the agent runtime at 25 min so there's always ~5 min of headroom AFTER the run to
-// finalize within that window — upload artifacts, charge Gold, post the result — and so
-// a hung agent fails (and refunds) before the function itself is killed.
-const MAX_VM_RUNTIME_MS = 25 * 60 * 1000 // 25 minutes
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
 // Runtime Gold is charged while the VM is running. The interval can fire twice per
@@ -43,6 +38,7 @@ const VM_GOLD_EXHAUSTED_TEXT =
 const VM_JOB_CANCELLED_STATUS = 'cancelled'
 const VM_JOB_CANCEL_REQUESTED_STATUS = 'cancel_requested'
 const VM_JOB_CANCELLED_TEXT = 'Stopped.'
+const VM_RUNTIME_TIMEOUT_FAILURE_REASON = 'runtime_timeout'
 const CODEX_AUTH_DIR = '/home/user/.codex'
 const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
 const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
@@ -97,6 +93,70 @@ const REPO_DIR = '/home/user/repo'
 // this directory before Codex starts and grants only its parent as an extra writable root.
 const GIT_METADATA_ROOT = '/home/user/git-metadata'
 const GIT_METADATA_DIR = `${GIT_METADATA_ROOT}/repo`
+
+function formatVmRuntimeDuration(runtimeMs = MAX_VM_RUNTIME_MS) {
+    const minutes = runtimeMs / (60 * 1000)
+    return Number.isInteger(minutes) ? `${minutes} minutes` : `${Math.round(minutes * 10) / 10} minutes`
+}
+
+function buildVmRuntimeTimeoutText(runtimeMs = MAX_VM_RUNTIME_MS) {
+    return `❌ The VM task exceeded its allowed execution time of ${formatVmRuntimeDuration(
+        runtimeMs
+    )}. Start a new VM task to continue.`
+}
+
+class VmRuntimeTimeoutError extends Error {
+    constructor(runtimeMs = MAX_VM_RUNTIME_MS, cause = null) {
+        super(buildVmRuntimeTimeoutText(runtimeMs).replace(/^❌\s*/, ''))
+        this.name = 'VmRuntimeTimeoutError'
+        this.code = VM_RUNTIME_TIMEOUT_FAILURE_REASON
+        this.runtimeMs = runtimeMs
+        if (cause) this.cause = cause
+    }
+}
+
+function isE2bSandboxTimeout(error) {
+    const message = String(error?.message || error || '').trim()
+    const normalizedMessage = message.toLowerCase()
+    return (
+        /^2:\s*\[unknown\]\s*terminated$/i.test(message) ||
+        normalizedMessage.includes('deadline exceeded') ||
+        normalizedMessage.includes('command timed out') ||
+        normalizedMessage.includes('command timeout') ||
+        normalizedMessage.includes('sandbox timed out') ||
+        normalizedMessage.includes('sandbox timeout')
+    )
+}
+
+function isVmRuntimeTimeoutError(error) {
+    return !!error && (error.code === VM_RUNTIME_TIMEOUT_FAILURE_REASON || error instanceof VmRuntimeTimeoutError)
+}
+
+function normalizeVmCommandError(error, runtimeMs = MAX_VM_RUNTIME_MS) {
+    if (isVmRuntimeTimeoutError(error)) return error
+    return isE2bSandboxTimeout(error) ? new VmRuntimeTimeoutError(runtimeMs, error) : error
+}
+
+function startVmRuntimeTimeout(commandHandle, runtimeMs = MAX_VM_RUNTIME_MS) {
+    let timer = null
+    const promise = new Promise((resolve, reject) => {
+        timer = setTimeout(() => {
+            try {
+                Promise.resolve(commandHandle.kill()).catch(() => {})
+            } catch (_) {
+                // The typed timeout still needs to win even if E2B already removed the command.
+            }
+            reject(new VmRuntimeTimeoutError(runtimeMs))
+        }, runtimeMs)
+    })
+    return {
+        promise,
+        stop: () => {
+            if (timer) clearTimeout(timer)
+            timer = null
+        },
+    }
+}
 
 function uniqueDefined(values) {
     return Array.from(new Set((Array.isArray(values) ? values : []).filter(value => !!value)))
@@ -1750,10 +1810,14 @@ async function runAgentInSandbox(
                 // A paused sandbox must be explicitly resumed first (connect alone won't
                 // auto-resume it on e2b@1.x); a still-running one (keep-alive) just connects.
                 if (sess.status !== 'running') {
-                    await resumeE2bSandbox(sess.sandboxId, e2bApiKey, Math.ceil(MAX_VM_RUNTIME_MS / 1000))
+                    await resumeE2bSandbox(sess.sandboxId, e2bApiKey, Math.ceil(E2B_SANDBOX_TIMEOUT_MS / 1000))
                 }
-                sandbox = await Sandbox.connect(sess.sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
-                await sandbox.setTimeout(MAX_VM_RUNTIME_MS).catch(() => {})
+                const resumedSandbox = await Sandbox.connect(sess.sandboxId, {
+                    apiKey: e2bApiKey,
+                    allowInternetAccess: true,
+                })
+                await resumedSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
+                sandbox = resumedSandbox
                 isResume = true
                 console.log('🖥️ VM JOB: resumed session', {
                     correlationId: vmJob.correlationId,
@@ -1773,12 +1837,12 @@ async function runAgentInSandbox(
     }
 
     if (!sandbox) {
-        const createOpts = { apiKey: e2bApiKey, timeoutMs: MAX_VM_RUNTIME_MS, allowInternetAccess: true }
+        const createOpts = { apiKey: e2bApiKey, timeoutMs: E2B_SANDBOX_TIMEOUT_MS, allowInternetAccess: true }
         console.log('🖥️ VM JOB: creating sandbox', {
             correlationId: vmJob.correlationId,
             agent: config.label,
             template,
-            timeoutMs: MAX_VM_RUNTIME_MS,
+            timeoutMs: E2B_SANDBOX_TIMEOUT_MS,
         })
         sandbox = template ? await Sandbox.create(template, createOpts) : await Sandbox.create(createOpts)
     }
@@ -1921,12 +1985,13 @@ async function runAgentInSandbox(
         try {
             const commandHandle = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
                 envs: runEnvs,
-                timeoutMs: MAX_VM_RUNTIME_MS,
+                timeoutMs: E2B_SANDBOX_TIMEOUT_MS,
                 background: true,
                 onStdout: handleStdout,
                 onStderr: handleStderr,
             })
             const commandPromise = commandHandle.wait()
+            const runtimeTimeout = startVmRuntimeTimeout(commandHandle)
             const monitor =
                 pendingWebhook && pendingRef
                     ? startVmRuntimeGoldMonitor({
@@ -1950,11 +2015,12 @@ async function runAgentInSandbox(
             try {
                 result = await Promise.race([
                     commandPromise,
+                    runtimeTimeout.promise,
                     monitor ? monitor.promise : new Promise(() => {}),
                     cancellationMonitor ? cancellationMonitor.promise : new Promise(() => {}),
                 ])
             } catch (error) {
-                if (isVmGoldExhaustedError(error) || isVmJobCancelledError(error)) {
+                if (isVmGoldExhaustedError(error) || isVmJobCancelledError(error) || isVmRuntimeTimeoutError(error)) {
                     runtimeGoldCharged = error.runtimeGoldCharged || runtimeGoldCharged
                     await commandPromise.catch(() => {})
                 }
@@ -1965,6 +2031,7 @@ async function runAgentInSandbox(
                     runtimeGoldCharged = monitor.getRuntimeGoldCharged()
                 }
                 if (cancellationMonitor) cancellationMonitor.stop()
+                runtimeTimeout.stop()
             }
         } catch (runError) {
             if (stdoutBuf.trim()) handleLine(stdoutBuf)
@@ -1983,9 +2050,13 @@ async function runAgentInSandbox(
                 stderrPreview: sanitizeVmErrorText(stderr, 800),
                 runtimeGoldCharged,
             })
-            detailedError.runtimeGoldCharged =
-                typeof runError.runtimeGoldCharged === 'number' ? runError.runtimeGoldCharged : runtimeGoldCharged
-            throw detailedError
+            const normalizedError = normalizeVmCommandError(runError)
+            const errorToThrow = normalizedError === runError ? detailedError : normalizedError
+            if (typeof errorToThrow.runtimeGoldCharged !== 'number') {
+                errorToThrow.runtimeGoldCharged =
+                    typeof runError.runtimeGoldCharged === 'number' ? runError.runtimeGoldCharged : runtimeGoldCharged
+            }
+            throw errorToThrow
         }
         if (stdoutBuf.trim()) handleLine(stdoutBuf) // flush any trailing partial line
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
@@ -2581,6 +2652,31 @@ async function runVmJobByCorrelationId(correlationId) {
             return
         }
 
+        if (isVmRuntimeTimeoutError(error)) {
+            const timeoutText = buildVmRuntimeTimeoutText(error.runtimeMs || MAX_VM_RUNTIME_MS)
+            await writeStatusComment(pendingWebhook, timeoutText, { assistantRunStatus: 'failed' })
+            await notifyVmResultChannels(pendingWebhook, timeoutText, {
+                pendingRef,
+                notificationType: 'failed',
+            })
+            await pendingRef
+                .update({
+                    status: 'failed',
+                    error: error.message,
+                    failureReason: VM_RUNTIME_TIMEOUT_FAILURE_REASON,
+                    timedOutAt: Date.now(),
+                    runtimeGoldCharged,
+                    proxyTokenGoldCharged,
+                })
+                .catch(() => {})
+            await refundVmJob(
+                pendingWebhook,
+                'VM task exceeded its execution time limit',
+                runtimeGoldCharged + proxyTokenGoldCharged
+            )
+            return
+        }
+
         const message = `The VM task could not be completed: ${error.message}`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
@@ -2636,6 +2732,13 @@ module.exports = {
         isVmJobCancelledError,
         isVmJobCancellationRequested,
         startVmCancellationMonitor,
+        VmRuntimeTimeoutError,
+        isE2bSandboxTimeout,
+        isVmRuntimeTimeoutError,
+        normalizeVmCommandError,
+        startVmRuntimeTimeout,
+        formatVmRuntimeDuration,
+        buildVmRuntimeTimeoutText,
         buildWhatsAppVmResultMessage,
         isWhatsAppTriggeredVmJob,
         sendWhatsAppVmResultNotification,
