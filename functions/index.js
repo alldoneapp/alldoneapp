@@ -983,6 +983,21 @@ exports.setDefaultVmAgent = onCall(
     }
 )
 
+exports.setDefaultVmAgentReasoningEffort = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setDefaultVmAgentReasoningEffort } = require('./Assistant/vmAgentSettings')
+        return await setDefaultVmAgentReasoningEffort({ userId: auth.uid, effort: data && data.effort })
+    }
+)
+
 exports.connectVmSubscription = onCall(
     {
         timeoutSeconds: 30,

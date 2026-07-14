@@ -137,7 +137,7 @@ describe('startVmJob WhatsApp metadata', () => {
     test('uses the requesting user default when the launch omits an agent', async () => {
         mockGetDoc('users/user-1').get.mockResolvedValueOnce({
             exists: true,
-            data: () => ({ defaultVmAgent: 'codex' }),
+            data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'xhigh' }),
         })
 
         await startVmJob({
@@ -151,14 +151,18 @@ describe('startVmJob WhatsApp metadata', () => {
         })
 
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-sol' })
+            expect.objectContaining({
+                agent: 'codex',
+                agentModel: 'gpt-5.6-sol',
+                agentReasoningEffort: 'xhigh',
+            })
         )
     })
 
     test('lets an explicit agent override the requesting user default', async () => {
         mockGetDoc('users/user-1').get.mockResolvedValueOnce({
             exists: true,
-            data: () => ({ defaultVmAgent: 'codex' }),
+            data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'xhigh' }),
         })
 
         await startVmJob({
@@ -172,9 +176,8 @@ describe('startVmJob WhatsApp metadata', () => {
             requestUserId: 'user-1',
         })
 
-        expect(mockGetDoc('users/user-1').get).not.toHaveBeenCalled()
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: 'claude', agentModel: 'opus' })
+            expect.objectContaining({ agent: 'claude', agentModel: 'opus', agentReasoningEffort: 'xhigh' })
         )
     })
 
@@ -190,7 +193,51 @@ describe('startVmJob WhatsApp metadata', () => {
         })
 
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: 'claude', agentModel: 'opus' })
+            expect.objectContaining({ agent: 'claude', agentModel: 'opus', agentReasoningEffort: 'high' })
+        )
+    })
+
+    test.each(['claude', 'codex'])('applies the user default effort to %s', async selectedAgent => {
+        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({ defaultVmAgentReasoningEffort: 'high' }),
+        })
+
+        await startVmJob({
+            objective: 'Work on this',
+            taskType: 'prototype',
+            agent: selectedAgent,
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ agent: selectedAgent, agentReasoningEffort: 'high' })
+        )
+    })
+
+    test('lets an explicit effort override the user default', async () => {
+        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'xhigh' }),
+        })
+
+        await startVmJob({
+            objective: 'Work on this',
+            taskType: 'prototype',
+            agentReasoningEffort: 'low',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ agent: 'codex', agentReasoningEffort: 'low' })
         )
     })
 
