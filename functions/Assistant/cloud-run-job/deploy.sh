@@ -26,7 +26,7 @@ gcloud builds submit ../.. --project="$PROJECT" --config=cloudbuild.yaml \
     --substitutions="_IMAGE=${IMAGE}"
 
 gcloud run jobs deploy "$JOB_NAME" --project="$PROJECT" --region="$REGION" --image="$IMAGE" \
-    --service-account="$SA" --task-timeout=5h15m --max-retries=0 --tasks=1 --parallelism=1 \
+    --service-account="$SA" --task-timeout=1h15m --max-retries=0 --tasks=1 --parallelism=1 \
     --memory=1Gi --cpu=1
 
 gcloud run jobs add-iam-policy-binding "$JOB_NAME" --project="$PROJECT" --region="$REGION" \

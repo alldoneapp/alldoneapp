@@ -3,10 +3,10 @@
 const MAX_CONCURRENT_VM_JOBS = 10
 const MAX_CONCURRENT_VM_JOBS_PER_USER = MAX_CONCURRENT_VM_JOBS
 
-// The detached Cloud Run Job may supervise E2B for five hours. The Cloud Run
+// The detached Cloud Run Job may supervise E2B for one hour. The Cloud Run
 // task itself gets additional time to upload artifacts, settle Gold, notify all
 // channels and clean up the sandbox after the product runtime has elapsed.
-const TARGET_MAX_VM_RUNTIME_MS = 5 * 60 * 60 * 1000
+const TARGET_MAX_VM_RUNTIME_MS = 60 * 60 * 1000
 const LEGACY_MAX_VM_RUNTIME_MS = 25 * 60 * 1000
 const VM_JOB_WORKER_TIMEOUT_SECONDS = 30 * 60
 const VM_JOB_FINALIZATION_HEADROOM_MS = 15 * 60 * 1000

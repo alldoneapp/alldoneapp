@@ -482,7 +482,7 @@ async function startVmJob({
         }
     } else {
         // Start a detached Cloud Run Job execution. The HTTP request only launches
-        // the execution; the five-hour E2B supervision is not tied to Cloud Tasks.
+        // the execution; the one-hour E2B supervision is not tied to Cloud Tasks.
         const launchRequestedAt = Date.now()
         await pendingRef.set(
             {

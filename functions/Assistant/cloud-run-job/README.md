@@ -5,7 +5,7 @@ deadline. `startVmJob` launches one execution with `VM_JOB_CORRELATION_ID`; the
 runner remains the source of truth for E2B, Firestore lifecycle, Gold and result
 delivery.
 
-The product runtime is five hours. The Cloud Run task timeout is 5h15m, leaving
+The product runtime is one hour. The Cloud Run task timeout is 1h15m, leaving
 15 minutes for E2B cleanup, artifacts, Gold settlement and notifications.
 
 The Functions launcher records the Cloud Run operation and execution separately.
@@ -16,8 +16,9 @@ Firestore cancellation polling.
 
 The migration is guarded by `VM_CLOUD_RUN_JOBS_ENABLED=true` in the Firebase
 Functions environment. Until that value is enabled, launches continue using the
-retained `runVmJob` Cloud Tasks rollback worker. This makes the code safe to
-deploy before the job, IAM, quota and secrets are ready.
+retained `runVmJob` Cloud Tasks rollback worker, whose runtime is limited to 25
+minutes by the Cloud Tasks/Functions deadline. The one-hour runtime therefore
+requires the detached job to be deployed and the rollout flag to be enabled.
 
 ## Deploy manually
 

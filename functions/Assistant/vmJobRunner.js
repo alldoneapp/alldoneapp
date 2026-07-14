@@ -99,6 +99,10 @@ const GIT_METADATA_DIR = `${GIT_METADATA_ROOT}/repo`
 
 function formatVmRuntimeDuration(runtimeMs = MAX_VM_RUNTIME_MS) {
     const minutes = runtimeMs / (60 * 1000)
+    if (Number.isInteger(minutes) && minutes >= 60 && minutes % 60 === 0) {
+        const hours = minutes / 60
+        return `${hours} ${hours === 1 ? 'hour' : 'hours'}`
+    }
     return Number.isInteger(minutes) ? `${minutes} minutes` : `${Math.round(minutes * 10) / 10} minutes`
 }
 
@@ -138,6 +142,11 @@ function isVmRuntimeTimeoutError(error) {
 function normalizeVmCommandError(error, runtimeMs = MAX_VM_RUNTIME_MS) {
     if (isVmRuntimeTimeoutError(error)) return error
     return isE2bSandboxTimeout(error) ? new VmRuntimeTimeoutError(runtimeMs, error) : error
+}
+
+function selectVmCommandError(runError, detailedError, runtimeMs = MAX_VM_RUNTIME_MS) {
+    const normalizedError = normalizeVmCommandError(runError, runtimeMs)
+    return isVmRuntimeTimeoutError(normalizedError) ? normalizedError : detailedError
 }
 
 function startVmRuntimeTimeout(commandHandle, runtimeMs = MAX_VM_RUNTIME_MS) {
@@ -2123,8 +2132,7 @@ async function runAgentInSandbox(
                 stderrPreview: sanitizeVmErrorText(stderr, 800),
                 runtimeGoldCharged,
             })
-            const normalizedError = normalizeVmCommandError(runError)
-            const errorToThrow = normalizedError === runError ? detailedError : normalizedError
+            const errorToThrow = selectVmCommandError(runError, detailedError)
             if (typeof errorToThrow.runtimeGoldCharged !== 'number') {
                 errorToThrow.runtimeGoldCharged =
                     typeof runError.runtimeGoldCharged === 'number' ? runError.runtimeGoldCharged : runtimeGoldCharged
@@ -2817,6 +2825,7 @@ module.exports = {
         isE2bSandboxTimeout,
         isVmRuntimeTimeoutError,
         normalizeVmCommandError,
+        selectVmCommandError,
         startVmRuntimeTimeout,
         claimVmJobLease,
         startVmJobHeartbeat,

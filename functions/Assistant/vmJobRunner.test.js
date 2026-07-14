@@ -732,11 +732,11 @@ describe('VM runner timeout handling', () => {
         expect(error).toBeInstanceOf(__private__.VmRuntimeTimeoutError)
         expect(error).toMatchObject({
             code: 'runtime_timeout',
-            runtimeMs: 5 * 60 * 60 * 1000,
+            runtimeMs: 60 * 60 * 1000,
             cause: originalError,
         })
         expect(error.message).toBe(
-            'The VM task exceeded its allowed execution time of 300 minutes. Start a new VM task to continue.'
+            'The VM task exceeded its allowed execution time of 1 hour. Start a new VM task to continue.'
         )
     })
 
@@ -756,11 +756,24 @@ describe('VM runner timeout handling', () => {
         }
     )
 
+    test('preserves typed timeouts instead of replacing them with detailed CLI output', () => {
+        const timeoutError = new __private__.VmRuntimeTimeoutError()
+        const detailedError = new Error('Claude exited with partial agent output')
+
+        expect(__private__.selectVmCommandError(timeoutError, detailedError)).toBe(timeoutError)
+        expect(__private__.selectVmCommandError(new Error('2: [unknown] terminated'), detailedError)).toMatchObject({
+            code: 'runtime_timeout',
+            runtimeMs: 60 * 60 * 1000,
+        })
+        expect(__private__.selectVmCommandError(new Error('exit status 2'), detailedError)).toBe(detailedError)
+    })
+
     test('formats the configured limit in the user-facing timeout message', () => {
         expect(__private__.buildVmRuntimeTimeoutText()).toBe(
-            '❌ The VM task exceeded its allowed execution time of 300 minutes. Start a new VM task to continue.'
+            '❌ The VM task exceeded its allowed execution time of 1 hour. Start a new VM task to continue.'
         )
         expect(__private__.buildVmRuntimeTimeoutText(55 * 60 * 1000)).toContain('55 minutes')
+        expect(__private__.buildVmRuntimeTimeoutText(2 * 60 * 60 * 1000)).toContain('2 hours')
     })
 
     test('enforces the runtime with a typed timer before E2B termination', async () => {
