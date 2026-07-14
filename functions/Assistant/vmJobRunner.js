@@ -26,7 +26,7 @@ const {
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
 } = require('./vmJob')
-const { MAX_VM_RUNTIME_MS, E2B_SANDBOX_TIMEOUT_MS } = require('./vmJobConfig')
+const { MAX_VM_RUNTIME_MS, E2B_SANDBOX_TERMINATION_GRACE_MS, E2B_SANDBOX_TIMEOUT_MS } = require('./vmJobConfig')
 
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
@@ -149,7 +149,14 @@ function selectVmCommandError(runError, detailedError, runtimeMs = MAX_VM_RUNTIM
     return isVmRuntimeTimeoutError(normalizedError) ? normalizedError : detailedError
 }
 
-function startVmRuntimeTimeout(commandHandle, runtimeMs = MAX_VM_RUNTIME_MS) {
+function resolveVmAgentRuntimeMs(sandboxLeaseDeadlineMs, nowMs = Date.now()) {
+    if (sandboxLeaseDeadlineMs == null) return MAX_VM_RUNTIME_MS
+    const remainingLeaseMs = Number(sandboxLeaseDeadlineMs) - Number(nowMs)
+    if (!Number.isFinite(remainingLeaseMs)) return MAX_VM_RUNTIME_MS
+    return Math.max(1000, Math.min(MAX_VM_RUNTIME_MS, remainingLeaseMs - E2B_SANDBOX_TERMINATION_GRACE_MS))
+}
+
+function startVmRuntimeTimeout(commandHandle, runtimeMs = MAX_VM_RUNTIME_MS, reportedRuntimeMs = runtimeMs) {
     let timer = null
     const promise = new Promise((resolve, reject) => {
         timer = setTimeout(() => {
@@ -158,7 +165,7 @@ function startVmRuntimeTimeout(commandHandle, runtimeMs = MAX_VM_RUNTIME_MS) {
             } catch (_) {
                 // The typed timeout still needs to win even if E2B already removed the command.
             }
-            reject(new VmRuntimeTimeoutError(runtimeMs))
+            reject(new VmRuntimeTimeoutError(reportedRuntimeMs))
         }, runtimeMs)
     })
     return {
@@ -1867,6 +1874,7 @@ async function runAgentInSandbox(
 
     // Resume the thread's paused sandbox (same agent) if there is one; else create fresh.
     let sandbox = null
+    let sandboxLeaseDeadlineMs = null
     let isResume = false
     let subscriptionCredentialPrepared = false
     let runtimeGoldCharged = Number(pendingWebhook?.runtimeGoldCharged) || 0
@@ -1899,6 +1907,7 @@ async function runAgentInSandbox(
                     allowInternetAccess: true,
                 })
                 await resumedSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
+                sandboxLeaseDeadlineMs = Date.now() + E2B_SANDBOX_TIMEOUT_MS
                 sandbox = resumedSandbox
                 isResume = true
                 console.log('🖥️ VM JOB: resumed session', {
@@ -1926,7 +1935,9 @@ async function runAgentInSandbox(
             template,
             timeoutMs: E2B_SANDBOX_TIMEOUT_MS,
         })
+        const sandboxCreateStartedAt = Date.now()
         sandbox = template ? await Sandbox.create(template, createOpts) : await Sandbox.create(createOpts)
+        sandboxLeaseDeadlineMs = sandboxCreateStartedAt + E2B_SANDBOX_TIMEOUT_MS
     }
     console.log('🖥️ VM JOB: sandbox ready', {
         correlationId: vmJob.correlationId,
@@ -2058,22 +2069,26 @@ async function runAgentInSandbox(
         )}`
 
         const runStartMs = Date.now()
+        const agentRuntimeMs = resolveVmAgentRuntimeMs(sandboxLeaseDeadlineMs, runStartMs)
+        const commandTimeoutMs = Math.min(E2B_SANDBOX_TIMEOUT_MS, agentRuntimeMs + E2B_SANDBOX_TERMINATION_GRACE_MS)
         console.log('🖥️ VM JOB: running agent command', {
             correlationId: vmJob.correlationId,
             agent: config.label,
             resume: isResume,
+            agentRuntimeMs,
+            commandTimeoutMs,
         })
         let result
         try {
             const commandHandle = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
                 envs: runEnvs,
-                timeoutMs: E2B_SANDBOX_TIMEOUT_MS,
+                timeoutMs: commandTimeoutMs,
                 background: true,
                 onStdout: handleStdout,
                 onStderr: handleStderr,
             })
             const commandPromise = commandHandle.wait()
-            const runtimeTimeout = startVmRuntimeTimeout(commandHandle)
+            const runtimeTimeout = startVmRuntimeTimeout(commandHandle, agentRuntimeMs, MAX_VM_RUNTIME_MS)
             const monitor =
                 pendingWebhook && pendingRef
                     ? startVmRuntimeGoldMonitor({
@@ -2826,6 +2841,7 @@ module.exports = {
         isVmRuntimeTimeoutError,
         normalizeVmCommandError,
         selectVmCommandError,
+        resolveVmAgentRuntimeMs,
         startVmRuntimeTimeout,
         claimVmJobLease,
         startVmJobHeartbeat,

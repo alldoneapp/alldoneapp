@@ -776,6 +776,13 @@ describe('VM runner timeout handling', () => {
         expect(__private__.buildVmRuntimeTimeoutText(2 * 60 * 60 * 1000)).toContain('2 hours')
     })
 
+    test('budgets the agent from the remaining one-hour sandbox lease', () => {
+        const now = 100000
+        expect(__private__.resolveVmAgentRuntimeMs(now + 60 * 60 * 1000, now)).toBe(59.5 * 60 * 1000)
+        expect(__private__.resolveVmAgentRuntimeMs(now + 58 * 60 * 1000, now)).toBe(57.5 * 60 * 1000)
+        expect(__private__.resolveVmAgentRuntimeMs(null, now)).toBe(60 * 60 * 1000)
+    })
+
     test('enforces the runtime with a typed timer before E2B termination', async () => {
         jest.useFakeTimers()
         const commandHandle = { kill: jest.fn(async () => true) }
@@ -789,6 +796,22 @@ describe('VM runner timeout handling', () => {
         await rejected
 
         expect(commandHandle.kill).toHaveBeenCalledTimes(1)
+        timeout.stop()
+        jest.useRealTimers()
+    })
+
+    test('reports the one-hour product limit when the remaining lease is shorter', async () => {
+        jest.useFakeTimers()
+        const commandHandle = { kill: jest.fn(async () => true) }
+        const timeout = __private__.startVmRuntimeTimeout(commandHandle, 1000, 60 * 60 * 1000)
+        const rejected = expect(timeout.promise).rejects.toMatchObject({
+            code: 'runtime_timeout',
+            runtimeMs: 60 * 60 * 1000,
+        })
+
+        jest.advanceTimersByTime(1000)
+        await rejected
+
         timeout.stop()
         jest.useRealTimers()
     })

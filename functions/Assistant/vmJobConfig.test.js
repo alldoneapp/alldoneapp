@@ -8,6 +8,7 @@ const {
     VM_JOB_FINALIZATION_HEADROOM_MS,
     VM_CLOUD_RUN_TASK_TIMEOUT_SECONDS,
     MAX_VM_RUNTIME_MS,
+    E2B_SANDBOX_TERMINATION_GRACE_MS,
     E2B_SANDBOX_TIMEOUT_MS,
     resolveMaxVmRuntimeMs,
 } = require('./vmJobConfig')
@@ -27,9 +28,10 @@ describe('VM job runtime configuration', () => {
         expect(VM_CLOUD_RUN_TASK_TIMEOUT_SECONDS).toBe(60 * 60 + 15 * 60)
     })
 
-    test('lets the explicit runtime timer win before E2B terminates the sandbox', () => {
-        expect(E2B_SANDBOX_TIMEOUT_MS).toBeGreaterThan(MAX_VM_RUNTIME_MS)
-        expect(E2B_SANDBOX_TIMEOUT_MS).toBeLessThan(MAX_VM_RUNTIME_MS + VM_JOB_FINALIZATION_HEADROOM_MS)
+    test('never requests more than the one-hour E2B account limit', () => {
+        expect(E2B_SANDBOX_TIMEOUT_MS).toBe(60 * 60 * 1000)
+        expect(E2B_SANDBOX_TERMINATION_GRACE_MS).toBe(30 * 1000)
+        expect(E2B_SANDBOX_TIMEOUT_MS).toBe(MAX_VM_RUNTIME_MS)
     })
 
     afterAll(() => {

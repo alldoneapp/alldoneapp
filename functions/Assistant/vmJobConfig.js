@@ -20,10 +20,11 @@ function resolveMaxVmRuntimeMs(env = process.env) {
 // the 30-minute task function timeout.
 const MAX_VM_RUNTIME_MS = resolveMaxVmRuntimeMs()
 
-// Let our typed runtime timer fire before E2B's generic sandbox termination.
-// This small grace period is still part of the worker finalization headroom.
+// E2B's free tier rejects any sandbox timeout above exactly one hour. The
+// runner derives the agent-command budget from this lease and fires its typed
+// timeout before E2B's generic sandbox termination.
 const E2B_SANDBOX_TERMINATION_GRACE_MS = 30 * 1000
-const E2B_SANDBOX_TIMEOUT_MS = MAX_VM_RUNTIME_MS + E2B_SANDBOX_TERMINATION_GRACE_MS
+const E2B_SANDBOX_TIMEOUT_MS = MAX_VM_RUNTIME_MS
 
 // E2B's lowest service tier allows one sandbox creation per second. Throttling
 // dispatch startup avoids burst rate-limit failures without reducing the number
@@ -43,6 +44,7 @@ module.exports = {
     VM_JOB_FINALIZATION_HEADROOM_MS,
     VM_CLOUD_RUN_TASK_TIMEOUT_SECONDS,
     MAX_VM_RUNTIME_MS,
+    E2B_SANDBOX_TERMINATION_GRACE_MS,
     E2B_SANDBOX_TIMEOUT_MS,
     resolveMaxVmRuntimeMs,
 }
