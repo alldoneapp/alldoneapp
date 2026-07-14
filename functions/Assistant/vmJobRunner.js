@@ -46,6 +46,7 @@ const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 const CODEX_AUTH_DIR = '/home/user/.codex'
 const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
 const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
+const PINNED_CODEX_CLI_VERSION = '0.144.4'
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
@@ -908,14 +909,16 @@ function resolveAgentRunDetails(vmJob) {
     return { model, effort }
 }
 
-function renderVmWorkingHeader(agentLabel, runDetails, credentialMode) {
+function renderVmWorkingHeader(agentLabel, runDetails, subscriptionUsed) {
     const suffix = runDetails ? formatAgentRunSuffix(runDetails.model, runDetails.effort) : ''
     const header = `🖥️ Working with ${agentLabel}${suffix} in a VM…`
-    return credentialMode !== undefined ? `${header}\n\n${formatVmBillingStatus(agentLabel, credentialMode)}` : header
+    return typeof subscriptionUsed === 'boolean'
+        ? `${header}\n\n${formatVmBillingStatus(agentLabel, subscriptionUsed)}`
+        : header
 }
 
-function renderActivityLog(lines, agentLabel, runDetails, credentialMode) {
-    return `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n${lines
+function renderActivityLog(lines, agentLabel, runDetails, subscriptionUsed) {
+    return `${renderVmWorkingHeader(agentLabel, runDetails, subscriptionUsed)}\n\n${lines
         .slice(-MAX_ACTIVITY_LINES)
         .join('\n')}`
 }
@@ -979,16 +982,94 @@ function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyB
     return `codex ${resumePart}${sandboxFlag} -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
 }
 
-function buildLatestAgentCliInstallGuard(packageName) {
-    return `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && npm install -g --prefix ${AGENT_CLI_NPM_PREFIX} ${packageName}@latest >/dev/null 2>&1`
+function buildAgentCliInstallGuard(binaryName, packageName, targetVersion = 'latest', requiredVersion = null) {
+    const packageSpec = `${packageName}@${targetVersion}`
+    const usableCheck = requiredVersion
+        ? `command -v ${binaryName} >/dev/null 2>&1 && ` +
+          `installed_version="$(${binaryName} --version 2>/dev/null | head -n 1)" && ` +
+          `installed_version="\${installed_version##* }" && [ "$installed_version" = "${requiredVersion}" ]`
+        : `command -v ${binaryName} >/dev/null 2>&1`
+    return (
+        `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && ` +
+        `if ${usableCheck}; then ` +
+        `printf 'AGENT_CLI_READY existing\\n'; ` +
+        `else printf 'AGENT_CLI_INSTALLING\\n'; ` +
+        `npm install -g --prefix ${AGENT_CLI_NPM_PREFIX} ${packageSpec} || exit $?; ` +
+        `printf 'AGENT_CLI_READY installed\\n'; fi`
+    )
 }
 
 function buildClaudeInstallGuard() {
-    return buildLatestAgentCliInstallGuard('@anthropic-ai/claude-code')
+    return buildAgentCliInstallGuard('claude', '@anthropic-ai/claude-code')
 }
 
 function buildCodexInstallGuard() {
-    return buildLatestAgentCliInstallGuard('@openai/codex')
+    return buildAgentCliInstallGuard('codex', '@openai/codex', PINNED_CODEX_CLI_VERSION, PINNED_CODEX_CLI_VERSION)
+}
+
+function sanitizeVmErrorText(value, maxLength = 1200) {
+    const sanitized = String(value || '')
+        .replace(/(authorization:\s*(?:bearer|basic)\s+)[^\s]+/gi, '$1[REDACTED]')
+        .replace(/\b(?:sk-ant-|sk-|glpat-|ghp_|github_pat_|npm_|ya29\.)[A-Za-z0-9_.-]+/gi, '[REDACTED]')
+        .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]')
+        .replace(/([A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD)\s*=\s*)[^\s]+/g, '$1[REDACTED]')
+        .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[REDACTED]@')
+        .replace(/\s+/g, ' ')
+        .trim()
+    return sanitized.length > maxLength ? `${sanitized.substring(0, maxLength)}…` : sanitized
+}
+
+function buildStageError(stage, error, stdout = '', stderr = '') {
+    const detail = sanitizeVmErrorText(stderr || stdout || error?.message || '')
+    return new Error(`${stage} failed.${detail ? ` ${detail}` : ''}`)
+}
+
+function buildAgentExitError(agentLabel, result, state, stderr = '', fallbackError = null) {
+    const exitCode = result?.exitCode ?? fallbackError?.exitCode ?? fallbackError?.code
+    const output = (state?.finalResult || state?.assistantText || '').trim()
+    const detail = sanitizeVmErrorText([output, stderr, fallbackError?.message].filter(Boolean).join('\n'))
+    const status = exitCode !== undefined && exitCode !== null ? ` with exit status ${exitCode}` : ''
+    return new Error(`${agentLabel} exited${status}.${detail ? ` ${detail}` : ''}`)
+}
+
+async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header) {
+    const command = typeof config.installGuard === 'function' ? config.installGuard() : config.installGuard
+    if (!command) return
+
+    let stdout = ''
+    let stderr = ''
+    let installationAnnounced = false
+    const handleStdout = data => {
+        stdout += data
+        if (!installationAnnounced && stdout.includes('AGENT_CLI_INSTALLING')) {
+            installationAnnounced = true
+            if (typeof onActivity === 'function') onActivity(`${header}\n\n📦 Installing ${agentLabel}…`)
+        }
+    }
+
+    console.log('🖥️ VM JOB: checking agent CLI', { agent: agentLabel })
+    try {
+        await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
+            timeoutMs: 5 * 60 * 1000,
+            onStdout: handleStdout,
+            onStderr: data => {
+                stderr += data
+            },
+        })
+    } catch (error) {
+        const stage = installationAnnounced ? `${agentLabel} installation` : `${agentLabel} bootstrap`
+        const stageError = buildStageError(stage, error, stdout, stderr)
+        console.error('🖥️ VM JOB: agent CLI bootstrap failed', {
+            agent: agentLabel,
+            stage,
+            error: stageError.message,
+        })
+        throw stageError
+    }
+    console.log('🖥️ VM JOB: agent CLI ready', {
+        agent: agentLabel,
+        installed: installationAnnounced,
+    })
 }
 
 const AGENT_CONFIGS = {
@@ -1532,7 +1613,6 @@ async function runAgentInSandbox(
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     // Model + effort the agent runs with, surfaced in the live status header.
     const runDetails = resolveAgentRunDetails(vmJob)
-    const credentialMode = subscriptionAuth ? 'subscription' : vmJob.credentialMode === 'byok' ? 'byok' : 'api'
     // Always use E2B's managed prebuilt template for the selected agent.
     const template = config.defaultTemplate
     vmJob.vmTemplate = template
@@ -1633,7 +1713,7 @@ async function runAgentInSandbox(
         if (gitContext && gitContext.enabled) {
             if (typeof onActivity === 'function') {
                 onActivity(
-                    `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n📥 ${
+                    `${renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)}\n\n📥 ${
                         isResume ? 'Refreshing' : 'Cloning'
                     } the connected repository…`
                 )
@@ -1641,6 +1721,18 @@ async function runAgentInSandbox(
             await setupGitRepo(sandbox, gitContext, vmJob.correlationId)
             await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
         }
+
+        // Managed templates usually already contain the selected CLI. Keep startup fast and
+        // resilient by installing only when it is missing, in a separately logged stage whose
+        // sanitized error can be returned without swallowing npm diagnostics.
+        await ensureAgentCliAvailable(
+            sandbox,
+            config,
+            agentLabel,
+            onActivity,
+            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
+        )
+        await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
         const state = { activity: [], finalResult: '', assistantText: '', usage: null }
         let stdoutBuf = ''
@@ -1661,7 +1753,7 @@ async function runAgentInSandbox(
             const before = state.activity.length
             config.handleEvent(evt, state)
             if (state.activity.length > before && typeof onActivity === 'function') {
-                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, credentialMode))
+                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, !!subscriptionAuth))
             }
         }
         const handleStdout = data => {
@@ -1691,7 +1783,6 @@ async function runAgentInSandbox(
                   vmJob,
                   agent: vmJob.agent || DEFAULT_AGENT,
                   realApiKey: apiKey,
-                  credentialMode,
                   ttlMs: MAX_VM_RUNTIME_MS + 5 * 60 * 1000,
               })
         console.log('🖥️ VM JOB: agent credential mode', {
@@ -1702,19 +1793,15 @@ async function runAgentInSandbox(
         let runEnvs = { ...agentEnv }
         if (gitContext && gitContext.enabled) runEnvs = { ...runEnvs, ...buildGitEnv(gitContext) }
         if (gcpContext && gcpContext.enabled) runEnvs = { ...runEnvs, ...buildGcpEnv(gcpContext) }
-        const installGuard =
-            typeof config.installGuard === 'function'
-                ? config.installGuard({
-                      agentModel: runDetails.model,
-                      subscriptionUsed: credentialMode === 'subscription',
-                  })
-                : config.installGuard
-        const command = `mkdir -p /home/user/output && cd ${workdir} && ${installGuard} && ${config.buildRun(isResume, {
-            agentModel: runDetails.model,
-            agentReasoningEffort: runDetails.effort,
-            proxyBaseUrl: agentCredentials.baseUrl,
-            subscriptionUsed: credentialMode === 'subscription',
-        })}`
+        const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${config.buildRun(
+            isResume,
+            {
+                agentModel: runDetails.model,
+                agentReasoningEffort: runDetails.effort,
+                proxyBaseUrl: agentCredentials.baseUrl,
+                subscriptionUsed: !!subscriptionAuth,
+            }
+        )}`
 
         const runStartMs = Date.now()
         console.log('🖥️ VM JOB: running agent command', {
@@ -1772,21 +1859,25 @@ async function runAgentInSandbox(
                 if (cancellationMonitor) cancellationMonitor.stop()
             }
         } catch (runError) {
+            if (stdoutBuf.trim()) handleLine(stdoutBuf)
+            if (isVmGoldExhaustedError(runError) || isVmJobCancelledError(runError)) throw runError
             // The command was killed (e.g. timeout) before returning — log whatever it
             // produced so we can see where the agent got stuck, then rethrow.
+            const detailedError = buildAgentExitError(agentLabel, null, state, stderr, runError)
             console.error('🖥️ VM JOB: command errored/terminated', {
                 correlationId: vmJob.correlationId,
                 agent: config.label,
-                error: runError.message,
+                error: detailedError.message,
                 events: state.activity.length,
-                lastActivity: state.activity.slice(-3),
+                lastActivity: state.activity.slice(-3).map(line => sanitizeVmErrorText(line)),
                 stdoutBufLen: stdoutBuf.length,
                 stderrLen: stderr.length,
-                stderrPreview: stderr ? stderr.substring(0, 800) : '',
+                stderrPreview: sanitizeVmErrorText(stderr, 800),
                 runtimeGoldCharged,
             })
-            if (typeof runError.runtimeGoldCharged !== 'number') runError.runtimeGoldCharged = runtimeGoldCharged
-            throw runError
+            detailedError.runtimeGoldCharged =
+                typeof runError.runtimeGoldCharged === 'number' ? runError.runtimeGoldCharged : runtimeGoldCharged
+            throw detailedError
         }
         if (stdoutBuf.trim()) handleLine(stdoutBuf) // flush any trailing partial line
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
@@ -1797,13 +1888,15 @@ async function runAgentInSandbox(
             events: state.activity.length,
             finalResultLen: (state.finalResult || state.assistantText).length,
             stderrLen: stderr.length,
-            stderrPreview: stderr ? stderr.substring(0, 300) : '',
+            stderrPreview: sanitizeVmErrorText(stderr, 300),
         })
 
         const output = (state.finalResult || state.assistantText || '').trim()
+        if (result?.exitCode !== undefined && result.exitCode !== 0) {
+            throw buildAgentExitError(agentLabel, result, state, stderr)
+        }
         if (!output) {
-            const detail = ` exitCode=${result?.exitCode}${stderr ? `: ${stderr.substring(0, 500)}` : ''}`
-            throw new Error(`Agent produced no output.${detail}`)
+            throw buildAgentExitError(agentLabel, result, state, stderr, new Error('Agent produced no output.'))
         }
         // Collect deliverable files written during THIS run (while the sandbox is still alive).
         const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
@@ -1911,7 +2004,6 @@ async function chargeVmTopup(
         tokenGold = 0,
         proxyTokenGoldCharged = 0,
         subscriptionUsed = false,
-        credentialMode = subscriptionUsed ? 'subscription' : 'api',
     }
 ) {
     if (!topup || topup <= 0) return
@@ -1920,9 +2012,7 @@ async function chargeVmTopup(
         `VM ${vmJob.agent || 'claude'} metered: ${minutes} min ` +
         `(${runtimeGoldAlreadyCharged} runtime Gold already charged, ${runtimeGoldRemaining} runtime Gold remaining) ` +
         `+ ${totalTokens} tokens (${
-            credentialMode === 'byok'
-                ? 'personal API key, provider-billed, 0 Gold'
-                : subscriptionUsed
+            subscriptionUsed
                 ? 'personal subscription, 0 Gold'
                 : `${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining`
         })` +
@@ -2155,30 +2245,16 @@ async function runVmJobByCorrelationId(correlationId) {
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     const runDetails = resolveAgentRunDetails(vmJob)
     const wantsSubscription = vmJob.credentialMode === 'subscription'
-    const wantsByok = vmJob.credentialMode === 'byok'
     const subscriptionAuth = wantsSubscription
         ? await require('./vmSubscriptionAuth').loadVmSubscriptionAuth(
               vmJob.requestUserId,
               vmJob.agent || DEFAULT_AGENT
           )
         : null
-    const byokStatus = wantsByok
-        ? await require('./vmApiKeyAuth')
-              .getVmApiKeyStatus(vmJob.requestUserId)
-              .catch(() => null)
-        : null
-    const byokAvailable = !!byokStatus?.[vmJob.agent || DEFAULT_AGENT]?.connected
     const apiKey = env[config.apiKeyField]
-    if (
-        (wantsSubscription && !subscriptionAuth) ||
-        (wantsByok && !byokAvailable) ||
-        (!wantsSubscription && !wantsByok && !apiKey) ||
-        !e2bApiKey
-    ) {
+    if ((wantsSubscription && !subscriptionAuth) || (!wantsSubscription && !apiKey) || !e2bApiKey) {
         const message = wantsSubscription
             ? `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
-            : wantsByok
-            ? `VM task could not run: your personal ${agentLabel} API key is missing. Add or replace it in Settings → Integrations.`
             : `VM task could not run: ${config.label} sandbox credentials are not configured.`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
@@ -2231,18 +2307,11 @@ async function runVmJobByCorrelationId(correlationId) {
     }
 
     try {
-        const credentialMode = subscriptionAuth ? 'subscription' : wantsByok ? 'byok' : 'api'
-        const tokenBillingExempt = credentialMode !== 'api'
         await throwIfVmJobCancelled(pendingRef)
         await pendingRef
-            .update({
-                credentialMode,
-                subscriptionUsed: credentialMode === 'subscription',
-                personalApiKeyUsed: credentialMode === 'byok',
-                tokenBillingExempt,
-            })
+            .update({ credentialMode: subscriptionAuth ? 'subscription' : 'api', subscriptionUsed: !!subscriptionAuth })
             .catch(() => {})
-        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, credentialMode))
+        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth))
         const { output, usage, artifacts, runtimeGoldCharged = 0 } = await runAgentInSandbox(
             vmJob,
             config,
@@ -2287,7 +2356,7 @@ async function runVmJobByCorrelationId(correlationId) {
             usage,
             runtimeGoldCharged,
             proxyTokenGoldCharged,
-            subscriptionUsed: tokenBillingExempt,
+            subscriptionUsed: !!subscriptionAuth,
         })
         await chargeVmTopup(pendingWebhook, vmJob, {
             topup,
@@ -2298,8 +2367,7 @@ async function runVmJobByCorrelationId(correlationId) {
             runtimeGoldRemaining,
             tokenGold,
             proxyTokenGoldCharged,
-            subscriptionUsed: tokenBillingExempt,
-            credentialMode,
+            subscriptionUsed: !!subscriptionAuth,
         })
 
         await pendingRef
@@ -2311,10 +2379,8 @@ async function runVmJobByCorrelationId(correlationId) {
                 goldTopup: runtimeGoldCharged + proxyTokenGoldCharged + topup,
                 runtimeGoldCharged,
                 proxyTokenGoldCharged,
-                credentialMode,
-                subscriptionUsed: credentialMode === 'subscription',
-                personalApiKeyUsed: credentialMode === 'byok',
-                tokenBillingExempt,
+                credentialMode: subscriptionAuth ? 'subscription' : 'api',
+                subscriptionUsed: !!subscriptionAuth,
                 artifactCount: mediaContext.length,
             })
             .catch(() => {})
@@ -2327,9 +2393,7 @@ async function runVmJobByCorrelationId(correlationId) {
             runtimeGoldCharged,
             runtimeGoldRemaining,
             proxyTokenGoldCharged,
-            subscriptionUsed: credentialMode === 'subscription',
-            personalApiKeyUsed: credentialMode === 'byok',
-            tokenBillingExempt,
+            subscriptionUsed: !!subscriptionAuth,
             tokenGoldTotal,
             tokenGold,
             topup,
@@ -2411,8 +2475,13 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
+        PINNED_CODEX_CLI_VERSION,
         buildClaudeInstallGuard,
         buildCodexInstallGuard,
+        sanitizeVmErrorText,
+        buildStageError,
+        buildAgentExitError,
+        ensureAgentCliAvailable,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,

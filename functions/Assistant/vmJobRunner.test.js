@@ -40,12 +40,10 @@ jest.mock('./vmJob', () => ({
         if (effort) parts.push(`${effort} effort`)
         return parts.length ? ` (${parts.join(' · ')})` : ''
     },
-    formatVmBillingStatus: (agentLabel, credentialMode) => {
-        const mode = typeof credentialMode === 'boolean' ? (credentialMode ? 'subscription' : 'api') : credentialMode
-        if (mode === 'subscription') return `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
-        if (mode === 'byok') return `🔐 Using your personal ${agentLabel} API key.`
-        return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
-    },
+    formatVmBillingStatus: (agentLabel, subscriptionUsed) =>
+        subscriptionUsed
+            ? `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
+            : '🔑 Using Alldone API billing. VM tokens will cost Gold.',
     DEFAULT_CLAUDE_MODEL: 'opus',
     DEFAULT_CODEX_MODEL: 'gpt-5.6-sol',
     DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
@@ -149,12 +147,6 @@ describe('VM runner prompt', () => {
         )
     })
 
-    test('header identifies personal API-key routing without exposing a key', () => {
-        const header = __private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' }, 'byok')
-        expect(header).toContain('Using your personal Claude API key')
-        expect(header).not.toContain('sk-')
-    })
-
     test('resolveAgentRunDetails falls back to per-agent defaults when the job omits them', () => {
         expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({ model: 'opus', effort: 'high' })
         expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({
@@ -171,21 +163,67 @@ describe('VM runner prompt', () => {
 })
 
 describe('Codex VM proxy configuration', () => {
-    test('always upgrades Codex to latest before every run', () => {
+    test('reuses Codex only when it matches the centrally pinned SOL-compatible version', () => {
         const guard = __private__.buildCodexInstallGuard()
 
+        expect(__private__.PINNED_CODEX_CLI_VERSION).toBe('0.144.4')
         expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
-        expect(guard).toContain('npm install -g --prefix /home/user/.local @openai/codex@latest')
-        expect(guard).not.toContain('command -v codex')
+        expect(guard).toContain('command -v codex')
+        expect(guard).toContain('codex --version')
+        expect(guard).toContain('[ "$installed_version" = "0.144.4" ]')
+        expect(guard).toContain('npm install -g --prefix /home/user/.local @openai/codex@0.144.4')
+        expect(guard).not.toContain('@openai/codex@latest')
+        expect(guard).not.toContain('>/dev/null 2>&1 && npm install')
         expect(guard).not.toContain('.codex-cli-')
     })
 
-    test('always upgrades Claude Code to latest before every run', () => {
+    test('only installs Claude Code when the binary is missing and keeps npm output observable', () => {
         const guard = __private__.buildClaudeInstallGuard()
 
         expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
+        expect(guard).toContain('command -v claude')
         expect(guard).toContain('npm install -g --prefix /home/user/.local @anthropic-ai/claude-code@latest')
-        expect(guard).not.toContain('command -v claude')
+        expect(guard).toContain('AGENT_CLI_INSTALLING')
+        expect(guard).not.toContain('claude --version')
+        expect(guard).not.toContain('@anthropic-ai/claude-code@latest >/dev/null')
+    })
+
+    test('reports the separate installation stage with sanitized npm diagnostics', async () => {
+        const onActivity = jest.fn()
+        const sandbox = {
+            commands: {
+                run: jest.fn(async (_command, options) => {
+                    options.onStdout('AGENT_CLI_INSTALLING\n')
+                    options.onStderr('npm ERR! Authorization: Bearer secret-token\nregistry unavailable')
+                    throw new Error('exit status 1')
+                }),
+            },
+        }
+
+        await expect(
+            __private__.ensureAgentCliAvailable(
+                sandbox,
+                { installGuard: __private__.buildClaudeInstallGuard },
+                'Claude',
+                onActivity,
+                'Working'
+            )
+        ).rejects.toThrow('Claude installation failed. npm ERR! Authorization: Bearer [REDACTED] registry unavailable')
+        expect(onActivity).toHaveBeenCalledWith('Working\n\n📦 Installing Claude…')
+    })
+
+    test('preserves a structured Claude error on a non-zero exit and redacts secrets', () => {
+        const error = __private__.buildAgentExitError(
+            'Claude',
+            { exitCode: 1 },
+            { finalResult: 'Authentication failed for sk-ant-super-secret', assistantText: '' },
+            'request aborted'
+        )
+
+        expect(error.message).toBe(
+            'Claude exited with exit status 1. Authentication failed for [REDACTED] request aborted'
+        )
+        expect(error.message).not.toContain('super-secret')
     })
 
     test('routes Codex through the HTTP proxy and disables Responses WebSockets', () => {

@@ -61,15 +61,10 @@ function formatAgentRunSuffix(model, effort) {
     return parts.length ? ` (${parts.join(' · ')})` : ''
 }
 
-function formatVmBillingStatus(agentLabel, credentialMode) {
-    const mode = typeof credentialMode === 'boolean' ? (credentialMode ? 'subscription' : 'api') : credentialMode
-    if (mode === 'subscription') {
-        return `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
-    }
-    if (mode === 'byok') {
-        return `🔐 Using your personal ${agentLabel} API key. Provider token costs are billed directly to you; Alldone charges no token Gold.`
-    }
-    return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
+function formatVmBillingStatus(agentLabel, subscriptionUsed) {
+    return subscriptionUsed
+        ? `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
+        : '🔑 Using Alldone API billing. VM tokens will cost Gold.'
 }
 
 function isClaudeModelId(model) {
@@ -283,12 +278,10 @@ async function startVmJob({
         }
     }
 
-    // Resolve the user's explicit provider route. Legacy users keep the old behavior:
-    // connected subscription first, otherwise Alldone API billing.
-    const credentialMode = await require('./vmApiKeyAuth').resolveVmCredentialMode(requestUserId, selectedAgent)
-    const subscriptionUsed = credentialMode === 'subscription'
-    const personalApiKeyUsed = credentialMode === 'byok'
-    const tokenBillingExempt = subscriptionUsed || personalApiKeyUsed
+    const { hasVmSubscription } = require('./vmSubscriptionAuth')
+    // Never silently fall back to billable API tokens when subscription status cannot be read.
+    const subscriptionUsed = await hasVmSubscription(requestUserId, selectedAgent)
+    const credentialMode = subscriptionUsed ? 'subscription' : 'api'
 
     // Charge the up-front base reserve. The metered per-minute + per-token top-up is
     // charged by the worker on completion. The base is refunded if the run fails.
@@ -329,7 +322,7 @@ async function startVmJob({
             `🖥️ Spinning up ${selectedAgentLabel}${formatAgentRunSuffix(
                 modelResult.value,
                 effortResult.value
-            )} in a VM to work on this…\n\n${formatVmBillingStatus(selectedAgentLabel, credentialMode)}`,
+            )} in a VM to work on this…\n\n${formatVmBillingStatus(selectedAgentLabel, subscriptionUsed)}`,
             userIdsToNotify,
             isPublicFor,
             [requestUserId]
@@ -372,8 +365,6 @@ async function startVmJob({
         goldCharged: VM_JOB_BASE_GOLD,
         credentialMode,
         subscriptionUsed,
-        personalApiKeyUsed,
-        tokenBillingExempt,
         status: 'pending',
         createdAt: Date.now(),
         expiresAt: Date.now() + VM_JOB_EXPIRY_MS,
@@ -417,8 +408,6 @@ async function startVmJob({
             agentReasoningEffort: effortResult.value,
             credentialMode,
             subscriptionUsed,
-            personalApiKeyUsed,
-            tokenBillingExempt,
             deliverable: deliverable || '',
             packagedContext: packagedContext || '',
             threadContext: threadContext || '',
@@ -480,11 +469,7 @@ async function startVmJob({
         agent: selectedAgent,
         credentialMode,
         message: `VM task started with ${selectedAgentLabel} using ${
-            subscriptionUsed
-                ? 'your subscription'
-                : personalApiKeyUsed
-                ? 'your personal API key'
-                : 'Alldone API billing'
+            subscriptionUsed ? 'your subscription' : 'Alldone API billing'
         }. It will work autonomously and post the finished result back into this conversation when ready.`,
     }
 }
