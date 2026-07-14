@@ -1,5 +1,10 @@
 const mockDocs = {}
-const mockQueueEnqueue = jest.fn(async () => {})
+const mockQueueEnqueue = jest.fn(async () => ({
+    executionName: 'projects/test-project/locations/europe-west1/jobs/vm-job-runner/executions/execution-1',
+    operationName: 'projects/test-project/locations/europe-west1/operations/operation-1',
+}))
+const mockLegacyQueueEnqueue = jest.fn(async () => {})
+const originalCloudRunJobsEnabled = process.env.VM_CLOUD_RUN_JOBS_ENABLED
 const mockResolveVmCredentialMode = jest.fn(async () => 'api')
 const mockCollectionQuery = {
     where: jest.fn(() => mockCollectionQuery),
@@ -34,7 +39,7 @@ jest.mock(
     () => ({
         getFunctions: jest.fn(() => ({
             taskQueue: jest.fn(() => ({
-                enqueue: mockQueueEnqueue,
+                enqueue: mockLegacyQueueEnqueue,
             })),
         })),
     }),
@@ -69,13 +74,45 @@ describe('startVmJob', () => {
         Object.keys(mockDocs).forEach(key => delete mockDocs[key])
         jest.clearAllMocks()
         mockCollectionQuery.get.mockResolvedValue({ size: 0 })
-        mockQueueEnqueue.mockResolvedValue(undefined)
+        mockQueueEnqueue.mockResolvedValue({
+            executionName: 'projects/test-project/locations/europe-west1/jobs/vm-job-runner/executions/execution-1',
+            operationName: 'projects/test-project/locations/europe-west1/operations/operation-1',
+        })
+        mockLegacyQueueEnqueue.mockResolvedValue(undefined)
+        process.env.VM_CLOUD_RUN_JOBS_ENABLED = 'true'
         mockResolveVmCredentialMode.mockResolvedValue('api')
         jest.spyOn(crypto, 'randomUUID').mockReturnValue('correlation-1')
     })
 
     afterEach(() => {
         crypto.randomUUID.mockRestore()
+    })
+
+    afterAll(() => {
+        if (originalCloudRunJobsEnabled === undefined) delete process.env.VM_CLOUD_RUN_JOBS_ENABLED
+        else process.env.VM_CLOUD_RUN_JOBS_ENABLED = originalCloudRunJobsEnabled
+    })
+
+    test('keeps the Cloud Tasks rollback path until Cloud Run is enabled for the environment', async () => {
+        delete process.env.VM_CLOUD_RUN_JOBS_ENABLED
+
+        const result = await startVmJob({
+            objective: 'Research this',
+            taskType: 'research',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(result.success).toBe(true)
+        expect(mockLegacyQueueEnqueue).toHaveBeenCalledWith({ correlationId: 'correlation-1' })
+        expect(mockQueueEnqueue).not.toHaveBeenCalled()
+        expect(mockDocs['pendingWebhooks/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ launchBackend: 'cloud_tasks', launchState: 'launched' }),
+            { merge: true }
+        )
     })
 
     test('admits ten concurrent jobs and rejects the eleventh before charging or enqueueing it', async () => {

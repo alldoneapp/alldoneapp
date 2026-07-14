@@ -2278,6 +2278,38 @@ exports.cancelAssistantRunSecondGen = onCall(
             throw new HttpsError('not-found', 'Assistant run was not found')
         }
 
+        if (runKind === 'vm_job' && cancellationResult.data?.cloudRunExecution) {
+            try {
+                const { cancelVmCloudRunExecution } = require('./Assistant/vmCloudRunLauncher')
+                await cancelVmCloudRunExecution(cancellationResult.data.cloudRunExecution)
+                await db.doc(`pendingWebhooks/${runId}`).set(
+                    {
+                        cloudRunCancelRequestedAt: now,
+                        cloudRunCancelRequestSucceeded: true,
+                    },
+                    { merge: true }
+                )
+            } catch (error) {
+                // Firestore cancellation remains authoritative and the worker also polls it.
+                // Direct Cloud Run cancellation is a latency/cost optimization, not the only stop path.
+                console.warn('cancelAssistantRunSecondGen: Cloud Run execution cancellation failed', {
+                    runId,
+                    error: error.message,
+                })
+                await db
+                    .doc(`pendingWebhooks/${runId}`)
+                    .set(
+                        {
+                            cloudRunCancelRequestedAt: now,
+                            cloudRunCancelRequestSucceeded: false,
+                            cloudRunCancelError: error.message,
+                        },
+                        { merge: true }
+                    )
+                    .catch(() => {})
+            }
+        }
+
         const commentRef = db.doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
         await db.runTransaction(async transaction => {
             const snapshot = await transaction.get(commentRef)
@@ -4154,6 +4186,25 @@ exports.cleanupIdleVmSessions = onSchedule(
     async event => {
         const { cleanupIdleVmSessions } = require('./Assistant/vmJobRunner')
         await cleanupIdleVmSessions()
+    }
+)
+
+// Reconcile ambiguous Cloud Run launch responses. A timed-out HTTP response may
+// still have created an execution, so this avoids both duplicate launches and
+// premature Gold refunds.
+exports.reconcileVmCloudRunLaunches = onSchedule(
+    {
+        schedule: 'every 2 minutes',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { reconcileUnknownVmCloudRunLaunches } = require('./Assistant/vmJob')
+        const result = await reconcileUnknownVmCloudRunLaunches()
+        if (result.checked || result.errors) {
+            console.log('🖥️ VM JOB: Cloud Run launch reconciliation complete', result)
+        }
     }
 )
 

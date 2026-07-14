@@ -1,5 +1,6 @@
 const admin = require('firebase-admin')
 const crypto = require('crypto')
+const { getFunctions } = require('firebase-admin/functions')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJobConfig')
 const {
@@ -25,8 +26,30 @@ const VM_JOB_GOLD_REFUND_SOURCE = 'vm_execution_refund'
 // Generous expiry — must be larger than the detached job's runtime ceiling so the
 // worker always finalizes the job before cleanupExpiredWebhooks could reap it.
 const VM_JOB_EXPIRY_MS = 6 * 60 * 60 * 1000
+const VM_CLOUD_RUN_LAUNCH_RECONCILIATION_MS = 10 * 60 * 1000
+const REGION = 'europe-west1'
+const RUN_VM_JOB_FUNCTION_NAME = 'runVmJob'
 
 const VALID_TASK_TYPES = ['research', 'document', 'prototype', 'data']
+
+function cloudRunVmJobsEnabled() {
+    return String(process.env.VM_CLOUD_RUN_JOBS_ENABLED || '').toLowerCase() === 'true'
+}
+
+function getRunVmJobQueueResource() {
+    const projectId =
+        process.env.GCLOUD_PROJECT ||
+        process.env.GCP_PROJECT ||
+        (() => {
+            try {
+                return admin.app().options.projectId
+            } catch (_) {
+                return undefined
+            }
+        })()
+    if (projectId) return `locations/${REGION}/functions/${RUN_VM_JOB_FUNCTION_NAME}`
+    return RUN_VM_JOB_FUNCTION_NAME
+}
 
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
 const DEFAULT_CLAUDE_MODEL = 'opus'
@@ -409,58 +432,138 @@ async function startVmJob({
             createdAt: Date.now(),
         })
 
-    // Start a detached Cloud Run Job execution. The HTTP request only launches
-    // the execution; the five-hour E2B supervision is not tied to Cloud Tasks.
-    try {
-        const { launchVmCloudRunJob } = require('./vmCloudRunLauncher')
-        const execution = await launchVmCloudRunJob(correlationId)
-        await admin
-            .firestore()
-            .doc(`pendingWebhooks/${correlationId}`)
-            .set(
+    const pendingRef = admin.firestore().doc(`pendingWebhooks/${correlationId}`)
+    if (!cloudRunVmJobsEnabled()) {
+        try {
+            const queue = getFunctions().taskQueue(getRunVmJobQueueResource())
+            await queue.enqueue({ correlationId })
+            await pendingRef.set(
                 {
-                    launchBackend: 'cloud_run_job',
-                    cloudRunExecution: execution?.name || null,
+                    launchBackend: 'cloud_tasks',
+                    launchState: 'launched',
                     launchedAt: Date.now(),
                 },
                 { merge: true }
             )
-    } catch (error) {
-        console.error('🖥️ VM JOB: Failed to enqueue worker — refunding', { correlationId, error: error.message })
-        const { refundGold } = require('../Gold/goldHelper')
-        await refundGold(requestUserId, VM_JOB_BASE_GOLD, {
-            source: VM_JOB_GOLD_REFUND_SOURCE,
-            channel: 'assistant',
-            projectId,
-            objectId,
-            objectType,
-            note: 'VM Cloud Run Job could not be launched',
-        }).catch(() => {})
-        await admin
-            .firestore()
-            .doc(`pendingWebhooks/${correlationId}`)
-            .update({ status: 'failed', error: error.message, failedAt: Date.now() })
-            .catch(() => {})
-        // Replace the initial VM status comment so it doesn't linger and
-        // contradict the assistant's failure response.
-        if (statusCommentId) {
-            const failureText = "❌ Couldn't start the VM task — your Gold has been refunded."
+        } catch (error) {
+            console.error('🖥️ VM JOB: Failed to enqueue rollback worker — refunding', {
+                correlationId,
+                error: error.message,
+            })
+            const { refundGold } = require('../Gold/goldHelper')
+            await refundGold(requestUserId, VM_JOB_BASE_GOLD, {
+                source: VM_JOB_GOLD_REFUND_SOURCE,
+                channel: 'assistant',
+                projectId,
+                objectId,
+                objectType,
+                note: 'VM task could not be queued',
+            }).catch(() => {})
+            await pendingRef.update({ status: 'failed', error: error.message, failedAt: Date.now() }).catch(() => {})
+            if (statusCommentId) {
+                const failureText = "❌ Couldn't start the VM task — your Gold has been refunded."
+                await admin
+                    .firestore()
+                    .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${statusCommentId}`)
+                    .set(
+                        {
+                            commentText: failureText,
+                            originalContent: failureText,
+                            lastChangeDate: admin.firestore.Timestamp.now(),
+                        },
+                        { merge: true }
+                    )
+                    .catch(() => {})
+            }
+            return {
+                success: false,
+                message: 'Could not start the VM task right now. Your Gold has been refunded.',
+            }
+        }
+    } else {
+        // Start a detached Cloud Run Job execution. The HTTP request only launches
+        // the execution; the five-hour E2B supervision is not tied to Cloud Tasks.
+        const launchRequestedAt = Date.now()
+        await pendingRef.set(
+            {
+                launchBackend: 'cloud_run_job',
+                launchState: 'requested',
+                launchRequestedAt,
+            },
+            { merge: true }
+        )
+        try {
+            const { launchVmCloudRunJob } = require('./vmCloudRunLauncher')
+            const launch = await launchVmCloudRunJob(correlationId)
+            await pendingRef.set(
+                {
+                    launchState: launch.executionName ? 'launched' : 'unknown',
+                    cloudRunExecution: launch.executionName || null,
+                    cloudRunOperation: launch.operationName || null,
+                    launchReconciled: !!launch.reconciled,
+                    launchedAt: Date.now(),
+                },
+                { merge: true }
+            )
+        } catch (error) {
+            if (error.ambiguous) {
+                console.warn('🖥️ VM JOB: Cloud Run launch result unknown; deferring to reconciler', {
+                    correlationId,
+                    error: error.message,
+                })
+                await pendingRef
+                    .set(
+                        {
+                            launchState: 'unknown',
+                            launchError: error.message,
+                            launchLastCheckedAt: Date.now(),
+                        },
+                        { merge: true }
+                    )
+                    .catch(() => {})
+                return {
+                    success: true,
+                    status: 'started',
+                    correlationId,
+                    message: `VM task launch is being confirmed. I'll post the result here when it finishes.`,
+                }
+            }
+            console.error('🖥️ VM JOB: Failed to enqueue worker — refunding', { correlationId, error: error.message })
+            const { refundGold } = require('../Gold/goldHelper')
+            await refundGold(requestUserId, VM_JOB_BASE_GOLD, {
+                source: VM_JOB_GOLD_REFUND_SOURCE,
+                channel: 'assistant',
+                projectId,
+                objectId,
+                objectType,
+                note: 'VM Cloud Run Job could not be launched',
+            }).catch(() => {})
             await admin
                 .firestore()
-                .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${statusCommentId}`)
-                .set(
-                    {
-                        commentText: failureText,
-                        originalContent: failureText,
-                        lastChangeDate: admin.firestore.Timestamp.now(),
-                    },
-                    { merge: true }
-                )
+                .doc(`pendingWebhooks/${correlationId}`)
+                .update({ status: 'failed', error: error.message, failedAt: Date.now() })
                 .catch(() => {})
-        }
-        return {
-            success: false,
-            message: 'Could not launch the VM task right now. Your Gold has been refunded.',
+            // Replace the initial VM status comment so it doesn't linger and
+            // contradict the assistant's failure response.
+            if (statusCommentId) {
+                const failureText = "❌ Couldn't start the VM task — your Gold has been refunded."
+                await admin
+                    .firestore()
+                    .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${statusCommentId}`)
+                    .set(
+                        {
+                            commentText: failureText,
+                            originalContent: failureText,
+                            lastChangeDate: admin.firestore.Timestamp.now(),
+                        },
+                        { merge: true }
+                    )
+                    .catch(() => {})
+            }
+            return {
+                success: false,
+                message: 'Could not launch the VM task right now. Your Gold has been refunded.',
+            }
         }
     }
 
@@ -480,6 +583,97 @@ async function startVmJob({
     }
 }
 
+async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
+    const db = admin.firestore()
+    const snapshot = await db.collection('pendingWebhooks').where('launchState', '==', 'unknown').limit(100).get()
+    const result = { checked: 0, reconciled: 0, failed: 0, errors: 0 }
+    const { findVmCloudRunExecution } = require('./vmCloudRunLauncher')
+
+    for (const doc of snapshot.docs) {
+        const pending = doc.data() || {}
+        if (pending.kind !== 'vm_job' || ['completed', 'failed', 'cancelled'].includes(pending.status)) continue
+        result.checked += 1
+        try {
+            const execution = await findVmCloudRunExecution(pending.correlationId || doc.id, {
+                minCreateTime: (Number(pending.launchRequestedAt) || Number(pending.createdAt) || now) - 60 * 1000,
+            })
+            if (execution) {
+                await doc.ref.set(
+                    {
+                        launchState: 'launched',
+                        cloudRunExecution: execution.name,
+                        launchReconciled: true,
+                        launchLastCheckedAt: now,
+                    },
+                    { merge: true }
+                )
+                result.reconciled += 1
+                continue
+            }
+
+            const requestedAt = Number(pending.launchRequestedAt) || Number(pending.createdAt) || now
+            if (now - requestedAt < VM_CLOUD_RUN_LAUNCH_RECONCILIATION_MS) {
+                await doc.ref.set({ launchLastCheckedAt: now }, { merge: true })
+                continue
+            }
+
+            const didFail = await db.runTransaction(async transaction => {
+                const latest = await transaction.get(doc.ref)
+                const data = latest.exists ? latest.data() || {} : {}
+                if (data.launchState !== 'unknown' || data.status !== 'pending') return false
+                transaction.set(
+                    doc.ref,
+                    {
+                        status: 'failed',
+                        launchState: 'failed',
+                        error: 'Cloud Run Job launch could not be confirmed',
+                        failedAt: now,
+                        launchLastCheckedAt: now,
+                    },
+                    { merge: true }
+                )
+                return true
+            })
+            if (!didFail) continue
+
+            const { refundGold } = require('../Gold/goldHelper')
+            await refundGold(pending.userId, Number(pending.goldCharged) || VM_JOB_BASE_GOLD, {
+                source: VM_JOB_GOLD_REFUND_SOURCE,
+                channel: 'assistant',
+                projectId: pending.projectId,
+                objectId: pending.objectId,
+                objectType: pending.objectType,
+                note: 'VM Cloud Run Job launch could not be confirmed',
+            }).catch(() => {})
+            if (pending.statusCommentId) {
+                const failureText = "❌ Couldn't start the VM task — your Gold has been refunded."
+                await db
+                    .doc(
+                        `chatComments/${pending.projectId}/${pending.objectType}/${pending.objectId}/comments/${pending.statusCommentId}`
+                    )
+                    .set(
+                        {
+                            commentText: failureText,
+                            originalContent: failureText,
+                            isLoading: false,
+                            lastChangeDate: admin.firestore.Timestamp.now(),
+                        },
+                        { merge: true }
+                    )
+                    .catch(() => {})
+            }
+            result.failed += 1
+        } catch (error) {
+            result.errors += 1
+            console.warn('🖥️ VM JOB: Cloud Run launch reconciliation failed', {
+                correlationId: pending.correlationId || doc.id,
+                error: error.message,
+            })
+        }
+    }
+    return result
+}
+
 module.exports = {
     startVmJob,
     countActiveVmJobsForUser,
@@ -489,6 +683,7 @@ module.exports = {
     VM_JOB_GOLD_SOURCE,
     VM_JOB_GOLD_REFUND_SOURCE,
     VM_JOB_EXPIRY_MS,
+    reconcileUnknownVmCloudRunLaunches,
     MAX_CONCURRENT_VM_JOBS_PER_USER,
     VALID_TASK_TYPES,
     getAgentLabel,
@@ -498,4 +693,5 @@ module.exports = {
     DEFAULT_CODEX_MODEL,
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
+    __private__: { cloudRunVmJobsEnabled, getRunVmJobQueueResource },
 }

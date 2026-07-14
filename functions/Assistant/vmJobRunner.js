@@ -192,15 +192,29 @@ async function claimVmJobLease(pendingRef, correlationId) {
 function startVmJobHeartbeat(pendingRef, leaseOwner) {
     let stopped = false
     let writing = false
+    let leaseLost = false
     const tick = async () => {
         if (stopped || writing) return
         writing = true
         const now = Date.now()
         try {
-            await pendingRef.set(
-                { heartbeatAt: now, leaseExpiresAt: now + VM_JOB_LEASE_MS, leaseOwner },
-                { merge: true }
-            )
+            const renewed = await admin.firestore().runTransaction(async transaction => {
+                const snapshot = await transaction.get(pendingRef)
+                const data = snapshot.exists ? snapshot.data() || {} : {}
+                if (data.status !== 'initiated' || data.leaseOwner !== leaseOwner) return false
+                transaction.set(
+                    pendingRef,
+                    { heartbeatAt: now, leaseExpiresAt: now + VM_JOB_LEASE_MS },
+                    { merge: true }
+                )
+                return true
+            })
+            if (!renewed) {
+                leaseLost = true
+                stopped = true
+                clearInterval(timer)
+                console.warn('🖥️ VM JOB: lease lost; heartbeat stopped', { leaseOwner })
+            }
         } catch (error) {
             console.warn('🖥️ VM JOB: heartbeat update failed', { error: error.message })
         } finally {
@@ -213,6 +227,7 @@ function startVmJobHeartbeat(pendingRef, leaseOwner) {
             stopped = true
             clearInterval(timer)
         },
+        hasLostLease: () => leaseLost,
     }
 }
 

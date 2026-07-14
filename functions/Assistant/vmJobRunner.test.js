@@ -4,6 +4,8 @@ const os = require('os')
 const path = require('path')
 
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
+const originalCloudRunJob = process.env.CLOUD_RUN_JOB
+process.env.CLOUD_RUN_JOB = 'vm-job-runner'
 const mockDeductGold = jest.fn()
 const mockRefundGold = jest.fn()
 const mockGetObjectFollowersIds = jest.fn()
@@ -73,6 +75,11 @@ jest.mock('./assistantStatusHelper', () => ({
 }))
 
 const { __private__ } = require('./vmJobRunner')
+
+afterAll(() => {
+    if (originalCloudRunJob === undefined) delete process.env.CLOUD_RUN_JOB
+    else process.env.CLOUD_RUN_JOB = originalCloudRunJob
+})
 
 describe('VM runner prompt', () => {
     const baseVmJob = {
@@ -725,11 +732,11 @@ describe('VM runner timeout handling', () => {
         expect(error).toBeInstanceOf(__private__.VmRuntimeTimeoutError)
         expect(error).toMatchObject({
             code: 'runtime_timeout',
-            runtimeMs: 25 * 60 * 1000,
+            runtimeMs: 5 * 60 * 60 * 1000,
             cause: originalError,
         })
         expect(error.message).toBe(
-            'The VM task exceeded its allowed execution time of 25 minutes. Start a new VM task to continue.'
+            'The VM task exceeded its allowed execution time of 300 minutes. Start a new VM task to continue.'
         )
     })
 
@@ -751,7 +758,7 @@ describe('VM runner timeout handling', () => {
 
     test('formats the configured limit in the user-facing timeout message', () => {
         expect(__private__.buildVmRuntimeTimeoutText()).toBe(
-            '❌ The VM task exceeded its allowed execution time of 25 minutes. Start a new VM task to continue.'
+            '❌ The VM task exceeded its allowed execution time of 300 minutes. Start a new VM task to continue.'
         )
         expect(__private__.buildVmRuntimeTimeoutText(55 * 60 * 1000)).toContain('55 minutes')
     })
