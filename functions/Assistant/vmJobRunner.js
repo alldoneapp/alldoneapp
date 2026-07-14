@@ -46,12 +46,6 @@ const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 const CODEX_AUTH_DIR = '/home/user/.codex'
 const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
 const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
-// E2B's managed images may ship /home/user/.npm from an immutable/root-owned
-// layer, while Codex's nested workspace sandbox only guarantees writes below the
-// checkout and /tmp. Use a per-sandbox temp cache that works in both layers. This
-// environment is inherited by the agent, so repository-level npm install/ci
-// commands use the writable cache from their first attempt too.
-const VM_NPM_CACHE_DIR = '/tmp/alldone-npm-cache'
 const MAX_BOOTSTRAP_DIAGNOSTIC_CHARS = 16 * 1024
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
@@ -94,14 +88,6 @@ const REPO_DIR = '/home/user/repo'
 
 function uniqueDefined(values) {
     return Array.from(new Set((Array.isArray(values) ? values : []).filter(value => !!value)))
-}
-
-function buildSandboxCommandEnv(...environments) {
-    return Object.assign({}, ...environments.filter(environment => environment && typeof environment === 'object'), {
-        // Apply last so a template or credential environment cannot accidentally
-        // restore npm's read-only default cache.
-        NPM_CONFIG_CACHE: VM_NPM_CACHE_DIR,
-    })
 }
 
 function getVmParentObjectPath(projectId, objectType, objectId) {
@@ -995,21 +981,76 @@ function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyB
     return `codex ${resumePart}${sandboxFlag} -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
 }
 
-function buildLatestAgentCliInstallCommand(packageName) {
-    return (
-        `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && ` +
-        `printf 'AGENT_CLI_INSTALLING\\n' && ` +
-        `npm install -g --prefix ${AGENT_CLI_NPM_PREFIX} ${packageName}@latest && ` +
-        `printf 'AGENT_CLI_READY installed\\n'`
-    )
+function buildLatestAgentCliInstallCommand(packageName, binaryName, options = {}) {
+    const prefix = options.prefix || AGENT_CLI_NPM_PREFIX
+    const binaryPath = `${prefix}/bin/${binaryName}`
+    const lockPath = options.lockPath || `/tmp/alldone-${binaryName}-cli-install.lock`
+
+    // Managed E2B templates can already contain a CLI launcher at the same path npm uses
+    // for its global link. Check the working CLI first, then move only that known launcher
+    // out of npm's way for an actual install/upgrade. The lock makes this safe when two
+    // initializations briefly target the same resumed sandbox.
+    return [
+        `export PATH=${shellQuoteArg(`${prefix}/bin`)}:$PATH`,
+        `cli_prefix=${shellQuoteArg(prefix)}`,
+        `binary_name=${shellQuoteArg(binaryName)}`,
+        `binary_path=${shellQuoteArg(binaryPath)}`,
+        `package_name=${shellQuoteArg(packageName)}`,
+        `lock_path=${shellQuoteArg(lockPath)}`,
+        `command -v flock >/dev/null 2>&1 || { printf 'Agent CLI bootstrap requires flock.\\n' >&2; exit 1; }`,
+        `mkdir -p "$cli_prefix/bin"`,
+        `exec 9>"$lock_path"`,
+        `flock -w 300 9 || { printf 'Timed out waiting for the agent CLI installation lock.\\n' >&2; exit 1; }`,
+        `latest_version="$(npm view "$package_name" version --silent)"`,
+        `npm_view_status=$?`,
+        `if [ "$npm_view_status" -ne 0 ]; then exit "$npm_view_status"; fi`,
+        `[ -n "$latest_version" ] || { printf 'npm returned no latest version for %s.\\n' "$package_name" >&2; exit 1; }`,
+        `active_binary="$(command -v "$binary_name" 2>/dev/null || true)"`,
+        `installed_output=''`,
+        `installed_version=''`,
+        `if [ -n "$active_binary" ] && installed_output="$("$active_binary" --version 2>/dev/null)"; then`,
+        `    installed_version="$(printf '%s\\n' "$installed_output" | sed -n 's/^[^0-9]*\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*[-+A-Za-z0-9.]*\\).*/\\1/p' | head -n 1)"`,
+        `fi`,
+        `if [ "$installed_version" = "$latest_version" ]; then`,
+        `    printf 'AGENT_CLI_READY existing %s\\n' "$installed_version"`,
+        `    exit 0`,
+        `fi`,
+        `printf 'AGENT_CLI_INSTALLING from=%s to=%s\\n' "\${installed_version:-missing-or-invalid}" "$latest_version"`,
+        `backup_path=''`,
+        `if [ -e "$binary_path" ] || [ -L "$binary_path" ]; then`,
+        `    if [ -d "$binary_path" ] && [ ! -L "$binary_path" ]; then`,
+        `        printf 'Refusing to replace directory at agent CLI path: %s\\n' "$binary_path" >&2`,
+        `        exit 1`,
+        `    fi`,
+        `    backup_path="\${binary_path}.alldone-backup.$$"`,
+        `    mv -- "$binary_path" "$backup_path"`,
+        `fi`,
+        `npm install -g --prefix "$cli_prefix" "$package_name@$latest_version"`,
+        `npm_status=$?`,
+        `if [ "$npm_status" -ne 0 ]; then`,
+        `    if [ -e "$binary_path" ] || [ -L "$binary_path" ]; then rm -f -- "$binary_path"; fi`,
+        `    if [ -n "$backup_path" ]; then mv -- "$backup_path" "$binary_path"; fi`,
+        `    exit "$npm_status"`,
+        `fi`,
+        `installed_output="$("$binary_path" --version 2>/dev/null || true)"`,
+        `installed_version="$(printf '%s\\n' "$installed_output" | sed -n 's/^[^0-9]*\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*[-+A-Za-z0-9.]*\\).*/\\1/p' | head -n 1)"`,
+        `if [ "$installed_version" != "$latest_version" ]; then`,
+        `    printf 'Installed %s CLI failed validation (expected %s, got %s).\\n' "$binary_name" "$latest_version" "\${installed_version:-unreadable}" >&2`,
+        `    if [ -e "$binary_path" ] || [ -L "$binary_path" ]; then rm -f -- "$binary_path"; fi`,
+        `    if [ -n "$backup_path" ]; then mv -- "$backup_path" "$binary_path"; fi`,
+        `    exit 1`,
+        `fi`,
+        `if [ -n "$backup_path" ]; then rm -f -- "$backup_path"; fi`,
+        `printf 'AGENT_CLI_READY installed %s\\n' "$installed_version"`,
+    ].join('\n')
 }
 
-function buildClaudeInstallGuard() {
-    return buildLatestAgentCliInstallCommand('@anthropic-ai/claude-code')
+function buildClaudeInstallGuard(options) {
+    return buildLatestAgentCliInstallCommand('@anthropic-ai/claude-code', 'claude', options)
 }
 
-function buildCodexInstallGuard() {
-    return buildLatestAgentCliInstallCommand('@openai/codex')
+function buildCodexInstallGuard(options) {
+    return buildLatestAgentCliInstallCommand('@openai/codex', 'codex', options)
 }
 
 function sanitizeVmErrorText(value, maxLength = 1200) {
@@ -1026,7 +1067,7 @@ function sanitizeVmErrorText(value, maxLength = 1200) {
 
 function buildStageError(stage, error, stdout = '', stderr = '') {
     const cleanStdout = String(stdout || '')
-        .replace(/^AGENT_CLI_(?:INSTALLING|READY[^\n]*)\s*$/gm, '')
+        .replace(/^AGENT_CLI_(?:INSTALLING|READY)[^\n]*\s*$/gm, '')
         .trim()
     const diagnostics = [cleanStdout ? `stdout: ${cleanStdout}` : '', stderr ? `stderr: ${stderr}` : '']
         .filter(Boolean)
@@ -1062,7 +1103,6 @@ async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, 
     console.log('🖥️ VM JOB: updating agent CLI', { agent: agentLabel, version: 'latest' })
     try {
         await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
-            envs: buildSandboxCommandEnv(),
             timeoutMs: 5 * 60 * 1000,
             onStdout: handleStdout,
             onStderr: data => {
@@ -1805,11 +1845,9 @@ async function runAgentInSandbox(
             mode: agentCredentials.mode,
         })
         const agentEnv = config.sandboxEnv(agentCredentials)
-        const runEnvs = buildSandboxCommandEnv(
-            agentEnv,
-            gitContext && gitContext.enabled ? buildGitEnv(gitContext) : null,
-            gcpContext && gcpContext.enabled ? buildGcpEnv(gcpContext) : null
-        )
+        let runEnvs = { ...agentEnv }
+        if (gitContext && gitContext.enabled) runEnvs = { ...runEnvs, ...buildGitEnv(gitContext) }
+        if (gcpContext && gcpContext.enabled) runEnvs = { ...runEnvs, ...buildGcpEnv(gcpContext) }
         const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${config.buildRun(
             isResume,
             {
@@ -2521,7 +2559,6 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
-        buildSandboxCommandEnv,
         buildClaudeInstallGuard,
         buildCodexInstallGuard,
         sanitizeVmErrorText,
