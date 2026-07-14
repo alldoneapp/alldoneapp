@@ -981,16 +981,88 @@ function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyB
     return `codex ${resumePart}${sandboxFlag} -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
 }
 
-function buildLatestAgentCliInstallGuard(packageName) {
-    return `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && npm install -g --prefix ${AGENT_CLI_NPM_PREFIX} ${packageName}@latest >/dev/null 2>&1`
+function buildLatestAgentCliInstallGuard(binaryName, packageName) {
+    return (
+        `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && ` +
+        `if command -v ${binaryName} >/dev/null 2>&1; then ` +
+        `printf 'AGENT_CLI_READY existing\\n'; ` +
+        `else printf 'AGENT_CLI_INSTALLING\\n'; ` +
+        `npm install -g --prefix ${AGENT_CLI_NPM_PREFIX} ${packageName}@latest || exit $?; ` +
+        `printf 'AGENT_CLI_READY installed\\n'; fi`
+    )
 }
 
 function buildClaudeInstallGuard() {
-    return buildLatestAgentCliInstallGuard('@anthropic-ai/claude-code')
+    return buildLatestAgentCliInstallGuard('claude', '@anthropic-ai/claude-code')
 }
 
 function buildCodexInstallGuard() {
-    return buildLatestAgentCliInstallGuard('@openai/codex')
+    return buildLatestAgentCliInstallGuard('codex', '@openai/codex')
+}
+
+function sanitizeVmErrorText(value, maxLength = 1200) {
+    const sanitized = String(value || '')
+        .replace(/(authorization:\s*(?:bearer|basic)\s+)[^\s]+/gi, '$1[REDACTED]')
+        .replace(/\b(?:sk-ant-|sk-|glpat-|ghp_|github_pat_|npm_|ya29\.)[A-Za-z0-9_.-]+/gi, '[REDACTED]')
+        .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]')
+        .replace(/([A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD)\s*=\s*)[^\s]+/g, '$1[REDACTED]')
+        .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[REDACTED]@')
+        .replace(/\s+/g, ' ')
+        .trim()
+    return sanitized.length > maxLength ? `${sanitized.substring(0, maxLength)}…` : sanitized
+}
+
+function buildStageError(stage, error, stdout = '', stderr = '') {
+    const detail = sanitizeVmErrorText(stderr || stdout || error?.message || '')
+    return new Error(`${stage} failed.${detail ? ` ${detail}` : ''}`)
+}
+
+function buildAgentExitError(agentLabel, result, state, stderr = '', fallbackError = null) {
+    const exitCode = result?.exitCode ?? fallbackError?.exitCode ?? fallbackError?.code
+    const output = (state?.finalResult || state?.assistantText || '').trim()
+    const detail = sanitizeVmErrorText([output, stderr, fallbackError?.message].filter(Boolean).join('\n'))
+    const status = exitCode !== undefined && exitCode !== null ? ` with exit status ${exitCode}` : ''
+    return new Error(`${agentLabel} exited${status}.${detail ? ` ${detail}` : ''}`)
+}
+
+async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header) {
+    const command = typeof config.installGuard === 'function' ? config.installGuard() : config.installGuard
+    if (!command) return
+
+    let stdout = ''
+    let stderr = ''
+    let installationAnnounced = false
+    const handleStdout = data => {
+        stdout += data
+        if (!installationAnnounced && stdout.includes('AGENT_CLI_INSTALLING')) {
+            installationAnnounced = true
+            if (typeof onActivity === 'function') onActivity(`${header}\n\n📦 Installing ${agentLabel}…`)
+        }
+    }
+
+    console.log('🖥️ VM JOB: checking agent CLI', { agent: agentLabel })
+    try {
+        await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
+            timeoutMs: 5 * 60 * 1000,
+            onStdout: handleStdout,
+            onStderr: data => {
+                stderr += data
+            },
+        })
+    } catch (error) {
+        const stage = installationAnnounced ? `${agentLabel} installation` : `${agentLabel} bootstrap`
+        const stageError = buildStageError(stage, error, stdout, stderr)
+        console.error('🖥️ VM JOB: agent CLI bootstrap failed', {
+            agent: agentLabel,
+            stage,
+            error: stageError.message,
+        })
+        throw stageError
+    }
+    console.log('🖥️ VM JOB: agent CLI ready', {
+        agent: agentLabel,
+        installed: installationAnnounced,
+    })
 }
 
 const AGENT_CONFIGS = {
@@ -1643,6 +1715,18 @@ async function runAgentInSandbox(
             await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
         }
 
+        // Managed templates usually already contain the selected CLI. Keep startup fast and
+        // resilient by installing only when it is missing, in a separately logged stage whose
+        // sanitized error can be returned without swallowing npm diagnostics.
+        await ensureAgentCliAvailable(
+            sandbox,
+            config,
+            agentLabel,
+            onActivity,
+            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
+        )
+        await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
+
         const state = { activity: [], finalResult: '', assistantText: '', usage: null }
         let stdoutBuf = ''
         let stderr = ''
@@ -1702,19 +1786,15 @@ async function runAgentInSandbox(
         let runEnvs = { ...agentEnv }
         if (gitContext && gitContext.enabled) runEnvs = { ...runEnvs, ...buildGitEnv(gitContext) }
         if (gcpContext && gcpContext.enabled) runEnvs = { ...runEnvs, ...buildGcpEnv(gcpContext) }
-        const installGuard =
-            typeof config.installGuard === 'function'
-                ? config.installGuard({
-                      agentModel: runDetails.model,
-                      subscriptionUsed: !!subscriptionAuth,
-                  })
-                : config.installGuard
-        const command = `mkdir -p /home/user/output && cd ${workdir} && ${installGuard} && ${config.buildRun(isResume, {
-            agentModel: runDetails.model,
-            agentReasoningEffort: runDetails.effort,
-            proxyBaseUrl: agentCredentials.baseUrl,
-            subscriptionUsed: !!subscriptionAuth,
-        })}`
+        const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${config.buildRun(
+            isResume,
+            {
+                agentModel: runDetails.model,
+                agentReasoningEffort: runDetails.effort,
+                proxyBaseUrl: agentCredentials.baseUrl,
+                subscriptionUsed: !!subscriptionAuth,
+            }
+        )}`
 
         const runStartMs = Date.now()
         console.log('🖥️ VM JOB: running agent command', {
@@ -1772,21 +1852,25 @@ async function runAgentInSandbox(
                 if (cancellationMonitor) cancellationMonitor.stop()
             }
         } catch (runError) {
+            if (stdoutBuf.trim()) handleLine(stdoutBuf)
+            if (isVmGoldExhaustedError(runError) || isVmJobCancelledError(runError)) throw runError
             // The command was killed (e.g. timeout) before returning — log whatever it
             // produced so we can see where the agent got stuck, then rethrow.
+            const detailedError = buildAgentExitError(agentLabel, null, state, stderr, runError)
             console.error('🖥️ VM JOB: command errored/terminated', {
                 correlationId: vmJob.correlationId,
                 agent: config.label,
-                error: runError.message,
+                error: detailedError.message,
                 events: state.activity.length,
-                lastActivity: state.activity.slice(-3),
+                lastActivity: state.activity.slice(-3).map(line => sanitizeVmErrorText(line)),
                 stdoutBufLen: stdoutBuf.length,
                 stderrLen: stderr.length,
-                stderrPreview: stderr ? stderr.substring(0, 800) : '',
+                stderrPreview: sanitizeVmErrorText(stderr, 800),
                 runtimeGoldCharged,
             })
-            if (typeof runError.runtimeGoldCharged !== 'number') runError.runtimeGoldCharged = runtimeGoldCharged
-            throw runError
+            detailedError.runtimeGoldCharged =
+                typeof runError.runtimeGoldCharged === 'number' ? runError.runtimeGoldCharged : runtimeGoldCharged
+            throw detailedError
         }
         if (stdoutBuf.trim()) handleLine(stdoutBuf) // flush any trailing partial line
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
@@ -1797,13 +1881,15 @@ async function runAgentInSandbox(
             events: state.activity.length,
             finalResultLen: (state.finalResult || state.assistantText).length,
             stderrLen: stderr.length,
-            stderrPreview: stderr ? stderr.substring(0, 300) : '',
+            stderrPreview: sanitizeVmErrorText(stderr, 300),
         })
 
         const output = (state.finalResult || state.assistantText || '').trim()
+        if (result?.exitCode !== undefined && result.exitCode !== 0) {
+            throw buildAgentExitError(agentLabel, result, state, stderr)
+        }
         if (!output) {
-            const detail = ` exitCode=${result?.exitCode}${stderr ? `: ${stderr.substring(0, 500)}` : ''}`
-            throw new Error(`Agent produced no output.${detail}`)
+            throw buildAgentExitError(agentLabel, result, state, stderr, new Error('Agent produced no output.'))
         }
         // Collect deliverable files written during THIS run (while the sandbox is still alive).
         const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
@@ -2384,6 +2470,10 @@ module.exports = {
         buildCodexRunCommand,
         buildClaudeInstallGuard,
         buildCodexInstallGuard,
+        sanitizeVmErrorText,
+        buildStageError,
+        buildAgentExitError,
+        ensureAgentCliAvailable,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,
