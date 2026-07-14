@@ -775,11 +775,18 @@ async function collectArtifacts(sandbox, correlationId, sinceMs = 0) {
 
 const MAX_ACTIVITY_LINES = 15
 
-function truncate(value, n) {
+// Tool metadata can contain very large implementation details (for example a full patch in a
+// shell command), so keep those labels compact. Provider-authored progress text is handled
+// separately and must remain verbatim so the chat never silently cuts an agent update short.
+function summarizeToolDetail(value, n) {
     const s = String(value || '')
         .replace(/\s+/g, ' ')
         .trim()
     return s.length > n ? s.substring(0, n) + '…' : s
+}
+
+function formatActivityText(value) {
+    return String(value || '').trim()
 }
 
 // Map a Claude Code tool_use block to a friendly, human-readable activity line.
@@ -787,21 +794,21 @@ function claudeToolLabel(name, input) {
     const i = input || {}
     switch (name) {
         case 'WebSearch':
-            return `🔍 Searching the web${i.query ? `: "${truncate(i.query, 80)}"` : '…'}`
+            return `🔍 Searching the web${i.query ? `: "${summarizeToolDetail(i.query, 80)}"` : '…'}`
         case 'WebFetch':
-            return `🌐 Reading ${truncate(i.url || '', 80)}`
+            return `🌐 Reading ${summarizeToolDetail(i.url || '', 80)}`
         case 'Bash':
-            return `💻 ${truncate(i.command || 'running a command', 100)}`
+            return `💻 ${summarizeToolDetail(i.command || 'running a command', 100)}`
         case 'Read':
-            return `📄 Reading ${truncate(i.file_path || i.path || '', 80)}`
+            return `📄 Reading ${summarizeToolDetail(i.file_path || i.path || '', 80)}`
         case 'Write':
-            return `✍️ Writing ${truncate(i.file_path || i.path || '', 80)}`
+            return `✍️ Writing ${summarizeToolDetail(i.file_path || i.path || '', 80)}`
         case 'Edit':
         case 'MultiEdit':
-            return `✏️ Editing ${truncate(i.file_path || i.path || '', 80)}`
+            return `✏️ Editing ${summarizeToolDetail(i.file_path || i.path || '', 80)}`
         case 'Glob':
         case 'Grep':
-            return `🔎 Searching files${i.pattern ? `: ${truncate(i.pattern, 60)}` : '…'}`
+            return `🔎 Searching files${i.pattern ? `: ${summarizeToolDetail(i.pattern, 60)}` : '…'}`
         case 'TodoWrite':
             return '🗒️ Planning the work…'
         default:
@@ -834,7 +841,8 @@ function appendClaudeActivity(evt, state) {
         for (const b of evt.message.content) {
             if (b && b.type === 'text' && b.text) {
                 state.assistantText += b.text
-                if (b.text.trim()) state.activity.push(`💬 ${truncate(b.text, 200)}`)
+                const activityText = formatActivityText(b.text)
+                if (activityText) state.activity.push(`💬 ${activityText}`)
             } else if (b && b.type === 'tool_use') {
                 state.activity.push(claudeToolLabel(b.name, b.input))
             }
@@ -847,7 +855,7 @@ function appendClaudeActivity(evt, state) {
 function appendCodexActivity(evt, state) {
     if (!evt || typeof evt !== 'object') return
     if (evt.type === 'error') {
-        state.activity.push(`⚠️ ${truncate(evt.message || evt.error || 'error', 160)}`)
+        state.activity.push(`⚠️ ${formatActivityText(evt.message || evt.error || 'error')}`)
         return
     }
     if (evt.type === 'turn.completed') {
@@ -871,23 +879,25 @@ function appendCodexActivity(evt, state) {
         case 'agent_message':
             if (typeof item.text === 'string' && item.text) {
                 state.assistantText = item.text // last agent message is the final answer
-                if (completed && item.text.trim()) state.activity.push(`💬 ${truncate(item.text, 200)}`)
+                const activityText = formatActivityText(item.text)
+                if (completed && activityText) state.activity.push(`💬 ${activityText}`)
             }
             break
         case 'reasoning':
-            if (completed && item.text) state.activity.push(`💭 ${truncate(item.text, 160)}`)
+            if (completed && item.text) state.activity.push(`💭 ${formatActivityText(item.text)}`)
             break
         case 'command_execution':
-            if (completed) state.activity.push(`💻 ${truncate(item.command || 'command', 100)}`)
+            if (completed) state.activity.push(`💻 ${summarizeToolDetail(item.command || 'command', 100)}`)
             break
         case 'web_search':
-            if (completed) state.activity.push(`🔍 Searching${item.query ? `: "${truncate(item.query, 80)}"` : '…'}`)
+            if (completed)
+                state.activity.push(`🔍 Searching${item.query ? `: "${summarizeToolDetail(item.query, 80)}"` : '…'}`)
             break
         case 'file_change':
             if (completed) state.activity.push('✏️ Editing files')
             break
         case 'mcp_tool_call':
-            if (completed) state.activity.push(`🔧 ${truncate(item.tool || item.name || 'tool', 60)}`)
+            if (completed) state.activity.push(`🔧 ${summarizeToolDetail(item.tool || item.name || 'tool', 60)}`)
             break
         case 'todo_list':
         case 'plan_update':
@@ -2510,6 +2520,8 @@ module.exports = {
         buildStageError,
         buildAgentExitError,
         ensureAgentCliAvailable,
+        appendClaudeActivity,
+        appendCodexActivity,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,

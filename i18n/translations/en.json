@@ -2349,7 +2349,6 @@
     "Using your subscription": "Using your subscription",
     "Choose one route for this provider. BYOK bills model usage directly to your provider account; subscription auth uses your Claude or ChatGPT plan; Alldone API billing charges Gold for model tokens. The 20 Gold base charge and 10 Gold per started VM minute apply to every route.": "Choose one route for this provider. BYOK bills model usage directly to your provider account; subscription auth uses your Claude or ChatGPT plan; Alldone API billing charges Gold for model tokens. The 20 Gold base charge and 10 Gold per started VM minute apply to every route.",
     "Personal API key": "Personal API key",
-    "Subscription": "Subscription",
     "Alldone Gold": "Alldone Gold",
     "Saved key was rejected — replace or remove it": "Saved key was rejected — replace or remove it",
     "API key saved and validated": "API key saved and validated",
