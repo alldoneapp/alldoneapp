@@ -2197,7 +2197,7 @@ const toolSchemas = {
                         enum: ['claude', 'codex'],
                         description:
                             'Optional. Which coding agent runs in the VM. An explicit choice overrides the user setting. ' +
-                            'When omitted, the requesting user\'s default VM agent is used, falling back to "claude" for users without a preference. ' +
+                            'When omitted, the requesting user\'s default VM agent is used, falling back to "codex" for users without a preference. ' +
                             'Use "claude" (Claude Code) for research, writing, analysis and general tasks; ' +
                             'consider "codex" (OpenAI Codex) for heavy coding / repository work. If unsure, omit it.',
                     },
@@ -2214,7 +2214,7 @@ const toolSchemas = {
                         enum: ['low', 'medium', 'high', 'xhigh'],
                         description:
                             'Optional. Effort/reasoning setting for the VM agent. An explicit value overrides the user setting. ' +
-                            'When omitted, the requesting user\'s default VM effort is used; users without one keep the provider defaults ("high" for Claude and "medium" for Codex). ' +
+                            'When omitted, the requesting user\'s default VM effort is used, falling back to "medium" for users without a preference. ' +
                             'The minimum is "low" because Codex Responses requests can include tools that are incompatible with "minimal". ' +
                             'For Claude Code this maps to the CLI `--effort` flag; for Codex it maps to the `model_reasoning_effort` config.',
                     },
