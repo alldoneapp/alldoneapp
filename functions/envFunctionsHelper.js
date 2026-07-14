@@ -67,6 +67,7 @@ const getEnvFunctions = () => {
             APIFY_API_KEY: process.env.APIFY_API_KEY || '',
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
             E2B_API_KEY: process.env.E2B_API_KEY || '',
+            VM_CLOUD_RUN_JOBS_ENABLED: process.env.VM_CLOUD_RUN_JOBS_ENABLED || '',
             VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
             VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
             MENUBAR_APP_WEBHOOK_SECRET: process.env.MENUBAR_APP_WEBHOOK_SECRET || '',
@@ -115,6 +116,7 @@ const getEnvFunctions = () => {
                     APIFY_API_KEY: envJson.APIFY_API_KEY || '',
                     ANTHROPIC_API_KEY: envJson.ANTHROPIC_API_KEY || '',
                     E2B_API_KEY: envJson.E2B_API_KEY || '',
+                    VM_CLOUD_RUN_JOBS_ENABLED: envJson.VM_CLOUD_RUN_JOBS_ENABLED || '',
                     VM_PROXY_SIGNING_SECRET: envJson.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: envJson.VM_LLM_PROXY_BASE_URL || '',
                     MENUBAR_APP_WEBHOOK_SECRET: envJson.MENUBAR_APP_WEBHOOK_SECRET || '',
@@ -174,6 +176,7 @@ const getEnvFunctions = () => {
                         APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                         E2B_API_KEY: process.env.E2B_API_KEY || '',
+                        VM_CLOUD_RUN_JOBS_ENABLED: process.env.VM_CLOUD_RUN_JOBS_ENABLED || '',
                         VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                         VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
                     }
@@ -216,6 +219,7 @@ const getEnvFunctions = () => {
                     TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
                     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                     E2B_API_KEY: process.env.E2B_API_KEY || '',
+                    VM_CLOUD_RUN_JOBS_ENABLED: process.env.VM_CLOUD_RUN_JOBS_ENABLED || '',
                     VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
                 }
@@ -259,6 +263,7 @@ const getEnvFunctions = () => {
                 APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                 ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                 E2B_API_KEY: process.env.E2B_API_KEY || '',
+                VM_CLOUD_RUN_JOBS_ENABLED: process.env.VM_CLOUD_RUN_JOBS_ENABLED || '',
                 VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                 VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
             }

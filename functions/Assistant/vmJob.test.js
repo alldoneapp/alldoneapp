@@ -5,6 +5,7 @@ const mockQueueEnqueue = jest.fn(async () => ({
 }))
 const mockLegacyQueueEnqueue = jest.fn(async () => {})
 const originalCloudRunJobsEnabled = process.env.VM_CLOUD_RUN_JOBS_ENABLED
+const mockGetEnvFunctions = jest.fn(() => ({}))
 const mockResolveVmCredentialMode = jest.fn(async () => 'api')
 const mockCollectionQuery = {
     where: jest.fn(() => mockCollectionQuery),
@@ -50,6 +51,10 @@ jest.mock('./vmCloudRunLauncher', () => ({
     launchVmCloudRunJob: mockQueueEnqueue,
 }))
 
+jest.mock('../envFunctionsHelper', () => ({
+    getEnvFunctions: mockGetEnvFunctions,
+}))
+
 jest.mock('./assistantStatusHelper', () => ({
     createInitialStatusMessage: jest.fn(async () => 'status-comment-1'),
 }))
@@ -79,6 +84,7 @@ describe('startVmJob', () => {
             operationName: 'projects/test-project/locations/europe-west1/operations/operation-1',
         })
         mockLegacyQueueEnqueue.mockResolvedValue(undefined)
+        mockGetEnvFunctions.mockReturnValue({})
         process.env.VM_CLOUD_RUN_JOBS_ENABLED = 'true'
         mockResolveVmCredentialMode.mockResolvedValue('api')
         jest.spyOn(crypto, 'randomUUID').mockReturnValue('correlation-1')
@@ -113,6 +119,25 @@ describe('startVmJob', () => {
             expect.objectContaining({ launchBackend: 'cloud_tasks', launchState: 'launched' }),
             { merge: true }
         )
+    })
+
+    test('reads the durable Cloud Run rollout flag from env_functions configuration', async () => {
+        delete process.env.VM_CLOUD_RUN_JOBS_ENABLED
+        mockGetEnvFunctions.mockReturnValue({ VM_CLOUD_RUN_JOBS_ENABLED: 'true' })
+
+        const result = await startVmJob({
+            objective: 'Research this',
+            taskType: 'research',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(result.success).toBe(true)
+        expect(mockQueueEnqueue).toHaveBeenCalledTimes(1)
+        expect(mockLegacyQueueEnqueue).not.toHaveBeenCalled()
     })
 
     test('admits ten concurrent jobs and rejects the eleventh before charging or enqueueing it', async () => {

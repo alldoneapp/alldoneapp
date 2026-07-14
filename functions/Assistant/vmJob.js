@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { getFunctions } = require('firebase-admin/functions')
+const { getEnvFunctions } = require('../envFunctionsHelper')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJobConfig')
 const {
@@ -33,7 +34,8 @@ const RUN_VM_JOB_FUNCTION_NAME = 'runVmJob'
 const VALID_TASK_TYPES = ['research', 'document', 'prototype', 'data']
 
 function cloudRunVmJobsEnabled() {
-    return String(process.env.VM_CLOUD_RUN_JOBS_ENABLED || '').toLowerCase() === 'true'
+    const configuredValue = process.env.VM_CLOUD_RUN_JOBS_ENABLED || getEnvFunctions().VM_CLOUD_RUN_JOBS_ENABLED
+    return String(configuredValue || '').toLowerCase() === 'true'
 }
 
 function getRunVmJobQueueResource() {
