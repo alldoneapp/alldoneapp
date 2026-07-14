@@ -1,5 +1,6 @@
 import React from 'react'
 import { StyleSheet, View } from 'react-native'
+import { useSelector } from 'react-redux'
 
 import EmailLabelChip from './EmailLabelChip'
 import useEmailLabelGroups from './useEmailLabelGroups'
@@ -9,14 +10,16 @@ import { getUnassignedEmailLabelGroups } from './emailLineHelper'
 // every label not tied to a project — Ads, No label, and any custom/unmapped label. Project-mapped
 // labels appear on their own project line instead. Renders nothing when there are no such labels.
 export default function AllProjectsEmailLabelChips() {
+    const mobile = useSelector(state => state.smallScreenNavigation)
     const { groups, labelOptionsByConnectionId, labelingDisabledByConnectionId } = useEmailLabelGroups()
 
     const unassignedGroups = getUnassignedEmailLabelGroups(groups)
-    if (unassignedGroups.length === 0) return null
+    const visibleGroups = mobile ? unassignedGroups.filter(group => group.isInbox) : unassignedGroups
+    if (visibleGroups.length === 0) return null
 
     return (
         <View style={localStyles.row}>
-            {unassignedGroups.map(group => (
+            {visibleGroups.map(group => (
                 <EmailLabelChip
                     key={group.key}
                     group={group}

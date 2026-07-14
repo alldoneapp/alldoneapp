@@ -8,6 +8,7 @@ import renderer, { act } from 'react-test-renderer'
 
 import AllProjectsEmailLabelChips from './AllProjectsEmailLabelChips'
 
+jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
 jest.mock('./useEmailLabelGroups', () => ({ __esModule: true, default: jest.fn() }))
 
 jest.mock('./EmailLabelChip', () => ({
@@ -24,8 +25,10 @@ jest.mock('./EmailLabelChip', () => ({
 }))
 
 const useEmailLabelGroups = require('./useEmailLabelGroups').default
+const useSelector = require('react-redux').useSelector
 
-const render = groups => {
+const render = (groups, mobile = false) => {
+    useSelector.mockImplementation(selector => selector({ smallScreenNavigation: mobile }))
     useEmailLabelGroups.mockReturnValue({
         groups,
         labelOptionsByConnectionId: {},
@@ -56,6 +59,32 @@ describe('AllProjectsEmailLabelChips', () => {
             { key: 'no', displayName: 'No label', isInbox: false, projectId: null, threadCount: 4, sweeping: false },
         ])
         expect(chipLabels(tree)).toEqual(['Inbox', 'Ads', 'No label'])
+    })
+
+    test('renders only Inbox on mobile', () => {
+        const tree = render(
+            [
+                {
+                    key: 'inbox',
+                    displayName: 'Inbox',
+                    isInbox: true,
+                    projectId: null,
+                    threadCount: 9,
+                    sweeping: false,
+                },
+                { key: 'ads', displayName: 'Ads', isInbox: false, projectId: null, threadCount: 2, sweeping: false },
+                {
+                    key: 'no',
+                    displayName: 'No label',
+                    isInbox: false,
+                    projectId: null,
+                    threadCount: 4,
+                    sweeping: false,
+                },
+            ],
+            true
+        )
+        expect(chipLabels(tree)).toEqual(['Inbox'])
     })
 
     test('renders nothing at inbox zero when every label maps to a project', () => {
