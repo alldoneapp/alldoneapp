@@ -31,6 +31,7 @@ export default function LastComment({
                     objectType={currentProjectChatLastNotification.chatType}
                     setAModalIsOpen={setAModalIsOpen}
                     fromChatNotification={true}
+                    isFollowedNotification={!!currentProjectChatLastNotification.followed}
                     compact={compact}
                 />
             ) : (

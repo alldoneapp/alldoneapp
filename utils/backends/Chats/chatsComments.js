@@ -77,8 +77,9 @@ import {
     FOLLOWER_USERS_TYPE,
 } from '../../../components/Followers/FollowerConstants'
 import { generateUserIdsToNotifyForNewComments } from '../../assistantHelper'
+import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, getProjectChatLastNotification } from './chatNotificationPriority'
 
-export const ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY = 'allProjects'
+export { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, getProjectChatLastNotification }
 
 const isActiveProjectUserId = (projectId, userId) => {
     const { loggedUser } = store.getState()
@@ -98,42 +99,6 @@ const filterActiveProjectUserIds = (projectId, userIds, context) => {
     }
 
     return validUserIds
-}
-
-export const getProjectChatLastNotification = (projectId, projectNotifications, projectChatLastNotification) => {
-    const lastNotifications = {
-        ...projectChatLastNotification,
-        [projectId]: null,
-    }
-
-    projectNotifications.forEach(notification => {
-        const { followed, date } = notification
-        if (followed) {
-            if (!lastNotifications[projectId] || lastNotifications[projectId].date < date) {
-                lastNotifications[projectId] = notification
-            }
-        }
-    })
-
-    lastNotifications[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY] = getAllProjectsChatLastNotification(lastNotifications)
-    return lastNotifications
-}
-
-const getAllProjectsChatLastNotification = notifications => {
-    const keys = Object.keys(notifications)
-    let allProjectsNotification = null
-    for (let i = 0; i < keys.length; i++) {
-        const key = keys[i]
-        if (key !== ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY && notifications[key]) {
-            if (!allProjectsNotification || allProjectsNotification.date < notifications[key].date) {
-                allProjectsNotification = {
-                    ...notifications[key],
-                    projectId: key,
-                }
-            }
-        }
-    }
-    return allProjectsNotification
 }
 
 export const watchComments = (projectId, chatType, chatId, watcherKey, amountCommentsToGet, callback) => {

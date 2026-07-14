@@ -13,6 +13,7 @@ export default function LastUserOrAssistantCommentContainer({
     objectId,
     objectType,
     fromChatNotification,
+    isFollowedNotification,
     compact = false,
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
@@ -52,8 +53,8 @@ export default function LastUserOrAssistantCommentContainer({
     return (
         <LastAssistantCommentWrapper
             projectId={project.id}
-            isNew={fromChatNotification}
-            unreadComments={fromChatNotification ? unreadComments : 0}
+            isNew={fromChatNotification && isFollowedNotification}
+            unreadComments={fromChatNotification && isFollowedNotification ? unreadComments : 0}
             objectId={objectId}
             objectType={objectType}
             objectName={chat.title}
