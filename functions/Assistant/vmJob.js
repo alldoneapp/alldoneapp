@@ -6,7 +6,7 @@ const { MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJobConfig')
 const {
     VALID_VM_AGENTS: VALID_AGENTS,
     SYSTEM_DEFAULT_VM_AGENT: DEFAULT_AGENT,
-    resolveVmAgent,
+    resolveVmAgentSettings,
 } = require('./vmAgentSettings')
 
 // Hybrid Gold pricing for a VM run:
@@ -257,13 +257,14 @@ async function startVmJob({
         return { success: false, message: `agent must be one of: ${VALID_AGENTS.join(', ')}.` }
     }
 
-    const selectedAgent = await resolveVmAgent(requestUserId, agent)
+    const resolvedAgentSettings = await resolveVmAgentSettings(requestUserId, agent, agentReasoningEffort)
+    const selectedAgent = resolvedAgentSettings.agent
     const selectedAgentLabel = getAgentLabel(selectedAgent)
     const modelResult = normalizeAgentModel(selectedAgent, agentModel)
     if (modelResult.error) {
         return { success: false, message: modelResult.error }
     }
-    const effortResult = normalizeAgentReasoningEffort(selectedAgent, agentReasoningEffort)
+    const effortResult = normalizeAgentReasoningEffort(selectedAgent, resolvedAgentSettings.reasoningEffort)
     if (effortResult.error) {
         return { success: false, message: effortResult.error }
     }

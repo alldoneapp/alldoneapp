@@ -113,6 +113,18 @@ describe('DueDateModal AutoPostpone', () => {
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 
+    test('postpones a goal and its connected tasks through one goal action', async () => {
+        const goal = { id: 'goal-1', timesPostponed: 2 }
+        const tasks = [{ id: 'task-1' }, { id: 'task-2' }]
+
+        await renderAndPress({ goal, tasks, updateParentGoalReminderDate: jest.fn(), inParentGoal: true })
+
+        expect(mockAutoPostponeGoal).toHaveBeenCalledWith('project-1', goal, 'target-1', true)
+        expect(mockAutoPostponeMultipleTasks).not.toHaveBeenCalled()
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_LAST_SELECTED_DUE_DATE', value: 654321 })
+        expect(baseProps.closePopover).toHaveBeenCalled()
+    })
+
     test('keeps an unsaved draft local', async () => {
         const saveDueDateBeforeSaveTask = jest.fn(() => Promise.resolve())
         await renderAndPress({ task: { timesPostponed: 0 }, saveDueDateBeforeSaveTask })

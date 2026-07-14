@@ -1220,14 +1220,24 @@ const updateChildTasksDueDate = async (projectId, goalId, newDate) => {
 
 export async function autoPostponeGoal(projectId, goal, userId, cascadeToTasks = true) {
     store.dispatch(startLoadingData())
-
-    const date = getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
-    const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
-
-    await updateGoalAssigneeReminderDate(projectId, goal.id, userId, dateTimestamp, goal, cascadeToTasks)
-
-    store.dispatch(stopLoadingData())
-    return dateTimestamp
+    try {
+        const date = getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
+        const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
+        const postponeGoal = firebase.app().functions('europe-west1').httpsCallable('postponeGoalWithUndoSecondGen')
+        const result = await postponeGoal({
+            projectId,
+            goalId: goal.id,
+            targetUserId: userId,
+            date: dateTimestamp,
+            endOfToday: moment().endOf('day').valueOf(),
+            cascadeToTasks,
+            requestId: getId(),
+        })
+        logEvent('goal_postponed')
+        return result?.data?.date ?? dateTimestamp
+    } finally {
+        store.dispatch(stopLoadingData())
+    }
 }
 
 export const updateGoalLastCommentData = async (projectId, goalId, lastComment, lastCommentType) => {
