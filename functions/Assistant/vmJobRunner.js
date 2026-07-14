@@ -45,6 +45,7 @@ const VM_JOB_CANCEL_REQUESTED_STATUS = 'cancel_requested'
 const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 const CODEX_AUTH_DIR = '/home/user/.codex'
 const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
+const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
@@ -980,14 +981,25 @@ function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyB
     return `codex ${resumePart}${sandboxFlag} -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
 }
 
+function buildLatestAgentCliInstallGuard(packageName) {
+    return `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && npm install -g --prefix ${AGENT_CLI_NPM_PREFIX} ${packageName}@latest >/dev/null 2>&1`
+}
+
+function buildClaudeInstallGuard() {
+    return buildLatestAgentCliInstallGuard('@anthropic-ai/claude-code')
+}
+
+function buildCodexInstallGuard() {
+    return buildLatestAgentCliInstallGuard('@openai/codex')
+}
+
 const AGENT_CONFIGS = {
     claude: {
         label: 'Claude Code',
         displayName: 'Claude',
         defaultTemplate: 'claude',
-        templateEnvKey: 'E2B_CLAUDE_TEMPLATE',
         apiKeyField: 'ANTHROPIC_API_KEY',
-        installGuard: '(command -v claude >/dev/null 2>&1 || npm install -g @anthropic-ai/claude-code >/dev/null 2>&1)',
+        installGuard: buildClaudeInstallGuard,
         // On resume, `--continue` continues the most recent session in the working dir.
         buildRun: (isResume, { agentModel, agentReasoningEffort } = {}) =>
             buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort),
@@ -1012,9 +1024,8 @@ const AGENT_CONFIGS = {
         label: 'Codex',
         displayName: 'Codex',
         defaultTemplate: 'codex',
-        templateEnvKey: 'E2B_CODEX_TEMPLATE',
         apiKeyField: 'OPEN_AI_KEY', // reuse the existing OpenAI key
-        installGuard: '(command -v codex >/dev/null 2>&1 || npm install -g @openai/codex >/dev/null 2>&1)',
+        installGuard: buildCodexInstallGuard,
         // On resume, `codex exec resume --last` continues the most recent thread.
         // `codex exec` is already non-interactive (it never prompts for approval), so we do NOT
         // pass `--ask-for-approval` — newer Codex CLIs reject that flag on `exec` (exit status 2:
@@ -1400,6 +1411,7 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey) {
     const baseDoc = {
         sandboxId,
         agent: vmJob.agent || DEFAULT_AGENT,
+        template: vmJob.vmTemplate || '',
         projectId: vmJob.projectId,
         objectId: vmJob.objectId,
         lastUsedAt: Date.now(),
@@ -1519,12 +1531,12 @@ async function runAgentInSandbox(
     subscriptionAuth = null
 ) {
     const { Sandbox } = require('e2b')
-    const env = getEnvFunctions()
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     // Model + effort the agent runs with, surfaced in the live status header.
     const runDetails = resolveAgentRunDetails(vmJob)
-    // Template defaults to E2B's prebuilt name for this agent; the env var is an optional override.
-    const template = env[config.templateEnvKey] || process.env[config.templateEnvKey] || config.defaultTemplate
+    // Always use E2B's managed prebuilt template for the selected agent.
+    const template = config.defaultTemplate
+    vmJob.vmTemplate = template
     const sessionRef = admin.firestore().doc(`vmSessions/${vmSessionDocId(vmJob)}`)
 
     // Resume the thread's paused sandbox (same agent) if there is one; else create fresh.
@@ -1535,7 +1547,21 @@ async function runAgentInSandbox(
     try {
         const sessSnap = await sessionRef.get()
         const sess = sessSnap.exists ? sessSnap.data() : null
-        if (sess && sess.sandboxId && sess.agent === (vmJob.agent || DEFAULT_AGENT)) {
+        const selectedAgent = vmJob.agent || DEFAULT_AGENT
+        const sessionMatchesAgent = sess && sess.agent === selectedAgent
+        const sessionMatchesTemplate = sess && sess.template === template
+        if (sess && sess.sandboxId && (!sessionMatchesAgent || !sessionMatchesTemplate)) {
+            console.log('🖥️ VM JOB: discarding incompatible session', {
+                correlationId: vmJob.correlationId,
+                sandboxId: sess.sandboxId,
+                previousAgent: sess.agent || null,
+                previousTemplate: sess.template || null,
+                selectedAgent,
+                selectedTemplate: template,
+            })
+            await Sandbox.kill(sess.sandboxId, { apiKey: e2bApiKey }).catch(() => {})
+            await sessionRef.delete().catch(() => {})
+        } else if (sess && sess.sandboxId && sessionMatchesAgent && sessionMatchesTemplate) {
             try {
                 // A paused sandbox must be explicitly resumed first (connect alone won't
                 // auto-resume it on e2b@1.x); a still-running one (keep-alive) just connects.
@@ -1676,15 +1702,19 @@ async function runAgentInSandbox(
         let runEnvs = { ...agentEnv }
         if (gitContext && gitContext.enabled) runEnvs = { ...runEnvs, ...buildGitEnv(gitContext) }
         if (gcpContext && gcpContext.enabled) runEnvs = { ...runEnvs, ...buildGcpEnv(gcpContext) }
-        const command = `mkdir -p /home/user/output && cd ${workdir} && ${config.installGuard} && ${config.buildRun(
-            isResume,
-            {
-                agentModel: runDetails.model,
-                agentReasoningEffort: runDetails.effort,
-                proxyBaseUrl: agentCredentials.baseUrl,
-                subscriptionUsed: !!subscriptionAuth,
-            }
-        )}`
+        const installGuard =
+            typeof config.installGuard === 'function'
+                ? config.installGuard({
+                      agentModel: runDetails.model,
+                      subscriptionUsed: !!subscriptionAuth,
+                  })
+                : config.installGuard
+        const command = `mkdir -p /home/user/output && cd ${workdir} && ${installGuard} && ${config.buildRun(isResume, {
+            agentModel: runDetails.model,
+            agentReasoningEffort: runDetails.effort,
+            proxyBaseUrl: agentCredentials.baseUrl,
+            subscriptionUsed: !!subscriptionAuth,
+        })}`
 
         const runStartMs = Date.now()
         console.log('🖥️ VM JOB: running agent command', {
@@ -2352,6 +2382,8 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
+        buildClaudeInstallGuard,
+        buildCodexInstallGuard,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,

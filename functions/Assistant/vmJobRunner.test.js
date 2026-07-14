@@ -163,6 +163,23 @@ describe('VM runner prompt', () => {
 })
 
 describe('Codex VM proxy configuration', () => {
+    test('always upgrades Codex to latest before every run', () => {
+        const guard = __private__.buildCodexInstallGuard()
+
+        expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
+        expect(guard).toContain('npm install -g --prefix /home/user/.local @openai/codex@latest')
+        expect(guard).not.toContain('command -v codex')
+        expect(guard).not.toContain('.codex-cli-')
+    })
+
+    test('always upgrades Claude Code to latest before every run', () => {
+        const guard = __private__.buildClaudeInstallGuard()
+
+        expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
+        expect(guard).toContain('npm install -g --prefix /home/user/.local @anthropic-ai/claude-code@latest')
+        expect(guard).not.toContain('command -v claude')
+    })
+
     test('routes Codex through the HTTP proxy and disables Responses WebSockets', () => {
         const overrides = __private__.buildCodexProxyConfigOverrides('https://vm-proxy.example/functions/vmLlmProxy/')
 
