@@ -2196,7 +2196,8 @@ const toolSchemas = {
                         type: 'string',
                         enum: ['claude', 'codex'],
                         description:
-                            'Optional. Which coding agent runs in the VM. Defaults to "claude". ' +
+                            'Optional. Which coding agent runs in the VM. An explicit choice overrides the user setting. ' +
+                            'When omitted, the requesting user\'s default VM agent is used, falling back to "claude" for users without a preference. ' +
                             'Use "claude" (Claude Code) for research, writing, analysis and general tasks; ' +
                             'consider "codex" (OpenAI Codex) for heavy coding / repository work. If unsure, omit it.',
                     },

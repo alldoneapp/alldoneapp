@@ -134,6 +134,82 @@ describe('startVmJob WhatsApp metadata', () => {
         )
     })
 
+    test('uses the requesting user default when the launch omits an agent', async () => {
+        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({ defaultVmAgent: 'codex' }),
+        })
+
+        await startVmJob({
+            objective: 'Change the code',
+            taskType: 'prototype',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-sol' })
+        )
+    })
+
+    test('lets an explicit agent override the requesting user default', async () => {
+        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
+            exists: true,
+            data: () => ({ defaultVmAgent: 'codex' }),
+        })
+
+        await startVmJob({
+            objective: 'Research this',
+            taskType: 'research',
+            agent: 'claude',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(mockGetDoc('users/user-1').get).not.toHaveBeenCalled()
+        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ agent: 'claude', agentModel: 'opus' })
+        )
+    })
+
+    test('keeps Claude as the launch fallback for users without a preference', async () => {
+        await startVmJob({
+            objective: 'Research this',
+            taskType: 'research',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ agent: 'claude', agentModel: 'opus' })
+        )
+    })
+
+    test('rejects an invalid explicitly requested agent', async () => {
+        const result = await startVmJob({
+            objective: 'Research this',
+            taskType: 'research',
+            agent: 'other',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(result).toEqual({ success: false, message: 'agent must be one of: claude, codex.' })
+        expect(deductGold).not.toHaveBeenCalled()
+    })
+
     test('surfaces an explicitly chosen model and effort in the VM status', async () => {
         await startVmJob({
             objective: 'Change the code',

@@ -3616,6 +3616,8 @@ export function mapUserData(userId, user) {
         email: user.email ? user.email : '',
         notificationEmail: user.notificationEmail ? user.notificationEmail : '',
         assistantEmailEnabled: user.assistantEmailEnabled !== false,
+        defaultVmAgent:
+            user.defaultVmAgent === 'claude' || user.defaultVmAgent === 'codex' ? user.defaultVmAgent : null,
         mcpEnabled: user.mcpEnabled !== false,
         mcpDisabledTools: Array.isArray(user.mcpDisabledTools) ? user.mcpDisabledTools : [],
         lastLogin: user.lastLogin ? user.lastLogin : new Date().getTime(),
@@ -6503,6 +6505,18 @@ export async function getGcpConnection(projectId, userId) {
 }
 
 // --- Personal Claude/Codex subscriptions for execute_task_in_vm ---
+
+export async function getVmAgentSettings() {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmAgentSettings')
+    const result = await fn({})
+    return result.data
+}
+
+export async function setDefaultVmAgent(agent) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgent')
+    const result = await fn({ agent })
+    return result.data
+}
 
 export async function getVmSubscriptionStatus() {
     const fn = firebase.app().functions('europe-west1').httpsCallable('getVmSubscriptionStatus')

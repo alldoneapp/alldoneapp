@@ -953,6 +953,36 @@ exports.getVmSubscriptionStatus = onCall(
     }
 )
 
+exports.getVmAgentSettings = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { getVmAgentSettings } = require('./Assistant/vmAgentSettings')
+        return await getVmAgentSettings({ userId: auth.uid })
+    }
+)
+
+exports.setDefaultVmAgent = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setDefaultVmAgent } = require('./Assistant/vmAgentSettings')
+        return await setDefaultVmAgent({ userId: auth.uid, agent: data && data.agent })
+    }
+)
+
 exports.connectVmSubscription = onCall(
     {
         timeoutSeconds: 30,

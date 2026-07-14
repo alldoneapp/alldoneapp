@@ -2,6 +2,11 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { getFunctions } = require('firebase-admin/functions')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
+const {
+    VALID_VM_AGENTS: VALID_AGENTS,
+    SYSTEM_DEFAULT_VM_AGENT: DEFAULT_AGENT,
+    resolveVmAgent,
+} = require('./vmAgentSettings')
 
 // Hybrid Gold pricing for a VM run:
 //   total = VM_JOB_BASE_GOLD + ceil(runtimeMinutes) * VM_GOLD_PER_MINUTE
@@ -30,8 +35,6 @@ const RUN_VM_JOB_FUNCTION_NAME = 'runVmJob'
 const VALID_TASK_TYPES = ['research', 'document', 'prototype', 'data']
 
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
-const VALID_AGENTS = ['claude', 'codex']
-const DEFAULT_AGENT = 'claude'
 const DEFAULT_CLAUDE_MODEL = 'opus'
 const DEFAULT_CODEX_MODEL = 'gpt-5.6-sol'
 const DEFAULT_CLAUDE_EFFORT_LEVEL = 'high'
@@ -216,7 +219,7 @@ async function countActiveVmJobsForUser(userId) {
 async function startVmJob({
     objective,
     taskType,
-    agent = DEFAULT_AGENT,
+    agent,
     agentModel,
     agentReasoningEffort,
     contextObjectIds = [],
@@ -243,16 +246,6 @@ async function startVmJob({
             message: `task_type must be one of: ${VALID_TASK_TYPES.join(', ')}.`,
         }
     }
-    const selectedAgent = VALID_AGENTS.includes(agent) ? agent : DEFAULT_AGENT
-    const selectedAgentLabel = getAgentLabel(selectedAgent)
-    const modelResult = normalizeAgentModel(selectedAgent, agentModel)
-    if (modelResult.error) {
-        return { success: false, message: modelResult.error }
-    }
-    const effortResult = normalizeAgentReasoningEffort(selectedAgent, agentReasoningEffort)
-    if (effortResult.error) {
-        return { success: false, message: effortResult.error }
-    }
     if (!projectId || !objectId) {
         return {
             success: false,
@@ -261,6 +254,20 @@ async function startVmJob({
     }
     if (!requestUserId) {
         return { success: false, message: 'A VM task requires a requesting user.' }
+    }
+    if (agent != null && agent !== '' && !VALID_AGENTS.includes(agent)) {
+        return { success: false, message: `agent must be one of: ${VALID_AGENTS.join(', ')}.` }
+    }
+
+    const selectedAgent = await resolveVmAgent(requestUserId, agent)
+    const selectedAgentLabel = getAgentLabel(selectedAgent)
+    const modelResult = normalizeAgentModel(selectedAgent, agentModel)
+    if (modelResult.error) {
+        return { success: false, message: modelResult.error }
+    }
+    const effortResult = normalizeAgentReasoningEffort(selectedAgent, agentReasoningEffort)
+    if (effortResult.error) {
+        return { success: false, message: effortResult.error }
     }
 
     // Enforce the per-user concurrency cap.

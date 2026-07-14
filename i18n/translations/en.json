@@ -2358,5 +2358,9 @@
     "Treat this credential like a password. Alldone stores it in your private account data and only supplies it to your own VM run.": "Treat this credential like a password. Alldone stores it in your private account data and only supplies it to your own VM run.",
     "Replace credential": "Replace credential",
     "Connect subscription": "Connect subscription",
-    "Could not load subscription connections.": "Could not load subscription connections."
+    "Could not load subscription connections.": "Could not load subscription connections.",
+    "Default VM agent": "Default VM agent",
+    "Choose which agent runs VM tasks when no agent is explicitly requested. An explicit choice always takes priority.": "Choose which agent runs VM tasks when no agent is explicitly requested. An explicit choice always takes priority.",
+    "Could not load the default VM agent.": "Could not load the default VM agent.",
+    "Could not save the default VM agent.": "Could not save the default VM agent."
 }

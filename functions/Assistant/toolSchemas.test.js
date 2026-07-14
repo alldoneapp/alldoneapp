@@ -337,6 +337,8 @@ describe('VM assistant tool schema', () => {
             'Always use "prototype" for coding tasks'
         )
         const properties = toolSchemas.execute_task_in_vm.function.parameters.properties
+        expect(properties.agent.description).toContain("user's default VM agent")
+        expect(properties.agent.description).toContain('explicit choice overrides')
         expect(properties.agentModel.type).toBe('string')
         expect(properties.agentReasoningEffort.enum).toEqual(['low', 'medium', 'high', 'xhigh'])
     })
