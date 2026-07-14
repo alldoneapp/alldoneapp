@@ -5,8 +5,12 @@ deadline. `startVmJob` launches one execution with `VM_JOB_CORRELATION_ID`; the
 runner remains the source of truth for E2B, Firestore lifecycle, Gold and result
 delivery.
 
-The product runtime is one hour. The Cloud Run task timeout is 1h15m, leaving
-15 minutes for E2B cleanup, artifacts, Gold settlement and notifications.
+The product runtime is five hours. Each E2B sandbox lease is capped at one hour;
+the runner disconnects the command stream, pauses and immediately resumes the
+sandbox every 55 minutes, then reconnects to the same process. The filesystem,
+memory and processes survive these handoffs. The Cloud Run task timeout is 5h45m,
+leaving 45 minutes for handoffs, E2B cleanup, artifacts, Gold settlement and
+notifications.
 
 The Functions launcher records the Cloud Run operation and execution separately.
 Ambiguous launch responses are reconciled against the correlation-ID override
@@ -14,11 +18,8 @@ before a launch is failed or Gold is refunded. User cancellation calls the Cloud
 Run execution cancellation API directly and remains backed by the worker's
 Firestore cancellation polling.
 
-The migration is guarded by `VM_CLOUD_RUN_JOBS_ENABLED=true` in the Firebase
-Functions environment. Until that value is enabled, launches continue using the
-retained `runVmJob` Cloud Tasks rollback worker, whose runtime is limited to 25
-minutes by the Cloud Tasks/Functions deadline. The one-hour runtime therefore
-requires the detached job to be deployed and the rollout flag to be enabled.
+All new VM tasks launch the detached Cloud Run Job directly. There is no runtime
+feature flag and no Cloud Tasks fallback path.
 
 ## Deploy manually
 
@@ -52,12 +53,5 @@ Required manual setup per environment:
 -   Review the regional Cloud Run Jobs concurrent-execution quota before rollout.
     The product still enforces the existing ten-job per-user admission cap; project
     quota is the global safety limit after removing Cloud Tasks dispatch throttling.
--   Deploy the Firebase Functions change with `VM_CLOUD_RUN_JOBS_ENABLED` unset
-    during the initial infrastructure rollout.
--   After a direct staging execution succeeds, set
-    `VM_CLOUD_RUN_JOBS_ENABLED=true` for staging Functions and redeploy them.
-    Repeat the staged rollout for production.
-
-Rollback: unset `VM_CLOUD_RUN_JOBS_ENABLED` and redeploy Functions. The legacy
-`runVmJob` function is kept temporarily for this purpose. Do not delete the
-Cloud Run Job until active executions have settled.
+    Rollback requires reverting the launcher change and redeploying Functions. Do
+    not remove the Cloud Run Job while executions are active.
