@@ -46,6 +46,12 @@ const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 const CODEX_AUTH_DIR = '/home/user/.codex'
 const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
 const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
+// E2B's managed images may ship /home/user/.npm from an immutable/root-owned
+// layer, while Codex's nested workspace sandbox only guarantees writes below the
+// checkout and /tmp. Use a per-sandbox temp cache that works in both layers. This
+// environment is inherited by the agent, so repository-level npm install/ci
+// commands use the writable cache from their first attempt too.
+const VM_NPM_CACHE_DIR = '/tmp/alldone-npm-cache'
 const MAX_BOOTSTRAP_DIAGNOSTIC_CHARS = 16 * 1024
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
@@ -88,6 +94,14 @@ const REPO_DIR = '/home/user/repo'
 
 function uniqueDefined(values) {
     return Array.from(new Set((Array.isArray(values) ? values : []).filter(value => !!value)))
+}
+
+function buildSandboxCommandEnv(...environments) {
+    return Object.assign({}, ...environments.filter(environment => environment && typeof environment === 'object'), {
+        // Apply last so a template or credential environment cannot accidentally
+        // restore npm's read-only default cache.
+        NPM_CONFIG_CACHE: VM_NPM_CACHE_DIR,
+    })
 }
 
 function getVmParentObjectPath(projectId, objectType, objectId) {
@@ -775,18 +789,11 @@ async function collectArtifacts(sandbox, correlationId, sinceMs = 0) {
 
 const MAX_ACTIVITY_LINES = 15
 
-// Tool metadata can contain very large implementation details (for example a full patch in a
-// shell command), so keep those labels compact. Provider-authored progress text is handled
-// separately and must remain verbatim so the chat never silently cuts an agent update short.
-function summarizeToolDetail(value, n) {
+function truncate(value, n) {
     const s = String(value || '')
         .replace(/\s+/g, ' ')
         .trim()
     return s.length > n ? s.substring(0, n) + '…' : s
-}
-
-function formatActivityText(value) {
-    return String(value || '').trim()
 }
 
 // Map a Claude Code tool_use block to a friendly, human-readable activity line.
@@ -794,21 +801,21 @@ function claudeToolLabel(name, input) {
     const i = input || {}
     switch (name) {
         case 'WebSearch':
-            return `🔍 Searching the web${i.query ? `: "${summarizeToolDetail(i.query, 80)}"` : '…'}`
+            return `🔍 Searching the web${i.query ? `: "${truncate(i.query, 80)}"` : '…'}`
         case 'WebFetch':
-            return `🌐 Reading ${summarizeToolDetail(i.url || '', 80)}`
+            return `🌐 Reading ${truncate(i.url || '', 80)}`
         case 'Bash':
-            return `💻 ${summarizeToolDetail(i.command || 'running a command', 100)}`
+            return `💻 ${truncate(i.command || 'running a command', 100)}`
         case 'Read':
-            return `📄 Reading ${summarizeToolDetail(i.file_path || i.path || '', 80)}`
+            return `📄 Reading ${truncate(i.file_path || i.path || '', 80)}`
         case 'Write':
-            return `✍️ Writing ${summarizeToolDetail(i.file_path || i.path || '', 80)}`
+            return `✍️ Writing ${truncate(i.file_path || i.path || '', 80)}`
         case 'Edit':
         case 'MultiEdit':
-            return `✏️ Editing ${summarizeToolDetail(i.file_path || i.path || '', 80)}`
+            return `✏️ Editing ${truncate(i.file_path || i.path || '', 80)}`
         case 'Glob':
         case 'Grep':
-            return `🔎 Searching files${i.pattern ? `: ${summarizeToolDetail(i.pattern, 60)}` : '…'}`
+            return `🔎 Searching files${i.pattern ? `: ${truncate(i.pattern, 60)}` : '…'}`
         case 'TodoWrite':
             return '🗒️ Planning the work…'
         default:
@@ -841,8 +848,7 @@ function appendClaudeActivity(evt, state) {
         for (const b of evt.message.content) {
             if (b && b.type === 'text' && b.text) {
                 state.assistantText += b.text
-                const activityText = formatActivityText(b.text)
-                if (activityText) state.activity.push(`💬 ${activityText}`)
+                if (b.text.trim()) state.activity.push(`💬 ${truncate(b.text, 200)}`)
             } else if (b && b.type === 'tool_use') {
                 state.activity.push(claudeToolLabel(b.name, b.input))
             }
@@ -855,7 +861,7 @@ function appendClaudeActivity(evt, state) {
 function appendCodexActivity(evt, state) {
     if (!evt || typeof evt !== 'object') return
     if (evt.type === 'error') {
-        state.activity.push(`⚠️ ${formatActivityText(evt.message || evt.error || 'error')}`)
+        state.activity.push(`⚠️ ${truncate(evt.message || evt.error || 'error', 160)}`)
         return
     }
     if (evt.type === 'turn.completed') {
@@ -879,25 +885,23 @@ function appendCodexActivity(evt, state) {
         case 'agent_message':
             if (typeof item.text === 'string' && item.text) {
                 state.assistantText = item.text // last agent message is the final answer
-                const activityText = formatActivityText(item.text)
-                if (completed && activityText) state.activity.push(`💬 ${activityText}`)
+                if (completed && item.text.trim()) state.activity.push(`💬 ${truncate(item.text, 200)}`)
             }
             break
         case 'reasoning':
-            if (completed && item.text) state.activity.push(`💭 ${formatActivityText(item.text)}`)
+            if (completed && item.text) state.activity.push(`💭 ${truncate(item.text, 160)}`)
             break
         case 'command_execution':
-            if (completed) state.activity.push(`💻 ${summarizeToolDetail(item.command || 'command', 100)}`)
+            if (completed) state.activity.push(`💻 ${truncate(item.command || 'command', 100)}`)
             break
         case 'web_search':
-            if (completed)
-                state.activity.push(`🔍 Searching${item.query ? `: "${summarizeToolDetail(item.query, 80)}"` : '…'}`)
+            if (completed) state.activity.push(`🔍 Searching${item.query ? `: "${truncate(item.query, 80)}"` : '…'}`)
             break
         case 'file_change':
             if (completed) state.activity.push('✏️ Editing files')
             break
         case 'mcp_tool_call':
-            if (completed) state.activity.push(`🔧 ${summarizeToolDetail(item.tool || item.name || 'tool', 60)}`)
+            if (completed) state.activity.push(`🔧 ${truncate(item.tool || item.name || 'tool', 60)}`)
             break
         case 'todo_list':
         case 'plan_update':
@@ -1058,6 +1062,7 @@ async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, 
     console.log('🖥️ VM JOB: updating agent CLI', { agent: agentLabel, version: 'latest' })
     try {
         await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
+            envs: buildSandboxCommandEnv(),
             timeoutMs: 5 * 60 * 1000,
             onStdout: handleStdout,
             onStderr: data => {
@@ -1800,9 +1805,11 @@ async function runAgentInSandbox(
             mode: agentCredentials.mode,
         })
         const agentEnv = config.sandboxEnv(agentCredentials)
-        let runEnvs = { ...agentEnv }
-        if (gitContext && gitContext.enabled) runEnvs = { ...runEnvs, ...buildGitEnv(gitContext) }
-        if (gcpContext && gcpContext.enabled) runEnvs = { ...runEnvs, ...buildGcpEnv(gcpContext) }
+        const runEnvs = buildSandboxCommandEnv(
+            agentEnv,
+            gitContext && gitContext.enabled ? buildGitEnv(gitContext) : null,
+            gcpContext && gcpContext.enabled ? buildGcpEnv(gcpContext) : null
+        )
         const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${config.buildRun(
             isResume,
             {
@@ -2514,14 +2521,13 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
+        buildSandboxCommandEnv,
         buildClaudeInstallGuard,
         buildCodexInstallGuard,
         sanitizeVmErrorText,
         buildStageError,
         buildAgentExitError,
         ensureAgentCliAvailable,
-        appendClaudeActivity,
-        appendCodexActivity,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,

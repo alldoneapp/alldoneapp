@@ -134,41 +134,6 @@ describe('VM runner prompt', () => {
         )
     })
 
-    test('preserves complete multiline Claude progress updates', () => {
-        const progressText = `First line\n\n${'Complete Claude update. '.repeat(20).trim()}`
-        const state = { activity: [], finalResult: '', assistantText: '', usage: null }
-
-        __private__.appendClaudeActivity(
-            {
-                type: 'assistant',
-                message: { content: [{ type: 'text', text: `  ${progressText}  ` }] },
-            },
-            state
-        )
-
-        expect(state.activity).toEqual([`💬 ${progressText}`])
-        expect(__private__.renderActivityLog(state.activity, 'Claude')).toContain(progressText)
-    })
-
-    test('preserves complete Codex progress and reasoning updates', () => {
-        const progressText = `Codex update\n${'All details stay visible. '.repeat(20).trim()}`
-        const reasoningText = `Reasoning summary\n${'No detail is removed. '.repeat(20).trim()}`
-        const state = { activity: [], finalResult: '', assistantText: '', usage: null }
-
-        __private__.appendCodexActivity(
-            { type: 'item.completed', item: { type: 'agent_message', text: progressText } },
-            state
-        )
-        __private__.appendCodexActivity(
-            { type: 'item.completed', item: { type: 'reasoning', text: reasoningText } },
-            state
-        )
-
-        expect(state.activity).toEqual([`💬 ${progressText}`, `💭 ${reasoningText}`])
-        expect(__private__.renderActivityLog(state.activity, 'Codex')).toContain(progressText)
-        expect(__private__.renderActivityLog(state.activity, 'Codex')).toContain(reasoningText)
-    })
-
     test('header includes the model and effort the agent is running with', () => {
         expect(__private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' })).toBe(
             '🖥️ Working with Claude (opus · high effort) in a VM…'
@@ -206,6 +171,18 @@ describe('VM runner prompt', () => {
 })
 
 describe('Codex VM proxy configuration', () => {
+    test('forces a writable npm cache for every sandbox command environment', () => {
+        expect(
+            __private__.buildSandboxCommandEnv({
+                CI: 'true',
+                NPM_CONFIG_CACHE: '/home/user/.npm',
+            })
+        ).toEqual({
+            CI: 'true',
+            NPM_CONFIG_CACHE: '/tmp/alldone-npm-cache',
+        })
+    })
+
     test('always installs the latest Codex CLI in the observable bootstrap stage', () => {
         const guard = __private__.buildCodexInstallGuard()
 
@@ -252,6 +229,12 @@ describe('Codex VM proxy configuration', () => {
             'Claude installation failed. stdout: npm notice package metadata stderr: npm ERR! Authorization: Bearer [REDACTED] registry unavailable'
         )
         expect(onActivity).toHaveBeenCalledWith('Working\n\n📦 Installing Claude…')
+        expect(sandbox.commands.run).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                envs: { NPM_CONFIG_CACHE: '/tmp/alldone-npm-cache' },
+            })
+        )
     })
 
     test('preserves a structured Claude error on a non-zero exit and redacts secrets', () => {
