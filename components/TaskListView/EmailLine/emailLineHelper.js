@@ -195,6 +195,23 @@ export function getLabelWebUrl(provider, emailAddress, label) {
     return buildGmailLabelUrl(emailAddress, label)
 }
 
+// Resolves the destination for the "Unsubscribe" affordance from an email's parsed
+// List-Unsubscribe metadata. Prefers a whitelisted https:// link; for a mailto-only
+// header there is no safe in-app action, so fall back to opening the message
+// (source.webUrl) where the user can unsubscribe in the provider UI. Returns null when
+// no valid destination exists, so callers can hide the control entirely.
+// `source` is any object carrying `{ unsubscribe: { httpsUrl, mailto }, webUrl }` —
+// an EmailRow row or a comment's gmailData both fit this shape.
+export function resolveUnsubscribeUrl(source) {
+    const unsubscribe = source?.unsubscribe
+    if (!unsubscribe) return null
+    if (typeof unsubscribe.httpsUrl === 'string' && unsubscribe.httpsUrl.startsWith('https://')) {
+        return unsubscribe.httpsUrl
+    }
+    if (unsubscribe.mailto) return source.webUrl || null
+    return null
+}
+
 export function openUrlInNewTab(url) {
     if (!url) return
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.open) {

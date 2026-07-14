@@ -3589,6 +3589,9 @@ async function addChatCommentFromAssistantTool({
             direction: gmailContext.direction || '',
             targetContactEmail: gmailContext.targetContactEmail || '',
             targetContactName: gmailContext.targetContactName || '',
+            // Parsed List-Unsubscribe metadata ({ httpsUrl, mailto }) so the chat UI can
+            // render an Unsubscribe action next to Archive. Omitted when the email has none.
+            ...(gmailContext.unsubscribe ? { unsubscribe: gmailContext.unsubscribe } : {}),
         }
     }
 

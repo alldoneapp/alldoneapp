@@ -12,6 +12,7 @@ import {
     mergeLabelsAcrossConnections,
     MAX_VISIBLE_CHIPS,
     markEmailLabelPickerInteraction,
+    resolveUnsubscribeUrl,
     shouldIgnoreEmailLabelModalDismiss,
 } from './emailLineHelper'
 
@@ -277,6 +278,34 @@ describe('emailLineHelper', () => {
             markEmailLabelPickerInteraction()
             now += 5000 // no dismiss arrived promptly (e.g. desktop swallowed the click)
             expect(shouldIgnoreEmailLabelModalDismiss()).toBe(false)
+        })
+    })
+
+    describe('resolveUnsubscribeUrl', () => {
+        test('prefers a whitelisted https unsubscribe link', () => {
+            const url = resolveUnsubscribeUrl({
+                unsubscribe: { httpsUrl: 'https://ex.com/u', mailto: 'mailto:u@ex.com' },
+                webUrl: 'https://mail.google.com/x',
+            })
+            expect(url).toBe('https://ex.com/u')
+        })
+
+        test('falls back to the message url for a mailto-only header', () => {
+            const url = resolveUnsubscribeUrl({
+                unsubscribe: { mailto: 'mailto:u@ex.com' },
+                webUrl: 'https://mail.google.com/x',
+            })
+            expect(url).toBe('https://mail.google.com/x')
+        })
+
+        test('returns null for a mailto-only header without a message url', () => {
+            expect(resolveUnsubscribeUrl({ unsubscribe: { mailto: 'mailto:u@ex.com' } })).toBeNull()
+        })
+
+        test('ignores a non-https url and rejects missing metadata', () => {
+            expect(resolveUnsubscribeUrl({ unsubscribe: { httpsUrl: 'http://ex.com/u' } })).toBeNull()
+            expect(resolveUnsubscribeUrl({ unsubscribe: null })).toBeNull()
+            expect(resolveUnsubscribeUrl(null)).toBeNull()
         })
     })
 })
