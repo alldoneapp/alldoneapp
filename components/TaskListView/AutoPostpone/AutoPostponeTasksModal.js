@@ -15,6 +15,7 @@ import {
     autoPostponeMultipleTasks,
     getDateToMoveTaskInAutoPostpone,
 } from '../../../utils/backends/Tasks/tasksFirestore'
+import { formatDueDate } from '../../UIComponents/FloatModals/DueDateModal/formatDueDate'
 import {
     TASK_PRIORITY_COULD_DO,
     TASK_PRIORITY_DO_LATER,
@@ -454,7 +455,7 @@ function ProjectGroupHeader({ project, testID }) {
 
 function TaskPreviewRow({ task, checked, disabled, onToggle, testID }) {
     const reminderDate = getDateToMoveTaskInAutoPostpone(task.timesPostponed, task.isObservedTask)
-    const dateText = reminderDate === BACKLOG_DATE_NUMERIC ? translate('Someday') : reminderDate.format('D MMM')
+    const dateText = reminderDate === BACKLOG_DATE_NUMERIC ? translate('Someday') : formatDueDate(reminderDate)
 
     return (
         <TouchableOpacity
