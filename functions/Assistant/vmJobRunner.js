@@ -79,6 +79,15 @@ const E2B_API_BASE = 'https://api.e2b.dev'
 const KEEP_ALIVE_GRACE_MS = 10 * 60 * 1000 // pause after 10 min idle
 const KEEP_ALIVE_KILL_MS = 15 * 60 * 1000 // sandbox self-kill timeout (> grace + 2-min pauser interval)
 
+// After resuming a paused sandbox, E2B's `resume` REST call + Sandbox.connect + setTimeout can
+// all succeed while the sandbox's command channel (envd) comes back dead — a known E2B resume
+// beta issue (https://github.com/e2b-dev/E2B/issues/884). Every subsequent command (skill mount,
+// git clone, CLI bootstrap) then hangs until its own multi-minute timeoutMs and fails the whole
+// paid run. We probe the resumed sandbox with a trivial command under this short timeout: if it
+// doesn't respond we discard the zombie and fall through to a fresh sandbox instead of burning
+// minutes and refunding Gold on a doomed run.
+const RESUME_HEALTHCHECK_TIMEOUT_MS = 15 * 1000
+
 // Per-task-type guidance prepended to the agent's objective.
 const TASK_TYPE_PROFILES = {
     research:
@@ -370,6 +379,15 @@ function isReusableVmSession(session) {
 function isUnhealthyVmSessionError(error) {
     const message = String(error?.message || error || '')
     return isE2bSandboxTimeout(error) || /exited with exit status -1\b/i.test(message)
+}
+
+// Probe a just-resumed sandbox's command channel with a trivial command under a short timeout.
+// E2B's resume (a beta feature) can hand back a sandbox whose `resume`/connect/setTimeout all
+// succeeded but whose envd is dead — every later command then hangs until its own multi-minute
+// timeoutMs and fails the paid run. Rejecting here lets the caller discard the zombie and fall
+// through to a fresh sandbox. Kept as a thin helper so the probe timeout is unit-testable.
+async function probeResumedVmSandbox(sandbox) {
+    await sandbox.commands.run('true', { timeoutMs: RESUME_HEALTHCHECK_TIMEOUT_MS })
 }
 
 function uniqueDefined(values) {
@@ -2210,6 +2228,13 @@ async function runAgentInSandbox(
                     allowInternetAccess: true,
                 })
                 await resumedSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
+                // Verify the resumed sandbox's command channel actually executes before we commit
+                // to it. connect()/setTimeout() succeed even on a resume that came back with a dead
+                // envd; this trivial command hangs (→ deadline_exceeded under the short timeout) in
+                // that case, so we discard the zombie via the catch below and fall through to a
+                // fresh sandbox — instead of hanging the first real command (git clone / skill
+                // mount / CLI bootstrap) for its full multi-minute budget and failing the run.
+                await probeResumedVmSandbox(resumedSandbox)
                 sandboxLeaseDeadlineMs = Date.now() + E2B_SANDBOX_TIMEOUT_MS
                 sandbox = resumedSandbox
                 isResume = true
@@ -3240,6 +3265,8 @@ module.exports = {
         startVmSessionHeartbeat,
         isReusableVmSession,
         isUnhealthyVmSessionError,
+        probeResumedVmSandbox,
+        RESUME_HEALTHCHECK_TIMEOUT_MS,
         formatVmRuntimeDuration,
         buildVmRuntimeTimeoutText,
         buildWhatsAppVmResultMessage,

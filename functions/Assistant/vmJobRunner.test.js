@@ -236,7 +236,10 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         fs.writeFileSync(
             fakeNpmPath,
             [
-                '#!/usr/bin/env node',
+                // Absolute interpreter path so the shim runs without needing `node` on the
+                // hermetic PATH that runClaudeInstallGuard sets (host `node` lives next to the
+                // real `claude`, which we deliberately keep off that PATH).
+                `#!${process.execPath}`,
                 "const fs = require('fs')",
                 "const path = require('path')",
                 'const args = process.argv.slice(2)',
@@ -266,6 +269,19 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         fs.chmodSync(fakeNpmPath, 0o755)
     }
 
+    // The install guard hard-requires `flock` (a per-agent process lock). `flock` ships with
+    // util-linux on the Linux CI image but is absent on macOS, so without this shim the guard
+    // exits at its first line and these tests fail only on macOS dev machines. Shim it onto the
+    // guard's prepended PATH — exactly like the fake npm above — so the lock acquires as a no-op
+    // and the tests exercise the real install/upgrade/backup logic on any host. (The presence of
+    // the lock in the emitted script itself is asserted separately via `buildCodexInstallGuard`.)
+    function installFakeFlock() {
+        const fakeFlockPath = path.join(prefix, 'bin', 'flock')
+        fs.mkdirSync(path.dirname(fakeFlockPath), { recursive: true })
+        fs.writeFileSync(fakeFlockPath, '#!/usr/bin/env bash\nexit 0\n')
+        fs.chmodSync(fakeFlockPath, 0o755)
+    }
+
     function runClaudeInstallGuard(latestVersion = '2.1.0', failInstall = false) {
         const command = __private__.buildClaudeInstallGuard({
             prefix,
@@ -276,6 +292,12 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
             encoding: 'utf8',
             env: {
                 ...process.env,
+                // Hermetic PATH: only the shimmed prefix/bin (fake npm, fake flock, and any
+                // test-managed claude) plus system dirs. This keeps the host's real claude/npm
+                // (installed in ~/.local/bin on dev machines) from leaking in via `command -v`,
+                // which otherwise makes a "missing"/"stale" launcher resolve to the real CLI and
+                // reports the wrong installed version. CI passed only because its PATH is clean.
+                PATH: `${path.join(prefix, 'bin')}:/usr/bin:/bin`,
                 FAKE_CLI_PATH: path.join(prefix, 'bin', 'claude'),
                 FAKE_NPM_LATEST: latestVersion,
                 FAKE_NPM_LOG: npmLogPath,
@@ -289,6 +311,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         prefix = path.join(cliTestDir, 'prefix')
         npmLogPath = path.join(cliTestDir, 'npm.log')
         installFakeNpm()
+        installFakeFlock()
     })
 
     afterEach(() => {
@@ -902,6 +925,36 @@ describe('VM session isolation', () => {
         expect(__private__.isUnhealthyVmSessionError(new Error('deadline exceeded while running git fetch'))).toBe(true)
         expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status -1.'))).toBe(true)
         expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status 2.'))).toBe(false)
+    })
+
+    test('probes a resumed sandbox with a trivial command under the short health-check timeout', async () => {
+        const sandbox = { commands: { run: jest.fn(async () => ({ exitCode: 0 })) } }
+
+        await expect(__private__.probeResumedVmSandbox(sandbox)).resolves.toBeUndefined()
+        expect(sandbox.commands.run).toHaveBeenCalledWith('true', {
+            timeoutMs: __private__.RESUME_HEALTHCHECK_TIMEOUT_MS,
+        })
+        // Must be far shorter than the multi-minute per-command budgets so a dead resume is caught
+        // in seconds instead of hanging the first real command for minutes.
+        expect(__private__.RESUME_HEALTHCHECK_TIMEOUT_MS).toBeLessThanOrEqual(30 * 1000)
+    })
+
+    test('propagates the timeout when a resumed sandbox comes back with a dead command channel', async () => {
+        const deadline = new Error(
+            "[deadline_exceeded] the operation timed out: This error is likely due to exceeding 'timeoutMs'"
+        )
+        const sandbox = {
+            commands: {
+                run: jest.fn(async () => {
+                    throw deadline
+                }),
+            },
+        }
+
+        // The rejection is what lets the resume block's catch discard the zombie and fall through
+        // to a fresh sandbox instead of committing to it.
+        await expect(__private__.probeResumedVmSandbox(sandbox)).rejects.toBe(deadline)
+        expect(__private__.isUnhealthyVmSessionError(deadline)).toBe(true)
     })
 
     test('does not claim a sandbox leased by another active execution', async () => {
