@@ -740,12 +740,14 @@ describe('VM runner timeout handling', () => {
         )
     })
 
-    test.each(['deadline exceeded while waiting for the command', 'command timed out', 'sandbox timeout'])(
-        'classifies a known timeout signal: %s',
-        message => {
-            expect(__private__.isE2bSandboxTimeout(new Error(message))).toBe(true)
-        }
-    )
+    test.each([
+        'deadline exceeded while waiting for the command',
+        '[deadline_exceeded] the operation timed out',
+        'command timed out',
+        'sandbox timeout',
+    ])('classifies a known timeout signal: %s', message => {
+        expect(__private__.isE2bSandboxTimeout(new Error(message))).toBe(true)
+    })
 
     test.each(['exit status 2', 'signal: killed', 'terminated by user', 'connection reset'])(
         'preserves a non-timeout termination: %s',
@@ -885,6 +887,68 @@ describe('VM runner timeout handling', () => {
         expect(onCommandHandleChange).toHaveBeenCalledWith(secondHandle)
         expect(supervision.result).toBe(resumedResult)
         expect(supervision.sliceCount).toBe(2)
+    })
+})
+
+describe('VM session isolation', () => {
+    test('only reuses explicitly paused or safely idle leased sessions', () => {
+        expect(__private__.isReusableVmSession({ status: 'paused' })).toBe(true)
+        expect(__private__.isReusableVmSession({ status: 'idle_running' })).toBe(true)
+        expect(__private__.isReusableVmSession({ status: 'busy' })).toBe(false)
+        expect(__private__.isReusableVmSession({ status: 'running' })).toBe(false)
+    })
+
+    test('treats command-channel timeouts and forced agent termination as unhealthy', () => {
+        expect(__private__.isUnhealthyVmSessionError(new Error('deadline exceeded while running git fetch'))).toBe(true)
+        expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status -1.'))).toBe(true)
+        expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status 2.'))).toBe(false)
+    })
+
+    test('does not claim a sandbox leased by another active execution', async () => {
+        const session = {
+            status: 'busy',
+            activeLeaseOwner: 'other-execution',
+            activeLeaseExpiresAt: Date.now() + 60000,
+        }
+        const transaction = {
+            get: jest.fn(async () => ({ exists: true, data: () => session })),
+            set: jest.fn(),
+        }
+        mockFirestore.mockReturnValueOnce({
+            runTransaction: jest.fn(async callback => callback(transaction)),
+        })
+
+        await expect(__private__.claimVmSessionLease({}, 'this-execution')).resolves.toEqual({
+            claimed: false,
+            session,
+        })
+        expect(transaction.set).not.toHaveBeenCalled()
+    })
+
+    test('claims an idle sandbox atomically before it is resumed', async () => {
+        const session = { status: 'idle_running', sandboxId: 'sandbox-1' }
+        const transaction = {
+            get: jest.fn(async () => ({ exists: true, data: () => session })),
+            set: jest.fn(),
+        }
+        mockFirestore.mockReturnValueOnce({
+            runTransaction: jest.fn(async callback => callback(transaction)),
+        })
+
+        await expect(__private__.claimVmSessionLease({}, 'this-execution')).resolves.toEqual({
+            claimed: true,
+            session,
+        })
+        expect(transaction.set).toHaveBeenCalledWith(
+            {},
+            expect.objectContaining({
+                status: 'busy',
+                activeLeaseOwner: 'this-execution',
+                activeCorrelationId: 'this-execution',
+                activeLeaseExpiresAt: expect.any(Number),
+            }),
+            { merge: true }
+        )
     })
 })
 

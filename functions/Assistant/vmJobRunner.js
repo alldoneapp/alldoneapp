@@ -49,6 +49,8 @@ const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 const VM_RUNTIME_TIMEOUT_FAILURE_REASON = 'runtime_timeout'
 const VM_JOB_HEARTBEAT_INTERVAL_MS = 30 * 1000
 const VM_JOB_LEASE_MS = 2 * 60 * 1000
+const VM_SESSION_HEARTBEAT_INTERVAL_MS = 30 * 1000
+const VM_SESSION_LEASE_MS = 2 * 60 * 1000
 const CODEX_AUTH_DIR = '/home/user/.codex'
 const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
 const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
@@ -177,6 +179,8 @@ function isE2bSandboxTimeout(error) {
     return (
         /^2:\s*\[unknown\]\s*terminated$/i.test(message) ||
         normalizedMessage.includes('deadline exceeded') ||
+        normalizedMessage.includes('deadline_exceeded') ||
+        normalizedMessage.includes('operation timed out') ||
         normalizedMessage.includes('command timed out') ||
         normalizedMessage.includes('command timeout') ||
         normalizedMessage.includes('sandbox timed out') ||
@@ -298,6 +302,74 @@ function startVmJobHeartbeat(pendingRef, leaseOwner) {
         },
         hasLostLease: () => leaseLost,
     }
+}
+
+async function claimVmSessionLease(sessionRef, leaseOwner, correlationId = leaseOwner) {
+    const now = Date.now()
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(sessionRef)
+        const session = snapshot.exists ? snapshot.data() || {} : null
+        const activeLeaseOwner = session?.activeLeaseOwner || null
+        const activeLeaseExpiresAt = Number(session?.activeLeaseExpiresAt) || 0
+        if (activeLeaseOwner && activeLeaseOwner !== leaseOwner && activeLeaseExpiresAt > now) {
+            return { claimed: false, session }
+        }
+        transaction.set(
+            sessionRef,
+            {
+                status: 'busy',
+                activeLeaseOwner: leaseOwner,
+                activeLeaseExpiresAt: now + VM_SESSION_LEASE_MS,
+                activeCorrelationId: correlationId,
+            },
+            { merge: true }
+        )
+        return { claimed: true, session }
+    })
+}
+
+function startVmSessionHeartbeat(sessionRef, leaseOwner) {
+    let stopped = false
+    let writing = false
+    const tick = async () => {
+        if (stopped || writing) return
+        writing = true
+        try {
+            const now = Date.now()
+            const renewed = await admin.firestore().runTransaction(async transaction => {
+                const snapshot = await transaction.get(sessionRef)
+                const session = snapshot.exists ? snapshot.data() || {} : {}
+                if (session.activeLeaseOwner !== leaseOwner) return false
+                transaction.set(sessionRef, { activeLeaseExpiresAt: now + VM_SESSION_LEASE_MS }, { merge: true })
+                return true
+            })
+            if (!renewed) {
+                stopped = true
+                clearInterval(timer)
+                console.warn('🖥️ VM JOB: sandbox lease lost; heartbeat stopped', { leaseOwner })
+            }
+        } catch (error) {
+            console.warn('🖥️ VM JOB: sandbox lease heartbeat failed', { leaseOwner, error: error.message })
+        } finally {
+            writing = false
+        }
+    }
+    const timer = setInterval(tick, VM_SESSION_HEARTBEAT_INTERVAL_MS)
+    return {
+        stop: () => {
+            stopped = true
+            clearInterval(timer)
+        },
+    }
+}
+
+function isReusableVmSession(session) {
+    return !!session && ['paused', 'idle_running'].includes(session.status || 'paused')
+}
+
+function isUnhealthyVmSessionError(error) {
+    const message = String(error?.message || error || '')
+    return isE2bSandboxTimeout(error) || /exited with exit status -1\b/i.test(message)
 }
 
 function uniqueDefined(values) {
@@ -1912,7 +1984,7 @@ async function superviseVmCommand({
 // After a run, KEEP the sandbox running for the keep-alive grace window (so back-to-back
 // tasks hit a live VM) and record the session as 'running'. The scheduled pauser pauses it
 // once idle. If keep-alive can't be set, fall back to pausing now; if that also fails, kill.
-async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey) {
+async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOwner) {
     const sandboxId = sandbox.sandboxId || sandbox.id
     const baseDoc = {
         sandboxId,
@@ -1924,12 +1996,37 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey) {
     }
     try {
         await sandbox.setTimeout(KEEP_ALIVE_KILL_MS) // stays alive ~15 min unless reused/paused
-        await sessionRef.set({ ...baseDoc, status: 'running' }, { merge: true })
+        const stored = await admin.firestore().runTransaction(async transaction => {
+            const snapshot = await transaction.get(sessionRef)
+            const session = snapshot.exists ? snapshot.data() || {} : {}
+            if (leaseOwner && session.activeLeaseOwner !== leaseOwner) return false
+            transaction.set(
+                sessionRef,
+                {
+                    ...baseDoc,
+                    status: 'idle_running',
+                    activeLeaseOwner: null,
+                    activeLeaseExpiresAt: null,
+                    activeCorrelationId: null,
+                },
+                { merge: true }
+            )
+            return true
+        })
+        if (!stored) {
+            console.warn('🖥️ VM JOB: sandbox lease lost before keep-alive; killing detached sandbox', {
+                correlationId: vmJob.correlationId,
+                sandboxId,
+            })
+            await sandbox.kill().catch(() => {})
+            return false
+        }
         console.log('🖥️ VM JOB: session kept alive (running)', {
             correlationId: vmJob.correlationId,
             sandboxId,
             graceMs: KEEP_ALIVE_GRACE_MS,
         })
+        return true
     } catch (error) {
         console.warn('🖥️ VM JOB: keep-alive failed — pausing instead', {
             correlationId: vmJob.correlationId,
@@ -1937,12 +2034,23 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey) {
         })
         try {
             await pauseE2bSandbox(sandboxId, e2bApiKey)
-            await sessionRef.set({ ...baseDoc, status: 'paused' }, { merge: true })
+            await sessionRef.set(
+                {
+                    ...baseDoc,
+                    status: 'paused',
+                    activeLeaseOwner: null,
+                    activeLeaseExpiresAt: null,
+                    activeCorrelationId: null,
+                },
+                { merge: true }
+            )
+            return true
         } catch (e2) {
             try {
                 await sandbox.kill()
             } catch (_) {}
             await sessionRef.delete().catch(() => {})
+            return false
         }
     }
 }
@@ -1955,7 +2063,12 @@ async function pauseIdleVmSessions() {
     const cutoff = Date.now() - KEEP_ALIVE_GRACE_MS
     // Single-field query (no composite index); filter to running in code.
     const snap = await admin.firestore().collection('vmSessions').where('lastUsedAt', '<', cutoff).get()
-    const running = snap.docs.filter(d => (d.data().status || 'paused') === 'running' && d.data().sandboxId)
+    const running = snap.docs.filter(d => {
+        const session = d.data()
+        const status = session.status || 'paused'
+        const hasActiveLease = session.activeLeaseOwner && Number(session.activeLeaseExpiresAt) > Date.now()
+        return ['running', 'idle_running'].includes(status) && !hasActiveLease && session.sandboxId
+    })
     console.log('💤 VM SESSIONS PAUSER: idle running sessions', { count: running.length })
     for (const doc of running) {
         const s = doc.data()
@@ -2045,20 +2158,30 @@ async function runAgentInSandbox(
     const template = config.defaultTemplate
     vmJob.vmTemplate = template
     const sessionRef = admin.firestore().doc(`vmSessions/${vmSessionDocId(vmJob)}`)
+    const sessionLeaseOwner = `${vmJob.correlationId}-${crypto.randomUUID()}`
 
     // Resume the thread's paused sandbox (same agent) if there is one; else create fresh.
     let sandbox = null
     let sandboxLeaseDeadlineMs = null
     let isResume = false
+    let ownsSessionLease = false
+    let sessionHeartbeat = null
     let subscriptionCredentialPrepared = false
     let runtimeGoldCharged = Number(pendingWebhook?.runtimeGoldCharged) || 0
     try {
-        const sessSnap = await sessionRef.get()
-        const sess = sessSnap.exists ? sessSnap.data() : null
+        const sessionClaim = await claimVmSessionLease(sessionRef, sessionLeaseOwner, vmJob.correlationId)
+        ownsSessionLease = sessionClaim.claimed
+        if (ownsSessionLease) sessionHeartbeat = startVmSessionHeartbeat(sessionRef, sessionLeaseOwner)
+        const sess = sessionClaim.session
         const selectedAgent = vmJob.agent || DEFAULT_AGENT
         const sessionMatchesAgent = sess && sess.agent === selectedAgent
         const sessionMatchesTemplate = sess && sess.template === template
-        if (sess && sess.sandboxId && (!sessionMatchesAgent || !sessionMatchesTemplate)) {
+        if (!ownsSessionLease) {
+            console.warn('🖥️ VM JOB: thread sandbox is busy; starting isolated sandbox', {
+                correlationId: vmJob.correlationId,
+                activeCorrelationId: sess?.activeCorrelationId || null,
+            })
+        } else if (sess && sess.sandboxId && (!sessionMatchesAgent || !sessionMatchesTemplate)) {
             console.log('🖥️ VM JOB: discarding incompatible session', {
                 correlationId: vmJob.correlationId,
                 sandboxId: sess.sandboxId,
@@ -2068,8 +2191,14 @@ async function runAgentInSandbox(
                 selectedTemplate: template,
             })
             await Sandbox.kill(sess.sandboxId, { apiKey: e2bApiKey }).catch(() => {})
-            await sessionRef.delete().catch(() => {})
-        } else if (sess && sess.sandboxId && sessionMatchesAgent && sessionMatchesTemplate) {
+            await sessionRef.set({ sandboxId: null }, { merge: true }).catch(() => {})
+        } else if (
+            sess &&
+            sess.sandboxId &&
+            sessionMatchesAgent &&
+            sessionMatchesTemplate &&
+            isReusableVmSession(sess)
+        ) {
             try {
                 // A paused sandbox must be explicitly resumed first (connect alone won't
                 // auto-resume it on e2b@1.x); a still-running one (keep-alive) just connects.
@@ -2094,8 +2223,20 @@ async function runAgentInSandbox(
                     correlationId: vmJob.correlationId,
                     error: error.message,
                 })
-                await sessionRef.delete().catch(() => {})
+                await Sandbox.kill(sess.sandboxId, { apiKey: e2bApiKey }).catch(() => {})
+                await sessionRef.set({ sandboxId: null }, { merge: true }).catch(() => {})
             }
+        } else if (sess && sess.sandboxId) {
+            // `running` is the legacy state used before sessions had an exclusive lease.
+            // It may still contain an agent or child process from an interrupted run, so it
+            // is deliberately not reused. New idle warm sessions use `idle_running`.
+            console.warn('🖥️ VM JOB: discarding unleased legacy session', {
+                correlationId: vmJob.correlationId,
+                sandboxId: sess.sandboxId,
+                status: sess.status || null,
+            })
+            await Sandbox.kill(sess.sandboxId, { apiKey: e2bApiKey }).catch(() => {})
+            await sessionRef.set({ sandboxId: null }, { merge: true }).catch(() => {})
         }
     } catch (error) {
         console.warn('🖥️ VM JOB: session lookup failed', { correlationId: vmJob.correlationId, error: error.message })
@@ -2404,15 +2545,37 @@ async function runAgentInSandbox(
             subscriptionCredentialPrepared = false
         }
         // Keep the sandbox alive (grace window) + record the session so the thread can resume it.
-        await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey)
+        if (ownsSessionLease) {
+            await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, sessionLeaseOwner)
+        } else {
+            await sandbox.kill().catch(() => {})
+        }
+        if (sessionHeartbeat) sessionHeartbeat.stop()
         return { output, usage: state.usage, artifacts, runtimeGoldCharged }
     } catch (err) {
         if (subscriptionCredentialPrepared) {
             await persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth, vmJob.requestUserId)
             subscriptionCredentialPrepared = false
         }
-        // Preserve the session on failure too, so prior work in the thread isn't lost.
-        await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey).catch(() => {})
+        if (ownsSessionLease && !isUnhealthyVmSessionError(err)) {
+            // Preserve normal agent failures, but never reuse a VM whose command channel
+            // timed out or whose agent was forcibly terminated: those sessions can retain
+            // orphaned child processes and caused the Git setup hang this guards against.
+            await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, sessionLeaseOwner).catch(() => {})
+        } else {
+            await sandbox?.kill().catch(() => {})
+            if (ownsSessionLease) {
+                await admin
+                    .firestore()
+                    .runTransaction(async transaction => {
+                        const snapshot = await transaction.get(sessionRef)
+                        const session = snapshot.exists ? snapshot.data() || {} : {}
+                        if (session.activeLeaseOwner === sessionLeaseOwner) transaction.delete(sessionRef)
+                    })
+                    .catch(() => {})
+            }
+        }
+        if (sessionHeartbeat) sessionHeartbeat.stop()
         if (typeof err.runtimeGoldCharged !== 'number') err.runtimeGoldCharged = runtimeGoldCharged
         throw err
     }
@@ -3073,6 +3236,10 @@ module.exports = {
         superviseVmCommand,
         claimVmJobLease,
         startVmJobHeartbeat,
+        claimVmSessionLease,
+        startVmSessionHeartbeat,
+        isReusableVmSession,
+        isUnhealthyVmSessionError,
         formatVmRuntimeDuration,
         buildVmRuntimeTimeoutText,
         buildWhatsAppVmResultMessage,
