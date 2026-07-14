@@ -85,6 +85,7 @@ export default function RichCommentModal({
     const editorOpsRef = useRef([])
     const commentListRef = useRef()
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
+    const modalMountedRef = useRef(true)
     const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(false)
     const [initialComment, setInitialComment] = useState(currentComment || '')
     const [archivingEmailKeys, setArchivingEmailKeys] = useState([])
@@ -127,7 +128,16 @@ export default function RichCommentModal({
         }
     }
 
-    const archiveLinkedEmails = async emails => {
+    const performLinkedEmailArchive = async emails => {
+        const groupedEmails = groupLinkedEmailsByConnection(emails)
+        await Promise.all(
+            Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
+                performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
+            )
+        )
+    }
+
+    const archiveLinkedEmails = emails => {
         const pendingEmails = emails.filter(
             email => !archivedEmailKeys.includes(email.key) && !archivingEmailKeys.includes(email.key)
         )
@@ -135,36 +145,45 @@ export default function RichCommentModal({
 
         const pendingKeys = pendingEmails.map(email => email.key)
         setArchivingEmailKeys(current => [...new Set([...current, ...pendingKeys])])
-        try {
-            const groupedEmails = groupLinkedEmailsByConnection(pendingEmails)
-            await Promise.all(
-                Object.entries(groupedEmails).map(([connectionProjectId, messageIds]) =>
-                    performEmailLineAction(connectionProjectId, { action: 'archive', messageIds })
-                )
-            )
-            setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
-        } catch (error) {
-            console.error('Failed to archive linked email from comment popup', error)
-            alert(`${translate("Email couldn't be archived")}: ${error.message}`)
-        } finally {
-            setArchivingEmailKeys(current => current.filter(key => !pendingKeys.includes(key)))
-        }
+        performLinkedEmailArchive(pendingEmails)
+            .then(() => {
+                if (modalMountedRef.current) {
+                    setArchivedEmailKeys(current => [...new Set([...current, ...pendingKeys])])
+                }
+            })
+            .catch(error => {
+                console.error('Failed to archive linked email from comment popup', error)
+                alert(`${translate("Email couldn't be archived")}: ${error.message}`)
+            })
+            .finally(() => {
+                if (modalMountedRef.current) {
+                    setArchivingEmailKeys(current => current.filter(key => !pendingKeys.includes(key)))
+                }
+            })
     }
 
-    const archiveAllLinkedEmails = async () => {
+    const archiveAllLinkedEmails = () => {
         if (archivingAllEmails) return
         setArchivingAllEmails(true)
-        try {
-            const chatType = objectType === 'users' ? 'contacts' : objectType
-            const allLinkedEmailComments = await getChatCommentsWithLinkedEmails(projectId, chatType, objectId)
-            await archiveLinkedEmails(getLinkedEmailsFromMessages(allLinkedEmailComments))
-        } catch (error) {
-            console.error('Failed to load linked emails from comment popup', error)
-            alert(`${translate("Emails couldn't be archived")}: ${error.message}`)
-        } finally {
-            setArchivingAllEmails(false)
-        }
+        closeModal()
+
+        const chatType = objectType === 'users' ? 'contacts' : objectType
+        getChatCommentsWithLinkedEmails(projectId, chatType, objectId)
+            .then(allLinkedEmailComments =>
+                performLinkedEmailArchive(getLinkedEmailsFromMessages(allLinkedEmailComments))
+            )
+            .catch(error => {
+                console.error('Failed to archive linked emails from comment popup', error)
+                alert(`${translate("Emails couldn't be archived")}: ${error.message}`)
+            })
     }
+
+    useEffect(() => {
+        modalMountedRef.current = true
+        return () => {
+            modalMountedRef.current = false
+        }
+    }, [])
 
     useEffect(() => {
         if (messages.loaded && comments.length === 0) {
