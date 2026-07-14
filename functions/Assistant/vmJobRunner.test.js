@@ -134,6 +134,41 @@ describe('VM runner prompt', () => {
         )
     })
 
+    test('preserves complete multiline Claude progress updates', () => {
+        const progressText = `First line\n\n${'Complete Claude update. '.repeat(20).trim()}`
+        const state = { activity: [], finalResult: '', assistantText: '', usage: null }
+
+        __private__.appendClaudeActivity(
+            {
+                type: 'assistant',
+                message: { content: [{ type: 'text', text: `  ${progressText}  ` }] },
+            },
+            state
+        )
+
+        expect(state.activity).toEqual([`💬 ${progressText}`])
+        expect(__private__.renderActivityLog(state.activity, 'Claude')).toContain(progressText)
+    })
+
+    test('preserves complete Codex progress and reasoning updates', () => {
+        const progressText = `Codex update\n${'All details stay visible. '.repeat(20).trim()}`
+        const reasoningText = `Reasoning summary\n${'No detail is removed. '.repeat(20).trim()}`
+        const state = { activity: [], finalResult: '', assistantText: '', usage: null }
+
+        __private__.appendCodexActivity(
+            { type: 'item.completed', item: { type: 'agent_message', text: progressText } },
+            state
+        )
+        __private__.appendCodexActivity(
+            { type: 'item.completed', item: { type: 'reasoning', text: reasoningText } },
+            state
+        )
+
+        expect(state.activity).toEqual([`💬 ${progressText}`, `💭 ${reasoningText}`])
+        expect(__private__.renderActivityLog(state.activity, 'Codex')).toContain(progressText)
+        expect(__private__.renderActivityLog(state.activity, 'Codex')).toContain(reasoningText)
+    })
+
     test('header includes the model and effort the agent is running with', () => {
         expect(__private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' })).toBe(
             '🖥️ Working with Claude (opus · high effort) in a VM…'
@@ -171,6 +206,18 @@ describe('VM runner prompt', () => {
 })
 
 describe('Codex VM proxy configuration', () => {
+    test('forces a writable npm cache for every sandbox command environment', () => {
+        expect(
+            __private__.buildSandboxCommandEnv({
+                CI: 'true',
+                NPM_CONFIG_CACHE: '/home/user/.npm',
+            })
+        ).toEqual({
+            CI: 'true',
+            NPM_CONFIG_CACHE: '/tmp/alldone-npm-cache',
+        })
+    })
+
     test('always installs the latest Codex CLI in the observable bootstrap stage', () => {
         const guard = __private__.buildCodexInstallGuard()
 
@@ -217,6 +264,12 @@ describe('Codex VM proxy configuration', () => {
             'Claude installation failed. stdout: npm notice package metadata stderr: npm ERR! Authorization: Bearer [REDACTED] registry unavailable'
         )
         expect(onActivity).toHaveBeenCalledWith('Working\n\n📦 Installing Claude…')
+        expect(sandbox.commands.run).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                envs: { NPM_CONFIG_CACHE: '/tmp/alldone-npm-cache' },
+            })
+        )
     })
 
     test('preserves a structured Claude error on a non-zero exit and redacts secrets', () => {
@@ -262,7 +315,6 @@ describe('Codex VM proxy configuration', () => {
             )
             expect(command).toContain(`-c 'model_providers.alldone_vm_proxy.supports_websockets=false'`)
             expect(command).toContain(`-c 'sandbox_mode="workspace-write"'`)
-            expect(command).toContain(`-c 'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]'`)
             expect(command).not.toContain('--sandbox')
         }
     })
@@ -280,78 +332,6 @@ describe('Codex VM proxy configuration', () => {
         expect(() => __private__.buildCodexProxyConfigOverrides('file:///tmp/proxy')).toThrow(
             'Codex VM proxy base URL must use HTTP or HTTPS.'
         )
-    })
-})
-
-describe('VM Git checkout setup', () => {
-    test('keeps mutable Git metadata outside the protected .git path and preserves resumed branches', () => {
-        const childProcess = require('child_process')
-        const fs = require('fs')
-        const os = require('os')
-        const path = require('path')
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'alldone-vm-git-'))
-        const seed = path.join(root, 'seed')
-        const origin = path.join(root, 'origin.git')
-        const workTree = path.join(root, 'checkout')
-        const gitDir = path.join(root, 'metadata', 'repo')
-        const home = path.join(root, 'home')
-        fs.mkdirSync(seed)
-        fs.mkdirSync(home)
-
-        const run = (command, options = {}) =>
-            childProcess.execFileSync('bash', ['-c', command], {
-                cwd: options.cwd || root,
-                env: { ...process.env, HOME: home, ...(options.env || {}) },
-                stdio: 'pipe',
-            })
-
-        run('git init -b main', { cwd: seed })
-        fs.writeFileSync(path.join(seed, 'README.md'), 'seed\n')
-        run('git add README.md && git -c user.name=Test -c user.email=test@example.com commit -m seed', { cwd: seed })
-        run(`git clone --bare ${JSON.stringify(seed)} ${JSON.stringify(origin)}`)
-
-        const setupEnv = {
-            GIT_TOKEN: 'test-token',
-            GIT_CRED_USERNAME: 'oauth2',
-            GIT_REPO_URL: origin,
-            GIT_BASE_BRANCH: 'main',
-            GIT_USER_NAME: 'Alldone Test',
-            GIT_USER_EMAIL: 'test@alldone.app',
-            GIT_DIR: gitDir,
-            GIT_WORK_TREE: workTree,
-        }
-
-        run(__private__.GIT_SETUP_SCRIPT, { env: setupEnv })
-        expect(fs.existsSync(path.join(workTree, '.git'))).toBe(false)
-        expect(fs.existsSync(gitDir)).toBe(true)
-
-        run('git checkout -b ai/sandbox-safe-branch', { cwd: workTree, env: setupEnv })
-        run(__private__.GIT_SETUP_SCRIPT, { env: setupEnv })
-        expect(run('git rev-parse --abbrev-ref HEAD', { cwd: workTree, env: setupEnv }).toString().trim()).toBe(
-            'ai/sandbox-safe-branch'
-        )
-
-        // A paused sandbox created before this fix resumes with conventional .git metadata.
-        // The setup step must migrate it without losing the agent's current branch.
-        fs.renameSync(gitDir, path.join(workTree, '.git'))
-        run(__private__.GIT_SETUP_SCRIPT, { env: setupEnv })
-        expect(fs.existsSync(path.join(workTree, '.git'))).toBe(false)
-        expect(run('git rev-parse --abbrev-ref HEAD', { cwd: workTree, env: setupEnv }).toString().trim()).toBe(
-            'ai/sandbox-safe-branch'
-        )
-    })
-
-    test('injects only the dedicated metadata location into agent git commands', () => {
-        const env = __private__.buildGitEnv({
-            token: 'secret',
-            repoUrl: 'https://gitlab.example/repo',
-            baseBranch: 'main',
-            identityName: 'Assistant',
-            identityEmail: 'assistant@example.com',
-        })
-
-        expect(env.GIT_DIR).toBe('/home/user/git-metadata/repo')
-        expect(env.GIT_WORK_TREE).toBe('/home/user/repo')
     })
 })
 

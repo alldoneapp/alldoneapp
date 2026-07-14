@@ -46,6 +46,12 @@ const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 const CODEX_AUTH_DIR = '/home/user/.codex'
 const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
 const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
+// E2B's managed images may ship /home/user/.npm from an immutable/root-owned
+// layer, while Codex's nested workspace sandbox only guarantees writes below the
+// checkout and /tmp. Use a per-sandbox temp cache that works in both layers. This
+// environment is inherited by the agent, so repository-level npm install/ci
+// commands use the writable cache from their first attempt too.
+const VM_NPM_CACHE_DIR = '/tmp/alldone-npm-cache'
 const MAX_BOOTSTRAP_DIAGNOSTIC_CHARS = 16 * 1024
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
@@ -85,15 +91,17 @@ const TASK_TYPE_PROFILES = {
 // paused-session snapshot. The git credential helper we configure stores only a reference to
 // $GIT_TOKEN, not the token itself, so resuming a paused sandbox never leaks it.
 const REPO_DIR = '/home/user/repo'
-// Codex's workspace-write sandbox intentionally protects a checkout's `.git` path as
-// read-only. Keep Git's mutable refs, index, and locks in one dedicated directory outside
-// the worktree instead of weakening the entire inner sandbox. The runner creates/migrates
-// this directory before Codex starts and grants only its parent as an extra writable root.
-const GIT_METADATA_ROOT = '/home/user/git-metadata'
-const GIT_METADATA_DIR = `${GIT_METADATA_ROOT}/repo`
 
 function uniqueDefined(values) {
     return Array.from(new Set((Array.isArray(values) ? values : []).filter(value => !!value)))
+}
+
+function buildSandboxCommandEnv(...environments) {
+    return Object.assign({}, ...environments.filter(environment => environment && typeof environment === 'object'), {
+        // Apply last so a template or credential environment cannot accidentally
+        // restore npm's read-only default cache.
+        NPM_CONFIG_CACHE: VM_NPM_CACHE_DIR,
+    })
 }
 
 function getVmParentObjectPath(projectId, objectType, objectId) {
@@ -302,30 +310,17 @@ git config --global credential.helper '!f() { echo "username=$GIT_CRED_USERNAME"
 git config --global user.name "$GIT_USER_NAME"
 git config --global user.email "$GIT_USER_EMAIL"
 git config --global advice.detachedHead false
-fresh_checkout=false
-mkdir -p "$(dirname "$GIT_DIR")"
-if [ -d "$GIT_DIR" ]; then
-  : # Resumed checkout already using sandbox-compatible Git metadata.
-elif [ -d "$GIT_WORK_TREE/.git" ]; then
-  # Transparently migrate sessions created before Git metadata was separated.
-  mv "$GIT_WORK_TREE/.git" "$GIT_DIR"
-else
-  # clone must not inherit the target GIT_DIR/GIT_WORK_TREE or Git treats the checkout
-  # destination itself as a bare metadata directory.
-  env -u GIT_DIR -u GIT_WORK_TREE git clone "$GIT_REPO_URL" "$GIT_WORK_TREE"
-  mv "$GIT_WORK_TREE/.git" "$GIT_DIR"
-  fresh_checkout=true
-fi
-cd "$GIT_WORK_TREE"
-git config core.worktree "$GIT_WORK_TREE"
-git remote set-url origin "$GIT_REPO_URL"
-if [ "$fresh_checkout" = true ]; then
-  git checkout "$GIT_BASE_BRANCH" 2>/dev/null || true
-else
+if [ -d "${REPO_DIR}/.git" ]; then
+  cd "${REPO_DIR}"
+  git remote set-url origin "$GIT_REPO_URL"
   git fetch origin --prune
+else
+  git clone "$GIT_REPO_URL" "${REPO_DIR}"
+  cd "${REPO_DIR}"
+  git checkout "$GIT_BASE_BRANCH" 2>/dev/null || true
 fi
-mkdir -p "$GIT_DIR/info"
-grep -qxF "node_modules/" "$GIT_DIR/info/exclude" 2>/dev/null || printf "\\nnode_modules/\\n" >> "$GIT_DIR/info/exclude"
+mkdir -p .git/info
+grep -qxF "node_modules/" .git/info/exclude 2>/dev/null || printf "\\nnode_modules/\\n" >> .git/info/exclude
 echo "GIT_SETUP_OK $(git rev-parse --abbrev-ref HEAD)"
 `
 
@@ -409,10 +404,6 @@ function buildGitEnv(gitContext) {
         GIT_USER_NAME: gitContext.identityName,
         GIT_USER_EMAIL: gitContext.identityEmail,
         GIT_TERMINAL_PROMPT: '0',
-        // Every git process launched by the agent inherits these paths. The worktree stays
-        // conventional while mutable metadata avoids Codex's protected `.git` name.
-        GIT_DIR: GIT_METADATA_DIR,
-        GIT_WORK_TREE: REPO_DIR,
     }
     if (gitContext.provider === 'github') {
         // Let the gh CLI / curl calls authenticate without re-plumbing the token.
@@ -798,11 +789,18 @@ async function collectArtifacts(sandbox, correlationId, sinceMs = 0) {
 
 const MAX_ACTIVITY_LINES = 15
 
-function truncate(value, n) {
+// Tool metadata can contain very large implementation details (for example a full patch in a
+// shell command), so keep those labels compact. Provider-authored progress text is handled
+// separately and must remain verbatim so the chat never silently cuts an agent update short.
+function summarizeToolDetail(value, n) {
     const s = String(value || '')
         .replace(/\s+/g, ' ')
         .trim()
     return s.length > n ? s.substring(0, n) + '…' : s
+}
+
+function formatActivityText(value) {
+    return String(value || '').trim()
 }
 
 // Map a Claude Code tool_use block to a friendly, human-readable activity line.
@@ -810,21 +808,21 @@ function claudeToolLabel(name, input) {
     const i = input || {}
     switch (name) {
         case 'WebSearch':
-            return `🔍 Searching the web${i.query ? `: "${truncate(i.query, 80)}"` : '…'}`
+            return `🔍 Searching the web${i.query ? `: "${summarizeToolDetail(i.query, 80)}"` : '…'}`
         case 'WebFetch':
-            return `🌐 Reading ${truncate(i.url || '', 80)}`
+            return `🌐 Reading ${summarizeToolDetail(i.url || '', 80)}`
         case 'Bash':
-            return `💻 ${truncate(i.command || 'running a command', 100)}`
+            return `💻 ${summarizeToolDetail(i.command || 'running a command', 100)}`
         case 'Read':
-            return `📄 Reading ${truncate(i.file_path || i.path || '', 80)}`
+            return `📄 Reading ${summarizeToolDetail(i.file_path || i.path || '', 80)}`
         case 'Write':
-            return `✍️ Writing ${truncate(i.file_path || i.path || '', 80)}`
+            return `✍️ Writing ${summarizeToolDetail(i.file_path || i.path || '', 80)}`
         case 'Edit':
         case 'MultiEdit':
-            return `✏️ Editing ${truncate(i.file_path || i.path || '', 80)}`
+            return `✏️ Editing ${summarizeToolDetail(i.file_path || i.path || '', 80)}`
         case 'Glob':
         case 'Grep':
-            return `🔎 Searching files${i.pattern ? `: ${truncate(i.pattern, 60)}` : '…'}`
+            return `🔎 Searching files${i.pattern ? `: ${summarizeToolDetail(i.pattern, 60)}` : '…'}`
         case 'TodoWrite':
             return '🗒️ Planning the work…'
         default:
@@ -857,7 +855,8 @@ function appendClaudeActivity(evt, state) {
         for (const b of evt.message.content) {
             if (b && b.type === 'text' && b.text) {
                 state.assistantText += b.text
-                if (b.text.trim()) state.activity.push(`💬 ${truncate(b.text, 200)}`)
+                const activityText = formatActivityText(b.text)
+                if (activityText) state.activity.push(`💬 ${activityText}`)
             } else if (b && b.type === 'tool_use') {
                 state.activity.push(claudeToolLabel(b.name, b.input))
             }
@@ -870,7 +869,7 @@ function appendClaudeActivity(evt, state) {
 function appendCodexActivity(evt, state) {
     if (!evt || typeof evt !== 'object') return
     if (evt.type === 'error') {
-        state.activity.push(`⚠️ ${truncate(evt.message || evt.error || 'error', 160)}`)
+        state.activity.push(`⚠️ ${formatActivityText(evt.message || evt.error || 'error')}`)
         return
     }
     if (evt.type === 'turn.completed') {
@@ -894,23 +893,25 @@ function appendCodexActivity(evt, state) {
         case 'agent_message':
             if (typeof item.text === 'string' && item.text) {
                 state.assistantText = item.text // last agent message is the final answer
-                if (completed && item.text.trim()) state.activity.push(`💬 ${truncate(item.text, 200)}`)
+                const activityText = formatActivityText(item.text)
+                if (completed && activityText) state.activity.push(`💬 ${activityText}`)
             }
             break
         case 'reasoning':
-            if (completed && item.text) state.activity.push(`💭 ${truncate(item.text, 160)}`)
+            if (completed && item.text) state.activity.push(`💭 ${formatActivityText(item.text)}`)
             break
         case 'command_execution':
-            if (completed) state.activity.push(`💻 ${truncate(item.command || 'command', 100)}`)
+            if (completed) state.activity.push(`💻 ${summarizeToolDetail(item.command || 'command', 100)}`)
             break
         case 'web_search':
-            if (completed) state.activity.push(`🔍 Searching${item.query ? `: "${truncate(item.query, 80)}"` : '…'}`)
+            if (completed)
+                state.activity.push(`🔍 Searching${item.query ? `: "${summarizeToolDetail(item.query, 80)}"` : '…'}`)
             break
         case 'file_change':
             if (completed) state.activity.push('✏️ Editing files')
             break
         case 'mcp_tool_call':
-            if (completed) state.activity.push(`🔧 ${truncate(item.tool || item.name || 'tool', 60)}`)
+            if (completed) state.activity.push(`🔧 ${summarizeToolDetail(item.tool || item.name || 'tool', 60)}`)
             break
         case 'todo_list':
         case 'plan_update':
@@ -996,15 +997,12 @@ function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyB
     const modelFlag = agentModel ? ` --model ${agentModel}` : ''
     const effortFlag = agentReasoningEffort ? ` -c model_reasoning_effort=${agentReasoningEffort}` : ''
     const sandboxFlag = ` -c ${shellQuoteArg('sandbox_mode="workspace-write"')}`
-    const gitMetadataFlag = ` -c ${shellQuoteArg(
-        `sandbox_workspace_write.writable_roots=[${JSON.stringify(GIT_METADATA_ROOT)}]`
-    )}`
     const providerFlags = subscriptionUsed
         ? ''
         : buildCodexProxyConfigOverrides(proxyBaseUrl)
               .map(override => ` -c ${shellQuoteArg(override)}`)
               .join('')
-    return `codex ${resumePart}${sandboxFlag}${gitMetadataFlag} -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
+    return `codex ${resumePart}${sandboxFlag} -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
 }
 
 function buildLatestAgentCliInstallCommand(packageName) {
@@ -1074,6 +1072,7 @@ async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, 
     console.log('🖥️ VM JOB: updating agent CLI', { agent: agentLabel, version: 'latest' })
     try {
         await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
+            envs: buildSandboxCommandEnv(),
             timeoutMs: 5 * 60 * 1000,
             onStdout: handleStdout,
             onStderr: data => {
@@ -1816,9 +1815,11 @@ async function runAgentInSandbox(
             mode: agentCredentials.mode,
         })
         const agentEnv = config.sandboxEnv(agentCredentials)
-        let runEnvs = { ...agentEnv }
-        if (gitContext && gitContext.enabled) runEnvs = { ...runEnvs, ...buildGitEnv(gitContext) }
-        if (gcpContext && gcpContext.enabled) runEnvs = { ...runEnvs, ...buildGcpEnv(gcpContext) }
+        const runEnvs = buildSandboxCommandEnv(
+            agentEnv,
+            gitContext && gitContext.enabled ? buildGitEnv(gitContext) : null,
+            gcpContext && gcpContext.enabled ? buildGcpEnv(gcpContext) : null
+        )
         const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${config.buildRun(
             isResume,
             {
@@ -2526,18 +2527,19 @@ module.exports = {
     MAX_VM_RUNTIME_MS,
     __private__: {
         buildAgentPrompt,
-        GIT_SETUP_SCRIPT,
-        buildGitEnv,
         loadGcpContext,
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
+        buildSandboxCommandEnv,
         buildClaudeInstallGuard,
         buildCodexInstallGuard,
         sanitizeVmErrorText,
         buildStageError,
         buildAgentExitError,
         ensureAgentCliAvailable,
+        appendClaudeActivity,
+        appendCodexActivity,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,
