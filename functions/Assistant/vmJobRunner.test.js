@@ -732,11 +732,11 @@ describe('VM runner timeout handling', () => {
         expect(error).toBeInstanceOf(__private__.VmRuntimeTimeoutError)
         expect(error).toMatchObject({
             code: 'runtime_timeout',
-            runtimeMs: 5 * 60 * 60 * 1000,
+            runtimeMs: 60 * 60 * 1000,
             cause: originalError,
         })
         expect(error.message).toBe(
-            'The VM task exceeded its allowed execution time of 5 hours. Start a new VM task to continue.'
+            'The VM task exceeded its allowed execution time of 1 hour. Start a new VM task to continue.'
         )
     })
 
@@ -763,28 +763,24 @@ describe('VM runner timeout handling', () => {
         expect(__private__.selectVmCommandError(timeoutError, detailedError)).toBe(timeoutError)
         expect(__private__.selectVmCommandError(new Error('2: [unknown] terminated'), detailedError)).toMatchObject({
             code: 'runtime_timeout',
-            runtimeMs: 5 * 60 * 60 * 1000,
+            runtimeMs: 60 * 60 * 1000,
         })
         expect(__private__.selectVmCommandError(new Error('exit status 2'), detailedError)).toBe(detailedError)
     })
 
     test('formats the configured limit in the user-facing timeout message', () => {
         expect(__private__.buildVmRuntimeTimeoutText()).toBe(
-            '❌ The VM task exceeded its allowed execution time of 5 hours. Start a new VM task to continue.'
+            '❌ The VM task exceeded its allowed execution time of 1 hour. Start a new VM task to continue.'
         )
         expect(__private__.buildVmRuntimeTimeoutText(55 * 60 * 1000)).toContain('55 minutes')
         expect(__private__.buildVmRuntimeTimeoutText(2 * 60 * 60 * 1000)).toContain('2 hours')
     })
 
-    test('budgets each slice below the one-hour sandbox lease', () => {
+    test('budgets the agent from the remaining one-hour sandbox lease', () => {
         const now = 100000
-        const totalDeadline = now + 5 * 60 * 60 * 1000
-        expect(__private__.resolveVmAgentSliceRuntimeMs(now + 60 * 60 * 1000, totalDeadline, now)).toBe(55 * 60 * 1000)
-        expect(__private__.resolveVmAgentSliceRuntimeMs(now + 50 * 60 * 1000, totalDeadline, now)).toBe(
-            49.5 * 60 * 1000
-        )
-        expect(__private__.resolveVmAgentSliceRuntimeMs(null, totalDeadline, now)).toBe(55 * 60 * 1000)
-        expect(__private__.resolveVmAgentSliceRuntimeMs(null, now + 25 * 60 * 1000, now)).toBe(25 * 60 * 1000)
+        expect(__private__.resolveVmAgentRuntimeMs(now + 60 * 60 * 1000, now)).toBe(59.5 * 60 * 1000)
+        expect(__private__.resolveVmAgentRuntimeMs(now + 58 * 60 * 1000, now)).toBe(57.5 * 60 * 1000)
+        expect(__private__.resolveVmAgentRuntimeMs(null, now)).toBe(60 * 60 * 1000)
     })
 
     test('enforces the runtime with a typed timer before E2B termination', async () => {
@@ -804,13 +800,13 @@ describe('VM runner timeout handling', () => {
         jest.useRealTimers()
     })
 
-    test('reports the five-hour product limit when a slice ends the run', async () => {
+    test('reports the one-hour product limit when the remaining lease is shorter', async () => {
         jest.useFakeTimers()
         const commandHandle = { kill: jest.fn(async () => true) }
-        const timeout = __private__.startVmRuntimeTimeout(commandHandle, 1000, 5 * 60 * 60 * 1000)
+        const timeout = __private__.startVmRuntimeTimeout(commandHandle, 1000, 60 * 60 * 1000)
         const rejected = expect(timeout.promise).rejects.toMatchObject({
             code: 'runtime_timeout',
-            runtimeMs: 5 * 60 * 60 * 1000,
+            runtimeMs: 60 * 60 * 1000,
         })
 
         jest.advanceTimersByTime(1000)
@@ -818,76 +814,6 @@ describe('VM runner timeout handling', () => {
 
         timeout.stop()
         jest.useRealTimers()
-    })
-
-    test('builds durable output paths and records the command exit code', () => {
-        const paths = __private__.buildVmRunStatePaths('run/with unsafe chars')
-        const command = __private__.buildDurableVmCommand('agent --json', paths)
-
-        expect(paths).toEqual({
-            stdoutPath: '/home/user/.alldone/vm-runs/run_with_unsafe_chars.stdout.jsonl',
-            stderrPath: '/home/user/.alldone/vm-runs/run_with_unsafe_chars.stderr.log',
-            exitCodePath: '/home/user/.alldone/vm-runs/run_with_unsafe_chars.exit-code',
-            stdoutPipePath: '/home/user/.alldone/vm-runs/run_with_unsafe_chars.stdout.pipe',
-            stderrPipePath: '/home/user/.alldone/vm-runs/run_with_unsafe_chars.stderr.pipe',
-        })
-        expect(command).toContain('tee -a')
-        expect(command).toContain('mkfifo')
-        expect(command).toContain('wait "$stdout_tee_pid" "$stderr_tee_pid"')
-        expect(command).toContain('command_exit=$?')
-        expect(command).toContain('exit "$command_exit"')
-    })
-
-    test('pauses, resumes, and reconnects to the same process between slices', async () => {
-        const firstHandle = {
-            pid: 42,
-            wait: jest.fn(() => new Promise(() => {})),
-            disconnect: jest.fn(async () => {}),
-            kill: jest.fn(async () => {}),
-        }
-        const resumedResult = { exitCode: 0 }
-        const secondHandle = {
-            pid: 42,
-            wait: jest.fn(async () => resumedResult),
-            disconnect: jest.fn(async () => {}),
-            kill: jest.fn(async () => {}),
-        }
-        const resumedSandbox = {
-            sandboxId: 'sandbox-1',
-            setTimeout: jest.fn(async () => {}),
-            commands: { connect: jest.fn(async () => secondHandle) },
-        }
-        const Sandbox = { connect: jest.fn(async () => resumedSandbox) }
-        const pauseSandbox = jest.fn(async () => {})
-        const resumeSandbox = jest.fn(async () => {})
-        const onCommandHandleChange = jest.fn()
-
-        const supervision = await __private__.superviseVmCommand({
-            Sandbox,
-            sandbox: { sandboxId: 'sandbox-1' },
-            commandHandle: firstHandle,
-            e2bApiKey: 'test-key',
-            sandboxLeaseDeadlineMs: Date.now() + 60000,
-            pauseSandbox,
-            resumeSandbox,
-            resolveSliceRuntime: () => 1,
-            onCommandHandleChange,
-        })
-
-        expect(firstHandle.disconnect).toHaveBeenCalledTimes(1)
-        expect(pauseSandbox).toHaveBeenCalledWith('sandbox-1', 'test-key')
-        expect(resumeSandbox).toHaveBeenCalledWith('sandbox-1', 'test-key', 3600)
-        expect(Sandbox.connect).toHaveBeenCalledWith('sandbox-1', {
-            apiKey: 'test-key',
-            allowInternetAccess: true,
-        })
-        expect(resumedSandbox.commands.connect).toHaveBeenCalledWith(
-            42,
-            expect.objectContaining({ timeoutMs: 60 * 60 * 1000 })
-        )
-        expect(onCommandHandleChange).toHaveBeenCalledWith(secondHandle)
-        expect(supervision.result).toBe(resumedResult)
-        expect(supervision.sliceCount).toBe(2)
     })
 })
 

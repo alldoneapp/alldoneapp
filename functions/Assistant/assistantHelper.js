@@ -3413,6 +3413,10 @@ function buildDeterministicGmailChatCommentId(chatId = '', gmailContext = {}) {
     return `gmail-${crypto.createHash('sha1').update(`${chatId}:${messageId}`).digest('hex').slice(0, 24)}`
 }
 
+function isInformationalGmailChatComment(gmailContext = {}) {
+    return gmailContext?.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN && gmailContext?.followUpType === 'informational'
+}
+
 async function findTopicChatByTitle(db, projectId, chatTitle) {
     const snapshot = await db.collection(`chatObjects/${projectId}/chats`).where('title', '==', chatTitle).get()
 
@@ -3542,6 +3546,7 @@ async function addChatCommentFromAssistantTool({
     const deterministicCommentId = buildDeterministicGmailChatCommentId(resolved.chatId, gmailContext)
     const commentId = deterministicCommentId || uuidv4()
     const commentRef = db.doc(`chatComments/${projectId}/topics/${resolved.chatId}/comments/${commentId}`)
+    const isFollowedNotification = !isInformationalGmailChatComment(gmailContext)
 
     if (deterministicCommentId) {
         const existingComment = await commentRef.get()
@@ -3592,7 +3597,7 @@ async function addChatCommentFromAssistantTool({
         db.doc(`chatNotifications/${projectId}/${userId}/${commentId}`).set({
             chatId: resolved.chatId,
             chatType: 'topics',
-            followed: true,
+            followed: isFollowedNotification,
             date: now,
             creatorId: assistantId,
             creatorType: 'assistant',

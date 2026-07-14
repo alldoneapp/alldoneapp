@@ -26,13 +26,7 @@ const {
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
 } = require('./vmJob')
-const {
-    MAX_VM_RUNTIME_MS,
-    VM_JOB_FINALIZATION_HEADROOM_MS,
-    E2B_SANDBOX_TERMINATION_GRACE_MS,
-    E2B_SANDBOX_TIMEOUT_MS,
-    E2B_SANDBOX_SLICE_MS,
-} = require('./vmJobConfig')
+const { MAX_VM_RUNTIME_MS, E2B_SANDBOX_TERMINATION_GRACE_MS, E2B_SANDBOX_TIMEOUT_MS } = require('./vmJobConfig')
 
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
@@ -102,48 +96,6 @@ const REPO_DIR = '/home/user/repo'
 // this directory before Codex starts and grants only its parent as an extra writable root.
 const GIT_METADATA_ROOT = '/home/user/git-metadata'
 const GIT_METADATA_DIR = `${GIT_METADATA_ROOT}/repo`
-const VM_RUN_STATE_ROOT = '/home/user/.alldone/vm-runs'
-
-function buildVmRunStatePaths(correlationId) {
-    const safeCorrelationId = String(correlationId || 'run').replace(/[^a-zA-Z0-9_-]/g, '_')
-    const basePath = `${VM_RUN_STATE_ROOT}/${safeCorrelationId}`
-    return {
-        stdoutPath: `${basePath}.stdout.jsonl`,
-        stderrPath: `${basePath}.stderr.log`,
-        exitCodePath: `${basePath}.exit-code`,
-        stdoutPipePath: `${basePath}.stdout.pipe`,
-        stderrPipePath: `${basePath}.stderr.pipe`,
-    }
-}
-
-function buildDurableVmCommand(command, paths) {
-    return [
-        `mkdir -p ${shellQuoteArg(VM_RUN_STATE_ROOT)}`,
-        `: > ${shellQuoteArg(paths.stdoutPath)}`,
-        `: > ${shellQuoteArg(paths.stderrPath)}`,
-        `rm -f ${shellQuoteArg(paths.exitCodePath)}`,
-        `rm -f ${shellQuoteArg(paths.stdoutPipePath)} ${shellQuoteArg(paths.stderrPipePath)}`,
-        `mkfifo ${shellQuoteArg(paths.stdoutPipePath)} ${shellQuoteArg(paths.stderrPipePath)}`,
-        `tee -a ${shellQuoteArg(paths.stdoutPath)} < ${shellQuoteArg(paths.stdoutPipePath)} & stdout_tee_pid=$!`,
-        `tee -a ${shellQuoteArg(paths.stderrPath)} < ${shellQuoteArg(paths.stderrPipePath)} >&2 & stderr_tee_pid=$!`,
-        `( ${command} ) > ${shellQuoteArg(paths.stdoutPipePath)} 2> ${shellQuoteArg(paths.stderrPipePath)}`,
-        'command_exit=$?',
-        'wait "$stdout_tee_pid" "$stderr_tee_pid"',
-        `rm -f ${shellQuoteArg(paths.stdoutPipePath)} ${shellQuoteArg(paths.stderrPipePath)}`,
-        `printf '%s' "$command_exit" > ${shellQuoteArg(paths.exitCodePath)}`,
-        'exit "$command_exit"',
-    ].join('; ')
-}
-
-async function readVmCommandCompletion(sandbox, paths) {
-    try {
-        const rawExitCode = await sandbox.files.read(paths.exitCodePath)
-        const exitCode = Number.parseInt(String(rawExitCode).trim(), 10)
-        return Number.isFinite(exitCode) ? { exitCode } : null
-    } catch (_) {
-        return null
-    }
-}
 
 function formatVmRuntimeDuration(runtimeMs = MAX_VM_RUNTIME_MS) {
     const minutes = runtimeMs / (60 * 1000)
@@ -197,15 +149,11 @@ function selectVmCommandError(runError, detailedError, runtimeMs = MAX_VM_RUNTIM
     return isVmRuntimeTimeoutError(normalizedError) ? normalizedError : detailedError
 }
 
-function resolveVmAgentSliceRuntimeMs(sandboxLeaseDeadlineMs, totalRuntimeDeadlineMs, nowMs = Date.now()) {
-    const remainingTotalMs = Number(totalRuntimeDeadlineMs) - Number(nowMs)
-    const remainingLeaseMs =
-        sandboxLeaseDeadlineMs == null
-            ? NaN
-            : Number(sandboxLeaseDeadlineMs) - Number(nowMs) - E2B_SANDBOX_TERMINATION_GRACE_MS
-    if (!Number.isFinite(remainingTotalMs)) return E2B_SANDBOX_SLICE_MS
-    const leaseBudgetMs = Number.isFinite(remainingLeaseMs) ? remainingLeaseMs : E2B_SANDBOX_SLICE_MS
-    return Math.max(0, Math.min(E2B_SANDBOX_SLICE_MS, remainingTotalMs, leaseBudgetMs))
+function resolveVmAgentRuntimeMs(sandboxLeaseDeadlineMs, nowMs = Date.now()) {
+    if (sandboxLeaseDeadlineMs == null) return MAX_VM_RUNTIME_MS
+    const remainingLeaseMs = Number(sandboxLeaseDeadlineMs) - Number(nowMs)
+    if (!Number.isFinite(remainingLeaseMs)) return MAX_VM_RUNTIME_MS
+    return Math.max(1000, Math.min(MAX_VM_RUNTIME_MS, remainingLeaseMs - E2B_SANDBOX_TERMINATION_GRACE_MS))
 }
 
 function startVmRuntimeTimeout(commandHandle, runtimeMs = MAX_VM_RUNTIME_MS, reportedRuntimeMs = runtimeMs) {
@@ -1643,7 +1591,6 @@ function startVmRuntimeGoldMonitor({
     pendingWebhook,
     pendingRef,
     commandHandle,
-    getCommandHandle,
     runStartMs,
     vmJob,
     initialRuntimeGoldCharged = 0,
@@ -1672,7 +1619,7 @@ function startVmRuntimeGoldMonitor({
             const nextRuntimeGoldCharged = await checkAndChargeVmRuntimeGold({
                 pendingWebhook,
                 pendingRef,
-                commandHandle: typeof getCommandHandle === 'function' ? getCommandHandle() : commandHandle,
+                commandHandle,
                 runStartMs,
                 runtimeGoldCharged,
                 vmJob,
@@ -1703,7 +1650,6 @@ function startVmRuntimeGoldMonitor({
 function startVmCancellationMonitor({
     pendingRef,
     commandHandle,
-    getCommandHandle,
     getRuntimeGoldCharged,
     intervalMs = 2000,
     correlationId = '',
@@ -1724,9 +1670,8 @@ function startVmCancellationMonitor({
                 stopped = true
                 if (timer) clearInterval(timer)
                 const runtimeGoldCharged = typeof getRuntimeGoldCharged === 'function' ? getRuntimeGoldCharged() : 0
-                const activeCommandHandle = typeof getCommandHandle === 'function' ? getCommandHandle() : commandHandle
-                if (activeCommandHandle && typeof activeCommandHandle.kill === 'function') {
-                    await activeCommandHandle.kill().catch(error => {
+                if (commandHandle && typeof commandHandle.kill === 'function') {
+                    await commandHandle.kill().catch(error => {
                         console.warn('🖥️ VM JOB: failed killing command after cancellation', {
                             correlationId,
                             error: error.message,
@@ -1787,124 +1732,6 @@ async function resumeE2bSandbox(sandboxId, e2bApiKey, timeoutSec) {
     if (!resp.ok) {
         const body = await resp.text().catch(() => '')
         throw new Error(`E2B resume ${resp.status}: ${body.substring(0, 200)}`)
-    }
-}
-
-function startVmSliceTimer(runtimeMs) {
-    let timer = null
-    const promise = new Promise(resolve => {
-        timer = setTimeout(() => resolve({ type: 'slice_elapsed' }), Math.max(0, runtimeMs))
-    })
-    return {
-        promise,
-        stop: () => {
-            if (timer) clearTimeout(timer)
-            timer = null
-        },
-    }
-}
-
-async function superviseVmCommand({
-    Sandbox,
-    sandbox,
-    commandHandle,
-    e2bApiKey,
-    sandboxLeaseDeadlineMs,
-    onStdout,
-    onStderr,
-    monitor = null,
-    cancellationMonitor = null,
-    onCommandHandleChange = null,
-    onSliceRotated = null,
-    getCompletedResult = null,
-    pauseSandbox = pauseE2bSandbox,
-    resumeSandbox = resumeE2bSandbox,
-    resolveSliceRuntime = resolveVmAgentSliceRuntimeMs,
-    now = Date.now,
-}) {
-    let activeSandbox = sandbox
-    let activeCommandHandle = commandHandle
-    let leaseDeadlineMs = sandboxLeaseDeadlineMs
-    let sliceCount = 1
-    let activeRuntimeMs = 0
-    const commandPid = commandHandle.pid
-
-    while (true) {
-        const currentTimeMs = now()
-        const totalRuntimeDeadlineMs = currentTimeMs + Math.max(0, MAX_VM_RUNTIME_MS - activeRuntimeMs)
-        const sliceRuntimeMs = resolveSliceRuntime(leaseDeadlineMs, totalRuntimeDeadlineMs, currentTimeMs)
-        if (sliceRuntimeMs <= 0) {
-            await activeCommandHandle.kill().catch(() => {})
-            throw new VmRuntimeTimeoutError(MAX_VM_RUNTIME_MS)
-        }
-        const finalSlice = activeRuntimeMs + sliceRuntimeMs >= MAX_VM_RUNTIME_MS
-        const sliceTimer = startVmSliceTimer(sliceRuntimeMs)
-        const commandPromise = activeCommandHandle.wait()
-        let outcome
-        try {
-            outcome = await Promise.race([
-                commandPromise.then(result => ({ type: 'command_completed', result })),
-                sliceTimer.promise,
-                monitor ? monitor.promise : new Promise(() => {}),
-                cancellationMonitor ? cancellationMonitor.promise : new Promise(() => {}),
-            ])
-        } finally {
-            sliceTimer.stop()
-        }
-
-        if (outcome.type === 'command_completed') {
-            return { result: outcome.result, sandbox: activeSandbox, commandHandle: activeCommandHandle, sliceCount }
-        }
-        activeRuntimeMs += sliceRuntimeMs
-        if (finalSlice) {
-            await activeCommandHandle.kill().catch(() => {})
-            await commandPromise.catch(() => {})
-            throw new VmRuntimeTimeoutError(MAX_VM_RUNTIME_MS)
-        }
-
-        commandPromise.catch(() => {})
-        await activeCommandHandle.disconnect()
-        const completedBeforePause =
-            typeof getCompletedResult === 'function' ? await getCompletedResult(activeSandbox) : null
-        if (completedBeforePause) {
-            return {
-                result: completedBeforePause,
-                sandbox: activeSandbox,
-                commandHandle: activeCommandHandle,
-                sliceCount,
-            }
-        }
-        const sandboxId = activeSandbox.sandboxId || activeSandbox.id
-        await pauseSandbox(sandboxId, e2bApiKey)
-        const completedSliceCount = sliceCount
-        if (typeof onSliceRotated === 'function') {
-            await onSliceRotated({ completedSliceCount, activeRuntimeMs })
-        }
-        await resumeSandbox(sandboxId, e2bApiKey, Math.floor(E2B_SANDBOX_TIMEOUT_MS / 1000))
-        activeSandbox = await Sandbox.connect(sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
-        await activeSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
-        leaseDeadlineMs = now() + E2B_SANDBOX_TIMEOUT_MS
-        sliceCount += 1
-        try {
-            activeCommandHandle = await activeSandbox.commands.connect(commandPid, {
-                timeoutMs: E2B_SANDBOX_TIMEOUT_MS,
-                onStdout,
-                onStderr,
-            })
-        } catch (error) {
-            const completedResult =
-                typeof getCompletedResult === 'function' ? await getCompletedResult(activeSandbox) : null
-            if (completedResult) {
-                return {
-                    result: completedResult,
-                    sandbox: activeSandbox,
-                    commandHandle: activeCommandHandle,
-                    sliceCount,
-                }
-            }
-            throw error
-        }
-        if (typeof onCommandHandleChange === 'function') onCommandHandleChange(activeCommandHandle)
     }
 }
 
@@ -2176,7 +2003,7 @@ async function runAgentInSandbox(
         // The agent emits one JSON event per line. Parse complete lines, let the
         // agent-specific handler update activity + capture the final answer, and push
         // a fresh activity log to the chat whenever a new line is added.
-        const handleLine = (rawLine, publishActivity = true) => {
+        const handleLine = rawLine => {
             const line = rawLine.trim()
             if (!line) return
             let evt
@@ -2187,7 +2014,7 @@ async function runAgentInSandbox(
             }
             const before = state.activity.length
             config.handleEvent(evt, state)
-            if (publishActivity && state.activity.length > before && typeof onActivity === 'function') {
+            if (state.activity.length > before && typeof onActivity === 'function') {
                 onActivity(renderActivityLog(state.activity, agentLabel, runDetails, credentialMode))
             }
         }
@@ -2219,7 +2046,7 @@ async function runAgentInSandbox(
                   agent: vmJob.agent || DEFAULT_AGENT,
                   realApiKey: apiKey,
                   credentialMode,
-                  ttlMs: MAX_VM_RUNTIME_MS + VM_JOB_FINALIZATION_HEADROOM_MS,
+                  ttlMs: MAX_VM_RUNTIME_MS + 5 * 60 * 1000,
               })
         console.log('🖥️ VM JOB: agent credential mode', {
             correlationId: vmJob.correlationId,
@@ -2242,32 +2069,32 @@ async function runAgentInSandbox(
         )}`
 
         const runStartMs = Date.now()
-        const commandTimeoutMs = E2B_SANDBOX_TIMEOUT_MS
-        const runStatePaths = buildVmRunStatePaths(vmJob.correlationId)
-        const durableCommand = buildDurableVmCommand(command, runStatePaths)
+        const agentRuntimeMs = resolveVmAgentRuntimeMs(sandboxLeaseDeadlineMs, runStartMs)
+        const commandTimeoutMs = Math.min(E2B_SANDBOX_TIMEOUT_MS, agentRuntimeMs + E2B_SANDBOX_TERMINATION_GRACE_MS)
         console.log('🖥️ VM JOB: running agent command', {
             correlationId: vmJob.correlationId,
             agent: config.label,
             resume: isResume,
-            agentRuntimeMs: MAX_VM_RUNTIME_MS,
-            sliceRuntimeMs: E2B_SANDBOX_SLICE_MS,
+            agentRuntimeMs,
             commandTimeoutMs,
         })
         let result
         try {
-            let activeCommandHandle = await sandbox.commands.run(`bash -lc ${shellQuoteArg(durableCommand)}`, {
+            const commandHandle = await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
                 envs: runEnvs,
                 timeoutMs: commandTimeoutMs,
                 background: true,
                 onStdout: handleStdout,
                 onStderr: handleStderr,
             })
+            const commandPromise = commandHandle.wait()
+            const runtimeTimeout = startVmRuntimeTimeout(commandHandle, agentRuntimeMs, MAX_VM_RUNTIME_MS)
             const monitor =
                 pendingWebhook && pendingRef
                     ? startVmRuntimeGoldMonitor({
                           pendingWebhook,
                           pendingRef,
-                          getCommandHandle: () => activeCommandHandle,
+                          commandHandle,
                           runStartMs,
                           vmJob,
                           initialRuntimeGoldCharged: runtimeGoldCharged,
@@ -2276,52 +2103,23 @@ async function runAgentInSandbox(
             const cancellationMonitor = pendingRef
                 ? startVmCancellationMonitor({
                       pendingRef,
-                      getCommandHandle: () => activeCommandHandle,
+                      commandHandle,
                       getRuntimeGoldCharged: () => (monitor ? monitor.getRuntimeGoldCharged() : runtimeGoldCharged),
                       correlationId: vmJob.correlationId,
                   })
                 : null
 
             try {
-                const supervision = await superviseVmCommand({
-                    Sandbox,
-                    sandbox,
-                    commandHandle: activeCommandHandle,
-                    e2bApiKey,
-                    sandboxLeaseDeadlineMs,
-                    onStdout: handleStdout,
-                    onStderr: handleStderr,
-                    monitor,
-                    cancellationMonitor,
-                    getCompletedResult: resumedSandbox => readVmCommandCompletion(resumedSandbox, runStatePaths),
-                    onCommandHandleChange: commandHandle => {
-                        activeCommandHandle = commandHandle
-                    },
-                    onSliceRotated: async ({ completedSliceCount, activeRuntimeMs }) => {
-                        await pendingRef
-                            ?.update({
-                                vmSliceCount: completedSliceCount,
-                                vmActiveRuntimeMs: activeRuntimeMs,
-                                lastVmSliceRotatedAt: Date.now(),
-                            })
-                            .catch(() => {})
-                        if (typeof onActivity === 'function') {
-                            onActivity(
-                                `${renderVmWorkingHeader(
-                                    agentLabel,
-                                    runDetails,
-                                    credentialMode
-                                )}\n\n⏸️ Extending VM runtime after slice ${completedSliceCount}…`
-                            )
-                        }
-                    },
-                })
-                result = supervision.result
-                sandbox = supervision.sandbox
-                activeCommandHandle = supervision.commandHandle
+                result = await Promise.race([
+                    commandPromise,
+                    runtimeTimeout.promise,
+                    monitor ? monitor.promise : new Promise(() => {}),
+                    cancellationMonitor ? cancellationMonitor.promise : new Promise(() => {}),
+                ])
             } catch (error) {
                 if (isVmGoldExhaustedError(error) || isVmJobCancelledError(error) || isVmRuntimeTimeoutError(error)) {
                     runtimeGoldCharged = error.runtimeGoldCharged || runtimeGoldCharged
+                    await commandPromise.catch(() => {})
                 }
                 throw error
             } finally {
@@ -2330,6 +2128,7 @@ async function runAgentInSandbox(
                     runtimeGoldCharged = monitor.getRuntimeGoldCharged()
                 }
                 if (cancellationMonitor) cancellationMonitor.stop()
+                runtimeTimeout.stop()
             }
         } catch (runError) {
             if (stdoutBuf.trim()) handleLine(stdoutBuf)
@@ -2355,29 +2154,7 @@ async function runAgentInSandbox(
             }
             throw errorToThrow
         }
-        // Rebuild the parser state from the in-VM log. This captures output emitted while
-        // E2B's command stream was disconnected for a pause/resume handoff.
-        try {
-            const [durableStdout, durableStderr] = await Promise.all([
-                sandbox.files.read(runStatePaths.stdoutPath),
-                sandbox.files.read(runStatePaths.stderrPath),
-            ])
-            state.activity.length = 0
-            state.finalResult = ''
-            state.assistantText = ''
-            state.usage = null
-            String(durableStdout)
-                .split('\n')
-                .forEach(line => handleLine(line, false))
-            stdoutBuf = ''
-            stderr = String(durableStderr)
-        } catch (error) {
-            console.warn('🖥️ VM JOB: could not reload durable command output', {
-                correlationId: vmJob.correlationId,
-                error: error.message,
-            })
-            if (stdoutBuf.trim()) handleLine(stdoutBuf)
-        }
+        if (stdoutBuf.trim()) handleLine(stdoutBuf) // flush any trailing partial line
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
         console.log('🖥️ VM JOB: command finished', {
             correlationId: vmJob.correlationId,
@@ -3064,12 +2841,8 @@ module.exports = {
         isVmRuntimeTimeoutError,
         normalizeVmCommandError,
         selectVmCommandError,
-        resolveVmAgentSliceRuntimeMs,
+        resolveVmAgentRuntimeMs,
         startVmRuntimeTimeout,
-        buildVmRunStatePaths,
-        buildDurableVmCommand,
-        readVmCommandCompletion,
-        superviseVmCommand,
         claimVmJobLease,
         startVmJobHeartbeat,
         formatVmRuntimeDuration,

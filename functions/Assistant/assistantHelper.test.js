@@ -680,6 +680,7 @@ describe('assistant attachment handoff helpers', () => {
                     messageId: 'message-1',
                     threadId: 'thread-1',
                     webUrl: 'https://mail.google.com/message-1',
+                    followUpType: 'informational',
                 },
             }
         )
@@ -700,6 +701,55 @@ describe('assistant attachment handoff helpers', () => {
                     messageId: 'message-1',
                     threadId: 'thread-1',
                 }),
+            })
+        )
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                chatId: result.chatId,
+                chatType: 'topics',
+                followed: false,
+                creatorId: 'assistant-1',
+                creatorType: 'assistant',
+            })
+        )
+    })
+
+    test('keeps actionable Gmail chat notifications followed', async () => {
+        ProjectService.mockImplementationOnce(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Inbox' }]),
+        }))
+        mockCollectionGet.mockResolvedValueOnce({ docs: [] })
+        mockDocGet.mockResolvedValueOnce({ exists: false })
+
+        const result = await executeToolNatively(
+            'add_chat_comment',
+            {
+                chatTitle: 'Action required',
+                comment: 'Please review the failed payment.',
+                createIfMissing: true,
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            {
+                gmailContext: {
+                    origin: 'gmail_label_follow_up',
+                    topicChatTitle: 'Action required',
+                    messageId: 'message-actionable',
+                    followUpType: 'actionable',
+                },
+            }
+        )
+
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.objectContaining({
+                chatId: result.chatId,
+                chatType: 'topics',
+                followed: true,
+                creatorId: 'assistant-1',
+                creatorType: 'assistant',
             })
         )
     })

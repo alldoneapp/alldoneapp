@@ -4140,8 +4140,8 @@ exports.vmLlmProxy = onRequest(
     }
 )
 
-// LEGACY RUN VM JOB - retained only as a manual rollback target. New tasks always
-// launch the detached Cloud Run Job directly.
+// LEGACY RUN VM JOB - used while VM_CLOUD_RUN_JOBS_ENABLED is unset and retained
+// as a rollback target after the detached Cloud Run Job is enabled.
 exports.runVmJob = onTaskDispatched(
     {
         region: 'europe-west1',
