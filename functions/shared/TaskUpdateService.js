@@ -518,7 +518,9 @@ class TaskUpdateService {
         const priority = updateFields?.priority
         const didChangePriority = priority !== undefined && priority !== currentTask?.priority
         const shouldRecord =
-            didChangePriority && ['must_do', 'should_do', 'could_do', 'do_later'].includes(priority) && options?.commentFromAssistant
+            didChangePriority &&
+            ['must_do', 'should_do', 'could_do', 'do_later'].includes(priority) &&
+            options?.commentFromAssistant
         if (!shouldRecord) return
 
         try {
@@ -635,6 +637,7 @@ class TaskUpdateService {
                 feedUser: feedUser,
                 focus: updateFields.focus,
                 focusUserId: userId,
+                initiatorId: userId,
             })
 
             // Add estimation to changes if it was updated

@@ -8,6 +8,7 @@ import MultilineParser from '../TextParser/MultilineParser'
 import { generatorParserImageElement, generatorParserTextElement } from '../Utils/HelperFunctions'
 import { FEEDS_TYPES_TO_PARSE } from '../Utils/FeedsConstants'
 import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import FeedUndoAction from '../FeedUndoAction'
 
 export default function RegularFeed({ feed, projectId, showNewFeedDot, feedActiveTab, lastChangeDateObject }) {
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
@@ -64,6 +65,7 @@ export default function RegularFeed({ feed, projectId, showNewFeedDot, feedActiv
                     externalContainerStyle={{ marginLeft: 0 }}
                 />
             ) : null}
+            {feed.actionId ? <FeedUndoAction actionId={feed.actionId} /> : null}
         </View>
     )
 

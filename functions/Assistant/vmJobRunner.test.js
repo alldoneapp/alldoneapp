@@ -31,7 +31,7 @@ jest.mock('../envFunctionsHelper', () => ({
 jest.mock('./vmJob', () => ({
     VM_JOB_GOLD_SOURCE: 'vm_execution',
     VM_JOB_GOLD_REFUND_SOURCE: 'vm_execution_refund',
-    VM_GOLD_PER_MINUTE: 1,
+    VM_GOLD_PER_MINUTE: 10,
     VM_TOKENS_PER_GOLD: 100,
     getAgentLabel: jest.fn(agent => (agent === 'codex' ? 'Codex' : 'Claude')),
     formatAgentRunSuffix: (model, effort) => {
@@ -40,10 +40,14 @@ jest.mock('./vmJob', () => ({
         if (effort) parts.push(`${effort} effort`)
         return parts.length ? ` (${parts.join(' · ')})` : ''
     },
+    formatVmBillingStatus: (agentLabel, subscriptionUsed) =>
+        subscriptionUsed
+            ? `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
+            : '🔑 Using Alldone API billing. VM tokens will cost Gold.',
     DEFAULT_CLAUDE_MODEL: 'opus',
     DEFAULT_CODEX_MODEL: 'gpt-5.6-sol',
     DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
-    DEFAULT_CODEX_REASONING_EFFORT: 'high',
+    DEFAULT_CODEX_REASONING_EFFORT: 'medium',
 }))
 
 jest.mock('../Services/TwilioWhatsAppService', () =>
@@ -147,7 +151,7 @@ describe('VM runner prompt', () => {
         expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({ model: 'opus', effort: 'high' })
         expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({
             model: 'gpt-5.6-sol',
-            effort: 'high',
+            effort: 'medium',
         })
     })
 
@@ -192,6 +196,14 @@ describe('Codex VM proxy configuration', () => {
         }
     })
 
+    test('uses the native ChatGPT login without the API proxy for subscription runs', () => {
+        const command = __private__.buildCodexRunCommand(false, 'gpt-5.6-sol', 'medium', undefined, true)
+
+        expect(command).toContain('--model gpt-5.6-sol')
+        expect(command).toContain('-c model_reasoning_effort=medium')
+        expect(command).not.toContain('alldone_vm_proxy')
+    })
+
     test('rejects malformed proxy URLs instead of allowing a direct Codex request', () => {
         expect(() => __private__.buildCodexProxyConfigOverrides('')).toThrow('Codex VM proxy base URL is invalid.')
         expect(() => __private__.buildCodexProxyConfigOverrides('file:///tmp/proxy')).toThrow(
@@ -204,7 +216,7 @@ describe('VM runner runtime Gold monitor', () => {
     const pendingWebhook = {
         correlationId: 'correlation-1',
         userId: 'user-1',
-        goldCharged: 2,
+        goldCharged: 20,
         projectId: 'project-1',
         objectType: 'topics',
         objectId: 'chat-1',
@@ -218,7 +230,7 @@ describe('VM runner runtime Gold monitor', () => {
     test('deducts newly accrued runtime Gold while balance remains positive', async () => {
         const pendingRef = { update: jest.fn(async () => {}) }
         const commandHandle = { kill: jest.fn(async () => true) }
-        mockDeductGold.mockResolvedValue({ success: true, amount: 1, newBalance: 4 })
+        mockDeductGold.mockResolvedValue({ success: true, amount: 10, newBalance: 40 })
 
         const charged = await __private__.checkAndChargeVmRuntimeGold({
             pendingWebhook,
@@ -228,20 +240,20 @@ describe('VM runner runtime Gold monitor', () => {
             runtimeGoldCharged: 0,
             vmJob,
             now: () => 60000,
-            getCurrentGold: jest.fn(async () => 5),
+            getCurrentGold: jest.fn(async () => 50),
         })
 
-        expect(charged).toBe(1)
+        expect(charged).toBe(10)
         expect(mockDeductGold).toHaveBeenCalledWith(
             'user-1',
-            1,
+            10,
             expect.objectContaining({
                 source: 'vm_execution',
                 projectId: 'project-1',
                 objectId: 'chat-1',
             })
         )
-        expect(pendingRef.update).toHaveBeenCalledWith({ runtimeGoldCharged: 1 })
+        expect(pendingRef.update).toHaveBeenCalledWith({ runtimeGoldCharged: 10 })
         expect(commandHandle.kill).not.toHaveBeenCalled()
     })
 
@@ -299,9 +311,9 @@ describe('VM runner runtime Gold monitor', () => {
         expect(charges).toEqual(
             expect.objectContaining({
                 minutes: 3,
-                runtimeGoldRemaining: 1,
+                runtimeGoldRemaining: 28,
                 tokenGold: 3,
-                topup: 4,
+                topup: 31,
             })
         )
     })
@@ -317,23 +329,42 @@ describe('VM runner runtime Gold monitor', () => {
         expect(charges).toEqual(
             expect.objectContaining({
                 minutes: 2,
-                runtimeGoldRemaining: 1,
+                runtimeGoldRemaining: 19,
                 proxyTokenGoldCharged: 2,
                 tokenGoldTotal: 4,
                 tokenGold: 2,
-                topup: 3,
+                topup: 21,
+            })
+        )
+    })
+
+    test('subscription completion charges VM runtime but no token Gold', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 5000 },
+            subscriptionUsed: true,
+        })
+
+        expect(charges).toEqual(
+            expect.objectContaining({
+                minutes: 2,
+                runtimeGoldTotal: 20,
+                tokenGoldTotal: 0,
+                tokenGold: 0,
+                topup: 20,
+                subscriptionUsed: true,
             })
         )
     })
 
     test('technical failure refund includes base reserve plus runtime Gold already charged', async () => {
-        mockRefundGold.mockResolvedValue({ success: true, amount: 5 })
+        mockRefundGold.mockResolvedValue({ success: true, amount: 23 })
 
         await __private__.refundVmJob(pendingWebhook, 'VM task failed during execution', 3)
 
         expect(mockRefundGold).toHaveBeenCalledWith(
             'user-1',
-            5,
+            23,
             expect.objectContaining({
                 source: 'vm_execution_refund',
                 note: 'VM task failed during execution',

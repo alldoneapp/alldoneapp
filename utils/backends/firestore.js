@@ -6502,6 +6502,26 @@ export async function getGcpConnection(projectId, userId) {
     }
 }
 
+// --- Personal Claude/Codex subscriptions for execute_task_in_vm ---
+
+export async function getVmSubscriptionStatus() {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmSubscriptionStatus')
+    const result = await fn({})
+    return result.data
+}
+
+export async function connectVmSubscription(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('connectVmSubscription')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function disconnectVmSubscription(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectVmSubscription')
+    const result = await fn(data)
+    return result.data
+}
+
 // --- Per-assistant MCP server connections ---
 // The non-secret server config (label, url, transport, authType, enabled, tokenLast4)
 // lives on the assistant doc and is edited via updateAssistant. Only the secret

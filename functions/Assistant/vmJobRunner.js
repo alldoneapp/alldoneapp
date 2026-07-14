@@ -19,6 +19,7 @@ const {
     VM_TOKENS_PER_GOLD,
     getAgentLabel,
     formatAgentRunSuffix,
+    formatVmBillingStatus,
     DEFAULT_CLAUDE_MODEL,
     DEFAULT_CODEX_MODEL,
     DEFAULT_CLAUDE_EFFORT_LEVEL,
@@ -42,6 +43,8 @@ const VM_GOLD_EXHAUSTED_TEXT =
 const VM_JOB_CANCELLED_STATUS = 'cancelled'
 const VM_JOB_CANCEL_REQUESTED_STATUS = 'cancel_requested'
 const VM_JOB_CANCELLED_TEXT = 'Stopped.'
+const CODEX_AUTH_DIR = '/home/user/.codex'
+const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
@@ -904,13 +907,18 @@ function resolveAgentRunDetails(vmJob) {
     return { model, effort }
 }
 
-function renderVmWorkingHeader(agentLabel, runDetails) {
+function renderVmWorkingHeader(agentLabel, runDetails, subscriptionUsed) {
     const suffix = runDetails ? formatAgentRunSuffix(runDetails.model, runDetails.effort) : ''
-    return `🖥️ Working with ${agentLabel}${suffix} in a VM…`
+    const header = `🖥️ Working with ${agentLabel}${suffix} in a VM…`
+    return typeof subscriptionUsed === 'boolean'
+        ? `${header}\n\n${formatVmBillingStatus(agentLabel, subscriptionUsed)}`
+        : header
 }
 
-function renderActivityLog(lines, agentLabel, runDetails) {
-    return `${renderVmWorkingHeader(agentLabel, runDetails)}\n\n${lines.slice(-MAX_ACTIVITY_LINES).join('\n')}`
+function renderActivityLog(lines, agentLabel, runDetails, subscriptionUsed) {
+    return `${renderVmWorkingHeader(agentLabel, runDetails, subscriptionUsed)}\n\n${lines
+        .slice(-MAX_ACTIVITY_LINES)
+        .join('\n')}`
 }
 
 // Per-agent configuration. The assistant picks the agent per task; we map it to the
@@ -959,14 +967,16 @@ function buildCodexProxyConfigOverrides(proxyBaseUrl) {
     ]
 }
 
-function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyBaseUrl) {
+function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyBaseUrl, subscriptionUsed = false) {
     const resumePart = isResume ? 'exec resume --last' : 'exec'
     const modelFlag = agentModel ? ` --model ${agentModel}` : ''
     const effortFlag = agentReasoningEffort ? ` -c model_reasoning_effort=${agentReasoningEffort}` : ''
     const sandboxFlag = ` -c ${shellQuoteArg('sandbox_mode="workspace-write"')}`
-    const providerFlags = buildCodexProxyConfigOverrides(proxyBaseUrl)
-        .map(override => ` -c ${shellQuoteArg(override)}`)
-        .join('')
+    const providerFlags = subscriptionUsed
+        ? ''
+        : buildCodexProxyConfigOverrides(proxyBaseUrl)
+              .map(override => ` -c ${shellQuoteArg(override)}`)
+              .join('')
     return `codex ${resumePart}${sandboxFlag} -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
 }
 
@@ -983,9 +993,13 @@ const AGENT_CONFIGS = {
             buildClaudeRunCommand(isResume, agentModel, agentReasoningEffort),
         // `apiKey` is a short-lived per-job proxy token. Claude Code is pointed at the proxy,
         // and the real key stays server-side (see vmLlmProxy.js).
-        sandboxEnv: ({ apiKey, baseUrl }) => ({
-            ANTHROPIC_API_KEY: apiKey,
-            ...(baseUrl ? { ANTHROPIC_BASE_URL: `${baseUrl}/anthropic` } : {}),
+        sandboxEnv: ({ apiKey, baseUrl, mode, credential }) => ({
+            ...(mode === 'subscription'
+                ? { CLAUDE_CODE_OAUTH_TOKEN: credential }
+                : {
+                      ANTHROPIC_API_KEY: apiKey,
+                      ...(baseUrl ? { ANTHROPIC_BASE_URL: `${baseUrl}/anthropic` } : {}),
+                  }),
             CI: 'true',
             DISABLE_AUTOUPDATER: '1',
             DISABLE_TELEMETRY: '1',
@@ -1008,16 +1022,19 @@ const AGENT_CONFIGS = {
         // inside the E2B sandbox; configure sandbox_mode instead of using --sandbox because
         // current `codex exec resume` rejects that flag. Workspace-write still needs explicit
         // network access for package installs, git push, and PR creation.
-        buildRun: (isResume, { agentModel, agentReasoningEffort, proxyBaseUrl } = {}) =>
-            buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyBaseUrl),
+        buildRun: (isResume, { agentModel, agentReasoningEffort, proxyBaseUrl, subscriptionUsed } = {}) =>
+            buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyBaseUrl, subscriptionUsed),
         // `apiKey` is a short-lived per-job proxy token. The run command selects an explicit
         // HTTP-only custom provider; OPENAI_BASE_URL remains for older Codex CLI compatibility.
-        sandboxEnv: ({ apiKey, baseUrl }) => ({
-            CODEX_API_KEY: apiKey,
-            OPENAI_API_KEY: apiKey,
-            ...(baseUrl ? { OPENAI_BASE_URL: `${baseUrl}/openai/v1` } : {}),
-            CI: 'true',
-        }),
+        sandboxEnv: ({ apiKey, baseUrl, mode }) =>
+            mode === 'subscription'
+                ? { CODEX_HOME: CODEX_AUTH_DIR, CI: 'true' }
+                : {
+                      CODEX_API_KEY: apiKey,
+                      OPENAI_API_KEY: apiKey,
+                      ...(baseUrl ? { OPENAI_BASE_URL: `${baseUrl}/openai/v1` } : {}),
+                      CI: 'true',
+                  },
         handleEvent: appendCodexActivity,
     },
 }
@@ -1073,12 +1090,18 @@ function calculateAccruedRuntimeGold(runtimeMs) {
     return elapsedMinutes * VM_GOLD_PER_MINUTE
 }
 
-function calculateCompletionGoldCharges({ runtimeMs, usage, runtimeGoldCharged = 0, proxyTokenGoldCharged = 0 }) {
+function calculateCompletionGoldCharges({
+    runtimeMs,
+    usage,
+    runtimeGoldCharged = 0,
+    proxyTokenGoldCharged = 0,
+    subscriptionUsed = false,
+}) {
     const minutes = Math.max(1, Math.ceil(Math.max(0, Number(runtimeMs) || 0) / 60000))
     const totalTokens = usage && usage.totalTokens ? usage.totalTokens : 0
     const runtimeGoldTotal = minutes * VM_GOLD_PER_MINUTE
     const runtimeGoldRemaining = Math.max(0, runtimeGoldTotal - (Number(runtimeGoldCharged) || 0))
-    const tokenGoldTotal = Math.round(totalTokens / VM_TOKENS_PER_GOLD)
+    const tokenGoldTotal = subscriptionUsed ? 0 : Math.round(totalTokens / VM_TOKENS_PER_GOLD)
     const tokenGold = Math.max(0, tokenGoldTotal - (Number(proxyTokenGoldCharged) || 0))
     return {
         minutes,
@@ -1087,6 +1110,7 @@ function calculateCompletionGoldCharges({ runtimeMs, usage, runtimeGoldCharged =
         runtimeGoldRemaining,
         runtimeGoldCharged: Number(runtimeGoldCharged) || 0,
         proxyTokenGoldCharged: Number(proxyTokenGoldCharged) || 0,
+        subscriptionUsed: !!subscriptionUsed,
         tokenGoldTotal,
         tokenGold,
         topup: runtimeGoldRemaining + tokenGold,
@@ -1452,6 +1476,29 @@ async function cleanupIdleVmSessions() {
     }
 }
 
+async function prepareSubscriptionCredential(sandbox, subscriptionAuth) {
+    if (!subscriptionAuth || subscriptionAuth.mode !== 'subscription' || subscriptionAuth.provider !== 'codex') return
+    await sandbox.commands.run(`mkdir -p ${CODEX_AUTH_DIR} && chmod 700 ${CODEX_AUTH_DIR}`)
+    await sandbox.files.write(CODEX_AUTH_PATH, subscriptionAuth.credential)
+    await sandbox.commands.run(`chmod 600 ${CODEX_AUTH_PATH}`)
+}
+
+async function persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth, userId) {
+    if (!subscriptionAuth || subscriptionAuth.mode !== 'subscription' || subscriptionAuth.provider !== 'codex') return
+    try {
+        const refreshedAuthJson = await sandbox.files.read(CODEX_AUTH_PATH)
+        const { persistRefreshedCodexAuth } = require('./vmSubscriptionAuth')
+        await persistRefreshedCodexAuth(userId, refreshedAuthJson)
+    } catch (error) {
+        console.warn('🖥️ VM JOB: could not persist refreshed Codex subscription auth', {
+            userId,
+            error: error.message,
+        })
+    } finally {
+        await sandbox.commands.run(`rm -f ${CODEX_AUTH_PATH}`).catch(() => {})
+    }
+}
+
 /**
  * Run the selected agent (Claude Code or Codex) headless in an E2B sandbox and return its
  * final output. Resumes the chat thread's paused sandbox if one exists (so the agent
@@ -1468,7 +1515,8 @@ async function runAgentInSandbox(
     gitContext = null,
     gcpContext = null,
     pendingWebhook = null,
-    pendingRef = null
+    pendingRef = null,
+    subscriptionAuth = null
 ) {
     const { Sandbox } = require('e2b')
     const env = getEnvFunctions()
@@ -1482,6 +1530,7 @@ async function runAgentInSandbox(
     // Resume the thread's paused sandbox (same agent) if there is one; else create fresh.
     let sandbox = null
     let isResume = false
+    let subscriptionCredentialPrepared = false
     let runtimeGoldCharged = Number(pendingWebhook?.runtimeGoldCharged) || 0
     try {
         const sessSnap = await sessionRef.get()
@@ -1535,6 +1584,10 @@ async function runAgentInSandbox(
         await sandbox.files.write('/home/user/prompt.txt', prompt)
         const contextFileContent = [vmJob.packagedContext, vmJob.threadContext].filter(Boolean).join('\n\n---\n\n')
         await sandbox.files.write('/home/user/context.md', contextFileContent)
+        // A resumed sandbox must never retain an auth cache from an interrupted earlier run.
+        await sandbox.commands.run(`rm -f ${CODEX_AUTH_PATH}`).catch(() => {})
+        await prepareSubscriptionCredential(sandbox, subscriptionAuth)
+        subscriptionCredentialPrepared = !!subscriptionAuth && subscriptionAuth.provider === 'codex'
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
         // Mount the assistant's enabled skills so the agent's native skill discovery
@@ -1555,7 +1608,7 @@ async function runAgentInSandbox(
         if (gitContext && gitContext.enabled) {
             if (typeof onActivity === 'function') {
                 onActivity(
-                    `${renderVmWorkingHeader(agentLabel, runDetails)}\n\n📥 ${
+                    `${renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)}\n\n📥 ${
                         isResume ? 'Refreshing' : 'Cloning'
                     } the connected repository…`
                 )
@@ -1583,7 +1636,7 @@ async function runAgentInSandbox(
             const before = state.activity.length
             config.handleEvent(evt, state)
             if (state.activity.length > before && typeof onActivity === 'function') {
-                onActivity(renderActivityLog(state.activity, agentLabel, runDetails))
+                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, !!subscriptionAuth))
             }
         }
         const handleStdout = data => {
@@ -1605,15 +1658,16 @@ async function runAgentInSandbox(
         // still go to the absolute /home/user/output. Git credentials are injected per-command
         // via envs (never persisted to disk).
         const workdir = gitContext && gitContext.enabled ? REPO_DIR : '/home/user'
-        // Keep the real Anthropic/OpenAI key OUT of the sandbox: the agent gets a short-lived
-        // per-job token + the proxy base URL, and the real key is swapped in server-side.
-        const { buildVmAgentCredentials } = require('./vmLlmProxy')
-        const agentCredentials = buildVmAgentCredentials({
-            vmJob,
-            agent: vmJob.agent || DEFAULT_AGENT,
-            realApiKey: apiKey,
-            ttlMs: MAX_VM_RUNTIME_MS + 5 * 60 * 1000,
-        })
+        // API-billed jobs keep the real platform key behind the short-lived proxy. Personal
+        // subscription jobs use the requesting user's explicit Claude OAuth / Codex auth cache.
+        const agentCredentials = subscriptionAuth
+            ? { ...subscriptionAuth, mode: 'subscription' }
+            : require('./vmLlmProxy').buildVmAgentCredentials({
+                  vmJob,
+                  agent: vmJob.agent || DEFAULT_AGENT,
+                  realApiKey: apiKey,
+                  ttlMs: MAX_VM_RUNTIME_MS + 5 * 60 * 1000,
+              })
         console.log('🖥️ VM JOB: agent credential mode', {
             correlationId: vmJob.correlationId,
             mode: agentCredentials.mode,
@@ -1628,6 +1682,7 @@ async function runAgentInSandbox(
                 agentModel: runDetails.model,
                 agentReasoningEffort: runDetails.effort,
                 proxyBaseUrl: agentCredentials.baseUrl,
+                subscriptionUsed: !!subscriptionAuth,
             }
         )}`
 
@@ -1722,10 +1777,18 @@ async function runAgentInSandbox(
         }
         // Collect deliverable files written during THIS run (while the sandbox is still alive).
         const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
+        if (subscriptionCredentialPrepared) {
+            await persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth, vmJob.requestUserId)
+            subscriptionCredentialPrepared = false
+        }
         // Keep the sandbox alive (grace window) + record the session so the thread can resume it.
         await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey)
         return { output, usage: state.usage, artifacts, runtimeGoldCharged }
     } catch (err) {
+        if (subscriptionCredentialPrepared) {
+            await persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth, vmJob.requestUserId)
+            subscriptionCredentialPrepared = false
+        }
         // Preserve the session on failure too, so prior work in the thread isn't lost.
         await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey).catch(() => {})
         if (typeof err.runtimeGoldCharged !== 'number') err.runtimeGoldCharged = runtimeGoldCharged
@@ -1817,6 +1880,7 @@ async function chargeVmTopup(
         runtimeGoldRemaining = 0,
         tokenGold = 0,
         proxyTokenGoldCharged = 0,
+        subscriptionUsed = false,
     }
 ) {
     if (!topup || topup <= 0) return
@@ -1824,7 +1888,11 @@ async function chargeVmTopup(
     const note =
         `VM ${vmJob.agent || 'claude'} metered: ${minutes} min ` +
         `(${runtimeGoldAlreadyCharged} runtime Gold already charged, ${runtimeGoldRemaining} runtime Gold remaining) ` +
-        `+ ${totalTokens} tokens (${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining)` +
+        `+ ${totalTokens} tokens (${
+            subscriptionUsed
+                ? 'personal subscription, 0 Gold'
+                : `${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining`
+        })` +
         (typeof costUsd === 'number' ? ` (~$${costUsd.toFixed(2)})` : '')
     const ctx = {
         source: VM_JOB_GOLD_SOURCE,
@@ -2053,9 +2121,18 @@ async function runVmJobByCorrelationId(correlationId) {
     const config = AGENT_CONFIGS[vmJob.agent] || AGENT_CONFIGS[DEFAULT_AGENT]
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     const runDetails = resolveAgentRunDetails(vmJob)
+    const wantsSubscription = vmJob.credentialMode === 'subscription'
+    const subscriptionAuth = wantsSubscription
+        ? await require('./vmSubscriptionAuth').loadVmSubscriptionAuth(
+              vmJob.requestUserId,
+              vmJob.agent || DEFAULT_AGENT
+          )
+        : null
     const apiKey = env[config.apiKeyField]
-    if (!apiKey || !e2bApiKey) {
-        const message = `VM task could not run: ${config.label} sandbox credentials are not configured.`
+    if ((wantsSubscription && !subscriptionAuth) || (!wantsSubscription && !apiKey) || !e2bApiKey) {
+        const message = wantsSubscription
+            ? `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
+            : `VM task could not run: ${config.label} sandbox credentials are not configured.`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
         await notifyVmResultChannels(pendingWebhook, failureText, {
@@ -2108,7 +2185,10 @@ async function runVmJobByCorrelationId(correlationId) {
 
     try {
         await throwIfVmJobCancelled(pendingRef)
-        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails))
+        await pendingRef
+            .update({ credentialMode: subscriptionAuth ? 'subscription' : 'api', subscriptionUsed: !!subscriptionAuth })
+            .catch(() => {})
+        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth))
         const { output, usage, artifacts, runtimeGoldCharged = 0 } = await runAgentInSandbox(
             vmJob,
             config,
@@ -2118,7 +2198,8 @@ async function runVmJobByCorrelationId(correlationId) {
             gitContext && gitContext.enabled ? gitContext : null,
             gcpContext && gcpContext.enabled ? gcpContext : null,
             pendingWebhook,
-            pendingRef
+            pendingRef,
+            subscriptionAuth
         )
 
         // Upload any generated files and attach them to the result comment as real chat
@@ -2152,6 +2233,7 @@ async function runVmJobByCorrelationId(correlationId) {
             usage,
             runtimeGoldCharged,
             proxyTokenGoldCharged,
+            subscriptionUsed: !!subscriptionAuth,
         })
         await chargeVmTopup(pendingWebhook, vmJob, {
             topup,
@@ -2162,6 +2244,7 @@ async function runVmJobByCorrelationId(correlationId) {
             runtimeGoldRemaining,
             tokenGold,
             proxyTokenGoldCharged,
+            subscriptionUsed: !!subscriptionAuth,
         })
 
         await pendingRef
@@ -2173,6 +2256,8 @@ async function runVmJobByCorrelationId(correlationId) {
                 goldTopup: runtimeGoldCharged + proxyTokenGoldCharged + topup,
                 runtimeGoldCharged,
                 proxyTokenGoldCharged,
+                credentialMode: subscriptionAuth ? 'subscription' : 'api',
+                subscriptionUsed: !!subscriptionAuth,
                 artifactCount: mediaContext.length,
             })
             .catch(() => {})
@@ -2185,6 +2270,7 @@ async function runVmJobByCorrelationId(correlationId) {
             runtimeGoldCharged,
             runtimeGoldRemaining,
             proxyTokenGoldCharged,
+            subscriptionUsed: !!subscriptionAuth,
             tokenGoldTotal,
             tokenGold,
             topup,

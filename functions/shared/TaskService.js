@@ -661,6 +661,7 @@ class TaskService {
             feedUser,
             focus,
             focusUserId,
+            initiatorId,
             ...otherParams
         } = params
 
@@ -882,11 +883,17 @@ class TaskService {
 
         return {
             updateData,
+            beforeData: Object.keys(updateData).reduce((result, field) => {
+                result[field] = currentTask[field] === undefined ? null : currentTask[field]
+                return result
+            }, {}),
             updatedTask,
             feedData,
             taskId,
             focusAction,
             changes,
+            undoInitiatorId:
+                initiatorId || context.initiatorId || context.userId || (feedUser && (feedUser.uid || feedUser.id)),
             success: true,
             message:
                 changes.length > 0
@@ -908,7 +915,7 @@ class TaskService {
             throw new Error('Database interface not configured')
         }
 
-        const { updateData, updatedTask, feedData, taskId, focusAction } = updateResult
+        const { updateData, beforeData, updatedTask, feedData, taskId, focusAction, undoInitiatorId } = updateResult
         const { projectId, batch: externalBatch, feedUser } = options
 
         const finalProjectId = projectId || updatedTask.projectId
@@ -1211,6 +1218,48 @@ class TaskService {
                 // Commit batch if we created it
                 if (!externalBatch && batch.commit) {
                     await batch.commit()
+                }
+            }
+
+            if (this.options.isCloudFunction && undoInitiatorId) {
+                const undoableFields = ['name', 'extendedName', 'description', 'priority', 'hasStar']
+                const metadataFields = ['lastEditionDate', 'lastEditorId', 'lastEditorName']
+                const hasNonUndoableField = Object.keys(updateData).some(
+                    field => !undoableFields.includes(field) && !metadataFields.includes(field)
+                )
+                const before = {}
+                const after = {}
+                undoableFields.forEach(field => {
+                    if (Object.prototype.hasOwnProperty.call(updateData, field)) {
+                        before[field] = beforeData[field]
+                        after[field] = updateData[field]
+                    }
+                })
+                if (!hasNonUndoableField && Object.keys(after).length > 0) {
+                    const { createUndoActionRecord } = require('./UndoActionService')
+                    const actionRef = this.options.database.collection(`users/${undoInitiatorId}/undoActions`).doc()
+                    const actorId = feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
+                    const changedFields = Object.keys(after)
+                    const label = `Updated ${changedFields.join(', ')} for “${updatedTask.name || 'task'}”`
+                    await actionRef.set(
+                        createUndoActionRecord({
+                            actionId: actionRef.id,
+                            initiatorId: undoInitiatorId,
+                            actorId,
+                            source: actorId && actorId !== undoInitiatorId ? 'assistant' : 'ui',
+                            label,
+                            operations: [
+                                {
+                                    objectType: 'task',
+                                    projectId: finalProjectId,
+                                    objectId: taskId,
+                                    kind: 'update',
+                                    before,
+                                    after,
+                                },
+                            ],
+                        })
+                    )
                 }
             }
 

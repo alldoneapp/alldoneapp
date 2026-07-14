@@ -22,6 +22,7 @@ import EndDayStatisticsModal from './components/UIComponents/FloatModals/EndDayS
 import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoaders'
 import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
+import UndoActionBar from './components/Undo/UndoActionBar'
 
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
@@ -219,6 +220,7 @@ export default function AppContent() {
                     {loggedIn && processedInitialURL && (
                         <>
                             <GlobalModalsContainerApp />
+                            <UndoActionBar />
                             <EndDayStatisticsModal />
                             <Shortcuts />
                             <InitLoadView />

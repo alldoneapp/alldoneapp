@@ -98,6 +98,7 @@ export function generateTaskObjectModel(currentMilliseconds, task = {}, taskId) 
 }
 
 function updateTaskFeedObject(projectId, currentDateFormated, taskId, taskFeedObject, feed, feedId, params, batch) {
+    if (batch.currentUndoActionId) feed.actionId = batch.currentUndoActionId
     storeOldFeeds(projectId, currentDateFormated, taskId, taskFeedObject, feedId, feed)
 
     const loggedUserId = store.getState().loggedUser.uid

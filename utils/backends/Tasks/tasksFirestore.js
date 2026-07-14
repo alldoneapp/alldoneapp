@@ -119,6 +119,12 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConsta
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { isDayRateTimeLogTask, reconcileExistingDayRateTimeLog } from '../../DayRateTimeLogHelper'
 import { TASK_PRIORITY_NONE, getTaskPriorityRank, normalizeTaskPriority } from '../../TaskPriority'
+import {
+    buildObjectUpdateOperation,
+    buildTaskCreateOperation,
+    buildTaskUpdateOperation,
+    queueUndoAction,
+} from '../../undo/undoActions'
 
 import { getDvMainTabLink } from '../../LinkingHelper'
 import { isPrivateNote } from '../../../components/NotesView/NotesHelper'
@@ -487,6 +493,10 @@ export async function uploadNewTask(
                   .doc(`items/${projectId}/tasks/${taskId}`)
                   .set(safeTaskCopy)
                   .then(() => {
+                      queueUndoAction({
+                          label: `Created task “${taskCopy.name}”`,
+                          operations: [buildTaskCreateOperation(projectId, taskId, safeTaskCopy)],
+                      })
                       console.log(`[HumanReadableID] Task ${taskId} committed to database (awaited)`)
                       scheduleResetLastAddedTaskId(taskId)
                   })
@@ -494,6 +504,10 @@ export async function uploadNewTask(
                   .doc(`items/${projectId}/tasks/${taskId}`)
                   .set(safeTaskCopy)
                   .then(() => {
+                      queueUndoAction({
+                          label: `Created task “${taskCopy.name}”`,
+                          operations: [buildTaskCreateOperation(projectId, taskId, safeTaskCopy)],
+                      })
                       console.log(`[HumanReadableID] Task ${taskId} committed to database (non-awaited)`)
                       scheduleResetLastAddedTaskId(taskId)
                   })
@@ -1073,7 +1087,27 @@ export async function setTaskPriority(projectId, task, priority) {
     if (normalizeTaskPriority(task.priority) === normalizedPriority) return
 
     const oldAssignee = TasksHelper.getTaskOwner(task.userId, projectId)
-    return updateTask(projectId, { ...task, priority: normalizedPriority }, task, oldAssignee, '', [], false)
+    const result = await updateTask(
+        projectId,
+        { ...task, priority: normalizedPriority },
+        task,
+        oldAssignee,
+        '',
+        [],
+        false
+    )
+    queueUndoAction({
+        label: `Changed priority for “${task.name}”`,
+        operations: [
+            buildTaskUpdateOperation(
+                projectId,
+                task.id,
+                { priority: normalizeTaskPriority(task.priority) },
+                { priority: normalizedPriority }
+            ),
+        ],
+    })
+    return result
 }
 
 export const setTaskAssistant = async (projectId, taskId, assistantId, needGenerateUpdate) => {
@@ -1129,6 +1163,23 @@ export function setSubtaskPrivacy(projectId, taskId, isPrivate, isPublicFor) {
 export async function setTaskRecurrence(projectId, taskId, recurrence, task) {
     if (task.recurrence !== recurrence) {
         const batch = new BatchWrapper(getDb())
+        if (!task.parentId) {
+            const before = {
+                recurrence: task.recurrence,
+                timesDoneInExpectedDay: task.timesDoneInExpectedDay || 0,
+                timesDone: task.timesDone || 0,
+            }
+            const after = {
+                recurrence,
+                timesDoneInExpectedDay: recurrence === RECURRENCE_NEVER ? 0 : task.timesDoneInExpectedDay || 0,
+                timesDone: recurrence === RECURRENCE_NEVER ? 0 : task.timesDone || 0,
+            }
+            queueUndoAction({
+                label: `Changed recurrence for “${task.name}”`,
+                operations: [buildTaskUpdateOperation(projectId, taskId, before, after)],
+                batch,
+            })
+        }
         const followTaskData = {
             followObjectsType: FOLLOWER_TASKS_TYPE,
             followObjectId: taskId,
@@ -1136,7 +1187,7 @@ export async function setTaskRecurrence(projectId, taskId, recurrence, task) {
             feedCreator: store.getState().loggedUser,
         }
         await tryAddFollower(projectId, followTaskData, batch)
-        await createTaskRecurrenceChangedFeed(projectId, task, taskId, task.recurrence, recurrence)
+        await createTaskRecurrenceChangedFeed(projectId, task, taskId, task.recurrence, recurrence, batch)
 
         // When the task to update is a sub task
         if (task.parentId) {
@@ -1160,7 +1211,7 @@ export async function setTaskRecurrence(projectId, taskId, recurrence, task) {
             }
             updateTaskData(projectId, taskId, updateData, batch)
         }
-        batch.commit()
+        await batch.commit()
         task.recurrence = recurrence
     }
 }
@@ -1168,6 +1219,19 @@ export async function setTaskRecurrence(projectId, taskId, recurrence, task) {
 export async function setTaskHighlight(projectId, taskId, highlightColor, task) {
     const batch = new BatchWrapper(getDb())
     const isHighlight = highlightColor.toLowerCase() !== '#ffffff'
+
+    queueUndoAction({
+        label: `${isHighlight ? 'Highlighted' : 'Unhighlighted'} “${task.name}”`,
+        operations: [
+            buildTaskUpdateOperation(
+                projectId,
+                taskId,
+                { hasStar: task.hasStar || '#FFFFFF' },
+                { hasStar: highlightColor }
+            ),
+        ],
+        batch,
+    })
 
     await createTaskHighlightedChangedFeed(projectId, task, taskId, isHighlight, batch)
     const followTaskData = {
@@ -1186,6 +1250,20 @@ export async function setTaskHighlightMultiple(highlightColor, tasks) {
     const batch = new BatchWrapper(getDb())
     const taskBatch = new BatchWrapper(getDb())
     const isHighlight = highlightColor.toLowerCase() !== '#ffffff'
+
+    const undoAction = queueUndoAction({
+        label: `${isHighlight ? 'Highlighted' : 'Unhighlighted'} ${tasks.length} tasks`,
+        operations: tasks.map(task =>
+            buildTaskUpdateOperation(
+                task.projectId,
+                task.id,
+                { hasStar: task.hasStar || '#FFFFFF' },
+                { hasStar: highlightColor }
+            )
+        ),
+        batch: taskBatch,
+    })
+    if (undoAction) batch.currentUndoActionId = undoAction.actionId
 
     for (let task of tasks) {
         updateTaskData(task.projectId, task.id, { hasStar: highlightColor }, taskBatch)
@@ -1264,6 +1342,65 @@ export async function setTaskName(projectId, taskId, name, task, oldName) {
     const cleanedName = TasksHelper.getTaskNameWithoutMeta(name)
 
     const batch = new BatchWrapper(getDb())
+    const operations = [
+        buildTaskUpdateOperation(
+            projectId,
+            taskId,
+            { name: task.name, extendedName: oldName || task.extendedName || task.name },
+            { name: cleanedName, extendedName: name.trim() }
+        ),
+    ]
+    const chatSnapshot = await getDb().doc(`chatObjects/${projectId}/chats/${taskId}`).get()
+    if (chatSnapshot.exists) {
+        operations.push(
+            buildObjectUpdateOperation('chat', projectId, taskId, { title: chatSnapshot.data().title }, { title: name })
+        )
+    }
+
+    if (task.noteId) {
+        const noteSnapshot = await getDb().doc(`noteItems/${projectId}/notes/${task.noteId}`).get()
+        if (noteSnapshot.exists) {
+            const note = noteSnapshot.data()
+            const nextNoteTitle = TasksHelper.getNoteTitleForTask({
+                ...task,
+                name: cleanedName,
+                extendedName: name.trim(),
+            })
+            operations.push(
+                buildObjectUpdateOperation(
+                    'note',
+                    projectId,
+                    task.noteId,
+                    { title: note.title, extendedTitle: note.extendedTitle },
+                    {
+                        title: TasksHelper.getTaskNameWithoutMeta(nextNoteTitle).toLowerCase(),
+                        extendedTitle: nextNoteTitle,
+                    }
+                )
+            )
+        }
+    }
+
+    let parentTask = null
+    if (task.parentId) {
+        const parentSnapshot = await getDb().doc(`items/${projectId}/tasks/${task.parentId}`).get()
+        if (parentSnapshot.exists) {
+            parentTask = parentSnapshot.data()
+            const subtaskNames = [...(parentTask.subtaskNames || [])]
+            const subtaskIndex = (parentTask.subtaskIds || []).indexOf(task.id)
+            if (subtaskIndex >= 0) subtaskNames[subtaskIndex] = name
+            operations.push(
+                buildTaskUpdateOperation(
+                    projectId,
+                    task.parentId,
+                    { subtaskNames: parentTask.subtaskNames || [] },
+                    { subtaskNames }
+                )
+            )
+        }
+    }
+
+    queueUndoAction({ label: `Renamed task to “${cleanedName}”`, operations, batch })
 
     const mentionedUserIds = getMentionedUsersIdsWhenEditText(name, oldName)
     insertFollowersUserToFeedChain(mentionedUserIds, [], [], taskId, batch)
@@ -1292,9 +1429,10 @@ export async function setTaskName(projectId, taskId, name, task, oldName) {
 
     if (task.parentId) {
         const parentRef = getDb().doc(`items/${projectId}/tasks/${task.parentId}`)
-        const parentTask = (await parentRef.get()).data()
+        parentTask = parentTask || (await parentRef.get()).data()
 
-        let { subtaskIds, subtaskNames } = parentTask
+        const subtaskIds = parentTask.subtaskIds || []
+        const subtaskNames = [...(parentTask.subtaskNames || [])]
         const subtaskIndex = subtaskIds.indexOf(task.id)
         subtaskNames[subtaskIndex] = name
 
@@ -1320,6 +1458,14 @@ export async function setTaskDescription(projectId, taskId, description, task, o
     )
 
     const batch = new BatchWrapper(getDb())
+
+    queueUndoAction({
+        label: `Changed description for “${task.name}”`,
+        operations: [
+            buildTaskUpdateOperation(projectId, taskId, { description: oldDescription || '' }, { description }),
+        ],
+        batch,
+    })
 
     updateTaskData(projectId, taskId, { description }, batch)
     const mentionedUserIds = getMentionedUsersIdsWhenEditText(description, oldDescription)
@@ -2144,6 +2290,49 @@ export async function setTaskDueDate(
         //      console.log(
         //         `[setTaskDueDate] NOT incrementing timesPostponed for task ${taskId}. Condition (!isObservedTask && dueDate > task.dueDate) is false. fromSetTaskFocus=${fromSetTaskFocus}`
         //     )
+    }
+
+    const assigneeForUndo = TasksHelper.getUserInProject(projectId, task.userId)
+    const canUndoDueDate =
+        !isObservedTask && !fromSetTaskFocus && !task.parentId && assigneeForUndo?.inFocusTaskId !== taskId
+    if (canUndoDueDate) {
+        const before = { dueDate: task.dueDate, sortIndex: task.sortIndex }
+        const after = { dueDate, sortIndex: commonFields.sortIndex }
+        if (didResetPriority) {
+            before.priority = normalizeTaskPriority(task.priority)
+            after.priority = TASK_PRIORITY_NONE
+            before.timesPostponed = task.timesPostponed || 0
+            after.timesPostponed = (task.timesPostponed || 0) + 1
+            if (commonFields.recurrenceOriginalDueDate !== undefined) {
+                before.recurrenceOriginalDueDate = task.recurrenceOriginalDueDate || null
+                after.recurrenceOriginalDueDate = commonFields.recurrenceOriginalDueDate
+            }
+        }
+
+        const operations = [buildTaskUpdateOperation(projectId, taskId, before, after)]
+        if (task.subtaskIds?.length > 0) {
+            const subtaskSnapshots = await Promise.all(
+                task.subtaskIds.map(subtaskId => getDb().doc(`items/${projectId}/tasks/${subtaskId}`).get())
+            )
+            subtaskSnapshots.forEach(snapshot => {
+                if (!snapshot.exists) return
+                const subtask = snapshot.data()
+                const subtaskBefore = { dueDate: subtask.dueDate }
+                const subtaskAfter = { dueDate }
+                if (didResetPriority) {
+                    subtaskBefore.priority = normalizeTaskPriority(subtask.priority)
+                    subtaskAfter.priority = TASK_PRIORITY_NONE
+                    subtaskBefore.timesPostponed = subtask.timesPostponed || 0
+                    subtaskAfter.timesPostponed = (subtask.timesPostponed || 0) + 1
+                }
+                operations.push(buildTaskUpdateOperation(projectId, snapshot.id, subtaskBefore, subtaskAfter))
+            })
+        }
+        queueUndoAction({
+            label: `Changed reminder for “${task.name}”`,
+            operations,
+            batch,
+        })
     }
     if (task.parentId) {
         await deleteSubTaskFromParent(projectId, taskId, task, batch)
