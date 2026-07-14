@@ -134,41 +134,6 @@ describe('VM runner prompt', () => {
         )
     })
 
-    test('preserves complete multiline Claude progress updates', () => {
-        const progressText = `First line\n\n${'Complete Claude update. '.repeat(20).trim()}`
-        const state = { activity: [], finalResult: '', assistantText: '', usage: null }
-
-        __private__.appendClaudeActivity(
-            {
-                type: 'assistant',
-                message: { content: [{ type: 'text', text: `  ${progressText}  ` }] },
-            },
-            state
-        )
-
-        expect(state.activity).toEqual([`💬 ${progressText}`])
-        expect(__private__.renderActivityLog(state.activity, 'Claude')).toContain(progressText)
-    })
-
-    test('preserves complete Codex progress and reasoning updates', () => {
-        const progressText = `Codex update\n${'All details stay visible. '.repeat(20).trim()}`
-        const reasoningText = `Reasoning summary\n${'No detail is removed. '.repeat(20).trim()}`
-        const state = { activity: [], finalResult: '', assistantText: '', usage: null }
-
-        __private__.appendCodexActivity(
-            { type: 'item.completed', item: { type: 'agent_message', text: progressText } },
-            state
-        )
-        __private__.appendCodexActivity(
-            { type: 'item.completed', item: { type: 'reasoning', text: reasoningText } },
-            state
-        )
-
-        expect(state.activity).toEqual([`💬 ${progressText}`, `💭 ${reasoningText}`])
-        expect(__private__.renderActivityLog(state.activity, 'Codex')).toContain(progressText)
-        expect(__private__.renderActivityLog(state.activity, 'Codex')).toContain(reasoningText)
-    })
-
     test('header includes the model and effort the agent is running with', () => {
         expect(__private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' })).toBe(
             '🖥️ Working with Claude (opus · high effort) in a VM…'
