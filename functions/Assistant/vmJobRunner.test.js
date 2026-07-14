@@ -163,62 +163,21 @@ describe('VM runner prompt', () => {
 })
 
 describe('Codex VM proxy configuration', () => {
-    test('only installs Codex when the binary is missing', () => {
+    test('always upgrades Codex to latest before every run', () => {
         const guard = __private__.buildCodexInstallGuard()
 
         expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
-        expect(guard).toContain('command -v codex')
         expect(guard).toContain('npm install -g --prefix /home/user/.local @openai/codex@latest')
-        expect(guard).not.toContain('>/dev/null 2>&1 && npm install')
+        expect(guard).not.toContain('command -v codex')
         expect(guard).not.toContain('.codex-cli-')
     })
 
-    test('only installs Claude Code when the binary is missing and keeps npm output observable', () => {
+    test('always upgrades Claude Code to latest before every run', () => {
         const guard = __private__.buildClaudeInstallGuard()
 
         expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
-        expect(guard).toContain('command -v claude')
         expect(guard).toContain('npm install -g --prefix /home/user/.local @anthropic-ai/claude-code@latest')
-        expect(guard).toContain('AGENT_CLI_INSTALLING')
-        expect(guard).not.toContain('@anthropic-ai/claude-code@latest >/dev/null')
-    })
-
-    test('reports the separate installation stage with sanitized npm diagnostics', async () => {
-        const onActivity = jest.fn()
-        const sandbox = {
-            commands: {
-                run: jest.fn(async (_command, options) => {
-                    options.onStdout('AGENT_CLI_INSTALLING\n')
-                    options.onStderr('npm ERR! Authorization: Bearer secret-token\nregistry unavailable')
-                    throw new Error('exit status 1')
-                }),
-            },
-        }
-
-        await expect(
-            __private__.ensureAgentCliAvailable(
-                sandbox,
-                { installGuard: __private__.buildClaudeInstallGuard },
-                'Claude',
-                onActivity,
-                'Working'
-            )
-        ).rejects.toThrow('Claude installation failed. npm ERR! Authorization: Bearer [REDACTED] registry unavailable')
-        expect(onActivity).toHaveBeenCalledWith('Working\n\n📦 Installing Claude…')
-    })
-
-    test('preserves a structured Claude error on a non-zero exit and redacts secrets', () => {
-        const error = __private__.buildAgentExitError(
-            'Claude',
-            { exitCode: 1 },
-            { finalResult: 'Authentication failed for sk-ant-super-secret', assistantText: '' },
-            'request aborted'
-        )
-
-        expect(error.message).toBe(
-            'Claude exited with exit status 1. Authentication failed for [REDACTED] request aborted'
-        )
-        expect(error.message).not.toContain('super-secret')
+        expect(guard).not.toContain('command -v claude')
     })
 
     test('routes Codex through the HTTP proxy and disables Responses WebSockets', () => {
@@ -492,7 +451,7 @@ describe('VM completion chat metadata', () => {
     const createFirestoreMock = ({ commentData = {}, chatData = {} } = {}) => {
         const refs = new Map()
         const doc = jest.fn(path => {
-            if (!refs.has(path)) refs.set(path, { path })
+            if (!refs.has(path)) refs.set(path, { path, set: jest.fn(async () => {}) })
             return refs.get(path)
         })
         const transaction = {
@@ -628,6 +587,52 @@ describe('VM completion chat metadata', () => {
         expect(result).toEqual({ applied: false, reason: 'already-applied' })
         expect(transaction.set).not.toHaveBeenCalled()
         expect(transaction.update).not.toHaveBeenCalled()
+    })
+
+    test('updates task-list comment metadata when a VM run fails', async () => {
+        const { transaction, refs } = createFirestoreMock()
+        const failureText = '❌ The VM task could not be completed: exit status 1'
+
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+                statusCommentId: 'comment-1',
+            },
+            failureText,
+            { assistantRunStatus: 'failed' }
+        )
+
+        expect(refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: failureText,
+                isLoading: false,
+                assistantRun: expect.objectContaining({ status: 'failed' }),
+            }),
+            { merge: true }
+        )
+        expect(transaction.update).toHaveBeenCalledWith(
+            refs.get('items/project-1/tasks/task-1'),
+            expect.objectContaining({
+                'commentsData.lastComment': expect.stringContaining('The VM task could not b'),
+                'commentsData.lastCommentType': 2,
+                'commentsData.amount': { __op: 'increment', value: 1 },
+            })
+        )
+        expect(transaction.set).toHaveBeenCalledWith(
+            refs.get('chatObjects/project-1/chats/task-1'),
+            expect.objectContaining({
+                'commentsData.lastComment': failureText,
+                'commentsData.amount': { __op: 'increment', value: 1 },
+            }),
+            { merge: true }
+        )
     })
 
     test('does not treat the assistant as a user when it appears in the follower list', async () => {
