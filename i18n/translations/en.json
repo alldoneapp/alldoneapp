@@ -2362,14 +2362,5 @@
     "Default VM agent": "Default VM agent",
     "Choose which agent runs VM tasks when no agent is explicitly requested. An explicit choice always takes priority.": "Choose which agent runs VM tasks when no agent is explicitly requested. An explicit choice always takes priority.",
     "Could not load the default VM agent.": "Could not load the default VM agent.",
-    "Could not save the default VM agent.": "Could not save the default VM agent.",
-    "Default VM effort": "Default VM effort",
-    "Optionally choose the reasoning effort used when a VM task does not explicitly request one. No default keeps the agent-specific behavior.": "Optionally choose the reasoning effort used when a VM task does not explicitly request one. No default keeps the agent-specific behavior.",
-    "No default": "No default",
-    "Low effort": "Low",
-    "Medium effort": "Medium",
-    "High effort": "High",
-    "Extra high effort": "Extra high",
-    "Could not load VM defaults.": "Could not load VM defaults.",
-    "Could not save the default VM effort.": "Could not save the default VM effort."
+    "Could not save the default VM agent.": "Could not save the default VM agent."
 }

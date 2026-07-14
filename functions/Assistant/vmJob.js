@@ -5,7 +5,7 @@ const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const {
     VALID_VM_AGENTS: VALID_AGENTS,
     SYSTEM_DEFAULT_VM_AGENT: DEFAULT_AGENT,
-    resolveVmAgentSettings,
+    resolveVmAgent,
 } = require('./vmAgentSettings')
 
 // Hybrid Gold pricing for a VM run:
@@ -259,14 +259,13 @@ async function startVmJob({
         return { success: false, message: `agent must be one of: ${VALID_AGENTS.join(', ')}.` }
     }
 
-    const resolvedAgentSettings = await resolveVmAgentSettings(requestUserId, agent, agentReasoningEffort)
-    const selectedAgent = resolvedAgentSettings.agent
+    const selectedAgent = await resolveVmAgent(requestUserId, agent)
     const selectedAgentLabel = getAgentLabel(selectedAgent)
     const modelResult = normalizeAgentModel(selectedAgent, agentModel)
     if (modelResult.error) {
         return { success: false, message: modelResult.error }
     }
-    const effortResult = normalizeAgentReasoningEffort(selectedAgent, resolvedAgentSettings.reasoningEffort)
+    const effortResult = normalizeAgentReasoningEffort(selectedAgent, agentReasoningEffort)
     if (effortResult.error) {
         return { success: false, message: effortResult.error }
     }

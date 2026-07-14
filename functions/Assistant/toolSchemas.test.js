@@ -341,8 +341,6 @@ describe('VM assistant tool schema', () => {
         expect(properties.agent.description).toContain('explicit choice overrides')
         expect(properties.agentModel.type).toBe('string')
         expect(properties.agentReasoningEffort.enum).toEqual(['low', 'medium', 'high', 'xhigh'])
-        expect(properties.agentReasoningEffort.description).toContain("user's default VM effort")
-        expect(properties.agentReasoningEffort.description).toContain('provider defaults')
     })
 })
 

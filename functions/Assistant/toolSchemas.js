@@ -2213,8 +2213,7 @@ const toolSchemas = {
                         type: 'string',
                         enum: ['low', 'medium', 'high', 'xhigh'],
                         description:
-                            'Optional. Effort/reasoning setting for the VM agent. An explicit value overrides the user setting. ' +
-                            'When omitted, the requesting user\'s default VM effort is used; users without one keep the provider defaults ("high" for Claude and "medium" for Codex). ' +
+                            'Optional. Effort/reasoning setting for the VM agent. Defaults to "high" for Claude and "medium" for Codex. ' +
                             'The minimum is "low" because Codex Responses requests can include tools that are incompatible with "minimal". ' +
                             'For Claude Code this maps to the CLI `--effort` flag; for Codex it maps to the `model_reasoning_effort` config.',
                     },
