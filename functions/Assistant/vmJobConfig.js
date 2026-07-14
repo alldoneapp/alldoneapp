@@ -1,6 +1,6 @@
-// Keep admission and worker dispatch aligned: a user may occupy all ten VM
+// Keep admission and worker dispatch aligned: a user may occupy all five VM
 // worker slots, while additional per-user jobs retain the existing rejection behavior.
-const MAX_CONCURRENT_VM_JOBS = 10
+const MAX_CONCURRENT_VM_JOBS = 5
 const MAX_CONCURRENT_VM_JOBS_PER_USER = MAX_CONCURRENT_VM_JOBS
 
 // E2B's lowest service tier allows one sandbox creation per second. Throttling

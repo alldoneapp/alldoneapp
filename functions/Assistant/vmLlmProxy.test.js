@@ -9,7 +9,6 @@ const {
     finalizeCapturedUsage,
     extractUsageFromJsonPayload,
     chargeProxyTokenGold,
-    checkProxyJobCanContinue,
     TOKEN_PREFIX,
 } = require('./vmLlmProxy')
 
@@ -149,64 +148,6 @@ describe('vmLlmProxy token usage parsing', () => {
     })
 })
 
-describe('vmLlmProxy job authorization', () => {
-    function buildDb(pendingData, userGold = 10) {
-        return {
-            doc: jest.fn(path => ({ path })),
-            docData: pendingData,
-            asyncData: userGold,
-        }
-    }
-
-    function attachGets(db) {
-        const originalDoc = db.doc
-        db.doc = jest.fn(path => {
-            const ref = originalDoc(path)
-            ref.get = async () =>
-                path.startsWith('pendingWebhooks/')
-                    ? { exists: !!db.docData, data: () => db.docData || {} }
-                    : { exists: true, data: () => ({ gold: db.asyncData }) }
-            ref.set = jest.fn(async () => {})
-            return ref
-        })
-        return db
-    }
-
-    test('rejects a signed token from a different user or credential route', async () => {
-        const wrongUserDb = attachGets(buildDb({ userId: 'owner', credentialMode: 'byok', status: 'initiated' }))
-        await expect(
-            checkProxyJobCanContinue({
-                correlationId: 'cid-1',
-                userId: 'attacker',
-                credentialMode: 'byok',
-                db: wrongUserDb,
-            })
-        ).resolves.toMatchObject({ allowed: false, message: expect.stringContaining('not authorized') })
-
-        const wrongModeDb = attachGets(buildDb({ userId: 'owner', credentialMode: 'api', status: 'initiated' }))
-        await expect(
-            checkProxyJobCanContinue({
-                correlationId: 'cid-1',
-                userId: 'owner',
-                credentialMode: 'byok',
-                db: wrongModeDb,
-            })
-        ).resolves.toMatchObject({ allowed: false, message: expect.stringContaining('route') })
-    })
-
-    test('allows the owning user to use the selected BYOK route while the job is active', async () => {
-        const db = attachGets(buildDb({ userId: 'owner', credentialMode: 'byok', status: 'initiated' }))
-        await expect(
-            checkProxyJobCanContinue({
-                correlationId: 'cid-1',
-                userId: 'owner',
-                credentialMode: 'byok',
-                db,
-            })
-        ).resolves.toEqual({ allowed: true, currentGold: 10 })
-    })
-})
-
 describe('vmLlmProxy token Gold charging', () => {
     function buildFakeDb({ userGold = 10, pendingData = {} } = {}) {
         const userRef = { path: 'users/u1' }
@@ -296,24 +237,6 @@ describe('buildVmAgentCredentials', () => {
         expect(creds.baseUrl).toBe('https://proxy.example/vmLlmProxy')
         expect(creds.apiKey.startsWith(TOKEN_PREFIX)).toBe(true)
         expect(creds.apiKey).not.toContain('REAL')
-    })
-
-    test('BYOK mode still hands the sandbox only a proxy token and needs no raw platform key', () => {
-        const creds = buildVmAgentCredentials({
-            vmJob: { correlationId: 'cid-byok', requestUserId: 'u9' },
-            agent: 'codex',
-            realApiKey: '',
-            credentialMode: 'byok',
-            ttlMs: 60_000,
-            env: ENV,
-        })
-        const verdict = verifyProxyToken(creds.apiKey, { expectedAgent: 'codex', env: ENV })
-
-        expect(creds.mode).toBe('proxy')
-        expect(creds.credentialMode).toBe('byok')
-        expect(verdict.valid).toBe(true)
-        expect(verdict.payload).toEqual(expect.objectContaining({ uid: 'u9', cm: 'byok' }))
-        expect(creds.apiKey).not.toContain('sk-')
     })
 
     test('fails closed when the proxy signing secret is not configured', () => {

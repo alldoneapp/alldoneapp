@@ -1,6 +1,6 @@
 const mockDocs = {}
 const mockQueueEnqueue = jest.fn(async () => {})
-const mockResolveVmCredentialMode = jest.fn(async () => 'api')
+const mockHasVmSubscription = jest.fn(async () => false)
 const mockCollectionQuery = {
     where: jest.fn(() => mockCollectionQuery),
     get: jest.fn(async () => ({ size: 0 })),
@@ -46,8 +46,8 @@ jest.mock('../Gold/goldHelper', () => ({
     refundGold: jest.fn(async () => ({ success: true })),
 }))
 
-jest.mock('./vmApiKeyAuth', () => ({
-    resolveVmCredentialMode: mockResolveVmCredentialMode,
+jest.mock('./vmSubscriptionAuth', () => ({
+    hasVmSubscription: mockHasVmSubscription,
 }))
 
 const crypto = require('crypto')
@@ -62,7 +62,7 @@ describe('startVmJob', () => {
         jest.clearAllMocks()
         mockCollectionQuery.get.mockResolvedValue({ size: 0 })
         mockQueueEnqueue.mockResolvedValue(undefined)
-        mockResolveVmCredentialMode.mockResolvedValue('api')
+        mockHasVmSubscription.mockResolvedValue(false)
         jest.spyOn(crypto, 'randomUUID').mockReturnValue('correlation-1')
     })
 
@@ -70,20 +70,20 @@ describe('startVmJob', () => {
         crypto.randomUUID.mockRestore()
     })
 
-    test('admits ten concurrent jobs and rejects the eleventh before charging or enqueueing it', async () => {
-        expect(MAX_CONCURRENT_VM_JOBS_PER_USER).toBe(10)
-        expect(MAX_CONCURRENT_VM_JOBS).toBe(10)
+    test('admits five concurrent jobs and rejects the sixth before charging or enqueueing it', async () => {
+        expect(MAX_CONCURRENT_VM_JOBS_PER_USER).toBe(5)
+        expect(MAX_CONCURRENT_VM_JOBS).toBe(5)
         expect(VM_JOB_QUEUE_RATE_LIMITS).toEqual({
-            maxConcurrentDispatches: 10,
+            maxConcurrentDispatches: 5,
             maxDispatchesPerSecond: 1,
         })
-        ;[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].forEach(activeJobs => {
+        ;[0, 1, 2, 3, 4, 5].forEach(activeJobs => {
             mockCollectionQuery.get.mockResolvedValueOnce({ size: activeJobs })
         })
         crypto.randomUUID.mockImplementation(() => `correlation-${crypto.randomUUID.mock.calls.length}`)
 
         const results = []
-        for (let jobNumber = 1; jobNumber <= 11; jobNumber += 1) {
+        for (let jobNumber = 1; jobNumber <= 6; jobNumber += 1) {
             results.push(
                 await startVmJob({
                     objective: `Run job ${jobNumber}`,
@@ -98,14 +98,14 @@ describe('startVmJob', () => {
             )
         }
 
-        expect(results.slice(0, 10).every(result => result.success && result.status === 'started')).toBe(true)
-        expect(results[10]).toEqual({
+        expect(results.slice(0, 5).every(result => result.success && result.status === 'started')).toBe(true)
+        expect(results[5]).toEqual({
             success: false,
-            message: 'You already have 10 VM tasks running. Please wait for one to finish before starting another.',
+            message: 'You already have 5 VM tasks running. Please wait for one to finish before starting another.',
         })
-        expect(deductGold).toHaveBeenCalledTimes(10)
-        expect(mockQueueEnqueue).toHaveBeenCalledTimes(10)
-        expect(createInitialStatusMessage).toHaveBeenCalledTimes(10)
+        expect(deductGold).toHaveBeenCalledTimes(5)
+        expect(mockQueueEnqueue).toHaveBeenCalledTimes(5)
+        expect(createInitialStatusMessage).toHaveBeenCalledTimes(5)
     })
 
     test('persists WhatsApp notification target for WhatsApp-originated VM jobs', async () => {
@@ -353,7 +353,7 @@ describe('startVmJob', () => {
     })
 
     test('announces and persists personal subscription billing', async () => {
-        mockResolveVmCredentialMode.mockResolvedValueOnce('subscription')
+        mockHasVmSubscription.mockResolvedValueOnce(true)
 
         await startVmJob({
             objective: 'Change the code',
@@ -379,40 +379,5 @@ describe('startVmJob', () => {
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
             expect.objectContaining({ credentialMode: 'subscription', subscriptionUsed: true })
         )
-    })
-
-    test('gives an explicitly selected personal API key precedence without charging token Gold', async () => {
-        mockResolveVmCredentialMode.mockResolvedValueOnce('byok')
-
-        const result = await startVmJob({
-            objective: 'Change the code',
-            taskType: 'prototype',
-            agent: 'codex',
-            projectId: 'project-1',
-            objectType: 'topics',
-            objectId: 'chat-1',
-            assistantId: 'assistant-1',
-            requestUserId: 'user-1',
-        })
-
-        expect(createInitialStatusMessage).toHaveBeenCalledWith(
-            'project-1',
-            'topics',
-            'chat-1',
-            'assistant-1',
-            expect.stringContaining('Using your personal Codex API key'),
-            expect.any(Array),
-            expect.any(Array),
-            expect.any(Array)
-        )
-        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({
-                credentialMode: 'byok',
-                personalApiKeyUsed: true,
-                tokenBillingExempt: true,
-                subscriptionUsed: false,
-            })
-        )
-        expect(result.message).toContain('your personal API key')
     })
 })
