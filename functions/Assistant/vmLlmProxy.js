@@ -12,7 +12,9 @@
 // against this proxy (which we can rate-limit / instantly revoke by rotating the signing secret) —
 // strictly better than leaking the real key, which is permanent and works directly against the
 // provider. Per-token spend budgeting + active-job revocation are possible future hardening; for
-// now the short expiry + signature are the guard (no per-request Firestore read on the hot path).
+// now the short expiry + signature are the guard. The existing per-request job/balance read also
+// binds the token to the active user's selected credential route; BYOK requests read that user's
+// server-only key after this authorization check.
 //
 // Config: VM_PROXY_SIGNING_SECRET and optional VM_LLM_PROXY_BASE_URL (defaults to the deployed
 // function URL) come from getEnvFunctions(). If the proxy cannot be configured, VM execution fails
@@ -125,10 +127,10 @@ function getProxyBaseUrl(env) {
 
 /**
  * Mint a short-lived, per-job token the sandbox uses in place of the real API key.
- * The token is an HMAC-signed { cid, agent, uid, exp } payload — self-contained, so the proxy
+ * The token is an HMAC-signed { cid, agent, uid, cm, exp } payload — self-contained, so the proxy
  * verifies it with no database read.
  */
-function mintProxyToken({ correlationId, agent, userId, expiresAtMs }, env) {
+function mintProxyToken({ correlationId, agent, userId, credentialMode = 'api', expiresAtMs }, env) {
     const secret = getSigningSecret(env)
     if (!secret) throw new Error('VM_PROXY_SIGNING_SECRET is not configured; cannot mint a proxy token')
     const payload = base64UrlEncode(
@@ -136,6 +138,7 @@ function mintProxyToken({ correlationId, agent, userId, expiresAtMs }, env) {
             cid: correlationId || '',
             agent: agent || '',
             uid: userId || '',
+            cm: credentialMode === 'byok' ? 'byok' : 'api',
             exp: Math.floor((Number(expiresAtMs) || 0) / 1000),
         })
     )
@@ -218,16 +221,28 @@ async function handleProxyRequest(req, res) {
         const continuity = await checkProxyJobCanContinue({
             correlationId: verdict.payload.cid,
             userId: verdict.payload.uid,
+            credentialMode: verdict.payload.cm || 'api',
         })
         if (!continuity.allowed) {
             res.status(402).send(continuity.message || 'VM task stopped because the user ran out of Gold')
             return
         }
 
-        const realKey = env[config.realKeyField]
+        const credentialMode = verdict.payload.cm === 'byok' ? 'byok' : 'api'
+        const realKey =
+            credentialMode === 'byok'
+                ? await require('./vmApiKeyAuth').loadVmApiKey(verdict.payload.uid, config.expectedAgent)
+                : env[config.realKeyField]
         if (!realKey) {
-            console.error('🔐 VM PROXY: upstream key missing', { field: config.realKeyField })
-            res.status(503).send('Upstream key not configured')
+            console.error('🔐 VM PROXY: upstream key missing', {
+                provider: matched.provider,
+                credentialMode,
+            })
+            res.status(503).send(
+                credentialMode === 'byok'
+                    ? 'Personal API key is missing. Add or replace it in Settings → Integrations.'
+                    : 'Upstream key not configured'
+            )
             return
         }
 
@@ -251,6 +266,12 @@ async function handleProxyRequest(req, res) {
 
         const upstream = await fetch(upstreamUrl, { method, headers, body })
 
+        if (credentialMode === 'byok' && (upstream.status === 401 || upstream.status === 403)) {
+            require('./vmApiKeyAuth')
+                .markVmApiKeyRejected(verdict.payload.uid, config.expectedAgent)
+                .catch(() => {})
+        }
+
         res.status(upstream.status)
         upstream.headers.forEach((value, key) => {
             if (STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) return
@@ -259,12 +280,14 @@ async function handleProxyRequest(req, res) {
 
         if (upstream.body) {
             const usage = await pipeAndCaptureUsage(upstream.body, res, matched.provider)
-            await chargeProxyTokenGold({
-                correlationId: verdict.payload.cid,
-                userId: verdict.payload.uid,
-                provider: matched.provider,
-                usage,
-            })
+            if (credentialMode !== 'byok') {
+                await chargeProxyTokenGold({
+                    correlationId: verdict.payload.cid,
+                    userId: verdict.payload.uid,
+                    provider: matched.provider,
+                    usage,
+                })
+            }
         } else {
             res.end()
         }
@@ -307,13 +330,22 @@ function normalizeUsage(usage = {}) {
     }
 }
 
-async function checkProxyJobCanContinue({ correlationId, userId }) {
+async function checkProxyJobCanContinue({ correlationId, userId, credentialMode = 'api', db = admin.firestore() }) {
     if (!correlationId || !userId) return { allowed: false, message: 'Invalid VM proxy token' }
-    const db = admin.firestore()
     const pendingRef = db.doc(`pendingWebhooks/${correlationId}`)
     const userRef = db.doc(`users/${userId}`)
     const [pendingSnap, userSnap] = await Promise.all([pendingRef.get(), userRef.get()])
     const pendingData = pendingSnap.exists ? pendingSnap.data() || {} : {}
+    if (!pendingSnap.exists || pendingData.userId !== userId) {
+        return { allowed: false, message: 'VM proxy token is not authorized for this job' }
+    }
+    const expectedMode = credentialMode === 'byok' ? 'byok' : 'api'
+    if ((pendingData.credentialMode || 'api') !== expectedMode) {
+        return { allowed: false, message: 'VM proxy credential route no longer matches this job' }
+    }
+    if (['completed', 'failed', 'cancelled', 'cancel_requested'].includes(pendingData.status)) {
+        return { allowed: false, message: 'VM job is no longer active' }
+    }
     const currentGold = userSnap.exists ? Number(userSnap.data()?.gold) || 0 : 0
     if (pendingData.failureReason === VM_PROXY_INSUFFICIENT_GOLD_REASON || currentGold <= 0) {
         if (pendingData.failureReason !== VM_PROXY_INSUFFICIENT_GOLD_REASON) {
@@ -564,7 +596,7 @@ async function chargeProxyTokenGold({
  * Build the sandbox credential descriptor for a run. The sandbox gets only a per-job token + the
  * proxy base URL (NO real key). If the proxy is not configured, fail closed.
  */
-function buildVmAgentCredentials({ vmJob, agent, realApiKey, ttlMs, env = null }) {
+function buildVmAgentCredentials({ vmJob, agent, realApiKey, credentialMode = 'api', ttlMs, env = null }) {
     const resolved = resolveEnv(env)
     if (!isProxyEnabled(resolved)) {
         throw new Error('VM task cannot run: VM_PROXY_SIGNING_SECRET is not configured.')
@@ -575,7 +607,7 @@ function buildVmAgentCredentials({ vmJob, agent, realApiKey, ttlMs, env = null }
         throw new Error('VM task cannot run: VM_LLM_PROXY_BASE_URL could not be resolved.')
     }
 
-    if (!realApiKey) {
+    if (credentialMode !== 'byok' && !realApiKey) {
         throw new Error('VM task cannot run: upstream model API key is not configured.')
     }
 
@@ -584,11 +616,12 @@ function buildVmAgentCredentials({ vmJob, agent, realApiKey, ttlMs, env = null }
             correlationId: vmJob.correlationId,
             agent,
             userId: vmJob.requestUserId,
+            credentialMode,
             expiresAtMs: Date.now() + (Number(ttlMs) || 0),
         },
         resolved
     )
-    return { apiKey: token, baseUrl, mode: 'proxy' }
+    return { apiKey: token, baseUrl, mode: 'proxy', credentialMode }
 }
 
 module.exports = {

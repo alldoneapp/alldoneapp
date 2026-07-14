@@ -39,7 +39,7 @@ function parseCodexAuthJson(rawCredential) {
     return auth
 }
 
-function sanitizeStatus(data) {
+function sanitizeStatus(data, apiKeyStatus = {}) {
     const claude = data?.claude || {}
     const codex = data?.codex || {}
     return {
@@ -47,19 +47,33 @@ function sanitizeStatus(data) {
             connected: !!claude.oauthToken,
             connectedAt: claude.connectedAt || null,
             lastUsedAt: claude.lastUsedAt || null,
+            apiKey: apiKeyStatus.claude || { connected: false },
+            activeMode: data?.credentialModes?.claude || null,
         },
         codex: {
             connected: !!codex.authJson,
             connectedAt: codex.connectedAt || null,
             lastUsedAt: codex.lastUsedAt || null,
+            apiKey: apiKeyStatus.codex || { connected: false },
+            activeMode: data?.credentialModes?.codex || null,
         },
     }
 }
 
 async function getVmSubscriptionStatus({ userId }) {
     if (!userId) throw new HttpsError('unauthenticated', 'Authentication required.')
-    const snap = await getSubscriptionRef(userId).get()
-    return sanitizeStatus(snap.exists ? snap.data() || {} : {})
+    const [snap, apiKeyStatus] = await Promise.all([
+        getSubscriptionRef(userId).get(),
+        require('./vmApiKeyAuth').getVmApiKeyStatus(userId),
+    ])
+    const data = snap.exists ? snap.data() || {} : {}
+    const status = sanitizeStatus(data, apiKeyStatus)
+    const apiKeyData = {}
+    VALID_PROVIDERS.forEach(provider => {
+        if (apiKeyStatus[provider]?.connected) apiKeyData[provider] = { apiKey: true }
+        status[provider].activeMode = require('./vmApiKeyAuth').resolveModeFromData(provider, data, apiKeyData)
+    })
+    return status
 }
 
 async function connectVmSubscription({ userId, provider, credential }) {
@@ -71,6 +85,8 @@ async function connectVmSubscription({ userId, provider, credential }) {
             ? { oauthToken: normalizeClaudeOauthToken(credential) }
             : { authJson: JSON.stringify(parseCodexAuthJson(credential)) }
 
+    const current = await getSubscriptionRef(userId).get()
+    const currentMode = current.exists ? current.data()?.credentialModes?.[provider] : null
     await getSubscriptionRef(userId).set(
         {
             [provider]: {
@@ -78,6 +94,7 @@ async function connectVmSubscription({ userId, provider, credential }) {
                 connectedAt: now,
                 lastUsedAt: null,
             },
+            ...(currentMode === 'byok' ? {} : { credentialModes: { [provider]: 'subscription' } }),
             updatedAt: now,
         },
         { merge: true }
@@ -88,14 +105,17 @@ async function connectVmSubscription({ userId, provider, credential }) {
 async function disconnectVmSubscription({ userId, provider }) {
     if (!userId) throw new HttpsError('unauthenticated', 'Authentication required.')
     assertProvider(provider)
+    const apiKeyStatus = await require('./vmApiKeyAuth').getVmApiKeyStatus(userId)
+    const fallbackMode = apiKeyStatus[provider]?.connected ? 'byok' : 'api'
     await getSubscriptionRef(userId).set(
         {
             [provider]: admin.firestore.FieldValue.delete(),
+            credentialModes: { [provider]: fallbackMode },
             updatedAt: Date.now(),
         },
         { merge: true }
     )
-    return { success: true, provider, connected: false }
+    return { success: true, provider, connected: false, activeMode: fallbackMode }
 }
 
 async function hasVmSubscription(userId, provider) {

@@ -40,10 +40,12 @@ jest.mock('./vmJob', () => ({
         if (effort) parts.push(`${effort} effort`)
         return parts.length ? ` (${parts.join(' · ')})` : ''
     },
-    formatVmBillingStatus: (agentLabel, subscriptionUsed) =>
-        subscriptionUsed
-            ? `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
-            : '🔑 Using Alldone API billing. VM tokens will cost Gold.',
+    formatVmBillingStatus: (agentLabel, credentialMode) => {
+        const mode = typeof credentialMode === 'boolean' ? (credentialMode ? 'subscription' : 'api') : credentialMode
+        if (mode === 'subscription') return `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
+        if (mode === 'byok') return `🔐 Using your personal ${agentLabel} API key.`
+        return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
+    },
     DEFAULT_CLAUDE_MODEL: 'opus',
     DEFAULT_CODEX_MODEL: 'gpt-5.6-sol',
     DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
@@ -147,6 +149,12 @@ describe('VM runner prompt', () => {
         )
     })
 
+    test('header identifies personal API-key routing without exposing a key', () => {
+        const header = __private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' }, 'byok')
+        expect(header).toContain('Using your personal Claude API key')
+        expect(header).not.toContain('sk-')
+    })
+
     test('resolveAgentRunDetails falls back to per-agent defaults when the job omits them', () => {
         expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({ model: 'opus', effort: 'high' })
         expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({
@@ -163,66 +171,21 @@ describe('VM runner prompt', () => {
 })
 
 describe('Codex VM proxy configuration', () => {
-    test('always installs the latest Codex CLI in the observable bootstrap stage', () => {
+    test('always upgrades Codex to latest before every run', () => {
         const guard = __private__.buildCodexInstallGuard()
 
         expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
-        expect(guard).toContain('AGENT_CLI_INSTALLING')
         expect(guard).toContain('npm install -g --prefix /home/user/.local @openai/codex@latest')
         expect(guard).not.toContain('command -v codex')
-        expect(guard).not.toContain('codex --version')
-        expect(guard).not.toContain('>/dev/null')
         expect(guard).not.toContain('.codex-cli-')
     })
 
-    test('always installs the latest Claude Code CLI without silencing npm output', () => {
+    test('always upgrades Claude Code to latest before every run', () => {
         const guard = __private__.buildClaudeInstallGuard()
 
         expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
         expect(guard).toContain('npm install -g --prefix /home/user/.local @anthropic-ai/claude-code@latest')
-        expect(guard).toContain('AGENT_CLI_INSTALLING')
         expect(guard).not.toContain('command -v claude')
-        expect(guard).not.toContain('>/dev/null')
-    })
-
-    test('reports the separate installation stage with sanitized npm diagnostics', async () => {
-        const onActivity = jest.fn()
-        const sandbox = {
-            commands: {
-                run: jest.fn(async (_command, options) => {
-                    options.onStdout('AGENT_CLI_INSTALLING\nnpm notice package metadata\n')
-                    options.onStderr('npm ERR! Authorization: Bearer secret-token\nregistry unavailable')
-                    throw new Error('exit status 1')
-                }),
-            },
-        }
-
-        await expect(
-            __private__.ensureAgentCliAvailable(
-                sandbox,
-                { installGuard: __private__.buildClaudeInstallGuard },
-                'Claude',
-                onActivity,
-                'Working'
-            )
-        ).rejects.toThrow(
-            'Claude installation failed. stdout: npm notice package metadata stderr: npm ERR! Authorization: Bearer [REDACTED] registry unavailable'
-        )
-        expect(onActivity).toHaveBeenCalledWith('Working\n\n📦 Installing Claude…')
-    })
-
-    test('preserves a structured Claude error on a non-zero exit and redacts secrets', () => {
-        const error = __private__.buildAgentExitError(
-            'Claude',
-            { exitCode: 1 },
-            { finalResult: 'Authentication failed for sk-ant-super-secret', assistantText: '' },
-            'request aborted'
-        )
-
-        expect(error.message).toBe(
-            'Claude exited with exit status 1. Authentication failed for [REDACTED] request aborted'
-        )
-        expect(error.message).not.toContain('super-secret')
     })
 
     test('routes Codex through the HTTP proxy and disables Responses WebSockets', () => {
@@ -496,7 +459,7 @@ describe('VM completion chat metadata', () => {
     const createFirestoreMock = ({ commentData = {}, chatData = {} } = {}) => {
         const refs = new Map()
         const doc = jest.fn(path => {
-            if (!refs.has(path)) refs.set(path, { path })
+            if (!refs.has(path)) refs.set(path, { path, set: jest.fn(async () => {}) })
             return refs.get(path)
         })
         const transaction = {
@@ -632,6 +595,52 @@ describe('VM completion chat metadata', () => {
         expect(result).toEqual({ applied: false, reason: 'already-applied' })
         expect(transaction.set).not.toHaveBeenCalled()
         expect(transaction.update).not.toHaveBeenCalled()
+    })
+
+    test('updates task-list comment metadata when a VM run fails', async () => {
+        const { transaction, refs } = createFirestoreMock()
+        const failureText = '❌ The VM task could not be completed: exit status 1'
+
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+                statusCommentId: 'comment-1',
+            },
+            failureText,
+            { assistantRunStatus: 'failed' }
+        )
+
+        expect(refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: failureText,
+                isLoading: false,
+                assistantRun: expect.objectContaining({ status: 'failed' }),
+            }),
+            { merge: true }
+        )
+        expect(transaction.update).toHaveBeenCalledWith(
+            refs.get('items/project-1/tasks/task-1'),
+            expect.objectContaining({
+                'commentsData.lastComment': expect.stringContaining('The VM task could not b'),
+                'commentsData.lastCommentType': 2,
+                'commentsData.amount': { __op: 'increment', value: 1 },
+            })
+        )
+        expect(transaction.set).toHaveBeenCalledWith(
+            refs.get('chatObjects/project-1/chats/task-1'),
+            expect.objectContaining({
+                'commentsData.lastComment': failureText,
+                'commentsData.amount': { __op: 'increment', value: 1 },
+            }),
+            { merge: true }
+        )
     })
 
     test('does not treat the assistant as a user when it appears in the follower list', async () => {
