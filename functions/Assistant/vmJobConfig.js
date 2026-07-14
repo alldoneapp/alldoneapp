@@ -3,21 +3,15 @@
 const MAX_CONCURRENT_VM_JOBS = 10
 const MAX_CONCURRENT_VM_JOBS_PER_USER = MAX_CONCURRENT_VM_JOBS
 
-// Product target: allow a VM task to execute for up to 55 minutes. The current
-// Firebase task worker is delivered as a Cloud Tasks HTTP task, whose dispatch
-// deadline has a hard 30-minute maximum. Keep enough time after the agent stops
-// to upload artifacts, settle Gold and publish the result to every channel.
-//
-// If the worker moves to infrastructure that supports the target (for example a
-// Cloud Run Job), this shared calculation automatically raises the effective
-// runtime once VM_JOB_WORKER_TIMEOUT_SECONDS is raised as well.
-const TARGET_MAX_VM_RUNTIME_MS = 55 * 60 * 1000
+// The detached Cloud Run Job may supervise E2B for five hours. The Cloud Run
+// task itself gets additional time to upload artifacts, settle Gold, notify all
+// channels and clean up the sandbox after the product runtime has elapsed.
+const TARGET_MAX_VM_RUNTIME_MS = 5 * 60 * 60 * 1000
 const VM_JOB_WORKER_TIMEOUT_SECONDS = 30 * 60
-const VM_JOB_FINALIZATION_HEADROOM_MS = 5 * 60 * 1000
-const MAX_VM_RUNTIME_MS = Math.min(
-    TARGET_MAX_VM_RUNTIME_MS,
-    VM_JOB_WORKER_TIMEOUT_SECONDS * 1000 - VM_JOB_FINALIZATION_HEADROOM_MS
-)
+const VM_JOB_FINALIZATION_HEADROOM_MS = 15 * 60 * 1000
+const VM_CLOUD_RUN_TASK_TIMEOUT_SECONDS =
+    (TARGET_MAX_VM_RUNTIME_MS + VM_JOB_FINALIZATION_HEADROOM_MS) / 1000
+const MAX_VM_RUNTIME_MS = TARGET_MAX_VM_RUNTIME_MS
 
 // Let our typed runtime timer fire before E2B's generic sandbox termination.
 // This small grace period is still part of the worker finalization headroom.
@@ -39,6 +33,7 @@ module.exports = {
     TARGET_MAX_VM_RUNTIME_MS,
     VM_JOB_WORKER_TIMEOUT_SECONDS,
     VM_JOB_FINALIZATION_HEADROOM_MS,
+    VM_CLOUD_RUN_TASK_TIMEOUT_SECONDS,
     MAX_VM_RUNTIME_MS,
     E2B_SANDBOX_TIMEOUT_MS,
 }

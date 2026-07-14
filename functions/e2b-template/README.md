@@ -45,7 +45,11 @@ Set the template name so the worker uses it:
 Also set the real `E2B_API_KEY` in the functions env — the worker uses it at runtime to spawn
 sandboxes (the same key builds the template here).
 
-## Required IAM grants (once per environment, after deploy)
+## Legacy Cloud Tasks IAM grants
+
+New VM runs are launched as the detached Cloud Run Job documented in
+[`../Assistant/cloud-run-job/README.md`](../Assistant/cloud-run-job/README.md).
+The grants below are retained only for rollback to the legacy `runVmJob` task.
 
 The `execute_task_in_vm` tool enqueues a Cloud Task that invokes the `runVmJob` worker.
 Firebase does **not** set up the IAM for this on deploy, so three grants are needed or the

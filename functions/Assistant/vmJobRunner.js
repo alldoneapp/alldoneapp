@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const crypto = require('crypto')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const {
     ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
@@ -39,6 +40,8 @@ const VM_JOB_CANCELLED_STATUS = 'cancelled'
 const VM_JOB_CANCEL_REQUESTED_STATUS = 'cancel_requested'
 const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 const VM_RUNTIME_TIMEOUT_FAILURE_REASON = 'runtime_timeout'
+const VM_JOB_HEARTBEAT_INTERVAL_MS = 30 * 1000
+const VM_JOB_LEASE_MS = 2 * 60 * 1000
 const CODEX_AUTH_DIR = '/home/user/.codex'
 const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
 const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
@@ -154,6 +157,61 @@ function startVmRuntimeTimeout(commandHandle, runtimeMs = MAX_VM_RUNTIME_MS) {
         stop: () => {
             if (timer) clearTimeout(timer)
             timer = null
+        },
+    }
+}
+
+async function claimVmJobLease(pendingRef, correlationId) {
+    const db = admin.firestore()
+    const now = Date.now()
+    const leaseOwner = process.env.CLOUD_RUN_EXECUTION || `${correlationId}-${crypto.randomUUID()}`
+    const claimed = await db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(pendingRef)
+        if (!snapshot.exists) return false
+        const data = snapshot.data() || {}
+        if (['completed', 'failed', 'cancelled', VM_JOB_CANCEL_REQUESTED_STATUS].includes(data.status)) return false
+        if (data.status === 'initiated' && Number(data.leaseExpiresAt) > now && data.leaseOwner !== leaseOwner) {
+            return false
+        }
+        transaction.set(
+            pendingRef,
+            {
+                status: 'initiated',
+                initiatedAt: data.initiatedAt || now,
+                heartbeatAt: now,
+                leaseExpiresAt: now + VM_JOB_LEASE_MS,
+                leaseOwner,
+            },
+            { merge: true }
+        )
+        return true
+    })
+    return { claimed, leaseOwner }
+}
+
+function startVmJobHeartbeat(pendingRef, leaseOwner) {
+    let stopped = false
+    let writing = false
+    const tick = async () => {
+        if (stopped || writing) return
+        writing = true
+        const now = Date.now()
+        try {
+            await pendingRef.set(
+                { heartbeatAt: now, leaseExpiresAt: now + VM_JOB_LEASE_MS, leaseOwner },
+                { merge: true }
+            )
+        } catch (error) {
+            console.warn('🖥️ VM JOB: heartbeat update failed', { error: error.message })
+        } finally {
+            writing = false
+        }
+    }
+    const timer = setInterval(tick, VM_JOB_HEARTBEAT_INTERVAL_MS)
+    return {
+        stop: () => {
+            stopped = true
+            clearInterval(timer)
         },
     }
 }
@@ -2418,7 +2476,12 @@ async function runVmJobByCorrelationId(correlationId) {
         return
     }
 
-    await pendingRef.update({ status: 'initiated', initiatedAt: Date.now() }).catch(() => {})
+    const lease = await claimVmJobLease(pendingRef, correlationId)
+    if (!lease.claimed) {
+        console.warn('🖥️ VM JOB RUNNER: Active lease or settled job, skipping', { correlationId })
+        return
+    }
+    const heartbeat = startVmJobHeartbeat(pendingRef, lease.leaseOwner)
 
     const env = getEnvFunctions()
     const e2bApiKey = env.E2B_API_KEY
@@ -2460,6 +2523,7 @@ async function runVmJobByCorrelationId(correlationId) {
         })
         await pendingRef.update({ status: 'failed', error: message, failedAt: Date.now() }).catch(() => {})
         await refundVmJob(pendingWebhook, 'Missing sandbox credentials')
+        heartbeat.stop()
         return
     }
 
@@ -2694,6 +2758,8 @@ async function runVmJobByCorrelationId(correlationId) {
             })
             .catch(() => {})
         await refundVmJob(pendingWebhook, 'VM task failed during execution', runtimeGoldCharged + proxyTokenGoldCharged)
+    } finally {
+        heartbeat.stop()
     }
 }
 
@@ -2737,6 +2803,8 @@ module.exports = {
         isVmRuntimeTimeoutError,
         normalizeVmCommandError,
         startVmRuntimeTimeout,
+        claimVmJobLease,
+        startVmJobHeartbeat,
         formatVmRuntimeDuration,
         buildVmRuntimeTimeoutText,
         buildWhatsAppVmResultMessage,

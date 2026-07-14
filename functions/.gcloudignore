@@ -1,0 +1,7 @@
+.git
+.gitignore
+node_modules
+env_functions*.json
+service_accounts/
+**/*.log
+e2b-template/node_modules/

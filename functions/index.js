@@ -4108,8 +4108,8 @@ exports.vmLlmProxy = onRequest(
     }
 )
 
-// RUN VM JOB - Long-running worker that runs Claude Code in an E2B sandbox for the
-// execute_task_in_vm assistant tool, then posts the result back into the conversation.
+// LEGACY RUN VM JOB - retained as a rollback target while the detached Cloud Run
+// Job migration is validated. New execute_task_in_vm launches do not enqueue it.
 exports.runVmJob = onTaskDispatched(
     {
         region: 'europe-west1',

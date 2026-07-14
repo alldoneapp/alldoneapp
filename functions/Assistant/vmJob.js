@@ -1,6 +1,5 @@
 const admin = require('firebase-admin')
 const crypto = require('crypto')
-const { getFunctions } = require('firebase-admin/functions')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJobConfig')
 const {
@@ -23,12 +22,9 @@ const VM_TOKENS_PER_GOLD = 100
 const VM_JOB_GOLD_SOURCE = 'vm_execution'
 const VM_JOB_GOLD_REFUND_SOURCE = 'vm_execution_refund'
 
-// Generous expiry — must be larger than the worker's own runtime ceiling so the
+// Generous expiry — must be larger than the detached job's runtime ceiling so the
 // worker always finalizes the job before cleanupExpiredWebhooks could reap it.
-const VM_JOB_EXPIRY_MS = 90 * 60 * 1000 // 90 minutes
-
-const REGION = 'europe-west1'
-const RUN_VM_JOB_FUNCTION_NAME = 'runVmJob'
+const VM_JOB_EXPIRY_MS = 6 * 60 * 60 * 1000
 
 const VALID_TASK_TYPES = ['research', 'document', 'prototype', 'data']
 
@@ -136,23 +132,6 @@ function normalizeAgentReasoningEffort(agent, effort) {
  * Build the fully-qualified Cloud Tasks queue resource for the worker function so
  * enqueue() targets the correct region instead of the default location.
  */
-function getRunVmJobQueueResource() {
-    const projectId =
-        process.env.GCLOUD_PROJECT ||
-        process.env.GCP_PROJECT ||
-        (() => {
-            try {
-                return admin.app().options.projectId
-            } catch (_) {
-                return undefined
-            }
-        })()
-    if (projectId) {
-        return `locations/${REGION}/functions/${RUN_VM_JOB_FUNCTION_NAME}`
-    }
-    return RUN_VM_JOB_FUNCTION_NAME
-}
-
 /**
  * Best-effort packaging of app context for the VM. The VM has no access to the
  * app, so anything it needs must be serialized here into a plain-text bundle.
@@ -430,10 +409,22 @@ async function startVmJob({
             createdAt: Date.now(),
         })
 
-    // Enqueue the long-running worker via Cloud Tasks.
+    // Start a detached Cloud Run Job execution. The HTTP request only launches
+    // the execution; the five-hour E2B supervision is not tied to Cloud Tasks.
     try {
-        const queue = getFunctions().taskQueue(getRunVmJobQueueResource())
-        await queue.enqueue({ correlationId })
+        const { launchVmCloudRunJob } = require('./vmCloudRunLauncher')
+        const execution = await launchVmCloudRunJob(correlationId)
+        await admin
+            .firestore()
+            .doc(`pendingWebhooks/${correlationId}`)
+            .set(
+                {
+                    launchBackend: 'cloud_run_job',
+                    cloudRunExecution: execution?.name || null,
+                    launchedAt: Date.now(),
+                },
+                { merge: true }
+            )
     } catch (error) {
         console.error('🖥️ VM JOB: Failed to enqueue worker — refunding', { correlationId, error: error.message })
         const { refundGold } = require('../Gold/goldHelper')
@@ -443,7 +434,7 @@ async function startVmJob({
             projectId,
             objectId,
             objectType,
-            note: 'VM task could not be queued',
+            note: 'VM Cloud Run Job could not be launched',
         }).catch(() => {})
         await admin
             .firestore()
@@ -469,7 +460,7 @@ async function startVmJob({
         }
         return {
             success: false,
-            message: 'Could not start the VM task right now. Your Gold has been refunded.',
+            message: 'Could not launch the VM task right now. Your Gold has been refunded.',
         }
     }
 

@@ -41,6 +41,10 @@ jest.mock(
     { virtual: true }
 )
 
+jest.mock('./vmCloudRunLauncher', () => ({
+    launchVmCloudRunJob: mockQueueEnqueue,
+}))
+
 jest.mock('./assistantStatusHelper', () => ({
     createInitialStatusMessage: jest.fn(async () => 'status-comment-1'),
 }))
