@@ -70,20 +70,20 @@ describe('startVmJob', () => {
         crypto.randomUUID.mockRestore()
     })
 
-    test('admits ten concurrent jobs and rejects the eleventh before charging or enqueueing it', async () => {
-        expect(MAX_CONCURRENT_VM_JOBS_PER_USER).toBe(10)
-        expect(MAX_CONCURRENT_VM_JOBS).toBe(10)
+    test('admits five concurrent jobs and rejects the sixth before charging or enqueueing it', async () => {
+        expect(MAX_CONCURRENT_VM_JOBS_PER_USER).toBe(5)
+        expect(MAX_CONCURRENT_VM_JOBS).toBe(5)
         expect(VM_JOB_QUEUE_RATE_LIMITS).toEqual({
-            maxConcurrentDispatches: 10,
+            maxConcurrentDispatches: 5,
             maxDispatchesPerSecond: 1,
         })
-        ;[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].forEach(activeJobs => {
+        ;[0, 1, 2, 3, 4, 5].forEach(activeJobs => {
             mockCollectionQuery.get.mockResolvedValueOnce({ size: activeJobs })
         })
         crypto.randomUUID.mockImplementation(() => `correlation-${crypto.randomUUID.mock.calls.length}`)
 
         const results = []
-        for (let jobNumber = 1; jobNumber <= 11; jobNumber += 1) {
+        for (let jobNumber = 1; jobNumber <= 6; jobNumber += 1) {
             results.push(
                 await startVmJob({
                     objective: `Run job ${jobNumber}`,
@@ -98,14 +98,14 @@ describe('startVmJob', () => {
             )
         }
 
-        expect(results.slice(0, 10).every(result => result.success && result.status === 'started')).toBe(true)
-        expect(results[10]).toEqual({
+        expect(results.slice(0, 5).every(result => result.success && result.status === 'started')).toBe(true)
+        expect(results[5]).toEqual({
             success: false,
-            message: 'You already have 10 VM tasks running. Please wait for one to finish before starting another.',
+            message: 'You already have 5 VM tasks running. Please wait for one to finish before starting another.',
         })
-        expect(deductGold).toHaveBeenCalledTimes(10)
-        expect(mockQueueEnqueue).toHaveBeenCalledTimes(10)
-        expect(createInitialStatusMessage).toHaveBeenCalledTimes(10)
+        expect(deductGold).toHaveBeenCalledTimes(5)
+        expect(mockQueueEnqueue).toHaveBeenCalledTimes(5)
+        expect(createInitialStatusMessage).toHaveBeenCalledTimes(5)
     })
 
     test('persists WhatsApp notification target for WhatsApp-originated VM jobs', async () => {
