@@ -31,6 +31,7 @@ import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
+import GmailTag from '../../../Tags/GmailTag'
 
 // Render inline formatted text segments with link/tag parsing
 const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => {
@@ -204,6 +205,7 @@ export default function Comment({
     projectId,
     comment,
     linkedEmail,
+    linkedEmailGmailData,
     canArchiveLinkedEmail,
     linkedEmailArchiving,
     linkedEmailArchived,
@@ -406,26 +408,35 @@ export default function Comment({
                         return renderTextContent(text, lastItem)
                     }
                 })}
-                {canArchiveLinkedEmail && linkedEmail && (
-                    <TouchableOpacity
-                        style={localStyles.linkedEmailButton}
-                        onPress={() => onArchiveLinkedEmail([linkedEmail])}
-                        disabled={linkedEmailArchiving || linkedEmailArchived}
-                        accessibilityLabel={translate('Archive email')}
-                    >
-                        {linkedEmailArchiving ? (
-                            <ActivityIndicator size="small" color={colors.UtilityBlue125} />
-                        ) : (
-                            <Icon
-                                name={linkedEmailArchived ? 'check' : 'archive'}
-                                size={14}
-                                color={colors.UtilityBlue125}
-                            />
+                {linkedEmail && (
+                    <View style={localStyles.linkedEmailActions}>
+                        <GmailTag
+                            gmailData={linkedEmailGmailData}
+                            showLabel={true}
+                            propStyles={localStyles.linkedEmailTag}
+                        />
+                        {canArchiveLinkedEmail && (
+                            <TouchableOpacity
+                                style={localStyles.linkedEmailButton}
+                                onPress={() => onArchiveLinkedEmail([linkedEmail])}
+                                disabled={linkedEmailArchiving || linkedEmailArchived}
+                                accessibilityLabel={translate('Archive email')}
+                            >
+                                {linkedEmailArchiving ? (
+                                    <ActivityIndicator size="small" color={colors.UtilityBlue125} />
+                                ) : (
+                                    <Icon
+                                        name={linkedEmailArchived ? 'check' : 'archive'}
+                                        size={14}
+                                        color={colors.UtilityBlue125}
+                                    />
+                                )}
+                                <Text style={localStyles.linkedEmailButtonText}>
+                                    {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
+                                </Text>
+                            </TouchableOpacity>
                         )}
-                        <Text style={localStyles.linkedEmailButtonText}>
-                            {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
-                        </Text>
-                    </TouchableOpacity>
+                    </View>
                 )}
             </View>
         </View>
@@ -523,10 +534,17 @@ const localStyles = StyleSheet.create({
     inlineElement: {
         marginRight: 6,
     },
-    linkedEmailButton: {
+    linkedEmailActions: {
         alignSelf: 'flex-start',
-        minHeight: 28,
         marginTop: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    linkedEmailTag: {
+        marginRight: 8,
+    },
+    linkedEmailButton: {
+        minHeight: 28,
         paddingHorizontal: 8,
         borderRadius: 4,
         borderWidth: 1,

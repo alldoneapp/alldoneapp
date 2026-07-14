@@ -23,6 +23,7 @@ export default function CommentsList({
                         comment={item}
                         projectId={projectId}
                         linkedEmail={linkedEmail}
+                        linkedEmailGmailData={item.gmailData}
                         canArchiveLinkedEmail={canArchiveLinkedEmails}
                         linkedEmailArchiving={archivingAllEmails || archivingEmailKeys.includes(linkedEmail?.key)}
                         linkedEmailArchived={archivedEmailKeys.includes(linkedEmail?.key)}
