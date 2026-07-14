@@ -17,13 +17,17 @@ function mockGetDoc(path) {
     return mockDocs[path]
 }
 
-jest.mock('firebase-admin', () => ({
-    app: jest.fn(() => ({ options: { projectId: 'test-project' } })),
-    firestore: jest.fn(() => ({
-        collection: jest.fn(() => mockCollectionQuery),
-        doc: jest.fn(path => mockGetDoc(path)),
-    })),
-}))
+jest.mock(
+    'firebase-admin',
+    () => ({
+        app: jest.fn(() => ({ options: { projectId: 'test-project' } })),
+        firestore: jest.fn(() => ({
+            collection: jest.fn(() => mockCollectionQuery),
+            doc: jest.fn(path => mockGetDoc(path)),
+        })),
+    }),
+    { virtual: true }
+)
 
 jest.mock(
     'firebase-admin/functions',
@@ -222,7 +226,7 @@ describe('startVmJob', () => {
         )
     })
 
-    test('keeps Claude as the launch fallback for users without a preference', async () => {
+    test('uses Codex with medium effort for users without a preference', async () => {
         await startVmJob({
             objective: 'Research this',
             taskType: 'research',
@@ -234,7 +238,7 @@ describe('startVmJob', () => {
         })
 
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: 'claude', agentModel: 'opus', agentReasoningEffort: 'high' })
+            expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-sol', agentReasoningEffort: 'medium' })
         )
     })
 
