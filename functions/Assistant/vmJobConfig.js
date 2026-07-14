@@ -26,6 +26,10 @@ const MAX_VM_RUNTIME_MS = resolveMaxVmRuntimeMs()
 const E2B_SANDBOX_TERMINATION_GRACE_MS = 30 * 1000
 const E2B_SANDBOX_TIMEOUT_MS = 60 * 60 * 1000
 const E2B_SANDBOX_SLICE_MS = 55 * 60 * 1000
+// E2B command timeout is independent of the sandbox lease. Disable it so the
+// original process survives lease rotations; the runner's five-hour supervisor
+// remains the authoritative execution limit.
+const E2B_COMMAND_CONNECTION_TIMEOUT_MS = 0
 
 // E2B's lowest service tier allows one sandbox creation per second. Throttling
 // dispatch startup avoids burst rate-limit failures without reducing the number
@@ -48,5 +52,6 @@ module.exports = {
     E2B_SANDBOX_TERMINATION_GRACE_MS,
     E2B_SANDBOX_TIMEOUT_MS,
     E2B_SANDBOX_SLICE_MS,
+    E2B_COMMAND_CONNECTION_TIMEOUT_MS,
     resolveMaxVmRuntimeMs,
 }

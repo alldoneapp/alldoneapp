@@ -48,7 +48,6 @@ const {
     parseEmailHeaderAddresses,
 } = require('./gmailMessageParser')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
-const { parseListUnsubscribe } = require('../Email/emailLine/emailLineShared')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 
 const MAX_HISTORY_PAGES = 5
@@ -1061,11 +1060,6 @@ function buildPostLabelGmailContext({
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
     const normalizedEmail = typeof gmailEmail === 'string' ? gmailEmail.trim().toLowerCase() : ''
     const resolvedTargetContactEmail = getTargetContactEmail(normalizedMessage, direction, targetContactEmail)
-    // Parse the raw List-Unsubscribe header captured by the message parser so the chat
-    // comment can surface a one-tap Unsubscribe next to Archive. Only incoming mail carries
-    // a meaningful unsubscribe target.
-    const unsubscribe =
-        direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? null : parseListUnsubscribe(normalizedMessage?.listUnsubscribe)
 
     return {
         origin: 'gmail_label_follow_up',
@@ -1084,7 +1078,6 @@ function buildPostLabelGmailContext({
         targetContactName: typeof targetContactName === 'string' ? targetContactName.trim() : '',
         topicChatTitle: typeof topicChatTitle === 'string' ? topicChatTitle.trim() : '',
         followUpType: followUpType === 'actionable' ? 'actionable' : 'informational',
-        ...(unsubscribe ? { unsubscribe } : {}),
     }
 }
 

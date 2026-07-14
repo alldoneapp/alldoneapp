@@ -10,7 +10,8 @@ the runner disconnects the command stream, pauses and immediately resumes the
 sandbox every 55 minutes, then reconnects to the same process. The filesystem,
 memory and processes survive these handoffs. The Cloud Run task timeout is 5h45m,
 leaving 45 minutes for handoffs, E2B cleanup, artifacts, Gold settlement and
-notifications.
+notifications. E2B's separate command-connection timeout is disabled; the runner's
+five-hour supervisor remains the authoritative execution limit.
 
 The Functions launcher records the Cloud Run operation and execution separately.
 Ambiguous launch responses are reconciled against the correlation-ID override

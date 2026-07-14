@@ -881,10 +881,7 @@ describe('VM runner timeout handling', () => {
             apiKey: 'test-key',
             allowInternetAccess: true,
         })
-        expect(resumedSandbox.commands.connect).toHaveBeenCalledWith(
-            42,
-            expect.objectContaining({ timeoutMs: 60 * 60 * 1000 })
-        )
+        expect(resumedSandbox.commands.connect).toHaveBeenCalledWith(42, expect.objectContaining({ timeoutMs: 0 }))
         expect(onCommandHandleChange).toHaveBeenCalledWith(secondHandle)
         expect(supervision.result).toBe(resumedResult)
         expect(supervision.sliceCount).toBe(2)

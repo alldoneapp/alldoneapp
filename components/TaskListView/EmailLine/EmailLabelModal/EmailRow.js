@@ -9,7 +9,7 @@ import CheckBox from '../../../CheckBox'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
 import { performEmailLineAction, submitEmailLabelFeedback } from '../../../../utils/backends/EmailLine/emailLineBackend'
-import { markEmailLabelPickerInteraction, openUrlInNewTab, resolveUnsubscribeUrl } from '../emailLineHelper'
+import { markEmailLabelPickerInteraction, openUrlInNewTab } from '../emailLineHelper'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../utils/NavigationService'
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
@@ -25,8 +25,18 @@ function parseSenderName(from = '') {
 }
 
 // A single email row in the label modal: multi-select checkbox, sender/subject/
-// snippet, an unread dot, and an open-in-new-tab action. The unsubscribe
-// destination is resolved by the shared resolveUnsubscribeUrl helper.
+// snippet, an unread dot, and an open-in-new-tab action.
+// Resolves the unsubscribe destination: prefer a whitelisted https link;
+// fall back to opening the message so the user can unsubscribe in the provider UI.
+function resolveUnsubscribeUrl(row) {
+    const unsubscribe = row?.unsubscribe
+    if (!unsubscribe) return null
+    if (typeof unsubscribe.httpsUrl === 'string' && unsubscribe.httpsUrl.startsWith('https://')) {
+        return unsubscribe.httpsUrl
+    }
+    if (unsubscribe.mailto) return row.webUrl || null
+    return null
+}
 
 // Options are { gmailLabelName, displayName } pairs; dedupe by name and drop the
 // actual bucket label. The audit label shown on the row may be only a prediction,

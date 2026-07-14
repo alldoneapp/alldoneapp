@@ -11,6 +11,7 @@ const {
     E2B_SANDBOX_TERMINATION_GRACE_MS,
     E2B_SANDBOX_TIMEOUT_MS,
     E2B_SANDBOX_SLICE_MS,
+    E2B_COMMAND_CONNECTION_TIMEOUT_MS,
     resolveMaxVmRuntimeMs,
 } = require('./vmJobConfig')
 
@@ -32,6 +33,7 @@ describe('VM job runtime configuration', () => {
     test('never requests more than the one-hour E2B account limit', () => {
         expect(E2B_SANDBOX_TIMEOUT_MS).toBe(60 * 60 * 1000)
         expect(E2B_SANDBOX_SLICE_MS).toBe(55 * 60 * 1000)
+        expect(E2B_COMMAND_CONNECTION_TIMEOUT_MS).toBe(0)
         expect(E2B_SANDBOX_TERMINATION_GRACE_MS).toBe(30 * 1000)
         expect(E2B_SANDBOX_TIMEOUT_MS).toBeLessThan(MAX_VM_RUNTIME_MS)
     })

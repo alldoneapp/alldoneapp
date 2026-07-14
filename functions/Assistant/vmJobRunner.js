@@ -32,6 +32,7 @@ const {
     E2B_SANDBOX_TERMINATION_GRACE_MS,
     E2B_SANDBOX_TIMEOUT_MS,
     E2B_SANDBOX_SLICE_MS,
+    E2B_COMMAND_CONNECTION_TIMEOUT_MS,
 } = require('./vmJobConfig')
 
 // Don't refresh the live status comment more often than this (Firestore write rate).
@@ -1887,7 +1888,7 @@ async function superviseVmCommand({
         sliceCount += 1
         try {
             activeCommandHandle = await activeSandbox.commands.connect(commandPid, {
-                timeoutMs: E2B_SANDBOX_TIMEOUT_MS,
+                timeoutMs: E2B_COMMAND_CONNECTION_TIMEOUT_MS,
                 onStdout,
                 onStderr,
             })
@@ -2242,7 +2243,7 @@ async function runAgentInSandbox(
         )}`
 
         const runStartMs = Date.now()
-        const commandTimeoutMs = E2B_SANDBOX_TIMEOUT_MS
+        const commandTimeoutMs = E2B_COMMAND_CONNECTION_TIMEOUT_MS
         const runStatePaths = buildVmRunStatePaths(vmJob.correlationId)
         const durableCommand = buildDurableVmCommand(command, runStatePaths)
         console.log('🖥️ VM JOB: running agent command', {
