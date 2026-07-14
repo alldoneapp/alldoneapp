@@ -1,6 +1,6 @@
 const mockDocs = {}
 const mockQueueEnqueue = jest.fn(async () => {})
-const mockHasVmSubscription = jest.fn(async () => false)
+const mockResolveVmCredentialMode = jest.fn(async () => 'api')
 const mockCollectionQuery = {
     where: jest.fn(() => mockCollectionQuery),
     get: jest.fn(async () => ({ size: 0 })),
@@ -46,8 +46,8 @@ jest.mock('../Gold/goldHelper', () => ({
     refundGold: jest.fn(async () => ({ success: true })),
 }))
 
-jest.mock('./vmSubscriptionAuth', () => ({
-    hasVmSubscription: mockHasVmSubscription,
+jest.mock('./vmApiKeyAuth', () => ({
+    resolveVmCredentialMode: mockResolveVmCredentialMode,
 }))
 
 const crypto = require('crypto')
@@ -62,7 +62,7 @@ describe('startVmJob', () => {
         jest.clearAllMocks()
         mockCollectionQuery.get.mockResolvedValue({ size: 0 })
         mockQueueEnqueue.mockResolvedValue(undefined)
-        mockHasVmSubscription.mockResolvedValue(false)
+        mockResolveVmCredentialMode.mockResolvedValue('api')
         jest.spyOn(crypto, 'randomUUID').mockReturnValue('correlation-1')
     })
 
@@ -353,7 +353,7 @@ describe('startVmJob', () => {
     })
 
     test('announces and persists personal subscription billing', async () => {
-        mockHasVmSubscription.mockResolvedValueOnce(true)
+        mockResolveVmCredentialMode.mockResolvedValueOnce('subscription')
 
         await startVmJob({
             objective: 'Change the code',
@@ -379,5 +379,40 @@ describe('startVmJob', () => {
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
             expect.objectContaining({ credentialMode: 'subscription', subscriptionUsed: true })
         )
+    })
+
+    test('gives an explicitly selected personal API key precedence without charging token Gold', async () => {
+        mockResolveVmCredentialMode.mockResolvedValueOnce('byok')
+
+        const result = await startVmJob({
+            objective: 'Change the code',
+            taskType: 'prototype',
+            agent: 'codex',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(createInitialStatusMessage).toHaveBeenCalledWith(
+            'project-1',
+            'topics',
+            'chat-1',
+            'assistant-1',
+            expect.stringContaining('Using your personal Codex API key'),
+            expect.any(Array),
+            expect.any(Array),
+            expect.any(Array)
+        )
+        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                credentialMode: 'byok',
+                personalApiKeyUsed: true,
+                tokenBillingExempt: true,
+                subscriptionUsed: false,
+            })
+        )
+        expect(result.message).toContain('your personal API key')
     })
 })

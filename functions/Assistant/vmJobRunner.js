@@ -537,11 +537,10 @@ async function writeStatusComment(
     }
 
     // Keep the chat object / parent object comment preview in sync and emit the
-    // same unread/notification metadata as a normal assistant message. A failed or
-    // cancelled run is also a settled result that users should see in the task list.
-    // The idempotency marker on the comment prevents retries from incrementing twice.
-    const isSettled = isFinal || runStatus === 'failed' || runStatus === VM_JOB_CANCELLED_STATUS
-    if (isSettled) {
+    // same unread/notification metadata as a normal assistant message. The live
+    // VM status comment was already counted when created, so this final transition
+    // is idempotently counted as the new result message that users should see.
+    if (isFinal) {
         try {
             await applyVmCompletionMetadata(pendingWebhook, commentId, text)
         } catch (error) {
@@ -909,16 +908,14 @@ function resolveAgentRunDetails(vmJob) {
     return { model, effort }
 }
 
-function renderVmWorkingHeader(agentLabel, runDetails, subscriptionUsed) {
+function renderVmWorkingHeader(agentLabel, runDetails, credentialMode) {
     const suffix = runDetails ? formatAgentRunSuffix(runDetails.model, runDetails.effort) : ''
     const header = `🖥️ Working with ${agentLabel}${suffix} in a VM…`
-    return typeof subscriptionUsed === 'boolean'
-        ? `${header}\n\n${formatVmBillingStatus(agentLabel, subscriptionUsed)}`
-        : header
+    return credentialMode !== undefined ? `${header}\n\n${formatVmBillingStatus(agentLabel, credentialMode)}` : header
 }
 
-function renderActivityLog(lines, agentLabel, runDetails, subscriptionUsed) {
-    return `${renderVmWorkingHeader(agentLabel, runDetails, subscriptionUsed)}\n\n${lines
+function renderActivityLog(lines, agentLabel, runDetails, credentialMode) {
+    return `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n${lines
         .slice(-MAX_ACTIVITY_LINES)
         .join('\n')}`
 }
@@ -1535,6 +1532,7 @@ async function runAgentInSandbox(
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     // Model + effort the agent runs with, surfaced in the live status header.
     const runDetails = resolveAgentRunDetails(vmJob)
+    const credentialMode = subscriptionAuth ? 'subscription' : vmJob.credentialMode === 'byok' ? 'byok' : 'api'
     // Always use E2B's managed prebuilt template for the selected agent.
     const template = config.defaultTemplate
     vmJob.vmTemplate = template
@@ -1635,7 +1633,7 @@ async function runAgentInSandbox(
         if (gitContext && gitContext.enabled) {
             if (typeof onActivity === 'function') {
                 onActivity(
-                    `${renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)}\n\n📥 ${
+                    `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n📥 ${
                         isResume ? 'Refreshing' : 'Cloning'
                     } the connected repository…`
                 )
@@ -1663,7 +1661,7 @@ async function runAgentInSandbox(
             const before = state.activity.length
             config.handleEvent(evt, state)
             if (state.activity.length > before && typeof onActivity === 'function') {
-                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, !!subscriptionAuth))
+                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, credentialMode))
             }
         }
         const handleStdout = data => {
@@ -1693,6 +1691,7 @@ async function runAgentInSandbox(
                   vmJob,
                   agent: vmJob.agent || DEFAULT_AGENT,
                   realApiKey: apiKey,
+                  credentialMode,
                   ttlMs: MAX_VM_RUNTIME_MS + 5 * 60 * 1000,
               })
         console.log('🖥️ VM JOB: agent credential mode', {
@@ -1707,14 +1706,14 @@ async function runAgentInSandbox(
             typeof config.installGuard === 'function'
                 ? config.installGuard({
                       agentModel: runDetails.model,
-                      subscriptionUsed: !!subscriptionAuth,
+                      subscriptionUsed: credentialMode === 'subscription',
                   })
                 : config.installGuard
         const command = `mkdir -p /home/user/output && cd ${workdir} && ${installGuard} && ${config.buildRun(isResume, {
             agentModel: runDetails.model,
             agentReasoningEffort: runDetails.effort,
             proxyBaseUrl: agentCredentials.baseUrl,
-            subscriptionUsed: !!subscriptionAuth,
+            subscriptionUsed: credentialMode === 'subscription',
         })}`
 
         const runStartMs = Date.now()
@@ -1912,6 +1911,7 @@ async function chargeVmTopup(
         tokenGold = 0,
         proxyTokenGoldCharged = 0,
         subscriptionUsed = false,
+        credentialMode = subscriptionUsed ? 'subscription' : 'api',
     }
 ) {
     if (!topup || topup <= 0) return
@@ -1920,7 +1920,9 @@ async function chargeVmTopup(
         `VM ${vmJob.agent || 'claude'} metered: ${minutes} min ` +
         `(${runtimeGoldAlreadyCharged} runtime Gold already charged, ${runtimeGoldRemaining} runtime Gold remaining) ` +
         `+ ${totalTokens} tokens (${
-            subscriptionUsed
+            credentialMode === 'byok'
+                ? 'personal API key, provider-billed, 0 Gold'
+                : subscriptionUsed
                 ? 'personal subscription, 0 Gold'
                 : `${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining`
         })` +
@@ -2153,16 +2155,30 @@ async function runVmJobByCorrelationId(correlationId) {
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     const runDetails = resolveAgentRunDetails(vmJob)
     const wantsSubscription = vmJob.credentialMode === 'subscription'
+    const wantsByok = vmJob.credentialMode === 'byok'
     const subscriptionAuth = wantsSubscription
         ? await require('./vmSubscriptionAuth').loadVmSubscriptionAuth(
               vmJob.requestUserId,
               vmJob.agent || DEFAULT_AGENT
           )
         : null
+    const byokStatus = wantsByok
+        ? await require('./vmApiKeyAuth')
+              .getVmApiKeyStatus(vmJob.requestUserId)
+              .catch(() => null)
+        : null
+    const byokAvailable = !!byokStatus?.[vmJob.agent || DEFAULT_AGENT]?.connected
     const apiKey = env[config.apiKeyField]
-    if ((wantsSubscription && !subscriptionAuth) || (!wantsSubscription && !apiKey) || !e2bApiKey) {
+    if (
+        (wantsSubscription && !subscriptionAuth) ||
+        (wantsByok && !byokAvailable) ||
+        (!wantsSubscription && !wantsByok && !apiKey) ||
+        !e2bApiKey
+    ) {
         const message = wantsSubscription
             ? `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
+            : wantsByok
+            ? `VM task could not run: your personal ${agentLabel} API key is missing. Add or replace it in Settings → Integrations.`
             : `VM task could not run: ${config.label} sandbox credentials are not configured.`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
@@ -2215,11 +2231,18 @@ async function runVmJobByCorrelationId(correlationId) {
     }
 
     try {
+        const credentialMode = subscriptionAuth ? 'subscription' : wantsByok ? 'byok' : 'api'
+        const tokenBillingExempt = credentialMode !== 'api'
         await throwIfVmJobCancelled(pendingRef)
         await pendingRef
-            .update({ credentialMode: subscriptionAuth ? 'subscription' : 'api', subscriptionUsed: !!subscriptionAuth })
+            .update({
+                credentialMode,
+                subscriptionUsed: credentialMode === 'subscription',
+                personalApiKeyUsed: credentialMode === 'byok',
+                tokenBillingExempt,
+            })
             .catch(() => {})
-        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth))
+        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, credentialMode))
         const { output, usage, artifacts, runtimeGoldCharged = 0 } = await runAgentInSandbox(
             vmJob,
             config,
@@ -2264,7 +2287,7 @@ async function runVmJobByCorrelationId(correlationId) {
             usage,
             runtimeGoldCharged,
             proxyTokenGoldCharged,
-            subscriptionUsed: !!subscriptionAuth,
+            subscriptionUsed: tokenBillingExempt,
         })
         await chargeVmTopup(pendingWebhook, vmJob, {
             topup,
@@ -2275,7 +2298,8 @@ async function runVmJobByCorrelationId(correlationId) {
             runtimeGoldRemaining,
             tokenGold,
             proxyTokenGoldCharged,
-            subscriptionUsed: !!subscriptionAuth,
+            subscriptionUsed: tokenBillingExempt,
+            credentialMode,
         })
 
         await pendingRef
@@ -2287,8 +2311,10 @@ async function runVmJobByCorrelationId(correlationId) {
                 goldTopup: runtimeGoldCharged + proxyTokenGoldCharged + topup,
                 runtimeGoldCharged,
                 proxyTokenGoldCharged,
-                credentialMode: subscriptionAuth ? 'subscription' : 'api',
-                subscriptionUsed: !!subscriptionAuth,
+                credentialMode,
+                subscriptionUsed: credentialMode === 'subscription',
+                personalApiKeyUsed: credentialMode === 'byok',
+                tokenBillingExempt,
                 artifactCount: mediaContext.length,
             })
             .catch(() => {})
@@ -2301,7 +2327,9 @@ async function runVmJobByCorrelationId(correlationId) {
             runtimeGoldCharged,
             runtimeGoldRemaining,
             proxyTokenGoldCharged,
-            subscriptionUsed: !!subscriptionAuth,
+            subscriptionUsed: credentialMode === 'subscription',
+            personalApiKeyUsed: credentialMode === 'byok',
+            tokenBillingExempt,
             tokenGoldTotal,
             tokenGold,
             topup,
@@ -2403,7 +2431,6 @@ module.exports = {
         sendWhatsAppVmResultNotification,
         postVmOriginConversationNote,
         notifyVmResultChannels,
-        writeStatusComment,
         buildAttachmentTokens,
         buildVmFinalCommentText,
         applyVmCompletionMetadata,

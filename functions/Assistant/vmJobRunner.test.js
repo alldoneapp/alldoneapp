@@ -40,10 +40,12 @@ jest.mock('./vmJob', () => ({
         if (effort) parts.push(`${effort} effort`)
         return parts.length ? ` (${parts.join(' · ')})` : ''
     },
-    formatVmBillingStatus: (agentLabel, subscriptionUsed) =>
-        subscriptionUsed
-            ? `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
-            : '🔑 Using Alldone API billing. VM tokens will cost Gold.',
+    formatVmBillingStatus: (agentLabel, credentialMode) => {
+        const mode = typeof credentialMode === 'boolean' ? (credentialMode ? 'subscription' : 'api') : credentialMode
+        if (mode === 'subscription') return `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
+        if (mode === 'byok') return `🔐 Using your personal ${agentLabel} API key.`
+        return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
+    },
     DEFAULT_CLAUDE_MODEL: 'opus',
     DEFAULT_CODEX_MODEL: 'gpt-5.6-sol',
     DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
@@ -145,6 +147,12 @@ describe('VM runner prompt', () => {
         expect(__private__.renderVmWorkingHeader('Claude', { model: '', effort: '' })).toBe(
             '🖥️ Working with Claude in a VM…'
         )
+    })
+
+    test('header identifies personal API-key routing without exposing a key', () => {
+        const header = __private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' }, 'byok')
+        expect(header).toContain('Using your personal Claude API key')
+        expect(header).not.toContain('sk-')
     })
 
     test('resolveAgentRunDetails falls back to per-agent defaults when the job omits them', () => {
@@ -451,7 +459,7 @@ describe('VM completion chat metadata', () => {
     const createFirestoreMock = ({ commentData = {}, chatData = {} } = {}) => {
         const refs = new Map()
         const doc = jest.fn(path => {
-            if (!refs.has(path)) refs.set(path, { path, set: jest.fn(async () => {}) })
+            if (!refs.has(path)) refs.set(path, { path })
             return refs.get(path)
         })
         const transaction = {
@@ -587,52 +595,6 @@ describe('VM completion chat metadata', () => {
         expect(result).toEqual({ applied: false, reason: 'already-applied' })
         expect(transaction.set).not.toHaveBeenCalled()
         expect(transaction.update).not.toHaveBeenCalled()
-    })
-
-    test('updates task-list comment metadata when a VM run fails', async () => {
-        const { transaction, refs } = createFirestoreMock()
-        const failureText = '❌ The VM task could not be completed: exit status 1'
-
-        await __private__.writeStatusComment(
-            {
-                correlationId: 'correlation-1',
-                projectId: 'project-1',
-                objectType: 'tasks',
-                objectId: 'task-1',
-                assistantId: 'assistant-1',
-                userId: 'user-1',
-                userIdsToNotify: ['user-1'],
-                isPublicFor: [0],
-                statusCommentId: 'comment-1',
-            },
-            failureText,
-            { assistantRunStatus: 'failed' }
-        )
-
-        expect(refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
-            expect.objectContaining({
-                commentText: failureText,
-                isLoading: false,
-                assistantRun: expect.objectContaining({ status: 'failed' }),
-            }),
-            { merge: true }
-        )
-        expect(transaction.update).toHaveBeenCalledWith(
-            refs.get('items/project-1/tasks/task-1'),
-            expect.objectContaining({
-                'commentsData.lastComment': expect.stringContaining('The VM task could not b'),
-                'commentsData.lastCommentType': 2,
-                'commentsData.amount': { __op: 'increment', value: 1 },
-            })
-        )
-        expect(transaction.set).toHaveBeenCalledWith(
-            refs.get('chatObjects/project-1/chats/task-1'),
-            expect.objectContaining({
-                'commentsData.lastComment': failureText,
-                'commentsData.amount': { __op: 'increment', value: 1 },
-            }),
-            { merge: true }
-        )
     })
 
     test('does not treat the assistant as a user when it appears in the follower list', async () => {

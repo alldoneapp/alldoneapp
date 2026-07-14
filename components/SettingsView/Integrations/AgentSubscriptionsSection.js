@@ -8,11 +8,17 @@ import {
     connectVmSubscription,
     disconnectVmSubscription,
     getVmSubscriptionStatus,
+    removeVmApiKey,
+    saveVmApiKey,
+    setVmCredentialMode,
+    testVmApiKey,
 } from '../../../utils/backends/firestore'
 
 const PROVIDERS = {
     claude: {
         label: 'Claude',
+        apiLabel: 'Anthropic',
+        apiKeyPlaceholder: 'Paste your Anthropic API key',
         placeholder: 'Paste the token printed by claude setup-token',
         steps: [
             'Install or update Claude Code on your computer.',
@@ -23,6 +29,8 @@ const PROVIDERS = {
     },
     codex: {
         label: 'Codex',
+        apiLabel: 'OpenAI',
+        apiKeyPlaceholder: 'Paste your OpenAI API key',
         placeholder: 'Paste the complete contents of ~/.codex/auth.json',
         steps: [
             'Install or update the Codex CLI on your computer.',
@@ -33,48 +41,90 @@ const PROVIDERS = {
     },
 }
 
-function SubscriptionCard({ provider, connection, onChanged }) {
+export function ProviderAuthCard({ provider, connection, onChanged }) {
     const config = PROVIDERS[provider]
     const [credential, setCredential] = useState('')
+    const [apiKey, setApiKey] = useState('')
     const [processing, setProcessing] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
-    const connected = !!connection?.connected
+    const subscriptionConnected = !!connection?.connected
+    const apiKeyConnected = !!connection?.apiKey?.connected
+    const activeMode = connection?.activeMode || (subscriptionConnected ? 'subscription' : 'api')
 
-    const connect = async () => {
+    const runAction = async action => {
         setError('')
         setSuccess('')
-        if (!credential.trim()) {
-            setError(translate('Paste the requested credential before connecting.'))
-            return
-        }
         setProcessing(true)
         try {
-            await connectVmSubscription({ provider, credential: credential.trim() })
-            setCredential('')
-            setSuccess(translate('Subscription connected. Future VM token usage will not cost Gold.'))
+            await action()
             await onChanged()
         } catch (e) {
-            setError(e?.message || translate('Could not connect the subscription.'))
+            setError(e?.message || translate('Could not update the provider connection.'))
         } finally {
             setProcessing(false)
         }
     }
 
+    const connect = async () => {
+        if (!credential.trim()) {
+            setError(translate('Paste the requested credential before connecting.'))
+            return
+        }
+        await runAction(async () => {
+            await connectVmSubscription({ provider, credential: credential.trim() })
+            setCredential('')
+            setSuccess(translate('Subscription connected. Future VM token usage will not cost Gold.'))
+        })
+    }
+
     const disconnect = async () => {
-        setError('')
-        setSuccess('')
-        setProcessing(true)
-        try {
+        await runAction(async () => {
             await disconnectVmSubscription({ provider })
             setCredential('')
             setSuccess(translate('Subscription disconnected. VM jobs will use Alldone API billing.'))
-            await onChanged()
-        } catch (e) {
-            setError(e?.message || translate('Could not disconnect the subscription.'))
-        } finally {
-            setProcessing(false)
+        })
+    }
+
+    const saveApiKey = async () => {
+        if (!apiKey.trim()) {
+            setError(translate('Paste an API key before saving.'))
+            return
         }
+        await runAction(async () => {
+            await saveVmApiKey({ provider, apiKey: apiKey.trim() })
+            setApiKey('')
+            setSuccess(translate('API key validated and saved. BYOK is now active for this provider.'))
+        })
+    }
+
+    const testApiKey = async () => {
+        await runAction(async () => {
+            await testVmApiKey({ provider })
+            setSuccess(translate('API key is valid.'))
+        })
+    }
+
+    const removeApiKey = async () => {
+        await runAction(async () => {
+            await removeVmApiKey({ provider })
+            setApiKey('')
+            setSuccess(
+                translate(
+                    subscriptionConnected
+                        ? 'API key removed. Your subscription is now active.'
+                        : 'API key removed. Alldone API billing is now active.'
+                )
+            )
+        })
+    }
+
+    const selectMode = async mode => {
+        if (mode === activeMode) return
+        await runAction(async () => {
+            await setVmCredentialMode({ provider, mode })
+            setSuccess(translate('Provider routing updated.'))
+        })
     }
 
     return (
@@ -82,59 +132,153 @@ function SubscriptionCard({ provider, connection, onChanged }) {
             <View style={localStyles.cardHeader}>
                 <View>
                     <Text style={[styles.subtitle1, localStyles.cardTitle]}>{config.label}</Text>
-                    <Text style={[styles.caption1, connected ? localStyles.connected : localStyles.notConnected]}>
-                        {translate(connected ? 'Subscription connected' : 'Using Alldone API billing')}
+                    <Text style={[styles.caption1, localStyles.connected]}>
+                        {translate(
+                            activeMode === 'byok'
+                                ? 'Using your personal API key'
+                                : activeMode === 'subscription'
+                                ? 'Using your subscription'
+                                : 'Using Alldone API billing'
+                        )}
                     </Text>
                 </View>
             </View>
 
             <Text style={[styles.body2, localStyles.explanation]}>
                 {translate(
-                    'When connected, VM runs for this agent use your personal subscription. Model tokens cost no Gold; the 20 Gold base charge plus 10 Gold per started execution minute remains.'
+                    'Choose one route for this provider. BYOK bills model usage directly to your provider account; subscription auth uses your Claude or ChatGPT plan; Alldone API billing charges Gold for model tokens. The 20 Gold base charge and 10 Gold per started VM minute apply to every route.'
                 )}
             </Text>
 
-            <View style={localStyles.steps}>
-                {config.steps.map((step, index) => (
-                    <Text key={step} style={[styles.body2, localStyles.step]}>
-                        {index + 1}. {translate(step)}
-                    </Text>
-                ))}
+            <View style={localStyles.modeActions}>
+                <Button
+                    title={translate('Personal API key')}
+                    type={activeMode === 'byok' ? 'primary' : 'ghost'}
+                    onPress={() => selectMode('byok')}
+                    disabled={processing || !apiKeyConnected}
+                    buttonStyle={localStyles.modeAction}
+                />
+                <Button
+                    title={translate('Subscription')}
+                    type={activeMode === 'subscription' ? 'primary' : 'ghost'}
+                    onPress={() => selectMode('subscription')}
+                    disabled={processing || !subscriptionConnected}
+                    buttonStyle={localStyles.modeAction}
+                />
+                <Button
+                    title={translate('Alldone Gold')}
+                    type={activeMode === 'api' ? 'primary' : 'ghost'}
+                    onPress={() => selectMode('api')}
+                    disabled={processing}
+                    buttonStyle={localStyles.modeAction}
+                />
             </View>
 
-            <TextInput
-                style={[localStyles.input, provider === 'codex' && localStyles.jsonInput]}
-                value={credential}
-                onChangeText={setCredential}
-                placeholder={translate(config.placeholder)}
-                placeholderTextColor={colors.Text03}
-                autoCapitalize="none"
-                autoCorrect={false}
-                multiline={provider === 'codex'}
-                editable={!processing}
-                secureTextEntry={provider === 'claude'}
-            />
-            <Text style={[styles.caption1, localStyles.securityNote]}>
-                {translate(
-                    'Treat this credential like a password. Alldone stores it in your private account data and only supplies it to your own VM run.'
-                )}
-            </Text>
+            <View style={localStyles.authSection}>
+                <Text style={[styles.subtitle2, localStyles.authTitle]}>{translate('Personal API key')}</Text>
+                <Text style={[styles.caption1, apiKeyConnected ? localStyles.connected : localStyles.notConnected]}>
+                    {translate(
+                        apiKeyConnected
+                            ? connection?.apiKey?.validationStatus === 'invalid'
+                                ? 'Saved key was rejected — replace or remove it'
+                                : 'API key saved and validated'
+                            : 'No API key saved'
+                    )}
+                </Text>
+                <TextInput
+                    style={localStyles.input}
+                    value={apiKey}
+                    onChangeText={setApiKey}
+                    placeholder={translate(config.apiKeyPlaceholder)}
+                    placeholderTextColor={colors.Text03}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!processing}
+                    secureTextEntry
+                />
+                <Text style={[styles.caption1, localStyles.securityNote]}>
+                    {translate(
+                        'Your key is validated before saving, cannot be read back by the app, and stays behind Alldone’s server-side VM proxy. It is never added to chats, tasks, analytics, or the VM environment.'
+                    )}
+                </Text>
+                <View style={localStyles.actions}>
+                    <Button
+                        title={translate(apiKeyConnected ? 'Validate and replace key' : 'Validate and save key')}
+                        onPress={saveApiKey}
+                        processing={processing}
+                        processingTitle={translate('Validating')}
+                        buttonStyle={localStyles.primaryAction}
+                    />
+                    {apiKeyConnected && (
+                        <>
+                            <Button
+                                title={translate('Test saved key')}
+                                type="ghost"
+                                onPress={testApiKey}
+                                disabled={processing}
+                                buttonStyle={localStyles.secondaryAction}
+                            />
+                            <Button
+                                title={translate('Remove key')}
+                                type="ghost"
+                                onPress={removeApiKey}
+                                disabled={processing}
+                            />
+                        </>
+                    )}
+                </View>
+            </View>
+
+            <View style={localStyles.authSection}>
+                <Text style={[styles.subtitle2, localStyles.authTitle]}>
+                    {translate('Subscription authentication')}
+                </Text>
+                <Text
+                    style={[styles.caption1, subscriptionConnected ? localStyles.connected : localStyles.notConnected]}
+                >
+                    {translate(subscriptionConnected ? 'Subscription connected' : 'Subscription not connected')}
+                </Text>
+                <View style={localStyles.steps}>
+                    {config.steps.map((step, index) => (
+                        <Text key={step} style={[styles.body2, localStyles.step]}>
+                            {index + 1}. {translate(step)}
+                        </Text>
+                    ))}
+                </View>
+
+                <TextInput
+                    style={[localStyles.input, provider === 'codex' && localStyles.jsonInput]}
+                    value={credential}
+                    onChangeText={setCredential}
+                    placeholder={translate(config.placeholder)}
+                    placeholderTextColor={colors.Text03}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    multiline={provider === 'codex'}
+                    editable={!processing}
+                    secureTextEntry={provider === 'claude'}
+                />
+                <View style={localStyles.actions}>
+                    <Button
+                        title={translate(subscriptionConnected ? 'Replace credential' : 'Connect subscription')}
+                        onPress={connect}
+                        processing={processing}
+                        processingTitle={translate('Saving')}
+                        buttonStyle={localStyles.primaryAction}
+                    />
+                    {subscriptionConnected && (
+                        <Button
+                            title={translate('Disconnect')}
+                            type="ghost"
+                            onPress={disconnect}
+                            disabled={processing}
+                        />
+                    )}
+                </View>
+            </View>
 
             {!!error && <Text style={localStyles.error}>{error}</Text>}
             {!!success && <Text style={localStyles.success}>{success}</Text>}
-
-            <View style={localStyles.actions}>
-                <Button
-                    title={translate(connected ? 'Replace credential' : 'Connect subscription')}
-                    onPress={connect}
-                    processing={processing}
-                    processingTitle={translate('Saving')}
-                    buttonStyle={localStyles.primaryAction}
-                />
-                {connected && (
-                    <Button title={translate('Disconnect')} type="ghost" onPress={disconnect} disabled={processing} />
-                )}
-            </View>
         </View>
     )
 }
@@ -158,10 +302,10 @@ export default function AgentSubscriptionsSection() {
 
     return (
         <View style={localStyles.section}>
-            <Text style={[styles.title6, localStyles.sectionTitle]}>{translate('AI agent subscriptions')}</Text>
+            <Text style={[styles.title6, localStyles.sectionTitle]}>{translate('AI agent authentication')}</Text>
             <Text style={[styles.body2, localStyles.sectionDescription]}>
                 {translate(
-                    'Optional: connect your own Claude or ChatGPT subscription for execute_task_in_vm. Without a connection, Alldone uses API billing and charges Gold for model tokens.'
+                    'Choose how Claude and Codex VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.'
                 )}
             </Text>
             {!status && !error ? (
@@ -169,8 +313,8 @@ export default function AgentSubscriptionsSection() {
             ) : (
                 <>
                     {!!error && <Text style={localStyles.error}>{error}</Text>}
-                    <SubscriptionCard provider="claude" connection={status?.claude} onChanged={loadStatus} />
-                    <SubscriptionCard provider="codex" connection={status?.codex} onChanged={loadStatus} />
+                    <ProviderAuthCard provider="claude" connection={status?.claude} onChanged={loadStatus} />
+                    <ProviderAuthCard provider="codex" connection={status?.codex} onChanged={loadStatus} />
                 </>
             )}
         </View>
@@ -217,6 +361,25 @@ const localStyles = StyleSheet.create({
         color: colors.Text02,
         marginTop: 12,
     },
+    modeActions: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginTop: 12,
+    },
+    modeAction: {
+        marginRight: 8,
+        marginBottom: 8,
+    },
+    authSection: {
+        borderTopWidth: 1,
+        borderTopColor: colors.Grey300,
+        marginTop: 16,
+        paddingTop: 16,
+    },
+    authTitle: {
+        color: colors.Text01,
+        marginBottom: 2,
+    },
     steps: {
         marginTop: 12,
         marginBottom: 12,
@@ -250,6 +413,9 @@ const localStyles = StyleSheet.create({
     },
     primaryAction: {
         marginRight: 12,
+    },
+    secondaryAction: {
+        marginRight: 8,
     },
     error: {
         ...styles.caption1,

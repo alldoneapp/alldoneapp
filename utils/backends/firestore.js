@@ -6545,6 +6545,30 @@ export async function disconnectVmSubscription(data) {
     return result.data
 }
 
+export async function saveVmApiKey(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('saveVmApiKey')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function testVmApiKey(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('testVmApiKey')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function removeVmApiKey(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('removeVmApiKey')
+    const result = await fn(data)
+    return result.data
+}
+
+export async function setVmCredentialMode(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('setVmCredentialMode')
+    const result = await fn(data)
+    return result.data
+}
+
 // --- Per-assistant MCP server connections ---
 // The non-secret server config (label, url, transport, authType, enabled, tokenLast4)
 // lives on the assistant doc and is edited via updateAssistant. Only the secret
