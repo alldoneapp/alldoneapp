@@ -1,8 +1,3 @@
-const childProcess = require('child_process')
-const fs = require('fs')
-const os = require('os')
-const path = require('path')
-
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
 const mockDeductGold = jest.fn()
 const mockRefundGold = jest.fn()
@@ -210,140 +205,39 @@ describe('VM runner prompt', () => {
     })
 })
 
-describe('VM agent CLI bootstrap and proxy configuration', () => {
-    let cliTestDir
-    let prefix
-    let npmLogPath
-
-    function writeClaudeBinary(version, executable = true) {
-        const binaryPath = path.join(prefix, 'bin', 'claude')
-        fs.mkdirSync(path.dirname(binaryPath), { recursive: true })
-        fs.writeFileSync(binaryPath, `#!/usr/bin/env bash\nprintf '%s (Claude Code)\\n' '${version}'\n`)
-        fs.chmodSync(binaryPath, executable ? 0o755 : 0o644)
-        return binaryPath
-    }
-
-    function installFakeNpm() {
-        const fakeNpmPath = path.join(prefix, 'bin', 'npm')
-        fs.mkdirSync(path.dirname(fakeNpmPath), { recursive: true })
-        fs.writeFileSync(
-            fakeNpmPath,
-            [
-                '#!/usr/bin/env node',
-                "const fs = require('fs')",
-                "const path = require('path')",
-                'const args = process.argv.slice(2)',
-                "fs.appendFileSync(process.env.FAKE_NPM_LOG, `${args.join(' ')}\\n`)",
-                "if (args[0] === 'view') {",
-                '    process.stdout.write(`${process.env.FAKE_NPM_LATEST}\\n`)',
-                '    process.exit(0)',
-                '}',
-                "if (args[0] !== 'install') process.exit(2)",
-                'const binaryPath = process.env.FAKE_CLI_PATH',
-                'if (fs.existsSync(binaryPath)) {',
-                '    process.stderr.write(`npm error code EEXIST\\nnpm error path ${binaryPath}\\n`)',
-                '    process.exit(17)',
-                '}',
-                "if (process.env.FAKE_NPM_FAIL_INSTALL === '1') {",
-                "    process.stderr.write('npm error simulated registry failure\\n')",
-                '    process.exit(19)',
-                '}',
-                'fs.mkdirSync(path.dirname(binaryPath), { recursive: true })',
-                'fs.writeFileSync(',
-                '    binaryPath,',
-                "    `#!/usr/bin/env bash\\nprintf '%s (Claude Code)\\\\n' '${process.env.FAKE_NPM_LATEST}'\\n`",
-                ')',
-                'fs.chmodSync(binaryPath, 0o755)',
-            ].join('\n')
-        )
-        fs.chmodSync(fakeNpmPath, 0o755)
-    }
-
-    function runClaudeInstallGuard(latestVersion = '2.1.0', failInstall = false) {
-        const command = __private__.buildClaudeInstallGuard({
-            prefix,
-            lockPath: path.join(cliTestDir, 'claude-install.lock'),
+describe('Codex VM proxy configuration', () => {
+    test('forces a writable npm cache for every sandbox command environment', () => {
+        expect(
+            __private__.buildSandboxCommandEnv({
+                CI: 'true',
+                NPM_CONFIG_CACHE: '/home/user/.npm',
+            })
+        ).toEqual({
+            CI: 'true',
+            NPM_CONFIG_CACHE: '/tmp/alldone-npm-cache',
         })
-        const wrappedCommand = `bash -lc '${command.replace(/'/g, `'\\''`)}'`
-        return childProcess.execFileSync('bash', ['-lc', wrappedCommand], {
-            encoding: 'utf8',
-            env: {
-                ...process.env,
-                FAKE_CLI_PATH: path.join(prefix, 'bin', 'claude'),
-                FAKE_NPM_LATEST: latestVersion,
-                FAKE_NPM_LOG: npmLogPath,
-                FAKE_NPM_FAIL_INSTALL: failInstall ? '1' : '0',
-            },
-        })
-    }
-
-    beforeEach(() => {
-        cliTestDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-cli-bootstrap-'))
-        prefix = path.join(cliTestDir, 'prefix')
-        npmLogPath = path.join(cliTestDir, 'npm.log')
-        installFakeNpm()
     })
 
-    afterEach(() => {
-        fs.rmSync(cliTestDir, { recursive: true, force: true })
-    })
-
-    test('checks and installs the latest Codex CLI under a process lock', () => {
+    test('always installs the latest Codex CLI in the observable bootstrap stage', () => {
         const guard = __private__.buildCodexInstallGuard()
 
-        expect(guard).toContain("export PATH='/home/user/.local/bin':$PATH")
+        expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
         expect(guard).toContain('AGENT_CLI_INSTALLING')
-        expect(guard).toContain("package_name='@openai/codex'")
-        expect(guard).toContain("binary_name='codex'")
-        expect(guard).toContain('npm view "$package_name" version --silent')
-        expect(guard).toContain('npm install -g --prefix "$cli_prefix" "$package_name@$latest_version"')
-        expect(guard).toContain('flock -w 300')
+        expect(guard).toContain('npm install -g --prefix /home/user/.local @openai/codex@latest')
+        expect(guard).not.toContain('command -v codex')
+        expect(guard).not.toContain('codex --version')
+        expect(guard).not.toContain('>/dev/null')
+        expect(guard).not.toContain('.codex-cli-')
     })
 
-    test('installs Claude Code into an empty prefix', () => {
-        const output = runClaudeInstallGuard()
+    test('always installs the latest Claude Code CLI without silencing npm output', () => {
+        const guard = __private__.buildClaudeInstallGuard()
 
-        expect(output).toContain('AGENT_CLI_INSTALLING from=missing-or-invalid to=2.1.0')
-        expect(output).toContain('AGENT_CLI_READY installed 2.1.0')
-        expect(fs.readFileSync(npmLogPath, 'utf8')).toContain(
-            'install -g --prefix ' + prefix + ' @anthropic-ai/claude-code@2.1.0'
-        )
-    })
-
-    test('accepts an already-current Claude CLI without running npm install', () => {
-        writeClaudeBinary('2.1.0')
-
-        const output = runClaudeInstallGuard()
-
-        expect(output).toBe('AGENT_CLI_READY existing 2.1.0\n')
-        expect(fs.readFileSync(npmLogPath, 'utf8').trim()).toBe('view @anthropic-ai/claude-code version --silent')
-    })
-
-    test('upgrades an older Claude CLI and removes its temporary backup', () => {
-        const binaryPath = writeClaudeBinary('2.0.0')
-
-        const output = runClaudeInstallGuard()
-
-        expect(output).toContain('AGENT_CLI_INSTALLING from=2.0.0 to=2.1.0')
-        expect(childProcess.execFileSync(binaryPath, ['--version'], { encoding: 'utf8' })).toBe('2.1.0 (Claude Code)\n')
-        expect(fs.readdirSync(path.dirname(binaryPath)).filter(name => name.includes('.alldone-backup.'))).toEqual([])
-    })
-
-    test('moves a stale launcher aside so npm cannot fail with EEXIST', () => {
-        const binaryPath = writeClaudeBinary('stale launcher', false)
-
-        const output = runClaudeInstallGuard()
-
-        expect(output).toContain('AGENT_CLI_INSTALLING from=missing-or-invalid to=2.1.0')
-        expect(childProcess.execFileSync(binaryPath, ['--version'], { encoding: 'utf8' })).toBe('2.1.0 (Claude Code)\n')
-        expect(fs.readdirSync(path.dirname(binaryPath)).filter(name => name.includes('.alldone-backup.'))).toEqual([])
-    })
-
-    test('restores the previous launcher when npm fails during an upgrade', () => {
-        const binaryPath = writeClaudeBinary('2.0.0')
-
-        expect(() => runClaudeInstallGuard('2.1.0', true)).toThrow()
-        expect(childProcess.execFileSync(binaryPath, ['--version'], { encoding: 'utf8' })).toBe('2.0.0 (Claude Code)\n')
+        expect(guard).toContain('export PATH=/home/user/.local/bin:$PATH')
+        expect(guard).toContain('npm install -g --prefix /home/user/.local @anthropic-ai/claude-code@latest')
+        expect(guard).toContain('AGENT_CLI_INSTALLING')
+        expect(guard).not.toContain('command -v claude')
+        expect(guard).not.toContain('>/dev/null')
     })
 
     test('reports the separate installation stage with sanitized npm diagnostics', async () => {
@@ -351,9 +245,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         const sandbox = {
             commands: {
                 run: jest.fn(async (_command, options) => {
-                    options.onStdout(
-                        'AGENT_CLI_INSTALLING from=missing-or-invalid to=2.1.0\nnpm notice package metadata\n'
-                    )
+                    options.onStdout('AGENT_CLI_INSTALLING\nnpm notice package metadata\n')
                     options.onStderr('npm ERR! Authorization: Bearer secret-token\nregistry unavailable')
                     throw new Error('exit status 1')
                 }),
@@ -423,6 +315,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
             )
             expect(command).toContain(`-c 'model_providers.alldone_vm_proxy.supports_websockets=false'`)
             expect(command).toContain(`-c 'sandbox_mode="workspace-write"'`)
+            expect(command).toContain(`-c 'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]'`)
             expect(command).not.toContain('--sandbox')
         }
     })
@@ -440,6 +333,78 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(() => __private__.buildCodexProxyConfigOverrides('file:///tmp/proxy')).toThrow(
             'Codex VM proxy base URL must use HTTP or HTTPS.'
         )
+    })
+})
+
+describe('VM Git checkout setup', () => {
+    test('keeps mutable Git metadata outside the protected .git path and preserves resumed branches', () => {
+        const childProcess = require('child_process')
+        const fs = require('fs')
+        const os = require('os')
+        const path = require('path')
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'alldone-vm-git-'))
+        const seed = path.join(root, 'seed')
+        const origin = path.join(root, 'origin.git')
+        const workTree = path.join(root, 'checkout')
+        const gitDir = path.join(root, 'metadata', 'repo')
+        const home = path.join(root, 'home')
+        fs.mkdirSync(seed)
+        fs.mkdirSync(home)
+
+        const run = (command, options = {}) =>
+            childProcess.execFileSync('bash', ['-c', command], {
+                cwd: options.cwd || root,
+                env: { ...process.env, HOME: home, ...(options.env || {}) },
+                stdio: 'pipe',
+            })
+
+        run('git init -b main', { cwd: seed })
+        fs.writeFileSync(path.join(seed, 'README.md'), 'seed\n')
+        run('git add README.md && git -c user.name=Test -c user.email=test@example.com commit -m seed', { cwd: seed })
+        run(`git clone --bare ${JSON.stringify(seed)} ${JSON.stringify(origin)}`)
+
+        const setupEnv = {
+            GIT_TOKEN: 'test-token',
+            GIT_CRED_USERNAME: 'oauth2',
+            GIT_REPO_URL: origin,
+            GIT_BASE_BRANCH: 'main',
+            GIT_USER_NAME: 'Alldone Test',
+            GIT_USER_EMAIL: 'test@alldone.app',
+            GIT_DIR: gitDir,
+            GIT_WORK_TREE: workTree,
+        }
+
+        run(__private__.GIT_SETUP_SCRIPT, { env: setupEnv })
+        expect(fs.existsSync(path.join(workTree, '.git'))).toBe(false)
+        expect(fs.existsSync(gitDir)).toBe(true)
+
+        run('git checkout -b ai/sandbox-safe-branch', { cwd: workTree, env: setupEnv })
+        run(__private__.GIT_SETUP_SCRIPT, { env: setupEnv })
+        expect(run('git rev-parse --abbrev-ref HEAD', { cwd: workTree, env: setupEnv }).toString().trim()).toBe(
+            'ai/sandbox-safe-branch'
+        )
+
+        // A paused sandbox created before this fix resumes with conventional .git metadata.
+        // The setup step must migrate it without losing the agent's current branch.
+        fs.renameSync(gitDir, path.join(workTree, '.git'))
+        run(__private__.GIT_SETUP_SCRIPT, { env: setupEnv })
+        expect(fs.existsSync(path.join(workTree, '.git'))).toBe(false)
+        expect(run('git rev-parse --abbrev-ref HEAD', { cwd: workTree, env: setupEnv }).toString().trim()).toBe(
+            'ai/sandbox-safe-branch'
+        )
+    })
+
+    test('injects only the dedicated metadata location into agent git commands', () => {
+        const env = __private__.buildGitEnv({
+            token: 'secret',
+            repoUrl: 'https://gitlab.example/repo',
+            baseBranch: 'main',
+            identityName: 'Assistant',
+            identityEmail: 'assistant@example.com',
+        })
+
+        expect(env.GIT_DIR).toBe('/home/user/git-metadata/repo')
+        expect(env.GIT_WORK_TREE).toBe('/home/user/repo')
     })
 })
 
