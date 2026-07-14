@@ -36,11 +36,7 @@ export default function DefaultVmAgentSection() {
             .then(settings => {
                 if (mounted) {
                     setSelectedAgent(settings.effectiveDefaultAgent)
-                    setSelectedEffort(
-                        Object.prototype.hasOwnProperty.call(settings, 'effectiveDefaultReasoningEffort')
-                            ? settings.effectiveDefaultReasoningEffort
-                            : settings.defaultReasoningEffort || 'medium'
-                    )
+                    setSelectedEffort(settings.defaultReasoningEffort || null)
                     setLoaded(true)
                 }
             })

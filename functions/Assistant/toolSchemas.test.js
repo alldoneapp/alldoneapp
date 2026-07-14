@@ -342,8 +342,7 @@ describe('VM assistant tool schema', () => {
         expect(properties.agentModel.type).toBe('string')
         expect(properties.agentReasoningEffort.enum).toEqual(['low', 'medium', 'high', 'xhigh'])
         expect(properties.agentReasoningEffort.description).toContain("user's default VM effort")
-        expect(properties.agent.description).toContain('falling back to "codex"')
-        expect(properties.agentReasoningEffort.description).toContain('falling back to "medium"')
+        expect(properties.agentReasoningEffort.description).toContain('provider defaults')
     })
 })
 

@@ -86,6 +86,13 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
+    // Raw personal provider API keys are server-only. Unlike the legacy
+    // users/{uid}/private subtree, this path cannot be read back by any client,
+    // including its owner; Cloud Functions access it through the Admin SDK.
+    match /userSecrets/{userId}/{document=**} {
+      allow read, write: if false;
+    }
+
     match /projects/{projectId} {
       allow read: if canReadProject(projectId);
       allow create: if signedIn() && request.auth.uid in request.resource.data.userIds;
