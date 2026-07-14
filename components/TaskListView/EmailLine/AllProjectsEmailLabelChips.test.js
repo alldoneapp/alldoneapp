@@ -27,8 +27,8 @@ jest.mock('./EmailLabelChip', () => ({
 const useEmailLabelGroups = require('./useEmailLabelGroups').default
 const useSelector = require('react-redux').useSelector
 
-const render = (groups, mobile = false) => {
-    useSelector.mockImplementation(selector => selector({ smallScreenNavigation: mobile }))
+const render = (groups, { mobile = false, tablet = false } = {}) => {
+    useSelector.mockImplementation(selector => selector({ smallScreenNavigation: mobile, isMiddleScreen: tablet }))
     useEmailLabelGroups.mockReturnValue({
         groups,
         labelOptionsByConnectionId: {},
@@ -82,9 +82,33 @@ describe('AllProjectsEmailLabelChips', () => {
                     sweeping: false,
                 },
             ],
-            true
+            { mobile: true, tablet: true }
         )
         expect(chipLabels(tree)).toEqual(['Inbox'])
+    })
+
+    test('limits unassigned chips on tablet', () => {
+        const tree = render(
+            [
+                { key: 'inbox', displayName: 'Inbox', isInbox: true, threadCount: 9 },
+                { key: 'ads', displayName: 'Ads', isInbox: false, threadCount: 2 },
+                { key: 'news', displayName: 'News', isInbox: false, threadCount: 4 },
+            ],
+            { tablet: true }
+        )
+
+        expect(chipLabels(tree)).toEqual(['Inbox', 'Ads'])
+    })
+
+    test('limits unassigned chips on desktop', () => {
+        const tree = render([
+            { key: 'inbox', displayName: 'Inbox', isInbox: true, threadCount: 9 },
+            { key: 'ads', displayName: 'Ads', isInbox: false, threadCount: 2 },
+            { key: 'news', displayName: 'News', isInbox: false, threadCount: 4 },
+            { key: 'sales', displayName: 'Sales', isInbox: false, threadCount: 1 },
+        ])
+
+        expect(chipLabels(tree)).toEqual(['Inbox', 'Ads', 'News'])
     })
 
     test('renders nothing at inbox zero when every label maps to a project', () => {

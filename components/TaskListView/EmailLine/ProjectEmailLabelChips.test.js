@@ -8,6 +8,7 @@ import renderer, { act } from 'react-test-renderer'
 
 import ProjectEmailLabelChips from './ProjectEmailLabelChips'
 
+jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
 jest.mock('./useEmailLabelGroups', () => ({ __esModule: true, default: jest.fn() }))
 
 jest.mock('./EmailLabelChip', () => ({
@@ -24,6 +25,7 @@ jest.mock('./EmailLabelChip', () => ({
 }))
 
 const useEmailLabelGroups = require('./useEmailLabelGroups').default
+const useSelector = require('react-redux').useSelector
 
 const GROUPS = [
     { key: 'inbox', displayName: 'Inbox', isInbox: true, projectId: null, threadCount: 9, sweeping: false },
@@ -32,7 +34,8 @@ const GROUPS = [
     { key: 'empty', displayName: 'Empty', isInbox: false, projectId: 'proj_mk', threadCount: 0, sweeping: false },
 ]
 
-const render = props => {
+const render = (props, state = { smallScreenNavigation: false, isMiddleScreen: false }) => {
+    useSelector.mockImplementation(selector => selector(state))
     let tree
     act(() => {
         tree = renderer.create(<ProjectEmailLabelChips {...props} />)
@@ -61,5 +64,26 @@ describe('ProjectEmailLabelChips', () => {
 
     test('renders nothing without a projectId', () => {
         expect(render({}).toJSON()).toBeNull()
+    })
+
+    test.each([
+        ['desktop', false, false, ['Marketing', 'Sales', 'Support']],
+        ['tablet', false, true, ['Marketing', 'Sales']],
+        ['mobile', true, true, ['Marketing']],
+    ])('limits chips on %s', (_, smallScreenNavigation, isMiddleScreen, expectedLabels) => {
+        useEmailLabelGroups.mockReturnValue({
+            groups: [
+                ...GROUPS,
+                { key: 'sales', displayName: 'Sales', projectId: 'proj_mk', threadCount: 2 },
+                { key: 'support', displayName: 'Support', projectId: 'proj_mk', threadCount: 4 },
+                { key: 'billing', displayName: 'Billing', projectId: 'proj_mk', threadCount: 1 },
+            ],
+            labelOptionsByConnectionId: {},
+            labelingDisabledByConnectionId: {},
+        })
+
+        const tree = render({ projectId: 'proj_mk' }, { smallScreenNavigation, isMiddleScreen })
+
+        expect(chipLabels(tree)).toEqual(expectedLabels)
     })
 })

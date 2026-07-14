@@ -1,24 +1,28 @@
 import React from 'react'
 import { StyleSheet, View } from 'react-native'
+import { useSelector } from 'react-redux'
 
 import EmailLabelChip from './EmailLabelChip'
 import useEmailLabelGroups from './useEmailLabelGroups'
-import { getEmailLabelGroupsForProject } from './emailLineHelper'
+import { getEmailLabelGroupsForProject, getProjectLineEmailChipLimit } from './emailLineHelper'
 
 // The email-label chip(s) for a single project, shown inline on the project's header line in
 // the open-tasks views. A label maps to a project via the server-provided group.projectId (from
 // the Gmail labeling config, default mode). Only labels with inbox threads are shown, matching
 // the standalone Email line; renders nothing when the project has no such label.
 export default function ProjectEmailLabelChips({ projectId }) {
+    const mobile = useSelector(state => state.smallScreenNavigation)
+    const tablet = useSelector(state => state.isMiddleScreen)
     const { groups, labelOptionsByConnectionId, labelingDisabledByConnectionId } = useEmailLabelGroups()
 
     if (!projectId) return null
     const projectGroups = getEmailLabelGroupsForProject(groups, projectId)
-    if (projectGroups.length === 0) return null
+    const visibleGroups = projectGroups.slice(0, getProjectLineEmailChipLimit(mobile, tablet))
+    if (visibleGroups.length === 0) return null
 
     return (
         <View style={localStyles.row}>
-            {projectGroups.map(group => (
+            {visibleGroups.map(group => (
                 <EmailLabelChip
                     key={group.key}
                     group={group}
