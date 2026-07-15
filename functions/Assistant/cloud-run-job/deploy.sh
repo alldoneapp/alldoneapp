@@ -28,8 +28,23 @@ if [ -z "$CI_MODE" ]; then
             --location="$REGION" --project="$PROJECT"
 fi
 
-gcloud builds submit ../.. --project="$PROJECT" --config=cloudbuild.yaml \
-    --substitutions="_IMAGE=${IMAGE}"
+# Submit the build asynchronously and poll its status. A service account without
+# project Viewer cannot read the default Cloud Build logs bucket, so a streaming
+# `gcloud builds submit` exits non-zero even when the build itself succeeds. --async
+# skips streaming; polling uses builds.get (covered by roles/cloudbuild.builds.editor).
+BUILD_ID="$(gcloud builds submit ../.. --project="$PROJECT" --config=cloudbuild.yaml \
+    --substitutions="_IMAGE=${IMAGE}" --async --format='value(id)')"
+echo "Cloud Build submitted: ${BUILD_ID}"
+while true; do
+    BUILD_STATUS="$(gcloud builds describe "$BUILD_ID" --project="$PROJECT" \
+        --format='value(status)' 2>/dev/null || echo PENDING)"
+    case "$BUILD_STATUS" in
+        SUCCESS) echo "Cloud Build ${BUILD_ID}: SUCCESS"; break ;;
+        FAILURE | TIMEOUT | CANCELLED | EXPIRED | INTERNAL_ERROR)
+            echo "Cloud Build ${BUILD_ID}: ${BUILD_STATUS}" >&2; exit 1 ;;
+        *) sleep 10 ;;
+    esac
+done
 
 gcloud run jobs deploy "$JOB_NAME" --project="$PROJECT" --region="$REGION" --image="$IMAGE" \
     --service-account="$SA" --task-timeout=5h45m --max-retries=0 --tasks=1 --parallelism=1 \
