@@ -314,31 +314,14 @@ export default function MessageItemContent({
                                 style={[localStyles.horizontalRule, !isLastLine && { marginBottom: 16 }]}
                             />
                         )
-                    } else if (line.type === 'h1') {
+                    } else if (/^h[1-6]$/.test(line.type)) {
+                        const headingStyle = localStyles[`header${line.type.substring(1)}`]
                         return (
                             <Text
                                 key={`header-${lineIndex}`}
-                                style={[localStyles.header1, !isLastLine && { marginBottom: 16 }]}
+                                style={[headingStyle, !isLastLine && { marginBottom: 16 }]}
                             >
-                                {renderFormattedText(line.segments, localStyles.header1)}
-                            </Text>
-                        )
-                    } else if (line.type === 'h2') {
-                        return (
-                            <Text
-                                key={`header-${lineIndex}`}
-                                style={[localStyles.header2, !isLastLine && { marginBottom: 16 }]}
-                            >
-                                {renderFormattedText(line.segments, localStyles.header2)}
-                            </Text>
-                        )
-                    } else if (line.type === 'h3') {
-                        return (
-                            <Text
-                                key={`header-${lineIndex}`}
-                                style={[localStyles.header3, !isLastLine && { marginBottom: 16 }]}
-                            >
-                                {renderFormattedText(line.segments, localStyles.header3)}
+                                {renderFormattedText(line.segments, headingStyle)}
                             </Text>
                         )
                     } else if (line.type === 'bullet') {
@@ -585,6 +568,27 @@ const localStyles = StyleSheet.create({
         fontFamily: 'Roboto-Medium',
         fontSize: 20,
         lineHeight: 28,
+        color: colors.Text01,
+        fontWeight: '500',
+    },
+    header4: {
+        fontFamily: 'Roboto-Medium',
+        fontSize: 18,
+        lineHeight: 26,
+        color: colors.Text01,
+        fontWeight: '500',
+    },
+    header5: {
+        fontFamily: 'Roboto-Medium',
+        fontSize: 16,
+        lineHeight: 24,
+        color: colors.Text01,
+        fontWeight: '500',
+    },
+    header6: {
+        fontFamily: 'Roboto-Medium',
+        fontSize: 14,
+        lineHeight: 20,
         color: colors.Text01,
         fontWeight: '500',
     },

@@ -8,9 +8,9 @@ import { findMarkdownTable, getMarkdownTableAt, splitMarkdownTableRow } from '..
 export { getMarkdownTableAt, splitMarkdownTableRow }
 
 // Regex patterns for markdown detection
-const REGEX_HEADER_1 = /^# (.+)$/
-const REGEX_HEADER_2 = /^## (.+)$/
-const REGEX_HEADER_3 = /^### (.+)$/
+// ATX headings allow one to six # characters after up to three leading spaces.
+// Four leading spaces are excluded because they start an indented code block.
+const REGEX_ATX_HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*)|[ \t]*)$/
 const REGEX_BULLET_LIST = /^[-*] (.+)$/
 const REGEX_NUMBERED_LIST = /^(\d+)[.\)] (.+)$/ // Support both "1." and "1)" formats
 const REGEX_HORIZONTAL_RULE = /^(-{3,}|_{3,}|\*{3,})$/
@@ -22,6 +22,14 @@ const REGEX_BOLD_ITALIC = /\*\*\*(.+?)\*\*\*/g
 const REGEX_BOLD = /\*\*(.+?)\*\*/g
 const REGEX_ITALIC = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g
 const REGEX_STRIKETHROUGH = /~~(.+?)~~/g
+
+const parseAtxHeading = line => {
+    const match = line.match(REGEX_ATX_HEADING)
+    if (!match) return null
+
+    const text = (match[2] || '').replace(/[ \t]+#+[ \t]*$/, '').replace(/[ \t]+$/, '')
+    return { type: 'header', level: match[1].length, text, indent: 0 }
+}
 
 /**
  * Check if text contains markdown syntax that should be converted
@@ -43,9 +51,7 @@ export const containsMarkdown = text => {
 
         // Check line-level markdown
         if (
-            REGEX_HEADER_1.test(trimmed) ||
-            REGEX_HEADER_2.test(trimmed) ||
-            REGEX_HEADER_3.test(trimmed) ||
+            parseAtxHeading(line) ||
             REGEX_BULLET_LIST.test(trimmed) ||
             REGEX_NUMBERED_LIST.test(trimmed) ||
             REGEX_HORIZONTAL_RULE.test(trimmed) ||
@@ -231,19 +237,9 @@ const parseLineType = line => {
         return { type: 'hr', text: '', indent: 0 }
     }
 
-    // Headers
-    const h3Match = trimmed.match(REGEX_HEADER_3)
-    if (h3Match) {
-        return { type: 'header', level: 3, text: h3Match[1], indent: 0 }
-    }
-    const h2Match = trimmed.match(REGEX_HEADER_2)
-    if (h2Match) {
-        return { type: 'header', level: 2, text: h2Match[1], indent: 0 }
-    }
-    const h1Match = trimmed.match(REGEX_HEADER_1)
-    if (h1Match) {
-        return { type: 'header', level: 1, text: h1Match[1], indent: 0 }
-    }
+    // Check the original line so Markdown's three-space indentation limit is preserved.
+    const heading = parseAtxHeading(line)
+    if (heading) return heading
 
     // Checkboxes
     const uncheckedMatch = trimmed.match(REGEX_CHECKBOX_UNCHECKED)
