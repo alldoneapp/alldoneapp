@@ -901,6 +901,25 @@ exports.disconnectGithubRepo = onCall(
     }
 )
 
+// On-demand rebuild of a project's golden VM snapshot (repo + node_modules pre-baked).
+exports.rebuildProjectVmGolden = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { rebuildProjectVmGolden } = require('./Assistant/vmGoldenRebuild')
+        return await rebuildProjectVmGolden({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+        })
+    }
+)
+
 exports.connectGcpProject = onCall(
     {
         timeoutSeconds: 60,
@@ -4161,6 +4180,24 @@ exports.runVmJob = onTaskDispatched(
     }
 )
 
+// RUN GOLDEN BUILD - build a project's golden E2B snapshot (clone + install + snapshot).
+// Runs no agent and spends no Gold; it is platform infra. Triggered on lockfile drift
+// (self-healing) or on demand (rebuildProjectVmGolden). 30-min ceiling is ample.
+exports.runGoldenBuild = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: 1800, // 30 min — Cloud Tasks HTTP dispatch ceiling; clone+install+snapshot
+        memory: '1GiB',
+        retryConfig: { maxAttempts: 1 }, // never re-run a build; drift re-triggers it if needed
+        rateLimits: { maxConcurrentDispatches: 3, maxDispatchesPerSecond: 1 },
+    },
+    async req => {
+        const { buildId, projectId, requestUserId } = req.data || {}
+        const { runGoldenBuild } = require('./Assistant/vmGolden')
+        await runGoldenBuild({ buildId, projectId, requestUserId })
+    }
+)
+
 // PAUSE IDLE VM SESSIONS - pause running E2B sandboxes idle past the keep-alive window
 exports.pauseIdleVmSessions = onSchedule(
     {
@@ -4186,6 +4223,21 @@ exports.cleanupIdleVmSessions = onSchedule(
     async event => {
         const { cleanupIdleVmSessions } = require('./Assistant/vmJobRunner')
         await cleanupIdleVmSessions()
+    }
+)
+
+// CLEANUP UNUSED VM GOLDEN SNAPSHOTS - delete per-project golden E2B snapshots no cold job has
+// seeded from in 30 days (they persist and cost storage); the next cold job rebuilds one.
+exports.cleanupUnusedVmGoldenSnapshots = onSchedule(
+    {
+        schedule: 'every 24 hours',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { cleanupUnusedVmGoldenSnapshots } = require('./Assistant/vmGolden')
+        await cleanupUnusedVmGoldenSnapshots()
     }
 )
 

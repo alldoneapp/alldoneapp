@@ -691,7 +691,11 @@ async function loadRepoContext(vmJob) {
             const tokenData = tokenSnap.exists ? tokenSnap.data() || {} : {}
             if (tokenData.token) {
                 tokenSnap.ref.set({ lastUsed: Date.now() }, { merge: true }).catch(() => {})
-                return buildProviderContext(p.name, p.url, project, tokenData)
+                const ctx = buildProviderContext(p.name, p.url, project, tokenData)
+                // Carry the project's golden-snapshot pointer so cold sandbox creation can seed
+                // from it (deps pre-baked) and drift can be detected after clone. See vmGolden.js.
+                ctx.vmGolden = project.vmGolden || null
+                return ctx
             }
         }
         // A repo is connected for the project, but THIS user hasn't linked their own token.
@@ -925,7 +929,7 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
             '2. Make your edits.',
             '3. Before committing, run git status --short and/or git diff --quiet. If there is no repository diff, do NOT commit, push, or open a Pull/Merge Request; just explain the answer or why no code change was needed in your final message.',
             '4. If there are actual repository changes, commit them with clear, conventional commit messages.',
-            "Repository dependencies are intentionally NOT installed before you start. Install them with the repository's package manager only when the requested change or a necessary lint/test/build verification actually requires them. For explanation-only work or when no code change is needed, do not install dependencies."
+            `Repository dependencies may already be pre-installed at ${REPO_DIR}/node_modules — this project seeds cold VMs from a pre-baked environment when one is available. Before installing: if ${REPO_DIR}/node_modules already exists and the lockfile is unchanged, skip installation entirely. Only install when the requested change or a necessary lint/test/build verification actually requires it, and never for explanation-only work. When you do install and ${REPO_DIR}/node_modules is already present, use the INCREMENTAL installer (npm install / yarn install / pnpm install) — do NOT run a clean install (npm ci, or --frozen-lockfile variants that wipe node_modules), which throws away the pre-baked modules and cache and makes the run far slower.`
         )
         if (isGithub) {
             parts.push(
@@ -2269,14 +2273,50 @@ async function runAgentInSandbox(
 
     if (!sandbox) {
         const createOpts = { apiKey: e2bApiKey, timeoutMs: E2B_SANDBOX_TIMEOUT_MS, allowInternetAccess: true }
-        console.log('🖥️ VM JOB: creating sandbox', {
-            correlationId: vmJob.correlationId,
-            agent: config.label,
-            template,
-            timeoutMs: E2B_SANDBOX_TIMEOUT_MS,
-        })
+        // Seed a repo-backed cold job from the project's golden snapshot (repo + node_modules +
+        // package-manager cache pre-baked) when one is ready; fall back to the bare managed
+        // template. The session sandbox is still recorded under `template`, so per-thread resume
+        // matching stays stable across golden rebuilds. Non-repo tasks always use the managed base.
+        let goldenSnapshotId = null
+        if (gitContext && gitContext.enabled) {
+            goldenSnapshotId = require('./vmGolden').resolveGoldenTemplate({ vmGolden: gitContext.vmGolden })
+        }
         const sandboxCreateStartedAt = Date.now()
-        sandbox = template ? await Sandbox.create(template, createOpts) : await Sandbox.create(createOpts)
+        try {
+            const createTemplate = goldenSnapshotId || template
+            console.log('🖥️ VM JOB: creating sandbox', {
+                correlationId: vmJob.correlationId,
+                agent: config.label,
+                template: createTemplate,
+                fromGolden: !!goldenSnapshotId,
+                timeoutMs: E2B_SANDBOX_TIMEOUT_MS,
+            })
+            sandbox = createTemplate
+                ? await Sandbox.create(createTemplate, createOpts)
+                : await Sandbox.create(createOpts)
+        } catch (error) {
+            if (!goldenSnapshotId) throw error
+            // The golden snapshot is unusable (deleted/expired/corrupt). Fall back to the managed
+            // template and force a fresh rebuild so the next cold job is warm again.
+            console.warn('🖥️ VM JOB: golden snapshot create failed, using managed template', {
+                correlationId: vmJob.correlationId,
+                snapshotId: goldenSnapshotId,
+                error: error.message,
+            })
+            require('./vmGolden')
+                .maybeTriggerGoldenRebuild({
+                    projectId: vmJob.projectId,
+                    requestUserId: vmJob.requestUserId,
+                    project: { vmGolden: gitContext.vmGolden },
+                    currentLockfileHash: null,
+                    force: true,
+                })
+                .catch(() => {})
+            goldenSnapshotId = null
+            sandbox = template ? await Sandbox.create(template, createOpts) : await Sandbox.create(createOpts)
+        }
+        // Record that a valid golden was actually seeded (drives the unused-TTL cleanup).
+        if (goldenSnapshotId) require('./vmGolden').touchGoldenUsage(vmJob.projectId)
         sandboxLeaseDeadlineMs = sandboxCreateStartedAt + E2B_SANDBOX_TIMEOUT_MS
     }
     console.log('🖥️ VM JOB: sandbox ready', {
@@ -2322,6 +2362,26 @@ async function runAgentInSandbox(
             }
             await setupGitRepo(sandbox, gitContext, vmJob.correlationId)
             await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
+
+            // Self-healing golden refresh (#2): now that the repo is checked out, hash its
+            // lockfile and, if it drifted from the baked golden (or none exists), enqueue exactly
+            // one background rebuild. Best-effort and non-blocking — this job runs on whatever it
+            // already has; the NEXT cold job lands on the fresh golden.
+            try {
+                const golden = require('./vmGolden')
+                const { lockfileHash } = await golden.readGoldenLockfileHash(sandbox)
+                await golden.maybeTriggerGoldenRebuild({
+                    projectId: vmJob.projectId,
+                    requestUserId: vmJob.requestUserId,
+                    project: { vmGolden: gitContext.vmGolden },
+                    currentLockfileHash: lockfileHash,
+                })
+            } catch (error) {
+                console.warn('🌱 GOLDEN: drift check skipped', {
+                    correlationId: vmJob.correlationId,
+                    error: error.message,
+                })
+            }
         }
 
         // Managed templates usually already contain the selected CLI. Keep startup fast and
@@ -3222,6 +3282,8 @@ module.exports = {
         buildAgentPrompt,
         GIT_SETUP_SCRIPT,
         buildGitEnv,
+        setupGitRepo,
+        loadRepoContext,
         loadGcpContext,
         buildGcpEnv,
         buildCodexProxyConfigOverrides,

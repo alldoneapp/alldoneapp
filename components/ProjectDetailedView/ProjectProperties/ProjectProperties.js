@@ -26,6 +26,7 @@ import IntegrationsLinkProperty from './IntegrationsLink/IntegrationsLinkPropert
 import ConnectGitLabProperty from './ConnectGitLab/ConnectGitLabProperty'
 import ConnectGitHubProperty from './ConnectGitHub/ConnectGitHubProperty'
 import ConnectGCPProperty from './ConnectGCP/ConnectGCPProperty'
+import VmGoldenProperty from './VmGolden/VmGoldenProperty'
 import ColorProperty from './ColorProperty/ColorProperty'
 import PrivacyProperty from './PrivacyProperty/PrivacyProperty'
 import GuidesProperty from './GuidesProperty/GuidesProperty'
@@ -113,6 +114,7 @@ const ProjectProperties = ({ project, type }) => {
                             <ConnectGitLabProperty project={project} disabled={!accessGranted} />
                             <ConnectGitHubProperty project={project} disabled={!accessGranted} />
                             <ConnectGCPProperty project={project} disabled={!accessGranted} />
+                            <VmGoldenProperty project={project} disabled={!accessGranted} />
                             <PrivacyProperty project={project} disabled={!accessGranted || userIsNormalUserInGuide} />
                         </View>
 

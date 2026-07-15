@@ -2351,5 +2351,13 @@
     "High effort": "Alto",
     "Extra high effort": "Muy alto",
     "Could not load VM defaults.": "No se pudieron cargar los valores predeterminados de VM.",
-    "Could not save the default VM effort.": "No se pudo guardar el esfuerzo de VM predeterminado."
+    "Could not save the default VM effort.": "No se pudo guardar el esfuerzo de VM predeterminado.",
+    "VM environment": "Entorno de VM",
+    "VM environment building": "Creando entorno…",
+    "VM environment ready": "Entorno listo",
+    "VM environment ready built": "Entorno listo · creado {{time}}",
+    "VM environment build failed": "Error al crear — vuelve a intentarlo",
+    "VM environment not built": "Aún no creado",
+    "Rebuild": "Recrear",
+    "Building": "Creando…"
 }

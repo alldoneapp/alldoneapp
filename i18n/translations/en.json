@@ -2403,5 +2403,13 @@
     "High effort": "High",
     "Extra high effort": "Extra high",
     "Could not load VM defaults.": "Could not load VM defaults.",
-    "Could not save the default VM effort.": "Could not save the default VM effort."
+    "Could not save the default VM effort.": "Could not save the default VM effort.",
+    "VM environment": "VM environment",
+    "VM environment building": "Building environment…",
+    "VM environment ready": "Environment ready",
+    "VM environment ready built": "Environment ready · built {{time}}",
+    "VM environment build failed": "Build failed — try rebuilding",
+    "VM environment not built": "Not built yet",
+    "Rebuild": "Rebuild",
+    "Building": "Building…"
 }

@@ -1927,5 +1927,13 @@
     "High effort": "Hoch",
     "Extra high effort": "Sehr hoch",
     "Could not load VM defaults.": "Die VM-Standardeinstellungen konnten nicht geladen werden.",
-    "Could not save the default VM effort.": "Der Standard-VM-Aufwand konnte nicht gespeichert werden."
+    "Could not save the default VM effort.": "Der Standard-VM-Aufwand konnte nicht gespeichert werden.",
+    "VM environment": "VM-Umgebung",
+    "VM environment building": "Umgebung wird erstellt…",
+    "VM environment ready": "Umgebung bereit",
+    "VM environment ready built": "Umgebung bereit · erstellt {{time}}",
+    "VM environment build failed": "Erstellung fehlgeschlagen – erneut versuchen",
+    "VM environment not built": "Noch nicht erstellt",
+    "Rebuild": "Neu erstellen",
+    "Building": "Wird erstellt…"
 }

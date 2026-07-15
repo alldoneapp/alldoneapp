@@ -3837,6 +3837,7 @@ export function mapProjectData(projectId, project, customData) {
         githubHost: project.githubHost ? project.githubHost : '',
         githubApiBase: project.githubApiBase ? project.githubApiBase : '',
         githubConnectedAt: project.githubConnectedAt ? project.githubConnectedAt : null,
+        vmGolden: project.vmGolden ? project.vmGolden : null,
         ...customData,
     }
 }
@@ -6456,6 +6457,14 @@ export async function connectGithubRepo(data) {
 
 export async function disconnectGithubRepo(data) {
     const fn = firebase.app().functions('europe-west1').httpsCallable('disconnectGithubRepo')
+    const result = await fn(data)
+    return result.data
+}
+
+// Trigger an on-demand rebuild of the project's golden VM snapshot (repo + node_modules
+// pre-baked, so VM tasks skip the dependency install). Returns { success, buildId, alreadyBuilding }.
+export async function rebuildProjectVmGolden(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('rebuildProjectVmGolden')
     const result = await fn(data)
     return result.data
 }
