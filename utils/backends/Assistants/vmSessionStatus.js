@@ -2,16 +2,17 @@ import { getDb } from '../firestore'
 
 export const VM_SESSION_STATUS_BUSY = 'busy'
 export const VM_SESSION_STATUS_IDLE_RUNNING = 'idle_running'
-export const VM_SESSION_STATUS_RUNNING = 'running'
+export const VM_SESSION_STATUS_PAUSED = 'paused'
 
-const ACTIVE_OR_WARM_VM_SESSION_STATUSES = new Set([
-    VM_SESSION_STATUS_BUSY,
-    VM_SESSION_STATUS_IDLE_RUNNING,
-    VM_SESSION_STATUS_RUNNING,
-])
+export const VM_SESSION_BADGE_ACTIVE = 'active'
+export const VM_SESSION_BADGE_PAUSED = 'paused'
 
-export function isVmSessionActiveOrWarm(status) {
-    return ACTIVE_OR_WARM_VM_SESSION_STATUSES.has(status)
+export function getVmSessionBadgeState(status) {
+    if (status === VM_SESSION_STATUS_BUSY) return VM_SESSION_BADGE_ACTIVE
+    if ([VM_SESSION_STATUS_IDLE_RUNNING, VM_SESSION_STATUS_PAUSED].includes(status)) {
+        return VM_SESSION_BADGE_PAUSED
+    }
+    return null
 }
 
 export function getVmSessionDocId(projectId, objectId) {
