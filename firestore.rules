@@ -221,6 +221,25 @@ service cloud.firestore {
       allow update, delete: if isProjectMember(projectId) && signedIn();
     }
 
+    // VM runtime documents are server-managed. A client may only observe a session when it can
+    // already read the associated task; sandbox ids and status must never be client-writable.
+    match /vmSessions/{sessionId} {
+      allow read: if resource.data.projectId is string
+        && resource.data.objectId is string
+        && exists(/databases/$(database)/documents/items/$(resource.data.projectId)/tasks/$(resource.data.objectId))
+        && (
+          canReadObject(
+            resource.data.projectId,
+            get(/databases/$(database)/documents/items/$(resource.data.projectId)/tasks/$(resource.data.objectId)).data
+          ) ||
+          canReadSharedObject(
+            resource.data.projectId,
+            get(/databases/$(database)/documents/items/$(resource.data.projectId)/tasks/$(resource.data.objectId)).data
+          )
+        );
+      allow write: if false;
+    }
+
     match /projectsFeeds/{projectId}/{dateId}/{feedId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
       allow write: if isProjectMember(projectId);

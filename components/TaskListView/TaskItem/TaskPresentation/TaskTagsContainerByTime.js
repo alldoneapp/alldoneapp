@@ -28,6 +28,7 @@ export default function TaskTagsContainerByTime({
     setTagsExpandedHeight,
     toggleModal,
     blockOpen,
+    leadingVmStatusTag,
     leadingPriorityTag,
 }) {
     const [showSummarizeTag, setShowSummarizeTag] = useState(false)
@@ -76,6 +77,7 @@ export default function TaskTagsContainerByTime({
                     nativeID={`social_tags_${projectId}_${task.id}`}
                 >
                     <View onLayout={onLayoutInLeftArea} style={localStyles.leftArea}>
+                        {leadingVmStatusTag}
                         {task && task.time && !task.calendarData && (
                             <TimeTagWrapper projectId={projectId} task={task} />
                         )}

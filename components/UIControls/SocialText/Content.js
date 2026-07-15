@@ -22,6 +22,7 @@ export default function Content({
     milestoneDate,
     milestone,
     isActiveMilestone,
+    leadingStatusElement,
     leftCustomElement,
     activeCalendarStyle,
     textSection,
@@ -43,6 +44,7 @@ export default function Content({
                 milestoneDate={milestoneDate}
                 milestone={milestone}
                 isActiveMilestone={isActiveMilestone}
+                leadingStatusElement={leadingStatusElement}
                 leftCustomElement={leftCustomElement}
                 activeCalendarStyle={activeCalendarStyle}
                 task={task}

@@ -18,6 +18,7 @@ export default function TitleContainer({
     blockOpen,
     tagsExpandedHeight,
     showVerticalEllipsisInByTime,
+    leadingVmStatusTag,
     leadingPriorityTag,
 }) {
     const gmailTag = isGmailLabelFollowUpTask(task) ? (
@@ -58,6 +59,7 @@ export default function TitleContainer({
                 bgColor={hasStar ? backColorHighlight : backColor}
                 projectId={projectId}
                 blockOpen={blockOpen}
+                leadingStatusElement={!inMyDayAndNotSubtask ? leadingVmStatusTag : null}
                 leftCustomElement={leftCustomElement}
                 activeCalendarStyle={inMyDayAndNotSubtask}
                 tagsExpandedHeight={tagsExpandedHeight}

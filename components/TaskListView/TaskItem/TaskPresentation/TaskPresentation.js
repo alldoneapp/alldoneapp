@@ -33,6 +33,7 @@ import TranscribeTag from '../../../Tags/TranscribeTag'
 import TaskTagsContainerByTime from './TaskTagsContainerByTime'
 import TaskTagsContainer from './TaskTagsContainer'
 import TaskPriorityTagButton from '../../TaskPriorityTagButton'
+import TaskVmStatusTag from '../../../Tags/InProgressVmTag'
 
 function TaskPresentation(
     {
@@ -231,6 +232,7 @@ function TaskPresentation(
             style={{ marginRight: 8 }}
         />
     )
+    const leadingVmStatusTag = <TaskVmStatusTag projectId={projectId} taskId={task.id} style={{ marginRight: 8 }} />
 
     return (
         <View style={isLocked && !inParentGoal && localStyles.blurry}>
@@ -333,6 +335,7 @@ function TaskPresentation(
                                     blockOpen={blockOpen}
                                     tagsExpandedHeight={tagsExpandedHeight}
                                     showVerticalEllipsisInByTime={inMyDayAndNotSubtask && showVerticalEllipsis}
+                                    leadingVmStatusTag={leadingVmStatusTag}
                                     leadingPriorityTag={leadingPriorityTag}
                                 />
                             </View>
@@ -357,6 +360,7 @@ function TaskPresentation(
                                     toggleModal={toggleModal}
                                     blockOpen={blockOpen}
                                     onAlertTagPress={onLeftSwipe}
+                                    leadingVmStatusTag={leadingVmStatusTag}
                                     leadingPriorityTag={leadingPriorityTag}
                                 />
                             )}

@@ -313,7 +313,7 @@ function startVmJobHeartbeat(pendingRef, leaseOwner) {
     }
 }
 
-async function claimVmSessionLease(sessionRef, leaseOwner, correlationId = leaseOwner) {
+async function claimVmSessionLease(sessionRef, leaseOwner, correlationId = leaseOwner, sessionMetadata = {}) {
     const now = Date.now()
     return admin.firestore().runTransaction(async transaction => {
         const snapshot = await transaction.get(sessionRef)
@@ -326,6 +326,7 @@ async function claimVmSessionLease(sessionRef, leaseOwner, correlationId = lease
         transaction.set(
             sessionRef,
             {
+                ...sessionMetadata,
                 status: 'busy',
                 activeLeaseOwner: leaseOwner,
                 activeLeaseExpiresAt: now + VM_SESSION_LEASE_MS,
@@ -2014,6 +2015,7 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOw
         template: vmJob.vmTemplate || '',
         projectId: vmJob.projectId,
         objectId: vmJob.objectId,
+        objectType: vmJob.objectType || 'tasks',
         lastUsedAt: Date.now(),
     }
     try {
@@ -2191,7 +2193,11 @@ async function runAgentInSandbox(
     let subscriptionCredentialPrepared = false
     let runtimeGoldCharged = Number(pendingWebhook?.runtimeGoldCharged) || 0
     try {
-        const sessionClaim = await claimVmSessionLease(sessionRef, sessionLeaseOwner, vmJob.correlationId)
+        const sessionClaim = await claimVmSessionLease(sessionRef, sessionLeaseOwner, vmJob.correlationId, {
+            projectId: vmJob.projectId,
+            objectId: vmJob.objectId,
+            objectType: vmJob.objectType || 'tasks',
+        })
         ownsSessionLease = sessionClaim.claimed
         if (ownsSessionLease) sessionHeartbeat = startVmSessionHeartbeat(sessionRef, sessionLeaseOwner)
         const sess = sessionClaim.session

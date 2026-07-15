@@ -988,7 +988,13 @@ describe('VM session isolation', () => {
             runTransaction: jest.fn(async callback => callback(transaction)),
         })
 
-        await expect(__private__.claimVmSessionLease({}, 'this-execution')).resolves.toEqual({
+        await expect(
+            __private__.claimVmSessionLease({}, 'this-execution', 'correlation-1', {
+                projectId: 'project-1',
+                objectId: 'task-1',
+                objectType: 'tasks',
+            })
+        ).resolves.toEqual({
             claimed: true,
             session,
         })
@@ -996,8 +1002,11 @@ describe('VM session isolation', () => {
             {},
             expect.objectContaining({
                 status: 'busy',
+                projectId: 'project-1',
+                objectId: 'task-1',
+                objectType: 'tasks',
                 activeLeaseOwner: 'this-execution',
-                activeCorrelationId: 'this-execution',
+                activeCorrelationId: 'correlation-1',
                 activeLeaseExpiresAt: expect.any(Number),
             }),
             { merge: true }

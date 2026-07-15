@@ -12,12 +12,14 @@ export default function LeftTagsAndIcons({
     milestoneDate,
     milestone,
     isActiveMilestone,
+    leadingStatusElement,
     leftCustomElement,
     activeCalendarStyle,
     task,
 }) {
     return (
         <>
+            {leadingStatusElement && leadingStatusElement}
             {!activeCalendarStyle && task && task.calendarData && !task.completedTime && (
                 <CalendarTag calendarData={task.calendarData} containerStyle={{ marginRight: 8 }} />
             )}

@@ -35,6 +35,7 @@ export default function SocialText({
     milestoneDate,
     milestone,
     isActiveMilestone,
+    leadingStatusElement,
     leftCustomElement,
     activeCalendarStyle,
     tagsExpandedHeight,
@@ -104,6 +105,7 @@ export default function SocialText({
             milestoneDate={milestoneDate}
             milestone={milestone}
             isActiveMilestone={isActiveMilestone}
+            leadingStatusElement={leadingStatusElement}
             leftCustomElement={leftCustomElement}
             activeCalendarStyle={activeCalendarStyle}
             textSection={textSection}
