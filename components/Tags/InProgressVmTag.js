@@ -4,43 +4,60 @@ import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import {
     getVmSessionBadgeState,
-    VM_SESSION_BADGE_ACTIVE,
+    VM_BADGE_STATE_FAILED,
+    VM_BADGE_STATE_IN_PROGRESS,
+    VM_BADGE_STATE_PAUSED,
     watchVmSessionStatus,
 } from '../../utils/backends/Assistants/vmSessionStatus'
 
 export const IN_PROGRESS_VM_LABEL = 'In progress VM'
 export const PAUSED_VM_LABEL = 'Paused VM'
+export const FAILED_VM_LABEL = 'Failed VM'
 
-export function InProgressVmTag({ status, style }) {
-    const badgeState = getVmSessionBadgeState(status)
-    if (!badgeState) return null
+const BADGE_PRESENTATION = {
+    [VM_BADGE_STATE_IN_PROGRESS]: {
+        label: IN_PROGRESS_VM_LABEL,
+        containerStyle: 'inProgressContainer',
+        textStyle: 'inProgressText',
+    },
+    [VM_BADGE_STATE_PAUSED]: {
+        label: PAUSED_VM_LABEL,
+        containerStyle: 'pausedContainer',
+        textStyle: 'pausedText',
+    },
+    [VM_BADGE_STATE_FAILED]: {
+        label: FAILED_VM_LABEL,
+        containerStyle: 'failedContainer',
+        textStyle: 'failedText',
+    },
+}
 
-    const isActive = badgeState === VM_SESSION_BADGE_ACTIVE
-    const label = isActive ? IN_PROGRESS_VM_LABEL : PAUSED_VM_LABEL
+export function VmStatusTag({ session, status, style }) {
+    const badgeState = getVmSessionBadgeState(session || status)
+    const presentation = BADGE_PRESENTATION[badgeState]
+    if (!presentation) return null
 
     return (
         <View
-            accessibilityLabel={label}
-            style={[localStyles.container, isActive ? localStyles.activeContainer : localStyles.pausedContainer, style]}
+            accessibilityLabel={presentation.label}
+            style={[localStyles.container, localStyles[presentation.containerStyle], style]}
         >
-            <Text
-                style={[styles.subtitle2, isActive ? localStyles.activeText : localStyles.pausedText, windowTagStyle()]}
-            >
-                {label}
+            <Text style={[styles.subtitle2, localStyles[presentation.textStyle], windowTagStyle()]}>
+                {presentation.label}
             </Text>
         </View>
     )
 }
 
 export default function TaskVmStatusTag({ projectId, taskId, style }) {
-    const [status, setStatus] = useState(null)
+    const [session, setSession] = useState(null)
 
     useEffect(() => {
-        setStatus(null)
-        return watchVmSessionStatus(projectId, taskId, setStatus)
+        setSession(null)
+        return watchVmSessionStatus(projectId, taskId, setSession)
     }, [projectId, taskId])
 
-    return <InProgressVmTag status={status} style={style} />
+    return <VmStatusTag session={session} style={style} />
 }
 
 const localStyles = StyleSheet.create({
@@ -52,10 +69,10 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         paddingHorizontal: 8,
     },
-    activeContainer: {
+    inProgressContainer: {
         backgroundColor: colors.UtilityYellow125,
     },
-    activeText: {
+    inProgressText: {
         color: colors.Yellow400,
     },
     pausedContainer: {
@@ -63,5 +80,11 @@ const localStyles = StyleSheet.create({
     },
     pausedText: {
         color: colors.Text03,
+    },
+    failedContainer: {
+        backgroundColor: colors.UtilityRed100,
+    },
+    failedText: {
+        color: colors.UtilityRed300,
     },
 })

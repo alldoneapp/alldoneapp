@@ -2,17 +2,27 @@ import { getDb } from '../firestore'
 
 export const VM_SESSION_STATUS_BUSY = 'busy'
 export const VM_SESSION_STATUS_IDLE_RUNNING = 'idle_running'
+export const VM_SESSION_STATUS_RUNNING = 'running'
 export const VM_SESSION_STATUS_PAUSED = 'paused'
+export const VM_SESSION_STATUS_FAILED = 'failed'
 
-export const VM_SESSION_BADGE_ACTIVE = 'active'
-export const VM_SESSION_BADGE_PAUSED = 'paused'
+export const VM_BADGE_STATE_IN_PROGRESS = 'in_progress'
+export const VM_BADGE_STATE_PAUSED = 'paused'
+export const VM_BADGE_STATE_FAILED = 'failed'
 
-export function getVmSessionBadgeState(status) {
-    if (status === VM_SESSION_STATUS_BUSY) return VM_SESSION_BADGE_ACTIVE
-    if ([VM_SESSION_STATUS_IDLE_RUNNING, VM_SESSION_STATUS_PAUSED].includes(status)) {
-        return VM_SESSION_BADGE_PAUSED
-    }
-    return null
+const RESUMABLE_VM_SESSION_STATUSES = new Set([VM_SESSION_STATUS_IDLE_RUNNING, VM_SESSION_STATUS_PAUSED])
+
+export function getVmSessionBadgeState(session) {
+    if (!session) return null
+
+    const status = typeof session === 'string' ? session : session.status
+    if (status === VM_SESSION_STATUS_BUSY) return VM_BADGE_STATE_IN_PROGRESS
+    if (status === VM_SESSION_STATUS_FAILED) return VM_BADGE_STATE_FAILED
+    if (!RESUMABLE_VM_SESSION_STATUSES.has(status)) return null
+
+    return typeof session === 'object' && session.lastRunStatus === VM_SESSION_STATUS_FAILED
+        ? VM_BADGE_STATE_FAILED
+        : VM_BADGE_STATE_PAUSED
 }
 
 export function getVmSessionDocId(projectId, objectId) {
@@ -29,7 +39,7 @@ export function watchVmSessionStatus(projectId, objectId, callback) {
     }
 
     return db.doc(`vmSessions/${getVmSessionDocId(projectId, objectId)}`).onSnapshot(
-        snapshot => callback(snapshot.exists ? snapshot.data()?.status || null : null),
+        snapshot => callback(snapshot.exists ? snapshot.data() || null : null),
         () => callback(null)
     )
 }

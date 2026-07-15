@@ -328,6 +328,7 @@ async function claimVmSessionLease(sessionRef, leaseOwner, correlationId = lease
             {
                 ...sessionMetadata,
                 status: 'busy',
+                lastRunStatus: null,
                 activeLeaseOwner: leaseOwner,
                 activeLeaseExpiresAt: now + VM_SESSION_LEASE_MS,
                 activeCorrelationId: correlationId,
@@ -2005,9 +2006,10 @@ async function superviseVmCommand({
 }
 
 // After a run, KEEP the sandbox running for the keep-alive grace window (so back-to-back
-// tasks hit a live VM) and record the session as 'running'. The scheduled pauser pauses it
-// once idle. If keep-alive can't be set, fall back to pausing now; if that also fails, kill.
-async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOwner) {
+// tasks hit a live VM) and record whether the latest run completed or failed. The scheduled
+// pauser pauses it once idle. If keep-alive can't be set, fall back to pausing now; if that
+// also fails, kill.
+async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOwner, lastRunStatus = 'completed') {
     const sandboxId = sandbox.sandboxId || sandbox.id
     const baseDoc = {
         sandboxId,
@@ -2017,6 +2019,8 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOw
         objectId: vmJob.objectId,
         objectType: vmJob.objectType || 'tasks',
         lastUsedAt: Date.now(),
+        lastRunStatus,
+        lastRunAt: Date.now(),
     }
     try {
         await sandbox.setTimeout(KEEP_ALIVE_KILL_MS) // stays alive ~15 min unless reused/paused
@@ -2652,7 +2656,7 @@ async function runAgentInSandbox(
             // Preserve normal agent failures, but never reuse a VM whose command channel
             // timed out or whose agent was forcibly terminated: those sessions can retain
             // orphaned child processes and caused the Git setup hang this guards against.
-            await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, sessionLeaseOwner).catch(() => {})
+            await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, sessionLeaseOwner, 'failed').catch(() => {})
         } else {
             await sandbox?.kill().catch(() => {})
             if (ownsSessionLease) {
@@ -3331,6 +3335,7 @@ module.exports = {
         startVmJobHeartbeat,
         claimVmSessionLease,
         startVmSessionHeartbeat,
+        keepVmSessionAlive,
         isReusableVmSession,
         isUnhealthyVmSessionError,
         probeResumedVmSandbox,

@@ -1002,12 +1002,60 @@ describe('VM session isolation', () => {
             {},
             expect.objectContaining({
                 status: 'busy',
+                lastRunStatus: null,
                 projectId: 'project-1',
                 objectId: 'task-1',
                 objectType: 'tasks',
                 activeLeaseOwner: 'this-execution',
                 activeCorrelationId: 'correlation-1',
                 activeLeaseExpiresAt: expect.any(Number),
+            }),
+            { merge: true }
+        )
+    })
+
+    test('records a preserved failed run on its resumable VM session', async () => {
+        const transaction = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({ activeLeaseOwner: 'this-execution' }),
+            })),
+            set: jest.fn(),
+        }
+        mockFirestore.mockReturnValueOnce({
+            runTransaction: jest.fn(async callback => callback(transaction)),
+        })
+        const sessionRef = {}
+        const sandbox = {
+            sandboxId: 'sandbox-1',
+            setTimeout: jest.fn(async () => {}),
+            kill: jest.fn(async () => {}),
+        }
+
+        await expect(
+            __private__.keepVmSessionAlive(
+                sessionRef,
+                sandbox,
+                {
+                    agent: 'codex',
+                    vmTemplate: 'codex-template',
+                    projectId: 'project-1',
+                    objectId: 'task-1',
+                    objectType: 'tasks',
+                },
+                'test-key',
+                'this-execution',
+                'failed'
+            )
+        ).resolves.toBe(true)
+        expect(transaction.set).toHaveBeenCalledWith(
+            sessionRef,
+            expect.objectContaining({
+                status: 'idle_running',
+                lastRunStatus: 'failed',
+                lastRunAt: expect.any(Number),
+                projectId: 'project-1',
+                objectId: 'task-1',
             }),
             { merge: true }
         )
