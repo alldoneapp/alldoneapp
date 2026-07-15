@@ -112,13 +112,17 @@ describe('VM runner prompt', () => {
         expect(prompt).toContain(
             'If you made no repository changes, your final message MUST say that no Pull Request was opened'
         )
-        expect(prompt).toContain('Repository dependencies are intentionally NOT installed before you start')
         expect(prompt).toContain(
-            'when the requested change or a necessary lint/test/build verification actually requires them'
+            'Repository dependencies may already be pre-installed at /home/user/repo/node_modules'
         )
         expect(prompt).toContain(
-            'For explanation-only work or when no code change is needed, do not install dependencies'
+            'if /home/user/repo/node_modules already exists and the lockfile is unchanged, skip installation entirely'
         )
+        expect(prompt).toContain(
+            'Only install when the requested change or a necessary lint/test/build verification actually requires it, and never for explanation-only work'
+        )
+        expect(prompt).toContain('use the INCREMENTAL installer (npm install / yarn install / pnpm install)')
+        expect(prompt).toContain('do NOT run a clean install (npm ci')
         expect(prompt).not.toContain('runner has already performed a best-effort dependency install')
         expect(prompt).toContain('retry before reporting failure')
     })
