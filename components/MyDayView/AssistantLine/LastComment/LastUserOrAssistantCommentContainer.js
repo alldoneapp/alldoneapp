@@ -6,7 +6,9 @@ import { watchChat } from '../../../../utils/backends/Chats/chatsFirestore'
 import { unwatch } from '../../../../utils/backends/firestore'
 import LastAssistantCommentWrapper from './LastAssistantCommentWrapper'
 import { watchComments } from '../../../../utils/backends/Chats/chatsComments'
-import { getUnreadCommentsCount } from './unreadCommentsHelper'
+import { getAllUnreadCommentIds, getUnreadCommentsCount } from './unreadCommentsHelper'
+
+const MAX_COMMENTS_TO_VERIFY_UNREAD = 100
 
 export default function LastUserOrAssistantCommentContainer({
     setAModalIsOpen,
@@ -19,22 +21,27 @@ export default function LastUserOrAssistantCommentContainer({
 }) {
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const chatNotifications = useSelector(state => state.projectChatNotifications[project.id]?.[objectId])
-    const unreadComments = getUnreadCommentsCount(chatNotifications, isFollowedNotification)
+    const allUnreadCommentIds = getAllUnreadCommentIds(chatNotifications)
+    const commentsToWatch = Math.min(allUnreadCommentIds.length + 1, MAX_COMMENTS_TO_VERIFY_UNREAD)
     const [commentText, setCommentText] = useState(null)
     const [chat, setChat] = useState(null)
+    const [recentCommentIds, setRecentCommentIds] = useState([])
+    const unreadComments = getUnreadCommentsCount(chatNotifications, isFollowedNotification, recentCommentIds)
 
     const updateComment = comments => {
         const comment = comments[0]
         setCommentText(comment ? comment.commentText : null)
+        setRecentCommentIds(comments.map(comment => comment.id))
     }
 
     useEffect(() => {
+        setRecentCommentIds([])
         const watcherKey = v4()
-        watchComments(project.id, objectType, objectId, watcherKey, 1, updateComment)
+        watchComments(project.id, objectType, objectId, watcherKey, commentsToWatch, updateComment)
         return () => {
             unwatch(watcherKey)
         }
-    }, [objectId, objectType, project.id])
+    }, [commentsToWatch, objectId, objectType, project.id])
 
     useEffect(() => {
         const watcherKey = v4()

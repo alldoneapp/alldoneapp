@@ -1,5 +1,10 @@
 export const ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY = 'allProjects'
 
+export const getChatNotificationWithCommentId = document => ({
+    ...document.data(),
+    commentId: document.id,
+})
+
 // Followed notifications use the red UI treatment; unfollowed notifications
 // are grey and only become the preview when there is no red notification.
 const getNotificationPriority = notification => (notification?.followed ? 1 : 0)

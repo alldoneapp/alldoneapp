@@ -1,4 +1,8 @@
-import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, getProjectChatLastNotification } from './chatNotificationPriority'
+import {
+    ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
+    getChatNotificationWithCommentId,
+    getProjectChatLastNotification,
+} from './chatNotificationPriority'
 
 const notification = (chatId, followed, date, extra = {}) => ({
     chatId,
@@ -9,6 +13,15 @@ const notification = (chatId, followed, date, extra = {}) => ({
 })
 
 describe('getProjectChatLastNotification', () => {
+    it('keeps the notification document ID so it can be matched to its comment', () => {
+        const data = notification('grey-chat', false, 100)
+
+        expect(getChatNotificationWithCommentId({ id: 'comment-1', data: () => data })).toEqual({
+            ...data,
+            commentId: 'comment-1',
+        })
+    })
+
     it('keeps red notifications ahead of newer grey notifications', () => {
         const olderRed = notification('older-red-chat', true, 100)
         const newerRed = notification('newer-red-chat', true, 150)

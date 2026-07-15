@@ -887,17 +887,33 @@ export const theReducer = (state = initialState, action) => {
             notifications.forEach(notification => {
                 const { followed, chatId } = notification
                 if (projectChatNotifications[projectId][chatId]) {
-                    projectChatNotifications[projectId][chatId] = { ...projectChatNotifications[projectId][chatId] }
+                    const chatNotifications = projectChatNotifications[projectId][chatId]
+                    projectChatNotifications[projectId][chatId] = {
+                        ...chatNotifications,
+                        unfollowedCommentIds: [...chatNotifications.unfollowedCommentIds],
+                        followedCommentIds: [...chatNotifications.followedCommentIds],
+                    }
                 } else {
-                    projectChatNotifications[projectId][chatId] = { totalUnfollowed: 0, totalFollowed: 0 }
+                    projectChatNotifications[projectId][chatId] = {
+                        totalUnfollowed: 0,
+                        totalFollowed: 0,
+                        unfollowedCommentIds: [],
+                        followedCommentIds: [],
+                    }
                 }
 
                 if (followed) {
                     projectChatNotifications[projectId].totalFollowed++
                     projectChatNotifications[projectId][chatId].totalFollowed++
+                    if (notification.commentId) {
+                        projectChatNotifications[projectId][chatId].followedCommentIds.push(notification.commentId)
+                    }
                 } else {
                     projectChatNotifications[projectId].totalUnfollowed++
                     projectChatNotifications[projectId][chatId].totalUnfollowed++
+                    if (notification.commentId) {
+                        projectChatNotifications[projectId][chatId].unfollowedCommentIds.push(notification.commentId)
+                    }
                 }
             })
 

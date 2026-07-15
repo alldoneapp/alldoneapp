@@ -77,7 +77,11 @@ import {
     FOLLOWER_USERS_TYPE,
 } from '../../../components/Followers/FollowerConstants'
 import { generateUserIdsToNotifyForNewComments } from '../../assistantHelper'
-import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, getProjectChatLastNotification } from './chatNotificationPriority'
+import {
+    ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
+    getChatNotificationWithCommentId,
+    getProjectChatLastNotification,
+} from './chatNotificationPriority'
 
 export { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, getProjectChatLastNotification }
 
@@ -127,7 +131,7 @@ export function watchChatNotifications(projectId, userId, watcherKey, callback) 
         .onSnapshot(snapshot => {
             const notifications = []
             snapshot.forEach(doc => {
-                notifications.push(doc.data())
+                notifications.push(getChatNotificationWithCommentId(doc))
             })
             callback(notifications)
         })
