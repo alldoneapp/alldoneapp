@@ -158,6 +158,8 @@
     "Longest streak": "Racha más larga",
     "Total days": "Días totales",
     "Empty inbox reached on": "Bandeja de entrada vacía alcanzada el %{date}",
+    "Today counts": "¡Hoy cuenta!",
+    "Empty inbox streak day added": "Hoy se añadió a tu racha de bandeja vacía · Día %{count}.",
     "Monday short": "Lun",
     "Wednesday short": "Mié",
     "Friday short": "Vie",

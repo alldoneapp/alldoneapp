@@ -150,6 +150,8 @@
     "Longest streak": "Längste Serie",
     "Total days": "Tage insgesamt",
     "Empty inbox reached on": "Empty Inbox erreicht am %{date}",
+    "Today counts": "Heute zählt!",
+    "Empty inbox streak day added": "Heute wurde zu deiner Empty-Inbox-Serie hinzugefügt · Tag %{count}.",
     "Monday short": "Mo",
     "Wednesday short": "Mi",
     "Friday short": "Fr",
