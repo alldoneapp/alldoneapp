@@ -79,6 +79,114 @@ describe('UndoActionService', () => {
         ).rejects.toMatchObject({ code: 'failed-precondition' })
     })
 
+    it('undoes task completion with its prior open-state metadata', async () => {
+        const completionAction = createUndoActionRecord({
+            actionId: 'action-1',
+            initiatorId: 'user-1',
+            label: 'Completed “Launch”',
+            operations: [
+                {
+                    objectType: 'task',
+                    projectId: 'project-1',
+                    objectId: 'task-1',
+                    kind: 'update',
+                    before: {
+                        done: false,
+                        inDone: false,
+                        currentReviewerId: 'user-1',
+                        stepHistory: ['open'],
+                        sortIndex: 10,
+                    },
+                    beforeMissingFields: ['completed', 'completedTime'],
+                    after: {
+                        done: true,
+                        inDone: true,
+                        currentReviewerId: 'done',
+                        completed: 2000,
+                        completedTime: { startTime: 1000, endTime: 2000 },
+                        stepHistory: ['open'],
+                        sortIndex: 20,
+                    },
+                },
+            ],
+        })
+        const { db, writes } = buildDb({
+            action: completionAction,
+            user: { projectIds: ['project-1'] },
+            task: {
+                done: true,
+                inDone: true,
+                currentReviewerId: 'done',
+                completed: 2000,
+                completedTime: { startTime: 1000, endTime: 2000 },
+                stepHistory: ['open'],
+                sortIndex: 20,
+                isPublicFor: [0],
+            },
+        })
+
+        await reverseAction({ db, userId: 'user-1', actionId: 'action-1', direction: 'undo' })
+
+        const taskWrite = writes.find(write => write.path === 'items/project-1/tasks/task-1')
+        expect(taskWrite.data).toMatchObject({
+            done: false,
+            inDone: false,
+            currentReviewerId: 'user-1',
+            stepHistory: ['open'],
+            sortIndex: 10,
+        })
+        expect(taskWrite.data.completed).toBeDefined()
+        expect(taskWrite.data.completedTime).toBeDefined()
+    })
+
+    it('undoes a workflow move to the exact prior step', async () => {
+        const workflowAction = createUndoActionRecord({
+            actionId: 'action-1',
+            initiatorId: 'user-1',
+            label: 'Moved “Launch” to another workflow step',
+            operations: [
+                {
+                    objectType: 'task',
+                    projectId: 'project-1',
+                    objectId: 'task-1',
+                    kind: 'update',
+                    before: {
+                        userIds: ['owner-1', 'reviewer-1'],
+                        stepHistory: ['open', 'step-1'],
+                        currentReviewerId: 'reviewer-1',
+                        completed: 1000,
+                    },
+                    after: {
+                        userIds: ['owner-1', 'reviewer-1', 'reviewer-2'],
+                        stepHistory: ['open', 'step-1', 'step-2'],
+                        currentReviewerId: 'reviewer-2',
+                        completed: 2000,
+                    },
+                },
+            ],
+        })
+        const { db, writes } = buildDb({
+            action: workflowAction,
+            user: { projectIds: ['project-1'] },
+            task: {
+                userIds: ['owner-1', 'reviewer-1', 'reviewer-2'],
+                stepHistory: ['open', 'step-1', 'step-2'],
+                currentReviewerId: 'reviewer-2',
+                completed: 2000,
+                isPublicFor: [0],
+            },
+        })
+
+        await reverseAction({ db, userId: 'user-1', actionId: 'action-1', direction: 'undo' })
+
+        expect(writes.find(write => write.path === 'items/project-1/tasks/task-1').data).toEqual({
+            userIds: ['owner-1', 'reviewer-1'],
+            stepHistory: ['open', 'step-1'],
+            currentReviewerId: 'reviewer-1',
+            completed: 1000,
+        })
+    })
+
     it('restores a postponed goal and all still-connected tasks without touching unrelated fields', async () => {
         const postponeAction = createUndoActionRecord({
             actionId: 'action-1',
