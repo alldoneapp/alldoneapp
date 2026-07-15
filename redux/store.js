@@ -892,8 +892,6 @@ export const theReducer = (state = initialState, action) => {
                         ...chatNotifications,
                         unfollowedCommentIds: [...chatNotifications.unfollowedCommentIds],
                         followedCommentIds: [...chatNotifications.followedCommentIds],
-                        unfollowedNotifications: [...(chatNotifications.unfollowedNotifications || [])],
-                        followedNotifications: [...(chatNotifications.followedNotifications || [])],
                     }
                 } else {
                     projectChatNotifications[projectId][chatId] = {
@@ -901,8 +899,6 @@ export const theReducer = (state = initialState, action) => {
                         totalFollowed: 0,
                         unfollowedCommentIds: [],
                         followedCommentIds: [],
-                        unfollowedNotifications: [],
-                        followedNotifications: [],
                     }
                 }
 
@@ -911,20 +907,12 @@ export const theReducer = (state = initialState, action) => {
                     projectChatNotifications[projectId][chatId].totalFollowed++
                     if (notification.commentId) {
                         projectChatNotifications[projectId][chatId].followedCommentIds.push(notification.commentId)
-                        projectChatNotifications[projectId][chatId].followedNotifications.push({
-                            commentId: notification.commentId,
-                            date: notification.date,
-                        })
                     }
                 } else {
                     projectChatNotifications[projectId].totalUnfollowed++
                     projectChatNotifications[projectId][chatId].totalUnfollowed++
                     if (notification.commentId) {
                         projectChatNotifications[projectId][chatId].unfollowedCommentIds.push(notification.commentId)
-                        projectChatNotifications[projectId][chatId].unfollowedNotifications.push({
-                            commentId: notification.commentId,
-                            date: notification.date,
-                        })
                     }
                 }
             })

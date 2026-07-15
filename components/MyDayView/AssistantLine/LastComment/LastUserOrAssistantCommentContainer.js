@@ -25,16 +25,17 @@ export default function LastUserOrAssistantCommentContainer({
     const commentsToWatch = Math.min(allUnreadCommentIds.length + 1, MAX_COMMENTS_TO_VERIFY_UNREAD)
     const [commentText, setCommentText] = useState(null)
     const [chat, setChat] = useState(null)
-    const [recentComments, setRecentComments] = useState([])
-    const unreadComments = getUnreadCommentsCount(chatNotifications, isFollowedNotification, recentComments)
+    const [recentCommentIds, setRecentCommentIds] = useState([])
+    const unreadComments = getUnreadCommentsCount(chatNotifications, isFollowedNotification, recentCommentIds)
 
     const updateComment = comments => {
         const comment = comments[0]
         setCommentText(comment ? comment.commentText : null)
-        setRecentComments(comments)
+        setRecentCommentIds(comments.map(comment => comment.id))
     }
 
     useEffect(() => {
+        setRecentCommentIds([])
         const watcherKey = v4()
         watchComments(project.id, objectType, objectId, watcherKey, commentsToWatch, updateComment)
         return () => {
