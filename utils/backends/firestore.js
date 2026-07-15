@@ -1699,14 +1699,7 @@ export const moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks = async (proje
     }
 }
 
-export async function moveTasksinWorkflowFeedsChain(
-    projectId,
-    task,
-    stepToMoveId,
-    workflow,
-    estimations,
-    undoActionId
-) {
+export async function moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations) {
     const { loggedUser } = store.getState()
     const followTaskData = {
         followObjectsType: FOLLOWER_TASKS_TYPE,
@@ -1716,7 +1709,6 @@ export async function moveTasksinWorkflowFeedsChain(
     }
 
     const batch = new BatchWrapper(db)
-    if (undoActionId) batch.currentUndoActionId = undoActionId
 
     batch.feedChainFollowersIds = { [task.id]: [loggedUser.uid] }
 

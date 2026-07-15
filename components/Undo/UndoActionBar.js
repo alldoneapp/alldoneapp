@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, SafeAreaView, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { firebase } from '@firebase/app'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import { reverseUndoAction } from '../../utils/undo/undoActions'
-import undoActionBarStyles from './undoActionBarStyles'
 
 const DISPLAY_TIME_MS = 10000
 
@@ -25,7 +24,6 @@ export default function UndoActionBar() {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
     const mountedAt = useRef(Date.now())
-    const busyRef = useRef(false)
 
     useEffect(() => {
         if (!loggedIn || !userId) return undefined
@@ -63,8 +61,7 @@ export default function UndoActionBar() {
     }, [visible, busy, action?.actionId, action?.status])
 
     const reverse = async (targetAction, direction) => {
-        if (!targetAction || busyRef.current) return
-        busyRef.current = true
+        if (!targetAction || busy) return
         setBusy(true)
         setError('')
         setVisible(true)
@@ -74,7 +71,6 @@ export default function UndoActionBar() {
             const message = reverseError?.message || translate('Could not reverse action')
             setError(message.replace(/^.*?:\s*/, ''))
         } finally {
-            busyRef.current = false
             setBusy(false)
         }
     }
@@ -101,8 +97,8 @@ export default function UndoActionBar() {
     const message = error ? error : isUndone ? `${translate('Undone')}: ${action.label}` : action.label
 
     return (
-        <SafeAreaView pointerEvents="box-none" style={undoActionBarStyles.overlay}>
-            <View style={undoActionBarStyles.container} accessibilityLiveRegion="polite">
+        <View pointerEvents="box-none" style={localStyles.overlay}>
+            <View style={localStyles.container} accessibilityLiveRegion="polite">
                 <Text numberOfLines={2} style={[styles.body2, localStyles.message]}>
                     {message}
                 </Text>
@@ -118,8 +114,42 @@ export default function UndoActionBar() {
                     </TouchableOpacity>
                 )}
             </View>
-        </SafeAreaView>
+        </View>
     )
 }
 
-const localStyles = undoActionBarStyles
+const localStyles = StyleSheet.create({
+    overlay: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 24,
+        zIndex: 100000,
+        alignItems: 'center',
+        paddingHorizontal: 16,
+    },
+    container: {
+        minHeight: 48,
+        maxWidth: 560,
+        width: '100%',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 8,
+        backgroundColor: colors.Text01,
+        flexDirection: 'row',
+        alignItems: 'center',
+        shadowColor: '#000000',
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 8,
+    },
+    message: {
+        color: '#FFFFFF',
+        flex: 1,
+        marginRight: 16,
+    },
+    action: {
+        color: colors.UtilityBlue200,
+    },
+})

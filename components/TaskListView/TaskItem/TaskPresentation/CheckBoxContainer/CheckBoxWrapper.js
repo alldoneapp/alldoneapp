@@ -4,7 +4,6 @@ import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import store from '../../../../../redux/store'
-import Backend from '../../../../../utils/BackendBridge'
 import { setAssignee } from '../../../../../redux/actions'
 import TasksHelper, { DONE_STEP, OPEN_STEP, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../Utils/TasksHelper'
 import { chronoKeysOrder, popoverToSafePosition } from '../../../../../utils/HelperFunctions'
@@ -77,18 +76,6 @@ function CheckBoxWrapper(
         }
     }
 
-    const rollbackOptimisticCheck = async error => {
-        console.error('[task transition] Could not persist checkbox action', error)
-        let persistedTask = null
-        try {
-            persistedTask = await Backend.getTaskData(projectId, task.id)
-        } catch (readError) {
-            console.error('[task transition] Could not reload task after checkbox failure', readError)
-        }
-        safeSetChecked(persistedTask ? persistedTask.done : done)
-        safeSetShowAnimation(false)
-    }
-
     const {
         id: taskId,
         userId,
@@ -108,44 +95,36 @@ function CheckBoxWrapper(
 
     const scheduleSetTaskStatus = recurrenceBaseDateOverride => {
         setShowAnimation(true)
-        const t = setTimeout(async () => {
-            try {
-                await setTaskStatus(
-                    projectId,
-                    taskId,
-                    !done,
-                    ownerIsWorkstream ? store.getState().loggedUser.uid : userId,
-                    task,
-                    '',
-                    true,
-                    estimations[OPEN_STEP],
-                    estimations[OPEN_STEP],
-                    recurrenceBaseDateOverride
-                )
-            } catch (error) {
-                rollbackOptimisticCheck(error)
-            }
+        const t = setTimeout(() => {
+            setTaskStatus(
+                projectId,
+                taskId,
+                !done,
+                ownerIsWorkstream ? store.getState().loggedUser.uid : userId,
+                task,
+                '',
+                true,
+                estimations[OPEN_STEP],
+                estimations[OPEN_STEP],
+                recurrenceBaseDateOverride
+            )
         }, ANIMATION_DURATION)
         timeoutsRef.current.push(t)
     }
 
     const scheduleMoveTasksFromOpen = (stepToMoveId, recurrenceBaseDateOverride) => {
         setShowAnimation(true)
-        const t = setTimeout(async () => {
-            try {
-                await moveTasksFromOpen(
-                    projectId,
-                    task,
-                    stepToMoveId,
-                    null,
-                    null,
-                    estimations,
-                    checkBoxIdRef.current,
-                    recurrenceBaseDateOverride
-                )
-            } catch (error) {
-                rollbackOptimisticCheck(error)
-            }
+        const t = setTimeout(() => {
+            moveTasksFromOpen(
+                projectId,
+                task,
+                stepToMoveId,
+                null,
+                null,
+                estimations,
+                checkBoxIdRef.current,
+                recurrenceBaseDateOverride
+            )
         }, ANIMATION_DURATION)
         timeoutsRef.current.push(t)
     }
@@ -180,10 +159,10 @@ function CheckBoxWrapper(
                     true,
                     estimations[OPEN_STEP],
                     estimations[OPEN_STEP]
-                ).catch(rollbackOptimisticCheck)
+                )
             }
         } else if (done) {
-            moveTasksFromDone(projectId, task, OPEN_STEP).catch(rollbackOptimisticCheck)
+            moveTasksFromDone(projectId, task, OPEN_STEP)
         } else if (genericData || (isPrivate && !isLongPress) || calendarData || isLockedGmailTask) {
             shouldAskForRecurrenceDateBasis(DONE_STEP)
                 ? setRecurrenceDateBasisModalIsOpen(true)

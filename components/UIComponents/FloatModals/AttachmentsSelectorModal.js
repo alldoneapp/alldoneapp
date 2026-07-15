@@ -11,28 +11,19 @@ import NotAvailableScreenRecording from '../../MediaBar/ScreenRecording/NotAvail
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
+import { addFilesAsAttachments } from '../../Feeds/CommentsTextInput/attachmentFileUtils'
 
 export default function AttachmentsSelectorModal({ projectId, closeModal, addAttachmentTag, style }) {
     const [width, height] = useWindowSize()
     const [showVideoRecorder, setShowVideoRecorder] = useState(false)
     const [showScreenRecorder, setShowScreenRecorder] = useState(false)
     const [showMessage, setShowMessage] = useState(false)
-    const limit = 50
-
     const chooseAttachments = () => {
         if (Platform.OS === 'web') {
             let fileInput = document.getElementById('file-input')
 
             fileInput.onchange = event => {
-                const file = event.target.files[0]
-                const fileSize = file.size / 1024 / 1024 // in MB
-                if (fileSize > limit) {
-                    alert(translate('File size exceeds', { limit, size: fileSize.toFixed(2) }))
-                } else {
-                    const { name } = file
-                    const uri = URL.createObjectURL(file)
-                    addAttachmentTag(name.replaceAll(/\s/g, '_'), uri)
-                }
+                addFilesAsAttachments(event.target.files, addAttachmentTag)
                 setTimeout(() => {
                     closeModal()
                 }, 100)

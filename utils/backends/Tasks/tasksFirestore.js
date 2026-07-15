@@ -123,10 +123,8 @@ import {
     buildObjectUpdateOperation,
     buildTaskCreateOperation,
     buildTaskUpdateOperation,
-    MAX_UNDO_OPERATIONS,
     queueUndoAction,
 } from '../../undo/undoActions'
-import { buildTaskStateUndoOperations } from '../../undo/taskStateUndo'
 
 import { getDvMainTabLink } from '../../LinkingHelper'
 import { isPrivateNote } from '../../../components/NotesView/NotesHelper'
@@ -152,64 +150,6 @@ import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
     if (!taskId || completedAt == null || currentReviewerId == null) return ''
     return `task_progress:${taskId}:${completedAt}:${currentReviewerId}`
-}
-
-const getTaskTransitionUndoLabel = (task, stepToMoveId) => {
-    if (stepToMoveId === DONE_STEP) return `Completed “${task.name}”`
-    if (stepToMoveId === OPEN_STEP) return `Reopened “${task.name}”`
-    return `Moved “${task.name}” to another workflow step`
-}
-
-const loadTaskUndoStates = async (projectId, taskIds) => {
-    const uniqueTaskIds = uniq(taskIds.filter(Boolean))
-    if (uniqueTaskIds.length === 0) return {}
-    if (uniqueTaskIds.length > MAX_UNDO_OPERATIONS) {
-        throw new Error('This task transition affects too many tasks to be safely undoable')
-    }
-
-    try {
-        const snapshots = await Promise.all(
-            uniqueTaskIds.map(taskId => getDb().doc(`items/${projectId}/tasks/${taskId}`).get())
-        )
-        const states = snapshots.reduce((result, snapshot, index) => {
-            if (snapshot.exists) result[uniqueTaskIds[index]] = snapshot.data()
-            return result
-        }, {})
-        if (Object.keys(states).length !== uniqueTaskIds.length) {
-            throw new Error('A task changed before its undo state could be captured')
-        }
-        return states
-    } catch (error) {
-        console.warn('[task undo] Could not capture the state before the task transition', {
-            projectId,
-            error: error.message,
-        })
-        throw error
-    }
-}
-
-const getParentRemovalChanges = (parentState, taskId) => {
-    if (!parentState || !Array.isArray(parentState.subtaskIds)) return null
-    const subtaskIndex = parentState.subtaskIds.indexOf(taskId)
-    if (subtaskIndex < 0) return null
-
-    const subtaskIds = [...parentState.subtaskIds]
-    const subtaskNames = Array.isArray(parentState.subtaskNames) ? [...parentState.subtaskNames] : []
-    subtaskIds.splice(subtaskIndex, 1)
-    if (subtaskIndex < subtaskNames.length) subtaskNames.splice(subtaskIndex, 1)
-    return { subtaskIds, subtaskNames }
-}
-
-const queueTaskTransitionUndo = ({ projectId, task, stepToMoveId, beforeStates, taskChanges, batch }) => {
-    const operations = buildTaskStateUndoOperations(projectId, beforeStates, taskChanges)
-    if (operations.length === 0) throw new Error('Could not capture the task transition for undo')
-    const action = queueUndoAction({
-        label: getTaskTransitionUndoLabel(task, stepToMoveId),
-        operations,
-        batch,
-    })
-    if (!action) throw new Error('Could not queue the task transition for undo')
-    return action
 }
 
 async function updateLinkedContactsEditionData(projectId, task, editionDate) {
@@ -2667,9 +2607,8 @@ export async function moveTasksFromMiddleOfWorkflow(
     checkBoxId
 ) {
     const { loggedUser } = store.getState()
-    const { parentId, subtaskIds = [], userId, stepHistory, userIds } = task
+    const { parentId, subtaskIds, userId, stepHistory, userIds } = task
     const transitionDate = Date.now()
-    const undoBeforeStates = await loadTaskUndoStates(projectId, [task.id, parentId, ...subtaskIds])
 
     if (comment) createObjectMessage(projectId, task.id, comment, 'tasks', commentType, null, null)
 
@@ -2771,39 +2710,27 @@ export async function moveTasksFromMiddleOfWorkflow(
         sortIndex = generateSortIndex()
     }
 
-    const taskUpdateData = {
-        ...updateData,
-        done: stepToMoveId === DONE_STEP,
-        inDone: stepToMoveId === DONE_STEP,
-        sortIndex,
-        estimations,
-    }
-    updateTaskData(projectId, task.id, taskUpdateData, batch)
-
-    const taskChanges = [{ taskId: task.id, afterChanges: taskUpdateData }]
-    if (parentId) {
-        const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
-        taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
-        const parentChanges = getParentRemovalChanges(undoBeforeStates[parentId], task.id)
-        if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
-    } else {
-        const subtaskChanges = {
-            ...updateData,
-            parentDone: stepToMoveId === DONE_STEP,
-            inDone: stepToMoveId === DONE_STEP,
-        }
-        updateSubtasksState(projectId, subtaskIds, subtaskChanges, batch)
-        subtaskIds.forEach(taskId => taskChanges.push({ taskId, afterChanges: subtaskChanges }))
-    }
-
-    const undoAction = queueTaskTransitionUndo({
+    updateTaskData(
         projectId,
-        task,
-        stepToMoveId,
-        beforeStates: undoBeforeStates,
-        taskChanges,
-        batch,
-    })
+        task.id,
+        {
+            ...updateData,
+            done: stepToMoveId === DONE_STEP,
+            inDone: stepToMoveId === DONE_STEP,
+            sortIndex,
+            estimations,
+        },
+        batch
+    )
+
+    parentId
+        ? await promoteSubtaskToTask(projectId, task, batch)
+        : updateSubtasksState(
+              projectId,
+              subtaskIds,
+              { ...updateData, parentDone: stepToMoveId === DONE_STEP, inDone: stepToMoveId === DONE_STEP },
+              batch
+          )
 
     await batch.commit()
 
@@ -2820,7 +2747,7 @@ export async function moveTasksFromMiddleOfWorkflow(
         }
     }
 
-    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
+    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations)
 }
 
 const getTaskCompletedTime = task => {
@@ -2876,8 +2803,7 @@ export async function moveTasksFromOpen(
     const { loggedUser } = store.getState()
     const loggedUserId = loggedUser.uid
     const completionDate = Date.now()
-    const { parentId, subtaskIds = [], userId } = task
-    const undoBeforeStates = await loadTaskUndoStates(projectId, [task.id, parentId, ...subtaskIds])
+    const { parentId, subtaskIds, userId } = task
 
     // Completion/workflow-move comments must never trigger an assistant reply,
     // even when the task/thread has an assistant enabled — hence skipAssistantTrigger = true.
@@ -2942,7 +2868,7 @@ export async function moveTasksFromOpen(
 
     if (ownerIsWorkstream) {
         const wormstream = getWorkstreamInProject(projectId, userId)
-        await setTaskAssignee(projectId, task.id, loggedUserId, wormstream, loggedUser, task, false, batch)
+        setTaskAssignee(projectId, task.id, loggedUserId, wormstream, loggedUser, task, false, null)
     }
 
     // Preserve the sortIndex for calendar tasks based on their start time
@@ -2954,40 +2880,28 @@ export async function moveTasksFromOpen(
         sortIndex = generateSortIndex()
     }
 
-    const taskUpdateData = {
-        ...updateData,
-        ...(stepToMoveId === DONE_STEP && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
-        done: stepToMoveId === DONE_STEP,
-        inDone: stepToMoveId === DONE_STEP,
-        sortIndex,
-        estimations,
-    }
-    updateTaskData(projectId, task.id, taskUpdateData, batch)
-
-    const taskChanges = [{ taskId: task.id, afterChanges: taskUpdateData }]
-    if (parentId) {
-        const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
-        taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
-        const parentChanges = getParentRemovalChanges(undoBeforeStates[parentId], task.id)
-        if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
-    } else {
-        const subtaskChanges = {
-            ...updateData,
-            parentDone: stepToMoveId === DONE_STEP,
-            inDone: stepToMoveId === DONE_STEP,
-        }
-        updateSubtasksState(projectId, subtaskIds, subtaskChanges, batch)
-        subtaskIds.forEach(taskId => taskChanges.push({ taskId, afterChanges: subtaskChanges }))
-    }
-
-    const undoAction = queueTaskTransitionUndo({
+    updateTaskData(
         projectId,
-        task,
-        stepToMoveId,
-        beforeStates: undoBeforeStates,
-        taskChanges,
-        batch,
-    })
+        task.id,
+        {
+            ...updateData,
+            ...(stepToMoveId === DONE_STEP && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
+            done: stepToMoveId === DONE_STEP,
+            inDone: stepToMoveId === DONE_STEP,
+            sortIndex,
+            estimations,
+        },
+        batch
+    )
+
+    parentId
+        ? await promoteSubtaskToTask(projectId, task, batch)
+        : updateSubtasksState(
+              projectId,
+              subtaskIds,
+              { ...updateData, parentDone: stepToMoveId === DONE_STEP, inDone: stepToMoveId === DONE_STEP },
+              batch
+          )
 
     const assignee = TasksHelper.getUserInProject(projectId, task.userId)
 
@@ -3046,12 +2960,11 @@ export async function moveTasksFromOpen(
         console.log(`[moveTasksFromOpen] NOT calling focus task functions - conditions not met`)
     }
 
-    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
+    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations)
 }
 
 export async function moveTasksFromDone(projectId, task, stepToMoveId) {
-    const { stepHistory, parentId, subtaskIds = [], userId, estimations } = task
-    const undoBeforeStates = await loadTaskUndoStates(projectId, [task.id, parentId, ...subtaskIds])
+    const { stepHistory, parentId, subtaskIds, userId, estimations } = task
 
     let workflow
     let updateData
@@ -3113,34 +3026,21 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
         sortIndex = generateSortIndex()
     }
 
-    const taskUpdateData = {
-        ...updateData,
-        done: false,
-        inDone: false,
-        sortIndex,
-    }
-    updateTaskData(projectId, task.id, taskUpdateData, batch)
-
-    const taskChanges = [{ taskId: task.id, afterChanges: taskUpdateData }]
-    if (parentId) {
-        const promotionChanges = await promoteSubtaskToTask(projectId, task, batch)
-        taskChanges[0].afterChanges = { ...taskUpdateData, ...promotionChanges }
-        const parentChanges = getParentRemovalChanges(undoBeforeStates[parentId], task.id)
-        if (parentChanges) taskChanges.push({ taskId: parentId, afterChanges: parentChanges })
-    } else {
-        const subtaskChanges = { ...updateData, parentDone: false, inDone: false }
-        updateSubtasksState(projectId, subtaskIds, subtaskChanges, batch)
-        subtaskIds.forEach(taskId => taskChanges.push({ taskId, afterChanges: subtaskChanges }))
-    }
-
-    const undoAction = queueTaskTransitionUndo({
+    updateTaskData(
         projectId,
-        task,
-        stepToMoveId,
-        beforeStates: undoBeforeStates,
-        taskChanges,
-        batch,
-    })
+        task.id,
+        {
+            ...updateData,
+            done: false,
+            inDone: false,
+            sortIndex,
+        },
+        batch
+    )
+
+    parentId
+        ? await promoteSubtaskToTask(projectId, task, batch)
+        : updateSubtasksState(projectId, subtaskIds, { ...updateData, parentDone: false, inDone: false }, batch)
 
     await batch.commit()
 
@@ -3148,7 +3048,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
         await reconcileExistingDayRateTimeLog(projectId, userId, task.completed)
     }
 
-    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, task.estimations, undoAction?.actionId)
+    moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, task.estimations)
 }
 
 export async function setTaskStatus(
@@ -3166,10 +3066,6 @@ export async function setTaskStatus(
     const taskBatch = new BatchWrapper(getDb())
     const completedDate = isDone ? Date.now() : null
     const completed = isDone ? completedDate : firebase.firestore.FieldValue.delete()
-    const shouldRecordUndo = createDoneFeed !== false
-    const undoBeforeStates = shouldRecordUndo
-        ? await loadTaskUndoStates(projectId, [taskId, ...(task.subtaskIds || [])])
-        : {}
 
     const updateData = {
         done: isDone,
@@ -3217,6 +3113,7 @@ export async function setTaskStatus(
 
     const taskRealOwner = TasksHelper.getTaskOwner(taskOwnerUid, projectId)
     const statisticUserUid = taskRealOwner.recorderUserId ? store.getState().loggedUser.uid : taskOwnerUid
+
     if (isDone) {
         updateStatistics(projectId, statisticUserUid, task.estimations[OPEN_STEP], false, false, null, taskBatch)
     } else {
@@ -3229,52 +3126,6 @@ export async function setTaskStatus(
             task.completed,
             taskBatch
         )
-    }
-
-    let undoAction = null
-    if (shouldRecordUndo) {
-        const taskUndoChanges = { ...updateData }
-        const taskAfterMissingFields = []
-        if (!task.parentId) {
-            if (isDone) taskUndoChanges.completed = completedDate
-            else {
-                delete taskUndoChanges.completed
-                taskAfterMissingFields.push('completed')
-            }
-        }
-
-        const taskChanges = [
-            {
-                taskId,
-                afterChanges: taskUndoChanges,
-                afterMissingFields: taskAfterMissingFields,
-            },
-        ]
-        if (isDone) {
-            const subtaskChanges = {
-                completed: completedDate,
-                parentDone: true,
-                currentReviewerId: DONE_STEP,
-                inDone: true,
-            }
-            task.subtaskIds.forEach(subtaskId => taskChanges.push({ taskId: subtaskId, afterChanges: subtaskChanges }))
-        } else if (task.done) {
-            const subtaskChanges = {
-                parentDone: false,
-                currentReviewerId: task.userId,
-                inDone: false,
-            }
-            task.subtaskIds.forEach(subtaskId => taskChanges.push({ taskId: subtaskId, afterChanges: subtaskChanges }))
-        }
-
-        undoAction = queueTaskTransitionUndo({
-            projectId,
-            task,
-            stepToMoveId: isDone ? DONE_STEP : OPEN_STEP,
-            beforeStates: undoBeforeStates,
-            taskChanges,
-            batch: taskBatch,
-        })
     }
 
     await taskBatch.commit()
@@ -3313,7 +3164,6 @@ export async function setTaskStatus(
     }
 
     const feedBatch = new BatchWrapper(getDb())
-    if (undoAction) feedBatch.currentUndoActionId = undoAction.actionId
     if (comment) {
         createObjectMessage(projectId, taskId, comment, 'tasks', STAYWARD_COMMENT, null, null)
     }
@@ -3420,9 +3270,8 @@ async function promoteSubtaskToTask(projectId, task, externalBatch) {
 
     updateTaskData(projectId, taskId, updateData, batch)
     if (!externalBatch) {
-        await batch.commit()
+        batch.commit()
     }
-    return updateData
 }
 
 export const updateSuggestedTask = (projectId, taskId, object) => {

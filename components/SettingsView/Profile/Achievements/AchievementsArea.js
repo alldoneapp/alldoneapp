@@ -3,6 +3,8 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import { translate } from '../../../../i18n/TranslationService'
 import styles, { colors } from '../../../styles/global'
+import EmptyInboxDayCelebration from './EmptyInboxDayCelebration'
+import useTodayEmptyInboxCelebration from './useTodayEmptyInboxCelebration'
 import {
     buildEmptyInboxActivityWeeks,
     buildEmptyInboxMonthSegments,
@@ -27,7 +29,7 @@ const Metric = ({ label, value }) => (
     </View>
 )
 
-export function EmptyInboxOverview({ user, style, onOpenAchievements }) {
+export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateNewDay = false }) {
     const [contentWidth, setContentWidth] = useState(0)
     const CardContainer = onOpenAchievements ? TouchableOpacity : View
     const emptyInboxDays = useMemo(() => getEmptyInboxDaysWithLegacyFallback(user), [
@@ -35,6 +37,7 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements }) {
         user.lastDayEmptyInbox,
     ])
     const stats = useMemo(() => getEmptyInboxAchievementStats(emptyInboxDays), [emptyInboxDays])
+    const celebrationRunId = useTodayEmptyInboxCelebration(emptyInboxDays, celebrateNewDay)
     const numberOfWeeks = contentWidth ? getNumberOfWeeks(contentWidth) : MIN_WEEKS
     const weeks = useMemo(() => buildEmptyInboxActivityWeeks(emptyInboxDays, numberOfWeeks), [
         emptyInboxDays,
@@ -61,6 +64,10 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements }) {
         >
             <Text style={localStyles.title}>{translate('Empty inbox')}</Text>
             <Text style={localStyles.description}>{translate('Empty inbox achievement description')}</Text>
+
+            {celebrateNewDay && (
+                <EmptyInboxDayCelebration runId={celebrationRunId} currentStreak={stats.currentStreak} />
+            )}
 
             <View style={localStyles.metricsContainer}>
                 <Metric label={translate('Current streak')} value={stats.currentStreak} />
