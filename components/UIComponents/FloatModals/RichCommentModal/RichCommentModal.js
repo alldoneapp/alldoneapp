@@ -63,7 +63,6 @@ export default function RichCommentModal({
     showBotButton,
     objectName,
     externalAssistantId,
-    initialAssistantEnabled = false,
 }) {
     const dispatch = useDispatch()
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -88,7 +87,7 @@ export default function RichCommentModal({
     const commentListRef = useRef()
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
     const modalMountedRef = useRef(true)
-    const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(initialAssistantEnabled)
+    const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(false)
     const [initialComment, setInitialComment] = useState(currentComment || '')
     const [archivingEmailKeys, setArchivingEmailKeys] = useState([])
     const [archivedEmailKeys, setArchivedEmailKeys] = useState([])

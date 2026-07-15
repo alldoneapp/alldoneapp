@@ -4,18 +4,6 @@ const DEFAULT_REGION = 'europe-west1'
 const DEFAULT_JOB_NAME = 'vm-job-runner'
 const DEFAULT_RECONCILIATION_PAGE_SIZE = 100
 const MAX_RECONCILIATION_PAGES = 5
-// Total :run attempts (1 initial + retries) before a transient failure is handed to the reconciler.
-const DEFAULT_MAX_LAUNCH_ATTEMPTS = 3
-// Backoff before re-issuing :run after a transient failure. The attempt index clamps to the last entry.
-const DEFAULT_LAUNCH_BACKOFF_MS = [500, 1500]
-
-const defaultSleep = ms => new Promise(resolve => setTimeout(resolve, ms))
-
-// A launch failed transiently if the network call itself threw or Cloud Run returned a
-// retryable status. Any other non-2xx (e.g. 400/403/404) is a definitive, non-retryable failure.
-function isTransientLaunchStatus(status) {
-    return status === 408 || status === 429 || status >= 500
-}
 
 class VmCloudRunLaunchError extends Error {
     constructor(message, { ambiguous = false, cause } = {}) {
@@ -117,13 +105,14 @@ async function findVmCloudRunExecution(correlationId, options = {}) {
     return null
 }
 
-// A single POST :run attempt. Returns a discriminated result so the retry loop can decide what to
-// do without unwinding via exceptions:
-//   { kind: 'ok', body }             — execution accepted
-//   { kind: 'transient', cause }     — network throw, or a retryable status (408/429/5xx)
-//   { kind: 'fatal', error }         — a definitive, non-retryable failure (other non-2xx)
-async function attemptVmCloudRunLaunch(jobUrl, correlationId, accessToken) {
+async function launchVmCloudRunJob(correlationId, options = {}) {
+    if (!correlationId) throw new Error('correlationId is required')
+    const { jobUrl } = resolveCloudRunJob(options)
+    const accessToken = await getAccessToken(options)
+    const launchStartedAt = Date.now()
     let response
+    let body = {}
+
     try {
         response = await fetch(`${jobUrl}:run`, {
             method: 'POST',
@@ -141,77 +130,48 @@ async function attemptVmCloudRunLaunch(jobUrl, correlationId, accessToken) {
                 },
             }),
         })
+        body = await readJsonResponse(response)
     } catch (cause) {
-        return { kind: 'transient', cause }
-    }
-    const body = await readJsonResponse(response)
-    if (response.ok) return { kind: 'ok', body }
-    if (isTransientLaunchStatus(response.status)) {
-        return { kind: 'transient', cause: responseError('launch', response, body) }
-    }
-    return {
-        kind: 'fatal',
-        error: new VmCloudRunLaunchError(responseError('launch', response, body).message, { ambiguous: false }),
-    }
-}
-
-// Launch a Cloud Run Job execution, retrying transient failures inline instead of immediately
-// deferring to the (up-to-10-minute) reconciler. Retries are idempotent: before re-issuing :run we
-// look for an execution already tagged with this correlation id, so a launch whose HTTP response was
-// lost is adopted rather than duplicated. Only after exhausting retries without a confirmable
-// execution do we throw ambiguous — leaving the reconciler as the final backstop, unchanged.
-async function launchVmCloudRunJob(correlationId, options = {}) {
-    if (!correlationId) throw new Error('correlationId is required')
-    const { jobUrl } = resolveCloudRunJob(options)
-    const accessToken = await getAccessToken(options)
-    const launchStartedAt = Date.now()
-    const maxAttempts = Number(options.maxAttempts) || DEFAULT_MAX_LAUNCH_ATTEMPTS
-    const backoffMs = options.backoffMs || DEFAULT_LAUNCH_BACKOFF_MS
-    const sleep = options.sleep || defaultSleep
-
-    // Look for an execution a prior attempt may have created (matched by the correlation override).
-    const findExisting = () =>
-        findVmCloudRunExecution(correlationId, {
+        const execution = await findVmCloudRunExecution(correlationId, {
             ...options,
             accessToken,
             minCreateTime: launchStartedAt - 60 * 1000,
         }).catch(() => null)
-
-    let lastCause = null
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        // Idempotency guard: never issue a second :run for a correlation id that already launched.
-        if (attempt > 0) {
-            const existing = await findExisting()
-            if (existing) {
-                return { executionName: existing.name, operationName: null, reconciled: true }
-            }
-            const delay = backoffMs[Math.min(attempt - 1, backoffMs.length - 1)]
-            await sleep(delay)
+        if (execution) {
+            return { executionName: execution.name, operationName: null, reconciled: true }
         }
-
-        const result = await attemptVmCloudRunLaunch(jobUrl, correlationId, accessToken)
-
-        if (result.kind === 'ok') {
-            let executionName = extractExecutionName(result.body)
-            if (!executionName) {
-                const execution = await findExisting()
-                executionName = execution?.name || null
-            }
-            return { executionName, operationName: result.body.name || null, reconciled: false }
-        }
-
-        if (result.kind === 'fatal') throw result.error
-
-        lastCause = result.cause
+        throw new VmCloudRunLaunchError('Cloud Run Job launch result is unknown', { ambiguous: true, cause })
     }
 
-    // Exhausted retries on transient failures. One final look in case the last attempt's execution
-    // was created but its response lost; otherwise defer to the reconciler exactly as before.
-    const existing = await findExisting()
-    if (existing) {
-        return { executionName: existing.name, operationName: null, reconciled: true }
+    if (!response.ok) {
+        const ambiguous = response.status === 408 || response.status === 429 || response.status >= 500
+        if (ambiguous) {
+            const execution = await findVmCloudRunExecution(correlationId, {
+                ...options,
+                accessToken,
+                minCreateTime: launchStartedAt - 60 * 1000,
+            }).catch(() => null)
+            if (execution) {
+                return { executionName: execution.name, operationName: body.name || null, reconciled: true }
+            }
+        }
+        throw new VmCloudRunLaunchError(responseError('launch', response, body).message, { ambiguous })
     }
-    throw new VmCloudRunLaunchError('Cloud Run Job launch result is unknown', { ambiguous: true, cause: lastCause })
+
+    let executionName = extractExecutionName(body)
+    if (!executionName) {
+        const execution = await findVmCloudRunExecution(correlationId, {
+            ...options,
+            accessToken,
+            minCreateTime: launchStartedAt - 60 * 1000,
+        }).catch(() => null)
+        executionName = execution?.name || null
+    }
+    return {
+        executionName,
+        operationName: body.name || null,
+        reconciled: false,
+    }
 }
 
 async function cancelVmCloudRunExecution(executionName, options = {}) {
