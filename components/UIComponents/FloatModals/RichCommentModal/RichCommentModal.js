@@ -42,6 +42,7 @@ import {
 } from '../../../ChatsView/ChatDV/linkedEmailActions'
 import Icon from '../../../Icon'
 import SharedHelper from '../../../../utils/SharedHelper'
+import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
 
 export default function RichCommentModal({
     projectId,
@@ -415,42 +416,51 @@ export default function RichCommentModal({
                             </View>
                         )}
 
-                        <EditForm
-                            ref={editForm}
-                            projectId={projectId}
-                            containerStyle={{ marginBottom: comments && comments.length > 0 ? 16 : 0 }}
-                            onSuccess={done}
-                            currentComment={initialComment}
-                            currentMentions={currentMentions}
-                            currentPrivacy={currentPrivacy}
-                            currentKarma={currentKarma}
-                            toggleShowFileSelector={toggleShowFileSelector}
-                            setEditor={setEditor}
+                        <ChatImageDropZone
+                            testID="modal-chat-image-drop-zone"
+                            disabled={loggedUser.isAnonymous}
                             editor={editor}
+                            inputCursorIndex={inputCursorIndex}
+                            projectId={projectId}
                             setInputCursorIndex={setInputCursorIndex}
-                            initialCursorIndex={inputCursorIndex}
-                            initialDeltaOps={editorOpsRef.current.length > 0 ? editorOpsRef.current : null}
-                            setInitialComment={setInitialComment}
-                            loggedUserId={loggedUser.uid}
-                            userGettingKarmaId={userGettingKarmaId}
-                            objectType={objectType}
-                            userIsAnonymous={loggedUser.isAnonymous}
-                            showBotButton={showBotButton}
-                            setShowRunOutGoalModal={setShowRunOutGoalModal}
-                            showRunOutGoalModal={showRunOutGoalModal}
-                            objectId={objectId}
-                            characterLimit={CHAT_INPUT_LIMIT_IN_CHARACTERS}
-                            disableDoneButton={disableDoneButton}
-                            assistantId={assistantId}
-                            setAssistantId={setAssistantId}
-                            chatAssistantData={{
-                                objectId,
-                                objectAssistantId: assistantId,
-                                objectType: objectType,
-                            }}
-                            isAssistantEnabled={isThreadAssistantEnabled}
-                            updateObjectState={updateObjectState}
-                        />
+                        >
+                            <EditForm
+                                ref={editForm}
+                                projectId={projectId}
+                                containerStyle={{ marginBottom: comments && comments.length > 0 ? 16 : 0 }}
+                                onSuccess={done}
+                                currentComment={initialComment}
+                                currentMentions={currentMentions}
+                                currentPrivacy={currentPrivacy}
+                                currentKarma={currentKarma}
+                                toggleShowFileSelector={toggleShowFileSelector}
+                                setEditor={setEditor}
+                                editor={editor}
+                                setInputCursorIndex={setInputCursorIndex}
+                                initialCursorIndex={inputCursorIndex}
+                                initialDeltaOps={editorOpsRef.current.length > 0 ? editorOpsRef.current : null}
+                                setInitialComment={setInitialComment}
+                                loggedUserId={loggedUser.uid}
+                                userGettingKarmaId={userGettingKarmaId}
+                                objectType={objectType}
+                                userIsAnonymous={loggedUser.isAnonymous}
+                                showBotButton={showBotButton}
+                                setShowRunOutGoalModal={setShowRunOutGoalModal}
+                                showRunOutGoalModal={showRunOutGoalModal}
+                                objectId={objectId}
+                                characterLimit={CHAT_INPUT_LIMIT_IN_CHARACTERS}
+                                disableDoneButton={disableDoneButton}
+                                assistantId={assistantId}
+                                setAssistantId={setAssistantId}
+                                chatAssistantData={{
+                                    objectId,
+                                    objectAssistantId: assistantId,
+                                    objectType: objectType,
+                                }}
+                                isAssistantEnabled={isThreadAssistantEnabled}
+                                updateObjectState={updateObjectState}
+                            />
+                        </ChatImageDropZone>
                         {waitingForBotAnswer && !hasNewAssistantMessage && (
                             <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
                         )}

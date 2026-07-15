@@ -41,7 +41,6 @@ describe('AllProjectsEmptyInbox', () => {
         const children = openTasksEmptyInbox.root.findByType('View').children
 
         expect(overview.props.user).toBe(loggedUser)
-        expect(overview.props.celebrateNewDay).toBe(true)
         overview.props.onOpenAchievements()
         const settingsOptions = {
             selectedNavItem: DV_TAB_SETTINGS_PROFILE,

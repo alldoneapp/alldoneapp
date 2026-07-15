@@ -26,6 +26,7 @@ import ChatInputButtons from './ChatInputButtons'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
 import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
+import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -355,7 +356,15 @@ export default function ChatInput({
     }
 
     return (
-        <View style={[localStyles.inputContainer, containerStyle]}>
+        <ChatImageDropZone
+            testID="full-chat-image-drop-zone"
+            style={[localStyles.inputContainer, containerStyle]}
+            disabled={disabledEdition}
+            editor={chatEditor}
+            inputCursorIndex={inputCursorIndex}
+            projectId={projectId}
+            setInputCursorIndex={setInputCursorIndex}
+        >
             <CustomTextInput3
                 ref={inputRef}
                 placeholder={translate('Type to add new comment')}
@@ -400,7 +409,7 @@ export default function ChatInput({
                 objectType={objectType}
                 assistantEnabled={isAssistantActive}
             />
-        </View>
+        </ChatImageDropZone>
     )
 }
 

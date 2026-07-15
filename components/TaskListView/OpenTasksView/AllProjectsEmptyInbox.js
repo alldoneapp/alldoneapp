@@ -34,7 +34,6 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false }
                     user={loggedUser}
                     style={localStyles.emptyInboxOverview}
                     onOpenAchievements={openAchievements}
-                    celebrateNewDay
                 />
             )}
         </View>
