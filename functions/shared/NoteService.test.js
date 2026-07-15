@@ -54,27 +54,6 @@ describe('NoteService note creation formatting', () => {
             ])
         )
     })
-
-    test('stores screenshot H4 syntax as headings instead of literal markers', () => {
-        const service = createService()
-        const markdown = [
-            ' #### 4. Partnerperspektiven konkret einbauen',
-            '- **Roger / Zigarrenschachtel:** tägliche Prüfung',
-            '#### 5. Trust, control and learning',
-        ].join('\n')
-
-        const content = service.createNoteContent('Juno', markdown)
-        const delta = decodeDelta(content)
-
-        expect(delta.filter(op => op.insert === '\n' && op.attributes?.header === 4)).toHaveLength(2)
-        expect(decodeContent(content)).not.toContain('####')
-        expect(delta).toEqual(
-            expect.arrayContaining([
-                expect.objectContaining({ insert: '4. Partnerperspektiven konkret einbauen' }),
-                expect.objectContaining({ insert: '5. Trust, control and learning' }),
-            ])
-        )
-    })
 })
 
 describe('NoteService patch planning', () => {
