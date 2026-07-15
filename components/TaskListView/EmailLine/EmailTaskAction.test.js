@@ -24,22 +24,57 @@ const findByLabel = (tree, label) =>
 describe('EmailTaskAction', () => {
     beforeEach(() => jest.clearAllMocks())
 
-    it('checks for and opens an existing task instead of prompting for a duplicate', async () => {
-        performEmailLineAction.mockResolvedValue({
-            taskCreated: { taskId: 'task-1', projectId: 'project-1', taskName: 'Existing task' },
-        })
+    it('renders Create task immediately while the existing-task lookup is pending', async () => {
+        let resolveLookup
+        performEmailLineAction.mockReturnValue(
+            new Promise(resolve => {
+                resolveLookup = resolve
+            })
+        )
         let tree
-        await act(async () => {
+        act(() => {
             tree = renderer.create(
                 <EmailTaskAction connectionId="connection-1" messageIds={['message-1']} checkExisting />
             )
-            await Promise.resolve()
         })
 
+        const [createTask] = findByLabel(tree, 'Create task')
+        expect(createTask.props.disabled).toBe(false)
+        expect(findByLabel(tree, 'Loading')).toHaveLength(0)
         expect(performEmailLineAction).toHaveBeenCalledWith('connection-1', {
             action: 'getTaskForEmail',
             messageIds: ['message-1'],
         })
+
+        await act(async () => {
+            resolveLookup({ taskCreated: null })
+            await Promise.resolve()
+        })
+        expect(findByLabel(tree, 'Create task')).toHaveLength(1)
+    })
+
+    it('asynchronously upgrades Create task to a link when an existing task is found', async () => {
+        let resolveLookup
+        performEmailLineAction.mockReturnValue(
+            new Promise(resolve => {
+                resolveLookup = resolve
+            })
+        )
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <EmailTaskAction connectionId="connection-1" messageIds={['message-1']} checkExisting />
+            )
+        })
+        expect(findByLabel(tree, 'Create task')).toHaveLength(1)
+
+        await act(async () => {
+            resolveLookup({
+                taskCreated: { taskId: 'task-1', projectId: 'project-1', taskName: 'Existing task' },
+            })
+            await Promise.resolve()
+        })
+
         expect(findByLabel(tree, 'Create task')).toHaveLength(0)
 
         const [existingTask] = findByLabel(tree, 'Task created')
@@ -50,16 +85,39 @@ describe('EmailTaskAction', () => {
         )
     })
 
-    it('uses the shared create flow and immediately switches to the created state', async () => {
-        performEmailLineAction
-            .mockResolvedValueOnce({ taskCreated: null })
-            .mockResolvedValueOnce({ taskId: 'task-2', projectId: 'project-2' })
+    it('immediately uses a locally known linked task without starting a lookup', () => {
         let tree
-        await act(async () => {
+        act(() => {
+            tree = renderer.create(
+                <EmailTaskAction
+                    connectionId="connection-1"
+                    messageIds={['message-1']}
+                    initialTask={{ taskId: 'task-local', projectId: 'project-local' }}
+                    checkExisting
+                />
+            )
+        })
+
+        expect(findByLabel(tree, 'Task created')).toHaveLength(1)
+        expect(findByLabel(tree, 'Create task')).toHaveLength(0)
+        expect(performEmailLineAction).not.toHaveBeenCalled()
+    })
+
+    it('uses the shared create flow while lookup continues and keeps the created state', async () => {
+        let resolveLookup
+        performEmailLineAction.mockImplementation((connectionId, params) => {
+            if (params.action === 'getTaskForEmail') {
+                return new Promise(resolve => {
+                    resolveLookup = resolve
+                })
+            }
+            return Promise.resolve({ taskId: 'task-2', projectId: 'project-2' })
+        })
+        let tree
+        act(() => {
             tree = renderer.create(
                 <EmailTaskAction connectionId="connection-1" messageIds={['message-1']} checkExisting />
             )
-            await Promise.resolve()
         })
 
         const [createTask] = findByLabel(tree, 'Create task')
@@ -76,5 +134,11 @@ describe('EmailTaskAction', () => {
         })
         expect(findByLabel(tree, 'Task created')).toHaveLength(1)
         expect(findByLabel(tree, 'Create task')).toHaveLength(0)
+
+        await act(async () => {
+            resolveLookup({ taskCreated: null })
+            await Promise.resolve()
+        })
+        expect(findByLabel(tree, 'Task created')).toHaveLength(1)
     })
 })

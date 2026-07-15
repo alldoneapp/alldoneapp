@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import global, { colors } from '../../styles/global'
@@ -30,8 +30,9 @@ export default function EmailTaskAction({
     const normalizedMessageIds = [...new Set((Array.isArray(messageIds) ? messageIds : [messageIds]).filter(Boolean))]
     const messageIdsKey = normalizedMessageIds.join('|')
     const normalizedInitialTask = normalizeTask(initialTask)
-    const [taskState, setTaskState] = useState(normalizedInitialTask ? 'done' : checkExisting ? 'checking' : 'idle')
+    const [taskState, setTaskState] = useState(normalizedInitialTask ? 'done' : 'idle')
     const [createdTask, setCreatedTask] = useState(normalizedInitialTask)
+    const creationInFlightRef = useRef(false)
 
     useEffect(() => {
         const nextInitialTask = normalizeTask(initialTask)
@@ -48,7 +49,6 @@ export default function EmailTaskAction({
         }
 
         let cancelled = false
-        setTaskState('checking')
         performEmailLineAction(connectionId, {
             action: 'getTaskForEmail',
             messageIds: normalizedMessageIds,
@@ -56,12 +56,15 @@ export default function EmailTaskAction({
             .then(result => {
                 if (cancelled) return
                 const existingTask = normalizeTask(result?.taskCreated)
-                setCreatedTask(existingTask)
-                setTaskState(existingTask ? 'done' : 'idle')
+                // The lookup only upgrades locally unknown state. A negative/failed
+                // response must not hide or block Create, nor overwrite a task creation
+                // that the user started while this background request was in flight.
+                if (existingTask && !creationInFlightRef.current) {
+                    setCreatedTask(currentTask => currentTask || existingTask)
+                    setTaskState('done')
+                }
             })
-            .catch(() => {
-                if (!cancelled) setTaskState('idle')
-            })
+            .catch(() => {})
 
         return () => {
             cancelled = true
@@ -69,7 +72,8 @@ export default function EmailTaskAction({
     }, [checkExisting, connectionId, initialTask?.taskId, initialTask?.projectId, messageIdsKey])
 
     const createTask = async () => {
-        if (!connectionId || normalizedMessageIds.length === 0 || taskState === 'creating') return
+        if (!connectionId || normalizedMessageIds.length === 0 || creationInFlightRef.current) return
+        creationInFlightRef.current = true
         setTaskState('creating')
         try {
             const result = await performEmailLineAction(connectionId, {
@@ -83,6 +87,8 @@ export default function EmailTaskAction({
             setTaskState(task ? 'done' : 'error')
         } catch (error) {
             setTaskState('error')
+        } finally {
+            creationInFlightRef.current = false
         }
     }
 
@@ -92,8 +98,8 @@ export default function EmailTaskAction({
     }
 
     const done = taskState === 'done'
-    const loading = taskState === 'checking' || taskState === 'creating'
-    const labelKey = taskState === 'checking' ? 'Loading' : done ? 'Task created' : 'Create task'
+    const loading = taskState === 'creating'
+    const labelKey = done ? 'Task created' : 'Create task'
     const accessibilityLabel = translate(labelKey)
 
     return (
