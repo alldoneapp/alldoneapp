@@ -274,6 +274,67 @@ deploy:cloud:functions:production:
         changes:
             - functions/**/*
 
+# Rebuild the vm-job-runner Cloud Run Job image whenever functions code changes, so VM
+# jobs run the current functions/ code (esp. vmJobRunner.js). The job runs from this image,
+# NOT the Functions runtime, so a plain `firebase deploy --only functions` does not update it.
+# One-time project setup (API enablement, Artifact Registry repo, job IAM) is done by an admin
+# via a normal deploy.sh run; CI passes CI_MODE=1 to skip those and only rebuild + redeploy.
+deploy:cloud:runner:staging:
+    image: google/cloud-sdk:slim
+    stage: deploy_web
+    resource_group: runner-staging-deploy
+    before_script:
+        - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > /tmp/runner-deploy-sa.json
+        - gcloud auth activate-service-account --key-file=/tmp/runner-deploy-sa.json
+        # Secrets baked into the image (getEnvFunctions reads functions/env_functions.json).
+        - echo "$GOOGLE_FUNCTIONS_ENV_DEV" > functions/env_functions.json
+        # Match the functions deploy's MCP config replacement so the baked image is consistent.
+        - |
+            sed -i '/BEGIN-ENVS/,/END-ENVS/c\
+            const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = "'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'"\
+            const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"\
+            const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_DEV"'"\
+            const MCP_BASE_URL = "'"$MCP_BASE_URL_DEV"'"' functions/MCP/config/environments.js
+    script:
+        - cd functions/Assistant/cloud-run-job
+        - CI_MODE=1 bash deploy.sh alldonestaging firebase-adminsdk-9idaq@alldonestaging.iam.gserviceaccount.com
+    only:
+        refs:
+            - develop
+        changes:
+            - functions/**/*
+
+deploy:cloud:runner:production:
+    image: google/cloud-sdk:slim
+    stage: deploy_web
+    resource_group: runner-production-deploy
+    before_script:
+        - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > /tmp/runner-deploy-sa.json
+        - gcloud auth activate-service-account --key-file=/tmp/runner-deploy-sa.json
+        - echo "$GOOGLE_FUNCTIONS_ENV_PROD" > functions/env_functions.json
+        - |
+            sed -i '/BEGIN-ENVS/,/END-ENVS/c\
+            const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_PROD"'"\
+            const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = "'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD"'"\
+            const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD"'"\
+            const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_PROD"'"\
+            const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_PROD"'"\
+            const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_PROD"'"\
+            const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD"'"\
+            const MCP_BASE_URL = "'"$MCP_BASE_URL_PROD"'"' functions/MCP/config/environments.js
+    script:
+        - cd functions/Assistant/cloud-run-job
+        - CI_MODE=1 bash deploy.sh alldonealeph firebase-adminsdk-mpg7p@alldonealeph.iam.gserviceaccount.com
+    only:
+        refs:
+            - master
+        changes:
+            - functions/**/*
+
 update:version:staging:
     image: curlimages/curl
     stage: 'update_version'
