@@ -6,31 +6,21 @@ import TaskAssistantButton from './TaskAssistantButton'
 import { resolveDefaultAssistantForProject } from '../../AdminPanel/Assistants/assistantsHelper'
 
 const mockDispatch = jest.fn()
-let mockState
 
 jest.mock('react-redux', () => ({
     useDispatch: () => mockDispatch,
-    useSelector: selector => selector(mockState),
+    useSelector: selector => selector({ defaultAssistant: { uid: 'global-default-assistant' } }),
 }))
 jest.mock('react-hot-keys', () => ({ children }) => children)
-jest.mock('react-tiny-popover', () => {
-    const React = require('react')
-    return ({ children, content, isOpen }) => (
-        <React.Fragment>
-            {children}
-            {isOpen ? content : null}
-        </React.Fragment>
-    )
-})
 jest.mock('../../Icon', () => 'Icon')
-jest.mock('../../UIComponents/FloatModals/RichCommentModal/RichCommentModal', () => 'RichCommentModal')
 jest.mock('../../UIComponents/ConfirmPopup', () => ({
     CONFIRM_POPUP_TRIGGER_INFO: 'CONFIRM_POPUP_TRIGGER_INFO',
 }))
 jest.mock('../../../redux/actions', () => ({
-    hideFloatPopup: jest.fn(() => ({ type: 'hide-float-popup' })),
+    setAssistantEnabled: jest.fn(value => ({ type: 'assistant-enabled', value })),
+    setSelectedNavItem: jest.fn(value => ({ type: 'selected-nav', value })),
+    setTriggerChatDraft: jest.fn(value => ({ type: 'trigger-chat-draft', value })),
     showConfirmPopup: jest.fn(value => ({ type: 'show-confirm-popup', value })),
-    showFloatPopup: jest.fn(() => ({ type: 'show-float-popup' })),
 }))
 jest.mock('../../../utils/backends/Tasks/tasksFirestore', () => ({
     setTaskAssistant: jest.fn(),
@@ -41,24 +31,8 @@ jest.mock('../../../utils/assistantHelper', () => ({
 jest.mock('../../AdminPanel/Assistants/assistantsHelper', () => ({
     resolveDefaultAssistantForProject: jest.fn(),
 }))
-jest.mock('../../../utils/backends/Chats/chatsComments', () => ({
-    createObjectMessage: jest.fn(),
-}))
-jest.mock('../../Feeds/Utils/HelperFunctions', () => ({
-    STAYWARD_COMMENT: 'STAYWARD_COMMENT',
-}))
-jest.mock('../../../utils/HelperFunctions', () => ({
-    popoverToTop: jest.fn(),
-}))
-jest.mock('../../ModalsManager/modalsManager', () => ({
-    BOT_OPTION_MODAL_ID: 'BOT_OPTION_MODAL_ID',
-    BOT_WARNING_MODAL_ID: 'BOT_WARNING_MODAL_ID',
-    MENTION_MODAL_ID: 'MENTION_MODAL_ID',
-    RUN_OUT_OF_GOLD_MODAL_ID: 'RUN_OUT_OF_GOLD_MODAL_ID',
-}))
-jest.mock('../../Feeds/CommentsTextInput/textInputHelper', () => ({
-    RECORD_SCREEN_MODAL_ID: 'RECORD_SCREEN_MODAL_ID',
-    RECORD_VIDEO_MODAL_ID: 'RECORD_VIDEO_MODAL_ID',
+jest.mock('../../../utils/NavigationService', () => ({
+    navigate: jest.fn(),
 }))
 jest.mock('../../../i18n/TranslationService', () => ({ translate: jest.fn(key => key) }))
 
@@ -73,72 +47,42 @@ const press = async tree => {
 
 describe('TaskAssistantButton', () => {
     beforeEach(() => {
-        mockState = {
-            defaultAssistant: { uid: 'global-default-assistant' },
-            isQuillTagEditorOpen: false,
-            openModals: {},
-        }
         mockDispatch.mockClear()
         resolveDefaultAssistantForProject.mockReset()
+        require('../../../utils/NavigationService').navigate.mockClear()
         require('../../../utils/backends/Tasks/tasksFirestore').setTaskAssistant.mockClear()
-        require('../../../utils/assistantHelper').setObjectAssistantEnabled.mockClear()
-        require('../../../utils/backends/Chats/chatsComments').createObjectMessage.mockClear()
         require('../../../redux/actions').showConfirmPopup.mockClear()
     })
 
-    test('opens the comment popup for the already-assigned assistant', async () => {
-        const task = { id: 'task-1', name: 'Prepare launch', userId: 'user-1', assistantId: 'assistant-1' }
+    test('starts the already-assigned assistant without opening a picker', async () => {
+        const task = { id: 'task-1', assistantId: 'assistant-1' }
         const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
 
         await press(tree)
 
+        // The task already had this assistant, so we do not re-assign it, only enable + navigate.
         expect(resolveDefaultAssistantForProject).not.toHaveBeenCalled()
-        expect(require('../../../utils/assistantHelper').setObjectAssistantEnabled).toHaveBeenCalledWith(
-            'project-1',
-            'task-1',
-            'tasks',
-            true
-        )
-        expect(tree.root.findByType('RichCommentModal').props).toEqual(
-            expect.objectContaining({
-                projectId: 'project-1',
-                objectType: 'tasks',
-                objectId: 'task-1',
-                objectName: 'Prepare launch',
-                externalAssistantId: 'assistant-1',
-                currentComment: 'Start working on this task. Feel free to ask questions is anything is unclear',
-                showBotButton: true,
-                initialAssistantEnabled: true,
-            })
-        )
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'show-float-popup' })
-    })
-
-    test('submits the popup comment to the task with the assistant trigger preserved', async () => {
-        const task = { id: 'task-1', name: 'Prepare launch', assistantId: 'assistant-1' }
-        const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
-        await press(tree)
-
-        await act(async () => {
-            await tree.root.findByType('RichCommentModal').props.processDone('Please start', [], false, false, true)
+        expect(require('../../../utils/NavigationService').navigate).toHaveBeenCalledWith('TaskDetailedView', {
+            task: expect.objectContaining({ assistantId: 'assistant-1', isAssistantEnabled: true }),
+            projectId: 'project-1',
+            assistantId: 'assistant-1',
         })
-
-        expect(require('../../../utils/backends/Chats/chatsComments').createObjectMessage).toHaveBeenCalledWith(
-            'project-1',
-            'task-1',
-            'Please start',
-            'tasks',
-            'STAYWARD_COMMENT',
-            null,
-            null,
-            false,
-            true
-        )
+        expect(mockDispatch).toHaveBeenCalledWith([
+            { type: 'selected-nav', value: 'TASK_CHAT' },
+            { type: 'assistant-enabled', value: true },
+            {
+                type: 'trigger-chat-draft',
+                value: {
+                    text: 'Start working on this task. Feel free to ask questions is anything is unclear',
+                    chatId: 'task-1',
+                },
+            },
+        ])
     })
 
-    test('uses and assigns the project default assistant when the task has none', async () => {
+    test('uses the project default assistant when the task has none assigned', async () => {
         resolveDefaultAssistantForProject.mockReturnValue({ uid: 'project-default-assistant' })
-        const task = { id: 'task-1', name: 'Prepare launch' }
+        const task = { id: 'task-1' }
         const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
 
         await press(tree)
@@ -150,49 +94,67 @@ describe('TaskAssistantButton', () => {
             'project-default-assistant',
             false
         )
-        expect(tree.root.findByType('RichCommentModal').props.externalAssistantId).toBe('project-default-assistant')
+        expect(require('../../../utils/NavigationService').navigate).toHaveBeenCalledWith('TaskDetailedView', {
+            task: expect.objectContaining({ assistantId: 'project-default-assistant', isAssistantEnabled: true }),
+            projectId: 'project-1',
+            assistantId: 'project-default-assistant',
+        })
     })
 
     test('falls back to the global default assistant when the project has none', async () => {
         resolveDefaultAssistantForProject.mockReturnValue(null)
-        const tree = renderer.create(
-            <TaskAssistantButton projectId="project-1" task={{ id: 'task-1', name: 'Prepare launch' }} />
-        )
+        const task = { id: 'task-1' }
+        const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
 
         await press(tree)
 
-        expect(tree.root.findByType('RichCommentModal').props.externalAssistantId).toBe('global-default-assistant')
+        expect(require('../../../utils/NavigationService').navigate).toHaveBeenCalledWith('TaskDetailedView', {
+            task: expect.objectContaining({ assistantId: 'global-default-assistant', isAssistantEnabled: true }),
+            projectId: 'project-1',
+            assistantId: 'global-default-assistant',
+        })
     })
 
-    test('shows an error and keeps the popup closed when no assistant can be resolved', async () => {
-        mockState.defaultAssistant = {}
+    test('shows an error and does not start work when no assistant can be resolved', async () => {
         resolveDefaultAssistantForProject.mockReturnValue(null)
-        const tree = renderer.create(
-            <TaskAssistantButton projectId="project-1" task={{ id: 'task-1', name: 'Prepare launch' }} />
-        )
+        const task = { id: 'task-1' }
+        // No task assistant, no project default, and no global default in state.
+        const useSelectorModule = require('react-redux')
+        const originalUseSelector = useSelectorModule.useSelector
+        useSelectorModule.useSelector = selector => selector({ defaultAssistant: {} })
 
+        const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
         await press(tree)
 
         expect(require('../../../redux/actions').showConfirmPopup).toHaveBeenCalledWith(
             expect.objectContaining({ trigger: 'CONFIRM_POPUP_TRIGGER_INFO' })
         )
-        expect(tree.root.findAllByType('RichCommentModal')).toHaveLength(0)
+        expect(require('../../../utils/NavigationService').navigate).not.toHaveBeenCalled()
         expect(require('../../../utils/backends/Tasks/tasksFirestore').setTaskAssistant).not.toHaveBeenCalled()
+
+        useSelectorModule.useSelector = originalUseSelector
     })
 
-    test('uses the email reply draft in the same comment popup', async () => {
+    test('uses the email reply prompt for email tasks without opening a picker', async () => {
         resolveDefaultAssistantForProject.mockReturnValue({ uid: 'project-default-assistant' })
         const task = {
             id: 'task-1',
-            name: 'Reply to supplier',
             gmailData: { connectionId: 'connection-1', messageId: 'message-1' },
         }
         const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
 
         await press(tree)
 
-        expect(tree.root.findByType('RichCommentModal').props.currentComment).toBe(
-            'Draft a reply to this email in the same language as the email with the following content: '
-        )
+        expect(mockDispatch).toHaveBeenCalledWith([
+            { type: 'selected-nav', value: 'TASK_CHAT' },
+            { type: 'assistant-enabled', value: true },
+            {
+                type: 'trigger-chat-draft',
+                value: {
+                    text: 'Draft a reply to this email in the same language as the email with the following content: ',
+                    chatId: 'task-1',
+                },
+            },
+        ])
     })
 })

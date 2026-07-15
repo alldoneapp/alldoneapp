@@ -30,6 +30,7 @@ import { cancelAssistantRun } from '../../../../utils/backends/Assistants/assist
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/EmailLine/emailLineHelper'
+import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 
 export default function MessageItemContent({
     messageId,
@@ -478,6 +479,13 @@ export default function MessageItemContent({
                                         showLabel={true}
                                         propStyles={localStyles.linkedEmailTag}
                                     />
+                                    <EmailTaskAction
+                                        connectionId={linkedEmail.connectionProjectId}
+                                        messageIds={[linkedEmail.messageId]}
+                                        initialTask={linkedEmailGmailData?.taskCreated}
+                                        checkExisting
+                                        style={localStyles.linkedEmailTaskButton}
+                                    />
                                     <TouchableOpacity
                                         style={localStyles.linkedEmailButton}
                                         onPress={() => onArchiveLinkedEmail([linkedEmail])}
@@ -648,12 +656,19 @@ const localStyles = StyleSheet.create({
     },
     linkedEmailActions: {
         alignSelf: 'flex-start',
+        maxWidth: '100%',
         marginTop: 8,
         flexDirection: 'row',
         alignItems: 'center',
+        flexWrap: 'wrap',
     },
     linkedEmailTag: {
         marginRight: 8,
+        marginBottom: 4,
+    },
+    linkedEmailTaskButton: {
+        marginRight: 8,
+        marginBottom: 4,
     },
     linkedEmailButton: {
         minHeight: 28,
@@ -663,6 +678,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Gray300,
         flexDirection: 'row',
         alignItems: 'center',
+        marginBottom: 4,
     },
     linkedEmailButtonText: {
         ...global.caption2,

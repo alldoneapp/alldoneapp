@@ -32,6 +32,7 @@ import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
+import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 
 // Render inline formatted text segments with link/tag parsing
 const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => {
@@ -416,25 +417,37 @@ export default function Comment({
                             propStyles={localStyles.linkedEmailTag}
                         />
                         {canArchiveLinkedEmail && (
-                            <TouchableOpacity
-                                style={localStyles.linkedEmailButton}
-                                onPress={() => onArchiveLinkedEmail([linkedEmail])}
-                                disabled={linkedEmailArchiving || linkedEmailArchived}
-                                accessibilityLabel={translate('Archive email')}
-                            >
-                                {linkedEmailArchiving ? (
-                                    <ActivityIndicator size="small" color={colors.UtilityBlue125} />
-                                ) : (
-                                    <Icon
-                                        name={linkedEmailArchived ? 'check' : 'archive'}
-                                        size={14}
-                                        color={colors.UtilityBlue125}
-                                    />
-                                )}
-                                <Text style={localStyles.linkedEmailButtonText}>
-                                    {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
-                                </Text>
-                            </TouchableOpacity>
+                            <>
+                                <EmailTaskAction
+                                    connectionId={linkedEmail.connectionProjectId}
+                                    messageIds={[linkedEmail.messageId]}
+                                    initialTask={linkedEmailGmailData?.taskCreated}
+                                    checkExisting
+                                    iconColor={colors.UtilityBlue125}
+                                    borderColor={colors.Primary350}
+                                    textColor={colors.UtilityBlue125}
+                                    style={localStyles.linkedEmailTaskButton}
+                                />
+                                <TouchableOpacity
+                                    style={localStyles.linkedEmailButton}
+                                    onPress={() => onArchiveLinkedEmail([linkedEmail])}
+                                    disabled={linkedEmailArchiving || linkedEmailArchived}
+                                    accessibilityLabel={translate('Archive email')}
+                                >
+                                    {linkedEmailArchiving ? (
+                                        <ActivityIndicator size="small" color={colors.UtilityBlue125} />
+                                    ) : (
+                                        <Icon
+                                            name={linkedEmailArchived ? 'check' : 'archive'}
+                                            size={14}
+                                            color={colors.UtilityBlue125}
+                                        />
+                                    )}
+                                    <Text style={localStyles.linkedEmailButtonText}>
+                                        {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
+                                    </Text>
+                                </TouchableOpacity>
+                            </>
                         )}
                     </View>
                 )}
@@ -536,12 +549,19 @@ const localStyles = StyleSheet.create({
     },
     linkedEmailActions: {
         alignSelf: 'flex-start',
+        maxWidth: '100%',
         marginTop: 6,
         flexDirection: 'row',
         alignItems: 'center',
+        flexWrap: 'wrap',
     },
     linkedEmailTag: {
         marginRight: 8,
+        marginBottom: 4,
+    },
+    linkedEmailTaskButton: {
+        marginRight: 8,
+        marginBottom: 4,
     },
     linkedEmailButton: {
         minHeight: 28,
@@ -551,6 +571,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Primary350,
         flexDirection: 'row',
         alignItems: 'center',
+        marginBottom: 4,
     },
     linkedEmailButtonText: {
         ...styles.caption2,
