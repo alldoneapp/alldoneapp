@@ -2270,6 +2270,21 @@ exports.cancelAssistantRunSecondGen = onCall(
                 if (['completed', 'failed', 'cancelled'].includes(pending.status)) {
                     return { success: false, reason: 'already_settled', status: pending.status }
                 }
+                // A queued job has no running execution to interrupt — settle it as cancelled now.
+                // We refund Gold and drop it from the thread queue below.
+                if (pending.status === 'queued') {
+                    transaction.set(
+                        pendingRef,
+                        {
+                            status: 'cancelled',
+                            cancelledAt: now,
+                            cancelRequestedBy: userId,
+                            cancelledWhileQueued: true,
+                        },
+                        { merge: true }
+                    )
+                    return { success: true, status: 'cancelled', wasQueued: true, data: pending }
+                }
                 transaction.set(
                     pendingRef,
                     {
@@ -2281,6 +2296,33 @@ exports.cancelAssistantRunSecondGen = onCall(
                 )
                 return { success: true, status: 'cancel_requested', data: pending }
             })
+
+            // Queued job: refund the base reserve and remove it from the thread's FIFO queue so the
+            // drain never tries to launch a cancelled job.
+            if (cancellationResult?.success && cancellationResult.wasQueued) {
+                const pending = cancellationResult.data || {}
+                try {
+                    const { refundGold } = require('./Gold/goldHelper')
+                    await refundGold(pending.userId, Number(pending.goldCharged) || 0, {
+                        source: 'vm_job_refund',
+                        channel: 'assistant',
+                        projectId: pending.projectId,
+                        objectId: pending.objectId,
+                        objectType: pending.objectType,
+                        note: 'VM task cancelled while queued',
+                    }).catch(() => {})
+                    const { vmThreadSessionRef, removeQueuedVmJobFromThread } = require('./Assistant/vmThreadQueue')
+                    await removeQueuedVmJobFromThread(
+                        vmThreadSessionRef(pending.projectId, pending.objectId),
+                        runId
+                    ).catch(() => {})
+                } catch (error) {
+                    console.warn('cancelAssistantRunSecondGen: queued VM cancel cleanup failed', {
+                        runId,
+                        error: error.message,
+                    })
+                }
+            }
         }
 
         if (!cancellationResult?.success) {
@@ -2339,7 +2381,9 @@ exports.cancelAssistantRunSecondGen = onCall(
             }
             // Don't clobber a run that finished streaming a real answer between the lock cancel and here.
             const alreadySettled = comment.isLoading === false
-            if (runKind === 'chat' && !alreadySettled) {
+            // A queued VM job has no running worker to finalize its comment, so settle it here too.
+            const finalizeNow = runKind === 'chat' || cancellationResult?.wasQueued
+            if (finalizeNow && !alreadySettled) {
                 // Finalize the comment immediately so the spinner stops even if the run's process is
                 // already dead (timeout/redeploy) — the live loop's own cancel check is only a backup.
                 transaction.set(
@@ -2382,7 +2426,7 @@ exports.cancelAssistantRunSecondGen = onCall(
 
         return {
             success: true,
-            status: runKind === 'chat' ? 'cancelled' : 'cancel_requested',
+            status: runKind === 'chat' || cancellationResult?.wasQueued ? 'cancelled' : 'cancel_requested',
             runKind,
             runId,
         }
@@ -4209,6 +4253,25 @@ exports.pauseIdleVmSessions = onSchedule(
     async event => {
         const { pauseIdleVmSessions } = require('./Assistant/vmJobRunner')
         await pauseIdleVmSessions()
+    }
+)
+
+// DRAIN STALLED VM THREAD QUEUES - advance a thread's FIFO job queue when its running job died
+// without draining (Cloud Run OOM/infra kill), detected by an expired lease with jobs still
+// waiting. The normal path is the finishing job draining its own queue; this is the crash backstop.
+exports.drainStalledVmThreadQueues = onSchedule(
+    {
+        schedule: 'every 2 minutes',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { drainStalledVmThreadQueues } = require('./Assistant/vmThreadQueue')
+        const result = await drainStalledVmThreadQueues()
+        if (result.advanced || result.errors) {
+            console.log('🖥️ VM JOB: stalled thread-queue drain complete', result)
+        }
     }
 )
 

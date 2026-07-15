@@ -7,6 +7,7 @@ const {
     SYSTEM_DEFAULT_VM_AGENT: DEFAULT_AGENT,
     resolveVmAgentSettings,
 } = require('./vmAgentSettings')
+const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
 
 // Hybrid Gold pricing for a VM run:
 //   total = VM_JOB_BASE_GOLD + ceil(runtimeMinutes) * VM_GOLD_PER_MINUTE
@@ -21,6 +22,15 @@ const VM_TOKENS_PER_GOLD = 100
 // Gold transaction sources (labels live in GoldTransactionsModal.getTransactionLabel).
 const VM_JOB_GOLD_SOURCE = 'vm_execution'
 const VM_JOB_GOLD_REFUND_SOURCE = 'vm_execution_refund'
+
+// A queued follow-up whose owner just finished is only worth launching if the user can still afford
+// to make progress. Below one VM minute's worth of Gold, a launched run would immediately hit
+// gold-exhaustion, so we short-circuit it (refund the base reserve, settle as insufficient_gold)
+// instead of burning a sandbox + Cloud Run execution to fail. Matches the runner's failure reason.
+const VM_MIN_GOLD_TO_LAUNCH_QUEUED = VM_GOLD_PER_MINUTE
+const VM_GOLD_EXHAUSTED_FAILURE_REASON = 'insufficient_gold'
+const VM_QUEUED_GOLD_EXHAUSTED_TEXT =
+    '🛑 Skipped this queued VM task because you ran out of Gold. Add Gold and start a new VM task to continue.'
 
 // Generous expiry — must be larger than the detached job's runtime ceiling so the
 // worker always finalizes the job before cleanupExpiredWebhooks could reap it.
@@ -253,12 +263,19 @@ async function startVmJob({
         return { success: false, message: effortResult.error }
     }
 
-    // Enforce the per-user concurrency cap.
-    const activeJobs = await countActiveVmJobsForUser(requestUserId)
-    if (activeJobs >= MAX_CONCURRENT_VM_JOBS_PER_USER) {
-        return {
-            success: false,
-            message: `You already have ${activeJobs} VM tasks running. Please wait for one to finish before starting another.`,
+    // Enforce the per-user concurrency cap — but only for a job that will actually start a sandbox
+    // now. A same-thread follow-up (this thread's VM is still busy) is queued, not run, so it does
+    // not consume a concurrency slot and must not be rejected by the cross-thread cap. Best-effort
+    // peek; the authoritative launch-vs-queue decision is the admission transaction below.
+    const threadSessionRef = vmThreadSessionRef(projectId, objectId)
+    const threadOccupied = await isVmThreadOccupied(threadSessionRef).catch(() => false)
+    if (!threadOccupied) {
+        const activeJobs = await countActiveVmJobsForUser(requestUserId)
+        if (activeJobs >= MAX_CONCURRENT_VM_JOBS_PER_USER) {
+            return {
+                success: false,
+                message: `You already have ${activeJobs} VM tasks running. Please wait for one to finish before starting another.`,
+            }
         }
     }
 
@@ -290,6 +307,28 @@ async function startVmJob({
     const correlationId = crypto.randomUUID()
     const userIdsToNotify = [requestUserId]
 
+    // Decide launch-vs-queue atomically. If this thread's VM is already running (or has jobs
+    // waiting), queue this one so it runs on the SAME sandbox when the current job finishes, instead
+    // of spinning up a throwaway isolated sandbox. Gold stays reserved for a queued job (refunded if
+    // it's later cancelled/fails). On admission failure, refund and bail before posting anything.
+    let admission
+    try {
+        admission = await admitVmJobToThread(threadSessionRef, correlationId)
+    } catch (error) {
+        console.error('🖥️ VM JOB: thread admission failed — refunding', { correlationId, error: error.message })
+        const { refundGold } = require('../Gold/goldHelper')
+        await refundGold(requestUserId, VM_JOB_BASE_GOLD, {
+            source: VM_JOB_GOLD_REFUND_SOURCE,
+            channel: 'assistant',
+            projectId,
+            objectId,
+            objectType,
+            note: 'VM task could not be queued',
+        }).catch(() => {})
+        return { success: false, message: 'Could not start the VM task right now. Your Gold has been refunded.' }
+    }
+    const queued = admission.decision === 'queue'
+
     // Read existing chat visibility, if any, to mirror it on notifications.
     let isPublicFor = []
     try {
@@ -300,15 +339,24 @@ async function startVmJob({
     // Post the single status comment that the worker will update in place.
     let statusCommentId = null
     try {
+        const initialStatusText = queued
+            ? `⏳ Queued behind the current VM task on this thread. ${selectedAgentLabel}${formatAgentRunSuffix(
+                  modelResult.value,
+                  effortResult.value
+              )} will start on this as soon as the running task finishes.\n\n${formatVmBillingStatus(
+                  selectedAgentLabel,
+                  credentialMode
+              )}`
+            : `🖥️ Spinning up ${selectedAgentLabel}${formatAgentRunSuffix(
+                  modelResult.value,
+                  effortResult.value
+              )} in a VM to work on this…\n\n${formatVmBillingStatus(selectedAgentLabel, credentialMode)}`
         statusCommentId = await createInitialStatusMessage(
             projectId,
             objectType,
             objectId,
             assistantId,
-            `🖥️ Spinning up ${selectedAgentLabel}${formatAgentRunSuffix(
-                modelResult.value,
-                effortResult.value
-            )} in a VM to work on this…\n\n${formatVmBillingStatus(selectedAgentLabel, credentialMode)}`,
+            initialStatusText,
             userIdsToNotify,
             isPublicFor,
             [requestUserId]
@@ -353,7 +401,11 @@ async function startVmJob({
         subscriptionUsed,
         personalApiKeyUsed,
         tokenBillingExempt,
-        status: 'pending',
+        // A queued job waits in the thread's FIFO queue and is flipped to 'pending' + launched by
+        // the current job's drain (or the stalled-queue sweeper). 'queued' is excluded from the
+        // cross-thread concurrency count so it never blocks jobs on other threads.
+        status: queued ? 'queued' : 'pending',
+        ...(queued ? { queuedAt: Date.now() } : {}),
         createdAt: Date.now(),
         expiresAt: Date.now() + VM_JOB_EXPIRY_MS,
     }
@@ -410,85 +462,39 @@ async function startVmJob({
         })
 
     const pendingRef = admin.firestore().doc(`pendingWebhooks/${correlationId}`)
-    // Start a detached Cloud Run Job execution. The HTTP request only launches
-    // the execution; the five-hour sliced E2B supervision is not tied to Cloud Tasks.
-    const launchRequestedAt = Date.now()
-    await pendingRef.set(
-        {
-            launchBackend: 'cloud_run_job',
-            launchState: 'requested',
-            launchRequestedAt,
-        },
-        { merge: true }
-    )
-    try {
-        const { launchVmCloudRunJob } = require('./vmCloudRunLauncher')
-        const launch = await launchVmCloudRunJob(correlationId)
-        await pendingRef.set(
-            {
-                launchState: launch.executionName ? 'launched' : 'unknown',
-                cloudRunExecution: launch.executionName || null,
-                cloudRunOperation: launch.operationName || null,
-                launchReconciled: !!launch.reconciled,
-                launchedAt: Date.now(),
-            },
-            { merge: true }
-        )
-    } catch (error) {
-        if (error.ambiguous) {
-            console.warn('🖥️ VM JOB: Cloud Run launch result unknown; deferring to reconciler', {
-                correlationId,
-                error: error.message,
-            })
-            await pendingRef
-                .set(
-                    {
-                        launchState: 'unknown',
-                        launchError: error.message,
-                        launchLastCheckedAt: Date.now(),
-                    },
-                    { merge: true }
-                )
-                .catch(() => {})
-            return {
-                success: true,
-                status: 'started',
-                correlationId,
-                message: `VM task launch is being confirmed. I'll post the result here when it finishes.`,
-            }
+
+    // Queued follow-up: don't launch a Cloud Run execution now. The running job's drain (or the
+    // stalled-queue sweeper) flips this to 'pending' and launches it on the same thread sandbox when
+    // the current task finishes.
+    if (queued) {
+        return {
+            success: true,
+            status: 'queued',
+            correlationId,
+            agent: selectedAgent,
+            credentialMode,
+            message: `That VM is still working on the previous task on this thread. I've queued this — it will run on the same VM as soon as the current one finishes.`,
         }
-        console.error('🖥️ VM JOB: Failed to enqueue worker — refunding', { correlationId, error: error.message })
-        const { refundGold } = require('../Gold/goldHelper')
-        await refundGold(requestUserId, VM_JOB_BASE_GOLD, {
-            source: VM_JOB_GOLD_REFUND_SOURCE,
-            channel: 'assistant',
-            projectId,
-            objectId,
-            objectType,
-            note: 'VM Cloud Run Job could not be launched',
-        }).catch(() => {})
-        await admin
-            .firestore()
-            .doc(`pendingWebhooks/${correlationId}`)
-            .update({ status: 'failed', error: error.message, failedAt: Date.now() })
-            .catch(() => {})
-        // Replace the initial VM status comment so it doesn't linger and
-        // contradict the assistant's failure response.
-        if (statusCommentId) {
-            const failureText = "❌ Couldn't start the VM task — your Gold has been refunded."
-            await admin
-                .firestore()
-                .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${statusCommentId}`)
-                .set(
-                    {
-                        commentText: failureText,
-                        originalContent: failureText,
-                        lastChangeDate: admin.firestore.Timestamp.now(),
-                    },
-                    { merge: true }
-                )
-                .catch(() => {})
+    }
+
+    const launch = await performVmCloudRunLaunch({
+        correlationId,
+        pendingRef,
+        projectId,
+        objectType,
+        objectId,
+        requestUserId,
+        statusCommentId,
+    })
+    if (launch.outcome === 'ambiguous') {
+        return {
+            success: true,
+            status: 'started',
+            correlationId,
+            message: `VM task launch is being confirmed. I'll post the result here when it finishes.`,
         }
+    }
+    if (launch.outcome === 'failed') {
         return {
             success: false,
             message: 'Could not launch the VM task right now. Your Gold has been refunded.',
@@ -509,6 +515,222 @@ async function startVmJob({
                 : 'Alldone API billing'
         }. It will work autonomously and post the finished result back into this conversation when ready.`,
     }
+}
+
+/**
+ * Launch a Cloud Run Job execution for an already-recorded VM job (its pendingWebhooks + vmJobs docs
+ * exist). Shared by the initial dispatch and by the drain path that starts queued follow-ups. On a
+ * definitive launch failure it refunds Gold, marks the job failed, finalizes the status comment, and
+ * hands the thread to the next queued job so a launch failure never wedges the queue.
+ *
+ * @returns {Promise<{outcome: 'launched'|'ambiguous'|'failed'}>}
+ */
+async function performVmCloudRunLaunch({
+    correlationId,
+    pendingRef,
+    projectId,
+    objectType,
+    objectId,
+    requestUserId,
+    statusCommentId,
+}) {
+    // The HTTP request only launches the detached execution; the five-hour sliced E2B supervision
+    // is not tied to Cloud Tasks.
+    await pendingRef.set(
+        {
+            launchBackend: 'cloud_run_job',
+            launchState: 'requested',
+            launchRequestedAt: Date.now(),
+        },
+        { merge: true }
+    )
+    try {
+        const { launchVmCloudRunJob } = require('./vmCloudRunLauncher')
+        const launch = await launchVmCloudRunJob(correlationId)
+        await pendingRef.set(
+            {
+                launchState: launch.executionName ? 'launched' : 'unknown',
+                cloudRunExecution: launch.executionName || null,
+                cloudRunOperation: launch.operationName || null,
+                launchReconciled: !!launch.reconciled,
+                launchedAt: Date.now(),
+            },
+            { merge: true }
+        )
+        return { outcome: 'launched' }
+    } catch (error) {
+        if (error.ambiguous) {
+            console.warn('🖥️ VM JOB: Cloud Run launch result unknown; deferring to reconciler', {
+                correlationId,
+                error: error.message,
+            })
+            await pendingRef
+                .set(
+                    { launchState: 'unknown', launchError: error.message, launchLastCheckedAt: Date.now() },
+                    { merge: true }
+                )
+                .catch(() => {})
+            return { outcome: 'ambiguous' }
+        }
+        console.error('🖥️ VM JOB: Failed to enqueue worker — refunding', { correlationId, error: error.message })
+        const { refundGold } = require('../Gold/goldHelper')
+        await refundGold(requestUserId, VM_JOB_BASE_GOLD, {
+            source: VM_JOB_GOLD_REFUND_SOURCE,
+            channel: 'assistant',
+            projectId,
+            objectId,
+            objectType,
+            note: 'VM Cloud Run Job could not be launched',
+        }).catch(() => {})
+        await pendingRef.update({ status: 'failed', error: error.message, failedAt: Date.now() }).catch(() => {})
+        // Replace the initial VM status comment so it doesn't linger and contradict the failure.
+        if (statusCommentId) {
+            const failureText = "❌ Couldn't start the VM task — your Gold has been refunded."
+            await admin
+                .firestore()
+                .doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${statusCommentId}`)
+                .set(
+                    {
+                        commentText: failureText,
+                        originalContent: failureText,
+                        lastChangeDate: admin.firestore.Timestamp.now(),
+                    },
+                    { merge: true }
+                )
+                .catch(() => {})
+        }
+        // Don't wedge the thread behind a job that never started: advance to the next queued job.
+        await advanceThreadAndLaunchNext(projectId, objectId)
+        return { outcome: 'failed' }
+    }
+}
+
+/**
+ * Advance the thread's FIFO queue and launch whatever comes next (if anything). Shared by the launch
+ * failure paths, the reconciler, and the queued-job Gold short-circuit so the queue never wedges.
+ */
+async function advanceThreadAndLaunchNext(projectId, objectId) {
+    try {
+        const next = await advanceVmThreadQueue(vmThreadSessionRef(projectId, objectId))
+        if (next) await launchQueuedVmJob(next)
+    } catch (error) {
+        console.warn('🖥️ VM JOB: advance-and-launch-next failed', { projectId, objectId, error: error.message })
+    }
+}
+
+/**
+ * Current Gold balance for a user (read-only). Fails open (returns Infinity) on a read error so a
+ * transient failure never wrongly short-circuits a job — the in-run gold-exhausted path is the
+ * backstop.
+ */
+async function readUserGoldBalance(userId) {
+    try {
+        const snap = await admin.firestore().doc(`users/${userId}`).get()
+        return snap.exists ? Number(snap.data().gold) || 0 : 0
+    } catch (error) {
+        console.warn('🖥️ VM JOB: could not read Gold balance for queued launch; launching anyway', {
+            userId,
+            error: error.message,
+        })
+        return Number.POSITIVE_INFINITY
+    }
+}
+
+/**
+ * Settle a queued job that can't run because the user is out of Gold: refund the base reserve it
+ * charged at dispatch (it never ran), finalize its status comment, and mark it failed. The caller
+ * drains the rest of the queue (same user → cascades).
+ */
+async function settleQueuedVmJobInsufficientGold(pending) {
+    const correlationId = pending.correlationId
+    const { refundGold } = require('../Gold/goldHelper')
+    await refundGold(pending.userId, Number(pending.goldCharged) || VM_JOB_BASE_GOLD, {
+        source: VM_JOB_GOLD_REFUND_SOURCE,
+        channel: 'assistant',
+        projectId: pending.projectId,
+        objectId: pending.objectId,
+        objectType: pending.objectType,
+        note: 'Queued VM task skipped — out of Gold',
+    }).catch(() => {})
+    await admin
+        .firestore()
+        .doc(`pendingWebhooks/${correlationId}`)
+        .set(
+            {
+                status: 'failed',
+                failureReason: VM_GOLD_EXHAUSTED_FAILURE_REASON,
+                skippedForInsufficientGold: true,
+                failedAt: Date.now(),
+            },
+            { merge: true }
+        )
+        .catch(() => {})
+    if (pending.statusCommentId) {
+        await admin
+            .firestore()
+            .doc(
+                `chatComments/${pending.projectId}/${pending.objectType}/${pending.objectId}/comments/${pending.statusCommentId}`
+            )
+            .set(
+                {
+                    commentText: VM_QUEUED_GOLD_EXHAUSTED_TEXT,
+                    originalContent: VM_QUEUED_GOLD_EXHAUSTED_TEXT,
+                    isLoading: false,
+                    assistantRun: {
+                        kind: 'vm_job',
+                        runId: correlationId,
+                        requestUserId: pending.userId,
+                        status: 'failed',
+                    },
+                    lastChangeDate: admin.firestore.Timestamp.now(),
+                },
+                { merge: true }
+            )
+            .catch(() => {})
+    }
+}
+
+/**
+ * Flip a queued job to 'pending' and launch its Cloud Run execution. Called by the runner's drain
+ * when the current thread job finishes, and by the stalled-queue sweeper. No-op if the job already
+ * settled (e.g. cancelled while queued).
+ *
+ * @returns {Promise<{success: boolean, reason?: string, outcome?: string}>}
+ */
+async function launchQueuedVmJob(correlationId) {
+    const pendingRef = admin.firestore().doc(`pendingWebhooks/${correlationId}`)
+    const snap = await pendingRef.get()
+    if (!snap.exists) return { success: false, reason: 'not_found' }
+    const pending = snap.data() || {}
+    if (pending.kind !== 'vm_job') return { success: false, reason: 'wrong_kind' }
+    if (['completed', 'failed', 'cancelled', 'cancel_requested'].includes(pending.status)) {
+        return { success: false, reason: 'settled', status: pending.status }
+    }
+    // Gold short-circuit: if the user can no longer afford to make progress, don't launch a run that
+    // would immediately hit gold-exhaustion. Settle this one (refund base) and drain the rest — the
+    // whole queue is the same user, so it cascades. A top-up between jobs is respected (live read).
+    const gold = await readUserGoldBalance(pending.userId)
+    if (gold < VM_MIN_GOLD_TO_LAUNCH_QUEUED) {
+        console.log('🖥️ VM JOB: skipping queued job — insufficient Gold', {
+            correlationId,
+            userId: pending.userId,
+            gold,
+        })
+        await settleQueuedVmJobInsufficientGold(pending)
+        await advanceThreadAndLaunchNext(pending.projectId, pending.objectId)
+        return { success: false, reason: 'insufficient_gold' }
+    }
+    await pendingRef.set({ status: 'pending' }, { merge: true })
+    const launch = await performVmCloudRunLaunch({
+        correlationId,
+        pendingRef,
+        projectId: pending.projectId,
+        objectType: pending.objectType,
+        objectId: pending.objectId,
+        requestUserId: pending.userId,
+        statusCommentId: pending.statusCommentId,
+    })
+    return { success: launch.outcome !== 'failed', outcome: launch.outcome }
 }
 
 async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
@@ -590,6 +812,9 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
                     )
                     .catch(() => {})
             }
+            // Hand the thread to the next queued job so a follow-up isn't stuck behind a launch that
+            // was never confirmed (its dispatch lease would otherwise have to expire first).
+            await advanceThreadAndLaunchNext(pending.projectId, pending.objectId)
             result.failed += 1
         } catch (error) {
             result.errors += 1
@@ -604,6 +829,7 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
 
 module.exports = {
     startVmJob,
+    launchQueuedVmJob,
     countActiveVmJobsForUser,
     VM_JOB_BASE_GOLD,
     VM_GOLD_PER_MINUTE,

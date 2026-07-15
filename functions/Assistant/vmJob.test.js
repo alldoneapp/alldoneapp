@@ -24,10 +24,20 @@ jest.mock(
     'firebase-admin',
     () => ({
         app: jest.fn(() => ({ options: { projectId: 'test-project' } })),
-        firestore: jest.fn(() => ({
-            collection: jest.fn(() => mockCollectionQuery),
-            doc: jest.fn(path => mockGetDoc(path)),
-        })),
+        firestore: Object.assign(
+            jest.fn(() => ({
+                collection: jest.fn(() => mockCollectionQuery),
+                doc: jest.fn(path => mockGetDoc(path)),
+                runTransaction: async updateFn =>
+                    updateFn({
+                        get: async ref => ref.get(),
+                        set: (ref, data, options) => ref.set(data, options),
+                        update: (ref, data) => ref.update(data),
+                        delete: ref => (ref.delete ? ref.delete() : undefined),
+                    }),
+            })),
+            { Timestamp: { now: () => ({ seconds: 0, nanoseconds: 0 }) } }
+        ),
     }),
     { virtual: true }
 )
@@ -52,7 +62,7 @@ jest.mock('./vmApiKeyAuth', () => ({
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { deductGold } = require('../Gold/goldHelper')
-const { startVmJob, MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJob')
+const { startVmJob, launchQueuedVmJob, MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJob')
 const { MAX_CONCURRENT_VM_JOBS, VM_JOB_QUEUE_RATE_LIMITS } = require('./vmJobConfig')
 
 describe('startVmJob', () => {
@@ -435,5 +445,129 @@ describe('startVmJob', () => {
             })
         )
         expect(result.message).toContain('your personal API key')
+    })
+
+    test('queues a follow-up instead of launching when the thread VM is still busy', async () => {
+        // Thread already has a live foreign lease → occupied.
+        mockDocs['vmSessions/project-1__chat-1'] = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({
+                    activeLeaseOwner: 'someone-else-uuid',
+                    activeCorrelationId: 'someone-else',
+                    activeLeaseExpiresAt: Date.now() + 60_000,
+                }),
+            })),
+            set: jest.fn(async () => {}),
+            update: jest.fn(async () => {}),
+        }
+
+        const result = await startVmJob({
+            objective: 'Follow-up while VM is busy',
+            taskType: 'research',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.status).toBe('queued')
+        // No Cloud Run execution launched for a queued job…
+        expect(mockQueueEnqueue).not.toHaveBeenCalled()
+        // …but Gold is still reserved and the job record is written as 'queued'.
+        expect(deductGold).toHaveBeenCalledTimes(1)
+        expect(mockDocs['pendingWebhooks/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ status: 'queued' })
+        )
+        // The cross-thread concurrency cap is skipped for a same-thread follow-up.
+        expect(mockCollectionQuery.get).not.toHaveBeenCalled()
+    })
+
+    test('launchQueuedVmJob flips a queued job to pending and launches it', async () => {
+        mockDocs['users/user-1'] = { get: jest.fn(async () => ({ exists: true, data: () => ({ gold: 500 }) })) }
+        mockDocs['pendingWebhooks/queued-1'] = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({
+                    kind: 'vm_job',
+                    status: 'queued',
+                    correlationId: 'queued-1',
+                    projectId: 'project-1',
+                    objectType: 'topics',
+                    objectId: 'chat-1',
+                    userId: 'user-1',
+                    statusCommentId: 'status-comment-1',
+                }),
+            })),
+            set: jest.fn(async () => {}),
+            update: jest.fn(async () => {}),
+        }
+
+        const result = await launchQueuedVmJob('queued-1')
+
+        expect(result).toEqual({ success: true, outcome: 'launched' })
+        expect(mockDocs['pendingWebhooks/queued-1'].set).toHaveBeenCalledWith({ status: 'pending' }, { merge: true })
+        expect(mockQueueEnqueue).toHaveBeenCalledWith('queued-1')
+    })
+
+    test('launchQueuedVmJob short-circuits and refunds when the user is out of Gold', async () => {
+        const { refundGold } = require('../Gold/goldHelper')
+        mockDocs['users/user-1'] = { get: jest.fn(async () => ({ exists: true, data: () => ({ gold: 3 }) })) }
+        mockDocs['pendingWebhooks/queued-2'] = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({
+                    kind: 'vm_job',
+                    status: 'queued',
+                    correlationId: 'queued-2',
+                    projectId: 'project-1',
+                    objectType: 'topics',
+                    objectId: 'chat-1',
+                    userId: 'user-1',
+                    goldCharged: 20,
+                    statusCommentId: 'status-comment-1',
+                }),
+            })),
+            set: jest.fn(async () => {}),
+            update: jest.fn(async () => {}),
+        }
+
+        const result = await launchQueuedVmJob('queued-2')
+
+        expect(result).toEqual({ success: false, reason: 'insufficient_gold' })
+        // Not launched — no Cloud Run execution, never flipped to 'pending'.
+        expect(mockQueueEnqueue).not.toHaveBeenCalled()
+        expect(mockDocs['pendingWebhooks/queued-2'].set).not.toHaveBeenCalledWith(
+            { status: 'pending' },
+            { merge: true }
+        )
+        // Base reserve refunded and the job settled as failed/insufficient_gold.
+        expect(refundGold).toHaveBeenCalledWith(
+            'user-1',
+            20,
+            expect.objectContaining({ source: 'vm_execution_refund' })
+        )
+        expect(mockDocs['pendingWebhooks/queued-2'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ status: 'failed', failureReason: 'insufficient_gold' }),
+            { merge: true }
+        )
+    })
+
+    test('launchQueuedVmJob is a no-op for a job cancelled while queued', async () => {
+        mockDocs['pendingWebhooks/cancelled-1'] = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({ kind: 'vm_job', status: 'cancelled' }),
+            })),
+            set: jest.fn(async () => {}),
+            update: jest.fn(async () => {}),
+        }
+
+        const result = await launchQueuedVmJob('cancelled-1')
+
+        expect(result).toEqual({ success: false, reason: 'settled', status: 'cancelled' })
+        expect(mockQueueEnqueue).not.toHaveBeenCalled()
     })
 })

@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { advanceVmThreadQueue, requeueVmJobToThreadFront } = require('./vmThreadQueue')
 const {
     ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
     FEED_PUBLIC_FOR_ALL,
@@ -320,7 +321,12 @@ async function claimVmSessionLease(sessionRef, leaseOwner, correlationId = lease
         const session = snapshot.exists ? snapshot.data() || {} : null
         const activeLeaseOwner = session?.activeLeaseOwner || null
         const activeLeaseExpiresAt = Number(session?.activeLeaseExpiresAt) || 0
-        if (activeLeaseOwner && activeLeaseOwner !== leaseOwner && activeLeaseExpiresAt > now) {
+        // The dispatch lease this job took at admission (owner `dispatch:<correlationId>`) is ours to
+        // take over — recognize it by correlationId even though the owner string differs. A live lease
+        // held by any OTHER job means the thread is busy: refuse so the runner re-queues instead of
+        // starting a throwaway isolated sandbox.
+        const isOwnDispatchLease = !!session && session.activeCorrelationId === correlationId
+        if (activeLeaseOwner && activeLeaseOwner !== leaseOwner && activeLeaseExpiresAt > now && !isOwnDispatchLease) {
             return { claimed: false, session }
         }
         transaction.set(
@@ -1559,6 +1565,22 @@ function isVmJobCancelledError(error) {
     return error && error.code === 'vm_job_cancelled'
 }
 
+// Thrown by the runner when it starts but the thread's sandbox is held by another live job (the
+// rare dispatch/claim race). The job has already been re-queued to the front of the thread queue;
+// the top-level handler treats this as a clean deferral (no failure, no refund) and the current
+// owner relaunches it when it drains.
+class VmThreadBusyError extends Error {
+    constructor(message = 'VM thread is busy; job re-queued') {
+        super(message)
+        this.name = 'VmThreadBusyError'
+        this.code = 'vm_thread_busy'
+    }
+}
+
+function isVmThreadBusyError(error) {
+    return error && error.code === 'vm_thread_busy'
+}
+
 async function isVmJobCancellationRequested(pendingRef) {
     if (!pendingRef) return false
     try {
@@ -2159,6 +2181,23 @@ async function persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth,
 }
 
 /**
+ * After a job that owned the thread finishes (success or failure), hand the thread to the next
+ * queued job and launch it. The launched job resumes the same sandbox (kept alive / paused) so the
+ * user's follow-up runs with prior files + conversation. Best-effort: a drain failure never breaks
+ * the finishing job's own settlement (the stalled-queue sweeper is the backstop).
+ */
+async function drainThreadAfterRun(sessionRef) {
+    try {
+        const next = await advanceVmThreadQueue(sessionRef)
+        if (!next) return
+        console.log('🖥️ VM JOB: draining thread queue → launching next job', { next })
+        await require('./vmJob').launchQueuedVmJob(next)
+    } catch (error) {
+        console.warn('🖥️ VM JOB: drain-after-run failed', { error: error.message })
+    }
+}
+
+/**
  * Run the selected agent (Claude Code or Codex) headless in an E2B sandbox and return its
  * final output. Resumes the chat thread's paused sandbox if one exists (so the agent
  * continues with prior files + conversation), else starts fresh. Parses the agent's JSON
@@ -2195,6 +2234,7 @@ async function runAgentInSandbox(
     let ownsSessionLease = false
     let sessionHeartbeat = null
     let subscriptionCredentialPrepared = false
+    let threadHeldByOther = false
     let runtimeGoldCharged = Number(pendingWebhook?.runtimeGoldCharged) || 0
     try {
         const sessionClaim = await claimVmSessionLease(sessionRef, sessionLeaseOwner, vmJob.correlationId, {
@@ -2209,7 +2249,11 @@ async function runAgentInSandbox(
         const sessionMatchesAgent = sess && sess.agent === selectedAgent
         const sessionMatchesTemplate = sess && sess.template === template
         if (!ownsSessionLease) {
-            console.warn('🖥️ VM JOB: thread sandbox is busy; starting isolated sandbox', {
+            // Another live job holds the thread's sandbox (rare dispatch/claim race). Don't run on a
+            // throwaway isolated sandbox — flag so we re-queue below and let the current owner
+            // relaunch this job (on the same sandbox) when it drains.
+            threadHeldByOther = true
+            console.warn('🖥️ VM JOB: thread sandbox is busy at run start; re-queueing job', {
                 correlationId: vmJob.correlationId,
                 activeCorrelationId: sess?.activeCorrelationId || null,
             })
@@ -2279,6 +2323,14 @@ async function runAgentInSandbox(
         }
     } catch (error) {
         console.warn('🖥️ VM JOB: session lookup failed', { correlationId: vmJob.correlationId, error: error.message })
+    }
+
+    if (threadHeldByOther) {
+        // Put this job back at the front of the thread queue and bail cleanly. The current owner
+        // relaunches it (resuming the same sandbox) when it finishes; VmThreadBusyError is handled
+        // by the top-level runner as a deferral — no failure comment, no refund.
+        await requeueVmJobToThreadFront(sessionRef, vmJob.correlationId).catch(() => {})
+        throw new VmThreadBusyError()
     }
 
     if (!sandbox) {
@@ -2646,6 +2698,8 @@ async function runAgentInSandbox(
             await sandbox.kill().catch(() => {})
         }
         if (sessionHeartbeat) sessionHeartbeat.stop()
+        // Hand the thread to the next queued follow-up (runs on this same sandbox).
+        if (ownsSessionLease) await drainThreadAfterRun(sessionRef)
         return { output, usage: state.usage, artifacts, runtimeGoldCharged }
     } catch (err) {
         if (subscriptionCredentialPrepared) {
@@ -2660,17 +2714,33 @@ async function runAgentInSandbox(
         } else {
             await sandbox?.kill().catch(() => {})
             if (ownsSessionLease) {
+                // Discard the unhealthy sandbox but KEEP the session doc so a queued follow-up isn't
+                // lost — clear the sandbox + our runtime lease so the next job starts cold. The drain
+                // below (which reads the surviving queue) hands off to the next job.
                 await admin
                     .firestore()
                     .runTransaction(async transaction => {
                         const snapshot = await transaction.get(sessionRef)
                         const session = snapshot.exists ? snapshot.data() || {} : {}
-                        if (session.activeLeaseOwner === sessionLeaseOwner) transaction.delete(sessionRef)
+                        if (session.activeLeaseOwner !== sessionLeaseOwner) return
+                        transaction.set(
+                            sessionRef,
+                            {
+                                sandboxId: null,
+                                activeLeaseOwner: null,
+                                activeLeaseExpiresAt: null,
+                                activeCorrelationId: null,
+                            },
+                            { merge: true }
+                        )
                     })
                     .catch(() => {})
             }
         }
         if (sessionHeartbeat) sessionHeartbeat.stop()
+        // Hand the thread to the next queued follow-up even though this run failed — "done running"
+        // includes failures. The next job resumes (normal failure) or starts cold (unhealthy).
+        if (ownsSessionLease) await drainThreadAfterRun(sessionRef)
         if (typeof err.runtimeGoldCharged !== 'number') err.runtimeGoldCharged = runtimeGoldCharged
         throw err
     }
@@ -2973,6 +3043,8 @@ async function runVmJobByCorrelationId(correlationId) {
     }
     const pendingWebhook = pendingDoc.data()
     const vmJob = jobDoc.data()
+    // Thread session doc — used to hand off to queued follow-ups when this job settles.
+    const threadSessionRef = db.doc(`vmSessions/${vmSessionDocId(vmJob)}`)
 
     // Idempotency: don't re-run a job that already settled.
     if (
@@ -2993,6 +3065,8 @@ async function runVmJobByCorrelationId(correlationId) {
             })
             .catch(() => {})
         await refundVmJob(pendingWebhook, 'VM task stopped before execution')
+        // This job held the thread's dispatch lease; hand off to any queued follow-up.
+        await drainThreadAfterRun(threadSessionRef)
         return
     }
 
@@ -3044,6 +3118,8 @@ async function runVmJobByCorrelationId(correlationId) {
         await pendingRef.update({ status: 'failed', error: message, failedAt: Date.now() }).catch(() => {})
         await refundVmJob(pendingWebhook, 'Missing sandbox credentials')
         heartbeat.stop()
+        // This job held the thread's dispatch lease (it never reached runAgentInSandbox); hand off.
+        await drainThreadAfterRun(threadSessionRef)
         return
     }
 
@@ -3192,6 +3268,14 @@ async function runVmJobByCorrelationId(correlationId) {
             costUsd: usage?.costUsd ?? null,
         })
     } catch (error) {
+        // Thread was busy at run start (rare dispatch/claim race): the job has already been
+        // re-queued to the front of the thread queue. Defer cleanly — no failure comment, no refund,
+        // no drain (this job did NOT own the thread). The current owner relaunches it on drain.
+        if (isVmThreadBusyError(error)) {
+            console.warn('🖥️ VM JOB RUNNER: thread busy at run start; job re-queued', { correlationId })
+            await pendingRef.set({ status: 'queued', requeuedAt: Date.now() }, { merge: true }).catch(() => {})
+            return
+        }
         console.error('🖥️ VM JOB RUNNER: Failed', { correlationId, error: error.message, stack: error.stack })
         const runtimeGoldCharged = Number(error.runtimeGoldCharged) || 0
         const latestPendingSnap = await pendingRef.get().catch(() => null)
