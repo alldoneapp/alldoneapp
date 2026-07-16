@@ -35,13 +35,12 @@ export default function TaskVmStateFiltersLine({ projectId }) {
     const subscriptionsRef = useRef(new Map())
 
     const instances = useMemo(() => {
-        const buildInstance = instanceKey => ({
-            sections: openTasksStore[instanceKey],
-            subtasksByParentId: subtaskByTaskStore[instanceKey],
+        const buildInstance = pid => ({
+            projectId: pid,
+            sections: openTasksStore[pid + currentUserId],
+            subtasksByParentId: subtaskByTaskStore[pid + currentUserId],
         })
-        return projectId
-            ? [buildInstance(projectId + currentUserId)]
-            : (loggedUserProjectIds || []).map(pid => buildInstance(pid + currentUserId))
+        return projectId ? [buildInstance(projectId)] : (loggedUserProjectIds || []).map(buildInstance)
     }, [openTasksStore, subtaskByTaskStore, projectId, currentUserId, loggedUserProjectIds])
 
     const taskRefs = useMemo(() => collectTaskVmSessionRefs(instances), [instances])

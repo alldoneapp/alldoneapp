@@ -77,6 +77,24 @@ describe('TaskVmStateFiltersLine', () => {
         expect(component.toJSON()).toBeNull()
     })
 
+    test('passes the list project context alongside mapped task sections', () => {
+        const sections = [{ persistedTaskWithoutProjectId: true }]
+        const subtasksByParentId = { parent: [{ id: 'subtask' }] }
+        mockCollectTaskVmStateCounts.mockReturnValue({ counts: {}, total: 1, available: 0 })
+        setState({
+            openTasksStore: { 'project-1user-1': sections },
+            subtaskByTaskStore: { 'project-1user-1': subtasksByParentId },
+        })
+
+        act(() => {
+            renderer.create(<TaskVmStateFiltersLine projectId="project-1" />)
+        })
+
+        const expectedInstances = [{ projectId: 'project-1', sections, subtasksByParentId }]
+        expect(mockCollectTaskVmSessionRefs).toHaveBeenCalledWith(expectedInstances)
+        expect(mockCollectTaskVmStateCounts).toHaveBeenCalledWith(expectedInstances, {})
+    })
+
     test('shows only available states plus All', () => {
         mockCollectTaskVmStateCounts.mockReturnValue({
             counts: { in_progress: 2, failed: 1 },

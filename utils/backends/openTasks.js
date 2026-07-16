@@ -1458,7 +1458,7 @@ export const contractSomedayOpenTasks = (projectId, instanceKey, openTasks, upda
     store.dispatch(setSomedayTasksExpanded(false))
 }
 
-export const filterOpTasks = (instanceKey, tasks) => {
+export const filterOpTasks = (instanceKey, tasks, projectId) => {
     const {
         hashtagFilters,
         taskPriorityFilters,
@@ -1480,7 +1480,8 @@ export const filterOpTasks = (instanceKey, tasks) => {
             filteredOpenTasks,
             taskVmStateFilters,
             taskVmStatesByTask,
-            subtaskByTaskStore[instanceKey]
+            subtaskByTaskStore[instanceKey],
+            projectId
         )
     }
     store.dispatch(updateFilteredOpenTasks(instanceKey, filteredOpenTasks))
@@ -1513,7 +1514,7 @@ export const updateOpTasks = (
 
     store.dispatch(updateThereAreNotTasksInFirstDay(instanceKey, thereAreNotTasksInFirstDay))
 
-    updateAndFilterTasksTasks(instanceKey, openTasks)
+    updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
     if (setProjectsHaveTasksInFirstDay)
         setProjectsHaveTasksInFirstDay(projectsHaveTasksInFirstDay => {
             // Use AMOUNT_TASKS_INDEX which now includes calendar tasks for project amount calculation
@@ -1664,9 +1665,9 @@ const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
     return taskToShow
 }
 
-export const updateAndFilterTasksTasks = (instanceKey, tasks) => {
+export const updateAndFilterTasksTasks = (instanceKey, tasks, projectId) => {
     store.dispatch(updateOpenTasks(instanceKey, tasks))
-    filterOpTasks(instanceKey, tasks)
+    filterOpTasks(instanceKey, tasks, projectId)
 }
 
 export function watchAllMilestones(projectId, watcherKey) {

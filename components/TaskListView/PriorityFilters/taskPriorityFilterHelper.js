@@ -37,8 +37,13 @@ const getTasksByUserIndexes = () => [
 const taskMatchesPriorityFilters = (task, selectedPriorities) =>
     selectedPriorities.includes(normalizeTaskPriority(task.priority))
 
-const taskMatchesVmStateFilters = (task, selectedVmStates, vmStatesByTask) =>
-    selectedVmStates.includes(vmStatesByTask[getVmSessionDocId(task.projectId, task.id)])
+const getTaskVmSessionKey = (task, projectId) => {
+    const taskProjectId = projectId || task.projectId
+    return taskProjectId && task.id ? getVmSessionDocId(taskProjectId, task.id) : null
+}
+
+const taskMatchesVmStateFilters = (task, selectedVmStates, vmStatesByTask, projectId) =>
+    selectedVmStates.includes(vmStatesByTask[getTaskVmSessionKey(task, projectId)])
 
 // A parent counts as matching when one of its subtasks matches, mirroring how
 // the hashtag filter matches parents by subtask names — the subtask can only be
@@ -49,10 +54,10 @@ const taskOrSubtasksMatchPriorityFilters = (task, selectedPriorities, subtasksBy
     return subtasks.some(subtask => taskMatchesPriorityFilters(subtask, selectedPriorities))
 }
 
-const taskOrSubtasksMatchVmStateFilters = (task, selectedVmStates, vmStatesByTask, subtasksByParentId) => {
-    if (taskMatchesVmStateFilters(task, selectedVmStates, vmStatesByTask)) return true
+const taskOrSubtasksMatchVmStateFilters = (task, selectedVmStates, vmStatesByTask, subtasksByParentId, projectId) => {
+    if (taskMatchesVmStateFilters(task, selectedVmStates, vmStatesByTask, projectId)) return true
     const subtasks = (subtasksByParentId && subtasksByParentId[task.id]) || []
-    return subtasks.some(subtask => taskMatchesVmStateFilters(subtask, selectedVmStates, vmStatesByTask))
+    return subtasks.some(subtask => taskMatchesVmStateFilters(subtask, selectedVmStates, vmStatesByTask, projectId))
 }
 
 const getTaskEstimationValue = (task, isObservedTask, currentUserId) => {
@@ -148,10 +153,16 @@ export const filterOpenTasksSectionsByPriority = (openTasks, selectedPriorities,
     )
 }
 
-export const filterOpenTasksSectionsByVmState = (openTasks, selectedVmStates, vmStatesByTask, subtasksByParentId) => {
+export const filterOpenTasksSectionsByVmState = (
+    openTasks,
+    selectedVmStates,
+    vmStatesByTask,
+    subtasksByParentId,
+    projectId
+) => {
     if (!selectedVmStates || selectedVmStates.length === 0) return openTasks
     return filterOpenTasksSections(openTasks, task =>
-        taskOrSubtasksMatchVmStateFilters(task, selectedVmStates, vmStatesByTask, subtasksByParentId)
+        taskOrSubtasksMatchVmStateFilters(task, selectedVmStates, vmStatesByTask, subtasksByParentId, projectId)
     )
 }
 
@@ -189,8 +200,8 @@ export const collectTaskVmStateCounts = (instances, vmStatesByTask) => {
     const counts = {}
     let total = 0
     let available = 0
-    const countTask = task => {
-        const vmState = vmStatesByTask[getVmSessionDocId(task.projectId, task.id)]
+    const countTask = (task, projectId) => {
+        const vmState = vmStatesByTask[getTaskVmSessionKey(task, projectId)]
         if (vmState) {
             counts[vmState] = (counts[vmState] || 0) + 1
             available++
@@ -199,12 +210,12 @@ export const collectTaskVmStateCounts = (instances, vmStatesByTask) => {
     }
     instances.forEach(instance => {
         if (!instance) return
-        const { sections, subtasksByParentId } = instance
+        const { projectId, sections, subtasksByParentId } = instance
         ;(sections || []).forEach(section => {
             sumSectionTasks(section, task => {
-                countTask(task)
+                countTask(task, projectId)
                 const subtasks = (subtasksByParentId && subtasksByParentId[task.id]) || []
-                subtasks.forEach(countTask)
+                subtasks.forEach(subtask => countTask(subtask, projectId))
             })
         })
     })
@@ -213,19 +224,20 @@ export const collectTaskVmStateCounts = (instances, vmStatesByTask) => {
 
 export const collectTaskVmSessionRefs = instances => {
     const refsByKey = {}
-    const collectTask = task => {
-        if (!task.projectId || !task.id) return
-        const key = getVmSessionDocId(task.projectId, task.id)
-        refsByKey[key] = { key, projectId: task.projectId, taskId: task.id }
+    const collectTask = (task, projectId) => {
+        const taskProjectId = projectId || task.projectId
+        if (!taskProjectId || !task.id) return
+        const key = getVmSessionDocId(taskProjectId, task.id)
+        refsByKey[key] = { key, projectId: taskProjectId, taskId: task.id }
     }
     instances.forEach(instance => {
         if (!instance) return
-        const { sections, subtasksByParentId } = instance
+        const { projectId, sections, subtasksByParentId } = instance
         ;(sections || []).forEach(section => {
             sumSectionTasks(section, task => {
-                collectTask(task)
+                collectTask(task, projectId)
                 const subtasks = (subtasksByParentId && subtasksByParentId[task.id]) || []
-                subtasks.forEach(collectTask)
+                subtasks.forEach(subtask => collectTask(subtask, projectId))
             })
         })
     })

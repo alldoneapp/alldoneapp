@@ -168,7 +168,7 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
     useEffect(() => {
         const { openTasksStore } = store.getState()
         const openTasks = openTasksStore[instanceKey] ? openTasksStore[instanceKey] : []
-        filterOpTasks(instanceKey, openTasks)
+        filterOpTasks(instanceKey, openTasks, projectId)
     }, [
         JSON.stringify(filtersArray),
         JSON.stringify(taskPriorityFilters),
@@ -185,7 +185,7 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
         if (taskPriorityFilters.length === 0 && taskVmStateFilters.length === 0) return
         const { openTasksStore } = store.getState()
         const openTasks = openTasksStore[instanceKey] ? openTasksStore[instanceKey] : []
-        filterOpTasks(instanceKey, openTasks)
+        filterOpTasks(instanceKey, openTasks, projectId)
     }, [subtasksByParentId])
 
     if (!currentUserId.startsWith(WORKSTREAM_ID_PREFIX)) {
