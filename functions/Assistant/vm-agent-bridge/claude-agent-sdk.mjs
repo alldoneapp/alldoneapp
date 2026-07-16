@@ -18,7 +18,7 @@ const options = {
     effort: input.effort || undefined,
     permissionMode: input.permissionMode,
     allowDangerouslySkipPermissions: input.permissionMode === 'bypassPermissions',
-    settingSources: ['user', 'project'],
+    settingSources: Array.isArray(input.settingSources) ? input.settingSources : ['user', 'project', 'local'],
     ...(sessionId ? { resume: sessionId } : {}),
     canUseTool: async (toolName, toolInput) => {
         if (toolName === 'ExitPlanMode') {

@@ -279,6 +279,7 @@ describe('VM interactive agent bridge', () => {
             phase: 'planning',
             permissionMode: 'plan',
             additionalDirectories: ['/home/user/git-metadata'],
+            settingSources: ['user', 'project', 'local'],
         })
 
         const executing = __private__.buildVmAgentBridgeInput({
@@ -298,6 +299,7 @@ describe('VM interactive agent bridge', () => {
             phase: 'executing',
             permissionMode: 'bypassPermissions',
             additionalDirectories: ['/home/user/git-metadata'],
+            settingSources: ['user', 'project', 'local'],
         })
         expect(executing.prompt).toContain('approved the plan')
     })
@@ -353,6 +355,7 @@ describe('VM interactive agent bridge', () => {
         expect(input.phase).toBe('executing')
         if (agent === 'claude') {
             expect(input.additionalDirectories).toEqual(['/home/user/git-metadata'])
+            expect(input.settingSources).toEqual(['user', 'project', 'local'])
         } else {
             expect(input.codexArgs).toEqual(
                 expect.arrayContaining([

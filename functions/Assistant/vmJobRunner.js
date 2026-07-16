@@ -1649,6 +1649,7 @@ function buildVmAgentBridgeInput({
         input.permissionMode =
             phase === 'planning' ? 'plan' : executionMode === 'plan_first' ? 'bypassPermissions' : 'default'
         input.additionalDirectories = writableRoots
+        input.settingSources = ['user', 'project', 'local']
     } else {
         input.approvalPolicy = phase === 'executing' && executionMode === 'plan_first' ? 'never' : 'on-request'
         input.approvalsReviewer = executionMode === 'interactive' ? 'auto_review' : 'user'
