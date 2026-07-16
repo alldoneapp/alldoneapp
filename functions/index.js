@@ -2745,6 +2745,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 language,
                 aiSettings,
                 taskMetadata,
+                messageId,
             } = data
             const userId = auth.uid
             if (requestedUserId && requestedUserId !== userId) {
@@ -2779,7 +2780,9 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 language,
                 aiSettings,
                 taskMetadata,
-                functionEntryTime // Pass entry time for time-to-first-token tracking
+                functionEntryTime, // Pass entry time for time-to-first-token tracking
+                'tasks',
+                { triggerMessageId: messageId }
             )
 
             const totalFunctionTime = Date.now() - functionEntryTime

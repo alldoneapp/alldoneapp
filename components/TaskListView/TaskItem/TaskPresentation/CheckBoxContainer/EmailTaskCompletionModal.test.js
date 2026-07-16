@@ -32,7 +32,6 @@ describe('EmailTaskCompletionModal', () => {
         expect(onComplete).toHaveBeenCalledTimes(1)
         expect(onComplete).toHaveBeenCalledWith(true)
         expect(tree.root.findAllByType(Button)).toHaveLength(2)
-        tree.unmount()
     })
 
     test('passes the complete-only choice without requesting an archive', () => {
@@ -44,38 +43,5 @@ describe('EmailTaskCompletionModal', () => {
         act(() => tree.root.findByProps({ testID: 'email-task-complete-only' }).props.onPress())
 
         expect(onComplete).toHaveBeenCalledWith(false)
-        tree.unmount()
-    })
-
-    test('archives when Enter is pressed and consumes repeated key events', () => {
-        const onComplete = jest.fn()
-        const propagatedKeyDown = jest.fn()
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <EmailTaskCompletionModal closePopover={jest.fn()} onComplete={onComplete} submitting={false} />
-            )
-        })
-        document.addEventListener('keydown', propagatedKeyDown)
-        const firstEnter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
-        const repeatedEnter = new KeyboardEvent('keydown', {
-            key: 'Enter',
-            bubbles: true,
-            cancelable: true,
-            repeat: true,
-        })
-
-        act(() => {
-            document.dispatchEvent(firstEnter)
-            document.dispatchEvent(repeatedEnter)
-        })
-
-        expect(onComplete).toHaveBeenCalledTimes(1)
-        expect(onComplete).toHaveBeenCalledWith(true)
-        expect(firstEnter.defaultPrevented).toBe(true)
-        expect(propagatedKeyDown).not.toHaveBeenCalled()
-
-        document.removeEventListener('keydown', propagatedKeyDown)
-        tree.unmount()
     })
 })

@@ -10683,6 +10683,7 @@ async function getUserDescriptionContextMessage(projectId, userId) {
 // sandbox agent works with the same grounding the in-chat assistant had. Flip any flag to
 // false to stop sending that slice. (Current defaults reflect the chosen selection.)
 const VM_THREAD_CONTEXT_OPTIONS = {
+    currentObject: true, // task identity, title, description, project, and relevant metadata
     userDescription: true, // global + project-specific user description
     projectDescription: true, // shared project description
     userMemory: true, // per-project user memory note
@@ -10728,6 +10729,22 @@ async function buildVmThreadContext({
     if (!projectId || !objectId) return ''
     const opts = { ...VM_THREAD_CONTEXT_OPTIONS, ...(options || {}) }
     const sections = []
+
+    // #0 — the canonical object context used by the interactive assistant too. This is what
+    // grounds phrases such as "this task" after the assistant delegates work to a VM.
+    if (opts.currentObject) {
+        try {
+            const msg = await getCurrentObjectContextMessage(projectId, objectType, objectId)
+            if (msg) sections.push(msg)
+        } catch (error) {
+            console.warn('🖥️ VM CONTEXT: current object context failed', {
+                projectId,
+                objectType,
+                objectId,
+                error: error.message,
+            })
+        }
+    }
 
     // #1 + #2 — global + project-specific user description.
     if (opts.userDescription && requestUserId) {
@@ -11983,6 +12000,82 @@ function formatCurrentNoteContextMessage(noteContext) {
         .join('\n\n')
 }
 
+const CURRENT_TASK_CONTEXT_METADATA_FIELDS = [
+    'humanReadableId',
+    'dueDate',
+    'startDate',
+    'recurrence',
+    'priority',
+    'parentId',
+    'parentGoalId',
+    'milestoneId',
+    'userId',
+    'userIds',
+    'currentReviewerId',
+    'observersIds',
+    'isPublicFor',
+    'inDone',
+    'isAssistantEnabled',
+    'taskMetadata',
+    'gmailData',
+]
+
+function getRelevantTaskContextMetadata(task = {}) {
+    return CURRENT_TASK_CONTEXT_METADATA_FIELDS.reduce((metadata, field) => {
+        const value = task[field]
+        if (value !== undefined && value !== null && value !== '') metadata[field] = value
+        return metadata
+    }, {})
+}
+
+function buildCurrentObjectContextMessage({ projectId, objectType, objectId, projectData, objectData, chatData }) {
+    if (objectType !== 'tasks') {
+        if (!chatData?.title) return ''
+        const objectTypeLabel = objectType === 'topics' ? 'chat' : objectType.replace(/s$/, '')
+        return `This conversation is about a ${objectTypeLabel} titled: "${chatData.title}"`
+    }
+
+    const task = objectData || {}
+    const title = task.extendedName || task.name || chatData?.title || ''
+    const name = task.name || title
+    const description = typeof task.description === 'string' ? task.description : ''
+    const metadata = getRelevantTaskContextMetadata(task)
+    const lines = [
+        'The current conversation is attached to the task below. When the user says "this task", they mean this exact task.',
+        `Project: ${projectData?.name || projectId || '(unknown)'} (ID: ${projectId || '(unknown)'})`,
+        `Task ID: ${objectId || task.id || '(unknown)'}`,
+        `Task title: ${title || '(untitled)'}`,
+    ]
+
+    if (name && name !== title) lines.push(`Task name: ${name}`)
+    lines.push(`Task description: ${description || '(empty)'}`)
+    if (Object.keys(metadata).length > 0) lines.push(`Relevant task metadata: ${JSON.stringify(metadata)}`)
+
+    return lines.join('\n')
+}
+
+async function getCurrentObjectContextData(projectId, objectType, objectId) {
+    if (objectType !== 'tasks') return { projectData: null, objectData: null }
+
+    const [projectDoc, taskDoc] = await Promise.all([
+        admin.firestore().doc(`projects/${projectId}`).get(),
+        admin.firestore().doc(`items/${projectId}/tasks/${objectId}`).get(),
+    ])
+
+    return {
+        projectData: projectDoc.exists ? { id: projectDoc.id || projectId, ...(projectDoc.data() || {}) } : null,
+        objectData: taskDoc.exists ? { id: taskDoc.id || objectId, ...(taskDoc.data() || {}) } : null,
+    }
+}
+
+async function getCurrentObjectContextMessage(projectId, objectType, objectId) {
+    const [chatData, contextData] = await Promise.all([
+        getChat(projectId, objectId).catch(() => null),
+        getCurrentObjectContextData(projectId, objectType, objectId),
+    ])
+    return buildCurrentObjectContextMessage({ projectId, objectType, objectId, chatData, ...contextData })
+}
+
 // Optimized context fetching with parallel operations
 async function getOptimizedContextMessages(
     messageId,
@@ -12061,7 +12154,18 @@ async function getOptimizedContextMessages(
         parallelPromises.push(Promise.resolve(null))
     }
 
-    const [commentDocs, chatData, notesContext, currentNoteContext, openTasksData] = await Promise.all(parallelPromises)
+    // Fetch the current parent object in parallel. The same formatter is reused by VM handoff,
+    // keeping interactive and delegated executions grounded in one canonical task context.
+    parallelPromises.push(getCurrentObjectContextData(projectId, objectType, objectId))
+
+    const [
+        commentDocs,
+        chatData,
+        notesContext,
+        currentNoteContext,
+        openTasksData,
+        currentObjectContextData,
+    ] = await Promise.all(parallelPromises)
 
     // Collect messages from conversation history
     const messages = []
@@ -12126,13 +12230,17 @@ async function getOptimizedContextMessages(
         messages.push(['system', parseTextForUseLiKePrompt(compactedThreadContextMessage)])
     }
 
-    // Add topic/context information if available
-    if (chatData && chatData.title) {
-        const objectTypeLabel = objectType === 'topics' ? 'chat' : objectType.replace(/s$/, '') // tasks -> task, notes -> note
-        messages.push([
-            'system',
-            `This conversation is about a ${objectTypeLabel} titled: "${parseTextForUseLiKePrompt(chatData.title)}"`,
-        ])
+    // Add canonical parent-object context. For tasks this includes identity, project, title,
+    // description, and relevant metadata; other object types retain their existing title context.
+    const currentObjectContextMessage = buildCurrentObjectContextMessage({
+        projectId,
+        objectType,
+        objectId,
+        chatData,
+        ...currentObjectContextData,
+    })
+    if (currentObjectContextMessage) {
+        messages.push(['system', parseTextForUseLiKePrompt(currentObjectContextMessage)])
     }
 
     const currentNoteContextMessage = formatCurrentNoteContextMessage(currentNoteContext)
@@ -12335,6 +12443,9 @@ module.exports = {
     getCachedEnvFunctions,
     getOpenAIClient,
     getOptimizedContextMessages,
+    buildCurrentObjectContextMessage,
+    getCurrentObjectContextMessage,
+    buildVmThreadContext,
     getMaxTokensForModel,
     getMessageTextForTokenCounting,
     THREAD_CONTEXT_MESSAGE_LIMIT,

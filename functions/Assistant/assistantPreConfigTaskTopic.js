@@ -9,6 +9,9 @@ const {
     getCommonData, // For parallel fetching to reduce time-to-first-token
     normalizeModelKey, // For model normalization and backward compatibility
     getOpenTasksContextMessage,
+    getOptimizedContextMessages,
+    getMessageTextForTokenCounting,
+    extractImageUrlsFromMessageContent,
 } = require('./assistantHelper')
 const { getUserDataOptimized } = require('./firestoreOptimized')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
@@ -266,8 +269,6 @@ async function generatePreConfigTaskResult(
         // Note: User's prompt message is now created in the frontend before calling this function
         // This ensures the message appears immediately in the UI
 
-        const contextMessages = []
-
         // Extract user's timezone offset (in minutes) from user data
         // Priority: timezone > timezoneOffset > timezoneMinutes > preferredTimezone
         const userTimezoneOffset = resolveUserTimezoneOffset(user)
@@ -298,27 +299,57 @@ async function generatePreConfigTaskResult(
             }
         }
 
-        // Step 2: Prepare context messages
+        // Step 2: Prepare context messages. Interactive task comments use this same canonical
+        // builder; reusing it here keeps background predefined prompts grounded in the full task
+        // and thread context instead of a client-assembled metadata subset.
         const step2Start = Date.now()
-        await addBaseInstructions(
-            contextMessages,
-            displayName,
-            language,
-            instructions,
-            Array.isArray(settings.allowedTools) ? settings.allowedTools : [],
-            userTimezoneOffset,
-            {
+        const triggerMessageId = typeof options?.triggerMessageId === 'string' ? options.triggerMessageId.trim() : ''
+        const useCanonicalThreadContext = objectType === 'tasks' && !!triggerMessageId
+        let contextMessages
+
+        if (useCanonicalThreadContext) {
+            contextMessages = await getOptimizedContextMessages(
+                triggerMessageId,
                 projectId,
-                assistantId: settings.uid || assistantId,
-                requestUserId: userId,
                 objectType,
                 objectId,
-            }
-        )
-        additionalContextMessages.forEach(message => {
-            contextMessages.push([message[0], parseTextForUseLiKePrompt(message[1])])
-        })
-        contextMessages.push(['user', parseTextForUseLiKePrompt(finalPrompt)])
+                language,
+                displayName,
+                instructions,
+                Array.isArray(settings.allowedTools) ? settings.allowedTools : [],
+                userTimezoneOffset,
+                userId,
+                settings.uid || assistantId
+            )
+        } else {
+            contextMessages = []
+            await addBaseInstructions(
+                contextMessages,
+                displayName,
+                language,
+                instructions,
+                Array.isArray(settings.allowedTools) ? settings.allowedTools : [],
+                userTimezoneOffset,
+                {
+                    projectId,
+                    assistantId: settings.uid || assistantId,
+                    requestUserId: userId,
+                    objectType,
+                    objectId,
+                }
+            )
+            contextMessages.push(['user', parseTextForUseLiKePrompt(finalPrompt)])
+        }
+
+        if (additionalContextMessages.length > 0) {
+            const latestUserMessageIndex = contextMessages.map(message => message[0]).lastIndexOf('user')
+            const insertionIndex = latestUserMessageIndex >= 0 ? latestUserMessageIndex : contextMessages.length
+            contextMessages.splice(
+                insertionIndex,
+                0,
+                ...additionalContextMessages.map(message => [message[0], parseTextForUseLiKePrompt(message[1])])
+            )
+        }
         const step2Duration = Date.now() - step2Start
 
         console.log('✅ [TIMING] Step 2 - Context preparation completed', {
@@ -337,8 +368,22 @@ async function generatePreConfigTaskResult(
             requestUserId: userId,
             objectType,
             objectId,
+            messageId: triggerMessageId || null,
+            userTimezoneOffset,
+            language,
             maxRunWallClockMs: options?.maxRunWallClockMs || ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS,
         }
+        const latestUserMessage = contextMessages
+            .slice()
+            .reverse()
+            .find(message => message[0] === 'user')
+        const userContext = latestUserMessage
+            ? {
+                  message: getMessageTextForTokenCounting(latestUserMessage[1]),
+                  content: latestUserMessage[1],
+                  currentMessageImageUrls: extractImageUrlsFromMessageContent(latestUserMessage[1]),
+              }
+            : null
 
         // Step 3: Fetch common data in parallel with API call to reduce time-to-first-token
         const step3Start = Date.now()
@@ -392,7 +437,7 @@ async function generatePreConfigTaskResult(
             [userId], // Added logged in user as followerIds as an array
             displayName,
             userId, // requestUserId
-            null, // userContext - not available in this flow
+            userContext,
             contextMessages, // conversationHistory
             model, // modelKey
             temperature, // temperatureKey

@@ -310,9 +310,19 @@ const createTopicForPreConfigTask = async (
 
         // Create user message with the prompt in the frontend so it appears immediately
         // Pass skipAssistantTrigger=true to avoid double triggering (we trigger it explicitly below)
+        let messageId = null
         if (prompt && prompt.trim()) {
             console.log('Creating user message with prompt for task:', taskId)
-            await createObjectMessage(projectId, taskId, prompt.trim(), 'tasks', STAYWARD_COMMENT, null, null, true)
+            messageId = await createObjectMessage(
+                projectId,
+                taskId,
+                prompt.trim(),
+                'tasks',
+                STAYWARD_COMMENT,
+                null,
+                null,
+                true
+            )
         }
 
         // Clear the executing state after topic and message are created
@@ -329,6 +339,7 @@ const createTopicForPreConfigTask = async (
             language: window.navigator.language,
             aiSettings,
             taskMetadata,
+            messageId,
         }
 
         const clientSubmissionTime = Date.now()

@@ -5,6 +5,7 @@ const mockReduceGoldWhenChatWithAI = jest.fn(async () => {})
 const mockGetCommonData = jest.fn()
 const mockGetUserDataOptimized = jest.fn()
 const mockGetOpenTasksContextMessage = jest.fn()
+const mockGetOptimizedContextMessages = jest.fn()
 const mockRemoveSingleChatNotification = jest.fn(async () => {})
 const mockSendTaskCompletionNotification = jest.fn()
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
@@ -26,6 +27,9 @@ jest.mock('./assistantHelper', () => ({
     getCommonData: (...args) => mockGetCommonData(...args),
     normalizeModelKey: jest.fn(model => model),
     getOpenTasksContextMessage: (...args) => mockGetOpenTasksContextMessage(...args),
+    getOptimizedContextMessages: (...args) => mockGetOptimizedContextMessages(...args),
+    getMessageTextForTokenCounting: jest.fn(content => (typeof content === 'string' ? content : '')),
+    extractImageUrlsFromMessageContent: jest.fn(() => []),
 }))
 
 jest.mock('./firestoreOptimized', () => ({
@@ -120,6 +124,10 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
 
         mockGetUserDataOptimized.mockResolvedValue({ gold: 10, uid: 'user-1' })
         mockGetOpenTasksContextMessage.mockResolvedValue(null)
+        mockGetOptimizedContextMessages.mockResolvedValue([
+            ['system', 'Canonical task context'],
+            ['user', 'Execute this task in a VM'],
+        ])
         mockInteractWithChatStream.mockResolvedValue({})
         mockGetCommonData.mockResolvedValue({
             project: { id: 'project-1', name: 'Project A' },
@@ -297,6 +305,69 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         expect(mockStoreBotAnswerStream.mock.calls[0][18]).toEqual(
             expect.objectContaining({ maxRunWallClockMs: 55 * 60 * 1000 })
         )
+    })
+
+    test('uses canonical task context for a background VM-style predefined prompt', async () => {
+        const canonicalContext = [
+            [
+                'system',
+                'The current conversation is attached to the task below.\n' +
+                    'Project: Alldone Product (ID: project-1)\n' +
+                    'Task ID: task-1\n' +
+                    'Task title: Fix task processor\n' +
+                    'Task description: Show the resolved assistant avatar and run prompts in the background.\n' +
+                    'Relevant task metadata: {"priority":"must_do","taskMetadata":{"source":"predefined"}}',
+            ],
+            ['user', 'Execute this task in a VM'],
+        ]
+        mockGetOptimizedContextMessages.mockResolvedValueOnce(canonicalContext)
+
+        await generatePreConfigTaskResult(
+            'user-1',
+            'project-1',
+            'task-1',
+            ['user-1'],
+            ['PUBLIC'],
+            'assistant-1',
+            'Execute this task in a VM',
+            'en',
+            aiSettings,
+            { source: 'predefined' },
+            null,
+            'tasks',
+            { triggerMessageId: 'message-1' }
+        )
+
+        expect(mockGetOptimizedContextMessages).toHaveBeenCalledWith(
+            'message-1',
+            'project-1',
+            'tasks',
+            'task-1',
+            'en',
+            'Anna',
+            'Be helpful',
+            [],
+            null,
+            'user-1',
+            'assistant-1'
+        )
+        expect(mockInteractWithChatStream).toHaveBeenCalledWith(
+            canonicalContext,
+            'MODEL_GPT5_5',
+            'TEMPERATURE_NORMAL',
+            [],
+            expect.objectContaining({
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                messageId: 'message-1',
+            })
+        )
+        expect(mockStoreBotAnswerStream.mock.calls[0][11]).toEqual({
+            message: 'Execute this task in a VM',
+            content: 'Execute this task in a VM',
+            currentMessageImageUrls: [],
+        })
     })
 
     test('preserves additional assistant and user turns before the latest prompt', async () => {

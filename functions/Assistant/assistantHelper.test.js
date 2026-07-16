@@ -248,12 +248,15 @@ jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     })),
 }))
 
-jest.mock('openai', () =>
-    jest.fn().mockImplementation(() => ({
-        responses: {
-            create: mockResponsesCreate,
-        },
-    }))
+jest.mock(
+    'openai',
+    () =>
+        jest.fn().mockImplementation(() => ({
+            responses: {
+                create: mockResponsesCreate,
+            },
+        })),
+    { virtual: true }
 )
 jest.mock(
     '@dqbd/tiktoken/lite',
@@ -315,6 +318,8 @@ const {
     getHeartbeatSettingsContextMessage,
     getAssistantThreadStateContextMessage,
     getOptimizedContextMessages,
+    buildCurrentObjectContextMessage,
+    buildVmThreadContext,
     buildConversationAfterToolExecution,
     getSilentModeFinalResponseText,
     storeBotAnswerStream,
@@ -327,6 +332,38 @@ const {
     convertResponsesStream,
     interactWithChatStream,
 } = require('./assistantHelper')
+
+describe('Current task context', () => {
+    test('includes task identity, project, title, description, and relevant metadata', () => {
+        const context = buildCurrentObjectContextMessage({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            projectData: { name: 'Alldone Product' },
+            chatData: { title: 'Legacy task chat title' },
+            objectData: {
+                id: 'task-1',
+                name: 'Fix task processor',
+                extendedName: '#Must Fix task processor',
+                description: 'Show the assistant avatar and preserve the full task context.',
+                humanReadableId: 'ALL-97',
+                priority: 'must_do',
+                recurrence: 'never',
+                taskMetadata: { source: 'predefined', execution: 'vm' },
+            },
+        })
+
+        expect(context).toContain('When the user says "this task", they mean this exact task.')
+        expect(context).toContain('Project: Alldone Product (ID: project-1)')
+        expect(context).toContain('Task ID: task-1')
+        expect(context).toContain('Task title: #Must Fix task processor')
+        expect(context).toContain('Task name: Fix task processor')
+        expect(context).toContain('Task description: Show the assistant avatar and preserve the full task context.')
+        expect(context).toContain('"humanReadableId":"ALL-97"')
+        expect(context).toContain('"priority":"must_do"')
+        expect(context).toContain('"taskMetadata":{"source":"predefined","execution":"vm"}')
+    })
+})
 
 describe('Responses API compatibility helpers', () => {
     beforeEach(() => {
@@ -3895,6 +3932,101 @@ describe('assistant thread compaction tool', () => {
         expect(flattened).toContain('do not call get_note to retrieve this same note')
         expect(flattened).toContain('## Note: Launch notes')
         expect(flattened).toContain('Ship checklist and unresolved rollout risks.')
+    })
+
+    test('grounds a VM-style task prompt with the current task name and description', async () => {
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+
+            if (path === 'projects/project-1') {
+                return Promise.resolve({
+                    exists: true,
+                    id: 'project-1',
+                    data: () => ({ name: 'Alldone Product', description: 'Build Alldone.' }),
+                })
+            }
+
+            if (path === 'items/project-1/tasks/task-1') {
+                return Promise.resolve({
+                    exists: true,
+                    id: 'task-1',
+                    data: () => ({
+                        name: 'Fix task processor',
+                        extendedName: 'Fix task processor',
+                        description: 'Show the assistant avatar and preserve full context.',
+                        humanReadableId: 'ALL-97',
+                        taskMetadata: { source: 'predefined' },
+                    }),
+                })
+            }
+
+            if (path === 'chatObjects/project-1/chats/task-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({ title: 'Fix task processor' }),
+                })
+            }
+
+            return Promise.resolve({ exists: false, data: () => ({}) })
+        })
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'message-1',
+                    ref: { path: 'message-1-ref' },
+                    data: () => ({
+                        commentText: 'Execute this task in a VM',
+                        fromAssistant: false,
+                        created: 300,
+                        lastChangeDate: 300,
+                    }),
+                },
+            ],
+        })
+
+        const contextMessages = await getOptimizedContextMessages(
+            'message-1',
+            'project-1',
+            'tasks',
+            'task-1',
+            'en',
+            'Project Bot',
+            'Be helpful.',
+            ['execute_task_in_vm'],
+            null,
+            null,
+            'assistant-1'
+        )
+        const flattened = contextMessages.map(message => message[1]).join('\n')
+
+        expect(flattened).toContain('When the user says "this task", they mean this exact task.')
+        expect(flattened).toContain('Project: Alldone Product (ID: project-1)')
+        expect(flattened).toContain('Task ID: task-1')
+        expect(flattened).toContain('Task title: Fix task processor')
+        expect(flattened).toContain('Task description: Show the assistant avatar and preserve full context.')
+        expect(flattened).toContain('"humanReadableId":"ALL-97"')
+        expect(flattened).toContain('Execute this task in a VM')
+
+        const vmContext = await buildVmThreadContext({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            options: {
+                currentObject: true,
+                userDescription: false,
+                projectDescription: false,
+                userMemory: false,
+                assistantPersona: false,
+                conversationHistory: false,
+                chatAttachments: false,
+                dateTime: false,
+                language: false,
+            },
+        })
+
+        expect(vmContext).toContain('Task title: Fix task processor')
+        expect(vmContext).toContain('Task description: Show the assistant avatar and preserve full context.')
+        expect(vmContext).toContain('Task ID: task-1')
     })
 
     test('rebuilds continuation conversation from compacted state after the tool runs', () => {

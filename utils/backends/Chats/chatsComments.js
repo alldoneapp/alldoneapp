@@ -703,7 +703,11 @@ export async function createObjectMessage(
                     })
                 })
         }
+
+        return commentId
     }
+
+    return null
 }
 
 export const createChat = async (
