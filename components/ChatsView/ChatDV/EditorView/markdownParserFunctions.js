@@ -11,9 +11,10 @@ export const REGEX_BOLD = /\*\*(.*?)\*\*/g
 export const REGEX_ITALIC = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g
 export const REGEX_STRIKETHROUGH = /~~(.*?)~~/g
 
-// ATX headings may be indented by up to three spaces and use one to six # characters.
-// Four leading spaces are intentionally excluded because they start an indented code block.
-export const REGEX_ATX_HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*)|[ \t]*)$/
+// Line-based markdown patterns
+export const REGEX_HEADER_1 = /^#\s+(.+)$/
+export const REGEX_HEADER_2 = /^##\s+(.+)$/
+export const REGEX_HEADER_3 = /^###\s+(.+)$/
 export const REGEX_BULLET_LIST = /^[-*]\s+(.+)$/
 export const REGEX_NUMBERED_LIST = /^(\d+)\.\s+(.+)$/
 export const REGEX_HORIZONTAL_RULE = /^(-{3,}|_{3,}|\*{3,})$/
@@ -21,15 +22,6 @@ export const REGEX_CHECKBOX_UNCHECKED = /^-\s+\[ \]\s+(.+)$/
 export const REGEX_CHECKBOX_CHECKED = /^-\s+\[x\]\s+(.+)$/i
 
 export { getMarkdownTableAt, getMarkdownTableColumnWidths, splitMarkdownTableRow }
-
-const parseAtxHeading = line => {
-    const match = line.match(REGEX_ATX_HEADING)
-    if (!match) return null
-
-    // A trailing # sequence only closes an ATX heading when whitespace precedes it.
-    const text = (match[2] || '').replace(/[ \t]+#+[ \t]*$/, '').replace(/[ \t]+$/, '')
-    return { type: `h${match[1].length}`, text }
-}
 
 /**
  * Parse a single line and determine its markdown type
@@ -44,9 +36,19 @@ export const parseLineType = line => {
         return { type: 'hr', text: '' }
     }
 
-    // Check the original line so Markdown's three-space indentation limit is preserved.
-    const heading = parseAtxHeading(line)
-    if (heading) return heading
+    // Check for headers
+    const h3Match = trimmedLine.match(REGEX_HEADER_3)
+    if (h3Match) {
+        return { type: 'h3', text: h3Match[1] }
+    }
+    const h2Match = trimmedLine.match(REGEX_HEADER_2)
+    if (h2Match) {
+        return { type: 'h2', text: h2Match[1] }
+    }
+    const h1Match = trimmedLine.match(REGEX_HEADER_1)
+    if (h1Match) {
+        return { type: 'h1', text: h1Match[1] }
+    }
 
     // Check for checkboxes
     const uncheckedMatch = trimmedLine.match(REGEX_CHECKBOX_UNCHECKED)
@@ -254,7 +256,9 @@ export const containsMarkdown = text => {
         const trimmed = line.trim()
         // Check line-level markdown
         if (
-            parseAtxHeading(line) ||
+            /^#\s+/.test(trimmed) ||
+            /^##\s+/.test(trimmed) ||
+            /^###\s+/.test(trimmed) ||
             /^[-*]\s+/.test(trimmed) ||
             /^\d+\.\s+/.test(trimmed) ||
             REGEX_HORIZONTAL_RULE.test(trimmed)

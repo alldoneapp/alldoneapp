@@ -8,10 +8,12 @@ import Icon from '../../../Icon'
 import CheckBox from '../../../CheckBox'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
-import { submitEmailLabelFeedback } from '../../../../utils/backends/EmailLine/emailLineBackend'
+import { performEmailLineAction, submitEmailLabelFeedback } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import { markEmailLabelPickerInteraction, openUrlInNewTab, resolveUnsubscribeUrl } from '../emailLineHelper'
+import URLTrigger from '../../../../URLSystem/URLTrigger'
+import NavigationService from '../../../../utils/NavigationService'
+import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import DraftReplyPopup from './DraftReplyPopup'
-import EmailTaskAction from '../EmailTaskAction'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 10000 }
 
@@ -68,6 +70,10 @@ export default function EmailRow({
     const [feedbackNote, setFeedbackNote] = useState('')
     const [feedbackFollowUpType, setFeedbackFollowUpType] = useState(row?.followUpType || null)
     const [feedbackState, setFeedbackState] = useState('idle') // idle | sending | done | error
+    // A task may already exist for this email from a previous session — the server
+    // persists it on the labeling audit record and returns it as row.taskCreated.
+    const [taskState, setTaskState] = useState(row?.taskCreated ? 'done' : 'idle') // idle | creating | done | error
+    const [createdTask, setCreatedTask] = useState(row?.taskCreated || null)
     const smallScreen = useSelector(state => state.smallScreen)
     if (!row) return null
 
@@ -114,6 +120,27 @@ export default function EmailRow({
         } catch (error) {
             setFeedbackState('error')
         }
+    }
+
+    const createTask = async () => {
+        setTaskState('creating')
+        try {
+            const result = await performEmailLineAction(connectionId, {
+                action: 'createTask',
+                messageIds: row.messageIds || [row.messageId],
+                labelId: currentLabelId || null,
+                labelName: currentLabelName || null,
+            })
+            if (result?.taskId) setCreatedTask({ taskId: result.taskId, projectId: result.projectId })
+            setTaskState('done')
+        } catch (error) {
+            setTaskState('error')
+        }
+    }
+
+    const openCreatedTask = () => {
+        if (!createdTask?.taskId || !createdTask?.projectId) return
+        URLTrigger.processUrl(NavigationService, getDvMainTabLink(createdTask.projectId, createdTask.taskId, 'tasks'))
     }
 
     const checkbox = pending ? (
@@ -379,14 +406,33 @@ export default function EmailRow({
             >
                 <Icon name="help-circle" size={16} color={hasReasoning ? colors.Primary100 : colors.Text03} />
             </TouchableOpacity>
-            <EmailTaskAction
-                connectionId={connectionId}
-                messageIds={row.messageIds || [row.messageId]}
-                initialTask={row.taskCreated}
-                labelId={currentLabelId || null}
-                labelName={currentLabelName || null}
-                compact
-            />
+            {taskState === 'done' ? (
+                <TouchableOpacity
+                    style={localStyles.actionButton}
+                    onPress={openCreatedTask}
+                    disabled={!createdTask?.taskId || !createdTask?.projectId}
+                    accessibilityLabel={translate('Task created')}
+                >
+                    <Icon name="check-square" size={16} color={colors.UtilityGreen300} />
+                </TouchableOpacity>
+            ) : (
+                <TouchableOpacity
+                    style={localStyles.actionButton}
+                    onPress={createTask}
+                    disabled={taskState === 'creating'}
+                    accessibilityLabel={translate('Create task')}
+                >
+                    {taskState === 'creating' ? (
+                        <ActivityIndicator size="small" color={colors.Text03} />
+                    ) : (
+                        <Icon
+                            name="plus-square"
+                            size={16}
+                            color={taskState === 'error' ? colors.UtilityRed200 : colors.Text03}
+                        />
+                    )}
+                </TouchableOpacity>
+            )}
             <Popover
                 isOpen={draftOpen}
                 position={['left', 'bottom', 'top', 'right']}

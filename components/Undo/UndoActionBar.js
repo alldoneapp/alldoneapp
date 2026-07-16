@@ -19,7 +19,6 @@ const isTypingTarget = target => {
 export default function UndoActionBar() {
     const loggedIn = useSelector(state => state.loggedIn)
     const userId = useSelector(state => state.loggedUser?.uid)
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const [action, setAction] = useState(null)
     const [actions, setActions] = useState([])
     const [visible, setVisible] = useState(false)
@@ -100,48 +99,21 @@ export default function UndoActionBar() {
 
     const isUndone = action.status === 'undone'
     const message = error ? error : isUndone ? `${translate('Undone')}: ${action.label}` : action.label
-    const stopPropagation = event => event?.stopPropagation?.()
 
     return (
-        <SafeAreaView
-            pointerEvents="box-none"
-            style={[undoActionBarStyles.overlay, mobile && undoActionBarStyles.mobileOverlay]}
-        >
+        <SafeAreaView pointerEvents="box-none" style={undoActionBarStyles.overlay}>
             <View style={undoActionBarStyles.container} accessibilityLiveRegion="polite">
-                <TouchableOpacity
-                    activeOpacity={1}
-                    style={localStyles.dismissArea}
-                    onPress={() => setVisible(false)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${translate('Dismiss')}: ${message}`}
-                    testID="undo-action-bar"
-                />
-                <Text pointerEvents="none" numberOfLines={2} style={[styles.body2, localStyles.message]}>
+                <Text numberOfLines={2} style={[styles.body2, localStyles.message]}>
                     {message}
                 </Text>
                 {busy ? (
-                    <ActivityIndicator pointerEvents="none" color={colors.UtilityBlue200} size="small" />
+                    <ActivityIndicator color={colors.UtilityBlue200} size="small" />
                 ) : error ? (
-                    <TouchableOpacity
-                        onPress={event => {
-                            stopPropagation(event)
-                            setVisible(false)
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={translate('Dismiss')}
-                    >
+                    <TouchableOpacity onPress={() => setVisible(false)}>
                         <Text style={[styles.button, localStyles.action]}>{translate('Dismiss')}</Text>
                     </TouchableOpacity>
                 ) : (
-                    <TouchableOpacity
-                        onPress={event => {
-                            stopPropagation(event)
-                            reverse(action, isUndone ? 'redo' : 'undo')
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={translate(isUndone ? 'Redo' : 'Undo')}
-                        testID="undo-action-button"
-                    >
+                    <TouchableOpacity onPress={() => reverse(action, isUndone ? 'redo' : 'undo')}>
                         <Text style={[styles.button, localStyles.action]}>{translate(isUndone ? 'Redo' : 'Undo')}</Text>
                     </TouchableOpacity>
                 )}

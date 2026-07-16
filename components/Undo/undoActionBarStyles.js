@@ -12,11 +12,8 @@ const undoActionBarStyles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
     },
-    mobileOverlay: {
-        paddingHorizontal: 24,
-    },
     container: {
-        marginTop: 64,
+        marginTop: 12,
         minHeight: 48,
         maxWidth: 560,
         width: '100%',
@@ -31,14 +28,6 @@ const undoActionBarStyles = StyleSheet.create({
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 4 },
         elevation: 8,
-    },
-    dismissArea: {
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-        borderRadius: 8,
     },
     message: {
         color: '#FFFFFF',
