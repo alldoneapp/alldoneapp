@@ -4,29 +4,54 @@ function ref(path) {
     return {
         path,
         get: async () => ({ exists: store[path] !== undefined, data: () => store[path] || {} }),
-        set: (data, opts) => {
+        set: async (data, opts) => {
             store[path] = opts?.merge ? { ...(store[path] || {}), ...data } : { ...data }
+        },
+        delete: async () => {
+            delete store[path]
         },
     }
 }
 
-function db() {
+function db(queryDocs = []) {
+    const query = {
+        where: () => query,
+        limit: () => query,
+        get: async () => ({ size: queryDocs.length, docs: queryDocs }),
+    }
     return {
         doc: ref,
+        collection: () => query,
         runTransaction: async fn =>
             fn({
                 get: target => target.get(),
                 set: (target, data, opts) => target.set(data, opts),
+                delete: target => target.delete(),
             }),
     }
 }
 
-const { createVmInteractionRequest, answerVmInteractionRequest, sanitizeVmInteraction } = require('./vmInteraction')
+const {
+    createVmInteractionRequest,
+    answerVmInteractionRequest,
+    expireVmInteractions,
+    sanitizeVmInteraction,
+} = require('./vmInteraction')
 
 describe('VM interactions', () => {
     beforeEach(() => {
         Object.keys(store).forEach(key => delete store[key])
-        store['pendingWebhooks/run-1'] = { kind: 'vm_job', userId: 'user-1', status: 'running' }
+        store['pendingWebhooks/run-1'] = {
+            correlationId: 'run-1',
+            kind: 'vm_job',
+            userId: 'user-1',
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            statusCommentId: 'comment-1',
+            status: 'running',
+        }
         store['vmSessions/project-1__chat-1'] = {
             activeLeaseOwner: 'runtime-owner',
             activeCorrelationId: 'run-1',
@@ -82,6 +107,42 @@ describe('VM interactions', () => {
             blockedReason: 'plan_review',
             activeLeaseOwner: null,
         })
+        expect(store['chatNotifications/project-1/user-1/comment-1']).toMatchObject({
+            chatId: 'chat-1',
+            chatType: 'tasks',
+            followed: true,
+            creatorId: 'assistant-1',
+            creatorType: 'assistant',
+            vmRunId: 'run-1',
+            vmInteractionRequestId: 'request-1',
+            vmInteractionKind: 'plan_review',
+        })
+    })
+
+    test('creates a red actionable notification when the VM asks a question', async () => {
+        const request = {
+            db: db(),
+            pendingRef: ref('pendingWebhooks/run-1'),
+            sessionRef: ref('vmSessions/project-1__chat-1'),
+            correlationId: 'run-1',
+            requestId: 'request-1',
+            userId: 'user-1',
+            provider: 'codex',
+            kind: 'clarification',
+            payload: { questions: [{ question: 'Which implementation?' }] },
+            now: 1000,
+        }
+        await createVmInteractionRequest(request)
+        await createVmInteractionRequest(request)
+
+        expect(store['chatNotifications/project-1/user-1/comment-1']).toMatchObject({
+            followed: true,
+            date: 1000,
+            vmInteractionRequestId: 'request-1',
+            vmInteractionKind: 'clarification',
+        })
+        // Retries upsert the notification for the live status comment instead of adding another.
+        expect(Object.keys(store).filter(path => path.includes('chatNotifications/'))).toHaveLength(1)
     })
 
     test('answers exactly once and grants the resume attempt a dispatch lease', async () => {
@@ -121,6 +182,7 @@ describe('VM interactions', () => {
             blockedByCorrelationId: null,
             activeLeaseOwner: 'dispatch:run-1',
         })
+        expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
 
         await expect(
             answerVmInteractionRequest({
@@ -200,5 +262,37 @@ describe('VM interactions', () => {
             blockedByCorrelationId: null,
             activeLeaseOwner: 'dispatch:run-1',
         })
+        expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
+    })
+
+    test('clears a stale red notification when an unanswered interaction expires', async () => {
+        const pendingDoc = {
+            id: 'run-1',
+            ref: ref('pendingWebhooks/run-1'),
+            data: () => store['pendingWebhooks/run-1'],
+        }
+        const database = db([pendingDoc])
+        await createVmInteractionRequest({
+            db: database,
+            pendingRef: pendingDoc.ref,
+            sessionRef: ref('vmSessions/project-1__chat-1'),
+            correlationId: 'run-1',
+            requestId: 'request-1',
+            userId: 'user-1',
+            provider: 'claude',
+            kind: 'plan_review',
+            payload: { plan: 'Plan' },
+            now: 1000,
+            ttlMs: 100,
+        })
+
+        expect(store['chatNotifications/project-1/user-1/comment-1']).toMatchObject({ followed: true })
+        await expect(expireVmInteractions(database, 1100)).resolves.toMatchObject({ expired: 1, errors: 0 })
+        expect(store['pendingWebhooks/run-1']).toMatchObject({
+            status: 'failed',
+            failureReason: 'interaction_expired',
+            currentInteraction: null,
+        })
+        expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
     })
 })
