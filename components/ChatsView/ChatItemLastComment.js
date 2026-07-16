@@ -6,13 +6,13 @@ import SocialText from '../UIControls/SocialText/SocialText'
 import { getUserPresentationDataInProject } from '../ContactsView/Utils/ContactsHelper'
 import { CHAT_LAST_COMMENT_PREVIEW_CHARACTER_LIMIT, shrinkTagText } from '../../functions/Utils/parseTextUtils'
 
-export default function ChatItemLastComment({ projectId, commentOwnerId, comment }) {
+export default function ChatItemLastComment({ projectId, commentOwnerId, comment, inCommentPopup }) {
     const editorData = getUserPresentationDataInProject(projectId, commentOwnerId)
 
     return (
         <SocialText
             style={localStyles.lastCommentPreview}
-            textStyle={localStyles.text}
+            textStyle={[localStyles.text, inCommentPopup && localStyles.textInCommentPopup]}
             normalStyle={{ whiteSpace: 'normal' }}
             wrapText
             numberOfLines={1}
@@ -31,5 +31,8 @@ const localStyles = StyleSheet.create({
         ...styles.caption2,
         color: colors.Text03,
         alignItems: 'flex-start',
+    },
+    textInCommentPopup: {
+        color: colors.UtilityBlue125,
     },
 })

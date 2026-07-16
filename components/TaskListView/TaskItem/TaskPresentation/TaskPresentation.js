@@ -185,7 +185,7 @@ function TaskPresentation(
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, userProjectIds, projectId, false)
     const anonymousGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, userProjectIds, projectId, true)
 
-    const restingBackgroundColor = inCommentPopup ? colors.UtilityBlue100 : task.isSubtask ? colors.Grey200 : '#ffffff'
+    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : task.isSubtask ? colors.Grey200 : '#ffffff'
 
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
@@ -199,12 +199,13 @@ function TaskPresentation(
         extrapolate: 'clamp',
     })
 
-    const highlightColor =
-        lastTaskAddedId === task.id
-            ? lastAddedTaskBackgroundColor
-            : hasStar.toLowerCase() !== '#ffffff'
-            ? backColorHighlight
-            : backColor
+    const highlightColor = inCommentPopup
+        ? backColor
+        : lastTaskAddedId === task.id
+        ? lastAddedTaskBackgroundColor
+        : hasStar.toLowerCase() !== '#ffffff'
+        ? backColorHighlight
+        : backColor
 
     const showVerticalEllipsis = inMyDayAndNotSubtask
         ? TasksHelper.showWrappedTaskEllipsisInByTime(
@@ -340,6 +341,7 @@ function TaskPresentation(
                                     showVerticalEllipsisInByTime={inMyDayAndNotSubtask && showVerticalEllipsis}
                                     leadingVmStatusTag={leadingVmStatusTag}
                                     leadingPriorityTag={leadingPriorityTag}
+                                    useCommentPopupTextColor={inCommentPopup}
                                 />
                             </View>
                             {inMyDayAndNotSubtask && (

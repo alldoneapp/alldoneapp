@@ -19,6 +19,7 @@ import { Themes } from '../RootView/Themes'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import ChatItemLastComment from './ChatItemLastComment'
 import { getUserPresentationDataInProject } from '../ContactsView/Utils/ContactsHelper'
+import { getChatItemBackgroundColor } from './chatItemBackground'
 
 export default function ChatItem({ chat, project, openEditModal, inCommentPopup, onPress }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -32,6 +33,8 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
 
     const isSticky = chat.stickyData.days > 0
     const theme = getTheme(Themes, loggedUser.themeName, 'RootView.StickyItem')
+    const backgroundColor = getChatItemBackgroundColor(chat.hasStar, inCommentPopup)
+    const usesCommentPopupBackground = inCommentPopup
 
     const onOpenEditModal = () => {
         if (showFloatPopup === 0 && openEditModal && !exitsOpenModals()) {
@@ -45,8 +48,8 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
         <View
             style={[
                 localStyles.container,
-                { backgroundColor: chat.hasStar.toLowerCase() === '#ffffff' ? '#ffffff' : chat.hasStar },
-                isSticky && [localStyles.containerSticky, theme.containerSticky(project.color)],
+                isSticky && !inCommentPopup && [localStyles.containerSticky, theme.containerSticky(project.color)],
+                { backgroundColor },
             ]}
         >
             <TouchableOpacity onPress={inCommentPopup ? onPress : onOpenEditModal} accessible={false}>
@@ -62,12 +65,16 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
                         <View style={localStyles.descriptionContainer}>
                             <SocialText
                                 elementId={`social_text_${project.id}_${chat.id}`}
-                                style={[styles.body1, localStyles.descriptionText, { color: colors.Text01 }]}
+                                style={[
+                                    styles.body1,
+                                    localStyles.descriptionText,
+                                    { color: usesCommentPopupBackground ? colors.UtilityBlue100 : colors.Text01 },
+                                ]}
                                 normalStyle={{ whiteSpace: 'normal' }}
                                 numberOfLines={3}
                                 wrapText
                                 projectId={project.id}
-                                bgColor={'#ffffff'}
+                                bgColor={backgroundColor}
                                 leftCustomElement={IconToRender(chat, project)}
                             >
                                 {chat.title}
@@ -75,7 +82,12 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
                         </View>
                     </View>
                     <View style={localStyles.tagsArea}>
-                        <Text style={[styles.caption2, { color: colors.Text03 }]}>
+                        <Text
+                            style={[
+                                styles.caption2,
+                                { color: usesCommentPopupBackground ? colors.UtilityBlue125 : colors.Text03 },
+                            ]}
+                        >
                             {parseDate(chat.lastEditionDate)}
                         </Text>
                         {!!notificationsAmount && (
@@ -103,6 +115,7 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
                         projectId={project.id}
                         commentOwnerId={chat.commentsData.lastCommentOwnerId}
                         comment={chat.commentsData.lastComment}
+                        inCommentPopup={usesCommentPopupBackground}
                     />
                 )}
             </TouchableOpacity>

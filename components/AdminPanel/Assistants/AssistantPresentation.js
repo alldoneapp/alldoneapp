@@ -72,11 +72,15 @@ export default function AssistantPresentation({ projectId, assistant, onAssistan
                 <View style={localStyles.descriptionContainer}>
                     <SocialText
                         elementId={`social_text_$${assistantId}`}
-                        style={[styles.body1, localStyles.descriptionText, { color: colors.Text01 }]}
+                        style={[
+                            styles.body1,
+                            localStyles.descriptionText,
+                            { color: inCommentPopup ? colors.UtilityBlue100 : colors.Text01 },
+                        ]}
                         normalStyle={{ whiteSpace: 'normal' }}
                         numberOfLines={1}
                         wrapText={true}
-                        bgColor={'#ffffff'}
+                        bgColor={inCommentPopup ? colors.Secondary200 : '#ffffff'}
                     >
                         {displayName}
                     </SocialText>

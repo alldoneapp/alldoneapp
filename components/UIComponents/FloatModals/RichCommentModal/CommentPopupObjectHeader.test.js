@@ -106,11 +106,22 @@ describe('CommentPopupObjectHeader', () => {
         const boundary = tree.root.find(node => node.props['data-testid'] === 'comment-popup-object-tasks')
         const event = { stopPropagation: jest.fn() }
 
-        expect(boundary.props.style).toEqual({ width: '100%' })
+        expect(boundary.props.style).toEqual({
+            width: '100%',
+            backgroundColor: '#1A3289',
+            borderRadius: 4,
+        })
 
         boundary.props.onClick(event)
 
         expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+    })
+
+    it('uses the same dark popup background for non-task objects', async () => {
+        const tree = await renderHeader('topics')
+        const boundary = tree.root.find(node => node.props['data-testid'] === 'comment-popup-object-topics')
+
+        expect(boundary.props.style.backgroundColor).toBe('#1A3289')
     })
 
     it('shows a graceful fallback for deleted objects', async () => {

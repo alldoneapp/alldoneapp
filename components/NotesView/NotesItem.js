@@ -60,7 +60,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
             : null
     const contactPhotoURL = contact ? ContactsHelper.getContactPhotoURL(contact, false) : null
 
-    const outputColors = [colors.UtilityYellow125, '#ffffff', colors.UtilityGreen125]
+    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
+    const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
         outputRange: outputColors,
@@ -72,7 +73,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
         outputRange: [colors.UtilityYellow125, note.hasStar, colors.UtilityGreen125],
         extrapolate: 'clamp',
     })
-    const highlightColor = note.hasStar.toLowerCase() !== '#ffffff' ? backColorHighlight : backColor
+    const highlightColor = inCommentPopup || note.hasStar.toLowerCase() === '#ffffff' ? backColor : backColorHighlight
+    const usesCommentPopupBackground = inCommentPopup
 
     useEffect(() => {
         return () => {
@@ -273,14 +275,25 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                                     </TouchableOpacity>
                                     <View style={{ flex: 1, minWidth: 0, overflow: 'hidden', marginHorizontal: 12 }}>
                                         <SocialText
-                                            style={[styles.body1, { color: colors.Text01 }]}
+                                            style={[
+                                                styles.body1,
+                                                {
+                                                    color: usesCommentPopupBackground
+                                                        ? colors.UtilityBlue100
+                                                        : colors.Text01,
+                                                },
+                                            ]}
                                             numberOfLines={1}
                                             showEllipsis={true}
                                             task={{ linkBack: '' }}
                                             inTaskDetailedView={false}
                                             projectId={project.id}
                                             hasStar={note.hasStar}
-                                            bgColor={note.hasStar ? backColorHighlight : backColor}
+                                            bgColor={
+                                                note.hasStar.toLowerCase() !== '#ffffff'
+                                                    ? backColorHighlight
+                                                    : backColor
+                                            }
                                         >
                                             {note !== undefined && (note.title != null || note.extendedTitle != null)
                                                 ? note.extendedTitle != null && note.extendedTitle !== ''
@@ -324,12 +337,17 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                             <View style={localStyles.notePreview}>
                                 <View style={{ flex: 1, marginLeft: 8 }}>
                                     <SocialText
-                                        style={localStyles.description}
+                                        style={[
+                                            localStyles.description,
+                                            usesCommentPopupBackground && localStyles.textInCommentPopup,
+                                        ]}
                                         normalStyle={{ whiteSpace: 'normal' }}
                                         numberOfLines={1}
                                         projectId={project.id}
                                         hasStar={note.hasStar}
-                                        bgColor={note.hasStar ? backColorHighlight : backColor}
+                                        bgColor={
+                                            note.hasStar.toLowerCase() !== '#ffffff' ? backColorHighlight : backColor
+                                        }
                                         inFeedComment={true}
                                         showEllipsis={true}
                                     >
@@ -342,7 +360,11 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                                 </View>
                             </View>
 
-                            <LastEditionData note={note} projectId={project.id} />
+                            <LastEditionData
+                                note={note}
+                                projectId={project.id}
+                                inCommentPopup={usesCommentPopupBackground}
+                            />
                         </View>
                     </TouchableOpacity>
                 </Animated.View>
@@ -411,6 +433,9 @@ const localStyles = StyleSheet.create({
         color: colors.Text02,
         display: 'flex',
         whiteSpace: 'normal',
+    },
+    textInCommentPopup: {
+        color: colors.UtilityBlue125,
     },
     dateAndSubHint: {
         flex: 1,

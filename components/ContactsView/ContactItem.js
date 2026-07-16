@@ -165,7 +165,8 @@ export default class ContactItem extends Component {
         const showContact = isMember || !ContactsHelper.isPrivateContact(contact)
         const contactHighlightColor = ProjectHelper.getUserHighlightInProject(projectIndex, contact)
 
-        const outputColors = [colors.UtilityYellow125, '#ffffff', colors.UtilityGreen125]
+        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
+        const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
         const backColor = panColor.interpolate({
             inputRange: [-100, 0, 100],
             outputRange: outputColors,
@@ -188,7 +189,9 @@ export default class ContactItem extends Component {
             contact.extendedDescription,
             true
         )
-        const highlightColor = contactHighlightColor.toLowerCase() !== '#ffffff' ? backColorHighlight : backColor
+        const highlightColor =
+            inCommentPopup || contactHighlightColor.toLowerCase() === '#ffffff' ? backColor : backColorHighlight
+        const usesCommentPopupBackground = inCommentPopup
 
         if (isMember) {
             ContactsHelper.getAndAssignUserPrivacy(projectIndex, contact)
@@ -313,7 +316,10 @@ export default class ContactItem extends Component {
                                 <View style={localStyles.userData}>
                                     <SocialText
                                         showEllipsis
-                                        style={localStyles.name}
+                                        style={[
+                                            localStyles.name,
+                                            usesCommentPopupBackground && localStyles.textInCommentPopup,
+                                        ]}
                                         numberOfLines={1}
                                         bgColor={
                                             contactHighlightColor.toLowerCase() !== '#ffffff'
@@ -326,12 +332,25 @@ export default class ContactItem extends Component {
                                     </SocialText>
 
                                     {!!userInfo && (
-                                        <Text style={localStyles.description} numberOfLines={1}>
+                                        <Text
+                                            style={[
+                                                localStyles.description,
+                                                usesCommentPopupBackground && localStyles.secondaryTextInCommentPopup,
+                                            ]}
+                                            numberOfLines={1}
+                                        >
                                             {userInfo}
                                         </Text>
                                     )}
 
-                                    <Text style={[styles.caption2, localStyles.updatedInfo]} numberOfLines={1}>
+                                    <Text
+                                        style={[
+                                            styles.caption2,
+                                            localStyles.updatedInfo,
+                                            usesCommentPopupBackground && localStyles.secondaryTextInCommentPopup,
+                                        ]}
+                                        numberOfLines={1}
+                                    >
                                         {parseDate(contact.lastEditionDate)}
                                     </Text>
                                 </View>
@@ -517,6 +536,12 @@ const localStyles = StyleSheet.create({
     },
     updatedInfo: {
         color: colors.Text03,
+    },
+    textInCommentPopup: {
+        color: colors.UtilityBlue100,
+    },
+    secondaryTextInCommentPopup: {
+        color: colors.UtilityBlue125,
     },
     buttonSection: {
         position: 'absolute',

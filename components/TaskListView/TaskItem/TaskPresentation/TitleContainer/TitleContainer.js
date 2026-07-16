@@ -1,7 +1,7 @@
 import React from 'react'
 import { StyleSheet, View } from 'react-native'
 
-import styles from '../../../../styles/global'
+import styles, { colors } from '../../../../styles/global'
 import SocialText from '../../../../UIControls/SocialText/SocialText'
 import { isGmailLabelFollowUpTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 import GmailTag from '../../../../Tags/GmailTag'
@@ -20,6 +20,7 @@ export default function TitleContainer({
     showVerticalEllipsisInByTime,
     leadingVmStatusTag,
     leadingPriorityTag,
+    useCommentPopupTextColor,
 }) {
     const gmailTag = isGmailLabelFollowUpTask(task) ? (
         <GmailTag gmailData={task.gmailData} propStyles={localStyles.gmailTag} showLabel iconSize={12} />
@@ -48,6 +49,7 @@ export default function TitleContainer({
                     localStyles.descriptionText,
                     task.isSubtask ? localStyles.descriptionTextSubtask : undefined,
                     task.isSubtask && task.done ? { color: colors.Text03 } : undefined,
+                    useCommentPopupTextColor ? { color: colors.UtilityBlue100 } : undefined,
                 ]}
                 onPress={toggleModal}
                 numberOfLines={3}

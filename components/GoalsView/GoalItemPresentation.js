@@ -432,7 +432,8 @@ export default class GoalItemPresentation extends PureComponent {
         const projectColor = ProjectHelper.getProjectColorById(projectId)
         const highLightColor = isHighlight ? goal.hasStar : PROJECT_COLOR_SYSTEM[projectColor].PROJECT_ITEM_ACTIVE
 
-        const outputColors = [colors.UtilityYellow125, '#ffffff', colors.UtilityGreen125]
+        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
+        const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
         const backColor = panColor.interpolate({
             inputRange: [-100, 0, 100],
             outputRange: outputColors,
@@ -547,14 +548,14 @@ export default class GoalItemPresentation extends PureComponent {
                                         style={[
                                             styles.body1,
                                             localStyles.descriptionText,
-                                            { color: colors.Text01 },
+                                            { color: inCommentPopup ? colors.UtilityBlue100 : colors.Text01 },
                                             activeDragGoalMode && { paddingRight: 28 },
                                         ]}
                                         normalStyle={{ whiteSpace: 'normal' }}
                                         numberOfLines={3}
                                         wrapText={true}
                                         projectId={projectId}
-                                        bgColor={'#ffffff'}
+                                        bgColor={backColor}
                                     >
                                         {extendedName}
                                     </SocialText>

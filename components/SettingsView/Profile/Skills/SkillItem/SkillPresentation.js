@@ -75,12 +75,16 @@ export default function SkillPresentation({ projectId, skill, higherSkill, onPre
                             <View style={localStyles.descriptionContainer}>
                                 <SocialText
                                     elementId={`social_text_$${skillId}`}
-                                    style={[styles.body1, localStyles.descriptionText, { color: colors.Text01 }]}
+                                    style={[
+                                        styles.body1,
+                                        localStyles.descriptionText,
+                                        { color: inCommentPopup ? colors.UtilityBlue100 : colors.Text01 },
+                                    ]}
                                     normalStyle={{ whiteSpace: 'normal' }}
                                     numberOfLines={1}
                                     wrapText={true}
                                     projectId={projectId}
-                                    bgColor={'#ffffff'}
+                                    bgColor={inCommentPopup ? colors.Secondary200 : '#ffffff'}
                                 >
                                     {extendedName}
                                 </SocialText>

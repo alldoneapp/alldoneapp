@@ -95,6 +95,7 @@ export default function CommentPopupObjectHeader({ projectId, objectId, objectTy
     const normalizedObjectType = objectType === 'users' ? 'contacts' : objectType
     const projectIndex = loggedUserProjects.findIndex(item => item.id === projectId)
     const isMember = normalizedObjectType === 'contacts' && !!TasksHelper.getUserInProject(projectId, objectId)
+    const backgroundColor = colors.Secondary200
 
     const stopEventPropagation = event => event?.stopPropagation?.()
 
@@ -104,9 +105,9 @@ export default function CommentPopupObjectHeader({ projectId, objectId, objectTy
             onClick={stopEventPropagation}
             onMouseDown={stopEventPropagation}
             onTouchStart={stopEventPropagation}
-            style={{ width: '100%' }}
+            style={{ width: '100%', backgroundColor, borderRadius: 4 }}
         >
-            <View style={localStyles.objectContainer}>
+            <View style={[localStyles.objectContainer, { backgroundColor }]}>
                 {renderObject({
                     isMember,
                     object,
@@ -202,6 +203,7 @@ const UnavailableObject = ({ objectName }) => (
 
 const localStyles = StyleSheet.create({
     objectContainer: {
+        borderRadius: 4,
         marginBottom: 20,
         width: '100%',
     },

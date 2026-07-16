@@ -6,7 +6,7 @@ import moment from 'moment'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { getUserPresentationDataInProject } from '../ContactsView/Utils/ContactsHelper'
 
-export default function LastEditionData({ note, projectId }) {
+export default function LastEditionData({ note, projectId, inCommentPopup }) {
     const [editorName, setEditorName] = useState('')
 
     const { lastEditionDate, views, lastEditorId } = note
@@ -23,7 +23,7 @@ export default function LastEditionData({ note, projectId }) {
 
     return (
         <View style={localStyles.dateAndSubHint}>
-            <Text style={[styles.caption2, localStyles.subHintText]}>
+            <Text style={[styles.caption2, localStyles.subHintText, inCommentPopup && localStyles.textInCommentPopup]}>
                 {`${parseDate(lastEditionDate)} • ${editorName} • ${views} views`}
             </Text>
         </View>
@@ -43,5 +43,8 @@ const localStyles = StyleSheet.create({
     subHintText: {
         color: colors.Text03,
         alignItems: 'flex-start',
+    },
+    textInCommentPopup: {
+        color: colors.UtilityBlue125,
     },
 })
