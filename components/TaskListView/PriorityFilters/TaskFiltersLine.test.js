@@ -91,7 +91,7 @@ describe('TaskFiltersLine', () => {
         useSelector.mockImplementation(selector => selector(state))
     }
 
-    test('renders one control with clearly grouped priority and VM-state choices', () => {
+    test('renders one control without visible priority or VM-state group headings', () => {
         mockCollectTaskPriorityCounts.mockReturnValue({ counts: { must_do: 2, none: 1 }, total: 3, prioritized: 2 })
         mockCollectTaskVmStateCounts.mockReturnValue({ counts: { paused: 1, failed: 1 }, total: 3, available: 2 })
         setState({ taskPriorityFilters: ['must_do'], taskVmStateFilters: ['paused'] })
@@ -106,6 +106,8 @@ describe('TaskFiltersLine', () => {
         ).toHaveLength(1)
         expect(component.root.findByProps({ testID: 'task-filter-priority-group' })).toBeTruthy()
         expect(component.root.findByProps({ testID: 'task-filter-vm-state-group' })).toBeTruthy()
+        expect(component.root.findAll(node => node.props.children === 'Priority')).toHaveLength(0)
+        expect(component.root.findAll(node => node.props.children === 'VM States')).toHaveLength(0)
         expect(
             component.root.findByProps({ testID: 'task-filter-active-count' }).findByType('Text').props.children
         ).toBe(2)
@@ -139,6 +141,18 @@ describe('TaskFiltersLine', () => {
         })
         expect(horizontalScroll.findByProps({ testID: 'task-filter-priority-group' })).toBeTruthy()
         expect(horizontalScroll.findByProps({ testID: 'task-filter-vm-state-group' })).toBeTruthy()
+        const expectedFilterTestIds = [
+            'task-filter-all',
+            'task-priority-filter-must_do',
+            'task-priority-filter-should_do',
+            'task-priority-filter-could_do',
+            'task-priority-filter-do_later',
+            'task-priority-filter-none',
+            'task-vm-state-filter-in_progress',
+            'task-vm-state-filter-paused',
+            'task-vm-state-filter-failed',
+        ]
+        expectedFilterTestIds.forEach(testID => expect(horizontalScroll.findByProps({ testID })).toBeTruthy())
     })
 
     test('multi-selects priority and VM state in the same control and clears both via All', () => {

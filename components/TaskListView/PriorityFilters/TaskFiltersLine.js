@@ -214,7 +214,7 @@ export default function TaskFiltersLine({ projectId }) {
                 />
 
                 {priorityData.prioritized > 0 && (
-                    <FilterGroup label={translate('Priority')} testID="task-filter-priority-group">
+                    <FilterGroup testID="task-filter-priority-group">
                         {FILTER_PRIORITY_KEYS.map(priorityKey => {
                             const count = priorityData.counts[priorityKey] || 0
                             const selected = taskPriorityFilters.includes(priorityKey)
@@ -235,7 +235,7 @@ export default function TaskFiltersLine({ projectId }) {
                 )}
 
                 {vmStateData.available > 0 && (
-                    <FilterGroup label={translate('VM States')} testID="task-filter-vm-state-group">
+                    <FilterGroup testID="task-filter-vm-state-group">
                         {FILTER_VM_STATES.map(vmState => {
                             const count = vmStateData.counts[vmState] || 0
                             const selected = taskVmStateFilters.includes(vmState)
@@ -259,10 +259,9 @@ export default function TaskFiltersLine({ projectId }) {
     )
 }
 
-function FilterGroup({ label, testID, children }) {
+function FilterGroup({ testID, children }) {
     return (
         <View style={localStyles.group} testID={testID}>
-            <Text style={localStyles.groupLabel}>{label}</Text>
             {children}
         </View>
     )
@@ -327,7 +326,6 @@ const localStyles = StyleSheet.create({
     filtersScroll: { marginTop: 8 },
     filtersRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center' },
     group: { flexDirection: 'row', alignItems: 'center' },
-    groupLabel: { ...styles.caption2, color: colors.Text03, marginRight: 8, marginBottom: 8 },
     filterItem: {
         flexDirection: 'row',
         alignItems: 'center',

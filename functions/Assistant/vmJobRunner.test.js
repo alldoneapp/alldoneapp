@@ -595,9 +595,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
                 isResume,
                 'gpt-5.5',
                 'high',
-                'https://vm-proxy.example/vmLlmProxy',
-                false,
-                ['/home/user/git-metadata']
+                'https://vm-proxy.example/vmLlmProxy'
             )
 
             expect(command).toContain(`-c 'model_provider="alldone_vm_proxy"'`)
@@ -609,18 +607,6 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
             expect(command).toContain(`-c 'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]'`)
             expect(command).not.toContain('--sandbox')
         }
-    })
-
-    test('omits the Git metadata writable root when the run has no connected repository', () => {
-        const command = __private__.buildCodexRunCommand(
-            false,
-            'gpt-5.5',
-            'high',
-            'https://vm-proxy.example/vmLlmProxy'
-        )
-
-        expect(command).toContain(`-c 'sandbox_workspace_write.writable_roots=[]'`)
-        expect(command).not.toContain('/home/user/git-metadata')
     })
 
     test('uses the native ChatGPT login without the API proxy for subscription runs', () => {
