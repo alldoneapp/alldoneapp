@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Popover from 'react-tiny-popover'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 
@@ -198,7 +198,13 @@ export default function TaskFiltersLine({ projectId }) {
                     ))}
             </View>
 
-            <View style={localStyles.chipsRow}>
+            <ScrollView
+                horizontal={true}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={localStyles.filtersRow}
+                style={localStyles.filtersScroll}
+                testID="task-filters-horizontal-scroll"
+            >
                 <FilterChip
                     selected={activeFilterCount === 0}
                     onPress={clearAllFilters}
@@ -206,49 +212,49 @@ export default function TaskFiltersLine({ projectId }) {
                     label={translate('All')}
                     count={total}
                 />
-            </View>
 
-            {priorityData.prioritized > 0 && (
-                <FilterGroup label={translate('Priority')} testID="task-filter-priority-group">
-                    {FILTER_PRIORITY_KEYS.map(priorityKey => {
-                        const count = priorityData.counts[priorityKey] || 0
-                        const selected = taskPriorityFilters.includes(priorityKey)
-                        if (count === 0 && !selected) return null
-                        return (
-                            <FilterChip
-                                key={priorityKey}
-                                selected={selected}
-                                onPress={() => togglePriority(priorityKey)}
-                                testID={`task-priority-filter-${priorityKey}`}
-                                label={translate(getTaskPriorityLabel(priorityKey))}
-                                count={count}
-                                color={getTaskPriorityColors(priorityKey).foregroundColor}
-                            />
-                        )
-                    })}
-                </FilterGroup>
-            )}
+                {priorityData.prioritized > 0 && (
+                    <FilterGroup label={translate('Priority')} testID="task-filter-priority-group">
+                        {FILTER_PRIORITY_KEYS.map(priorityKey => {
+                            const count = priorityData.counts[priorityKey] || 0
+                            const selected = taskPriorityFilters.includes(priorityKey)
+                            if (count === 0 && !selected) return null
+                            return (
+                                <FilterChip
+                                    key={priorityKey}
+                                    selected={selected}
+                                    onPress={() => togglePriority(priorityKey)}
+                                    testID={`task-priority-filter-${priorityKey}`}
+                                    label={translate(getTaskPriorityLabel(priorityKey))}
+                                    count={count}
+                                    color={getTaskPriorityColors(priorityKey).foregroundColor}
+                                />
+                            )
+                        })}
+                    </FilterGroup>
+                )}
 
-            {vmStateData.available > 0 && (
-                <FilterGroup label={translate('VM States')} testID="task-filter-vm-state-group">
-                    {FILTER_VM_STATES.map(vmState => {
-                        const count = vmStateData.counts[vmState] || 0
-                        const selected = taskVmStateFilters.includes(vmState)
-                        if (count === 0 && !selected) return null
-                        return (
-                            <FilterChip
-                                key={vmState}
-                                selected={selected}
-                                onPress={() => toggleVmState(vmState)}
-                                testID={`task-vm-state-filter-${vmState}`}
-                                label={translate(VM_STATE_PRESENTATION[vmState].label)}
-                                count={count}
-                                color={VM_STATE_PRESENTATION[vmState].color}
-                            />
-                        )
-                    })}
-                </FilterGroup>
-            )}
+                {vmStateData.available > 0 && (
+                    <FilterGroup label={translate('VM States')} testID="task-filter-vm-state-group">
+                        {FILTER_VM_STATES.map(vmState => {
+                            const count = vmStateData.counts[vmState] || 0
+                            const selected = taskVmStateFilters.includes(vmState)
+                            if (count === 0 && !selected) return null
+                            return (
+                                <FilterChip
+                                    key={vmState}
+                                    selected={selected}
+                                    onPress={() => toggleVmState(vmState)}
+                                    testID={`task-vm-state-filter-${vmState}`}
+                                    label={translate(VM_STATE_PRESENTATION[vmState].label)}
+                                    count={count}
+                                    color={VM_STATE_PRESENTATION[vmState].color}
+                                />
+                            )
+                        })}
+                    </FilterGroup>
+                )}
+            </ScrollView>
         </View>
     )
 }
@@ -257,7 +263,7 @@ function FilterGroup({ label, testID, children }) {
     return (
         <View style={localStyles.group} testID={testID}>
             <Text style={localStyles.groupLabel}>{label}</Text>
-            <View style={localStyles.chipsRow}>{children}</View>
+            {children}
         </View>
     )
 }
@@ -318,9 +324,10 @@ const localStyles = StyleSheet.create({
         marginRight: 8,
     },
     activeCountText: { ...styles.caption2, color: 'white' },
-    group: { marginTop: 4 },
-    groupLabel: { ...styles.caption2, color: colors.Text03 },
-    chipsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 },
+    filtersScroll: { marginTop: 8 },
+    filtersRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center' },
+    group: { flexDirection: 'row', alignItems: 'center' },
+    groupLabel: { ...styles.caption2, color: colors.Text03, marginRight: 8, marginBottom: 8 },
     filterItem: {
         flexDirection: 'row',
         alignItems: 'center',

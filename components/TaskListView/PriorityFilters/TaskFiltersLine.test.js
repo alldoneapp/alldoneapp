@@ -111,6 +111,36 @@ describe('TaskFiltersLine', () => {
         ).toBe(2)
     })
 
+    test('keeps all available filter options in one horizontally scrollable line', () => {
+        mockCollectTaskPriorityCounts.mockReturnValue({
+            counts: { must_do: 1, should_do: 1, could_do: 1, do_later: 1, none: 1 },
+            total: 5,
+            prioritized: 4,
+        })
+        mockCollectTaskVmStateCounts.mockReturnValue({
+            counts: { in_progress: 1, paused: 1, failed: 1 },
+            total: 5,
+            available: 3,
+        })
+        setState({ smallScreenNavigation: true })
+
+        let component
+        act(() => {
+            component = renderer.create(<TaskFiltersLine projectId="project-1" />)
+        })
+
+        const horizontalScroll = component.root.find(
+            node => node.props.testID === 'task-filters-horizontal-scroll' && node.props.horizontal === true
+        )
+        expect(horizontalScroll.props.showsHorizontalScrollIndicator).toBe(false)
+        expect(horizontalScroll.props.contentContainerStyle).toMatchObject({
+            flexDirection: 'row',
+            flexWrap: 'nowrap',
+        })
+        expect(horizontalScroll.findByProps({ testID: 'task-filter-priority-group' })).toBeTruthy()
+        expect(horizontalScroll.findByProps({ testID: 'task-filter-vm-state-group' })).toBeTruthy()
+    })
+
     test('multi-selects priority and VM state in the same control and clears both via All', () => {
         mockCollectTaskPriorityCounts.mockReturnValue({
             counts: { must_do: 1, should_do: 1 },
