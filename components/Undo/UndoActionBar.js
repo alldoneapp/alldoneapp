@@ -100,6 +100,7 @@ export default function UndoActionBar() {
 
     const isUndone = action.status === 'undone'
     const message = error ? error : isUndone ? `${translate('Undone')}: ${action.label}` : action.label
+    const stopPropagation = event => event?.stopPropagation?.()
 
     return (
         <SafeAreaView
@@ -107,17 +108,40 @@ export default function UndoActionBar() {
             style={[undoActionBarStyles.overlay, mobile && undoActionBarStyles.mobileOverlay]}
         >
             <View style={undoActionBarStyles.container} accessibilityLiveRegion="polite">
-                <Text numberOfLines={2} style={[styles.body2, localStyles.message]}>
+                <TouchableOpacity
+                    activeOpacity={1}
+                    style={localStyles.dismissArea}
+                    onPress={() => setVisible(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${translate('Dismiss')}: ${message}`}
+                    testID="undo-action-bar"
+                />
+                <Text pointerEvents="none" numberOfLines={2} style={[styles.body2, localStyles.message]}>
                     {message}
                 </Text>
                 {busy ? (
-                    <ActivityIndicator color={colors.UtilityBlue200} size="small" />
+                    <ActivityIndicator pointerEvents="none" color={colors.UtilityBlue200} size="small" />
                 ) : error ? (
-                    <TouchableOpacity onPress={() => setVisible(false)}>
+                    <TouchableOpacity
+                        onPress={event => {
+                            stopPropagation(event)
+                            setVisible(false)
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={translate('Dismiss')}
+                    >
                         <Text style={[styles.button, localStyles.action]}>{translate('Dismiss')}</Text>
                     </TouchableOpacity>
                 ) : (
-                    <TouchableOpacity onPress={() => reverse(action, isUndone ? 'redo' : 'undo')}>
+                    <TouchableOpacity
+                        onPress={event => {
+                            stopPropagation(event)
+                            reverse(action, isUndone ? 'redo' : 'undo')
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={translate(isUndone ? 'Redo' : 'Undo')}
+                        testID="undo-action-button"
+                    >
                         <Text style={[styles.button, localStyles.action]}>{translate(isUndone ? 'Redo' : 'Undo')}</Text>
                     </TouchableOpacity>
                 )}

@@ -11,7 +11,7 @@ describe('UndoActionBar layout', () => {
     it('positions the undo banner at the safe top edge instead of the bottom', () => {
         expect(undoActionBarStyles.overlay.top).toBeDefined()
         expect(undoActionBarStyles.overlay.bottom).toBeUndefined()
-        expect(undoActionBarStyles.container.marginTop).toBe(12)
+        expect(undoActionBarStyles.container.marginTop).toBe(64)
     })
 
     it('adds extra horizontal viewport padding on mobile', () => {
