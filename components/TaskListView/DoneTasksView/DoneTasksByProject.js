@@ -13,7 +13,6 @@ import ShowMoreButtonsArea from './ShowMoreButtonsArea'
 import useEarlierSubtasks from './useEarlierSubtasks'
 import moment from 'moment'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
-import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import { setAmountTasksExpanded } from '../../../redux/actions'
 import { AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON } from '../../../utils/backends/doneTasks'
 
@@ -24,7 +23,6 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
     const amountDoneTasksExpanded = useSelector(state => state.amountDoneTasksExpanded)
     const [filteredTasksByDate, setFilteredTasksByDate] = useState([])
     const [filters, filtersArray] = useSelectorHashtagFilters()
-    const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(project.id)
 
     // Check if this project is using a different assistant than the default project
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
@@ -131,15 +129,6 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
                 projectId={project.id}
                 projectIndex={project.index}
                 completedDateToCheck={completedDateToCheck}
-            />
-        </View>
-    ) : showFollowedBubble || showUnfollowedBubble ? (
-        <View style={localStyles.container}>
-            <ProjectHeader
-                projectIndex={project.index}
-                projectId={project.id}
-                showWorkflowTag={true}
-                showRootSectionNavigation={inSelectedProject}
             />
         </View>
     ) : null

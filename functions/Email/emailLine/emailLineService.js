@@ -253,6 +253,31 @@ async function loadTasksByMessageId(userId, connection, userData, projectId, mes
     }
 }
 
+async function getTaskForEmail({ userId, projectId, connection, userData, messageIds = [], auditById = null }) {
+    const candidateMessageIds = [...new Set((Array.isArray(messageIds) ? messageIds : [messageIds]).filter(Boolean))]
+    if (candidateMessageIds.length === 0) throw new Error('messageId is required for getTaskForEmail')
+
+    let resolvedAuditById = auditById
+    if (!resolvedAuditById) {
+        const auditLookupKeys = getGmailLabelingLookupKeys(userData, projectId, connection)
+        resolvedAuditById = await loadAuditEntriesByMessageId(userId, auditLookupKeys, candidateMessageIds)
+    }
+    const taskByMessageId = await loadTasksByMessageId(
+        userId,
+        connection,
+        userData,
+        projectId,
+        candidateMessageIds,
+        resolvedAuditById
+    )
+    const taskCreated =
+        taskByMessageId === null
+            ? candidateMessageIds.map(id => resolvedAuditById[id]?.taskCreated).find(Boolean) || null
+            : candidateMessageIds.map(id => taskByMessageId[id]).find(Boolean) || null
+
+    return { taskCreated }
+}
+
 // The effective labeling label definitions for this connection (default- or custom-mode).
 // Each definition carries `gmailLabelName` and, for default-mode project labels, a
 // `sourceProjectId` that ties the label to an Alldone project — used both for the feedback
@@ -765,6 +790,25 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     const selectedMessageId = candidateMessageIds.find(id => auditById[id]) || candidateMessageIds[0]
     const audit = auditById[selectedMessageId] || null
 
+    // The informational-comment and label-popup actions share this endpoint. Reconcile
+    // against live tasks before spending Gold or creating anything so reopening the chat,
+    // switching devices, or clicking from both surfaces cannot create a duplicate.
+    const { taskCreated: existingTask } = await getTaskForEmail({
+        userId,
+        projectId,
+        connection,
+        userData,
+        messageIds: candidateMessageIds,
+        auditById,
+    })
+    if (existingTask) {
+        return {
+            ...existingTask,
+            existing: true,
+            goldCost: 0,
+        }
+    }
+
     let context
     try {
         context = await provider.getMessageContext(userId, projectId, selectedMessageId)
@@ -960,6 +1004,14 @@ async function performEmailLineAction(userId, projectId, params = {}) {
                     sourceProjectId,
                     sourceTaskId,
                 })
+            case 'getTaskForEmail':
+                return await getTaskForEmail({
+                    userId,
+                    projectId,
+                    connection,
+                    userData,
+                    messageIds,
+                })
             case 'createTask':
                 return await createTaskFromEmail({
                     userId,
@@ -985,6 +1037,7 @@ module.exports = {
     performEmailLineAction,
     draftReply,
     createTaskFromEmail,
+    getTaskForEmail,
     getProviderModule,
     GOLD_SOURCE_DRAFT_REPLY,
     GOLD_SOURCE_CREATE_TASK,

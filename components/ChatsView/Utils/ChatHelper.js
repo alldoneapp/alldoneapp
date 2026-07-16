@@ -223,13 +223,4 @@ export const parseLastEdited = (serverTime, lastEdition) => {
     }
 }
 
-export const checkIfThereAreNewComments = (projectChatNotifications, projectIds) => {
-    for (let i = 0; i < projectIds.length; i++) {
-        const projectId = projectIds[i]
-        const projectData = projectChatNotifications[projectId]
-        if (projectData?.totalFollowed > 0 || projectData?.totalUnfollowed > 0) return true
-    }
-    return false
-}
-
 export default ChatHelper

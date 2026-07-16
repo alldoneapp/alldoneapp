@@ -20,8 +20,6 @@ import {
     setOpenMilestonesInProjectInTasks,
 } from '../../../redux/actions'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
-import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
-import OpenTasksEmptyProject from './OpenTasksEmptyProject/OpenTasksEmptyProject'
 import OKRSection from '../OKRs/OKRSection'
 import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
 import TaskPriorityFiltersLine from '../PriorityFilters/TaskPriorityFiltersLine'
@@ -44,7 +42,6 @@ export default function OpenTasksByProject({
     const tasksArrowButtonIsExpanded = useSelector(state => state.tasksArrowButtonIsExpanded)
     const okrsInProject = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const [pressedShowMoreMainSection, setPressedShowMoreMainSection] = useState(false)
-    const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(projectId)
 
     const instanceKey = projectId + currentUserId
 
@@ -138,14 +135,6 @@ export default function OpenTasksByProject({
                 firstProject={firstProject}
                 setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
             />
-            {hideProjectData && (showFollowedBubble || showUnfollowedBubble) && (
-                <OpenTasksEmptyProject
-                    projectId={projectId}
-                    projectIndex={projectIndex}
-                    showRootSectionNavigation={inSelectedProject}
-                    setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                />
-            )}
             {!hideProjectData && (
                 <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
                     <NeedShowMoreOpenTasksButton projectId={projectId} />

@@ -546,6 +546,52 @@ describe('emailLineService', () => {
         )
     })
 
+    test('getTaskForEmail returns an existing task linked by message id', async () => {
+        mockTaskDocs.set('items/p1/tasks', [
+            {
+                id: 'task-live',
+                data: { name: 'Reply to customer', gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' } },
+            },
+        ])
+
+        const result = await performEmailLineAction('u', 'p1', {
+            action: 'getTaskForEmail',
+            messageIds: ['m1'],
+            userData: googleUserData,
+        })
+
+        expect(result).toEqual({
+            taskCreated: { taskId: 'task-live', projectId: 'p1', taskName: 'Reply to customer' },
+        })
+    })
+
+    test('createTask returns an existing linked task without summarizing or charging gold', async () => {
+        mockTaskDocs.set('items/p1/tasks', [
+            {
+                id: 'task-live',
+                data: { name: 'Reply to customer', gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' } },
+            },
+        ])
+
+        const result = await performEmailLineAction('u', 'p1', {
+            action: 'createTask',
+            messageIds: ['m1'],
+            userData: googleUserData,
+        })
+
+        expect(result).toEqual({
+            taskId: 'task-live',
+            projectId: 'p1',
+            taskName: 'Reply to customer',
+            existing: true,
+            goldCost: 0,
+        })
+        expect(gmailEmailLine.getMessageContext).not.toHaveBeenCalled()
+        expect(summarizeEmailAsTaskName).not.toHaveBeenCalled()
+        expect(deductGold).not.toHaveBeenCalled()
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
     test('createTask without an audit match explains the default-project fallback', async () => {
         gmailEmailLine.getMessageContext.mockResolvedValue({ subject: 'Hi', from: 'a@ex.com', body: 'b' })
         summarizeEmailAsTaskName.mockResolvedValue({ name: 'Do the thing', totalTokens: 50 })

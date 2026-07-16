@@ -21,7 +21,6 @@ import EmptyNotesAllProjects from './EmptyNotesAllProjects'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import { useDispatch, useSelector } from 'react-redux'
 import store from '../../redux/store'
-import { checkIfThereAreNewComments } from '../ChatsView/Utils/ChatHelper'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 
 function NotesView() {
@@ -39,12 +38,6 @@ function NotesView() {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const currentUser = useSelector(state => state.currentUser)
-    const projectChatNotifications = useSelector(state => state.projectChatNotifications)
-
-    const thereAreNewComments = checkIfThereAreNewComments(
-        projectChatNotifications,
-        sortedLoggedUserProjects.map(project => project.id)
-    )
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
@@ -133,7 +126,7 @@ function NotesView() {
                         maxNotesToRender={10}
                         key={loggedUserProjects[selectedProjectIndex].id}
                     />
-                ) : thereAreNewComments || notesAmounts.length === 0 || tNotesAmount == null || tNotesAmount > 0 ? (
+                ) : notesAmounts.length === 0 || tNotesAmount == null || tNotesAmount > 0 ? (
                     sortedLoggedUserProjects.map((project, index) => (
                         <NotesByProject
                             key={project.id}
