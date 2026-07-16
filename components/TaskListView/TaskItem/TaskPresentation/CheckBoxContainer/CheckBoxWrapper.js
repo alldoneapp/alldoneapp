@@ -17,10 +17,14 @@ import TaskFlowModal from './TaskFlowModal'
 import CheckBoxContainer from './CheckBoxContainer'
 import TaskCompletionAnimation, { ANIMATION_DURATION } from '../../TaskCompletionAnimation'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../../utils/backends/Tasks/tasksFirestore'
-import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
+import { getEmailTaskArchiveData, isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
+import { performEmailLineAction } from '../../../../../utils/backends/EmailLine/emailLineBackend'
 import RecurringTaskDateBasisModal, {
     shouldShowRecurringTaskDateBasisModal,
 } from '../../../../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
+import EmailTaskCompletionModal from './EmailTaskCompletionModal'
+import { completeEmailLinkedTask } from './emailTaskCompletion'
+import { translate } from '../../../../../i18n/TranslationService'
 
 function CheckBoxWrapper(
     {
@@ -44,11 +48,17 @@ function CheckBoxWrapper(
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [checked, setChecked] = useState(task.done)
     const [isOpen, setIsOpen] = useState(false)
+    const [emailCompletionModalIsOpen, setEmailCompletionModalIsOpen] = useState(false)
+    const [emailCompletionSubmitting, setEmailCompletionSubmitting] = useState(false)
+    const [pendingEmailArchiveChoice, setPendingEmailArchiveChoice] = useState(null)
     const [recurrenceDateBasisModalIsOpen, setRecurrenceDateBasisModalIsOpen] = useState(false)
     const [showAnimation, setShowAnimation] = useState(false)
+    const [taskTransitionPending, setTaskTransitionPending] = useState(false)
     const checkBoxIdRef = useRef(v4())
     const isUnmountedRef = useRef(false)
     const timeoutsRef = useRef([])
+    const emailCompletionSubmittingRef = useRef(false)
+    const taskTransitionPendingRef = useRef(false)
 
     useEffect(() => {
         return () => {
@@ -79,6 +89,9 @@ function CheckBoxWrapper(
 
     const rollbackOptimisticCheck = async error => {
         console.error('[task transition] Could not persist checkbox action', error)
+        if (getEmailTaskArchiveData(task)) {
+            alert(`${translate("Task couldn't be completed")}: ${error.message}`)
+        }
         let persistedTask = null
         try {
             persistedTask = await Backend.getTaskData(projectId, task.id)
@@ -99,14 +112,17 @@ function CheckBoxWrapper(
         genericData,
         isPrivate,
         calendarData,
-        gmailData,
         assigneeType,
     } = task
 
     const ownerIsWorkstream = userId?.startsWith(WORKSTREAM_ID_PREFIX)
     const isLockedGmailTask = isInboxSummaryGmailTask(task)
+    const emailArchiveData = !done && !isSubtask ? getEmailTaskArchiveData(task) : null
 
     const scheduleSetTaskStatus = recurrenceBaseDateOverride => {
+        if (taskTransitionPendingRef.current) return
+        taskTransitionPendingRef.current = true
+        setTaskTransitionPending(true)
         setShowAnimation(true)
         const t = setTimeout(async () => {
             try {
@@ -123,13 +139,19 @@ function CheckBoxWrapper(
                     recurrenceBaseDateOverride
                 )
             } catch (error) {
-                rollbackOptimisticCheck(error)
+                await rollbackOptimisticCheck(error)
+            } finally {
+                taskTransitionPendingRef.current = false
+                if (!isUnmountedRef.current) setTaskTransitionPending(false)
             }
         }, ANIMATION_DURATION)
         timeoutsRef.current.push(t)
     }
 
     const scheduleMoveTasksFromOpen = (stepToMoveId, recurrenceBaseDateOverride) => {
+        if (taskTransitionPendingRef.current) return
+        taskTransitionPendingRef.current = true
+        setTaskTransitionPending(true)
         setShowAnimation(true)
         const t = setTimeout(async () => {
             try {
@@ -144,7 +166,10 @@ function CheckBoxWrapper(
                     recurrenceBaseDateOverride
                 )
             } catch (error) {
-                rollbackOptimisticCheck(error)
+                await rollbackOptimisticCheck(error)
+            } finally {
+                taskTransitionPendingRef.current = false
+                if (!isUnmountedRef.current) setTaskTransitionPending(false)
             }
         }, ANIMATION_DURATION)
         timeoutsRef.current.push(t)
@@ -152,16 +177,67 @@ function CheckBoxWrapper(
 
     const closeRecurrenceDateBasisModal = () => {
         setRecurrenceDateBasisModalIsOpen(false)
+        setPendingEmailArchiveChoice(null)
         safeSetChecked(false)
     }
 
     const completeWithSelectedRecurrenceDateBasis = recurrenceBaseDateOverride => {
         setRecurrenceDateBasisModalIsOpen(false)
-        scheduleMoveTasksFromOpen(DONE_STEP, recurrenceBaseDateOverride)
+        if (pendingEmailArchiveChoice !== null) {
+            const archiveEmail = pendingEmailArchiveChoice
+            setPendingEmailArchiveChoice(null)
+            setEmailCompletionModalIsOpen(true)
+            persistEmailTaskCompletion(archiveEmail, recurrenceBaseDateOverride)
+        } else {
+            scheduleMoveTasksFromOpen(DONE_STEP, recurrenceBaseDateOverride)
+        }
     }
 
     const shouldAskForRecurrenceDateBasis = stepToMoveId => {
         return stepToMoveId === DONE_STEP && shouldShowRecurringTaskDateBasisModal(task)
+    }
+
+    const closeEmailCompletionModal = () => {
+        if (emailCompletionSubmittingRef.current) return
+        setEmailCompletionModalIsOpen(false)
+        safeSetChecked(false)
+    }
+
+    const persistEmailTaskCompletion = async (archiveEmail, recurrenceBaseDateOverride) => {
+        if (emailCompletionSubmittingRef.current) return
+        emailCompletionSubmittingRef.current = true
+        setEmailCompletionSubmitting(true)
+
+        try {
+            await completeEmailLinkedTask({
+                archiveEmail,
+                archiveData: emailArchiveData,
+                archiveEmailAction: performEmailLineAction,
+                completeTask: () => {
+                    setEmailCompletionModalIsOpen(false)
+                    safeSetChecked(true)
+                    scheduleMoveTasksFromOpen(DONE_STEP, recurrenceBaseDateOverride)
+                },
+            })
+        } catch (error) {
+            console.error('[email task completion] Could not archive linked email', error)
+            alert(`${translate("Email couldn't be archived")}: ${error.message}`)
+            safeSetChecked(false)
+        } finally {
+            emailCompletionSubmittingRef.current = false
+            if (!isUnmountedRef.current) setEmailCompletionSubmitting(false)
+        }
+    }
+
+    const completeEmailTask = archiveEmail => {
+        if (emailCompletionSubmittingRef.current) return
+        if (shouldAskForRecurrenceDateBasis(DONE_STEP)) {
+            setEmailCompletionModalIsOpen(false)
+            setPendingEmailArchiveChoice(archiveEmail)
+            setRecurrenceDateBasisModalIsOpen(true)
+        } else {
+            persistEmailTaskCompletion(archiveEmail)
+        }
     }
 
     const toggleCheckAction = isLongPress => {
@@ -204,7 +280,12 @@ function CheckBoxWrapper(
 
     const onCheckboxPress = isLongPress => {
         console.log('onCheckboxPress called - isLongPress:', isLongPress)
+        if (taskTransitionPendingRef.current || emailCompletionSubmittingRef.current) return
         if (!checkIsLimitedByXp(projectId)) {
+            if (emailArchiveData && !done) {
+                setEmailCompletionModalIsOpen(true)
+                return
+            }
             const isAssistant = assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
             setChecked(!checked)
             toggleCheckAction(isLongPress && !isAssistant)
@@ -265,10 +346,48 @@ function CheckBoxWrapper(
                         accessGranted={accessGranted}
                         pending={pending}
                         showWorkflowIndicator={showWorkflowIndicator}
+                        showEmailCompletionIndicator={!!emailArchiveData}
                         onCheckboxPress={onCheckboxPress}
                         checkBoxIdRef={checkBoxIdRef}
                         checked={checked}
-                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                        loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
+                    />
+                </Popover>
+            ) : emailCompletionModalIsOpen ? (
+                <Popover
+                    content={
+                        <EmailTaskCompletionModal
+                            closePopover={closeEmailCompletionModal}
+                            onComplete={completeEmailTask}
+                            submitting={emailCompletionSubmitting}
+                        />
+                    }
+                    onClickOutside={closeEmailCompletionModal}
+                    isOpen={emailCompletionModalIsOpen}
+                    padding={4}
+                    position={['top']}
+                    align={'center'}
+                    contentLocation={args => popoverToSafePosition(args, smallScreenNavigation)}
+                    disableReposition
+                >
+                    <CheckBoxContainer
+                        isSubtask={isSubtask}
+                        isObservedTask={isObservedTask}
+                        isToReviewTask={isToReviewTask}
+                        isSuggested={isSuggested}
+                        isActiveOrganizeMode={isActiveOrganizeMode}
+                        checkOnDrag={checkOnDrag}
+                        highlightColor={highlightColor}
+                        accessGranted={accessGranted}
+                        pending={pending}
+                        showWorkflowIndicator={showWorkflowIndicator}
+                        showEmailCompletionIndicator={!!emailArchiveData}
+                        onCheckboxPress={onCheckboxPress}
+                        checkBoxIdRef={checkBoxIdRef}
+                        checked={checked}
+                        loggedUserCanUpdateObject={
+                            loggedUserCanUpdateObject && !emailCompletionSubmitting && !taskTransitionPending
+                        }
                     />
                 </Popover>
             ) : isOpen ? (
@@ -305,10 +424,11 @@ function CheckBoxWrapper(
                         accessGranted={accessGranted}
                         pending={pending}
                         showWorkflowIndicator={showWorkflowIndicator}
+                        showEmailCompletionIndicator={!!emailArchiveData}
                         onCheckboxPress={onCheckboxPress}
                         checkBoxIdRef={checkBoxIdRef}
                         checked={checked}
-                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                        loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
                     />
                 </Popover>
             ) : (
@@ -323,10 +443,11 @@ function CheckBoxWrapper(
                     accessGranted={accessGranted}
                     pending={pending}
                     showWorkflowIndicator={showWorkflowIndicator}
+                    showEmailCompletionIndicator={!!emailArchiveData}
                     onCheckboxPress={onCheckboxPress}
                     checkBoxIdRef={checkBoxIdRef}
                     checked={checked}
-                    loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                    loggedUserCanUpdateObject={loggedUserCanUpdateObject && !taskTransitionPending}
                 />
             )}
             <TaskCompletionAnimation

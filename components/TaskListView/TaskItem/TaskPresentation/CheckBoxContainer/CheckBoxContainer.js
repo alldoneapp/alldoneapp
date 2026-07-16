@@ -17,20 +17,27 @@ export default function CheckBoxContainer({
     accessGranted,
     pending,
     showWorkflowIndicator,
+    showEmailCompletionIndicator,
     onCheckboxPress,
     checkBoxIdRef,
     checked,
     loggedUserCanUpdateObject,
 }) {
-    const neeToShowAnInteractionModal =
-        !isSubtask && (pending || isToReviewTask || isSuggested || isObservedTask || showWorkflowIndicator)
+    const needToShowAnInteractionModal =
+        !isSubtask &&
+        (pending ||
+            isToReviewTask ||
+            isSuggested ||
+            isObservedTask ||
+            showWorkflowIndicator ||
+            showEmailCompletionIndicator)
 
     return (
         <TouchableOpacity
             style={[localStyles.checkBox, isSubtask && subTaskStyles.checkBox]}
             accessible={false}
             activeOpacity={0.35}
-            onPress={() => onCheckboxPress(neeToShowAnInteractionModal)}
+            onPress={() => onCheckboxPress(needToShowAnInteractionModal)}
             onLongPress={() => onCheckboxPress(true)}
             disabled={!accessGranted || !loggedUserCanUpdateObject}
         >
@@ -45,7 +52,7 @@ export default function CheckBoxContainer({
                     checkBoxId={checkBoxIdRef.current}
                 />
             )}
-            <ActionPopupIndicator visible={neeToShowAnInteractionModal} borderColor={highlightColor} />
+            <ActionPopupIndicator visible={needToShowAnInteractionModal} borderColor={highlightColor} />
         </TouchableOpacity>
     )
 }
