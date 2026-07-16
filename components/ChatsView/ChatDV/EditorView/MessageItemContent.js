@@ -30,6 +30,7 @@ import { cancelAssistantRun } from '../../../../utils/backends/Assistants/assist
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/EmailLine/emailLineHelper'
+import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 
 export default function MessageItemContent({
     messageId,
@@ -313,31 +314,14 @@ export default function MessageItemContent({
                                 style={[localStyles.horizontalRule, !isLastLine && { marginBottom: 16 }]}
                             />
                         )
-                    } else if (line.type === 'h1') {
+                    } else if (/^h[1-6]$/.test(line.type)) {
+                        const headingStyle = localStyles[`header${line.type.substring(1)}`]
                         return (
                             <Text
                                 key={`header-${lineIndex}`}
-                                style={[localStyles.header1, !isLastLine && { marginBottom: 16 }]}
+                                style={[headingStyle, !isLastLine && { marginBottom: 16 }]}
                             >
-                                {renderFormattedText(line.segments, localStyles.header1)}
-                            </Text>
-                        )
-                    } else if (line.type === 'h2') {
-                        return (
-                            <Text
-                                key={`header-${lineIndex}`}
-                                style={[localStyles.header2, !isLastLine && { marginBottom: 16 }]}
-                            >
-                                {renderFormattedText(line.segments, localStyles.header2)}
-                            </Text>
-                        )
-                    } else if (line.type === 'h3') {
-                        return (
-                            <Text
-                                key={`header-${lineIndex}`}
-                                style={[localStyles.header3, !isLastLine && { marginBottom: 16 }]}
-                            >
-                                {renderFormattedText(line.segments, localStyles.header3)}
+                                {renderFormattedText(line.segments, headingStyle)}
                             </Text>
                         )
                     } else if (line.type === 'bullet') {
@@ -478,6 +462,13 @@ export default function MessageItemContent({
                                         showLabel={true}
                                         propStyles={localStyles.linkedEmailTag}
                                     />
+                                    <EmailTaskAction
+                                        connectionId={linkedEmail.connectionProjectId}
+                                        messageIds={[linkedEmail.messageId]}
+                                        initialTask={linkedEmailGmailData?.taskCreated}
+                                        checkExisting
+                                        style={localStyles.linkedEmailTaskButton}
+                                    />
                                     <TouchableOpacity
                                         style={localStyles.linkedEmailButton}
                                         onPress={() => onArchiveLinkedEmail([linkedEmail])}
@@ -580,6 +571,27 @@ const localStyles = StyleSheet.create({
         color: colors.Text01,
         fontWeight: '500',
     },
+    header4: {
+        fontFamily: 'Roboto-Medium',
+        fontSize: 18,
+        lineHeight: 26,
+        color: colors.Text01,
+        fontWeight: '500',
+    },
+    header5: {
+        fontFamily: 'Roboto-Medium',
+        fontSize: 16,
+        lineHeight: 24,
+        color: colors.Text01,
+        fontWeight: '500',
+    },
+    header6: {
+        fontFamily: 'Roboto-Medium',
+        fontSize: 14,
+        lineHeight: 20,
+        color: colors.Text01,
+        fontWeight: '500',
+    },
     horizontalRule: {
         height: 1,
         backgroundColor: colors.Gray300,
@@ -648,12 +660,19 @@ const localStyles = StyleSheet.create({
     },
     linkedEmailActions: {
         alignSelf: 'flex-start',
+        maxWidth: '100%',
         marginTop: 8,
         flexDirection: 'row',
         alignItems: 'center',
+        flexWrap: 'wrap',
     },
     linkedEmailTag: {
         marginRight: 8,
+        marginBottom: 4,
+    },
+    linkedEmailTaskButton: {
+        marginRight: 8,
+        marginBottom: 4,
     },
     linkedEmailButton: {
         minHeight: 28,
@@ -663,6 +682,7 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Gray300,
         flexDirection: 'row',
         alignItems: 'center',
+        marginBottom: 4,
     },
     linkedEmailButtonText: {
         ...global.caption2,

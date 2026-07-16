@@ -1,49 +1,7 @@
-import {
-    buildConnectionId,
-    CONNECTION_SERVICE_EMAIL,
-    PROVIDER_GOOGLE,
-    PROVIDER_MICROSOFT,
-} from '../IntegrationProviders'
-
 export function getGmailTaskData(taskOrGmailData) {
     if (!taskOrGmailData) return null
     if ('gmailData' in Object(taskOrGmailData)) return taskOrGmailData.gmailData
     return taskOrGmailData
-}
-
-export function getEmailTaskArchiveData(taskOrGmailData) {
-    const gmailData = getGmailTaskData(taskOrGmailData)
-    if (!gmailData) return null
-
-    const messageIds = [
-        ...(Array.isArray(gmailData.messageIds) ? gmailData.messageIds : []),
-        gmailData.messageId,
-    ].reduce((ids, messageId) => {
-        const normalizedId = typeof messageId === 'string' ? messageId.trim() : ''
-        if (normalizedId && !ids.includes(normalizedId)) ids.push(normalizedId)
-        return ids
-    }, [])
-    if (messageIds.length === 0) return null
-
-    const storedConnectionId = [gmailData.connectionId, gmailData.connectionProjectId, gmailData.projectId].find(
-        value => typeof value === 'string' && value.trim()
-    )
-    const emailAddress =
-        typeof (gmailData.gmailEmail || gmailData.email) === 'string'
-            ? (gmailData.gmailEmail || gmailData.email).trim()
-            : ''
-    const provider = gmailData.provider === PROVIDER_MICROSOFT ? PROVIDER_MICROSOFT : PROVIDER_GOOGLE
-    const connectionProjectId = storedConnectionId
-        ? storedConnectionId.trim()
-        : emailAddress
-        ? buildConnectionId(CONNECTION_SERVICE_EMAIL, provider, emailAddress)
-        : ''
-
-    return connectionProjectId ? { connectionProjectId, messageIds } : null
-}
-
-export function isEmailLinkedTask(taskOrGmailData) {
-    return !!getEmailTaskArchiveData(taskOrGmailData)
 }
 
 export function isGmailLabelFollowUpTask(taskOrGmailData) {

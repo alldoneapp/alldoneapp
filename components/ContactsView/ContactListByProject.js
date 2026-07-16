@@ -17,9 +17,7 @@ import useSelectorHashtagFilters from '../HashtagFilters/UseSelectorHashtagFilte
 import { filterContacts } from '../HashtagFilters/FilterHelpers/FilterContacts'
 import useSelectorContactStatusFilter from '../ContactStatusFilters/useSelectorContactStatusFilter'
 import { CONTACT_STATUS_FILTER_UNASSIGNED } from '../ContactStatusFilters/contactStatusFilterConstants'
-import useShowNewCommentsBubbleInBoard from '../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 import NewContactSection from './NewContactSection'
-import ContactListEmptyProject from './ContactListEmptyProject'
 import ContactMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Contacts/ContactMoreButton'
 import ContactsHeader from './ContactsHeader'
 import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
@@ -31,7 +29,6 @@ export default function ContactListByProject({
     projectIndex,
     firstProject,
     maxContactsToRender,
-    projectId,
 }) {
     const [contactsList, setContactsList] = useState([])
     const [pressedShowMore, setPressedShowMore] = useState(false)
@@ -44,7 +41,6 @@ export default function ContactListByProject({
     const [contactStatusFilter] = useSelectorContactStatusFilter()
     const [filteredMembers, setFilteredMembers] = useState(cloneDeep(members))
     const [filteredContacts, setFilteredContacts] = useState(cloneDeep(contacts))
-    const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(projectId)
     const dispatch = useDispatch()
 
     const project = loggedUserProjects[projectIndex]
@@ -206,14 +202,6 @@ export default function ContactListByProject({
                 />
             )}
         </View>
-    ) : showFollowedBubble || showUnfollowedBubble ? (
-        <ContactListEmptyProject
-            projectId={projectId}
-            projectIndex={projectIndex}
-            newItemRef={newItemRef}
-            dismissibleRefs={dismissibleRefs}
-            showRootSectionNavigation={inSelectedProject}
-        />
     ) : null
 }
 
