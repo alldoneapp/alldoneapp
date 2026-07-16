@@ -1,4 +1,4 @@
-import { resolveDefaultAssistantForProject } from './assistantsHelper'
+import { resolveAssistantForProjectObject, resolveDefaultAssistantForProject } from './assistantsHelper'
 import store from '../../../redux/store'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 
@@ -52,5 +52,52 @@ describe('resolveDefaultAssistantForProject', () => {
         })
 
         expect(resolveDefaultAssistantForProject('p1')).toBeNull()
+    })
+})
+
+describe('resolveAssistantForProjectObject', () => {
+    test('keeps a valid assistant explicitly assigned to the task', () => {
+        setup({
+            projectAssistants: {
+                p1: [
+                    { uid: 'assigned', displayName: 'Assigned Anna' },
+                    { uid: 'project-default', displayName: 'Project Anna', isDefault: true },
+                ],
+            },
+            defaultAssistant: { uid: 'account-default' },
+            project: { id: 'p1', assistantId: 'project-default', globalAssistantIds: [] },
+        })
+
+        expect(resolveAssistantForProjectObject('p1', 'assigned')).toEqual({
+            uid: 'assigned',
+            displayName: 'Assigned Anna',
+        })
+    })
+
+    test('falls back to the project assistant when the assigned assistant was deleted', () => {
+        setup({
+            projectAssistants: { p1: [{ uid: 'project-default', displayName: 'Project Anna', isDefault: true }] },
+            defaultAssistant: { uid: 'account-default' },
+            project: { id: 'p1', assistantId: 'project-default', globalAssistantIds: [] },
+        })
+
+        expect(resolveAssistantForProjectObject('p1', 'deleted-assistant')).toEqual({
+            uid: 'project-default',
+            displayName: 'Project Anna',
+            isDefault: true,
+        })
+    })
+
+    test('falls back to the account default when neither assignment nor project assistant exists', () => {
+        setup({
+            projectAssistants: { p1: [] },
+            defaultAssistant: { uid: 'account-default', displayName: 'Account Anna' },
+            project: { id: 'p1', assistantId: 'deleted-project-assistant', globalAssistantIds: [] },
+        })
+
+        expect(resolveAssistantForProjectObject('p1', 'deleted-assistant')).toEqual({
+            uid: 'account-default',
+            displayName: 'Account Anna',
+        })
     })
 })

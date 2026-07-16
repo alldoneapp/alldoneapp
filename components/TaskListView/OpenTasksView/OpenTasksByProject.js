@@ -23,7 +23,6 @@ import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import OKRSection from '../OKRs/OKRSection'
 import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
 import TaskPriorityFiltersLine from '../PriorityFilters/TaskPriorityFiltersLine'
-import TaskVmStateFiltersLine from '../PriorityFilters/TaskVmStateFiltersLine'
 import { watchProjectOKRs } from '../../../utils/backends/OKRs/okrsFirestore'
 import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../OKRs/okrHelper'
 
@@ -170,12 +169,7 @@ export default function OpenTasksByProject({
                             />
                         </View>
                     )}
-                    {inSelectedProject && !isAssistant && (
-                        <>
-                            <TaskPriorityFiltersLine projectId={projectId} />
-                            <TaskVmStateFiltersLine projectId={projectId} />
-                        </>
-                    )}
+                    {inSelectedProject && !isAssistant && <TaskPriorityFiltersLine projectId={projectId} />}
                     <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
                     <UpcomingMilestoneRow projectId={projectId} />
                     {filteredOpenTasksDates.map((dateFormated, index) => {
