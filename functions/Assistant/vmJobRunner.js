@@ -1423,11 +1423,18 @@ function buildCodexSandboxConfigOverrides(additionalWritableRoots = []) {
     ]
 }
 
-function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyBaseUrl, subscriptionUsed = false) {
+function buildCodexRunCommand(
+    isResume,
+    agentModel,
+    agentReasoningEffort,
+    proxyBaseUrl,
+    subscriptionUsed = false,
+    additionalWritableRoots = []
+) {
     const resumePart = isResume ? 'exec resume --last' : 'exec'
     const modelFlag = agentModel ? ` --model ${agentModel}` : ''
     const effortFlag = agentReasoningEffort ? ` -c model_reasoning_effort=${agentReasoningEffort}` : ''
-    const sandboxFlags = buildCodexSandboxConfigOverrides([GIT_METADATA_ROOT])
+    const sandboxFlags = buildCodexSandboxConfigOverrides(additionalWritableRoots)
         .map(override => ` -c ${shellQuoteArg(override)}`)
         .join('')
     const providerFlags = subscriptionUsed
@@ -1721,8 +1728,18 @@ const AGENT_CONFIGS = {
         // inside the E2B sandbox; configure sandbox_mode instead of using --sandbox because
         // current `codex exec resume` rejects that flag. Workspace-write still needs explicit
         // network access for package installs, git push, and PR creation.
-        buildRun: (isResume, { agentModel, agentReasoningEffort, proxyBaseUrl, subscriptionUsed } = {}) =>
-            buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyBaseUrl, subscriptionUsed),
+        buildRun: (
+            isResume,
+            { agentModel, agentReasoningEffort, proxyBaseUrl, subscriptionUsed, additionalWritableRoots } = {}
+        ) =>
+            buildCodexRunCommand(
+                isResume,
+                agentModel,
+                agentReasoningEffort,
+                proxyBaseUrl,
+                subscriptionUsed,
+                additionalWritableRoots
+            ),
         // `apiKey` is a short-lived per-job proxy token. The run command selects an explicit
         // HTTP-only custom provider; OPENAI_BASE_URL remains for older Codex CLI compatibility.
         sandboxEnv: ({ apiKey, baseUrl, mode }) =>
@@ -2820,6 +2837,7 @@ async function runAgentInSandbox(
                 agentReasoningEffort: runDetails.effort,
                 proxyBaseUrl: agentCredentials.baseUrl,
                 subscriptionUsed: !!subscriptionAuth,
+                additionalWritableRoots: gitContext && gitContext.enabled ? [GIT_METADATA_ROOT] : [],
             })
         }
         const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${agentCommand}`
