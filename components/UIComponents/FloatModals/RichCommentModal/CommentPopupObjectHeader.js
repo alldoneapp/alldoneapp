@@ -104,7 +104,7 @@ export default function CommentPopupObjectHeader({ projectId, objectId, objectTy
             onClick={stopEventPropagation}
             onMouseDown={stopEventPropagation}
             onTouchStart={stopEventPropagation}
-            style={localStyles.eventBoundary}
+            style={{ width: '100%' }}
         >
             <View style={localStyles.objectContainer}>
                 {renderObject({
@@ -215,8 +215,5 @@ const localStyles = StyleSheet.create({
     unavailableText: {
         color: colors.UtilityBlue125,
         fontSize: 12,
-    },
-    eventBoundary: {
-        width: '100%',
     },
 })

@@ -81,6 +81,8 @@ describe('CommentPopupObjectHeader', () => {
         const boundary = tree.root.find(node => node.props['data-testid'] === 'comment-popup-object-tasks')
         const event = { stopPropagation: jest.fn() }
 
+        expect(boundary.props.style).toEqual({ width: '100%' })
+
         boundary.props.onClick(event)
 
         expect(event.stopPropagation).toHaveBeenCalledTimes(1)
