@@ -30,7 +30,7 @@ const RUNNING_CHECK_STATES = new Set([
 /**
  * @typedef {'gitlab'|'github'} MergeProvider
  * @typedef {'draft'|'checks_running'|'needs_approval'|'blocked'|'ready_to_merge'|'merged'|'closed'} MergeDisplayStatus
- * @typedef {{provider: MergeProvider, url: string, number: number, repo: string, status?: MergeDisplayStatus|null, statusUpdatedAt?: number|null, sourceVmJobId?: string|null, sourceVmJobOrder?: number|null, sourceVmJobCreatedAt?: number|null}} TaskMergeRequest
+ * @typedef {{provider: MergeProvider, url: string, number: number, repo: string, status?: MergeDisplayStatus|null, statusUpdatedAt?: number|null, sourceVmJobId?: string|null}} TaskMergeRequest
  */
 
 function cleanResultUrl(value) {
@@ -62,7 +62,6 @@ function extractMergeRequestReference(output, gitContext) {
     if (!repo) return null
 
     const candidates = String(output || '').match(/https?:\/\/[^\s]+/gi) || []
-    let latest = null
     for (const candidate of candidates) {
         try {
             const parsed = new URL(cleanResultUrl(candidate))
@@ -76,16 +75,15 @@ function extractMergeRequestReference(output, gitContext) {
             const match = path.match(pattern)
             if (!match) continue
 
-            const reference = {
+            return {
                 provider: gitContext.provider,
                 url: `${parsed.origin}/${path}`,
                 number: Number(match[1]),
                 repo: repo.path,
             }
-            if (!latest || reference.number > latest.number) latest = reference
         } catch (_) {}
     }
-    return latest
+    return null
 }
 
 function normalizeGitlabMergeStatus(mergeRequest = {}, approvals = null) {
@@ -297,8 +295,6 @@ function buildStoredReference(reference, normalized, previous = {}) {
         number: reference.number,
         repo: reference.repo,
         sourceVmJobId: reference.sourceVmJobId || previous.sourceVmJobId || null,
-        sourceVmJobOrder: Number(reference.sourceVmJobOrder || previous.sourceVmJobOrder) || null,
-        sourceVmJobCreatedAt: Number(reference.sourceVmJobCreatedAt || previous.sourceVmJobCreatedAt) || null,
         createdAt: previous.createdAt || now,
         status: normalized.status,
         statusUpdatedAt: now,
@@ -307,44 +303,6 @@ function buildStoredReference(reference, normalized, previous = {}) {
         approvals: normalized.approvals,
         hasConflicts: normalized.hasConflicts,
     }
-}
-
-function isSameStoredReference(left, right) {
-    if (!left || !right) return false
-    if (left.provider !== right.provider || left.url !== right.url || Number(left.number) !== Number(right.number)) {
-        return false
-    }
-    if (left.sourceVmJobId || right.sourceVmJobId) return left.sourceVmJobId === right.sourceVmJobId
-    return true
-}
-
-function shouldReplaceTaskReference(current, incoming) {
-    if (!current?.url) return true
-    if (current.sourceVmJobId && current.sourceVmJobId === incoming.sourceVmJobId) return true
-
-    // Job creation time remains comparable even if an idle vmSessions document (and therefore its
-    // local sequence counter) was cleaned up and recreated between runs.
-    const currentCreatedAt = Number(current.sourceVmJobCreatedAt) || 0
-    const incomingCreatedAt = Number(incoming.sourceVmJobCreatedAt) || 0
-    if (currentCreatedAt || incomingCreatedAt) {
-        if (!incomingCreatedAt) return false
-        if (!currentCreatedAt) return true
-        if (incomingCreatedAt !== currentCreatedAt) return incomingCreatedAt > currentCreatedAt
-    }
-
-    // The per-thread order is the deterministic tie-breaker for jobs admitted in the same
-    // millisecond. It also orders in-flight jobs created before source timestamps were persisted.
-    const currentOrder = Number(current.sourceVmJobOrder) || 0
-    const incomingOrder = Number(incoming.sourceVmJobOrder) || 0
-    if (currentOrder || incomingOrder) {
-        if (!incomingOrder) return false
-        if (!currentOrder) return true
-        return incomingOrder > currentOrder
-    }
-
-    // Legacy task references have no source ordering metadata. A newly observed VM result is the
-    // first result we can order reliably, so let it establish the canonical reference.
-    return true
 }
 
 async function refreshTaskMergeStatus({ userId, projectId, taskId, force = false }) {
@@ -361,27 +319,9 @@ async function refreshTaskMergeStatus({ userId, projectId, taskId, force = false
     await assertReferenceMatchesConnectedProject(db, projectId, current)
     const tokenData = await loadProviderToken(db, projectId, taskId, current, userId)
     const normalized = await fetchProviderStatus(current, tokenData)
-    const refreshed = buildStoredReference(current, normalized, current)
-    let mergeRequest = refreshed
-    let superseded = false
-    await db.runTransaction(async transaction => {
-        const latestTaskDoc = await transaction.get(taskRef)
-        const latest = latestTaskDoc.exists ? latestTaskDoc.data()?.vmMergeRequest : null
-        if (!isSameStoredReference(latest, current)) {
-            mergeRequest = latest || null
-            superseded = true
-            return
-        }
-        transaction.set(taskRef, { vmMergeRequest: refreshed }, { merge: true })
-    })
-    if (superseded) {
-        console.log('VM merge status: skipped stale refresh for superseded reference', {
-            projectId,
-            taskId,
-            sourceVmJobId: current.sourceVmJobId || null,
-        })
-    }
-    return { mergeRequest, cached: false, ...(superseded ? { superseded: true } : {}) }
+    const mergeRequest = buildStoredReference(current, normalized, current)
+    await taskRef.set({ vmMergeRequest: mergeRequest }, { merge: true })
+    return { mergeRequest, cached: false }
 }
 
 /** Best-effort association called after a successful coding VM run. */
@@ -391,12 +331,7 @@ async function associateVmMergeRequestWithTask({ vmJob, gitContext, output }) {
     if (!extracted) return null
 
     const db = admin.firestore()
-    const reference = {
-        ...extracted,
-        sourceVmJobId: vmJob.correlationId,
-        sourceVmJobOrder: Number(vmJob.threadRunOrder) || null,
-        sourceVmJobCreatedAt: Number(vmJob.threadRunCreatedAt || vmJob.createdAt) || null,
-    }
+    const reference = { ...extracted, sourceVmJobId: vmJob.correlationId }
     let stored = {
         ...reference,
         createdAt: Date.now(),
@@ -414,22 +349,10 @@ async function associateVmMergeRequestWithTask({ vmJob, gitContext, output }) {
         })
     }
 
-    const taskRef = db.doc(`items/${vmJob.projectId}/tasks/${vmJob.objectId}`)
-    await db.doc(`vmJobs/${vmJob.correlationId}`).set({ mergeRequest: stored }, { merge: true })
-    let associatedWithTask = false
-    await db.runTransaction(async transaction => {
-        const taskDoc = await transaction.get(taskRef)
-        const current = taskDoc.exists ? taskDoc.data()?.vmMergeRequest : null
-        if (!shouldReplaceTaskReference(current, stored)) return
-        transaction.set(taskRef, { vmMergeRequest: stored }, { merge: true })
-        associatedWithTask = true
-    })
-    if (!associatedWithTask) {
-        console.log('VM merge status: skipped stale task association', {
-            correlationId: vmJob.correlationId,
-            sourceVmJobOrder: reference.sourceVmJobOrder,
-        })
-    }
+    await Promise.all([
+        db.doc(`items/${vmJob.projectId}/tasks/${vmJob.objectId}`).set({ vmMergeRequest: stored }, { merge: true }),
+        db.doc(`vmJobs/${vmJob.correlationId}`).set({ mergeRequest: stored }, { merge: true }),
+    ])
     return stored
 }
 
@@ -444,7 +367,5 @@ module.exports = {
     __private__: {
         buildStoredReference,
         getLatestGithubReviews,
-        isSameStoredReference,
-        shouldReplaceTaskReference,
     },
 }

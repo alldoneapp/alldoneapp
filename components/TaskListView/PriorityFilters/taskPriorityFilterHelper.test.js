@@ -295,6 +295,29 @@ describe('VM state task list filters', () => {
         expect(filtered[0][3]).toEqual([['goal-1', [expect.objectContaining({ id: 'b' })]]])
     })
 
+    test('keeps a parent when the same subtask matches combined priority and VM filters', () => {
+        const sections = [
+            makeSection('0', {
+                mainTasks: [['goal-1', [makePersistedTask('parent-1')]]],
+            }),
+        ]
+        const subtasksByParentId = {
+            'parent-1': [makePersistedTask('sub-1', 'must_do')],
+        }
+
+        const prioritized = filterOpenTasksSectionsByPriority(sections, ['must_do'], subtasksByParentId)
+        const filtered = filterOpenTasksSectionsByVmState(
+            prioritized,
+            ['paused'],
+            { 'project-1__sub-1': 'paused' },
+            subtasksByParentId,
+            'project-1'
+        )
+
+        expect(filtered[0][3]).toEqual([['goal-1', [expect.objectContaining({ id: 'parent-1' })]]])
+        expect(filtered[0][1]).toBe(1)
+    })
+
     test('counts supported states while keeping all tasks in the All total', () => {
         const instance = {
             projectId: 'project-1',

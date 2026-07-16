@@ -44,9 +44,7 @@ function isDispatchLeaseOwner(leaseOwner) {
  * currently-running/queued jobs. Atomic: either takes the dispatch lease (`launch`) or appends the
  * job to the FIFO queue (`queue`). Never touches `status` so idle-sandbox resume stays intact.
  *
- * @returns {{decision: 'launch'|'queue', position: number, sequence: number, admittedAt: number}}
- * position is 1-based (0 for launch). sequence + admittedAt establish a stable thread-run order
- * used by downstream metadata writers to prevent older runs from replacing newer results.
+ * @returns {{decision: 'launch'|'queue', position: number}} position is 1-based (0 for launch).
  */
 async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
     return admin.firestore().runTransaction(async transaction => {
@@ -58,13 +56,6 @@ async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
         const activeLeaseExpiresAt = Number(session.activeLeaseExpiresAt) || 0
         const blockedByCorrelationId = session.blockedByCorrelationId || null
         const queue = Array.isArray(session.queue) ? session.queue.slice() : []
-        const activeJobSequence = Number(session.activeJobSequence) || 0
-        const activeJobAdmittedAt = Number(session.activeJobAdmittedAt) || 0
-        const sequence =
-            activeCorrelationId === correlationId && activeJobSequence
-                ? activeJobSequence
-                : Math.max(0, Number(session.lastJobSequence) || 0) + 1
-        const admittedAt = activeCorrelationId === correlationId && activeJobAdmittedAt ? activeJobAdmittedAt : now
 
         // Occupied if another job currently holds a live lease (runtime or dispatch), or jobs are
         // already waiting. The `queue.length` term also covers the brief window between an owner
@@ -75,17 +66,8 @@ async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
 
         if (occupied) {
             if (!queue.includes(correlationId)) queue.push(correlationId)
-            transaction.set(
-                sessionRef,
-                {
-                    queue,
-                    queueLength: queue.length,
-                    lastJobSequence: sequence,
-                    lastJobAdmittedAt: admittedAt,
-                },
-                { merge: true }
-            )
-            return { decision: 'queue', position: queue.indexOf(correlationId) + 1, sequence, admittedAt }
+            transaction.set(sessionRef, { queue, queueLength: queue.length }, { merge: true })
+            return { decision: 'queue', position: queue.indexOf(correlationId) + 1 }
         }
 
         transaction.set(
@@ -94,14 +76,10 @@ async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
                 activeLeaseOwner: dispatchLeaseOwner(correlationId),
                 activeLeaseExpiresAt: now + VM_DISPATCH_LEASE_MS,
                 activeCorrelationId: correlationId,
-                activeJobSequence: sequence,
-                activeJobAdmittedAt: admittedAt,
-                lastJobSequence: sequence,
-                lastJobAdmittedAt: admittedAt,
             },
             { merge: true }
         )
-        return { decision: 'launch', position: 0, sequence, admittedAt }
+        return { decision: 'launch', position: 0 }
     })
 }
 

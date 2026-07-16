@@ -99,9 +99,6 @@ describe('startVmJob', () => {
             expect.objectContaining({ launchBackend: 'cloud_run_job', launchState: 'requested' }),
             { merge: true }
         )
-        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ threadRunOrder: 1, threadRunCreatedAt: expect.any(Number) })
-        )
     })
 
     test('admits ten concurrent jobs and rejects the eleventh before charging or enqueueing it', async () => {

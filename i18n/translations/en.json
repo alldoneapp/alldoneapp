@@ -2328,6 +2328,7 @@
     "Auto-postpone tasks": "Auto-postpone tasks",
     "Auto-postpone based on priorities": "Auto-postpone based on priorities",
     "Task Priorities": "Task Priorities",
+    "Task Filters": "Task Filters",
     "Auto-postpone tasks description": "Pick which of today's tasks to auto-postpone. They'll come back later.",
     "All today's tasks": "All today's tasks",
     "You can use skills for your assistants as defined globally by Alldone. Some skills also support a personal overlay, so your assistants can adapt the skill to your preferences while keeping the global skill definition unchanged.": "You can use skills for your assistants as defined globally by Alldone. Some skills also support a personal overlay, so your assistants can adapt the skill to your preferences while keeping the global skill definition unchanged.",

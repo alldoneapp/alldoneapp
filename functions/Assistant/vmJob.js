@@ -411,8 +411,6 @@ async function startVmJob({
         personalApiKeyUsed,
         tokenBillingExempt,
         executionMode,
-        threadRunOrder: admission.sequence,
-        threadRunCreatedAt: admission.admittedAt,
         // A queued job waits in the thread's FIFO queue and is flipped to 'pending' + launched by
         // the current job's drain (or the stalled-queue sweeper). 'queued' is excluded from the
         // cross-thread concurrency count so it never blocks jobs on other threads.
@@ -463,8 +461,6 @@ async function startVmJob({
             personalApiKeyUsed,
             tokenBillingExempt,
             executionMode,
-            threadRunOrder: admission.sequence,
-            threadRunCreatedAt: admission.admittedAt,
             deliverable: deliverable || '',
             packagedContext: packagedContext || '',
             threadContext: threadContext || '',
