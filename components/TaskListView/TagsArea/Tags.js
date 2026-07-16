@@ -34,6 +34,7 @@ import GoalTag from '../../Tags/GoalTag'
 import { checkIfInMyDay, checkIfInMyDayOpenTab } from '../../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import AlertTag from '../../Tags/AlertTag'
 import TranscribeTag from '../../Tags/TranscribeTag'
+import MergeStatusTag from '../../Tags/MergeStatusTag'
 
 export default function Tags({
     task,
@@ -209,6 +210,11 @@ export default function Tags({
 
     return (
         <>
+            <MergeStatusTag
+                mergeRequest={task.vmMergeRequest}
+                style={[tagAlignment, tagsStyle]}
+                disabled={isActiveOrganizeMode || isLocked}
+            />
             {!!commentsData && (
                 <TaskCommentsWrapper
                     tagStyle={tagsStyle}

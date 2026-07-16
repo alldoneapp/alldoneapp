@@ -8,6 +8,7 @@ import useTagsAmount from './TagsArea/useTagsAmount'
 import ProjectTag from '../Tags/ProjectTag'
 import { shouldSummarizeTaskTags } from './TagsArea/taskTagSummaryHelper'
 import { normalizeTaskPriority, TASK_PRIORITY_NONE } from '../../utils/TaskPriority'
+import useTaskMergeStatusRefresh from '../../hooks/useTaskMergeStatusRefresh'
 
 const TaskItemTags = ({
     task,
@@ -38,6 +39,8 @@ const TaskItemTags = ({
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const smallScreenNavSidebarCollapsed = useSelector(state => state.smallScreenNavSidebarCollapsed)
     const [visible, setVisible] = useState(false)
+
+    useTaskMergeStatusRefresh(projectId, task)
 
     const amountTags = useTagsAmount({
         task,

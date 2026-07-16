@@ -901,6 +901,36 @@ exports.disconnectGithubRepo = onCall(
     }
 )
 
+// Refresh a VM-created GitLab MR / GitHub PR status. Provider credentials stay in
+// Cloud Functions; clients only receive the normalized status cached on the task.
+exports.refreshTaskMergeStatus = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const projectId = data && data.projectId
+        const taskId = data && data.taskId
+        if (!projectId || !taskId) throw new HttpsError('invalid-argument', 'projectId and taskId are required')
+        try {
+            await assertObjectAccess(admin.firestore(), auth.uid, projectId, 'tasks', taskId)
+        } catch (error) {
+            throw new HttpsError('permission-denied', error.message)
+        }
+        const { refreshTaskMergeStatus } = require('./Repositories/mergeStatus')
+        return refreshTaskMergeStatus({
+            userId: auth.uid,
+            projectId,
+            taskId,
+            force: !!(data && data.force),
+        })
+    }
+)
+
 // On-demand rebuild of a project's golden VM snapshot (repo + node_modules pre-baked).
 exports.rebuildProjectVmGolden = onCall(
     {

@@ -35,6 +35,8 @@ import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantMod
 import TaskId from './TaskId'
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
 import Priority from './Priority'
+import MergeStatus from './MergeStatus'
+import useTaskMergeStatusRefresh from '../../../hooks/useTaskMergeStatusRefresh'
 
 export default function PropertiesView({ project, task, loggedUser }) {
     const [creator, setCreator] = useState({})
@@ -43,6 +45,8 @@ export default function PropertiesView({ project, task, loggedUser }) {
     const selectedTab = useSelector(state => state.selectedNavItem)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const accessGranted = SharedHelper.accessGranted(loggedUser, project.id)
+
+    useTaskMergeStatusRefresh(project.id, task)
 
     useEffect(() => {
         Backend.getUserOrContactBy(project.id, task.creatorId).then(afterCreatorFetch)
@@ -217,6 +221,7 @@ export default function PropertiesView({ project, task, loggedUser }) {
                         )}
 
                         <CreatedBy createdDate={task.created} creator={creator} />
+                        <MergeStatus mergeRequest={task.vmMergeRequest} />
                         <TaskId task={task} />
                     </View>
                 </View>

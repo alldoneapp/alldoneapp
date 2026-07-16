@@ -68,6 +68,7 @@ export default function useTagsAmount({
 
         let counter = 0
 
+        if (task.vmMergeRequest?.status && task.vmMergeRequest?.url) counter++
         if (inMyDayAndNotSubtask && task.parentGoalId) counter++
         if (!!task.commentsData) counter++
         if (subtaskList && subtaskList.length > 0) counter++

@@ -3209,6 +3209,20 @@ async function runVmJobByCorrelationId(correlationId) {
         const mediaContext = await uploadArtifacts(pendingWebhook, artifacts)
         const finalText = buildVmFinalCommentText(output, mediaContext)
 
+        // Coding agents already return the MR/PR URL in their final result. Associate that
+        // provider-validated URL with the host task and fetch its initial status server-side.
+        // Status lookup is best-effort and must never turn otherwise successful VM work into
+        // a failed run.
+        if (gitContext && gitContext.enabled) {
+            const { associateVmMergeRequestWithTask } = require('../Repositories/mergeStatus')
+            await associateVmMergeRequestWithTask({ vmJob, gitContext, output }).catch(error => {
+                console.warn('🖥️ VM JOB: failed associating merge request with task', {
+                    correlationId,
+                    error: error.message,
+                })
+            })
+        }
+
         // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
         await writeStatusComment(pendingWebhook, finalText, { isFinal: true, output: finalText, mediaContext })
         await notifyVmResultChannels(pendingWebhook, output, {

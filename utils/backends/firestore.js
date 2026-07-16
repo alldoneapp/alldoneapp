@@ -6461,6 +6461,14 @@ export async function disconnectGithubRepo(data) {
     return result.data
 }
 
+// Refreshes the normalized status cached on a task. GitLab/GitHub credentials are
+// resolved and used only by the Cloud Function.
+export async function refreshTaskMergeStatus(data) {
+    const fn = firebase.app().functions('europe-west1').httpsCallable('refreshTaskMergeStatus')
+    const result = await fn(data)
+    return result.data
+}
+
 // Trigger an on-demand rebuild of the project's golden VM snapshot (repo + node_modules
 // pre-baked, so VM tasks skip the dependency install). Returns { success, buildId, alreadyBuilding }.
 export async function rebuildProjectVmGolden(data) {
