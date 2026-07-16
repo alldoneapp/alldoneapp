@@ -7,6 +7,25 @@ const VM_INTERACTION_TTL_MS = 24 * 60 * 60 * 1000
 const VALID_VM_INTERACTION_KINDS = ['clarification', 'plan_review', 'tool_approval']
 const VALID_VM_INTERACTION_ACTIONS = ['submit', 'approve', 'revise', 'deny', 'cancel']
 
+function getVmInteractionNotificationRef(db, pending, userId) {
+    if (!pending.projectId || !pending.objectId || !pending.statusCommentId || !userId) return null
+    return db.doc(`chatNotifications/${pending.projectId}/${userId}/${pending.statusCommentId}`)
+}
+
+function createVmInteractionNotification(pending, interaction, correlationId, createdAt) {
+    return {
+        chatId: pending.objectId,
+        chatType: pending.objectType || 'tasks',
+        followed: true,
+        date: createdAt,
+        creatorId: pending.assistantId,
+        creatorType: 'assistant',
+        vmRunId: pending.correlationId || correlationId,
+        vmInteractionRequestId: interaction.requestId,
+        vmInteractionKind: interaction.kind,
+    }
+}
+
 function truncate(value, maxLength) {
     const text = typeof value === 'string' ? value.trim() : ''
     return text.length > maxLength ? `${text.substring(0, maxLength)}…` : text
@@ -156,6 +175,18 @@ async function createVmInteractionRequest({
             },
             { merge: true }
         )
+
+        // Every VM interaction represented here requires an explicit user action. Use the
+        // existing followed-chat notification shape so questions, plans, and approvals receive
+        // the same red treatment as other actionable chat updates. The status comment ID makes
+        // this an idempotent upsert instead of creating a new notification on retries.
+        const notificationRef = getVmInteractionNotificationRef(db, pending, userId)
+        if (notificationRef) {
+            transaction.set(
+                notificationRef,
+                createVmInteractionNotification(pending, sanitized, correlationId, createdAt)
+            )
+        }
     })
 
     return sanitized
@@ -249,6 +280,12 @@ async function answerVmInteractionRequest({
             },
             { merge: true }
         )
+
+        // Resolving the interaction also resolves its actionable notification. If the user
+        // already opened the chat, this delete is an intentional no-op and preserves the normal
+        // mark-as-read semantics.
+        const notificationRef = getVmInteractionNotificationRef(db, pending, userId)
+        if (notificationRef) transaction.delete(notificationRef)
         result = {
             cancelling,
             executionAttemptId,
@@ -317,6 +354,8 @@ async function expireVmInteractions(db, now = Date.now()) {
                         { merge: true }
                     )
                 }
+                const notificationRef = getVmInteractionNotificationRef(db, latest, latest.userId)
+                if (notificationRef) transaction.delete(notificationRef)
                 return true
             })
             if (!expired) continue
