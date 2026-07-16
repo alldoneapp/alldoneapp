@@ -33,6 +33,7 @@ import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/Em
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
 import VmInteractionCard from './VmInteractionCard'
+import { isAwaitingVmInteraction as hasAwaitingVmInteraction } from './messageLoadingState'
 
 export default function MessageItemContent({
     messageId,
@@ -78,10 +79,10 @@ export default function MessageItemContent({
         )
     }
 
-    // Check if this message is in loading state
-    const isLoadingState = isLoading && creatorData?.isAssistant
-    const isAwaitingVmInteraction =
-        isLoadingState && assistantRun?.kind === 'vm_job' && assistantRun?.status === 'awaiting_user'
+    // Awaiting-user is a durable state, not a transient spinner. Render its card
+    // even if legacy/stale message-loading logic has already cleared isLoading.
+    const isAwaitingVmInteraction = creatorData?.isAssistant && hasAwaitingVmInteraction(assistantRun)
+    const isLoadingState = creatorData?.isAssistant && (isLoading || isAwaitingVmInteraction)
     // Strip leading whitespace so a status block appended before any answer text streamed
     // (e.g. a tool that runs immediately) doesn't render with a large blank gap above it.
     const loadingText = typeof commentText === 'string' ? commentText.replace(/^\s+/, '') : commentText

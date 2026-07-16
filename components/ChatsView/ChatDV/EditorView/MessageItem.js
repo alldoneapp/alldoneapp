@@ -11,6 +11,7 @@ import MessageItemHeader from './MessageItemHeader'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 import { getTimestampInMilliseconds } from '../../Utils/ChatHelper'
 import SharedHelper from '../../../../utils/SharedHelper'
+import { resolveEffectiveMessageLoading } from './messageLoadingState'
 
 export default function MessageItem({
     chat,
@@ -106,16 +107,12 @@ export default function MessageItem({
         onQuote()
     }
 
-    // Treat isLoading as false if the message hasn't been updated in over 5 minutes
-    // to prevent a permanently stuck spinner from stale Firestore data.
-    const LOADING_TIMEOUT_MS = 5 * 60 * 1000
-    let effectiveIsLoading = message.isLoading
-    if (effectiveIsLoading) {
-        const messageTime = getTimestampInMilliseconds(message.lastChangeDate)
-        if (messageTime && Date.now() - messageTime > LOADING_TIMEOUT_MS) {
-            effectiveIsLoading = false
-        }
-    }
+    // Expire stale running spinners, but never hide a plan, question, or approval
+    // while the VM job is deliberately waiting for the user.
+    const effectiveIsLoading = resolveEffectiveMessageLoading(
+        message,
+        getTimestampInMilliseconds(message.lastChangeDate)
+    )
 
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
