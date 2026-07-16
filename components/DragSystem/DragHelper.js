@@ -360,7 +360,7 @@ const updateLocalBoardsWhenDegradeTask = (
     parsedTaskListIndex === MAIN_TASK_INDEX || parsedTaskListIndex === MENTION_TASK_INDEX
         ? (openTasks[dateIndex][parsedTaskListIndex][goalIndex][1] = sourceList)
         : (openTasks[dateIndex][parsedTaskListIndex][nestedTaskListIndex][1][goalIndex][1] = sourceList)
-    updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
+    updateAndFilterTasksTasks(instanceKey, openTasks)
 }
 
 const updateLocalBoardsWhenPromoteSubtask = (
@@ -390,7 +390,7 @@ const updateLocalBoardsWhenPromoteSubtask = (
     parsedTaskListIndex === MAIN_TASK_INDEX || parsedTaskListIndex === MENTION_TASK_INDEX
         ? (openTasks[dateIndex][parsedTaskListIndex][goalIndex][1] = destinationList)
         : (openTasks[dateIndex][parsedTaskListIndex][nestedTaskListIndex][1][goalIndex][1] = destinationList)
-    updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
+    updateAndFilterTasksTasks(instanceKey, openTasks)
 }
 
 const updateLocalBoardsInDifferentSubtaskLists = (
@@ -417,11 +417,10 @@ const updateLocalBoardsInDifferentSubtaskLists = (
     subtaskByTask[sourceData.parentId] = sourceList
     subtaskByTask[destinationData.parentId] = destinationList
     store.dispatch(updateSubtaskByTask(instanceKey, subtaskByTask))
-    updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
+    updateAndFilterTasksTasks(instanceKey, openTasks)
 }
 
 const updateLocalBoardsInSameList = (
-    projectId,
     newLocalTasks,
     parsedTaskListIndex,
     nestedTaskListIndex,
@@ -439,7 +438,7 @@ const updateLocalBoardsInSameList = (
         parsedTaskListIndex === MAIN_TASK_INDEX || parsedTaskListIndex === MENTION_TASK_INDEX
             ? (openTasks[dateIndex][parsedTaskListIndex][goalIndex][1] = newLocalTasks)
             : (openTasks[dateIndex][parsedTaskListIndex][nestedTaskListIndex][1][goalIndex][1] = newLocalTasks)
-        updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
+        updateAndFilterTasksTasks(instanceKey, openTasks)
     }
 
     const { draggingParentTaskId } = store.getState()
@@ -723,7 +722,6 @@ const sortTask = (
         sourceList.splice(localOldIndex, 1)
         sourceList.splice(localNewIndex, 0, movedTask)
         updateLocalBoardsInSameList(
-            projectId,
             sourceList,
             parsedTaskListIndex,
             nestedTaskListIndex,

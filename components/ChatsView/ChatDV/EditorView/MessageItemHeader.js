@@ -10,7 +10,6 @@ import NavigationService from '../../../../utils/NavigationService'
 import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
 import { getAssistantProjectId } from '../../../AdminPanel/Assistants/assistantsHelper'
-import EmailNewBadge from '../../../Tags/EmailNewBadge'
 
 export default function MessageItemHeader({
     projectId,
@@ -21,7 +20,6 @@ export default function MessageItemHeader({
     onEditPress,
     editDisabled,
     accessGranted,
-    linkedEmailNew,
 }) {
     const dispatch = useDispatch()
 
@@ -74,7 +72,7 @@ export default function MessageItemHeader({
             : {}
 
     return (
-        <View style={localStyles.title} testID="message-item-header">
+        <View style={localStyles.title}>
             {highlight && <View style={localStyles.dotNotification} />}
             <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center' }}
@@ -114,7 +112,6 @@ export default function MessageItemHeader({
                     </View>
                 </TouchableOpacity>
             )}
-            {linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
         </View>
     )
 }
@@ -165,9 +162,5 @@ const localStyles = StyleSheet.create({
         marginLeft: 2,
         padding: 4,
         opacity: 0.6,
-    },
-    linkedEmailNewBadge: {
-        marginLeft: 'auto',
-        marginRight: 8,
     },
 })

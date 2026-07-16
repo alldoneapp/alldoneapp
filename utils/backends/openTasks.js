@@ -31,10 +31,7 @@ import { BACKLOG_MILESTONE_ID, DYNAMIC_PERCENT, getOwnerId } from '../../compone
 import { isInboxSummaryGmailTask } from '../Gmail/gmailTaskUtils'
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../EstimationHelper'
 import { filterOpenTasks } from '../../components/HashtagFilters/FilterHelpers/FilterTasks'
-import {
-    filterOpenTasksSectionsByPriority,
-    filterOpenTasksSectionsByVmState,
-} from '../../components/TaskListView/PriorityFilters/taskPriorityFilterHelper'
+import { filterOpenTasksSectionsByPriority } from '../../components/TaskListView/PriorityFilters/taskPriorityFilterHelper'
 import { sortTasksByPriority } from '../TaskPriority'
 
 export const TODAY_DATE = '0'
@@ -1458,14 +1455,8 @@ export const contractSomedayOpenTasks = (projectId, instanceKey, openTasks, upda
     store.dispatch(setSomedayTasksExpanded(false))
 }
 
-export const filterOpTasks = (instanceKey, tasks, projectId) => {
-    const {
-        hashtagFilters,
-        taskPriorityFilters,
-        taskVmStateFilters = [],
-        taskVmStatesByTask = {},
-        subtaskByTaskStore,
-    } = store.getState()
+export const filterOpTasks = (instanceKey, tasks) => {
+    const { hashtagFilters, taskPriorityFilters, subtaskByTaskStore } = store.getState()
     const filtersArray = Array.from(hashtagFilters.keys())
     let filteredOpenTasks = filtersArray.length > 0 ? filterOpenTasks(tasks) : tasks
     if (taskPriorityFilters.length > 0) {
@@ -1473,15 +1464,6 @@ export const filterOpTasks = (instanceKey, tasks, projectId) => {
             filteredOpenTasks,
             taskPriorityFilters,
             subtaskByTaskStore[instanceKey]
-        )
-    }
-    if (taskVmStateFilters.length > 0) {
-        filteredOpenTasks = filterOpenTasksSectionsByVmState(
-            filteredOpenTasks,
-            taskVmStateFilters,
-            taskVmStatesByTask,
-            subtaskByTaskStore[instanceKey],
-            projectId
         )
     }
     store.dispatch(updateFilteredOpenTasks(instanceKey, filteredOpenTasks))
@@ -1514,7 +1496,7 @@ export const updateOpTasks = (
 
     store.dispatch(updateThereAreNotTasksInFirstDay(instanceKey, thereAreNotTasksInFirstDay))
 
-    updateAndFilterTasksTasks(instanceKey, openTasks, projectId)
+    updateAndFilterTasksTasks(instanceKey, openTasks)
     if (setProjectsHaveTasksInFirstDay)
         setProjectsHaveTasksInFirstDay(projectsHaveTasksInFirstDay => {
             // Use AMOUNT_TASKS_INDEX which now includes calendar tasks for project amount calculation
@@ -1665,9 +1647,9 @@ const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
     return taskToShow
 }
 
-export const updateAndFilterTasksTasks = (instanceKey, tasks, projectId) => {
+export const updateAndFilterTasksTasks = (instanceKey, tasks) => {
     store.dispatch(updateOpenTasks(instanceKey, tasks))
-    filterOpTasks(instanceKey, tasks, projectId)
+    filterOpTasks(instanceKey, tasks)
 }
 
 export function watchAllMilestones(projectId, watcherKey) {
