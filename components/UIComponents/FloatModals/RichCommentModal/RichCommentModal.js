@@ -25,7 +25,7 @@ import { setActiveChatData, setAssistantEnabled } from '../../../../redux/action
 import BotMessagePlaceholder from './BotMessagePlaceholder'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
-import { getDvChatTabLink, getDvMainTabLink } from '../../../../utils/LinkingHelper'
+import { getDvChatTabLink } from '../../../../utils/LinkingHelper'
 import {
     getChatCommentsWithLinkedEmails,
     markChatMessagesAsRead,
@@ -386,14 +386,6 @@ export default function RichCommentModal({
         URLTrigger.processUrl(NavigationService, path)
     }
 
-    const navigateToObject = () => {
-        const navigationObjectType = objectType === 'topics' ? 'chats' : objectType
-        const path = getDvMainTabLink(projectId, objectId, navigationObjectType)
-
-        setTimeout(() => closeModal(), 50)
-        URLTrigger.processUrl(NavigationService, path)
-    }
-
     return showNotificationAboutTheBotBehavior ? null : (
         <View>
             {showFileSelector ? (
@@ -421,7 +413,7 @@ export default function RichCommentModal({
                             objectType={objectType}
                             objectId={objectId}
                             objectName={objectName}
-                            onOpen={navigateToObject}
+                            onOpen={processShowMore}
                         />
 
                         {canArchiveLinkedEmails && linkedEmails.length > 0 && (
