@@ -31,6 +31,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/EmailLine/emailLineHelper'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
+import EmailNewBadge from '../../../Tags/EmailNewBadge'
 
 export default function MessageItemContent({
     messageId,
@@ -48,6 +49,7 @@ export default function MessageItemContent({
     assistantRun,
     linkedEmail,
     linkedEmailGmailData,
+    linkedEmailNew,
     linkedEmailArchiving,
     linkedEmailArchived,
     onArchiveLinkedEmail,
@@ -469,6 +471,7 @@ export default function MessageItemContent({
                                         checkExisting
                                         style={localStyles.linkedEmailTaskButton}
                                     />
+                                    {linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
                                     <TouchableOpacity
                                         style={localStyles.linkedEmailButton}
                                         onPress={() => onArchiveLinkedEmail([linkedEmail])}
@@ -673,6 +676,9 @@ const localStyles = StyleSheet.create({
     linkedEmailTaskButton: {
         marginRight: 8,
         marginBottom: 4,
+    },
+    linkedEmailNewBadge: {
+        marginRight: 8,
     },
     linkedEmailButton: {
         minHeight: 28,

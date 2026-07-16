@@ -7,6 +7,7 @@ import { getLinkedEmailFromMessage } from '../../../ChatsView/ChatDV/linkedEmail
 export default function CommentsList({
     projectId,
     comments,
+    newEmailCommentIds = new Set(),
     canArchiveLinkedEmails,
     archivingAllEmails,
     archivingEmailKeys,
@@ -24,6 +25,7 @@ export default function CommentsList({
                         projectId={projectId}
                         linkedEmail={linkedEmail}
                         linkedEmailGmailData={item.gmailData}
+                        linkedEmailNew={newEmailCommentIds.has(item.id)}
                         canArchiveLinkedEmail={canArchiveLinkedEmails}
                         linkedEmailArchiving={archivingAllEmails || archivingEmailKeys.includes(linkedEmail?.key)}
                         linkedEmailArchived={archivedEmailKeys.includes(linkedEmail?.key)}

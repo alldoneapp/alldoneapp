@@ -1,6 +1,7 @@
 import {
     getLinkedEmailFromMessage,
     getLinkedEmailsFromMessages,
+    getNewEmailCommentIds,
     groupLinkedEmailsByConnection,
 } from './linkedEmailActions'
 
@@ -64,5 +65,15 @@ describe('linkedEmailActions', () => {
             'project-1': ['message-1', 'message-2'],
             'project-2': ['message-3'],
         })
+    })
+
+    test('selects unique grey notification IDs as new email comment candidates', () => {
+        expect(
+            getNewEmailCommentIds({
+                followedCommentIds: ['actionable-comment'],
+                unfollowedCommentIds: ['email-1', '', 'email-2', 'email-1'],
+            })
+        ).toEqual(['email-1', 'email-2'])
+        expect(getNewEmailCommentIds()).toEqual([])
     })
 })

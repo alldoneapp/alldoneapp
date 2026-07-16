@@ -33,6 +33,17 @@ export function getLinkedEmailsFromMessages(messages = []) {
     return [...linkedEmails.values()]
 }
 
+// Informational email comments deliberately use unfollowed (grey) chat
+// notifications. Keep the comment IDs so the UI can identify the individual
+// emails that were unread when the thread was opened.
+export function getNewEmailCommentIds(chatNotifications = {}) {
+    const commentIds = Array.isArray(chatNotifications?.unfollowedCommentIds)
+        ? chatNotifications.unfollowedCommentIds
+        : []
+
+    return [...new Set(commentIds.filter(Boolean))]
+}
+
 export function groupLinkedEmailsByConnection(linkedEmails = []) {
     return linkedEmails.reduce((groups, linkedEmail) => {
         if (!linkedEmail?.connectionProjectId || !linkedEmail?.messageId) return groups

@@ -33,6 +33,7 @@ import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
+import EmailNewBadge from '../../../Tags/EmailNewBadge'
 
 // Render inline formatted text segments with link/tag parsing
 const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => {
@@ -207,6 +208,7 @@ export default function Comment({
     comment,
     linkedEmail,
     linkedEmailGmailData,
+    linkedEmailNew,
     canArchiveLinkedEmail,
     linkedEmailArchiving,
     linkedEmailArchived,
@@ -399,6 +401,7 @@ export default function Comment({
                             showLabel={true}
                             propStyles={localStyles.linkedEmailTag}
                         />
+                        {linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
                         {canArchiveLinkedEmail && (
                             <>
                                 <EmailTaskAction
@@ -566,6 +569,9 @@ const localStyles = StyleSheet.create({
     linkedEmailTaskButton: {
         marginRight: 8,
         marginBottom: 4,
+    },
+    linkedEmailNewBadge: {
+        marginRight: 8,
     },
     linkedEmailButton: {
         minHeight: 28,

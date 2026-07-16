@@ -48,6 +48,7 @@ import {
 import Icon from '../../Icon'
 import global, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
+import useNewEmailCommentIds from './useNewEmailCommentIds'
 
 export default function ChatBoard({
     projectId,
@@ -85,6 +86,7 @@ export default function ChatBoard({
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
+    const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${chat.id}`, chatNotifications)
     const linkedEmails = getLinkedEmailsFromMessages(messages)
     const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
     const lastMessageid = messages.length > 0 ? messages[messages.length - 1].id : ''
@@ -323,6 +325,8 @@ export default function ChatBoard({
                 <View>
                     {messages.map((message, index) => {
                         const highlight = index >= amountOfCommentsToNotHighligth
+                        const linkedEmail = getLinkedEmailFromMessage(message)
+                        const linkedEmailNew = !!linkedEmail && newEmailCommentIds.has(message.id)
                         return (
                             <MessageItem
                                 chat={chat}
@@ -333,15 +337,13 @@ export default function ChatBoard({
                                 chatTitle={chatTitle}
                                 members={members}
                                 objectType={objectType}
-                                highlight={highlight}
-                                linkedEmail={getLinkedEmailFromMessage(message)}
+                                highlight={highlight && !linkedEmailNew}
+                                linkedEmail={linkedEmail}
+                                linkedEmailNew={linkedEmailNew}
                                 linkedEmailArchiving={
-                                    archivingAllEmails ||
-                                    archivingEmailKeys.includes(getLinkedEmailFromMessage(message)?.key)
+                                    archivingAllEmails || archivingEmailKeys.includes(linkedEmail?.key)
                                 }
-                                linkedEmailArchived={archivedEmailKeys.includes(
-                                    getLinkedEmailFromMessage(message)?.key
-                                )}
+                                linkedEmailArchived={archivedEmailKeys.includes(linkedEmail?.key)}
                                 onArchiveLinkedEmail={archiveLinkedEmails}
                                 setAmountOfNewCommentsToHighligth={setAmountOfNewCommentsToHighligth}
                             />

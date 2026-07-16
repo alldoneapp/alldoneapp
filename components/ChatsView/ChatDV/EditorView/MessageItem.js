@@ -22,6 +22,7 @@ export default function MessageItem({
     objectType,
     highlight,
     linkedEmail,
+    linkedEmailNew,
     linkedEmailArchiving,
     linkedEmailArchived,
     onArchiveLinkedEmail,
@@ -172,6 +173,7 @@ export default function MessageItem({
                         assistantRun={message.assistantRun}
                         linkedEmail={linkedEmail}
                         linkedEmailGmailData={message.gmailData}
+                        linkedEmailNew={linkedEmailNew}
                         linkedEmailArchiving={linkedEmailArchiving}
                         linkedEmailArchived={linkedEmailArchived}
                         onArchiveLinkedEmail={onArchiveLinkedEmail}

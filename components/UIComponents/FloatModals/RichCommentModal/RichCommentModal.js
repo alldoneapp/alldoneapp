@@ -43,6 +43,7 @@ import {
 import Icon from '../../../Icon'
 import SharedHelper from '../../../../utils/SharedHelper'
 import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
+import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
 
 export default function RichCommentModal({
     projectId,
@@ -109,6 +110,7 @@ export default function RichCommentModal({
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
 
     const comments = sortBy(messages, [item => -item.created])
+    const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${objectType}:${objectId}`, chatNotifications)
     const linkedEmails = getLinkedEmailsFromMessages(comments)
     const unarchivedLinkedEmails = linkedEmails.filter(email => !archivedEmailKeys.includes(email.key))
     const canArchiveLinkedEmails = SharedHelper.accessGranted(loggedUser, projectId)
@@ -470,6 +472,7 @@ export default function RichCommentModal({
                                 <CommentsList
                                     projectId={projectId}
                                     comments={comments}
+                                    newEmailCommentIds={newEmailCommentIds}
                                     canArchiveLinkedEmails={canArchiveLinkedEmails}
                                     archivingAllEmails={archivingAllEmails}
                                     archivingEmailKeys={archivingEmailKeys}
