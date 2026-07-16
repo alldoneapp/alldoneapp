@@ -42,6 +42,7 @@ export default function SocialText({
     isObservedTask,
     showVerticalEllipsisInByTime,
     dotsStyle,
+    allowPressInsidePopover,
 }) {
     const [visibleEllipsis, setVisibleEllipsis] = useState(false)
     const [textSectionWidth, setTextSectionWidth] = useState(0)
@@ -127,7 +128,8 @@ export default function SocialText({
                     },
             ]}
             onPress={e => {
-                if (onPress && shouldOnPressInput(e, blockOpen)) onPress(e)
+                const pressAllowed = allowPressInsidePopover ? !blockOpen : shouldOnPressInput(e, blockOpen)
+                if (onPress && pressAllowed) onPress(e)
             }}
             numberOfLines={activeCalendarStyle ? 1 : numberOfLines}
             onLayout={onLayoutChange}

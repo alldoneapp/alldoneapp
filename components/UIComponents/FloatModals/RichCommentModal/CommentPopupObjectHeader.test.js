@@ -88,18 +88,15 @@ describe('CommentPopupObjectHeader', () => {
         expect(row.props.inCommentPopup).toBe(true)
     })
 
-    test.each(Object.entries(PRESENTATION_BY_TYPE))(
-        'opens the %s detailed view from its main row',
-        async (type, rowType) => {
-            const onOpen = jest.fn()
-            const tree = await renderHeader(type, { id: 'object-1', uid: 'object-1' }, onOpen)
-            const row = tree.root.findByType(rowType)
+    test.each(Object.entries(PRESENTATION_BY_TYPE))('opens the %s chat from its main row', async (type, rowType) => {
+        const onOpen = jest.fn()
+        const tree = await renderHeader(type, { id: 'object-1', uid: 'object-1' }, onOpen)
+        const row = tree.root.findByType(rowType)
 
-            row.props[OPEN_PROP_BY_TYPE[type]]()
+        row.props[OPEN_PROP_BY_TYPE[type]]()
 
-            expect(onOpen).toHaveBeenCalledTimes(1)
-        }
-    )
+        expect(onOpen).toHaveBeenCalledTimes(1)
+    })
 
     it('stops embedded row events from reaching popup parent click handlers', async () => {
         const tree = await renderHeader('tasks')

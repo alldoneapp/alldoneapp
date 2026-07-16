@@ -68,6 +68,7 @@ export default function TitleContainer({
                 isObservedTask={isObservedTask}
                 showVerticalEllipsisInByTime={showVerticalEllipsisInByTime}
                 dotsStyle={inMyDayAndNotSubtask && { paddingLeft: 6, bottom: 12 }}
+                allowPressInsidePopover={useCommentPopupTextColor}
             >
                 {task !== undefined && task.name != null && task.extendedName != null
                     ? task.extendedName !== ''
