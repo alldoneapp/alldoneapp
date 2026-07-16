@@ -13,6 +13,7 @@ let approvedToolConsumed = false
 
 const options = {
     cwd: input.cwd,
+    additionalDirectories: Array.isArray(input.additionalDirectories) ? input.additionalDirectories : [],
     model: input.model || undefined,
     effort: input.effort || undefined,
     permissionMode: input.permissionMode,

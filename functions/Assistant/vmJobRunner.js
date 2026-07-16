@@ -1403,20 +1403,39 @@ function buildCodexProxyConfigOverrides(proxyBaseUrl) {
     ]
 }
 
+function normalizeAdditionalWritableRoots(additionalWritableRoots = []) {
+    return Array.from(
+        new Set(
+            (Array.isArray(additionalWritableRoots) ? additionalWritableRoots : [])
+                .filter(root => typeof root === 'string')
+                .map(root => root.trim())
+                .filter(Boolean)
+        )
+    )
+}
+
+function buildCodexSandboxConfigOverrides(additionalWritableRoots = []) {
+    const writableRoots = normalizeAdditionalWritableRoots(additionalWritableRoots)
+    return [
+        'sandbox_mode="workspace-write"',
+        `sandbox_workspace_write.writable_roots=${JSON.stringify(writableRoots)}`,
+        'sandbox_workspace_write.network_access=true',
+    ]
+}
+
 function buildCodexRunCommand(isResume, agentModel, agentReasoningEffort, proxyBaseUrl, subscriptionUsed = false) {
     const resumePart = isResume ? 'exec resume --last' : 'exec'
     const modelFlag = agentModel ? ` --model ${agentModel}` : ''
     const effortFlag = agentReasoningEffort ? ` -c model_reasoning_effort=${agentReasoningEffort}` : ''
-    const sandboxFlag = ` -c ${shellQuoteArg('sandbox_mode="workspace-write"')}`
-    const gitMetadataFlag = ` -c ${shellQuoteArg(
-        `sandbox_workspace_write.writable_roots=[${JSON.stringify(GIT_METADATA_ROOT)}]`
-    )}`
+    const sandboxFlags = buildCodexSandboxConfigOverrides([GIT_METADATA_ROOT])
+        .map(override => ` -c ${shellQuoteArg(override)}`)
+        .join('')
     const providerFlags = subscriptionUsed
         ? ''
         : buildCodexProxyConfigOverrides(proxyBaseUrl)
               .map(override => ` -c ${shellQuoteArg(override)}`)
               .join('')
-    return `codex ${resumePart}${sandboxFlag}${gitMetadataFlag} -c sandbox_workspace_write.network_access=true --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
+    return `codex ${resumePart}${sandboxFlags} --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
 }
 
 function buildLatestAgentCliInstallCommand(packageName, binaryName, options = {}) {
@@ -1595,12 +1614,21 @@ async function prepareVmAgentBridge(sandbox, agent, onActivity, header) {
     return remotePath
 }
 
-function buildVmAgentBridgeInput({ vmJob, pendingWebhook, workdir, prompt, runDetails, agentCredentials }) {
+function buildVmAgentBridgeInput({
+    vmJob,
+    pendingWebhook,
+    workdir,
+    prompt,
+    runDetails,
+    agentCredentials,
+    additionalWritableRoots = [],
+}) {
     const executionMode = vmJob.executionMode || 'automatic'
     const phase = resolveVmInteractionPhase(executionMode, pendingWebhook)
     const answeredInteraction = pendingWebhook?.answeredInteraction || null
     const interactionResponse = pendingWebhook?.interactionResponse || null
     const providerState = pendingWebhook?.interactionProviderState || null
+    const writableRoots = normalizeAdditionalWritableRoots(additionalWritableRoots)
     const input = {
         cwd: workdir,
         model: runDetails.model,
@@ -1620,13 +1648,16 @@ function buildVmAgentBridgeInput({ vmJob, pendingWebhook, workdir, prompt, runDe
     if ((vmJob.agent || DEFAULT_AGENT) === 'claude') {
         input.permissionMode =
             phase === 'planning' ? 'plan' : executionMode === 'plan_first' ? 'bypassPermissions' : 'default'
+        input.additionalDirectories = writableRoots
     } else {
         input.approvalPolicy = phase === 'executing' && executionMode === 'plan_first' ? 'never' : 'on-request'
         input.approvalsReviewer = executionMode === 'interactive' ? 'auto_review' : 'user'
-        input.codexArgs =
+        const sandboxArgs = buildCodexSandboxConfigOverrides(writableRoots).flatMap(override => ['-c', override])
+        const providerArgs =
             agentCredentials.mode === 'subscription'
                 ? []
                 : buildCodexProxyConfigOverrides(agentCredentials.baseUrl).flatMap(override => ['-c', override])
+        input.codexArgs = [...sandboxArgs, ...providerArgs]
     }
     return input
 }
@@ -2776,6 +2807,7 @@ async function runAgentInSandbox(
                 prompt,
                 runDetails,
                 agentCredentials,
+                additionalWritableRoots: gitContext && gitContext.enabled ? [GIT_METADATA_ROOT] : [],
             })
             await sandbox.files.write(VM_AGENT_BRIDGE_INPUT_PATH, JSON.stringify(bridgeInput))
             agentCommand = `node ${shellQuoteArg(bridgePath)} ${shellQuoteArg(

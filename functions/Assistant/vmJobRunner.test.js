@@ -273,8 +273,13 @@ describe('VM interactive agent bridge', () => {
             prompt: 'Plan this',
             runDetails: { model: 'opus', effort: 'high' },
             agentCredentials: { mode: 'subscription' },
+            additionalWritableRoots: ['/home/user/git-metadata'],
         })
-        expect(planning).toMatchObject({ phase: 'planning', permissionMode: 'plan' })
+        expect(planning).toMatchObject({
+            phase: 'planning',
+            permissionMode: 'plan',
+            additionalDirectories: ['/home/user/git-metadata'],
+        })
 
         const executing = __private__.buildVmAgentBridgeInput({
             vmJob: { agent: 'claude', executionMode: 'plan_first' },
@@ -287,8 +292,13 @@ describe('VM interactive agent bridge', () => {
             prompt: 'Plan this',
             runDetails: { model: 'opus', effort: 'high' },
             agentCredentials: { mode: 'subscription' },
+            additionalWritableRoots: ['/home/user/git-metadata'],
         })
-        expect(executing).toMatchObject({ phase: 'executing', permissionMode: 'bypassPermissions' })
+        expect(executing).toMatchObject({
+            phase: 'executing',
+            permissionMode: 'bypassPermissions',
+            additionalDirectories: ['/home/user/git-metadata'],
+        })
         expect(executing.prompt).toContain('approved the plan')
     })
 
@@ -300,6 +310,7 @@ describe('VM interactive agent bridge', () => {
             prompt: 'Implement this',
             runDetails: { model: 'gpt-5.6-sol', effort: 'medium' },
             agentCredentials: { mode: 'subscription' },
+            additionalWritableRoots: ['/home/user/git-metadata'],
         })
 
         expect(input).toMatchObject({
@@ -307,6 +318,50 @@ describe('VM interactive agent bridge', () => {
             approvalPolicy: 'on-request',
             approvalsReviewer: 'auto_review',
         })
+        expect(input.codexArgs).toEqual(
+            expect.arrayContaining([
+                'sandbox_mode="workspace-write"',
+                'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]',
+                'sandbox_workspace_write.network_access=true',
+            ])
+        )
+    })
+
+    test.each([
+        { agent: 'claude', executionMode: 'plan_first' },
+        { agent: 'claude', executionMode: 'interactive' },
+        { agent: 'codex', executionMode: 'plan_first' },
+        { agent: 'codex', executionMode: 'interactive' },
+    ])('keeps Git metadata writable for $agent in $executionMode mode', ({ agent, executionMode }) => {
+        const pendingWebhook =
+            executionMode === 'plan_first'
+                ? {
+                      answeredInteraction: { kind: 'plan_review' },
+                      interactionResponse: { action: 'approve' },
+                  }
+                : {}
+        const input = __private__.buildVmAgentBridgeInput({
+            vmJob: { agent, executionMode },
+            pendingWebhook,
+            workdir: '/home/user/repo',
+            prompt: 'Implement this',
+            runDetails: { model: agent === 'claude' ? 'opus' : 'gpt-5.6-sol', effort: 'medium' },
+            agentCredentials: { mode: 'subscription' },
+            additionalWritableRoots: [' /home/user/git-metadata ', '/home/user/git-metadata', '', null],
+        })
+
+        expect(input.phase).toBe('executing')
+        if (agent === 'claude') {
+            expect(input.additionalDirectories).toEqual(['/home/user/git-metadata'])
+        } else {
+            expect(input.codexArgs).toEqual(
+                expect.arrayContaining([
+                    'sandbox_mode="workspace-write"',
+                    'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]',
+                    'sandbox_workspace_write.network_access=true',
+                ])
+            )
+        }
     })
 })
 
