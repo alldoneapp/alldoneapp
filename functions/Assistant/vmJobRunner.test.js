@@ -112,9 +112,7 @@ describe('VM runner prompt', () => {
         expect(prompt).toContain(
             'If you made no repository changes, your final message MUST say that no Pull Request was opened'
         )
-        expect(prompt).toContain(
-            'Repository dependencies may already be pre-installed at /home/user/repo/node_modules'
-        )
+        expect(prompt).toContain('Repository dependencies may already be pre-installed at /home/user/repo/node_modules')
         expect(prompt).toContain(
             'if /home/user/repo/node_modules already exists and the lockfile is unchanged, skip installation entirely'
         )
@@ -479,7 +477,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
 })
 
 describe('VM Git checkout setup', () => {
-    test('keeps mutable Git metadata outside the protected .git path and preserves resumed branches', () => {
+    test('refreshes cold golden checkouts while preserving resumed branches', () => {
         const childProcess = require('child_process')
         const fs = require('fs')
         const os = require('os')
@@ -520,16 +518,33 @@ describe('VM Git checkout setup', () => {
         expect(fs.existsSync(path.join(workTree, '.git'))).toBe(false)
         expect(fs.existsSync(gitDir)).toBe(true)
 
+        run(`git remote add origin ${JSON.stringify(origin)}`, { cwd: seed })
+        fs.writeFileSync(path.join(seed, 'LATEST.md'), 'latest\n')
+        run('git add LATEST.md && git -c user.name=Test -c user.email=test@example.com commit -m latest', {
+            cwd: seed,
+        })
+        run('git push origin main', { cwd: seed })
+
+        // A cold sandbox seeded from a golden snapshot has an existing checkout, but must still
+        // start from the latest remote base rather than the commit baked into the snapshot.
+        run(__private__.GIT_SETUP_SCRIPT, { env: { ...setupEnv, GIT_PRESERVE_WORKTREE: 'false' } })
+        expect(run('git rev-parse HEAD', { cwd: workTree, env: setupEnv }).toString().trim()).toBe(
+            run('git rev-parse origin/main', { cwd: workTree, env: setupEnv }).toString().trim()
+        )
+        expect(fs.readFileSync(path.join(workTree, 'LATEST.md'), 'utf8')).toBe('latest\n')
+
         run('git checkout -b ai/sandbox-safe-branch', { cwd: workTree, env: setupEnv })
-        run(__private__.GIT_SETUP_SCRIPT, { env: setupEnv })
+        fs.writeFileSync(path.join(workTree, 'README.md'), 'in-progress work\n')
+        run(__private__.GIT_SETUP_SCRIPT, { env: { ...setupEnv, GIT_PRESERVE_WORKTREE: 'true' } })
         expect(run('git rev-parse --abbrev-ref HEAD', { cwd: workTree, env: setupEnv }).toString().trim()).toBe(
             'ai/sandbox-safe-branch'
         )
+        expect(fs.readFileSync(path.join(workTree, 'README.md'), 'utf8')).toBe('in-progress work\n')
 
         // A paused sandbox created before this fix resumes with conventional .git metadata.
         // The setup step must migrate it without losing the agent's current branch.
         fs.renameSync(gitDir, path.join(workTree, '.git'))
-        run(__private__.GIT_SETUP_SCRIPT, { env: setupEnv })
+        run(__private__.GIT_SETUP_SCRIPT, { env: { ...setupEnv, GIT_PRESERVE_WORKTREE: 'true' } })
         expect(fs.existsSync(path.join(workTree, '.git'))).toBe(false)
         expect(run('git rev-parse --abbrev-ref HEAD', { cwd: workTree, env: setupEnv }).toString().trim()).toBe(
             'ai/sandbox-safe-branch'

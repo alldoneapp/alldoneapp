@@ -598,9 +598,10 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text) {
 // interpolated into the script text — no shell injection). The credential helper is
 // single-quoted so $GIT_TOKEN is resolved by git at push time from the live env, not baked
 // into ~/.gitconfig (GitLab auths as oauth2:<token>, GitHub as x-access-token:<token>). Fresh
-// start: clone + checkout the base branch. On a resumed thread the repo already exists, so we
-// only fetch (and leave the agent's working state intact) so a conversational follow-up
-// continues on the same branch the agent left.
+// start: clone + checkout the base branch. A cold sandbox seeded from a golden snapshot already
+// has a repo too, so GIT_PRESERVE_WORKTREE explicitly distinguishes it from a resumed thread:
+// cold golden checkouts are fast-forwarded to origin/base, while genuine resumes only fetch and
+// leave the agent's working state intact.
 //
 // git is ensured at RUNTIME (not via the E2B template): the worker runs on E2B's prebuilt
 // `claude`/`codex` templates by default — our custom template (functions/e2b-template) is only
@@ -635,12 +636,19 @@ git config core.worktree "$GIT_WORK_TREE"
 git remote set-url origin "$GIT_REPO_URL"
 if [ "$fresh_checkout" = true ]; then
   git checkout "$GIT_BASE_BRANCH" 2>/dev/null || true
+elif [ "\${GIT_PRESERVE_WORKTREE:-false}" = true ]; then
+  git fetch origin --prune
 else
   git fetch origin --prune
+  git checkout -f "$GIT_BASE_BRANCH" 2>/dev/null || git checkout -f -B "$GIT_BASE_BRANCH" "origin/$GIT_BASE_BRANCH"
+  git reset --hard "origin/$GIT_BASE_BRANCH"
 fi
 mkdir -p "$GIT_DIR/info"
 grep -qxF "node_modules/" "$GIT_DIR/info/exclude" 2>/dev/null || printf "\\nnode_modules/\\n" >> "$GIT_DIR/info/exclude"
-echo "GIT_SETUP_OK $(git rev-parse --abbrev-ref HEAD)"
+git_branch=$(git rev-parse --abbrev-ref HEAD)
+git_head=$(git rev-parse HEAD)
+git_base=$(git rev-parse "origin/$GIT_BASE_BRANCH")
+echo "GIT_SETUP_OK branch=$git_branch head=$git_head base=$git_base preserve=$GIT_PRESERVE_WORKTREE"
 `
 
 // Build the provider-specific context from a project's repo config + a user token doc.
@@ -747,13 +755,16 @@ function buildGitEnv(gitContext) {
 
 // Clone (or refresh, on resume) the repo and configure git auth before the agent runs.
 // Throws a user-facing error on failure so the job fails+refunds instead of running blind.
-async function setupGitRepo(sandbox, gitContext, correlationId) {
+async function setupGitRepo(sandbox, gitContext, correlationId, { preserveWorktree = false } = {}) {
     await sandbox.files.write('/home/user/git-setup.sh', GIT_SETUP_SCRIPT)
     let stderr = ''
     let stdout = ''
     try {
         await sandbox.commands.run('bash /home/user/git-setup.sh', {
-            envs: buildGitEnv(gitContext),
+            envs: {
+                ...buildGitEnv(gitContext),
+                GIT_PRESERVE_WORKTREE: preserveWorktree ? 'true' : 'false',
+            },
             timeoutMs: 5 * 60 * 1000,
             onStdout: d => {
                 stdout += d
@@ -767,9 +778,13 @@ async function setupGitRepo(sandbox, gitContext, correlationId) {
         const detail = (stderr || err.message || '').substring(0, 300)
         throw new Error(`Could not prepare the connected GitLab repository. ${detail}`)
     }
+    const setupResult = (stdout || '').match(/GIT_SETUP_OK branch=(\S+) head=(\S+) base=(\S+) preserve=(\S+)/)
     console.log('🖥️ VM JOB: git repo ready', {
         correlationId,
-        head: ((stdout || '').match(/GIT_SETUP_OK (\S+)/) || [])[1] || null,
+        branch: setupResult?.[1] || null,
+        head: setupResult?.[2] || null,
+        base: setupResult?.[3] || null,
+        preserveWorktree: setupResult?.[4] === 'true',
     })
 }
 
@@ -2422,7 +2437,7 @@ async function runAgentInSandbox(
                     } the connected repository…`
                 )
             }
-            await setupGitRepo(sandbox, gitContext, vmJob.correlationId)
+            await setupGitRepo(sandbox, gitContext, vmJob.correlationId, { preserveWorktree: isResume })
             await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
             // Self-healing golden refresh (#2): now that the repo is checked out, hash its
