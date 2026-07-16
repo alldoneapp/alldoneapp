@@ -1812,6 +1812,28 @@ export const setTaskPriorityFilters = priorities => {
     return action
 }
 
+export const clearTaskVmStateFilters = () => {
+    const action = { type: 'Clear task VM state filters' }
+    return action
+}
+
+export const setTaskVmStateFilters = vmStates => {
+    const action = {
+        type: 'Set task VM state filters',
+        vmStates,
+    }
+    return action
+}
+
+export const updateTaskVmState = (taskKey, vmState) => {
+    const action = {
+        type: 'Update task VM state',
+        taskKey,
+        vmState,
+    }
+    return action
+}
+
 export const setTriggerGoldAnimation = (goldEarned, checkBoxId) => {
     const action = {
         type: 'Set gold earned',

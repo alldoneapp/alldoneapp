@@ -141,29 +141,32 @@ export const getAssistantInProject = (projectId, assistantId) => {
     return getNormalAssistantInProject(projectId, assistantId)
 }
 
-const getAssignedAssistantInProjectContext = (projectId, objectAssistantId) => {
-    if (!objectAssistantId) return null
+export const getAssistantInProjectObject = (projectId, objectAssistantId) => {
+    if (objectAssistantId) {
+        // First check if it's a global assistant
+        const globalAssistant = getGlobalAssistant(objectAssistantId)
+        if (globalAssistant) {
+            // For global assistants, verify it's in the project
+            const project = ProjectHelper.getProjectById(projectId)
+            if (project && project.globalAssistantIds.includes(objectAssistantId)) {
+                return globalAssistant
+            }
+        }
 
-    const assistant = getAssistantInProject(projectId, objectAssistantId)
-    if (assistant) return assistant
+        // If not a global assistant or not in project, check project assistants
+        const assistant = getAssistantInProject(projectId, objectAssistantId)
+        if (assistant) return assistant
 
-    // Objects can keep using an assistant from the user's default project even when they
-    // live in another project.
-    const { loggedUser } = store.getState()
-    const defaultProjectId = loggedUser?.defaultProjectId
-    if (defaultProjectId && defaultProjectId !== projectId) {
-        const defaultProjectAssistant = getAssistantInProject(defaultProjectId, objectAssistantId)
-        if (defaultProjectAssistant) return defaultProjectAssistant
+        // Also check default project assistants (for cross-project use)
+        const { loggedUser } = store.getState()
+        const defaultProjectId = loggedUser?.defaultProjectId
+        if (defaultProjectId && defaultProjectId !== projectId) {
+            const defaultProjectAssistant = getAssistantInProject(defaultProjectId, objectAssistantId)
+            if (defaultProjectAssistant) return defaultProjectAssistant
+        }
     }
 
-    return null
-}
-
-export const getAssistantInProjectObject = (projectId, objectAssistantId) => {
-    return (
-        getAssignedAssistantInProjectContext(projectId, objectAssistantId) ||
-        getDefaultAssistantInProjectById(projectId)
-    )
+    return getDefaultAssistantInProjectById(projectId)
 }
 
 export const getDefaultAssistantInProjectById = projectId => {
@@ -199,17 +202,6 @@ export const resolveDefaultAssistantForProject = projectId => {
     if (defaultAssistant && defaultAssistant.uid) return defaultAssistant
 
     return null
-}
-
-// Resolve the assistant for a project object without allowing a missing/deleted explicit
-// assignment to leak into execution. This is the shared resolution path for task controls:
-// keep a valid object assignment, otherwise use the project's assistant and finally the
-// account default via `resolveDefaultAssistantForProject`.
-export const resolveAssistantForProjectObject = (projectId, objectAssistantId) => {
-    return (
-        getAssignedAssistantInProjectContext(projectId, objectAssistantId) ||
-        resolveDefaultAssistantForProject(projectId)
-    )
 }
 
 const getDefaultAssistantInProject = project => {

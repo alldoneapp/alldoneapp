@@ -153,6 +153,7 @@ export default function MessageItem({
                         onEditPress={enableEditMode}
                         editDisabled={!accessGranted}
                         accessGranted={accessGranted}
+                        linkedEmailNew={accessGranted && !!linkedEmail && linkedEmailNew}
                     />
                     <MessageItemContent
                         chat={chat}
@@ -170,7 +171,6 @@ export default function MessageItem({
                         assistantRun={message.assistantRun}
                         linkedEmail={linkedEmail}
                         linkedEmailGmailData={message.gmailData}
-                        linkedEmailNew={linkedEmailNew}
                         linkedEmailArchiving={linkedEmailArchiving}
                         linkedEmailArchived={linkedEmailArchived}
                         onArchiveLinkedEmail={onArchiveLinkedEmail}
