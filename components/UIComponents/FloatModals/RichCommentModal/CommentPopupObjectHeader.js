@@ -105,9 +105,12 @@ export default function CommentPopupObjectHeader({ projectId, objectId, objectTy
             onClick={stopEventPropagation}
             onMouseDown={stopEventPropagation}
             onTouchStart={stopEventPropagation}
-            style={{ width: '100%', backgroundColor, borderRadius: 4 }}
+            style={{ width: '100%' }}
         >
-            <View style={[localStyles.objectContainer, { backgroundColor }]}>
+            <View
+                testID={`comment-popup-object-surface-${normalizedObjectType}`}
+                style={[localStyles.objectContainer, { backgroundColor }]}
+            >
                 {renderObject({
                     isMember,
                     object,

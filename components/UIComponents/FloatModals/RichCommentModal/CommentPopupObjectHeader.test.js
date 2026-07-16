@@ -104,13 +104,11 @@ describe('CommentPopupObjectHeader', () => {
     it('stops embedded row events from reaching popup parent click handlers', async () => {
         const tree = await renderHeader('tasks')
         const boundary = tree.root.find(node => node.props['data-testid'] === 'comment-popup-object-tasks')
+        const surface = tree.root.findByProps({ testID: 'comment-popup-object-surface-tasks' })
         const event = { stopPropagation: jest.fn() }
 
-        expect(boundary.props.style).toEqual({
-            width: '100%',
-            backgroundColor: '#1A3289',
-            borderRadius: 4,
-        })
+        expect(boundary.props.style).toEqual({ width: '100%' })
+        expect(surface.props.style).toEqual(expect.arrayContaining([{ backgroundColor: '#1A3289' }]))
 
         boundary.props.onClick(event)
 
@@ -119,9 +117,9 @@ describe('CommentPopupObjectHeader', () => {
 
     it('uses the same dark popup background for non-task objects', async () => {
         const tree = await renderHeader('topics')
-        const boundary = tree.root.find(node => node.props['data-testid'] === 'comment-popup-object-topics')
+        const surface = tree.root.findByProps({ testID: 'comment-popup-object-surface-topics' })
 
-        expect(boundary.props.style.backgroundColor).toBe('#1A3289')
+        expect(surface.props.style).toEqual(expect.arrayContaining([{ backgroundColor: '#1A3289' }]))
     })
 
     it('shows a graceful fallback for deleted objects', async () => {
