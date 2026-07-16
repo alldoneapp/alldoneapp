@@ -10,6 +10,7 @@ import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 import TaskPriorityFiltersLine from '../PriorityFilters/TaskPriorityFiltersLine'
+import TaskVmStateFiltersLine from '../PriorityFilters/TaskVmStateFiltersLine'
 import EmailLine from '../EmailLine/EmailLine'
 import { EMAIL_LINE_ENABLED } from '../EmailLine/emailLineFeature'
 
@@ -68,6 +69,7 @@ export default function OpenTasksViewAllProjects() {
             <AssistantLine useAssistantProjectContext={false} />
             {EMAIL_LINE_ENABLED && <EmailLine />}
             <TaskPriorityFiltersLine projectId={null} />
+            <TaskVmStateFiltersLine projectId={null} />
             {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox showEmptyInboxOverview />}
             {sortedLoggedUserProjectIds.map(projectId => {
                 let thisProjectIsTheFirstProject = false

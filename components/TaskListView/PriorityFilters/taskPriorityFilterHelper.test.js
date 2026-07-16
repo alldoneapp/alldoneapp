@@ -42,7 +42,13 @@ jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedProject: projectIndex => projectIndex >= 0,
 }))
 
-import { collectTaskPriorityCounts, filterOpenTasksSectionsByPriority } from './taskPriorityFilterHelper'
+import {
+    collectTaskPriorityCounts,
+    collectTaskVmSessionRefs,
+    collectTaskVmStateCounts,
+    filterOpenTasksSectionsByPriority,
+    filterOpenTasksSectionsByVmState,
+} from './taskPriorityFilterHelper'
 
 const OPEN_STEP = -1
 
@@ -53,6 +59,12 @@ const makeTask = (id, priority, estimation = 0) => ({
     stepHistory: [OPEN_STEP],
     estimations: { [OPEN_STEP]: estimation },
 })
+
+const makePersistedTask = (id, priority, estimation = 0) => {
+    const task = makeTask(id, priority, estimation)
+    delete task.projectId
+    return task
+}
 
 const makeSection = (date, { mainTasks = [], observedTasks = [], emptyGoals = [], activeGoals = [] } = {}) => {
     const section = []
@@ -196,5 +208,137 @@ describe('collectTaskPriorityCounts', () => {
         expect(counts).toEqual({ must_do: 1, none: 2 })
         expect(total).toBe(3)
         expect(prioritized).toBe(1)
+    })
+})
+
+describe('VM state task list filters', () => {
+    beforeEach(() => {
+        mockGetState.mockReturnValue({ currentUser: { uid: 'user-1' }, selectedProjectIndex: 0 })
+    })
+
+    test('keeps only tasks matching any selected VM state and recalculates totals', () => {
+        const sections = [
+            makeSection('0', {
+                mainTasks: [['goal-1', [makeTask('a', 'must_do', 30), makeTask('b', 'must_do', 60), makeTask('c')]]],
+            }),
+        ]
+        const vmStatesByTask = {
+            'project-1__a': 'in_progress',
+            'project-1__b': 'failed',
+        }
+
+        const filtered = filterOpenTasksSectionsByVmState(sections, ['in_progress', 'paused'], vmStatesByTask)
+        expect(filtered[0][3]).toEqual([['goal-1', [expect.objectContaining({ id: 'a' })]]])
+        expect(filtered[0][1]).toBe(1)
+        expect(filtered[0][2]).toBe(30)
+    })
+
+    test('returns the input untouched when no VM state is selected', () => {
+        const sections = [makeSection('0', { mainTasks: [['goal-1', [makeTask('a')]]] })]
+        expect(filterOpenTasksSectionsByVmState(sections, [], {})).toBe(sections)
+    })
+
+    test('filters persisted tasks without an embedded projectId using the list project context', () => {
+        const sections = [
+            makeSection('0', {
+                mainTasks: [['goal-1', [makePersistedTask('paused-task'), makePersistedTask('task-without-session')]]],
+            }),
+        ]
+
+        const filtered = filterOpenTasksSectionsByVmState(
+            sections,
+            ['paused'],
+            { 'project-1__paused-task': 'paused' },
+            undefined,
+            'project-1'
+        )
+
+        expect(filtered[0][3]).toEqual([['goal-1', [expect.objectContaining({ id: 'paused-task' })]]])
+        expect(filtered[0][1]).toBe(1)
+    })
+
+    test('keeps a parent when one of its subtasks has the selected VM state', () => {
+        const sections = [
+            makeSection('0', {
+                mainTasks: [['goal-1', [makeTask('parent-1'), makeTask('parent-2')]]],
+            }),
+        ]
+        const subtasksByParentId = {
+            'parent-1': [makeTask('sub-1')],
+        }
+        const filtered = filterOpenTasksSectionsByVmState(
+            sections,
+            ['paused'],
+            { 'project-1__sub-1': 'paused' },
+            subtasksByParentId
+        )
+
+        expect(filtered[0][3]).toEqual([['goal-1', [expect.objectContaining({ id: 'parent-1' })]]])
+        expect(filtered[0][1]).toBe(1)
+    })
+
+    test('composes with the priority filter as an intersection', () => {
+        const sections = [
+            makeSection('0', {
+                mainTasks: [
+                    ['goal-1', [makeTask('a', 'must_do'), makeTask('b', 'must_do'), makeTask('c', 'do_later')]],
+                ],
+            }),
+        ]
+        const prioritized = filterOpenTasksSectionsByPriority(sections, ['must_do'])
+        const filtered = filterOpenTasksSectionsByVmState(prioritized, ['failed'], {
+            'project-1__a': 'in_progress',
+            'project-1__b': 'failed',
+            'project-1__c': 'failed',
+        })
+
+        expect(filtered[0][3]).toEqual([['goal-1', [expect.objectContaining({ id: 'b' })]]])
+    })
+
+    test('counts supported states while keeping all tasks in the All total', () => {
+        const instance = {
+            projectId: 'project-1',
+            sections: [
+                makeSection('0', {
+                    mainTasks: [['goal-1', [makePersistedTask('a'), makePersistedTask('b')]]],
+                }),
+            ],
+            subtasksByParentId: { a: [makePersistedTask('sub-1')] },
+        }
+        const result = collectTaskVmStateCounts([instance], {
+            'project-1__a': 'in_progress',
+            'project-1__sub-1': 'failed',
+        })
+
+        expect(result).toEqual({ counts: { in_progress: 1, failed: 1 }, total: 3, available: 2 })
+    })
+
+    test('collects unique session references for listed tasks and subtasks', () => {
+        const repeatedTask = makePersistedTask('a')
+        const instance = {
+            projectId: 'project-1',
+            sections: [
+                makeSection('0', { mainTasks: [['goal-1', [repeatedTask]]] }),
+                makeSection('later', { mainTasks: [['goal-1', [repeatedTask]]] }),
+            ],
+            subtasksByParentId: { a: [makePersistedTask('sub-1')] },
+        }
+
+        expect(collectTaskVmSessionRefs([instance])).toEqual([
+            { key: 'project-1__a', projectId: 'project-1', taskId: 'a' },
+            { key: 'project-1__sub-1', projectId: 'project-1', taskId: 'sub-1' },
+        ])
+    })
+
+    test('keeps identical task ids distinct across all-project list contexts', () => {
+        const instances = ['project-1', 'project-2'].map(projectId => ({
+            projectId,
+            sections: [makeSection('0', { mainTasks: [['goal-1', [makePersistedTask('same-task-id')]]] })],
+        }))
+
+        expect(collectTaskVmSessionRefs(instances)).toEqual([
+            { key: 'project-1__same-task-id', projectId: 'project-1', taskId: 'same-task-id' },
+            { key: 'project-2__same-task-id', projectId: 'project-2', taskId: 'same-task-id' },
+        ])
     })
 })

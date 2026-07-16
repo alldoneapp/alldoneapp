@@ -22,6 +22,13 @@ describe('VM session status', () => {
         status => expect(getVmSessionBadgeState({ status })).toBe(VM_BADGE_STATE_PAUSED)
     )
 
+    test.each([{ status: 'paused' }, { status: 'paused', objectType: 'tasks', lastRunStatus: 'completed' }])(
+        'maps persisted paused session shape to a paused badge',
+        session => {
+            expect(getVmSessionBadgeState(session)).toBe(VM_BADGE_STATE_PAUSED)
+        }
+    )
+
     test.each([
         { status: 'failed' },
         { status: VM_SESSION_STATUS_IDLE_RUNNING, lastRunStatus: 'failed' },

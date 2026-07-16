@@ -365,7 +365,7 @@ export default function Comment({
     return (
         <View style={[localStyles.container, containerStyle]}>
             <View style={localStyles.commentBody}>
-                <View style={localStyles.commentHeader}>
+                <View style={localStyles.commentHeader} testID="feed-comment-header">
                     <Image style={localStyles.avatar} source={{ uri: photoURL }} />
                     <Text style={[localStyles.name, { maxWidth: smallScreenNavigation ? 130 : 250 }]} numberOfLines={1}>
                         {displayName}
@@ -374,6 +374,7 @@ export default function Comment({
                     <Text style={localStyles.commentSubHeader} numberOfLines={1}>
                         {moment(date).fromNow()}
                     </Text>
+                    {linkedEmail && linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
                 </View>
 
                 {textsFiltered.map((commentData, index) => {
@@ -395,13 +396,12 @@ export default function Comment({
                     }
                 })}
                 {linkedEmail && (
-                    <View style={localStyles.linkedEmailActions}>
+                    <View style={localStyles.linkedEmailActions} testID="linked-email-actions">
                         <GmailTag
                             gmailData={linkedEmailGmailData}
                             showLabel={true}
                             propStyles={localStyles.linkedEmailTag}
                         />
-                        {linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
                         {canArchiveLinkedEmail && (
                             <>
                                 <EmailTaskAction
@@ -571,7 +571,7 @@ const localStyles = StyleSheet.create({
         marginBottom: 4,
     },
     linkedEmailNewBadge: {
-        marginRight: 8,
+        marginLeft: 'auto',
     },
     linkedEmailButton: {
         minHeight: 28,

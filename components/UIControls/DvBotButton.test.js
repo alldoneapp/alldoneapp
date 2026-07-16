@@ -26,7 +26,6 @@ jest.mock('react-tiny-popover', () => {
         </React.Fragment>
     )
 })
-jest.mock('react-hot-keys', () => ({ children }) => children)
 jest.mock('../AdminPanel/Assistants/assistantsHelper', () => ({
     getAssistantInProjectObject: jest.fn(),
     resolveAssistantForProjectObject: jest.fn(),
@@ -233,52 +232,6 @@ describe('DvBotButton task assistant chip', () => {
 
         act(() => tree.root.findByType(TouchableOpacity).props.onPress())
 
-        expect(tree.root.findByType('BotOptionsModal').props.assistantId).toBe('project-assistant')
-    })
-
-    test('uses the original assistant photo while a thumbnail is unavailable', () => {
-        resolveAssistantForProjectObject.mockReturnValue({
-            uid: 'project-assistant',
-            displayName: 'Project Anna',
-            photoURL: 'anna-original.jpg',
-        })
-        const tree = renderer.create(
-            <DvBotButton
-                projectId="project-1"
-                assistantId=""
-                objectId="task-1"
-                objectType="tasks"
-                resolveProjectAssistant={true}
-            />
-        )
-
-        expect(tree.root.findByType('AssistantAvatar').props.photoURL).toBe('anna-original.jpg')
-    })
-
-    test('keeps inline task presses inside the compact assistant control', () => {
-        resolveAssistantForProjectObject.mockReturnValue({
-            uid: 'project-assistant',
-            displayName: 'Project Anna',
-            photoURL50: 'anna.jpg',
-        })
-        const preventDefault = jest.fn()
-        const stopPropagation = jest.fn()
-        const tree = renderer.create(
-            <DvBotButton
-                projectId="project-1"
-                assistantId=""
-                objectId="task-1"
-                objectType="tasks"
-                resolveProjectAssistant={true}
-                stopPressPropagation={true}
-                hotkey="alt+a"
-            />
-        )
-
-        act(() => tree.root.findByType(TouchableOpacity).props.onPress({ preventDefault, stopPropagation }))
-
-        expect(preventDefault).toHaveBeenCalledTimes(1)
-        expect(stopPropagation).toHaveBeenCalledTimes(1)
         expect(tree.root.findByType('BotOptionsModal').props.assistantId).toBe('project-assistant')
     })
 

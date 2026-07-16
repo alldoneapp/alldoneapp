@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { TouchableOpacity, StyleSheet, View } from 'react-native-web'
-import { shallowEqual, useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
-import Hotkeys from 'react-hot-keys'
 
 import {
     setAssistantEnabled,
@@ -35,9 +34,6 @@ export default function DvBotButton({
     updateObjectState,
     onOpenSideChat,
     resolveProjectAssistant = false,
-    disabled = false,
-    stopPressPropagation = false,
-    hotkey,
 }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
@@ -45,23 +41,6 @@ export default function DvBotButton({
     const noticeAboutTheBotBehavior = useSelector(state => state.loggedUser.noticeAboutTheBotBehavior)
     const showNotificationAboutTheBotBehavior = useSelector(state => state.showNotificationAboutTheBotBehavior)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-
-    // Assistant data is loaded independently from the task. Subscribe to every store slice used
-    // by the imperative resolver so this control replaces its fallback as soon as assistants or
-    // project defaults arrive, even when none of its ordinary props changed.
-    useSelector(
-        state =>
-            resolveProjectAssistant
-                ? {
-                      projectAssistants: state.projectAssistants,
-                      globalAssistants: state.globalAssistants,
-                      defaultAssistant: state.defaultAssistant,
-                      loggedUserProjects: state.loggedUserProjects,
-                      loggedUserProjectsMap: state.loggedUserProjectsMap,
-                  }
-                : null,
-        shallowEqual
-    )
 
     const [isOpen, setIsOpen] = useState(false)
     const [optimisticAssistantId, setOptimisticAssistantId] = useState(assistantId)
@@ -78,8 +57,7 @@ export default function DvBotButton({
         ? resolveAssistantForProjectObject(projectId, requestedAssistantId)
         : getAssistantInProjectObject(projectId, requestedAssistantId)
     const effectiveAssistantId = assistant?.uid || requestedAssistantId
-    const { displayName } = assistant || {}
-    const assistantPhotoURL = assistant?.photoURL50 || assistant?.photoURL || assistant?.photoURL300
+    const { photoURL50, displayName } = assistant || {}
 
     const updateAssistantId = newAssistantId => {
         latestAssistantIdRef.current = newAssistantId
@@ -176,12 +154,8 @@ export default function DvBotButton({
         }, 500)
     }
 
-    const openModal = event => {
-        if (stopPressPropagation) {
-            event?.preventDefault?.()
-            event?.stopPropagation?.()
-        }
-        if (disabled || (resolveProjectAssistant && !assistant)) return
+    const openModal = () => {
+        if (resolveProjectAssistant && !assistant) return
         if (!noticeAboutTheBotBehavior) dispatch(setShowNotificationAboutTheBotBehavior(true))
         if (gold <= 0) dispatch(setAssistantEnabled(false))
         setIsOpen(true)
@@ -192,23 +166,6 @@ export default function DvBotButton({
         if (isModalOpen(MENTION_MODAL_ID)) return
         setIsOpen(false)
     }
-
-    const assistantButton = (
-        <TouchableOpacity
-            style={[localStyles.container, style]}
-            onPress={openModal}
-            disabled={disabled || (resolveProjectAssistant && !assistant)}
-            accessibilityLabel={
-                resolveProjectAssistant
-                    ? displayName
-                        ? `Open ${displayName} predefined tasks`
-                        : 'No assistant available'
-                    : undefined
-            }
-        >
-            <AssistantAvatar photoURL={assistantPhotoURL} assistantId={effectiveAssistantId} size={24} />
-        </TouchableOpacity>
-    )
 
     return (
         <Popover
@@ -236,13 +193,20 @@ export default function DvBotButton({
             isOpen={isOpen && noticeAboutTheBotBehavior && !showNotificationAboutTheBotBehavior}
             contentLocation={smallScreenNavigation ? null : undefined}
         >
-            {hotkey ? (
-                <Hotkeys keyName={hotkey} onKeyDown={openModal} filter={() => true}>
-                    {assistantButton}
-                </Hotkeys>
-            ) : (
-                assistantButton
-            )}
+            <TouchableOpacity
+                style={[localStyles.container, style]}
+                onPress={openModal}
+                disabled={resolveProjectAssistant && !assistant}
+                accessibilityLabel={
+                    resolveProjectAssistant
+                        ? displayName
+                            ? `Open ${displayName} predefined tasks`
+                            : 'No assistant available'
+                        : undefined
+                }
+            >
+                <AssistantAvatar photoURL={photoURL50} assistantId={effectiveAssistantId} size={24} />
+            </TouchableOpacity>
         </Popover>
     )
 }
