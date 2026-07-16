@@ -2,7 +2,6 @@ import {
     containsMarkdown,
     getMarkdownTableAt,
     getMarkdownTableColumnWidths,
-    parseLineType,
     parseMarkdownLines,
     splitMarkdownTableRow,
 } from './markdownParserFunctions'
@@ -12,54 +11,6 @@ import {
 } from '../../../NotesView/NotesDV/EditorView/markdownToDelta'
 
 describe('markdownParserFunctions', () => {
-    describe('ATX headings', () => {
-        it('detects the reported H4 heading with one leading space', () => {
-            const text = ' #### 3. The agent-powered workflow'
-
-            expect(containsMarkdown(text)).toBe(true)
-            expect(parseMarkdownLines(text)[0]).toEqual({
-                type: 'h4',
-                text: '3. The agent-powered workflow',
-                segments: [
-                    {
-                        text: '3. The agent-powered workflow',
-                        bold: false,
-                        italic: false,
-                        strikethrough: false,
-                    },
-                ],
-            })
-        })
-
-        it.each([
-            ['# Heading', 'h1'],
-            ['## Heading', 'h2'],
-            ['### Heading', 'h3'],
-            ['#### Heading', 'h4'],
-            ['##### Heading', 'h5'],
-            ['###### Heading', 'h6'],
-            [' # Heading', 'h1'],
-            ['  ## Heading', 'h2'],
-            ['   ### Heading', 'h3'],
-        ])('parses permitted heading syntax %p', (markdown, type) => {
-            expect(parseLineType(markdown)).toEqual({ type, text: 'Heading' })
-        })
-
-        it('removes an optional closing hash sequence', () => {
-            expect(parseLineType('  #### Heading ####  ')).toEqual({ type: 'h4', text: 'Heading' })
-        })
-
-        it.each([
-            '    #### indented code',
-            '\t#### tab-indented code',
-            '####missing separator',
-            '####### too many hashes',
-        ])('keeps non-heading syntax as text: %p', markdown => {
-            expect(containsMarkdown(markdown)).toBe(false)
-            expect(parseLineType(markdown)).toEqual({ type: 'text', text: markdown })
-        })
-    })
-
     describe('markdown tables', () => {
         it('groups a markdown table into one normalized block', () => {
             const text = [

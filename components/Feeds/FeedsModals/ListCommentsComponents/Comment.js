@@ -32,7 +32,6 @@ import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
-import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 
 // Render inline formatted text segments with link/tag parsing
 const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => {
@@ -259,14 +258,31 @@ export default function Comment({
                                 style={[localStyles.horizontalRule, !isLastLine && { marginBottom: 16 }]}
                             />
                         )
-                    } else if (/^h[1-6]$/.test(line.type)) {
-                        const headingStyle = localStyles[`header${line.type.substring(1)}`]
+                    } else if (line.type === 'h1') {
                         return (
                             <Text
                                 key={`header-${lineIndex}`}
-                                style={[headingStyle, !isLastLine && { marginBottom: 16 }]}
+                                style={[localStyles.header1, !isLastLine && { marginBottom: 16 }]}
                             >
-                                {renderFormattedText(line.segments, headingStyle, projectId, getLinkCounter)}
+                                {renderFormattedText(line.segments, localStyles.header1, projectId, getLinkCounter)}
+                            </Text>
+                        )
+                    } else if (line.type === 'h2') {
+                        return (
+                            <Text
+                                key={`header-${lineIndex}`}
+                                style={[localStyles.header2, !isLastLine && { marginBottom: 16 }]}
+                            >
+                                {renderFormattedText(line.segments, localStyles.header2, projectId, getLinkCounter)}
+                            </Text>
+                        )
+                    } else if (line.type === 'h3') {
+                        return (
+                            <Text
+                                key={`header-${lineIndex}`}
+                                style={[localStyles.header3, !isLastLine && { marginBottom: 16 }]}
+                            >
+                                {renderFormattedText(line.segments, localStyles.header3, projectId, getLinkCounter)}
                             </Text>
                         )
                     } else if (line.type === 'bullet') {
@@ -400,37 +416,25 @@ export default function Comment({
                             propStyles={localStyles.linkedEmailTag}
                         />
                         {canArchiveLinkedEmail && (
-                            <>
-                                <EmailTaskAction
-                                    connectionId={linkedEmail.connectionProjectId}
-                                    messageIds={[linkedEmail.messageId]}
-                                    initialTask={linkedEmailGmailData?.taskCreated}
-                                    checkExisting
-                                    iconColor={colors.UtilityBlue125}
-                                    borderColor={colors.Primary350}
-                                    textColor={colors.UtilityBlue125}
-                                    style={localStyles.linkedEmailTaskButton}
-                                />
-                                <TouchableOpacity
-                                    style={localStyles.linkedEmailButton}
-                                    onPress={() => onArchiveLinkedEmail([linkedEmail])}
-                                    disabled={linkedEmailArchiving || linkedEmailArchived}
-                                    accessibilityLabel={translate('Archive email')}
-                                >
-                                    {linkedEmailArchiving ? (
-                                        <ActivityIndicator size="small" color={colors.UtilityBlue125} />
-                                    ) : (
-                                        <Icon
-                                            name={linkedEmailArchived ? 'check' : 'archive'}
-                                            size={14}
-                                            color={colors.UtilityBlue125}
-                                        />
-                                    )}
-                                    <Text style={localStyles.linkedEmailButtonText}>
-                                        {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
-                                    </Text>
-                                </TouchableOpacity>
-                            </>
+                            <TouchableOpacity
+                                style={localStyles.linkedEmailButton}
+                                onPress={() => onArchiveLinkedEmail([linkedEmail])}
+                                disabled={linkedEmailArchiving || linkedEmailArchived}
+                                accessibilityLabel={translate('Archive email')}
+                            >
+                                {linkedEmailArchiving ? (
+                                    <ActivityIndicator size="small" color={colors.UtilityBlue125} />
+                                ) : (
+                                    <Icon
+                                        name={linkedEmailArchived ? 'check' : 'archive'}
+                                        size={14}
+                                        color={colors.UtilityBlue125}
+                                    />
+                                )}
+                                <Text style={localStyles.linkedEmailButtonText}>
+                                    {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
+                                </Text>
+                            </TouchableOpacity>
                         )}
                     </View>
                 )}
@@ -495,27 +499,6 @@ const localStyles = StyleSheet.create({
         color: colors.Text04,
         fontWeight: '500',
     },
-    header4: {
-        fontFamily: 'Roboto-Medium',
-        fontSize: 18,
-        lineHeight: 26,
-        color: colors.Text04,
-        fontWeight: '500',
-    },
-    header5: {
-        fontFamily: 'Roboto-Medium',
-        fontSize: 16,
-        lineHeight: 24,
-        color: colors.Text04,
-        fontWeight: '500',
-    },
-    header6: {
-        fontFamily: 'Roboto-Medium',
-        fontSize: 14,
-        lineHeight: 20,
-        color: colors.Text04,
-        fontWeight: '500',
-    },
     horizontalRule: {
         height: 1,
         backgroundColor: colors.Gray300,
@@ -553,19 +536,12 @@ const localStyles = StyleSheet.create({
     },
     linkedEmailActions: {
         alignSelf: 'flex-start',
-        maxWidth: '100%',
         marginTop: 6,
         flexDirection: 'row',
         alignItems: 'center',
-        flexWrap: 'wrap',
     },
     linkedEmailTag: {
         marginRight: 8,
-        marginBottom: 4,
-    },
-    linkedEmailTaskButton: {
-        marginRight: 8,
-        marginBottom: 4,
     },
     linkedEmailButton: {
         minHeight: 28,
@@ -575,7 +551,6 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Primary350,
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 4,
     },
     linkedEmailButtonText: {
         ...styles.caption2,
