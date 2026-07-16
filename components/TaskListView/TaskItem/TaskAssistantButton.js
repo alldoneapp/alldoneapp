@@ -11,7 +11,7 @@ import RichCommentModal from '../../UIComponents/FloatModals/RichCommentModal/Ri
 import { hideFloatPopup, showConfirmPopup, showFloatPopup } from '../../../redux/actions'
 import { setTaskAssistant } from '../../../utils/backends/Tasks/tasksFirestore'
 import { setObjectAssistantEnabled } from '../../../utils/assistantHelper'
-import { resolveAssistantForProjectObject } from '../../AdminPanel/Assistants/assistantsHelper'
+import { resolveDefaultAssistantForProject } from '../../AdminPanel/Assistants/assistantsHelper'
 import { createObjectMessage } from '../../../utils/backends/Chats/chatsComments'
 import { STAYWARD_COMMENT } from '../../Feeds/Utils/HelperFunctions'
 import { popoverToTop } from '../../../utils/HelperFunctions'
@@ -28,6 +28,7 @@ const EMAIL_REPLY_PROMPT = 'Draft a reply to this email in the same language as 
 
 export default function TaskAssistantButton({ projectId, task, disabled }) {
     const dispatch = useDispatch()
+    const defaultAssistantId = useSelector(state => state.defaultAssistant?.uid || '')
     const openModals = useSelector(state => state.openModals)
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const [isOpen, setIsOpen] = useState(false)
@@ -35,7 +36,17 @@ export default function TaskAssistantButton({ projectId, task, disabled }) {
     const isOpenRef = useRef(false)
     const isEmailTask = !!task?.gmailData
 
-    const resolveAssistantId = () => resolveAssistantForProjectObject(projectId, task?.assistantId)?.uid || ''
+    // Resolve the assistant that should work on this task without asking the user to pick one.
+    // Preference order: an assistant already assigned to the task, then the task project's
+    // default assistant, and finally the overall/global default assistant as a fallback.
+    const resolveAssistantId = () => {
+        if (task?.assistantId) return task.assistantId
+
+        const projectDefaultAssistant = resolveDefaultAssistantForProject(projectId)
+        if (projectDefaultAssistant?.uid) return projectDefaultAssistant.uid
+
+        return defaultAssistantId || ''
+    }
 
     const showNoAssistantError = () => {
         dispatch(

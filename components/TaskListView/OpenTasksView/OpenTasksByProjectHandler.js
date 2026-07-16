@@ -58,6 +58,11 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
 
     const [filters, filtersArray] = useSelectorHashtagFilters()
     const taskPriorityFilters = useSelector(state => state.taskPriorityFilters, shallowEqual)
+    const taskVmStateFilters = useSelector(state => state.taskVmStateFilters, shallowEqual)
+    const taskVmStatesByTask = useSelector(
+        state => (taskVmStateFilters.length > 0 ? state.taskVmStatesByTask : null),
+        shallowEqual
+    )
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
@@ -164,15 +169,20 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
         const { openTasksStore } = store.getState()
         const openTasks = openTasksStore[instanceKey] ? openTasksStore[instanceKey] : []
         filterOpTasks(instanceKey, openTasks)
-    }, [JSON.stringify(filtersArray), JSON.stringify(taskPriorityFilters)])
+    }, [
+        JSON.stringify(filtersArray),
+        JSON.stringify(taskPriorityFilters),
+        JSON.stringify(taskVmStateFilters),
+        taskVmStatesByTask,
+    ])
 
-    // Priority filters match parents by their subtasks too, so subtask changes
-    // must re-run the filter while one is active.
+    // Task filters match parents by their subtasks too, so subtask changes must
+    // re-run the filter while one is active.
     const subtasksByParentId = useSelector(state =>
-        taskPriorityFilters.length > 0 ? state.subtaskByTaskStore[instanceKey] : null
+        taskPriorityFilters.length > 0 || taskVmStateFilters.length > 0 ? state.subtaskByTaskStore[instanceKey] : null
     )
     useEffect(() => {
-        if (taskPriorityFilters.length === 0) return
+        if (taskPriorityFilters.length === 0 && taskVmStateFilters.length === 0) return
         const { openTasksStore } = store.getState()
         const openTasks = openTasksStore[instanceKey] ? openTasksStore[instanceKey] : []
         filterOpTasks(instanceKey, openTasks)
