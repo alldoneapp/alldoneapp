@@ -47,6 +47,7 @@ import store from '../../redux/store'
 
 import HelperFunctions, { chronoEntriesOrder } from '../HelperFunctions'
 import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
+import { getTaskMergeRequest } from '../MergeStatus'
 import {
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
@@ -3586,6 +3587,9 @@ export function mapTaskData(taskId, task) {
         autoFollowUpType: task.autoFollowUpType || null,
         autoFollowUpContactId: task.autoFollowUpContactId || null,
         autoFollowUpStatusId: task.autoFollowUpStatusId || null,
+        // Populated by a completed coding VM run. Keep the backend-provided URL and
+        // normalized status intact so task-list/detail consumers can render the tag.
+        vmMergeRequest: getTaskMergeRequest(task),
     }
 
     // Only include humanReadableId if it has a value

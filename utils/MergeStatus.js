@@ -9,3 +9,5 @@ export const MERGE_STATUS_LABELS = {
 }
 
 export const getMergeStatusLabel = status => MERGE_STATUS_LABELS[status] || null
+
+export const getTaskMergeRequest = task => task?.vmMergeRequest || null
