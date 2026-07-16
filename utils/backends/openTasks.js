@@ -31,10 +31,7 @@ import { BACKLOG_MILESTONE_ID, DYNAMIC_PERCENT, getOwnerId } from '../../compone
 import { isInboxSummaryGmailTask } from '../Gmail/gmailTaskUtils'
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../EstimationHelper'
 import { filterOpenTasks } from '../../components/HashtagFilters/FilterHelpers/FilterTasks'
-import {
-    filterOpenTasksSectionsByPriority,
-    filterOpenTasksSectionsByVmState,
-} from '../../components/TaskListView/PriorityFilters/taskPriorityFilterHelper'
+import { filterOpenTasksSectionsByPriority } from '../../components/TaskListView/PriorityFilters/taskPriorityFilterHelper'
 import { sortTasksByPriority } from '../TaskPriority'
 
 export const TODAY_DATE = '0'
@@ -1459,27 +1456,13 @@ export const contractSomedayOpenTasks = (projectId, instanceKey, openTasks, upda
 }
 
 export const filterOpTasks = (instanceKey, tasks) => {
-    const {
-        hashtagFilters,
-        taskPriorityFilters,
-        taskVmStateFilters = [],
-        taskVmStatesByTask = {},
-        subtaskByTaskStore,
-    } = store.getState()
+    const { hashtagFilters, taskPriorityFilters, subtaskByTaskStore } = store.getState()
     const filtersArray = Array.from(hashtagFilters.keys())
     let filteredOpenTasks = filtersArray.length > 0 ? filterOpenTasks(tasks) : tasks
     if (taskPriorityFilters.length > 0) {
         filteredOpenTasks = filterOpenTasksSectionsByPriority(
             filteredOpenTasks,
             taskPriorityFilters,
-            subtaskByTaskStore[instanceKey]
-        )
-    }
-    if (taskVmStateFilters.length > 0) {
-        filteredOpenTasks = filterOpenTasksSectionsByVmState(
-            filteredOpenTasks,
-            taskVmStateFilters,
-            taskVmStatesByTask,
             subtaskByTaskStore[instanceKey]
         )
     }
