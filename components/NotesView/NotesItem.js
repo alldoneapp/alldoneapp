@@ -28,7 +28,7 @@ import { getTheme } from '../../Themes/Themes'
 import { Themes } from '../RootView/Themes'
 import LastEditionData from './LastEditionData'
 
-const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommentPopup }) => {
+const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommentPopup, onPress }) => {
     const loggedUser = useSelector(state => state.loggedUser)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -243,7 +243,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                 >
                     <TouchableOpacity
                         style={localStyles.subContainer}
-                        onPress={inCommentPopup ? undefined : onOpenNoteDV}
+                        onPress={inCommentPopup ? onPress : onOpenNoteDV}
                         disabled={!inCommentPopup && (blockOpen || ignoreAccessGranted ? false : !accessGranted)}
                         activeOpacity={blockOpen ? 1 : 0.5}
                         accessible={false}
@@ -252,7 +252,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                             <View style={localStyles.titleContainer}>
                                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                                     <TouchableOpacity
-                                        onPress={inCommentPopup ? undefined : onOpenEditModal}
+                                        onPress={inCommentPopup ? onPress : onOpenEditModal}
                                         disabled={
                                             !inCommentPopup &&
                                             (blockOpen || ignoreAccessGranted ? false : !accessGranted)

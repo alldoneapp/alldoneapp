@@ -20,7 +20,7 @@ import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFo
 import ChatItemLastComment from './ChatItemLastComment'
 import { getUserPresentationDataInProject } from '../ContactsView/Utils/ContactsHelper'
 
-export default function ChatItem({ chat, project, openEditModal, inCommentPopup }) {
+export default function ChatItem({ chat, project, openEditModal, inCommentPopup, onPress }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const isLoadingData = useSelector(state => state.isLoadingData)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
@@ -49,11 +49,11 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup 
                 isSticky && [localStyles.containerSticky, theme.containerSticky(project.color)],
             ]}
         >
-            <TouchableOpacity onPress={inCommentPopup ? undefined : onOpenEditModal} accessible={false}>
+            <TouchableOpacity onPress={inCommentPopup ? onPress : onOpenEditModal} accessible={false}>
                 <ChatHeaderItem members={chat.members} membersNumber={chat.members.length} />
             </TouchableOpacity>
             <TouchableOpacity
-                onPress={inCommentPopup ? undefined : () => onOpenChat(project.id, chat)}
+                onPress={inCommentPopup ? onPress : () => onOpenChat(project.id, chat)}
                 style={{ flex: 1 }}
                 accessible={false}
             >

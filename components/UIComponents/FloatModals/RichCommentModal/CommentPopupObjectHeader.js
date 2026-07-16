@@ -30,7 +30,7 @@ const WATCHED_OBJECT_TYPES = {
     topics: watchChat,
 }
 
-export default function CommentPopupObjectHeader({ projectId, objectId, objectType, objectName }) {
+export default function CommentPopupObjectHeader({ projectId, objectId, objectType, objectName, onOpen }) {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const watcherKeyRef = useRef(`comment-popup-object-${v4()}`)
     const [object, setObject] = useState(null)
@@ -114,20 +114,21 @@ export default function CommentPopupObjectHeader({ projectId, objectId, objectTy
                     project,
                     projectId,
                     projectIndex,
+                    onOpen,
                 })}
             </View>
         </div>
     )
 }
 
-const renderObject = ({ isMember, object, objectType, project, projectId, projectIndex }) => {
+const renderObject = ({ isMember, object, objectType, project, projectId, projectIndex, onOpen }) => {
     switch (objectType) {
         case 'tasks':
             return (
                 <TaskPresentation
                     projectId={projectId}
                     task={object}
-                    toggleModal={() => {}}
+                    toggleModal={onOpen}
                     toggleSubTaskList={() => {}}
                     subtaskList={[]}
                     inCommentPopup
@@ -138,26 +139,32 @@ const renderObject = ({ isMember, object, objectType, project, projectId, projec
                 <GoalItemPresentation
                     projectId={projectId}
                     goal={object}
-                    onPress={() => {}}
+                    onPress={onOpen}
                     parentGoaltasks={[]}
                     inCommentPopup
                 />
             )
         case 'contacts':
             return projectIndex >= 0 ? (
-                <ContactItem projectIndex={projectIndex} contact={object} isMember={isMember} inCommentPopup />
+                <ContactItem
+                    projectIndex={projectIndex}
+                    contact={object}
+                    isMember={isMember}
+                    inCommentPopup
+                    onPress={onOpen}
+                />
             ) : (
                 <UnavailableObject objectName={object.displayName} />
             )
         case 'notes':
             return project ? (
-                <NotesItem project={project} note={object} inCommentPopup />
+                <NotesItem project={project} note={object} inCommentPopup onPress={onOpen} />
             ) : (
                 <UnavailableObject objectName={object.extendedTitle || object.title} />
             )
         case 'topics':
             return project ? (
-                <ChatItem project={project} chat={object} inCommentPopup />
+                <ChatItem project={project} chat={object} inCommentPopup onPress={onOpen} />
             ) : (
                 <UnavailableObject objectName={object.title} />
             )
@@ -167,7 +174,7 @@ const renderObject = ({ isMember, object, objectType, project, projectId, projec
                     projectId={projectId}
                     skill={object}
                     higherSkill={null}
-                    onPress={() => {}}
+                    onPress={onOpen}
                     inCommentPopup
                 />
             )
@@ -177,7 +184,7 @@ const renderObject = ({ isMember, object, objectType, project, projectId, projec
                     projectId={projectId}
                     assistant={object}
                     project={project}
-                    onAssistantClick={() => {}}
+                    onAssistantClick={onOpen}
                     inCommentPopup
                 />
             )

@@ -49,7 +49,18 @@ const PRESENTATION_BY_TYPE = {
     assistants: 'AssistantPresentation',
 }
 
-const renderHeader = async (objectType, object = { id: 'object-1', uid: 'object-1' }) => {
+const OPEN_PROP_BY_TYPE = {
+    tasks: 'toggleModal',
+    goals: 'onPress',
+    contacts: 'onPress',
+    users: 'onPress',
+    notes: 'onPress',
+    topics: 'onPress',
+    skills: 'onPress',
+    assistants: 'onAssistantClick',
+}
+
+const renderHeader = async (objectType, object = { id: 'object-1', uid: 'object-1' }, onOpen) => {
     getParentObjectData.mockResolvedValue({ object })
     let tree
     await act(async () => {
@@ -59,6 +70,7 @@ const renderHeader = async (objectType, object = { id: 'object-1', uid: 'object-
                 objectId="object-1"
                 objectType={objectType}
                 objectName="Fallback title"
+                onOpen={onOpen}
             />
         )
         await Promise.resolve()
@@ -75,6 +87,19 @@ describe('CommentPopupObjectHeader', () => {
 
         expect(row.props.inCommentPopup).toBe(true)
     })
+
+    test.each(Object.entries(PRESENTATION_BY_TYPE))(
+        'opens the %s detailed view from its main row',
+        async (type, rowType) => {
+            const onOpen = jest.fn()
+            const tree = await renderHeader(type, { id: 'object-1', uid: 'object-1' }, onOpen)
+            const row = tree.root.findByType(rowType)
+
+            row.props[OPEN_PROP_BY_TYPE[type]]()
+
+            expect(onOpen).toHaveBeenCalledTimes(1)
+        }
+    )
 
     it('stops embedded row events from reaching popup parent click handlers', async () => {
         const tree = await renderHeader('tasks')

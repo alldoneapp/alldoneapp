@@ -159,7 +159,7 @@ export default class ContactItem extends Component {
             backlinkNoteObject,
             loggedUserId,
         } = this.state
-        const { projectIndex, contact, isMember, inCommentPopup } = this.props
+        const { projectIndex, contact, isMember, inCommentPopup, onPress } = this.props
 
         const projectId = loggedUserProjects[projectIndex].id
         const showContact = isMember || !ContactsHelper.isPrivateContact(contact)
@@ -275,7 +275,7 @@ export default class ContactItem extends Component {
                     }}
                 >
                     <TouchableOpacity
-                        onPress={blockOpen || inCommentPopup ? undefined : this.onOpenDV}
+                        onPress={blockOpen ? undefined : inCommentPopup ? onPress : this.onOpenDV}
                         disabled={blockOpen}
                         activeOpacity={blockOpen ? 1 : 0.5}
                     >
