@@ -389,6 +389,79 @@ const createTopicForPreConfigTask = async (
     }
 }
 
+const activePreConfigPromptTaskExecutions = new Set()
+
+const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings) => {
+    if (!aiSettings) return null
+
+    const assistantDetails = getAssistantInProjectObject(projectId, assistantId)
+    return {
+        ...aiSettings,
+        assistantUid: aiSettings.assistantUid || assistantDetails?.uid || assistantId,
+        assistantDisplayName:
+            aiSettings.assistantDisplayName || assistantDetails?.displayName || assistantDetails?.name || '',
+        allowedTools: Array.isArray(aiSettings.allowedTools)
+            ? aiSettings.allowedTools
+            : Array.isArray(assistantDetails?.allowedTools)
+            ? assistantDetails.allowedTools
+            : [],
+    }
+}
+
+export const executePreConfigPromptForTask = ({
+    projectId,
+    taskId,
+    task,
+    assistantId,
+    prompt,
+    name,
+    aiSettings,
+    taskMetadata = null,
+}) => {
+    const executionKey = `${projectId}:${taskId}`
+    if (activePreConfigPromptTaskExecutions.has(executionKey)) return Promise.resolve(false)
+
+    activePreConfigPromptTaskExecutions.add(executionKey)
+    store.dispatch(setPreConfigTaskExecuting(name))
+
+    const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
+    const isPublicFor = task?.isPublicFor || [FEED_PUBLIC_FOR_ALL]
+    const mergedTaskMetadata = {
+        ...(taskMetadata || {}),
+        name: task?.name || name,
+        recurrence: task?.recurrence,
+    }
+
+    return Promise.resolve()
+        .then(async () => {
+            await Promise.all([
+                task?.assistantId !== assistantId
+                    ? setTaskAssistant(projectId, taskId, assistantId, !!task?.assistantId)
+                    : Promise.resolve(),
+                setObjectAssistantEnabled(projectId, taskId, 'tasks', true),
+            ])
+
+            await createTopicForPreConfigTask(
+                projectId,
+                taskId,
+                isPublicFor,
+                assistantId,
+                prompt,
+                resolvedAiSettings,
+                mergedTaskMetadata
+            )
+            return true
+        })
+        .catch(error => {
+            console.error('Failed to execute pre-config prompt for current task:', error)
+            return false
+        })
+        .finally(() => {
+            activePreConfigPromptTaskExecutions.delete(executionKey)
+            store.dispatch(setPreConfigTaskExecuting(null))
+        })
+}
+
 export const generateTaskFromPreConfig = async (
     projectId,
     name,
@@ -399,20 +472,7 @@ export const generateTaskFromPreConfig = async (
     options = {}
 ) => {
     const { skipNavigation = false } = options
-    const assistantDetails = getAssistantInProjectObject(projectId, assistantId)
-    const resolvedAiSettings = aiSettings
-        ? {
-              ...aiSettings,
-              assistantUid: aiSettings.assistantUid || assistantDetails?.uid || assistantId,
-              assistantDisplayName:
-                  aiSettings.assistantDisplayName || assistantDetails?.displayName || assistantDetails?.name || '',
-              allowedTools: Array.isArray(aiSettings.allowedTools)
-                  ? aiSettings.allowedTools
-                  : Array.isArray(assistantDetails?.allowedTools)
-                  ? assistantDetails.allowedTools
-                  : [],
-          }
-        : null
+    const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
 
     console.log('generateTaskFromPreConfig called:', {
         projectId,

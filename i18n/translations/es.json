@@ -2366,8 +2366,6 @@
     "Extra high effort": "Muy alto",
     "Could not load VM defaults.": "No se pudieron cargar los valores predeterminados de VM.",
     "Could not save the default VM effort.": "No se pudo guardar el esfuerzo de VM predeterminado.",
-    "VM States": "Estados de VM",
-    "Paused": "En pausa",
     "VM environment": "Entorno de VM",
     "VM environment building": "Creando entorno…",
     "VM environment ready": "Entorno listo",

@@ -3,7 +3,6 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
-import { protectModalDismissFromClickThrough } from '../../../../utils/popupDismissGuard'
 
 export default function CloseButton({ closeModal, comments, openChat }) {
     const onKeyDown = event => {
@@ -21,11 +20,6 @@ export default function CloseButton({ closeModal, comments, openChat }) {
         }
     })
 
-    const closeFromButton = event => {
-        protectModalDismissFromClickThrough(event)
-        closeModal(comments && comments.length > 0 ? event : false)
-    }
-
     return (
         <View style={localStyles.closeContainer}>
             {openChat && (
@@ -41,7 +35,7 @@ export default function CloseButton({ closeModal, comments, openChat }) {
                 disabled={!comments}
                 accessibilityLabel={'social-text-block'}
                 style={localStyles.closeButton}
-                onPress={closeFromButton}
+                onPress={event => closeModal(comments && comments.length > 0 ? event : false)}
             >
                 <Icon accessibilityLabel={'social-text-block'} name="x" size={24} color={colors.Text03} />
             </TouchableOpacity>

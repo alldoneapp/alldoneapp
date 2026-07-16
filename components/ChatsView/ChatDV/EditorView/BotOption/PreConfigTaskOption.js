@@ -81,7 +81,12 @@ export default function PreConfigTaskOption({
                     temperature: aiTemperature,
                     systemMessage: aiSystemMessage,
                 }
-                onSelectBotOption(prompt, name, aiSettings)
+                onSelectBotOption(prompt, name, aiSettings, {
+                    taskMetadata: {
+                        ...(taskMetadata || {}),
+                        sendWhatsApp: !!sendWhatsApp,
+                    },
+                })
                 if (!enableAssistantForObject && !inMyDay) dispatch(setAssistantEnabled(true))
             }
         } else if (type === TASK_TYPE_WEBHOOK) {
