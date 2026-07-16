@@ -89,7 +89,7 @@ describe('vmThreadQueue', () => {
         mockStore[SESSION_PATH] = { status: 'idle_running', sandboxId: 'sbx-1', agent: 'claude' }
         let now = 1_000_000
         const decision = await admitVmJobToThread(ref(), 'job-1', () => now)
-        expect(decision).toEqual({ decision: 'launch', position: 0 })
+        expect(decision).toEqual({ decision: 'launch', position: 0, sequence: 1, admittedAt: now })
         expect(mockStore[SESSION_PATH].activeCorrelationId).toBe('job-1')
         expect(mockStore[SESSION_PATH].activeLeaseOwner).toBe('dispatch:job-1')
         expect(mockStore[SESSION_PATH].activeLeaseExpiresAt).toBe(now + VM_DISPATCH_LEASE_MS)
@@ -101,8 +101,19 @@ describe('vmThreadQueue', () => {
     test('jobs dispatched while busy queue in FIFO order, then drain one at a time onto the same thread', async () => {
         const now = () => 2_000_000
         expect((await admitVmJobToThread(ref(), 'job-1', now)).decision).toBe('launch')
-        expect(await admitVmJobToThread(ref(), 'job-2', now)).toEqual({ decision: 'queue', position: 1 })
-        expect(await admitVmJobToThread(ref(), 'job-3', now)).toEqual({ decision: 'queue', position: 2 })
+        expect(await admitVmJobToThread(ref(), 'job-2', now)).toEqual({
+            decision: 'queue',
+            position: 1,
+            sequence: 2,
+            admittedAt: 2_000_000,
+        })
+        expect(await admitVmJobToThread(ref(), 'job-3', now)).toEqual({
+            decision: 'queue',
+            position: 2,
+            sequence: 3,
+            admittedAt: 2_000_000,
+        })
+        expect(mockStore[SESSION_PATH].lastJobSequence).toBe(3)
         expect(mockStore[SESSION_PATH].queue).toEqual(['job-2', 'job-3'])
         expect(mockStore[SESSION_PATH].queueLength).toBe(2)
 
@@ -126,7 +137,12 @@ describe('vmThreadQueue', () => {
         const now = () => 3_000_000
         await admitVmJobToThread(ref(), 'job-1', now)
         // Re-admitting the same correlationId (idempotent path) still launches, does not self-queue.
-        expect((await admitVmJobToThread(ref(), 'job-1', now)).decision).toBe('launch')
+        expect(await admitVmJobToThread(ref(), 'job-1', now)).toEqual({
+            decision: 'launch',
+            position: 0,
+            sequence: 1,
+            admittedAt: 3_000_000,
+        })
         expect(mockStore[SESSION_PATH].queueLength || 0).toBe(0)
     })
 
@@ -158,7 +174,12 @@ describe('vmThreadQueue', () => {
             activeLeaseOwner: null,
         })
         expect(await isVmThreadOccupied(ref(), 'job-2', now)).toBe(true)
-        expect(await admitVmJobToThread(ref(), 'job-2', now)).toEqual({ decision: 'queue', position: 1 })
+        expect(await admitVmJobToThread(ref(), 'job-2', now)).toEqual({
+            decision: 'queue',
+            position: 1,
+            sequence: 2,
+            admittedAt: 5_500_000,
+        })
         expect(await advanceVmThreadQueue(ref(), now)).toBeNull()
         expect(mockStore[SESSION_PATH].queue).toEqual(['job-2'])
 
