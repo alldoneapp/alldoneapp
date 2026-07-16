@@ -48,7 +48,7 @@ done
 
 gcloud run jobs deploy "$JOB_NAME" --project="$PROJECT" --region="$REGION" --image="$IMAGE" \
     --service-account="$SA" --task-timeout=5h45m --max-retries=0 --tasks=1 --parallelism=1 \
-    --memory=1Gi --cpu=1
+    --memory=1Gi --cpu=1 --update-env-vars=VM_INTERACTIVE_EXECUTION_ENABLED=true
 
 if [ -z "$CI_MODE" ]; then
     gcloud run jobs add-iam-policy-binding "$JOB_NAME" --project="$PROJECT" --region="$REGION" \

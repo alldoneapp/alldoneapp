@@ -2218,6 +2218,16 @@ const toolSchemas = {
                             'The minimum is "low" because Codex Responses requests can include tools that are incompatible with "minimal". ' +
                             'For Claude Code this maps to the CLI `--effort` flag; for Codex it maps to the `model_reasoning_effort` config.',
                     },
+                    executionMode: {
+                        type: 'string',
+                        enum: ['automatic', 'plan_first', 'interactive'],
+                        description:
+                            'Optional. Controls how the VM agent collaborates with the user. ' +
+                            '"automatic" (default) executes immediately using the existing non-interactive runner. ' +
+                            '"plan_first" explores read-only, asks clarifying questions when needed, and waits for explicit approval of a plan before executing. ' +
+                            '"interactive" automatically reviews routine tool approvals and pauses only for clarifying questions or risky/sensitive operations. ' +
+                            'Use plan_first or interactive only when the user explicitly requests that behavior; never silently downgrade either mode to automatic.',
+                    },
                     context_object_ids: {
                         type: 'array',
                         items: { type: 'string' },

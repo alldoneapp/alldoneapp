@@ -329,6 +329,45 @@ describe('startVmJob', () => {
         expect(deductGold).not.toHaveBeenCalled()
     })
 
+    test('defaults VM execution to automatic and persists an explicit interactive mode', async () => {
+        await startVmJob({
+            objective: 'Work with me on this',
+            taskType: 'prototype',
+            executionMode: 'interactive',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(mockDocs['pendingWebhooks/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ executionMode: 'interactive' })
+        )
+        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ executionMode: 'interactive' })
+        )
+    })
+
+    test('rejects an invalid VM execution mode before billing', async () => {
+        const result = await startVmJob({
+            objective: 'Work on this',
+            taskType: 'prototype',
+            executionMode: 'unsafe',
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(result).toEqual({
+            success: false,
+            message: 'executionMode must be one of: automatic, plan_first, interactive.',
+        })
+        expect(deductGold).not.toHaveBeenCalled()
+    })
+
     test('surfaces an explicitly chosen model and effort in the VM status', async () => {
         await startVmJob({
             objective: 'Change the code',
@@ -509,7 +548,7 @@ describe('startVmJob', () => {
 
         expect(result).toEqual({ success: true, outcome: 'launched' })
         expect(mockDocs['pendingWebhooks/queued-1'].set).toHaveBeenCalledWith({ status: 'pending' }, { merge: true })
-        expect(mockQueueEnqueue).toHaveBeenCalledWith('queued-1')
+        expect(mockQueueEnqueue).toHaveBeenCalledWith('queued-1', { executionAttemptId: 'correlation-1' })
     })
 
     test('launchQueuedVmJob short-circuits and refunds when the user is out of Gold', async () => {

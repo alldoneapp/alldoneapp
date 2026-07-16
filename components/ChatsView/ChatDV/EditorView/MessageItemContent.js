@@ -32,6 +32,7 @@ import GmailTag from '../../../Tags/GmailTag'
 import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/EmailLine/emailLineHelper'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
+import VmInteractionCard from './VmInteractionCard'
 
 export default function MessageItemContent({
     messageId,
@@ -79,6 +80,8 @@ export default function MessageItemContent({
 
     // Check if this message is in loading state
     const isLoadingState = isLoading && creatorData?.isAssistant
+    const isAwaitingVmInteraction =
+        isLoadingState && assistantRun?.kind === 'vm_job' && assistantRun?.status === 'awaiting_user'
     // Strip leading whitespace so a status block appended before any answer text streamed
     // (e.g. a tool that runs immediately) doesn't render with a large blank gap above it.
     const loadingText = typeof commentText === 'string' ? commentText.replace(/^\s+/, '') : commentText
@@ -418,25 +421,36 @@ export default function MessageItemContent({
                                     inChat={true}
                                 />
                             )}
-                            <View style={localStyles.loadingIndicator}>
-                                <ActivityIndicator size="small" color={colors.PrimaryBlue} />
-                                {canStopAssistantRun && (
-                                    <TouchableOpacity
-                                        style={[
-                                            localStyles.stopRunButton,
-                                            cancellingRun && localStyles.stopRunButtonDisabled,
-                                        ]}
-                                        onPress={stopAssistantRun}
-                                        disabled={cancellingRun}
-                                        accessibilityLabel="Stop assistant"
-                                    >
-                                        <Icon name="x-thicker" size={10} color={colors.UtilityRed200} />
-                                        <Text style={localStyles.stopRunButtonText}>
-                                            {cancellingRun ? 'Stopping...' : 'Stop'}
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-                            </View>
+                            {isAwaitingVmInteraction && (
+                                <VmInteractionCard
+                                    projectId={projectId}
+                                    objectType={objectType}
+                                    objectId={chat?.id}
+                                    commentId={messageId}
+                                    assistantRun={assistantRun}
+                                />
+                            )}
+                            {!isAwaitingVmInteraction && (
+                                <View style={localStyles.loadingIndicator}>
+                                    <ActivityIndicator size="small" color={colors.PrimaryBlue} />
+                                    {canStopAssistantRun && (
+                                        <TouchableOpacity
+                                            style={[
+                                                localStyles.stopRunButton,
+                                                cancellingRun && localStyles.stopRunButtonDisabled,
+                                            ]}
+                                            onPress={stopAssistantRun}
+                                            disabled={cancellingRun}
+                                            accessibilityLabel="Stop assistant"
+                                        >
+                                            <Icon name="x-thicker" size={10} color={colors.UtilityRed200} />
+                                            <Text style={localStyles.stopRunButtonText}>
+                                                {cancellingRun ? 'Stopping...' : 'Stop'}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            )}
                         </View>
                     ) : (
                         <>

@@ -64,6 +64,8 @@ const {
     advanceVmThreadQueue,
     removeQueuedVmJobFromThread,
     requeueVmJobToThreadFront,
+    blockVmThreadForInteraction,
+    unblockVmThreadInteraction,
     releaseVmThreadDispatchLease,
     drainStalledVmThreadQueues,
 } = require('./vmThreadQueue')
@@ -146,6 +148,25 @@ describe('vmThreadQueue', () => {
         expect((await admitVmJobToThread(ref(), 'job-2', () => now)).decision).toBe('launch')
     })
 
+    test('an interaction block keeps the thread occupied without a live runtime lease', async () => {
+        const now = () => 5_500_000
+        await admitVmJobToThread(ref(), 'job-1', now)
+        expect(await blockVmThreadForInteraction(ref(), 'job-1', 'plan_review', now)).toBe(true)
+        expect(mockStore[SESSION_PATH]).toMatchObject({
+            blockedByCorrelationId: 'job-1',
+            blockedReason: 'plan_review',
+            activeLeaseOwner: null,
+        })
+        expect(await isVmThreadOccupied(ref(), 'job-2', now)).toBe(true)
+        expect(await admitVmJobToThread(ref(), 'job-2', now)).toEqual({ decision: 'queue', position: 1 })
+        expect(await advanceVmThreadQueue(ref(), now)).toBeNull()
+        expect(mockStore[SESSION_PATH].queue).toEqual(['job-2'])
+
+        expect(await unblockVmThreadInteraction(ref(), 'other-job')).toBe(false)
+        expect(await unblockVmThreadInteraction(ref(), 'job-1')).toBe(true)
+        expect(await advanceVmThreadQueue(ref(), now)).toBe('job-2')
+    })
+
     test('removeQueuedVmJobFromThread drops a cancelled job from the waiting queue', async () => {
         const now = () => 6_000_000
         await admitVmJobToThread(ref(), 'job-1', now)
@@ -192,6 +213,17 @@ describe('vmThreadQueue', () => {
             const now = () => 10_000_000
             await admitVmJobToThread(ref(), 'job-1', now)
             await admitVmJobToThread(ref(), 'job-2', now)
+            const result = await drainStalledVmThreadQueues(now)
+            expect(result.advanced).toBe(0)
+            expect(mockLaunchQueuedVmJob).not.toHaveBeenCalled()
+            expect(mockStore[SESSION_PATH].queue).toEqual(['job-2'])
+        })
+
+        test('does not drain a queued job past an interaction block', async () => {
+            const now = () => 11_000_000
+            await admitVmJobToThread(ref(), 'job-1', now)
+            await admitVmJobToThread(ref(), 'job-2', now)
+            await blockVmThreadForInteraction(ref(), 'job-1', 'clarification', now)
             const result = await drainStalledVmThreadQueues(now)
             expect(result.advanced).toBe(0)
             expect(mockLaunchQueuedVmJob).not.toHaveBeenCalled()

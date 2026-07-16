@@ -22,6 +22,35 @@ Firestore cancellation polling.
 All new VM tasks launch the detached Cloud Run Job directly. There is no runtime
 feature flag and no Cloud Tasks fallback path.
 
+## Interactive execution modes
+
+`execute_tasks_in_vm` supports three execution modes:
+
+-   `automatic` keeps the existing headless Claude/Codex CLI path unchanged.
+-   `plan_first` uses the Claude Agent SDK or Codex App Server in native plan mode,
+    pauses the E2B sandbox, and waits for plan approval in the chat before executing.
+-   `interactive` uses the same provider adapters and can pause for native
+    clarifying questions or sensitive-operation approvals. Routine approvals are
+    handled automatically: Codex uses App Server's `auto_review`, while Claude
+    auto-approves normal reads, workspace edits, tests, installs, and local Git
+    operations. Destructive commands, secret access, external mutations,
+    publishing/deployment, writes outside the workspace, and unknown tools still
+    require the user.
+
+Provider sessions are resumed at explicit turn boundaries rather than keeping a
+Cloud Run execution open while a person responds. The E2B sandbox is paused while
+waiting, the thread queue remains blocked by the waiting job, and only active VM
+runtime is metered. Every response launches a new Cloud Run execution tagged with
+a unique execution-attempt ID so launch reconciliation cannot adopt an earlier
+turn by mistake.
+
+The interactive adapters have a rollout gate. The committed deployment script
+sets `VM_INTERACTIVE_EXECUTION_ENABLED=true`, enabling `plan_first` and
+`interactive` in deployed environments. When the flag is absent, those modes
+fail explicitly and are never silently downgraded to automatic. Claude installs
+the latest `@anthropic-ai/claude-agent-sdk` inside the E2B session on first use;
+Codex uses the App Server included with the installed Codex CLI.
+
 ## Deploy manually
 
 From `functions/Assistant/cloud-run-job`:
@@ -51,6 +80,8 @@ Required manual setup per environment:
 -   Ensure Artifact Registry, Cloud Build and Cloud Run APIs are enabled.
 -   Configure the job secrets/env and verify `VM_LLM_PROXY_BASE_URL` points at the
     environment's deployed proxy.
+-   Deploy Functions together with the job image because chat responses use
+    `respondToVmInteractionSecondGen` to resume a paused turn.
 -   Review the regional Cloud Run Jobs concurrent-execution quota before rollout.
     The product still enforces the existing ten-job per-user admission cap; project
     quota is the global safety limit after removing Cloud Tasks dispatch throttling.

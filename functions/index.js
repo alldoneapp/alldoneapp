@@ -2291,41 +2291,71 @@ exports.cancelAssistantRunSecondGen = onCall(
             cancellationResult = await requestCancelAssistantRunLock(db.doc(`assistantRunLocks/${runId}`), userId)
         } else {
             const pendingRef = db.doc(`pendingWebhooks/${runId}`)
-            cancellationResult = await db.runTransaction(async transaction => {
-                const snapshot = await transaction.get(pendingRef)
-                if (!snapshot.exists) return { success: false, reason: 'not_found' }
-                const pending = snapshot.data() || {}
-                if (pending.kind !== 'vm_job') return { success: false, reason: 'wrong_kind' }
-                if (pending.userId !== userId) return { success: false, reason: 'permission_denied' }
-                if (['completed', 'failed', 'cancelled'].includes(pending.status)) {
-                    return { success: false, reason: 'already_settled', status: pending.status }
+            const waitingSnapshot = await pendingRef.get()
+            const waitingPending = waitingSnapshot.exists ? waitingSnapshot.data() || {} : {}
+            if (
+                waitingPending.kind === 'vm_job' &&
+                waitingPending.status === 'awaiting_user' &&
+                waitingPending.interactionRequestId
+            ) {
+                if (waitingPending.userId !== userId) {
+                    cancellationResult = { success: false, reason: 'permission_denied' }
+                } else {
+                    const { vmThreadSessionRef } = require('./Assistant/vmThreadQueue')
+                    const { answerVmInteractionRequest } = require('./Assistant/vmInteraction')
+                    const answer = await answerVmInteractionRequest({
+                        db,
+                        pendingRef,
+                        sessionRef: vmThreadSessionRef(waitingPending.projectId, waitingPending.objectId),
+                        correlationId: runId,
+                        requestId: waitingPending.interactionRequestId,
+                        userId,
+                        response: { action: 'cancel' },
+                    })
+                    cancellationResult = {
+                        success: true,
+                        status: 'cancel_requested',
+                        wasAwaitingUser: true,
+                        executionAttemptId: answer.executionAttemptId,
+                        data: waitingPending,
+                    }
                 }
-                // A queued job has no running execution to interrupt — settle it as cancelled now.
-                // We refund Gold and drop it from the thread queue below.
-                if (pending.status === 'queued') {
+            } else
+                cancellationResult = await db.runTransaction(async transaction => {
+                    const snapshot = await transaction.get(pendingRef)
+                    if (!snapshot.exists) return { success: false, reason: 'not_found' }
+                    const pending = snapshot.data() || {}
+                    if (pending.kind !== 'vm_job') return { success: false, reason: 'wrong_kind' }
+                    if (pending.userId !== userId) return { success: false, reason: 'permission_denied' }
+                    if (['completed', 'failed', 'cancelled'].includes(pending.status)) {
+                        return { success: false, reason: 'already_settled', status: pending.status }
+                    }
+                    // A queued job has no running execution to interrupt — settle it as cancelled now.
+                    // We refund Gold and drop it from the thread queue below.
+                    if (pending.status === 'queued') {
+                        transaction.set(
+                            pendingRef,
+                            {
+                                status: 'cancelled',
+                                cancelledAt: now,
+                                cancelRequestedBy: userId,
+                                cancelledWhileQueued: true,
+                            },
+                            { merge: true }
+                        )
+                        return { success: true, status: 'cancelled', wasQueued: true, data: pending }
+                    }
                     transaction.set(
                         pendingRef,
                         {
-                            status: 'cancelled',
-                            cancelledAt: now,
+                            status: 'cancel_requested',
+                            cancelRequestedAt: now,
                             cancelRequestedBy: userId,
-                            cancelledWhileQueued: true,
                         },
                         { merge: true }
                     )
-                    return { success: true, status: 'cancelled', wasQueued: true, data: pending }
-                }
-                transaction.set(
-                    pendingRef,
-                    {
-                        status: 'cancel_requested',
-                        cancelRequestedAt: now,
-                        cancelRequestedBy: userId,
-                    },
-                    { merge: true }
-                )
-                return { success: true, status: 'cancel_requested', data: pending }
-            })
+                    return { success: true, status: 'cancel_requested', data: pending }
+                })
 
             // Queued job: refund the base reserve and remove it from the thread's FIFO queue so the
             // drain never tries to launch a cancelled job.
@@ -2353,6 +2383,21 @@ exports.cancelAssistantRunSecondGen = onCall(
                     })
                 }
             }
+
+            if (cancellationResult?.success && cancellationResult.wasAwaitingUser) {
+                const pending = cancellationResult.data || {}
+                const { performVmCloudRunLaunch } = require('./Assistant/vmJob')
+                await performVmCloudRunLaunch({
+                    correlationId: runId,
+                    pendingRef,
+                    projectId: pending.projectId,
+                    objectType: pending.objectType,
+                    objectId: pending.objectId,
+                    requestUserId: pending.userId,
+                    statusCommentId: pending.statusCommentId,
+                    executionAttemptId: cancellationResult.executionAttemptId,
+                })
+            }
         }
 
         if (!cancellationResult?.success) {
@@ -2369,7 +2414,7 @@ exports.cancelAssistantRunSecondGen = onCall(
             throw new HttpsError('not-found', 'Assistant run was not found')
         }
 
-        if (runKind === 'vm_job' && cancellationResult.data?.cloudRunExecution) {
+        if (runKind === 'vm_job' && !cancellationResult.wasAwaitingUser && cancellationResult.data?.cloudRunExecution) {
             try {
                 const { cancelVmCloudRunExecution } = require('./Assistant/vmCloudRunLauncher')
                 await cancelVmCloudRunExecution(cancellationResult.data.cloudRunExecution)
@@ -2459,6 +2504,119 @@ exports.cancelAssistantRunSecondGen = onCall(
             status: runKind === 'chat' || cancellationResult?.wasQueued ? 'cancelled' : 'cancel_requested',
             runKind,
             runId,
+        }
+    }
+)
+
+exports.respondToVmInteractionSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'You cannot do that ;)')
+
+        const userId = auth.uid
+        const { projectId, objectType = 'tasks', objectId, commentId, runId, requestId, response } = data || {}
+        if (!projectId || !objectId || !commentId || !runId || !requestId || !response) {
+            throw new HttpsError('invalid-argument', 'Missing VM interaction response fields')
+        }
+
+        try {
+            await assertObjectAccess(admin.firestore(), userId, projectId, objectType, objectId)
+        } catch (error) {
+            console.warn('respondToVmInteractionSecondGen: access denied', {
+                userId,
+                projectId,
+                objectType,
+                objectId,
+                error: error.message,
+            })
+            throw new HttpsError('permission-denied', 'No access to requested chat context')
+        }
+
+        const db = admin.firestore()
+        const pendingRef = db.doc(`pendingWebhooks/${runId}`)
+        const pendingSnapshot = await pendingRef.get()
+        if (!pendingSnapshot.exists) throw new HttpsError('not-found', 'VM task was not found')
+        const pending = pendingSnapshot.data() || {}
+        if (
+            pending.kind !== 'vm_job' ||
+            pending.projectId !== projectId ||
+            pending.objectType !== objectType ||
+            pending.objectId !== objectId ||
+            pending.statusCommentId !== commentId
+        ) {
+            throw new HttpsError('invalid-argument', 'VM interaction does not belong to this comment')
+        }
+
+        const { vmThreadSessionRef } = require('./Assistant/vmThreadQueue')
+        const { answerVmInteractionRequest } = require('./Assistant/vmInteraction')
+        let answer
+        try {
+            answer = await answerVmInteractionRequest({
+                db,
+                pendingRef,
+                sessionRef: vmThreadSessionRef(projectId, objectId),
+                correlationId: runId,
+                requestId,
+                userId,
+                response,
+            })
+        } catch (error) {
+            if (error.code === 'permission_denied') throw new HttpsError('permission-denied', error.message)
+            if (error.code === 'stale_interaction' || error.code === 'expired_interaction') {
+                throw new HttpsError('failed-precondition', error.message)
+            }
+            if (/Unsupported|must |responses must|Plan responses|Approval responses/.test(error.message)) {
+                throw new HttpsError('invalid-argument', error.message)
+            }
+            throw new HttpsError('failed-precondition', error.message || 'Could not answer the VM interaction')
+        }
+
+        const commentRef = db.doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`)
+        const status = answer.cancelling ? 'cancel_requested' : 'running'
+        const statusText = answer.cancelling ? 'Stopping the VM task…' : 'Resuming the VM task…'
+        await commentRef.set(
+            {
+                commentText: statusText,
+                originalContent: statusText,
+                isLoading: true,
+                assistantRun: {
+                    kind: 'vm_job',
+                    runId,
+                    requestUserId: userId,
+                    status,
+                    interaction: null,
+                    interactionAnsweredAt: Date.now(),
+                },
+                lastChangeDate: admin.firestore.Timestamp.now(),
+            },
+            { merge: true }
+        )
+
+        // A fresh Cloud Run execution reconnects to the paused sandbox/provider session. Cancellation
+        // also launches a short worker so the normal refund, sandbox cleanup, and queue-drain path is
+        // used instead of duplicating that settlement logic in this callable.
+        const { performVmCloudRunLaunch } = require('./Assistant/vmJob')
+        const launch = await performVmCloudRunLaunch({
+            correlationId: runId,
+            pendingRef,
+            projectId,
+            objectType,
+            objectId,
+            requestUserId: userId,
+            statusCommentId: commentId,
+            executionAttemptId: answer.executionAttemptId,
+        })
+
+        return {
+            success: launch.outcome !== 'failed',
+            status,
+            launchOutcome: launch.outcome,
         }
     }
 )
@@ -4364,6 +4522,11 @@ exports.cleanupExpiredWebhookTasks = onSchedule(
     async event => {
         const { cleanupExpiredWebhooks } = require('./Assistant/webhookCallbackHandler')
         await cleanupExpiredWebhooks()
+        const { expireVmInteractions } = require('./Assistant/vmInteraction')
+        const interactionResult = await expireVmInteractions(admin.firestore())
+        if (interactionResult.expired || interactionResult.errors) {
+            console.log('🖥️ VM JOB: interaction expiry complete', interactionResult)
+        }
     }
 )
 

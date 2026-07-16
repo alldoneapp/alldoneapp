@@ -219,6 +219,97 @@ describe('VM runner prompt', () => {
     })
 })
 
+describe('VM interactive agent bridge', () => {
+    test('keeps automatic execution off the bridge and gates interactive rollout explicitly', () => {
+        expect(__private__.isInteractiveVmExecutionEnabled({})).toBe(false)
+        expect(__private__.isInteractiveVmExecutionEnabled({ VM_INTERACTIVE_EXECUTION_ENABLED: 'true' })).toBe(true)
+        expect(
+            __private__.isInteractiveVmExecutionEnabled({ VM_INTERACTIVE_USER_IDS: 'user-1, user-2' }, 'user-2')
+        ).toBe(true)
+    })
+
+    test('moves plan-first from planning to execution only after approval', () => {
+        expect(__private__.resolveVmInteractionPhase('plan_first', {})).toBe('planning')
+        expect(
+            __private__.resolveVmInteractionPhase('plan_first', {
+                interactionPhase: 'planning',
+                answeredInteraction: { kind: 'plan_review' },
+                interactionResponse: { action: 'approve' },
+            })
+        ).toBe('executing')
+        expect(
+            __private__.resolveVmInteractionPhase('plan_first', {
+                answeredInteraction: { kind: 'plan_review' },
+                interactionResponse: { action: 'revise' },
+            })
+        ).toBe('planning')
+        expect(__private__.resolveVmInteractionPhase('interactive', {})).toBe('executing')
+    })
+
+    test('builds a provider continuation turn without repeating the original objective', () => {
+        const prompt = __private__.buildVmBridgeTurnPrompt(
+            'ORIGINAL OBJECTIVE',
+            {
+                interactionProviderState: { threadId: 'thread-1' },
+                answeredInteraction: { kind: 'clarification' },
+                interactionResponse: {
+                    action: 'submit',
+                    answers: { approach: ['Safe'], 'details:other': 'Keep the API compatible' },
+                },
+            },
+            'planning'
+        )
+        expect(prompt).toContain('approach: Safe')
+        expect(prompt).toContain('details:other: Keep the API compatible')
+        expect(prompt).toContain('Continue planning without making changes')
+        expect(prompt).not.toContain('ORIGINAL OBJECTIVE')
+    })
+
+    test('uses native plan mode and then autonomous execution for plan-first', () => {
+        const planning = __private__.buildVmAgentBridgeInput({
+            vmJob: { agent: 'claude', executionMode: 'plan_first' },
+            pendingWebhook: {},
+            workdir: '/repo',
+            prompt: 'Plan this',
+            runDetails: { model: 'opus', effort: 'high' },
+            agentCredentials: { mode: 'subscription' },
+        })
+        expect(planning).toMatchObject({ phase: 'planning', permissionMode: 'plan' })
+
+        const executing = __private__.buildVmAgentBridgeInput({
+            vmJob: { agent: 'claude', executionMode: 'plan_first' },
+            pendingWebhook: {
+                interactionProviderState: { sessionId: 'session-1' },
+                answeredInteraction: { kind: 'plan_review' },
+                interactionResponse: { action: 'approve' },
+            },
+            workdir: '/repo',
+            prompt: 'Plan this',
+            runDetails: { model: 'opus', effort: 'high' },
+            agentCredentials: { mode: 'subscription' },
+        })
+        expect(executing).toMatchObject({ phase: 'executing', permissionMode: 'bypassPermissions' })
+        expect(executing.prompt).toContain('approved the plan')
+    })
+
+    test('uses Codex native auto-review for interactive execution', () => {
+        const input = __private__.buildVmAgentBridgeInput({
+            vmJob: { agent: 'codex', executionMode: 'interactive' },
+            pendingWebhook: {},
+            workdir: '/repo',
+            prompt: 'Implement this',
+            runDetails: { model: 'gpt-5.6-sol', effort: 'medium' },
+            agentCredentials: { mode: 'subscription' },
+        })
+
+        expect(input).toMatchObject({
+            phase: 'executing',
+            approvalPolicy: 'on-request',
+            approvalsReviewer: 'auto_review',
+        })
+    })
+})
+
 describe('VM agent CLI bootstrap and proxy configuration', () => {
     let cliTestDir
     let prefix
@@ -608,6 +699,27 @@ describe('VM runner runtime Gold monitor', () => {
         )
         expect(pendingRef.update).toHaveBeenCalledWith({ runtimeGoldCharged: 10 })
         expect(commandHandle.kill).not.toHaveBeenCalled()
+    })
+
+    test('continues metering accumulated active runtime without charging time spent waiting for the user', async () => {
+        const pendingRef = { update: jest.fn(async () => {}) }
+        const commandHandle = { kill: jest.fn(async () => true) }
+        mockDeductGold.mockResolvedValue({ success: true, amount: 10, newBalance: 40 })
+
+        const charged = await __private__.checkAndChargeVmRuntimeGold({
+            pendingWebhook,
+            pendingRef,
+            commandHandle,
+            runStartMs: 100000,
+            activeRuntimeOffsetMs: 30000,
+            runtimeGoldCharged: 0,
+            vmJob,
+            now: () => 130000,
+            getCurrentGold: jest.fn(async () => 50),
+        })
+
+        expect(charged).toBe(10)
+        expect(mockDeductGold).toHaveBeenCalledWith('user-1', 10, expect.any(Object))
     })
 
     test('kills the command when balance is already zero', async () => {

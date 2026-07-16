@@ -37,6 +37,8 @@ const VM_QUEUED_GOLD_EXHAUSTED_TEXT =
 const VM_JOB_EXPIRY_MS = 7 * 60 * 60 * 1000
 const VM_CLOUD_RUN_LAUNCH_RECONCILIATION_MS = 10 * 60 * 1000
 const VALID_TASK_TYPES = ['research', 'document', 'prototype', 'data']
+const DEFAULT_VM_EXECUTION_MODE = 'automatic'
+const VALID_VM_EXECUTION_MODES = [DEFAULT_VM_EXECUTION_MODE, 'plan_first', 'interactive']
 
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
 const DEFAULT_CLAUDE_MODEL = 'opus'
@@ -214,6 +216,7 @@ async function startVmJob({
     agent,
     agentModel,
     agentReasoningEffort,
+    executionMode = DEFAULT_VM_EXECUTION_MODE,
     contextObjectIds = [],
     deliverable = '',
     threadContext = '',
@@ -249,6 +252,12 @@ async function startVmJob({
     }
     if (agent != null && agent !== '' && !VALID_AGENTS.includes(agent)) {
         return { success: false, message: `agent must be one of: ${VALID_AGENTS.join(', ')}.` }
+    }
+    if (!VALID_VM_EXECUTION_MODES.includes(executionMode)) {
+        return {
+            success: false,
+            message: `executionMode must be one of: ${VALID_VM_EXECUTION_MODES.join(', ')}.`,
+        }
     }
 
     const resolvedAgentSettings = await resolveVmAgentSettings(requestUserId, agent, agentReasoningEffort)
@@ -401,6 +410,7 @@ async function startVmJob({
         subscriptionUsed,
         personalApiKeyUsed,
         tokenBillingExempt,
+        executionMode,
         // A queued job waits in the thread's FIFO queue and is flipped to 'pending' + launched by
         // the current job's drain (or the stalled-queue sweeper). 'queued' is excluded from the
         // cross-thread concurrency count so it never blocks jobs on other threads.
@@ -450,6 +460,7 @@ async function startVmJob({
             subscriptionUsed,
             personalApiKeyUsed,
             tokenBillingExempt,
+            executionMode,
             deliverable: deliverable || '',
             packagedContext: packagedContext || '',
             threadContext: threadContext || '',
@@ -513,7 +524,13 @@ async function startVmJob({
                 : personalApiKeyUsed
                 ? 'your personal API key'
                 : 'Alldone API billing'
-        }. It will work autonomously and post the finished result back into this conversation when ready.`,
+        }. ${
+            executionMode === 'plan_first'
+                ? 'It will prepare a plan here and wait for your approval before making changes.'
+                : executionMode === 'interactive'
+                ? 'It will approve routine in-VM work automatically and pause here only for questions or risky operations.'
+                : 'It will work autonomously and post the finished result back into this conversation when ready.'
+        }`,
     }
 }
 
@@ -533,6 +550,7 @@ async function performVmCloudRunLaunch({
     objectId,
     requestUserId,
     statusCommentId,
+    executionAttemptId = crypto.randomUUID(),
 }) {
     // The HTTP request only launches the detached execution; the five-hour sliced E2B supervision
     // is not tied to Cloud Tasks.
@@ -541,12 +559,13 @@ async function performVmCloudRunLaunch({
             launchBackend: 'cloud_run_job',
             launchState: 'requested',
             launchRequestedAt: Date.now(),
+            executionAttemptId,
         },
         { merge: true }
     )
     try {
         const { launchVmCloudRunJob } = require('./vmCloudRunLauncher')
-        const launch = await launchVmCloudRunJob(correlationId)
+        const launch = await launchVmCloudRunJob(correlationId, { executionAttemptId })
         await pendingRef.set(
             {
                 launchState: launch.executionName ? 'launched' : 'unknown',
@@ -745,6 +764,7 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
         result.checked += 1
         try {
             const execution = await findVmCloudRunExecution(pending.correlationId || doc.id, {
+                executionAttemptId: pending.executionAttemptId || '',
                 minCreateTime: (Number(pending.launchRequestedAt) || Number(pending.createdAt) || now) - 60 * 1000,
             })
             if (execution) {
@@ -830,6 +850,7 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
 module.exports = {
     startVmJob,
     launchQueuedVmJob,
+    performVmCloudRunLaunch,
     countActiveVmJobsForUser,
     VM_JOB_BASE_GOLD,
     VM_GOLD_PER_MINUTE,
@@ -839,6 +860,8 @@ module.exports = {
     VM_JOB_EXPIRY_MS,
     reconcileUnknownVmCloudRunLaunches,
     MAX_CONCURRENT_VM_JOBS_PER_USER,
+    DEFAULT_VM_EXECUTION_MODE,
+    VALID_VM_EXECUTION_MODES,
     VALID_TASK_TYPES,
     getAgentLabel,
     formatAgentRunSuffix,

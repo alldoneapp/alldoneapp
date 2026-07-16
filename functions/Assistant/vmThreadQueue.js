@@ -54,13 +54,15 @@ async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
         const activeLeaseOwner = session.activeLeaseOwner || null
         const activeCorrelationId = session.activeCorrelationId || null
         const activeLeaseExpiresAt = Number(session.activeLeaseExpiresAt) || 0
+        const blockedByCorrelationId = session.blockedByCorrelationId || null
         const queue = Array.isArray(session.queue) ? session.queue.slice() : []
 
         // Occupied if another job currently holds a live lease (runtime or dispatch), or jobs are
         // already waiting. The `queue.length` term also covers the brief window between an owner
         // releasing its runtime lease and the drain that hands the thread to the next waiter.
         const heldByOther = !!activeLeaseOwner && activeCorrelationId !== correlationId && activeLeaseExpiresAt > now
-        const occupied = heldByOther || queue.length > 0
+        const blockedByOther = !!blockedByCorrelationId && blockedByCorrelationId !== correlationId
+        const occupied = heldByOther || blockedByOther || queue.length > 0
 
         if (occupied) {
             if (!queue.includes(correlationId)) queue.push(correlationId)
@@ -94,9 +96,11 @@ async function isVmThreadOccupied(sessionRef, correlationId = null, nowFn = Date
     const activeLeaseOwner = session.activeLeaseOwner || null
     const activeCorrelationId = session.activeCorrelationId || null
     const activeLeaseExpiresAt = Number(session.activeLeaseExpiresAt) || 0
+    const blockedByCorrelationId = session.blockedByCorrelationId || null
     const queue = Array.isArray(session.queue) ? session.queue : []
     const heldByOther = !!activeLeaseOwner && activeCorrelationId !== correlationId && activeLeaseExpiresAt > now
-    return heldByOther || queue.length > 0
+    const blockedByOther = !!blockedByCorrelationId && blockedByCorrelationId !== correlationId
+    return heldByOther || blockedByOther || queue.length > 0
 }
 
 /**
@@ -114,6 +118,11 @@ async function advanceVmThreadQueue(sessionRef, nowFn = Date.now) {
         if (!snapshot.exists) return null
         const session = snapshot.data() || {}
         const queue = Array.isArray(session.queue) ? session.queue.slice() : []
+
+        // A job waiting for a plan decision, clarification, or approval still owns the logical
+        // thread even though its runtime lease is intentionally released while E2B is paused.
+        // Never hand the sandbox to a queued follow-up until that interaction settles.
+        if (session.blockedByCorrelationId) return null
 
         if (queue.length === 0) {
             const updates = { queueLength: 0 }
@@ -141,6 +150,47 @@ async function advanceVmThreadQueue(sessionRef, nowFn = Date.now) {
             { merge: true }
         )
         return next
+    })
+}
+
+async function blockVmThreadForInteraction(sessionRef, correlationId, reason, nowFn = Date.now) {
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(sessionRef)
+        const session = snapshot.exists ? snapshot.data() || {} : {}
+        const existing = session.blockedByCorrelationId || null
+        if (existing && existing !== correlationId) return false
+        transaction.set(
+            sessionRef,
+            {
+                blockedByCorrelationId: correlationId,
+                blockedReason: reason || 'awaiting_user',
+                blockedAt: nowFn(),
+                activeLeaseOwner: null,
+                activeLeaseExpiresAt: null,
+                activeCorrelationId: correlationId,
+            },
+            { merge: true }
+        )
+        return true
+    })
+}
+
+async function unblockVmThreadInteraction(sessionRef, correlationId) {
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(sessionRef)
+        if (!snapshot.exists) return false
+        const session = snapshot.data() || {}
+        if (session.blockedByCorrelationId !== correlationId) return false
+        transaction.set(
+            sessionRef,
+            {
+                blockedByCorrelationId: null,
+                blockedReason: null,
+                blockedAt: null,
+            },
+            { merge: true }
+        )
+        return true
     })
 }
 
@@ -216,6 +266,7 @@ async function drainStalledVmThreadQueues(nowFn = Date.now) {
     for (const doc of snap.docs) {
         const session = doc.data() || {}
         result.checked += 1
+        if (session.blockedByCorrelationId) continue
         const leaseLive = !!session.activeLeaseOwner && Number(session.activeLeaseExpiresAt) > now
         // Owner alive or still within its boot window → it will drain when it finishes. Skip.
         if (leaseLive) continue
@@ -248,6 +299,8 @@ module.exports = {
     advanceVmThreadQueue,
     removeQueuedVmJobFromThread,
     requeueVmJobToThreadFront,
+    blockVmThreadForInteraction,
+    unblockVmThreadInteraction,
     releaseVmThreadDispatchLease,
     drainStalledVmThreadQueues,
 }

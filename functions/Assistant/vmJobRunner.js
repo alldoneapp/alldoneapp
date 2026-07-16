@@ -1,5 +1,7 @@
 const admin = require('firebase-admin')
 const crypto = require('crypto')
+const fs = require('fs')
+const path = require('path')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { advanceVmThreadQueue, requeueVmJobToThreadFront } = require('./vmThreadQueue')
 const {
@@ -62,6 +64,9 @@ const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
 // commands use the writable cache from their first attempt too.
 const VM_NPM_CACHE_DIR = '/tmp/alldone-npm-cache'
 const MAX_BOOTSTRAP_DIAGNOSTIC_CHARS = 16 * 1024
+const VM_AGENT_BRIDGE_DIR = '/home/user/.alldone/agent-bridge'
+const VM_AGENT_BRIDGE_INPUT_PATH = `${VM_AGENT_BRIDGE_DIR}/input.json`
+const VM_INTERACTIVE_EXECUTION_MODES = ['plan_first', 'interactive']
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
@@ -171,6 +176,62 @@ function buildVmRuntimeTimeoutText(runtimeMs = MAX_VM_RUNTIME_MS) {
     return `❌ The VM task exceeded its allowed execution time of ${formatVmRuntimeDuration(
         runtimeMs
     )}. Start a new VM task to continue.`
+}
+
+function isInteractiveVmExecutionEnabled(env = process.env, userId = '') {
+    if (env.VM_INTERACTIVE_EXECUTION_ENABLED === 'true') return true
+    const allowedUserIds = String(env.VM_INTERACTIVE_USER_IDS || '')
+        .split(',')
+        .map(value => value.trim())
+        .filter(Boolean)
+    return !!userId && allowedUserIds.includes(userId)
+}
+
+function resolveVmInteractionPhase(executionMode, pendingWebhook = {}) {
+    if (executionMode === 'interactive') return 'executing'
+    const action = pendingWebhook.interactionResponse?.action
+    const answeredKind = pendingWebhook.answeredInteraction?.kind
+    if (answeredKind === 'plan_review' && action === 'approve') return 'executing'
+    if (answeredKind === 'plan_review' && action === 'revise') return 'planning'
+    return pendingWebhook.interactionPhase === 'executing' ? 'executing' : 'planning'
+}
+
+function formatVmInteractionAnswers(answers = {}) {
+    return Object.entries(answers)
+        .map(([questionId, answer]) => {
+            const value = Array.isArray(answer) ? answer.join(', ') : String(answer || '')
+            return `${questionId}: ${value}`
+        })
+        .filter(line => !line.endsWith(': '))
+        .join('\n')
+}
+
+function buildVmBridgeTurnPrompt(basePrompt, pendingWebhook = {}, phase = 'executing') {
+    const response = pendingWebhook.interactionResponse
+    const answered = pendingWebhook.answeredInteraction
+    if (!response || !answered || !pendingWebhook.interactionProviderState) return basePrompt
+
+    if (answered.kind === 'plan_review') {
+        if (response.action === 'revise') {
+            return `The user requested these plan changes:\n${response.message}\n\nRevise the plan only. Do not execute it yet.`
+        }
+        return 'The user approved the plan. Execute it now, verify the result, and report what you completed.'
+    }
+    if (answered.kind === 'clarification') {
+        return `The user answered your questions:\n${formatVmInteractionAnswers(response.answers)}\n\nContinue ${
+            phase === 'planning' ? 'planning without making changes' : 'the task'
+        }.`
+    }
+    if (answered.kind === 'tool_approval') {
+        return response.action === 'approve'
+            ? `The user approved the previously requested operation once.${
+                  response.message ? ` Their note: ${response.message}` : ''
+              } Continue the task.`
+            : `The user denied the previously requested operation.${
+                  response.message ? ` Their note: ${response.message}` : ''
+              } Continue safely without it, or ask a different question if the task cannot proceed.`
+    }
+    return basePrompt
 }
 
 class VmRuntimeTimeoutError extends Error {
@@ -839,7 +900,7 @@ function buildGcpEnv(gcpContext) {
 async function writeStatusComment(
     pendingWebhook,
     text,
-    { isFinal = false, output = null, mediaContext = null, assistantRunStatus = null } = {}
+    { isFinal = false, output = null, mediaContext = null, assistantRunStatus = null, interaction = null } = {}
 ) {
     const { projectId, objectType = 'tasks', objectId, assistantId, statusCommentId } = pendingWebhook
     const db = admin.firestore()
@@ -847,7 +908,8 @@ async function writeStatusComment(
 
     const commentId = statusCommentId || Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
     const runStatus = assistantRunStatus || (isFinal ? 'completed' : 'running')
-    const runIsActive = runStatus === 'running' || runStatus === VM_JOB_CANCEL_REQUESTED_STATUS
+    const runIsActive =
+        runStatus === 'running' || runStatus === 'awaiting_user' || runStatus === VM_JOB_CANCEL_REQUESTED_STATUS
     const commentPayload = {
         creatorId: assistantId,
         commentText: text,
@@ -862,6 +924,7 @@ async function writeStatusComment(
             runId: pendingWebhook.correlationId,
             requestUserId: pendingWebhook.userId,
             status: runStatus,
+            ...(interaction ? { interaction } : {}),
         },
     }
     if (runStatus === VM_JOB_CANCELLED_STATUS) commentPayload.assistantRun.cancelledAt = Date.now()
@@ -1288,6 +1351,12 @@ function renderActivityLog(lines, agentLabel, runDetails, credentialMode) {
         .join('\n')}`
 }
 
+function renderVmInteractionStatus(interaction, agentLabel) {
+    if (interaction?.kind === 'plan_review') return `🗒️ ${agentLabel} prepared a plan. Review it before execution.`
+    if (interaction?.kind === 'tool_approval') return `🔐 ${agentLabel} needs your approval before continuing.`
+    return `💬 ${agentLabel} needs your input before continuing.`
+}
+
 // Per-agent configuration. The assistant picks the agent per task; we map it to the
 // matching E2B prebuilt template, API key, sandbox env, headless command, and parser.
 // E2B_*_TEMPLATE env vars are optional overrides — they default to E2B's prebuilt names.
@@ -1495,6 +1564,91 @@ async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, 
     })
 }
 
+async function prepareVmAgentBridge(sandbox, agent, onActivity, header) {
+    const bridgeFile = agent === 'codex' ? 'codex-app-server.mjs' : 'claude-agent-sdk.mjs'
+    const localPath = path.join(__dirname, 'vm-agent-bridge', bridgeFile)
+    const remotePath = `${VM_AGENT_BRIDGE_DIR}/${bridgeFile}`
+    await sandbox.commands.run(`mkdir -p ${shellQuoteArg(VM_AGENT_BRIDGE_DIR)}`)
+    await sandbox.files.write(remotePath, fs.readFileSync(localPath, 'utf8'))
+    if (agent === 'claude') {
+        await sandbox.files.write(
+            `${VM_AGENT_BRIDGE_DIR}/approval-policy.cjs`,
+            fs.readFileSync(path.join(__dirname, 'vmAgentApprovalPolicy.js'), 'utf8')
+        )
+    }
+
+    if (agent !== 'claude') return remotePath
+
+    if (typeof onActivity === 'function') onActivity(`${header}\n\n📦 Preparing the Claude Agent SDK…`)
+    const installCommand = [
+        `mkdir -p ${shellQuoteArg(VM_AGENT_BRIDGE_DIR)}`,
+        `test -f ${shellQuoteArg(
+            `${VM_AGENT_BRIDGE_DIR}/node_modules/@anthropic-ai/claude-agent-sdk/package.json`
+        )} || npm install --prefix ${shellQuoteArg(
+            VM_AGENT_BRIDGE_DIR
+        )} --no-audit --no-fund @anthropic-ai/claude-agent-sdk@latest`,
+    ].join(' && ')
+    await sandbox.commands.run(`bash -lc ${shellQuoteArg(installCommand)}`, {
+        envs: buildSandboxCommandEnv(),
+        timeoutMs: 5 * 60 * 1000,
+    })
+    return remotePath
+}
+
+function buildVmAgentBridgeInput({ vmJob, pendingWebhook, workdir, prompt, runDetails, agentCredentials }) {
+    const executionMode = vmJob.executionMode || 'automatic'
+    const phase = resolveVmInteractionPhase(executionMode, pendingWebhook)
+    const answeredInteraction = pendingWebhook?.answeredInteraction || null
+    const interactionResponse = pendingWebhook?.interactionResponse || null
+    const providerState = pendingWebhook?.interactionProviderState || null
+    const input = {
+        cwd: workdir,
+        model: runDetails.model,
+        effort: runDetails.effort,
+        phase,
+        prompt: buildVmBridgeTurnPrompt(prompt, pendingWebhook, phase),
+        providerState,
+    }
+    if (answeredInteraction?.kind === 'tool_approval' && interactionResponse) {
+        input.approvedTool = {
+            toolName: answeredInteraction.toolName,
+            command: answeredInteraction.command || '',
+            action: interactionResponse.action,
+        }
+    }
+
+    if ((vmJob.agent || DEFAULT_AGENT) === 'claude') {
+        input.permissionMode =
+            phase === 'planning' ? 'plan' : executionMode === 'plan_first' ? 'bypassPermissions' : 'default'
+    } else {
+        input.approvalPolicy = phase === 'executing' && executionMode === 'plan_first' ? 'never' : 'on-request'
+        input.approvalsReviewer = executionMode === 'interactive' ? 'auto_review' : 'user'
+        input.codexArgs =
+            agentCredentials.mode === 'subscription'
+                ? []
+                : buildCodexProxyConfigOverrides(agentCredentials.baseUrl).flatMap(override => ['-c', override])
+    }
+    return input
+}
+
+async function clearConsumedVmInteractionResponse(pendingRef, pendingWebhook) {
+    if (!pendingRef || !pendingWebhook?.answeredInteractionRequestId) return
+    await Promise.all([
+        pendingRef.set({ interactionResponse: null }, { merge: true }),
+        admin
+            .firestore()
+            .doc(
+                `vmJobInteractions/${pendingWebhook.correlationId}/requests/${pendingWebhook.answeredInteractionRequestId}`
+            )
+            .set({ response: null, responseConsumedAt: Date.now() }, { merge: true }),
+    ]).catch(error => {
+        console.warn('🖥️ VM JOB: failed clearing consumed interaction response', {
+            correlationId: pendingWebhook.correlationId,
+            error: error.message,
+        })
+    })
+}
+
 const AGENT_CONFIGS = {
     claude: {
         label: 'Claude Code',
@@ -1685,6 +1839,7 @@ async function checkAndChargeVmRuntimeGold({
     runStartMs,
     runtimeGoldCharged = 0,
     vmJob,
+    activeRuntimeOffsetMs = 0,
     now = Date.now,
     getCurrentGold = getUserGoldBalance,
     deductGoldFn = null,
@@ -1699,7 +1854,7 @@ async function checkAndChargeVmRuntimeGold({
         await killCommandForGold(commandHandle, runtimeGoldCharged)
     }
 
-    const accruedGold = calculateAccruedRuntimeGold(now() - runStartMs)
+    const accruedGold = calculateAccruedRuntimeGold(activeRuntimeOffsetMs + now() - runStartMs)
     const chargeDue = Math.max(0, accruedGold - runtimeGoldCharged)
     console.log('🖥️ VM JOB: runtime Gold monitor tick', {
         correlationId: pendingWebhook.correlationId,
@@ -1780,6 +1935,7 @@ function startVmRuntimeGoldMonitor({
     getCommandHandle,
     runStartMs,
     vmJob,
+    activeRuntimeOffsetMs = 0,
     initialRuntimeGoldCharged = 0,
     intervalMs = VM_GOLD_MONITOR_INTERVAL_MS,
 }) {
@@ -1810,6 +1966,7 @@ function startVmRuntimeGoldMonitor({
                 runStartMs,
                 runtimeGoldCharged,
                 vmJob,
+                activeRuntimeOffsetMs,
             })
             if (!stopped) runtimeGoldCharged = nextRuntimeGoldCharged
         } catch (error) {
@@ -2120,6 +2277,36 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOw
     }
 }
 
+async function pauseVmSessionForInteraction(sessionRef, sandbox, vmJob, e2bApiKey, leaseOwner) {
+    const sandboxId = sandbox.sandboxId || sandbox.id
+    await pauseE2bSandbox(sandboxId, e2bApiKey)
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(sessionRef)
+        const session = snapshot.exists ? snapshot.data() || {} : {}
+        if (leaseOwner && session.activeLeaseOwner !== leaseOwner) return false
+        transaction.set(
+            sessionRef,
+            {
+                sandboxId,
+                agent: vmJob.agent || DEFAULT_AGENT,
+                template: vmJob.vmTemplate || '',
+                projectId: vmJob.projectId,
+                objectId: vmJob.objectId,
+                objectType: vmJob.objectType || 'tasks',
+                status: 'paused',
+                lastUsedAt: Date.now(),
+                lastRunStatus: 'awaiting_user',
+                lastRunAt: Date.now(),
+                activeLeaseOwner: null,
+                activeLeaseExpiresAt: null,
+                activeCorrelationId: vmJob.correlationId,
+            },
+            { merge: true }
+        )
+        return true
+    })
+}
+
 // Scheduled pauser: pause running sandboxes that have been idle past the keep-alive window,
 // so we stop paying compute while preserving state for a later resume.
 async function pauseIdleVmSessions() {
@@ -2404,6 +2591,17 @@ async function runAgentInSandbox(
 
     try {
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
+        const executionMode = vmJob.executionMode || 'automatic'
+        const usesAgentBridge = VM_INTERACTIVE_EXECUTION_MODES.includes(executionMode)
+        if (usesAgentBridge && !isInteractiveVmExecutionEnabled(process.env, vmJob.requestUserId)) {
+            throw new Error(
+                `VM execution mode "${executionMode}" is not enabled. Set VM_INTERACTIVE_EXECUTION_ENABLED=true to enable Agent SDK/App Server runs.`
+            )
+        }
+        const interactionPhase = usesAgentBridge ? resolveVmInteractionPhase(executionMode, pendingWebhook || {}) : null
+        if (interactionPhase) {
+            await pendingRef?.set({ interactionPhase }, { merge: true }).catch(() => {})
+        }
         const prompt = buildAgentPrompt(vmJob, gitContext, gcpContext)
         await sandbox.files.write('/home/user/prompt.txt', prompt)
         const contextFileContent = [vmJob.packagedContext, vmJob.threadContext].filter(Boolean).join('\n\n---\n\n')
@@ -2473,7 +2671,25 @@ async function runAgentInSandbox(
         )
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
-        const state = { activity: [], finalResult: '', assistantText: '', usage: null }
+        const bridgePath = usesAgentBridge
+            ? await prepareVmAgentBridge(
+                  sandbox,
+                  vmJob.agent || DEFAULT_AGENT,
+                  onActivity,
+                  renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
+              )
+            : null
+        await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
+
+        const state = {
+            activity: [],
+            finalResult: '',
+            assistantText: '',
+            usage: null,
+            interaction: null,
+            providerState: null,
+            bridgeError: null,
+        }
         let stdoutBuf = ''
         let stderr = ''
 
@@ -2488,6 +2704,22 @@ async function runAgentInSandbox(
                 evt = JSON.parse(line)
             } catch (_) {
                 return // non-JSON noise (e.g. stray install output) — ignore
+            }
+            if (evt.type === 'alldone.interaction') {
+                state.interaction = evt.interaction || null
+                state.providerState = evt.interaction?.providerState || null
+                return
+            }
+            if (evt.type === 'alldone.completed') {
+                state.finalResult = typeof evt.output === 'string' ? evt.output : state.finalResult
+                state.usage = evt.usage || state.usage
+                state.providerState = evt.providerState || null
+                return
+            }
+            if (evt.type === 'alldone.bridge_error') {
+                state.bridgeError = evt.message || 'Agent bridge failed.'
+                state.providerState = evt.providerState || null
+                return
             }
             const before = state.activity.length
             config.handleEvent(evt, state)
@@ -2535,15 +2767,29 @@ async function runAgentInSandbox(
             gitContext && gitContext.enabled ? buildGitEnv(gitContext) : null,
             gcpContext && gcpContext.enabled ? buildGcpEnv(gcpContext) : null
         )
-        const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${config.buildRun(
-            isResume,
-            {
+        let agentCommand
+        if (usesAgentBridge) {
+            const bridgeInput = buildVmAgentBridgeInput({
+                vmJob,
+                pendingWebhook,
+                workdir,
+                prompt,
+                runDetails,
+                agentCredentials,
+            })
+            await sandbox.files.write(VM_AGENT_BRIDGE_INPUT_PATH, JSON.stringify(bridgeInput))
+            agentCommand = `node ${shellQuoteArg(bridgePath)} ${shellQuoteArg(
+                VM_AGENT_BRIDGE_INPUT_PATH
+            )}; bridge_exit=$?; rm -f ${shellQuoteArg(VM_AGENT_BRIDGE_INPUT_PATH)}; exit "$bridge_exit"`
+        } else {
+            agentCommand = config.buildRun(isResume, {
                 agentModel: runDetails.model,
                 agentReasoningEffort: runDetails.effort,
                 proxyBaseUrl: agentCredentials.baseUrl,
                 subscriptionUsed: !!subscriptionAuth,
-            }
-        )}`
+            })
+        }
+        const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${agentCommand}`
 
         const runStartMs = Date.now()
         const commandTimeoutMs = E2B_COMMAND_CONNECTION_TIMEOUT_MS
@@ -2574,6 +2820,7 @@ async function runAgentInSandbox(
                           getCommandHandle: () => activeCommandHandle,
                           runStartMs,
                           vmJob,
+                          activeRuntimeOffsetMs: Number(pendingWebhook?.vmActiveRuntimeMs) || 0,
                           initialRuntimeGoldCharged: runtimeGoldCharged,
                       })
                     : null
@@ -2605,7 +2852,7 @@ async function runAgentInSandbox(
                         await pendingRef
                             ?.update({
                                 vmSliceCount: completedSliceCount,
-                                vmActiveRuntimeMs: activeRuntimeMs,
+                                vmActiveRuntimeMs: (Number(pendingWebhook?.vmActiveRuntimeMs) || 0) + activeRuntimeMs,
                                 lastVmSliceRotatedAt: Date.now(),
                             })
                             .catch(() => {})
@@ -2670,6 +2917,9 @@ async function runAgentInSandbox(
             state.finalResult = ''
             state.assistantText = ''
             state.usage = null
+            state.interaction = null
+            state.providerState = null
+            state.bridgeError = null
             String(durableStdout)
                 .split('\n')
                 .forEach(line => handleLine(line, false))
@@ -2697,6 +2947,47 @@ async function runAgentInSandbox(
         if (result?.exitCode !== undefined && result.exitCode !== 0) {
             throw buildAgentExitError(agentLabel, result, state, stderr)
         }
+        if (state.bridgeError) {
+            throw new Error(`${agentLabel} interactive bridge failed: ${state.bridgeError}`)
+        }
+        if (usesAgentBridge) await clearConsumedVmInteractionResponse(pendingRef, pendingWebhook)
+        if (state.interaction) {
+            if (subscriptionCredentialPrepared) {
+                await persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth, vmJob.requestUserId)
+                subscriptionCredentialPrepared = false
+            }
+            if (sessionHeartbeat) {
+                sessionHeartbeat.stop()
+                sessionHeartbeat = null
+            }
+            const paused = ownsSessionLease
+                ? await pauseVmSessionForInteraction(sessionRef, sandbox, vmJob, e2bApiKey, sessionLeaseOwner)
+                : false
+            if (!paused) throw new Error('Could not preserve the VM session while waiting for the user.')
+
+            const attemptRuntimeMs = Date.now() - runStartMs
+            const activeRuntimeMs = (Number(pendingWebhook?.vmActiveRuntimeMs) || 0) + attemptRuntimeMs
+            await pendingRef?.set({ vmActiveRuntimeMs: activeRuntimeMs }, { merge: true }).catch(() => {})
+            const { createVmInteractionRequest } = require('./vmInteraction')
+            const sanitizedInteraction = await createVmInteractionRequest({
+                db: admin.firestore(),
+                pendingRef,
+                sessionRef,
+                correlationId: vmJob.correlationId,
+                userId: vmJob.requestUserId,
+                kind: state.interaction.kind,
+                provider: vmJob.agent || DEFAULT_AGENT,
+                providerRequestId: state.interaction.providerRequestId || '',
+                payload: state.interaction.payload || {},
+                providerState: state.interaction.providerState || state.providerState || {},
+            })
+            return {
+                awaitingInteraction: true,
+                interaction: sanitizedInteraction,
+                runtimeGoldCharged,
+                activeRuntimeMs,
+            }
+        }
         if (!output) {
             throw buildAgentExitError(agentLabel, result, state, stderr, new Error('Agent produced no output.'))
         }
@@ -2715,7 +3006,14 @@ async function runAgentInSandbox(
         if (sessionHeartbeat) sessionHeartbeat.stop()
         // Hand the thread to the next queued follow-up (runs on this same sandbox).
         if (ownsSessionLease) await drainThreadAfterRun(sessionRef)
-        return { output, usage: state.usage, artifacts, runtimeGoldCharged }
+        return {
+            output,
+            usage: state.usage,
+            artifacts,
+            runtimeGoldCharged,
+            attemptRuntimeMs: Date.now() - runStartMs,
+            activeRuntimeMs: (Number(pendingWebhook?.vmActiveRuntimeMs) || 0) + (Date.now() - runStartMs),
+        }
     } catch (err) {
         if (subscriptionCredentialPrepared) {
             await persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth, vmJob.requestUserId)
@@ -3190,7 +3488,7 @@ async function runVmJobByCorrelationId(correlationId) {
             })
             .catch(() => {})
         await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, credentialMode))
-        const { output, usage, artifacts, runtimeGoldCharged = 0 } = await runAgentInSandbox(
+        const agentResult = await runAgentInSandbox(
             vmJob,
             config,
             apiKey,
@@ -3202,6 +3500,27 @@ async function runVmJobByCorrelationId(correlationId) {
             pendingRef,
             subscriptionAuth
         )
+        if (agentResult.awaitingInteraction) {
+            await writeStatusComment(pendingWebhook, renderVmInteractionStatus(agentResult.interaction, agentLabel), {
+                assistantRunStatus: 'awaiting_user',
+                interaction: agentResult.interaction,
+            })
+            console.log('🖥️ VM JOB RUNNER: Waiting for user interaction', {
+                correlationId,
+                kind: agentResult.interaction?.kind,
+                requestId: agentResult.interaction?.requestId,
+                activeRuntimeMs: agentResult.activeRuntimeMs,
+            })
+            return
+        }
+        const {
+            output,
+            usage,
+            artifacts,
+            runtimeGoldCharged = 0,
+            attemptRuntimeMs = 0,
+            activeRuntimeMs = 0,
+        } = agentResult
 
         // Upload any generated files and attach them to the result comment as real chat
         // attachment tokens (render as inline downloadable FileDownloadableTags). Keep the
@@ -3232,9 +3551,9 @@ async function runVmJobByCorrelationId(correlationId) {
         })
 
         // Metered Gold top-up from actual usage: per-minute (VM compute) + per-token (LLM).
-        const runtimeMs = Date.now() - (vmJob.createdAt || Date.now())
         const latestPendingSnap = await pendingRef.get().catch(() => null)
         const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
+        const runtimeMs = activeRuntimeMs || (Number(latestPendingData.vmActiveRuntimeMs) || 0) + attemptRuntimeMs
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
         const {
             minutes,
@@ -3268,6 +3587,7 @@ async function runVmJobByCorrelationId(correlationId) {
                 status: 'completed',
                 completedAt: Date.now(),
                 runtimeMs,
+                vmActiveRuntimeMs: runtimeMs,
                 usage: usage || null,
                 goldTopup: runtimeGoldCharged + proxyTokenGoldCharged + topup,
                 runtimeGoldCharged,
@@ -3411,6 +3731,12 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
+        isInteractiveVmExecutionEnabled,
+        resolveVmInteractionPhase,
+        formatVmInteractionAnswers,
+        buildVmBridgeTurnPrompt,
+        buildVmAgentBridgeInput,
+        renderVmInteractionStatus,
         buildSandboxCommandEnv,
         buildClaudeInstallGuard,
         buildCodexInstallGuard,

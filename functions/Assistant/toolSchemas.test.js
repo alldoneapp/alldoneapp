@@ -344,6 +344,9 @@ describe('VM assistant tool schema', () => {
         expect(properties.agentReasoningEffort.description).toContain("user's default VM effort")
         expect(properties.agent.description).toContain('falling back to "codex"')
         expect(properties.agentReasoningEffort.description).toContain('falling back to "medium"')
+        expect(properties.executionMode.enum).toEqual(['automatic', 'plan_first', 'interactive'])
+        expect(properties.executionMode.description).toContain('existing non-interactive runner')
+        expect(properties.executionMode.description).toContain('never silently downgrade')
     })
 })
 

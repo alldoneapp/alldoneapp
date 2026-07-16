@@ -63,6 +63,37 @@ describe('vmCloudRunLauncher', () => {
         )
     })
 
+    test('tags and reconciles each logical resume with a distinct execution attempt id', async () => {
+        const executionName =
+            'projects/test-project/locations/europe-west1/jobs/vm-job-runner/executions/vm-job-runner-resume'
+        fetch.mockResolvedValueOnce(
+            response({
+                name: 'projects/test-project/locations/europe-west1/operations/operation-resume',
+                metadata: { target: executionName },
+            })
+        )
+
+        await launchVmCloudRunJob('correlation-1', { executionAttemptId: 'attempt-2' })
+
+        const body = JSON.parse(fetch.mock.calls[0][1].body)
+        expect(body.overrides.containerOverrides[0].env).toEqual([
+            { name: 'VM_JOB_CORRELATION_ID', value: 'correlation-1' },
+            { name: 'VM_JOB_EXECUTION_ATTEMPT_ID', value: 'attempt-2' },
+        ])
+        expect(
+            __private__.executionHasAttemptId(
+                { template: { containers: [{ env: body.overrides.containerOverrides[0].env }] } },
+                'attempt-2'
+            )
+        ).toBe(true)
+        expect(
+            __private__.executionHasAttemptId(
+                { template: { containers: [{ env: body.overrides.containerOverrides[0].env }] } },
+                'attempt-1'
+            )
+        ).toBe(false)
+    })
+
     test('reconciles an ambiguous launch response by matching the correlation override', async () => {
         const executionName =
             'projects/test-project/locations/europe-west1/jobs/vm-job-runner/executions/vm-job-runner-abcde'

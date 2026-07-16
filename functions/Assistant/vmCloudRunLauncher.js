@@ -83,6 +83,15 @@ function executionHasCorrelationId(execution, correlationId) {
     )
 }
 
+function executionHasAttemptId(execution, executionAttemptId) {
+    if (!executionAttemptId) return true
+    return getExecutionContainers(execution).some(container =>
+        (container.env || []).some(
+            env => env.name === 'VM_JOB_EXECUTION_ATTEMPT_ID' && env.value === executionAttemptId
+        )
+    )
+}
+
 function extractExecutionName(operation) {
     const candidates = [operation?.response?.name, operation?.metadata?.target, operation?.metadata?.name]
     return (
@@ -96,6 +105,7 @@ async function findVmCloudRunExecution(correlationId, options = {}) {
     const accessToken = options.accessToken || (await getAccessToken(options))
     let pageToken = ''
     const minCreateTime = Number(options.minCreateTime) || 0
+    const executionAttemptId = options.executionAttemptId || ''
 
     for (let page = 0; page < MAX_RECONCILIATION_PAGES; page += 1) {
         const params = new URLSearchParams({ pageSize: String(DEFAULT_RECONCILIATION_PAGE_SIZE) })
@@ -109,7 +119,11 @@ async function findVmCloudRunExecution(correlationId, options = {}) {
         for (const execution of body.executions || []) {
             const createTime = Date.parse(execution.createTime || '') || 0
             if (minCreateTime && createTime && createTime < minCreateTime) return null
-            if (executionHasCorrelationId(execution, correlationId)) return execution
+            if (
+                executionHasCorrelationId(execution, correlationId) &&
+                executionHasAttemptId(execution, executionAttemptId)
+            )
+                return execution
         }
         pageToken = body.nextPageToken || ''
         if (!pageToken) break
@@ -122,7 +136,7 @@ async function findVmCloudRunExecution(correlationId, options = {}) {
 //   { kind: 'ok', body }             — execution accepted
 //   { kind: 'transient', cause }     — network throw, or a retryable status (408/429/5xx)
 //   { kind: 'fatal', error }         — a definitive, non-retryable failure (other non-2xx)
-async function attemptVmCloudRunLaunch(jobUrl, correlationId, accessToken) {
+async function attemptVmCloudRunLaunch(jobUrl, correlationId, executionAttemptId, accessToken) {
     let response
     try {
         response = await fetch(`${jobUrl}:run`, {
@@ -135,7 +149,12 @@ async function attemptVmCloudRunLaunch(jobUrl, correlationId, accessToken) {
                 overrides: {
                     containerOverrides: [
                         {
-                            env: [{ name: 'VM_JOB_CORRELATION_ID', value: correlationId }],
+                            env: [
+                                { name: 'VM_JOB_CORRELATION_ID', value: correlationId },
+                                ...(executionAttemptId
+                                    ? [{ name: 'VM_JOB_EXECUTION_ATTEMPT_ID', value: executionAttemptId }]
+                                    : []),
+                            ],
                         },
                     ],
                 },
@@ -165,6 +184,7 @@ async function launchVmCloudRunJob(correlationId, options = {}) {
     const { jobUrl } = resolveCloudRunJob(options)
     const accessToken = await getAccessToken(options)
     const launchStartedAt = Date.now()
+    const executionAttemptId = options.executionAttemptId || ''
     const maxAttempts = Number(options.maxAttempts) || DEFAULT_MAX_LAUNCH_ATTEMPTS
     const backoffMs = options.backoffMs || DEFAULT_LAUNCH_BACKOFF_MS
     const sleep = options.sleep || defaultSleep
@@ -189,7 +209,7 @@ async function launchVmCloudRunJob(correlationId, options = {}) {
             await sleep(delay)
         }
 
-        const result = await attemptVmCloudRunLaunch(jobUrl, correlationId, accessToken)
+        const result = await attemptVmCloudRunLaunch(jobUrl, correlationId, executionAttemptId, accessToken)
 
         if (result.kind === 'ok') {
             let executionName = extractExecutionName(result.body)
@@ -241,6 +261,7 @@ module.exports = {
         resolveProjectId,
         resolveCloudRunJob,
         executionHasCorrelationId,
+        executionHasAttemptId,
         extractExecutionName,
     },
 }
