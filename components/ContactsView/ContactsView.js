@@ -260,6 +260,7 @@ export default function ContactsView() {
                                     <ContactListByProject
                                         key={project.index}
                                         projectIndex={project.index}
+                                        projectId={project.id}
                                         members={filteredProjectsUsers[project.id]}
                                         contacts={filteredProjectsContacts[project.id]}
                                         onlyMembers={false}
@@ -273,6 +274,7 @@ export default function ContactsView() {
                 ) : (
                     <ContactListByProject
                         projectIndex={selectedProjectIndex}
+                        projectId={project.id}
                         members={filteredProjectsUsers[project.id]}
                         contacts={filteredProjectsContacts[project.id]}
                         onlyMembers={false}

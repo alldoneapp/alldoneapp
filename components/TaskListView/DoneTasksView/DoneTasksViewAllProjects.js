@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native'
 import DoneTasksByProject from './DoneTasksByProject'
 import AllProjectsEmptyInbox from '../OpenTasksView/AllProjectsEmptyInbox'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
+import { checkIfThereAreNewComments } from '../../ChatsView/Utils/ChatHelper'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 
 export default function DoneTasksViewAllProjects() {
@@ -14,6 +15,7 @@ export default function DoneTasksViewAllProjects() {
     const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds)
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
+    const projectChatNotifications = useSelector(state => state.projectChatNotifications)
 
     const projects = loggedUserProjects.filter(
         project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
@@ -26,6 +28,11 @@ export default function DoneTasksViewAllProjects() {
         ...orderBy(sortBy(normalProjects, [project => project.name.toLowerCase()]), 'lastDoneDate', 'desc'),
         ...orderBy(sortBy(guides, [project => project.name.toLowerCase()]), 'lastDoneDate', 'desc'),
     ]
+
+    const thereAreNewComments = checkIfThereAreNewComments(
+        projectChatNotifications,
+        sortedLoggedUserProjects.map(project => project.id)
+    )
 
     const needToShowEmptyBoardPicture = doneTasksAmount === 0
 
@@ -43,7 +50,7 @@ export default function DoneTasksViewAllProjects() {
                     <DoneTasksByProject key={project.id} project={project} />
                 ))}
             </View>
-            {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox />}
+            {needToShowEmptyBoardPicture && !thereAreNewComments && <AllProjectsEmptyInbox />}
         </View>
     )
 }

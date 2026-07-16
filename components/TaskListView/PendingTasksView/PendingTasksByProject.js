@@ -9,6 +9,7 @@ import { watchTasksInWorkflow, unwatchTasksInWorkflow } from '../../../utils/bac
 import { filterPendingTasks } from '../../HashtagFilters/FilterHelpers/FilterTasks'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
+import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 
 export default function PendingTasksByProject({ project, inSelectedProject }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -18,6 +19,7 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     const [subtaskByTask, setSubtaskByTask] = useState({})
     const [estimationByDate, setEstimationByDate] = useState({})
     const [amountOfTasksByDate, setAmountOfTasksByDate] = useState({})
+    const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(project.id)
 
     // Check if this project is using a different assistant than the default project
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
@@ -114,6 +116,15 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
                     </View>
                 )
             })}
+        </View>
+    ) : showFollowedBubble || showUnfollowedBubble ? (
+        <View style={localStyles.container}>
+            <ProjectHeader
+                projectIndex={project.index}
+                projectId={project.id}
+                showWorkflowTag={true}
+                showRootSectionNavigation={inSelectedProject}
+            />
         </View>
     ) : null
 }

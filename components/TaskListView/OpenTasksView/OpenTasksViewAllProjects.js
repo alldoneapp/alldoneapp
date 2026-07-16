@@ -8,6 +8,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
+import { checkIfThereAreNewComments } from '../../ChatsView/Utils/ChatHelper'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 import TaskPriorityFiltersLine from '../PriorityFilters/TaskPriorityFiltersLine'
 import EmailLine from '../EmailLine/EmailLine'
@@ -26,6 +27,7 @@ export default function OpenTasksViewAllProjects() {
     const todayEmptyGoalsTotal = useSelector(state => state.todayEmptyGoalsTotalAmountInOpenTasksView.total)
     const inFocusTaskProjectId = useSelector(state => state.loggedUser.inFocusTaskProjectId)
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
+    const projectChatNotifications = useSelector(state => state.projectChatNotifications)
     const [projectsHaveTasksInFirstDay, setProjectsHaveTasksInFirstDay] = useState({})
 
     const sortedLoggedUserProjectIds = ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
@@ -37,6 +39,8 @@ export default function OpenTasksViewAllProjects() {
         loggedUserId,
         inFocusTaskProjectId
     )
+
+    const thereAreNewComments = checkIfThereAreNewComments(projectChatNotifications, sortedLoggedUserProjectIds)
 
     useEffect(() => {
         dispatch(resetLoadingData())
@@ -53,7 +57,7 @@ export default function OpenTasksViewAllProjects() {
 
     let areFirstProject = false
 
-    const needToShowEmptyBoardPicture = !openTasksAmount && !todayEmptyGoalsTotal
+    const needToShowEmptyBoardPicture = !openTasksAmount && !todayEmptyGoalsTotal && !thereAreNewComments
 
     return (
         <View

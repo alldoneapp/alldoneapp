@@ -29,6 +29,8 @@ import EmptyGoalsSelectedProject from './EmptyGoalsSelectedProject'
 import { BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
 import AddGoals from './AddGoals'
 import { allGoals } from '../AllSections/allSectionHelper'
+import useShowNewCommentsBubbleInBoard from '../../hooks/Chats/useShowNewCommentsBubbleInBoard'
+import MilestonesListEmptyProject from './MilestonesListEmptyProject'
 import { getPreviousOpenMilestoneDate } from './GoalsBoardMilestonesHelper'
 
 export default function MilestonesListByProject({
@@ -61,6 +63,7 @@ export default function MilestonesListByProject({
     const openMilestones = useSelector(state => state.openMilestonesByProject[projectId])
     const doneMilestones = useSelector(state => state.doneMilestonesByProject[projectId])
     const boardNeedShowMore = useSelector(state => state.boardNeedShowMoreByProject[projectId])
+    const { showFollowedBubble, showUnfollowedBubble } = useShowNewCommentsBubbleInBoard(projectId)
 
     const navigatingToProjectAndExpandingGoals = useRef(false)
 
@@ -217,5 +220,16 @@ export default function MilestonesListByProject({
             )}
             {!inAllProjects && milestones.length === 0 && <EmptyGoalsSelectedProject />}
         </View>
+    ) : showFollowedBubble || showUnfollowedBubble ? (
+        <MilestonesListEmptyProject
+            projectId={projectId}
+            projectIndex={projectIndex}
+            showRootSectionNavigation={!inAllProjects}
+            setDismissibleRefs={setDismissibleRefs}
+            closeEdition={closeEdition}
+            openEdition={openEdition}
+            backlogId={backlogId}
+            goalsActiveTab={goalsActiveTab}
+        />
     ) : null
 }

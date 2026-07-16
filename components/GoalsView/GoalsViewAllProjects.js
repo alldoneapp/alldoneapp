@@ -20,6 +20,7 @@ import EmptyGoalsAllProjects from './EmptyGoalsAllProjects'
 import Backend from '../../utils/BackendBridge'
 import store from '../../redux/store'
 import { watchAllGoals, watchAllMilestones } from '../../utils/backends/Goals/goalsFirestore'
+import { checkIfThereAreNewComments } from '../ChatsView/Utils/ChatHelper'
 
 export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetDismissibleRefs, setDismissibleRefs }) {
     const dispatch = useDispatch()
@@ -32,6 +33,7 @@ export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetD
     const goalsActiveTab = useSelector(state => state.goalsActiveTab)
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const boardMilestonesByProject = useSelector(state => state.boardMilestonesByProject)
+    const projectChatNotifications = useSelector(state => state.projectChatNotifications)
 
     const sortProjectsByMilestoneDate = () => {
         const { loggedUserProjects, loggedUser } = store.getState()
@@ -133,6 +135,11 @@ export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetD
 
     const sortedLoggedUserProjects = sortProjectsByMilestoneDate()
 
+    const thereAreNewComments = checkIfThereAreNewComments(
+        projectChatNotifications,
+        sortedLoggedUserProjects.map(project => project.id)
+    )
+
     let firstMilestoneId = ''
     let amountOfProjectsWithMilestones = 0
 
@@ -160,7 +167,7 @@ export default function GoalsViewAllProjects({ openEdition, closeEdition, unsetD
                     />
                 )
             })}
-            {amountOfProjectsWithMilestones === 0 && (
+            {amountOfProjectsWithMilestones === 0 && !thereAreNewComments && (
                 <EmptyGoalsAllProjects sortedActiveProjects={sortedLoggedUserProjects} />
             )}
         </View>

@@ -14,6 +14,7 @@ import ErrorBoundary from './utils/ErrorBoundary'
 import AppContent from './AppContent'
 import { getSentryVariables, initTimeProvider } from './utils/backends/firestore'
 import HelperFunctions from './utils/HelperFunctions'
+import { startDailyAppReload } from './utils/DailyAppReload'
 
 try {
     const sentryDsn = getSentryVariables().SENTRY_DSN
@@ -44,6 +45,8 @@ export default function App() {
         loadFonts()
         HelperFunctions.setRootStyles()
     }, [])
+
+    useEffect(() => startDailyAppReload(), [])
 
     return (
         <ErrorBoundary>

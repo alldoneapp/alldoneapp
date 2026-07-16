@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux'
 import AllProjectsEmptyInbox from '../OpenTasksView/AllProjectsEmptyInbox'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
+import { checkIfThereAreNewComments } from '../../ChatsView/Utils/ChatHelper'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 
 export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
@@ -14,6 +15,7 @@ export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const loggedUser = useSelector(state => state.loggedUser)
+    const projectChatNotifications = useSelector(state => state.projectChatNotifications)
 
     const projects = loggedUserProjects.filter(
         project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
@@ -26,6 +28,11 @@ export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
         ...ProjectHelper.sortProjects(activeProjects, loggedUser.uid),
         ...ProjectHelper.sortProjects(guides, loggedUser.uid),
     ]
+    const thereAreNewComments = checkIfThereAreNewComments(
+        projectChatNotifications,
+        sortedProjects.map(project => project.id)
+    )
+
     const needToShowEmptyBoardPicture = workflowTasksAmount === 0
 
     return (
@@ -42,7 +49,7 @@ export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
                     <PendingTasksByProject key={project.id} project={project} />
                 ))}
             </View>
-            {needToShowEmptyBoardPicture && <AllProjectsEmptyInbox />}
+            {needToShowEmptyBoardPicture && !thereAreNewComments && <AllProjectsEmptyInbox />}
         </View>
     )
 }
