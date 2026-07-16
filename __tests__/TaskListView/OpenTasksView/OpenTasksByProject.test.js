@@ -33,6 +33,7 @@ jest.mock('../../../components/MyDayView/AssistantLine/AssistantLine', () => 'As
 jest.mock('../../../components/TaskListView/OKRs/OKRSection', () => 'OKRSection')
 jest.mock('../../../components/TaskListView/Header/UpcomingMilestoneRow', () => 'UpcomingMilestoneRow')
 jest.mock('../../../components/TaskListView/PriorityFilters/TaskPriorityFiltersLine', () => 'TaskPriorityFiltersLine')
+jest.mock('../../../components/TaskListView/PriorityFilters/TaskVmStateFiltersLine', () => 'TaskVmStateFiltersLine')
 jest.mock('../../../components/SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedProject: jest.fn(projectIndex => projectIndex > -1),
 }))
@@ -126,5 +127,7 @@ describe('OpenTasksByProject visibility', () => {
         const tree = renderProject(createState({ selectedProjectIndex: 0, totalFollowed: 1, totalUnfollowed: 1 }))
 
         expect(tree.root.findAllByType('ProjectHeader')).toHaveLength(1)
+        expect(tree.root.findAllByType('TaskPriorityFiltersLine')).toHaveLength(1)
+        expect(tree.root.findAllByType('TaskVmStateFiltersLine')).toHaveLength(1)
     })
 })

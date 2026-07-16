@@ -471,8 +471,6 @@ export default function RichCommentModal({
                             {comments && comments.length > 0 && (
                                 <CommentsList
                                     projectId={projectId}
-                                    objectType={objectType}
-                                    objectId={objectId}
                                     comments={comments}
                                     newEmailCommentIds={newEmailCommentIds}
                                     canArchiveLinkedEmails={canArchiveLinkedEmails}

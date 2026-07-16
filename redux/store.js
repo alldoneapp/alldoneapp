@@ -246,6 +246,8 @@ export const initialState = {
     hashtagFilters: new Map(),
     contactStatusFilter: null,
     taskPriorityFilters: [],
+    taskVmStateFilters: [],
+    taskVmStatesByTask: {},
     goldEarnedData: { goldEarned: 0, checkBoxId: '' },
     showGoldChain: false,
     showGoldCoin: false,
@@ -1531,6 +1533,32 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 taskPriorityFilters: action.priorities,
+            }
+        }
+
+        case 'Clear task VM state filters': {
+            return {
+                ...state,
+                taskVmStateFilters: [],
+            }
+        }
+
+        case 'Set task VM state filters': {
+            return {
+                ...state,
+                taskVmStateFilters: action.vmStates,
+            }
+        }
+
+        case 'Update task VM state': {
+            const currentVmState = (state.taskVmStatesByTask || {})[action.taskKey]
+            if (currentVmState === action.vmState || (!currentVmState && !action.vmState)) return state
+            const taskVmStatesByTask = { ...(state.taskVmStatesByTask || {}) }
+            if (action.vmState) taskVmStatesByTask[action.taskKey] = action.vmState
+            else delete taskVmStatesByTask[action.taskKey]
+            return {
+                ...state,
+                taskVmStatesByTask,
             }
         }
 
