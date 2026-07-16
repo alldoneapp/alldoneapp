@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { TouchableOpacity, StyleSheet, View } from 'react-native-web'
+import { TouchableOpacity, StyleSheet, Text, View } from 'react-native-web'
 import { useDispatch, useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
 
@@ -11,12 +11,16 @@ import {
     setTriggerChatDraft,
 } from '../../redux/actions'
 import { colors } from '../styles/global'
-import { getAssistantInProjectObject } from '../AdminPanel/Assistants/assistantsHelper'
+import {
+    getAssistantInProjectObject,
+    resolveAssistantForProjectObject,
+} from '../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import BotOptionsModal from '../ChatsView/ChatDV/EditorView/BotOption/BotOptionsModal'
 import RunOutOfGoldAssistantModal from '../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 import { setObjectAssistantEnabled } from '../../utils/assistantHelper'
+import { setTaskAssistant } from '../../utils/backends/Tasks/tasksFirestore'
 
 export default function DvBotButton({
     style,
@@ -29,6 +33,8 @@ export default function DvBotButton({
     parentObject,
     updateObjectState,
     onOpenSideChat,
+    showAssistantName = false,
+    resolveProjectAssistant = false,
 }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
@@ -46,8 +52,12 @@ export default function DvBotButton({
         latestAssistantIdRef.current = assistantId
     }, [assistantId])
 
-    const effectiveAssistantId = optimisticAssistantId || assistantId
-    const { photoURL50 } = getAssistantInProjectObject(projectId, effectiveAssistantId)
+    const requestedAssistantId = optimisticAssistantId || assistantId
+    const assistant = resolveProjectAssistant
+        ? resolveAssistantForProjectObject(projectId, requestedAssistantId)
+        : getAssistantInProjectObject(projectId, requestedAssistantId)
+    const effectiveAssistantId = assistant?.uid || requestedAssistantId
+    const { photoURL50, displayName } = assistant || {}
 
     const updateAssistantId = newAssistantId => {
         latestAssistantIdRef.current = newAssistantId
@@ -60,8 +70,21 @@ export default function DvBotButton({
     }
 
     const onSelectBotOption = async (optionText, name, aiSettings, options) => {
-        const selectedAssistantId = latestAssistantIdRef.current || effectiveAssistantId
+        const selectedAssistantId = resolveProjectAssistant
+            ? resolveAssistantForProjectObject(projectId, latestAssistantIdRef.current)?.uid || effectiveAssistantId
+            : latestAssistantIdRef.current || effectiveAssistantId
 
+        if (
+            resolveProjectAssistant &&
+            (objectType === 'task' || objectType === 'tasks') &&
+            parentObject?.assistantId !== selectedAssistantId
+        ) {
+            try {
+                await setTaskAssistant(projectId, objectId, selectedAssistantId, !!parentObject?.assistantId)
+            } catch (error) {
+                console.error('Error assigning resolved assistant to task:', error)
+            }
+        }
         await setObjectAssistantEnabled(projectId, objectId, objectType, true)
         if (parentObject && updateObjectState) {
             updateObjectState({
@@ -92,6 +115,7 @@ export default function DvBotButton({
     }
 
     const openModal = () => {
+        if (resolveProjectAssistant && !assistant) return
         if (!noticeAboutTheBotBehavior) dispatch(setShowNotificationAboutTheBotBehavior(true))
         if (gold <= 0) dispatch(setAssistantEnabled(false))
         setIsOpen(true)
@@ -106,7 +130,7 @@ export default function DvBotButton({
     return (
         <Popover
             content={
-                gold > 0 ? (
+                resolveProjectAssistant && !assistant ? null : gold > 0 ? (
                     <BotOptionsModal
                         closeModal={closeModal}
                         onSelectBotOption={onSelectBotOption}
@@ -129,8 +153,29 @@ export default function DvBotButton({
             isOpen={isOpen && noticeAboutTheBotBehavior && !showNotificationAboutTheBotBehavior}
             contentLocation={smallScreenNavigation ? null : undefined}
         >
-            <TouchableOpacity style={[localStyles.container, style]} onPress={openModal}>
+            <TouchableOpacity
+                style={[
+                    localStyles.container,
+                    showAssistantName && localStyles.namedContainer,
+                    showAssistantName && smallScreenNavigation && localStyles.namedContainerMobile,
+                    style,
+                ]}
+                onPress={openModal}
+                disabled={resolveProjectAssistant && !assistant}
+                accessibilityLabel={
+                    showAssistantName
+                        ? displayName
+                            ? `Open ${displayName} predefined tasks`
+                            : 'No assistant available'
+                        : undefined
+                }
+            >
                 <AssistantAvatar photoURL={photoURL50} assistantId={effectiveAssistantId} size={24} />
+                {showAssistantName && (
+                    <Text style={localStyles.assistantName} numberOfLines={1}>
+                        {displayName || 'No assistant'}
+                    </Text>
+                )}
             </TouchableOpacity>
         </Popover>
     )
@@ -150,5 +195,22 @@ const localStyles = StyleSheet.create({
         paddingVertical: 7,
         paddingHorizontal: 7,
         marginRight: 8,
+    },
+    namedContainer: {
+        maxWidth: 180,
+        paddingVertical: 3,
+        paddingHorizontal: 7,
+    },
+    namedContainerMobile: {
+        maxWidth: 132,
+    },
+    assistantName: {
+        color: colors.Text03,
+        flexShrink: 1,
+        fontSize: 14,
+        lineHeight: 20,
+        marginLeft: 6,
+        minWidth: 0,
+        overflow: 'hidden',
     },
 })
