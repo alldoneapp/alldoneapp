@@ -8,13 +8,12 @@ import { FORDWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/Helpe
 import Popover from 'react-tiny-popover'
 import Icon from '../Icon'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
-import ObjectHeaderParser from '../Feeds/TextParser/ObjectHeaderParser'
 import { getWorkstreamById, WORKSTREAM_ID_PREFIX } from '../Workstreams/WorkstreamHelper'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import { MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 
-export default function TaskSuggestedComment({ task, taskName, projectId }) {
+export default function TaskSuggestedComment({ task, projectId }) {
     const dispatch = useDispatch()
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const isMentionModalOpen = useSelector(state => state.openModals[MENTION_MODAL_ID])
@@ -82,15 +81,6 @@ export default function TaskSuggestedComment({ task, taskName, projectId }) {
                                 You are suggesting this task to {getAssigneeName()}, please enter a comment explaining
                                 about it.
                             </Text>
-                            <View style={localStyles.taskTitle}>
-                                <Icon name={'check-square'} size={20} color={'#fff'} />
-                                <ObjectHeaderParser
-                                    text={taskName}
-                                    projectId={projectId}
-                                    entryExternalStyle={{ color: '#fff' }}
-                                />
-                                {renderAvatar([localStyles.logo, { marginLeft: 'auto' }])}
-                            </View>
                         </View>
                     }
                 />
@@ -111,12 +101,6 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         alignSelf: 'center',
-    },
-    taskTitle: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        marginTop: 28,
-        marginBottom: 16,
     },
     logo: {
         width: 20,

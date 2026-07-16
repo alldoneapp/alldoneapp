@@ -23,6 +23,7 @@ export default function TaskTagsContainer({
     taskTagsSection,
     forceTagsMobile,
     setTagsExpandedHeight,
+    inCommentPopup,
 }) {
     return (
         <Animated.View style={[localStyles.taskTags, { backgroundColor: highlightColor }]}>
@@ -48,6 +49,7 @@ export default function TaskTagsContainer({
                     setTagsExpandedHeight={setTagsExpandedHeight}
                     isLocked={isLocked}
                     isPending={isPending}
+                    inCommentPopup={inCommentPopup}
                 />
             </View>
         </Animated.View>

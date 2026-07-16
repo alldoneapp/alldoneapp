@@ -269,7 +269,7 @@ export default class GoalItemPresentation extends PureComponent {
     getTagsAmount = () => {
         const { currentUser } = store.getState()
         const { parentMilestonesData, tasksAmount } = this.state
-        const { goal, inParentGoal, isEmptyGoal } = this.props
+        const { goal, inParentGoal, isEmptyGoal, inCommentPopup } = this.props
         const { inDoneMilestone, assigneesIds, description, isPublicFor, noteId } = goal
 
         const { backlinksCount } = this.getBacklinkData()
@@ -313,7 +313,7 @@ export default class GoalItemPresentation extends PureComponent {
             tagsAmount++
         }
 
-        if (goal.commentsData) {
+        if (goal.commentsData && !inCommentPopup) {
             tagsAmount++
         }
 
@@ -415,6 +415,7 @@ export default class GoalItemPresentation extends PureComponent {
             milestoneId,
             parentGoaltasks,
             areObservedTask,
+            inCommentPopup,
         } = this.props
         const {
             extendedName,
@@ -468,7 +469,7 @@ export default class GoalItemPresentation extends PureComponent {
                         ref={this.itemSwipe}
                         rightThreshold={80}
                         leftThreshold={80}
-                        enabled={!isLocked && !activeDragGoalMode && !isActiveOrganizeModeInTasks}
+                        enabled={!inCommentPopup && !isLocked && !activeDragGoalMode && !isActiveOrganizeModeInTasks}
                         renderLeftActions={this.renderLeftSwipe}
                         renderRightActions={
                             !isAnonymous && loggedUserCanUpdateObject ? this.renderRightSwipe : undefined
@@ -612,6 +613,7 @@ export default class GoalItemPresentation extends PureComponent {
                                         areObservedTask={areObservedTask}
                                         inParentGoal={inParentGoal}
                                         loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                                        inCommentPopup={inCommentPopup}
                                     />
                                 )}
                             </View>
@@ -641,6 +643,7 @@ export default class GoalItemPresentation extends PureComponent {
                                 areObservedTask={areObservedTask}
                                 inParentGoal={inParentGoal}
                                 loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                                inCommentPopup={inCommentPopup}
                             />
                         )}
                     </Swipeable>

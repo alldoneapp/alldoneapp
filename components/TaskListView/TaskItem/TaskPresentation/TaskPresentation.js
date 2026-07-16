@@ -49,6 +49,7 @@ function TaskPresentation(
         checkOnDrag,
         inParentGoal,
         isPending,
+        inCommentPopup,
     },
     ref
 ) {
@@ -245,7 +246,7 @@ function TaskPresentation(
                 ref={itemSwipe}
                 rightThreshold={80}
                 leftThreshold={80}
-                enabled={!activeEditMode && !isActiveOrganizeMode && !isLocked && anonymousGranted}
+                enabled={!inCommentPopup && !activeEditMode && !isActiveOrganizeMode && !isLocked && anonymousGranted}
                 renderLeftActions={renderLeftSwipe}
                 renderRightActions={accessGranted && renderRightSwipe}
                 onSwipeableLeftWillOpen={onLeftSwipe}
@@ -362,6 +363,7 @@ function TaskPresentation(
                                     onAlertTagPress={onLeftSwipe}
                                     leadingVmStatusTag={leadingVmStatusTag}
                                     leadingPriorityTag={leadingPriorityTag}
+                                    inCommentPopup={inCommentPopup}
                                 />
                             )}
                             {!inMyDayAndNotSubtask && (
@@ -383,6 +385,7 @@ function TaskPresentation(
                                     taskTagsSection={taskTagsSection}
                                     forceTagsMobile={forceTagsMobile}
                                     setTagsExpandedHeight={setTagsExpandedHeight}
+                                    inCommentPopup={inCommentPopup}
                                 />
                             )}
                         </Animated.View>
@@ -391,13 +394,15 @@ function TaskPresentation(
                         )}
                     </View>
                     {isActiveOrganizeMode && <SixDotsContainer />}
-                    <ShortcutsArea
-                        task={task}
-                        isActiveOrganizeMode={isActiveOrganizeMode}
-                        accessGranted={accessGranted}
-                        projectId={projectId}
-                        isLocked={isLocked}
-                    />
+                    {!inCommentPopup && (
+                        <ShortcutsArea
+                            task={task}
+                            isActiveOrganizeMode={isActiveOrganizeMode}
+                            accessGranted={accessGranted}
+                            projectId={projectId}
+                            isLocked={isLocked}
+                        />
+                    )}
                 </View>
             </Swipeable>
         </View>

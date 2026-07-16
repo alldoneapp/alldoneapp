@@ -19,6 +19,7 @@ export default function useTagsAmount({
     subtaskList,
     isSuggested,
     isPending,
+    inCommentPopup,
 }) {
     const route = useSelector(state => state.route)
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
@@ -70,7 +71,7 @@ export default function useTagsAmount({
 
         if (task.vmMergeRequest?.status && task.vmMergeRequest?.url) counter++
         if (inMyDayAndNotSubtask && task.parentGoalId) counter++
-        if (!!task.commentsData) counter++
+        if (!!task.commentsData && !inCommentPopup) counter++
         if (subtaskList && subtaskList.length > 0) counter++
         if (isToReviewTask && currentReviewerEstimation > 0) counter++
         if (!isToReviewTask && isObservedTask && observerEstimation > 0) counter++

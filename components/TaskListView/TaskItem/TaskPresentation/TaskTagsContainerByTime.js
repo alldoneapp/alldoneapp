@@ -30,6 +30,7 @@ export default function TaskTagsContainerByTime({
     blockOpen,
     leadingVmStatusTag,
     leadingPriorityTag,
+    inCommentPopup,
 }) {
     const [showSummarizeTag, setShowSummarizeTag] = useState(false)
     const [widthInFullArea, setWidthInFullArea] = useState(0)
@@ -106,6 +107,7 @@ export default function TaskTagsContainerByTime({
                             setExpandTags={setExpandTags}
                             expandTags={expandTags}
                             showSummarizeTagInByTime={showSummarizeTag}
+                            inCommentPopup={inCommentPopup}
                         />
                     </View>
                 </View>
@@ -127,6 +129,7 @@ export default function TaskTagsContainerByTime({
                             isPending={isPending}
                             needSummarize={true}
                             tagsStyle={{ marginLeft: 0, marginRight: 8, marginBottom: 5 }}
+                            inCommentPopup={inCommentPopup}
                         />
                     </View>
                 )}

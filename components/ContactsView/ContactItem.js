@@ -159,7 +159,7 @@ export default class ContactItem extends Component {
             backlinkNoteObject,
             loggedUserId,
         } = this.state
-        const { projectIndex, contact, isMember, onPress } = this.props
+        const { projectIndex, contact, isMember, inCommentPopup } = this.props
 
         const projectId = loggedUserProjects[projectIndex].id
         const showContact = isMember || !ContactsHelper.isPrivateContact(contact)
@@ -225,7 +225,7 @@ export default class ContactItem extends Component {
             (contact.noteId || (contact.noteIdsByProject && contact.noteIdsByProject[projectId]) ? 1 : 0) +
             (backlinksCount > 0 ? 1 : 0) +
             (contact.isPrivate ? 1 : 0) +
-            (commentsData ? 1 : 0)
+            (commentsData && !inCommentPopup ? 1 : 0)
 
         const showSummarizeTag = (this.state.smallScreenNavigation && amountTags > 1) || amountTags > 2
 
@@ -257,7 +257,7 @@ export default class ContactItem extends Component {
                     ref={this.itemSwipe}
                     rightThreshold={80}
                     leftThreshold={80}
-                    enabled={true}
+                    enabled={!inCommentPopup}
                     renderLeftActions={this.renderLeftSwipe}
                     onSwipeableLeftWillOpen={this.onLeftSwipe}
                     renderRightActions={this.renderRightSwipe}
@@ -275,7 +275,7 @@ export default class ContactItem extends Component {
                     }}
                 >
                     <TouchableOpacity
-                        onPress={blockOpen ? undefined : this.onOpenDV}
+                        onPress={blockOpen || inCommentPopup ? undefined : this.onOpenDV}
                         disabled={blockOpen}
                         activeOpacity={blockOpen ? 1 : 0.5}
                     >
@@ -384,7 +384,7 @@ export default class ContactItem extends Component {
                                                 />
                                             )}
 
-                                            {!!commentsData && (
+                                            {!!commentsData && !inCommentPopup && (
                                                 <ContactCommentsWrapper
                                                     commentsData={commentsData}
                                                     projectId={projectId}
@@ -438,7 +438,7 @@ export default class ContactItem extends Component {
                                         />
                                     )}
 
-                                    {!!commentsData && (
+                                    {!!commentsData && !inCommentPopup && (
                                         <ContactCommentsWrapper
                                             commentsData={commentsData}
                                             projectId={projectId}

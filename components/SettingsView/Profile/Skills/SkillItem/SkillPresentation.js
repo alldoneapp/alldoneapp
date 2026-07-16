@@ -19,7 +19,7 @@ import useActiveDragMode from '../useActiveDragMode'
 import SkillProgressBar from './SkillProgressBar'
 import { updateSkillDescription } from '../../../../../utils/backends/Skills/skillsFirestore'
 
-export default function SkillPresentation({ projectId, skill, higherSkill, onPress, isDragging }) {
+export default function SkillPresentation({ projectId, skill, higherSkill, onPress, isDragging, inCommentPopup }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const [backlinksTasksCount, setBacklinksTasksCount] = useState(0)
@@ -87,14 +87,16 @@ export default function SkillPresentation({ projectId, skill, higherSkill, onPre
                             </View>
                         </TouchableOpacity>
                         <View style={localStyles.tagsArea}>
-                            <CommentWrapperTag
-                                projectId={projectId}
-                                skillId={skillId}
-                                disabled={isAnonymous}
-                                userGettingKarmaId={skill.userId}
-                                skillName={skill.name}
-                                commentsData={skill.commentsData}
-                            />
+                            {!inCommentPopup && (
+                                <CommentWrapperTag
+                                    projectId={projectId}
+                                    skillId={skillId}
+                                    disabled={isAnonymous}
+                                    userGettingKarmaId={skill.userId}
+                                    skillName={skill.name}
+                                    commentsData={skill.commentsData}
+                                />
+                            )}
                             {!skill.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) && (
                                 <PrivacyTag
                                     projectId={projectId}

@@ -148,6 +148,7 @@ export const getParentObjectData = async (projectId, objectId, objectType) => {
     switch (objectType) {
         case 'tasks':
             await getTaskData(projectId, objectId).then(task => {
+                if (!task) return
                 object = task
                 isPublicFor = task.isPublicFor
                 assistantId = task.assistantId
@@ -158,6 +159,7 @@ export const getParentObjectData = async (projectId, objectId, objectType) => {
             break
         case 'notes':
             await getNote(projectId, objectId).then(note => {
+                if (!note) return
                 object = note
                 isPublicFor = note.isPublicFor
                 assistantId = note.assistantId
@@ -168,6 +170,7 @@ export const getParentObjectData = async (projectId, objectId, objectType) => {
             break
         case 'topics':
             await getChatMeta(projectId, objectId).then(chat => {
+                if (!chat) return
                 object = chat
                 isPublicFor = chat.isPublicFor
                 assistantId = chat.assistantId
@@ -176,10 +179,12 @@ export const getParentObjectData = async (projectId, objectId, objectType) => {
                 followObjectsType = FOLLOWER_TOPICS_TYPE
             })
             break
+        case 'users':
         case 'contacts':
             const user = TasksHelper.getUserInProject(projectId, objectId)
             const objectIsUser = !!user
             const contact = user || TasksHelper.getContactInProject(projectId, objectId)
+            if (!contact) break
             object = contact
             isPublicFor = contact.isPublicFor
             assistantId = contact.assistantId
@@ -189,6 +194,7 @@ export const getParentObjectData = async (projectId, objectId, objectType) => {
             break
         case 'goals':
             await getGoalData(projectId, objectId).then(goal => {
+                if (!goal) return
                 object = goal
                 isPublicFor = goal.isPublicFor
                 assistantId = goal.assistantId
@@ -199,6 +205,7 @@ export const getParentObjectData = async (projectId, objectId, objectType) => {
             break
         case 'skills':
             await getSkillData(projectId, objectId).then(skill => {
+                if (!skill) return
                 object = skill
                 isPublicFor = skill.isPublicFor
                 assistantId = skill.assistantId
@@ -209,6 +216,7 @@ export const getParentObjectData = async (projectId, objectId, objectType) => {
             break
         case 'assistants':
             const assistant = getAssistantInProject(projectId, objectId)
+            if (!assistant) break
             object = assistant
             isPublicFor = [FEED_PUBLIC_FOR_ALL]
             assistantId = objectId
@@ -237,6 +245,7 @@ export const getParentObjectName = async (projectId, objectId, objectType) => {
             const chat = await getChatMeta(projectId, objectId)
             if (chat) name = chat.title
             break
+        case 'users':
         case 'contacts':
             const user = TasksHelper.getUserInProject(projectId, objectId)
             const contact = user || TasksHelper.getContactInProject(projectId, objectId)

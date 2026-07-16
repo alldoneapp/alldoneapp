@@ -28,7 +28,7 @@ import { getTheme } from '../../Themes/Themes'
 import { Themes } from '../RootView/Themes'
 import LastEditionData from './LastEditionData'
 
-const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
+const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommentPopup }) => {
     const loggedUser = useSelector(state => state.loggedUser)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -221,7 +221,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
                 ref={itemSwipe}
                 rightThreshold={80}
                 leftThreshold={80}
-                enabled={true}
+                enabled={!inCommentPopup}
                 renderLeftActions={renderLeftSwipe}
                 renderRightActions={renderRightSwipe}
                 onSwipeableLeftWillOpen={onLeftSwipe}
@@ -243,8 +243,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
                 >
                     <TouchableOpacity
                         style={localStyles.subContainer}
-                        onPress={onOpenNoteDV}
-                        disabled={blockOpen || ignoreAccessGranted ? false : !accessGranted}
+                        onPress={inCommentPopup ? undefined : onOpenNoteDV}
+                        disabled={!inCommentPopup && (blockOpen || ignoreAccessGranted ? false : !accessGranted)}
                         activeOpacity={blockOpen ? 1 : 0.5}
                         accessible={false}
                     >
@@ -252,8 +252,11 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted }) => {
                             <View style={localStyles.titleContainer}>
                                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                                     <TouchableOpacity
-                                        onPress={onOpenEditModal}
-                                        disabled={blockOpen || ignoreAccessGranted ? false : !accessGranted}
+                                        onPress={inCommentPopup ? undefined : onOpenEditModal}
+                                        disabled={
+                                            !inCommentPopup &&
+                                            (blockOpen || ignoreAccessGranted ? false : !accessGranted)
+                                        }
                                         activeOpacity={blockOpen ? 1 : 0.5}
                                         accessible={false}
                                     >

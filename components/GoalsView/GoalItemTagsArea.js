@@ -49,6 +49,7 @@ export default function GoalItemTagsArea({
     areObservedTask,
     inParentGoal,
     loggedUserCanUpdateObject,
+    inCommentPopup,
 }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -100,7 +101,7 @@ export default function GoalItemTagsArea({
             style={[localStyles.container, containerStyle]}
         >
             <View nativeID={`initial_social_tag_${projectId}_${goal.id}`} />
-            {!!commentsData && (
+            {!!commentsData && !inCommentPopup && (
                 <GoalCommentsWrapper
                     commentsData={commentsData}
                     projectId={projectId}

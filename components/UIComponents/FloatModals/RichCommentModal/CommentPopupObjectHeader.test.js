@@ -1,0 +1,103 @@
+import React from 'react'
+import renderer, { act } from 'react-test-renderer'
+
+import CommentPopupObjectHeader from './CommentPopupObjectHeader'
+import { getParentObjectData } from '../../../../utils/backends/Chats/chatsComments'
+import { unwatch } from '../../../../utils/backends/firestore'
+
+jest.mock('react-redux', () => ({
+    useSelector: selector => selector({ loggedUserProjects: [{ id: 'project-1' }] }),
+}))
+jest.mock('uuid/v4', () => () => 'watcher-1')
+jest.mock('../../../../i18n/TranslationService', () => ({ translate: text => text }))
+jest.mock('../../../../utils/backends/Chats/chatsComments', () => ({ getParentObjectData: jest.fn() }))
+jest.mock('../../../../utils/backends/Tasks/tasksFirestore', () => ({ watchTask: jest.fn() }))
+jest.mock('../../../../utils/backends/Goals/goalsFirestore', () => ({ watchGoal: jest.fn() }))
+jest.mock('../../../../utils/backends/Skills/skillsFirestore', () => ({ watchSkill: jest.fn() }))
+jest.mock('../../../../utils/backends/Chats/chatsFirestore', () => ({ watchChat: jest.fn() }))
+jest.mock('../../../../utils/backends/Contacts/contactsFirestore', () => ({ watchContactData: jest.fn() }))
+jest.mock('../../../../utils/backends/firestore', () => ({
+    unwatch: jest.fn(),
+    unwatchNote: jest.fn(),
+    watchNote: jest.fn(),
+    watchUserData: jest.fn(),
+}))
+jest.mock('../../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
+    getProjectById: () => ({ id: 'project-1', color: 'blue' }),
+}))
+jest.mock('../../../TaskListView/Utils/TasksHelper', () => ({
+    __esModule: true,
+    default: { getUserInProject: () => null },
+}))
+jest.mock('../../../TaskListView/TaskItem/TaskPresentation/TaskPresentation', () => 'TaskPresentation')
+jest.mock('../../../GoalsView/GoalItemPresentation', () => 'GoalItemPresentation')
+jest.mock('../../../ContactsView/ContactItem', () => 'ContactItem')
+jest.mock('../../../NotesView/NotesItem', () => 'NotesItem')
+jest.mock('../../../ChatsView/ChatItem', () => 'ChatItem')
+jest.mock('../../../SettingsView/Profile/Skills/SkillItem/SkillPresentation', () => 'SkillPresentation')
+jest.mock('../../../AdminPanel/Assistants/AssistantPresentation', () => 'AssistantPresentation')
+jest.mock('./Header', () => 'Header')
+
+const PRESENTATION_BY_TYPE = {
+    tasks: 'TaskPresentation',
+    goals: 'GoalItemPresentation',
+    contacts: 'ContactItem',
+    users: 'ContactItem',
+    notes: 'NotesItem',
+    topics: 'ChatItem',
+    skills: 'SkillPresentation',
+    assistants: 'AssistantPresentation',
+}
+
+const renderHeader = async (objectType, object = { id: 'object-1', uid: 'object-1' }) => {
+    getParentObjectData.mockResolvedValue({ object })
+    let tree
+    await act(async () => {
+        tree = renderer.create(
+            <CommentPopupObjectHeader
+                projectId="project-1"
+                objectId="object-1"
+                objectType={objectType}
+                objectName="Fallback title"
+            />
+        )
+        await Promise.resolve()
+    })
+    return tree
+}
+
+describe('CommentPopupObjectHeader', () => {
+    beforeEach(() => jest.clearAllMocks())
+
+    test.each(Object.entries(PRESENTATION_BY_TYPE))('renders the full %s list presentation', async (type, rowType) => {
+        const tree = await renderHeader(type)
+        const row = tree.root.findByType(rowType)
+
+        expect(row.props.inCommentPopup).toBe(true)
+    })
+
+    it('stops embedded row events from reaching popup parent click handlers', async () => {
+        const tree = await renderHeader('tasks')
+        const boundary = tree.root.find(node => node.props['data-testid'] === 'comment-popup-object-tasks')
+        const event = { stopPropagation: jest.fn() }
+
+        boundary.props.onClick(event)
+
+        expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows a graceful fallback for deleted objects', async () => {
+        const tree = await renderHeader('tasks', null)
+
+        expect(tree.root.findByProps({ accessibilityLabel: 'Object unavailable' })).toBeTruthy()
+        expect(tree.root.findByType('Header').props.title).toBe('Fallback title')
+    })
+
+    it('removes live object watchers when the popup unmounts', async () => {
+        const tree = await renderHeader('tasks')
+
+        act(() => tree.unmount())
+
+        expect(unwatch).toHaveBeenCalledWith('comment-popup-object-watcher-1')
+    })
+})

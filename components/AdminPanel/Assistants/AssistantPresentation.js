@@ -13,7 +13,7 @@ import CommentWrapperTag from './CommentWrapperTag'
 import { isGlobalAssistant } from './assistantsHelper'
 import { translate } from '../../../i18n/TranslationService'
 
-export default function AssistantPresentation({ projectId, assistant, onAssistantClick, project }) {
+export default function AssistantPresentation({ projectId, assistant, onAssistantClick, project, inCommentPopup }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
     const [backlinksTasksCount, setBacklinksTasksCount] = useState(0)
@@ -88,7 +88,7 @@ export default function AssistantPresentation({ projectId, assistant, onAssistan
                         <Text style={localStyles.projectAssistantText}>{translate('Project assistant')}</Text>
                     </View>
                 )}
-                {!isGlobal && (
+                {!isGlobal && !inCommentPopup && (
                     <CommentWrapperTag
                         projectId={projectId}
                         disabled={isAnonymous}

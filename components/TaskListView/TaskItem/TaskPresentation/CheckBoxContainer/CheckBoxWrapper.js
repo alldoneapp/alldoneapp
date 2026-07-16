@@ -69,6 +69,10 @@ function CheckBoxWrapper(
         }
     }, [])
 
+    useEffect(() => {
+        safeSetChecked(task.done)
+    }, [task.done])
+
     const safeSetIsOpen = value => {
         if (!isUnmountedRef.current) {
             setIsOpen(value)

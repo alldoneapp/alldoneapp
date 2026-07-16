@@ -9,7 +9,6 @@ import { applyPopoverWidthV2, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/Hel
 import useWindowSize from '../../../../utils/useWindowSize'
 import CloseButton from './CloseButton'
 import CommentsList from './CommentsList'
-import Header from './Header'
 import AttachmentsSelectorModal from '../AttachmentsSelectorModal'
 import { insertAttachmentInsideEditor } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
@@ -44,6 +43,7 @@ import Icon from '../../../Icon'
 import SharedHelper from '../../../../utils/SharedHelper'
 import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
 import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
+import CommentPopupObjectHeader from './CommentPopupObjectHeader'
 
 export default function RichCommentModal({
     projectId,
@@ -191,17 +191,26 @@ export default function RichCommentModal({
 
     useEffect(() => {
         if (messages.loaded && comments.length === 0) {
-            getParentObjectData(projectId, objectId, objectType).then(data => {
-                const commentsData = data?.object?.commentsData || null
-                console.warn('[TaskComments] Comment popup loaded with no visible comments', {
-                    projectId,
-                    objectId,
-                    objectType,
-                    hasChatNotifications: chatNotificationsAmount > 0,
-                    hasPreviewMetadata: !!commentsData,
-                    previewCommentsAmount: commentsData?.amount || 0,
+            getParentObjectData(projectId, objectId, objectType)
+                .then(data => {
+                    const commentsData = data?.object?.commentsData || null
+                    console.warn('[TaskComments] Comment popup loaded with no visible comments', {
+                        projectId,
+                        objectId,
+                        objectType,
+                        hasChatNotifications: chatNotificationsAmount > 0,
+                        hasPreviewMetadata: !!commentsData,
+                        previewCommentsAmount: commentsData?.amount || 0,
+                    })
                 })
-            })
+                .catch(error => {
+                    console.warn('[TaskComments] Could not load comment parent object', {
+                        projectId,
+                        objectId,
+                        objectType,
+                        error,
+                    })
+                })
         }
     }, [messages.loaded, comments.length, projectId, objectId, objectType, chatNotificationsAmount])
 
@@ -210,16 +219,27 @@ export default function RichCommentModal({
     }, [externalAssistantId])
 
     useEffect(() => {
-        getParentObjectData(projectId, objectId, objectType).then(data => {
-            if (data && data.object) {
-                const threadEnabled = data.object.isAssistantEnabled === true
-                setIsThreadAssistantEnabled(threadEnabled)
-                dispatch(setAssistantEnabled(threadEnabled))
-            } else {
+        getParentObjectData(projectId, objectId, objectType)
+            .then(data => {
+                if (data && data.object) {
+                    const threadEnabled = data.object.isAssistantEnabled === true
+                    setIsThreadAssistantEnabled(threadEnabled)
+                    dispatch(setAssistantEnabled(threadEnabled))
+                } else {
+                    setIsThreadAssistantEnabled(false)
+                    dispatch(setAssistantEnabled(false))
+                }
+            })
+            .catch(error => {
+                console.warn('[TaskComments] Could not load assistant state for parent object', {
+                    projectId,
+                    objectId,
+                    objectType,
+                    error,
+                })
                 setIsThreadAssistantEnabled(false)
                 dispatch(setAssistantEnabled(false))
-            }
-        })
+            })
         return () => {
             dispatch(setAssistantEnabled(false))
         }
@@ -387,7 +407,13 @@ export default function RichCommentModal({
                     }
                 >
                     <View style={localStyles.innerContainer}>
-                        {customHeader ? customHeader : <Header title={objectName} />}
+                        {customHeader}
+                        <CommentPopupObjectHeader
+                            projectId={projectId}
+                            objectType={objectType}
+                            objectId={objectId}
+                            objectName={objectName}
+                        />
 
                         {canArchiveLinkedEmails && linkedEmails.length > 0 && (
                             <View style={localStyles.emailActionsBar}>

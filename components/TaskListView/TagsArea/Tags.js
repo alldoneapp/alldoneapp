@@ -53,6 +53,7 @@ export default function Tags({
     tagsStyle,
     isPending,
     needSummarize,
+    inCommentPopup,
 }) {
     const route = useSelector(state => state.route)
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
@@ -215,7 +216,7 @@ export default function Tags({
                 style={[tagAlignment, tagsStyle]}
                 disabled={isActiveOrganizeMode}
             />
-            {!!commentsData && (
+            {!!commentsData && !inCommentPopup && (
                 <TaskCommentsWrapper
                     tagStyle={tagsStyle}
                     commentsData={commentsData}

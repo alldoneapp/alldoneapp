@@ -29,6 +29,7 @@ const TaskItemTags = ({
     setExpandTags,
     expandTags,
     showSummarizeTagInByTime,
+    inCommentPopup,
 }) => {
     const showAllProjectsByTime = useSelector(state => state.loggedUser.showAllProjectsByTime)
     const route = useSelector(state => state.route)
@@ -51,6 +52,7 @@ const TaskItemTags = ({
         subtaskList,
         isSuggested,
         isPending,
+        inCommentPopup,
     })
 
     const inMyDayAndNotSubtask =
@@ -136,6 +138,7 @@ const TaskItemTags = ({
                                 isSuggested={isSuggested}
                                 isPending={isPending}
                                 needSummarize={needSummarize}
+                                inCommentPopup={inCommentPopup}
                             />
                         </View>
                     )}
@@ -157,6 +160,7 @@ const TaskItemTags = ({
                     isLocked={isLocked}
                     isSuggested={isSuggested}
                     isPending={isPending}
+                    inCommentPopup={inCommentPopup}
                 />
             )}
         </>
