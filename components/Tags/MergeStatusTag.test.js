@@ -1,8 +1,8 @@
 import React from 'react'
-import { Text } from 'react-native'
-import renderer from 'react-test-renderer'
+import { Platform, Text, TouchableOpacity } from 'react-native'
+import renderer, { act } from 'react-test-renderer'
 
-import MergeStatusTag from './MergeStatusTag'
+import MergeStatusTag, { openMergeRequest } from './MergeStatusTag'
 
 jest.mock('../styles/global', () => ({
     __esModule: true,
@@ -16,6 +16,13 @@ jest.mock('../styles/global', () => ({
 jest.mock('../../i18n/TranslationService', () => ({ translate: value => value }))
 
 describe('MergeStatusTag', () => {
+    const originalPlatform = Platform.OS
+
+    afterEach(() => {
+        Platform.OS = originalPlatform
+        jest.restoreAllMocks()
+    })
+
     test.each([
         ['draft', 'Draft'],
         ['checks_running', 'Checks running'],
@@ -31,9 +38,43 @@ describe('MergeStatusTag', () => {
             />
         )
         expect(tree.root.findByType(Text).props.children).toBe(label)
-        expect(tree.root.findByProps({ accessibilityLabel: label }).props.style).toEqual(
-            expect.arrayContaining([expect.objectContaining({ backgroundColor: '#DBC7FF' })])
+        expect(tree.root.findByType(TouchableOpacity).props).toEqual(
+            expect.objectContaining({
+                accessible: true,
+                accessibilityLabel: `Merge status: ${label}`,
+                accessibilityRole: 'link',
+            })
         )
+        const coloredTag = tree.root.findAll(
+            node =>
+                Array.isArray(node.props.style) && node.props.style.some(style => style?.backgroundColor === '#DBC7FF')
+        )
+        expect(coloredTag.length).toBeGreaterThan(0)
+    })
+
+    test('opens the exact backend URL safely without triggering the task row', () => {
+        Platform.OS = 'web'
+        const url = 'https://github.com/alldone/app/pull/17?notification_referrer_id=exact'
+        const openedWindow = { opener: window }
+        const windowOpen = jest.spyOn(window, 'open').mockReturnValue(openedWindow)
+        const event = { preventDefault: jest.fn(), stopPropagation: jest.fn() }
+        const tree = renderer.create(<MergeStatusTag mergeRequest={{ status: 'checks_running', url }} />)
+
+        act(() => tree.root.findByType(TouchableOpacity).props.onPress(event))
+
+        expect(event.preventDefault).toHaveBeenCalledTimes(1)
+        expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+        expect(windowOpen).toHaveBeenCalledWith(url, '_blank', 'noopener,noreferrer')
+        expect(openedWindow.opener).toBeNull()
+    })
+
+    test('does not open non-web external URLs', () => {
+        Platform.OS = 'web'
+        const windowOpen = jest.spyOn(window, 'open').mockReturnValue(null)
+
+        openMergeRequest('javascript:alert(1)')
+
+        expect(windowOpen).not.toHaveBeenCalled()
     })
 
     test.each([null, {}, { url: 'https://example.com' }, { status: 'unknown', url: 'https://example.com' }])(

@@ -213,7 +213,7 @@ export default function Tags({
             <MergeStatusTag
                 mergeRequest={task.vmMergeRequest}
                 style={[tagAlignment, tagsStyle]}
-                disabled={isActiveOrganizeMode || isLocked}
+                disabled={isActiveOrganizeMode}
             />
             {!!commentsData && (
                 <TaskCommentsWrapper

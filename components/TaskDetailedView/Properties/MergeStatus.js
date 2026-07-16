@@ -11,8 +11,19 @@ export default function MergeStatus({ mergeRequest }) {
     const label = getMergeStatusLabel(mergeRequest?.status)
     if (!label || !mergeRequest?.url) return null
 
+    const onPress = event => {
+        event?.preventDefault?.()
+        event?.stopPropagation?.()
+        openMergeRequest(mergeRequest.url)
+    }
+
     return (
-        <TouchableOpacity onPress={() => openMergeRequest(mergeRequest.url)} accessibilityRole="link">
+        <TouchableOpacity
+            accessible
+            accessibilityLabel={`${translate('Merge status')}: ${translate(label)}`}
+            accessibilityRole="link"
+            onPress={onPress}
+        >
             <View style={localStyles.container}>
                 <View style={{ marginRight: 8 }}>
                     <Icon name="git-merge" size={24} color={colors.Violet300} />

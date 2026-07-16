@@ -29,7 +29,19 @@ describe('task merge status property', () => {
             'Merge status',
             'Ready to merge',
         ])
-        act(() => tree.root.findByType(TouchableOpacity).props.onPress())
+        const event = { preventDefault: jest.fn(), stopPropagation: jest.fn() }
+        const link = tree.root.findByType(TouchableOpacity)
+        act(() => link.props.onPress(event))
+
+        expect(link.props).toEqual(
+            expect.objectContaining({
+                accessible: true,
+                accessibilityLabel: 'Merge status: Ready to merge',
+                accessibilityRole: 'link',
+            })
+        )
+        expect(event.preventDefault).toHaveBeenCalledTimes(1)
+        expect(event.stopPropagation).toHaveBeenCalledTimes(1)
         expect(openMergeRequest).toHaveBeenCalledWith(url)
     })
 
