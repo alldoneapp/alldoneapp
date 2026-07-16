@@ -185,9 +185,11 @@ function TaskPresentation(
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, userProjectIds, projectId, false)
     const anonymousGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, userProjectIds, projectId, true)
 
+    const restingBackgroundColor = inCommentPopup ? colors.UtilityBlue100 : task.isSubtask ? colors.Grey200 : '#ffffff'
+
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
-        outputRange: [colors.UtilityYellow125, task.isSubtask ? colors.Grey200 : '#ffffff', colors.UtilityGreen125],
+        outputRange: [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125],
         extrapolate: 'clamp',
     })
 
