@@ -3,7 +3,7 @@ import renderer, { act } from 'react-test-renderer'
 import { TouchableOpacity } from 'react-native'
 
 import TaskAssistantButton from './TaskAssistantButton'
-import { resolveDefaultAssistantForProject } from '../../AdminPanel/Assistants/assistantsHelper'
+import { resolveAssistantForProjectObject } from '../../AdminPanel/Assistants/assistantsHelper'
 
 const mockDispatch = jest.fn()
 let mockState
@@ -39,7 +39,7 @@ jest.mock('../../../utils/assistantHelper', () => ({
     setObjectAssistantEnabled: jest.fn(),
 }))
 jest.mock('../../AdminPanel/Assistants/assistantsHelper', () => ({
-    resolveDefaultAssistantForProject: jest.fn(),
+    resolveAssistantForProjectObject: jest.fn(),
 }))
 jest.mock('../../../utils/backends/Chats/chatsComments', () => ({
     createObjectMessage: jest.fn(),
@@ -79,7 +79,7 @@ describe('TaskAssistantButton', () => {
             openModals: {},
         }
         mockDispatch.mockClear()
-        resolveDefaultAssistantForProject.mockReset()
+        resolveAssistantForProjectObject.mockReset()
         require('../../../utils/backends/Tasks/tasksFirestore').setTaskAssistant.mockClear()
         require('../../../utils/assistantHelper').setObjectAssistantEnabled.mockClear()
         require('../../../utils/backends/Chats/chatsComments').createObjectMessage.mockClear()
@@ -88,11 +88,12 @@ describe('TaskAssistantButton', () => {
 
     test('opens the comment popup for the already-assigned assistant', async () => {
         const task = { id: 'task-1', name: 'Prepare launch', userId: 'user-1', assistantId: 'assistant-1' }
+        resolveAssistantForProjectObject.mockReturnValue({ uid: 'assistant-1' })
         const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
 
         await press(tree)
 
-        expect(resolveDefaultAssistantForProject).not.toHaveBeenCalled()
+        expect(resolveAssistantForProjectObject).toHaveBeenCalledWith('project-1', 'assistant-1')
         expect(require('../../../utils/assistantHelper').setObjectAssistantEnabled).toHaveBeenCalledWith(
             'project-1',
             'task-1',
@@ -116,6 +117,7 @@ describe('TaskAssistantButton', () => {
 
     test('submits the popup comment to the task with the assistant trigger preserved', async () => {
         const task = { id: 'task-1', name: 'Prepare launch', assistantId: 'assistant-1' }
+        resolveAssistantForProjectObject.mockReturnValue({ uid: 'assistant-1' })
         const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
         await press(tree)
 
@@ -137,13 +139,13 @@ describe('TaskAssistantButton', () => {
     })
 
     test('uses and assigns the project default assistant when the task has none', async () => {
-        resolveDefaultAssistantForProject.mockReturnValue({ uid: 'project-default-assistant' })
+        resolveAssistantForProjectObject.mockReturnValue({ uid: 'project-default-assistant' })
         const task = { id: 'task-1', name: 'Prepare launch' }
         const tree = renderer.create(<TaskAssistantButton projectId="project-1" task={task} />)
 
         await press(tree)
 
-        expect(resolveDefaultAssistantForProject).toHaveBeenCalledWith('project-1')
+        expect(resolveAssistantForProjectObject).toHaveBeenCalledWith('project-1', undefined)
         expect(require('../../../utils/backends/Tasks/tasksFirestore').setTaskAssistant).toHaveBeenCalledWith(
             'project-1',
             'task-1',
@@ -154,7 +156,7 @@ describe('TaskAssistantButton', () => {
     })
 
     test('falls back to the global default assistant when the project has none', async () => {
-        resolveDefaultAssistantForProject.mockReturnValue(null)
+        resolveAssistantForProjectObject.mockReturnValue({ uid: 'global-default-assistant' })
         const tree = renderer.create(
             <TaskAssistantButton projectId="project-1" task={{ id: 'task-1', name: 'Prepare launch' }} />
         )
@@ -166,7 +168,7 @@ describe('TaskAssistantButton', () => {
 
     test('shows an error and keeps the popup closed when no assistant can be resolved', async () => {
         mockState.defaultAssistant = {}
-        resolveDefaultAssistantForProject.mockReturnValue(null)
+        resolveAssistantForProjectObject.mockReturnValue(null)
         const tree = renderer.create(
             <TaskAssistantButton projectId="project-1" task={{ id: 'task-1', name: 'Prepare launch' }} />
         )
@@ -181,7 +183,7 @@ describe('TaskAssistantButton', () => {
     })
 
     test('uses the email reply draft in the same comment popup', async () => {
-        resolveDefaultAssistantForProject.mockReturnValue({ uid: 'project-default-assistant' })
+        resolveAssistantForProjectObject.mockReturnValue({ uid: 'project-default-assistant' })
         const task = {
             id: 'task-1',
             name: 'Reply to supplier',

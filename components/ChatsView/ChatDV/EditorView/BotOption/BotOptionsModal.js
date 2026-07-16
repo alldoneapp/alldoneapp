@@ -208,7 +208,18 @@ export default function BotOptionsModal({
                         if (inChatTab) {
                             setAssistantEnabledForObject(true)
                         }
-                        onSelectBotOption(prompt, selectedTask.name, undefined, options)
+                        const aiSettings = {
+                            model: selectedTask.aiModel,
+                            temperature: selectedTask.aiTemperature,
+                            systemMessage: selectedTask.aiSystemMessage,
+                        }
+                        onSelectBotOption(prompt, selectedTask.name, aiSettings, {
+                            ...options,
+                            taskMetadata: {
+                                ...(selectedTask.taskMetadata || {}),
+                                sendWhatsApp: !!selectedTask.sendWhatsApp,
+                            },
+                        })
                         if (!inMyDay) dispatch(setAssistantEnabled(true))
                     }}
                     defaultContext={

@@ -102,6 +102,7 @@ export default function TagList({ projectId, task, assistantId, setAssistantId, 
                     objectType={FEED_TASK_OBJECT_TYPE}
                     parentObject={task}
                     updateObjectState={updateObjectState}
+                    resolveProjectAssistant={true}
                 />
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>
