@@ -6,12 +6,7 @@ import v4 from 'uuid/v4'
 import ProjectHeader from '../Header/ProjectHeader'
 import OpenTasksByDate from '../OpenTasksView/OpenTasksByDate'
 import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import {
-    AMOUNT_TASKS_INDEX,
-    DATE_TASK_INDEX,
-    watchAllGoals,
-    watchAllMilestones,
-} from '../../../utils/backends/openTasks'
+import { DATE_TASK_INDEX, watchAllGoals, watchAllMilestones } from '../../../utils/backends/openTasks'
 import NeedShowMoreOpenTasksButton from './NeedShowMoreOpenTasksButton'
 import NeedShowMoreEmptyGoalsButton from './NeedShowMoreEmptyGoalsButton'
 import OpenTasksByProjectHandler from './OpenTasksByProjectHandler'
@@ -51,10 +46,13 @@ export default function OpenTasksByProject({
 
     const instanceKey = projectId + currentUserId
 
-    const filteredOpenTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey] || [], shallowEqual)
-    const taskPriorityFilters = useSelector(state => state.taskPriorityFilters, shallowEqual)
-    const taskVmStateFilters = useSelector(state => state.taskVmStateFilters, shallowEqual)
-    const filteredOpenTasksDates = filteredOpenTasks.map(tasksByDate => tasksByDate[DATE_TASK_INDEX])
+    const filteredOpenTasksDates = useSelector(
+        state =>
+            state.filteredOpenTasksStore[instanceKey]
+                ? state.filteredOpenTasksStore[instanceKey].map(tasksByDate => tasksByDate[DATE_TASK_INDEX])
+                : [],
+        shallowEqual
+    )
     const thereAreNotTasksInFirstDay = useSelector(state =>
         state.thereAreNotTasksInFirstDay[instanceKey] ? state.thereAreNotTasksInFirstDay[instanceKey] : false
     )
@@ -63,14 +61,10 @@ export default function OpenTasksByProject({
     const todayKey = getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
     const okrsHiddenTodayById = loggedUser.okrsHiddenInAllProjectsTodayByProjectAndOkr?.[projectId] || {}
     const visibleOkrsInAllProjects = okrsInProject.filter(okr => okrsHiddenTodayById[okr.id] !== todayKey)
-    const taskFiltersActive = taskPriorityFilters.length > 0 || taskVmStateFilters.length > 0
-    const hasMatchingFilteredTasks = filteredOpenTasks.some(section => section[AMOUNT_TASKS_INDEX] > 0)
-    const hideProjectWithoutFilterMatches = !inSelectedProject && taskFiltersActive && !hasMatchingFilteredTasks
     const hideProjectData =
-        hideProjectWithoutFilterMatches ||
-        (!inSelectedProject &&
-            visibleOkrsInAllProjects.length === 0 &&
-            (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0))
+        !inSelectedProject &&
+        visibleOkrsInAllProjects.length === 0 &&
+        (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0)
 
     // Check if this project is using a different assistant than the default project
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])

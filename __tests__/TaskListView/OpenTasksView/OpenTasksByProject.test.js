@@ -38,7 +38,6 @@ jest.mock('../../../components/SettingsView/ProjectsSettings/ProjectHelper', () 
     checkIfSelectedProject: jest.fn(projectIndex => projectIndex > -1),
 }))
 jest.mock('../../../utils/backends/openTasks', () => ({
-    AMOUNT_TASKS_INDEX: 1,
     DATE_TASK_INDEX: 0,
     watchAllGoals: jest.fn(),
     watchAllMilestones: jest.fn(),
@@ -66,20 +65,10 @@ const userId = 'user-1'
 const instanceKey = `${projectId}${userId}`
 const dispatch = jest.fn()
 
-const createState = ({
-    selectedProjectIndex = -1,
-    visibleTaskDate,
-    filteredTaskAmount = visibleTaskDate ? 1 : 0,
-    unfilteredHasTasks = !!visibleTaskDate,
-    taskPriorityFilters = [],
-    taskVmStateFilters = [],
-    okrs = [],
-    totalFollowed = 0,
-    totalUnfollowed = 0,
-} = {}) => ({
+const createState = ({ selectedProjectIndex = -1, visibleTaskDate, totalFollowed = 0, totalUnfollowed = 0 } = {}) => ({
     currentUser: { uid: userId },
     defaultAssistant: null,
-    filteredOpenTasksStore: visibleTaskDate ? { [instanceKey]: [[visibleTaskDate, filteredTaskAmount]] } : {},
+    filteredOpenTasksStore: visibleTaskDate ? { [instanceKey]: [[visibleTaskDate]] } : {},
     loggedUser: {
         defaultProjectId: projectId,
         isAnonymous: false,
@@ -89,15 +78,13 @@ const createState = ({
     loggedUserProjectsMap: {
         [projectId]: { id: projectId, index: 0 },
     },
-    okrsByProjectInTasks: { [projectId]: okrs },
+    okrsByProjectInTasks: { [projectId]: [] },
     projectChatNotifications: {
         [projectId]: { totalFollowed, totalUnfollowed },
     },
     selectedProjectIndex,
-    taskPriorityFilters,
     tasksArrowButtonIsExpanded: false,
-    taskVmStateFilters,
-    thereAreNotTasksInFirstDay: { [instanceKey]: !unfilteredHasTasks },
+    thereAreNotTasksInFirstDay: { [instanceKey]: !visibleTaskDate },
 })
 
 const renderProject = state => {
@@ -142,66 +129,5 @@ describe('OpenTasksByProject visibility', () => {
         expect(tree.root.findAllByType('ProjectHeader')).toHaveLength(1)
         expect(tree.root.findAllByType('TaskPriorityFiltersLine')).toHaveLength(1)
         expect(tree.root.findAllByType('TaskVmStateFiltersLine')).toHaveLength(1)
-    })
-
-    it.each([
-        ['priority', { taskPriorityFilters: ['must_do'] }],
-        ['VM state', { taskVmStateFilters: ['paused'] }],
-        ['combined priority and VM state', { taskPriorityFilters: ['must_do'], taskVmStateFilters: ['paused'] }],
-    ])('hides an All Projects section with zero %s filter matches', (filterName, filters) => {
-        const tree = renderProject(
-            createState({
-                ...filters,
-                visibleTaskDate: '20260716',
-                filteredTaskAmount: 0,
-                unfilteredHasTasks: true,
-                okrs: [{ id: 'okr-1' }],
-            })
-        )
-
-        expect(tree.root.findAllByType('ProjectHeader')).toHaveLength(0)
-        expect(tree.root.findAllByType('OKRSection')).toHaveLength(0)
-    })
-
-    it('keeps an All Projects section with at least one combined-filter match', () => {
-        const tree = renderProject(
-            createState({
-                taskPriorityFilters: ['must_do'],
-                taskVmStateFilters: ['paused'],
-                visibleTaskDate: '20260716',
-                filteredTaskAmount: 1,
-            })
-        )
-
-        expect(tree.root.findAllByType('ProjectHeader')).toHaveLength(1)
-        expect(tree.root.findAllByType('OpenTasksByDate')).toHaveLength(1)
-    })
-
-    it('never hides the selected project when active filters have no matches', () => {
-        const tree = renderProject(
-            createState({
-                selectedProjectIndex: 0,
-                taskPriorityFilters: ['must_do'],
-                taskVmStateFilters: ['paused'],
-                visibleTaskDate: '20260716',
-                filteredTaskAmount: 0,
-            })
-        )
-
-        expect(tree.root.findAllByType('ProjectHeader')).toHaveLength(1)
-    })
-
-    it('preserves normal unfiltered visibility for a project with non-task content', () => {
-        const tree = renderProject(
-            createState({
-                visibleTaskDate: '20260716',
-                filteredTaskAmount: 0,
-                unfilteredHasTasks: true,
-                okrs: [{ id: 'okr-1' }],
-            })
-        )
-
-        expect(tree.root.findAllByType('ProjectHeader')).toHaveLength(1)
-        expect(tree.root.findAllByType('OKRSection')).toHaveLength(1)
     })
 })
