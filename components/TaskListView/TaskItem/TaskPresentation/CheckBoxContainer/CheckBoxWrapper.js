@@ -220,9 +220,8 @@ function CheckBoxWrapper(
                 },
             })
         } catch (error) {
-            console.error('[email task completion] Could not archive linked email', error)
+            console.error('[email task completion] Could not archive linked email in background', error)
             alert(`${translate("Email couldn't be archived")}: ${error.message}`)
-            safeSetChecked(false)
         } finally {
             emailCompletionSubmittingRef.current = false
             if (!isUnmountedRef.current) setEmailCompletionSubmitting(false)

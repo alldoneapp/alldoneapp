@@ -59,6 +59,7 @@ jest.mock('./EmailTaskCompletionModal', () => 'EmailTaskCompletionModal')
 jest.mock('../../../../../i18n/TranslationService', () => ({ translate: text => text }))
 
 import { moveTasksFromOpen } from '../../../../../utils/backends/Tasks/tasksFirestore'
+import { performEmailLineAction } from '../../../../../utils/backends/EmailLine/emailLineBackend'
 import CheckBoxWrapper from './CheckBoxWrapper'
 
 const baseTask = {
@@ -79,12 +80,19 @@ const renderWrapper = task =>
     )
 
 describe('CheckBoxWrapper email task completion', () => {
+    let consoleErrorSpy
+
     beforeEach(() => {
         jest.useFakeTimers()
         moveTasksFromOpen.mockClear()
+        performEmailLineAction.mockClear()
+        performEmailLineAction.mockResolvedValue(undefined)
+        global.alert = jest.fn()
+        consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     })
 
     afterEach(() => {
+        consoleErrorSpy.mockRestore()
         jest.useRealTimers()
     })
 
@@ -123,5 +131,70 @@ describe('CheckBoxWrapper email task completion', () => {
         })
 
         expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
+    })
+
+    test('closes the popup and starts task completion before background archiving finishes', async () => {
+        let finishArchive
+        performEmailLineAction.mockImplementation(
+            () =>
+                new Promise(resolve => {
+                    finishArchive = resolve
+                })
+        )
+        const task = {
+            ...baseTask,
+            gmailData: { connectionId: 'email_google_12345678', messageId: 'message-1' },
+        }
+        const tree = renderWrapper(task)
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+        const modal = tree.root.findByType('EmailTaskCompletionModal')
+        act(() => modal.props.onComplete(true))
+
+        expect(tree.root.findAllByType('EmailTaskCompletionModal')).toHaveLength(0)
+        expect(performEmailLineAction).toHaveBeenCalledWith('email_google_12345678', {
+            action: 'archive',
+            messageIds: ['message-1'],
+        })
+
+        await act(async () => {
+            jest.runAllTimers()
+            await Promise.resolve()
+        })
+        expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
+
+        await act(async () => {
+            finishArchive()
+            await Promise.resolve()
+        })
+    })
+
+    test('keeps the task completed and reports a background archive failure', async () => {
+        const archiveError = Object.assign(new Error('authentication expired'), {
+            code: 'functions/permission-denied',
+        })
+        performEmailLineAction.mockRejectedValue(archiveError)
+        const task = {
+            ...baseTask,
+            gmailData: { connectionId: 'email_google_12345678', messageId: 'message-2' },
+        }
+        const tree = renderWrapper(task)
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+        await act(async () => {
+            tree.root.findByType('EmailTaskCompletionModal').props.onComplete(true)
+            await Promise.resolve()
+            jest.runAllTimers()
+            await Promise.resolve()
+        })
+
+        expect(tree.root.findAllByType('EmailTaskCompletionModal')).toHaveLength(0)
+        expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(true)
+        expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
+        expect(global.alert).toHaveBeenCalledWith("Email couldn't be archived: authentication expired")
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            '[email task completion] Could not archive linked email in background',
+            archiveError
+        )
     })
 })
