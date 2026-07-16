@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Hotkeys from 'react-hot-keys'
 
@@ -15,13 +15,27 @@ export default function EmailTaskCompletionModal({ closePopover, onComplete, sub
         if (!submitting) selectionStartedRef.current = false
     }, [submitting])
 
-    const selectOption = (archiveEmail, event) => {
-        event?.preventDefault()
-        event?.stopPropagation()
-        if (submitting || selectionStartedRef.current) return
-        selectionStartedRef.current = true
-        onComplete(archiveEmail)
-    }
+    const selectOption = useCallback(
+        (archiveEmail, event) => {
+            event?.preventDefault()
+            event?.stopPropagation()
+            if (submitting || selectionStartedRef.current) return
+            selectionStartedRef.current = true
+            onComplete(archiveEmail)
+        },
+        [onComplete, submitting]
+    )
+
+    useEffect(() => {
+        if (typeof document === 'undefined') return undefined
+
+        const confirmWithEnter = event => {
+            if (event.key === 'Enter' && !event.isComposing) selectOption(true, event)
+        }
+
+        document.addEventListener('keydown', confirmWithEnter, true)
+        return () => document.removeEventListener('keydown', confirmWithEnter, true)
+    }, [selectOption])
 
     return (
         <View style={[localStyles.container, applyPopoverWidth()]}>
