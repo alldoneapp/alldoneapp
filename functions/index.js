@@ -1191,6 +1191,37 @@ exports.disconnectAssistantMcpServer = onCall(
     }
 )
 
+exports.acceptAssistantTemplateConflictsSecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const projectId = data && data.projectId
+        const assistantId = data && data.assistantId
+        if (!projectId || !assistantId || !Array.isArray(data.resolvedFields)) {
+            throw new HttpsError('invalid-argument', 'projectId, assistantId and resolvedFields are required')
+        }
+        await assertProjectAccess(auth.uid, projectId)
+        const assistantDoc = await admin.firestore().doc(`assistants/${projectId}/items/${assistantId}`).get()
+        if (!assistantDoc.exists || !assistantDoc.data().copiedFromTemplateAssistantId) {
+            throw new HttpsError('failed-precondition', 'Assistant is not linked to a template')
+        }
+        const { acceptTemplateConflicts } = require('./Assistants/templateSync')
+        return acceptTemplateConflicts({
+            userId: auth.uid,
+            projectId,
+            assistantId,
+            acceptedFields: data.acceptedFields,
+            resolvedFields: data.resolvedFields,
+        })
+    }
+)
+
 exports.beginMcpOAuth = onCall(
     {
         timeoutSeconds: 60,
@@ -3387,7 +3418,20 @@ exports.onDeleteAssistantTaskSecondGen = onDocumentDeleted(
     async event => {
         const { onDeleteAssistantTask } = require('./AssistantTasks/onDeleteAssistantTaskFunctions.js')
         const { projectId, assistantId, assistantTaskId } = event.params
-        await onDeleteAssistantTask(projectId, assistantId, assistantTaskId)
+        await onDeleteAssistantTask(projectId, assistantId, assistantTaskId, event.data.data())
+    }
+)
+
+exports.backfillAssistantTemplateSyncSecondGen = onSchedule(
+    {
+        schedule: 'every 24 hours',
+        timeoutSeconds: 540,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { runTemplateSyncBackfill } = require('./Assistants/templateSync')
+        return runTemplateSyncBackfill()
     }
 )
 

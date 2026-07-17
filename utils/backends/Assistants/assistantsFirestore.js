@@ -55,6 +55,33 @@ export const DEFAULT_HEARTBEAT_PROMPT =
 const ASSISTANT_TASKS_CACHE_MAX_AGE = 120000
 const assistantTasksCache = {}
 
+const TEMPLATE_LOCAL_ASSISTANT_FIELDS = new Set([
+    'uid',
+    'creatorId',
+    'createdDate',
+    'lastEditorId',
+    'lastEditionDate',
+    'noteIdsByProject',
+    'lastVisitBoard',
+    'commentsData',
+    'isDefault',
+    'fromTemplate',
+    'instructionsHistory',
+    'heartbeatPromptHistory',
+    'copiedFromTemplateAssistantId',
+    'copiedFromTemplateAssistantDate',
+    'templateSyncSnapshot',
+    'templateSyncConflicts',
+    'templateSyncStatus',
+    'templateSyncedAt',
+])
+
+export const getAssistantTemplateSnapshot = assistant =>
+    Object.keys(assistant || {}).reduce((snapshot, field) => {
+        if (!TEMPLATE_LOCAL_ASSISTANT_FIELDS.has(field)) snapshot[field] = assistant[field]
+        return snapshot
+    }, {})
+
 function getAssistantTasksCollectionPath(projectId, assistantId) {
     return isGlobalAssistant(assistantId)
         ? `assistantTasks/${projectId}/preConfigTasks`
@@ -1221,6 +1248,9 @@ export async function copyPreConfigTasksToNewAssistant(
                 // Track source template task for update sync
                 copiedFromTemplateTaskId: doc.id,
                 copiedFromTemplateTaskDate: Date.now(),
+                templateTaskSnapshot: getTemplateTaskPayloadForClient(task),
+                templateTaskSyncConflicts: [],
+                templateSyncStatus: 'synced',
             }
             delete taskCopy.lastExecutedByUser
             delete taskCopy.recurrenceByUser
@@ -1269,6 +1299,40 @@ export async function copyPreConfigTasksToNewAssistant(
             stack: error.stack,
         })
     }
+}
+
+const TEMPLATE_LOCAL_TASK_FIELDS = new Set([
+    'id',
+    'assistantId',
+    'copiedFromTemplateTaskId',
+    'copiedFromTemplateTaskDate',
+    'templateTaskSnapshot',
+    'templateTaskSyncConflicts',
+    'templateSyncStatus',
+    'templateTaskDeletedAt',
+    'activatedInProjectId',
+    'lastExecuted',
+    'lastExecutedByUser',
+    'creatorUserId',
+    'activatorUserId',
+    'recurrenceByUser',
+    'activatedUserIds',
+])
+
+function getTemplateTaskPayloadForClient(task) {
+    return Object.keys(task || {}).reduce((payload, field) => {
+        if (!TEMPLATE_LOCAL_TASK_FIELDS.has(field)) payload[field] = task[field]
+        return payload
+    }, {})
+}
+
+export async function resolveAssistantTemplateConflicts(projectId, assistantId, acceptedFields, resolvedFields) {
+    return runHttpsCallableFunction('acceptAssistantTemplateConflictsSecondGen', {
+        projectId,
+        assistantId,
+        acceptedFields,
+        resolvedFields,
+    })
 }
 
 // Update assistant properties from a global/template assistant

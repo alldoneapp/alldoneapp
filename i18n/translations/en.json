@@ -2427,5 +2427,17 @@
     "VM environment build failed": "Build failed — try rebuilding",
     "VM environment not built": "Not built yet",
     "Rebuild": "Rebuild",
-    "Building": "Building…"
+    "Building": "Building…",
+    "(removed)": "(removed)",
+    "(empty)": "(empty)",
+    "Synced from template": "Synced from template",
+    "Linked to template • waiting for the next template update": "Linked to template • waiting for the next template update",
+    "template changes need review": "template changes need review",
+    "template change needs review": "template change needs review",
+    "Your version": "Your version",
+    "Template version": "Template version",
+    "Keep mine": "Keep mine",
+    "Accept template": "Accept template",
+    "Template task deleted • local changes preserved": "Template task deleted • local changes preserved",
+    "Template changed • local changes preserved": "Template changed • local changes preserved"
 }

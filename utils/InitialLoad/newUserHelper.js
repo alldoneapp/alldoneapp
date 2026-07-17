@@ -15,7 +15,11 @@ import {
     uploadNewProject,
 } from '../backends/firestore'
 import { addNewUserToAlldoneTemplate, uploadNewUser, updateUserData } from '../backends/Users/usersFirestore'
-import { getAssistantData, copyPreConfigTasksToNewAssistant } from '../backends/Assistants/assistantsFirestore'
+import {
+    getAssistantData,
+    copyPreConfigTasksToNewAssistant,
+    getAssistantTemplateSnapshot,
+} from '../backends/Assistants/assistantsFirestore'
 import { GLOBAL_PROJECT_ID } from '../../components/AdminPanel/Assistants/assistantsHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { getNewDefaultUser } from '../../components/ContactsView/Utils/ContactsHelper'
@@ -115,6 +119,10 @@ const generateInitialAssistant = (globalAssistant, userId) => {
         // Track source template assistant for update detection
         copiedFromTemplateAssistantId: globalAssistant.uid,
         copiedFromTemplateAssistantDate: Date.now(),
+        templateSyncSnapshot: getAssistantTemplateSnapshot(globalAssistant),
+        templateSyncConflicts: [],
+        templateSyncStatus: 'synced',
+        templateSyncedAt: Date.now(),
     }
 
     return assistant

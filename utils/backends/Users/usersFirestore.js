@@ -65,6 +65,7 @@ import {
 } from '../../InitialLoad/initialLoadHelper'
 import {
     copyPreConfigTasksToNewAssistant,
+    getAssistantTemplateSnapshot,
     moveAssistantToProject,
     setAssistantLikeDefault,
     uploadNewAssistant,
@@ -545,6 +546,10 @@ export async function setDefaultProjectId(userId, projectId) {
                         isDefault: false,
                         copiedFromTemplateAssistantId: globalAssistant.uid,
                         copiedFromTemplateAssistantDate: Date.now(),
+                        templateSyncSnapshot: getAssistantTemplateSnapshot(globalAssistant),
+                        templateSyncConflicts: [],
+                        templateSyncStatus: 'synced',
+                        templateSyncedAt: Date.now(),
                     }
 
                     const newAssistant = await uploadNewAssistant(projectId, assistantPayload, null)

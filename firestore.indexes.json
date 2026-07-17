@@ -471,6 +471,20 @@
     ],
     "fieldOverrides": [
         {
+            "collectionGroup": "items",
+            "fieldPath": "copiedFromTemplateAssistantId",
+            "indexes": [
+                {
+                    "order": "ASCENDING",
+                    "queryScope": "COLLECTION_GROUP"
+                },
+                {
+                    "order": "DESCENDING",
+                    "queryScope": "COLLECTION_GROUP"
+                }
+            ]
+        },
+        {
             "collectionGroup": "private",
             "fieldPath": "email",
             "indexes": [

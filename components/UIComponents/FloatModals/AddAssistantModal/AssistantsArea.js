@@ -8,6 +8,7 @@ import {
     setAssistantLastVisitedBoardDate,
     uploadNewAssistant,
     copyPreConfigTasksToNewAssistant,
+    getAssistantTemplateSnapshot,
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import store from '../../../../redux/store'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -44,6 +45,14 @@ export default function AssistantsArea({ closeModal, project }) {
             // Track source template assistant for update detection (only when copying from global)
             copiedFromTemplateAssistantId: sourceProjectId === GLOBAL_PROJECT_ID ? assistant.uid : null,
             copiedFromTemplateAssistantDate: sourceProjectId === GLOBAL_PROJECT_ID ? Date.now() : null,
+            ...(sourceProjectId === GLOBAL_PROJECT_ID
+                ? {
+                      templateSyncSnapshot: getAssistantTemplateSnapshot(assistant),
+                      templateSyncConflicts: [],
+                      templateSyncStatus: 'synced',
+                      templateSyncedAt: Date.now(),
+                  }
+                : {}),
         }
 
         const newAssistant = await uploadNewAssistant(project.id, assistantPayload, null)

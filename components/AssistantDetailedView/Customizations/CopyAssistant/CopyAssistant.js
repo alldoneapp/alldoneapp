@@ -10,6 +10,7 @@ import {
     removeGlobalAssistantFromProject,
     uploadNewAssistant,
     copyPreConfigTasksToNewAssistant,
+    getAssistantTemplateSnapshot,
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
@@ -34,6 +35,10 @@ export default function CopyAssistant({ projectId, assistant, disabled, sourcePr
             // Track source template assistant for update detection
             copiedFromTemplateAssistantId: assistant.uid,
             copiedFromTemplateAssistantDate: Date.now(),
+            templateSyncSnapshot: getAssistantTemplateSnapshot(assistant),
+            templateSyncConflicts: [],
+            templateSyncStatus: 'synced',
+            templateSyncedAt: Date.now(),
         }
 
         const newAssistant = await uploadNewAssistant(projectId, assistantPayload, null)

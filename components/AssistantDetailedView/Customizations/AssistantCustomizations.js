@@ -36,6 +36,7 @@ import HeartbeatWhatsAppProperty from './Heartbeat/HeartbeatWhatsAppProperty'
 import HeartbeatPromptProperty from './Heartbeat/HeartbeatPromptProperty'
 import HeartbeatStatusProperty from './Heartbeat/HeartbeatStatusProperty'
 import EmailSignatureProperty from './EmailSignature/EmailSignatureProperty'
+import UpdateFromTemplate from './UpdateFromTemplate/UpdateFromTemplate'
 
 export default function AssistantCustomizations({
     projectId,
@@ -117,6 +118,7 @@ export default function AssistantCustomizations({
 
     return (
         <View style={localStyles.container}>
+            <UpdateFromTemplate projectId={projectId} assistant={assistant} disabled={!canEditAssitant} />
             <CustomizationsHeader text="Basic Settings" containerStyle={{ marginBottom: 24 }} />
             <View style={[localStyles.properties, smallScreen ? localStyles.propertiesMobile : undefined]}>
                 <View style={{ flex: 1, marginRight: smallScreen ? 0 : 72, width: smallScreen ? '100%' : '50%' }}>

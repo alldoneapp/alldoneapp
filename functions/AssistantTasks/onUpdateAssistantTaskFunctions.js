@@ -4,7 +4,17 @@ const { getProject, getTemplateGuideIds } = require('../Firestore/generalFiresto
 const { GLOBAL_PROJECT_ID, uploadNewAssistantTask } = require('../Firestore/assistantsFirestore')
 
 const onUpdateAssistantTask = async (projectId, assistantId, assistantTaskId, change) => {
-    if (projectId !== GLOBAL_PROJECT_ID) {
+    if (projectId === GLOBAL_PROJECT_ID) {
+        const { propagateTemplateTaskChange } = require('../Assistants/templateSync')
+        const previousTask = { ...change.before.data(), id: assistantTaskId }
+        const currentTask = { ...change.after.data(), id: assistantTaskId }
+        await propagateTemplateTaskChange(
+            currentTask.assistantId || previousTask.assistantId,
+            previousTask,
+            currentTask,
+            'update'
+        )
+    } else {
         const newAssistantTask = change.after.data()
         newAssistantTask.id = assistantTaskId
 

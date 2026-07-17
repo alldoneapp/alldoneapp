@@ -15,11 +15,11 @@ import {
     removeGlobalAssistantFromProject,
     uploadNewAssistant,
     copyPreConfigTasksToNewAssistant,
+    getAssistantTemplateSnapshot,
 } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { setProjectAssistant } from '../../../../utils/backends/Projects/projectsFirestore'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import UpdateFromTemplate from '../../../AssistantDetailedView/Customizations/UpdateFromTemplate/UpdateFromTemplate'
-import { useUpdateAvailable } from '../../../AssistantDetailedView/Customizations/UpdateFromTemplate/useUpdateAvailable'
 
 export default function OpenTasksAssistantData({ projectId }) {
     const dispatch = useDispatch()
@@ -38,7 +38,8 @@ export default function OpenTasksAssistantData({ projectId }) {
     const currentUser = useSelector(state => state.currentUser)
 
     const isGlobal = isGlobalAssistant(assistantId)
-    const { isAvailable } = useUpdateAvailable(currentUser)
+    const hasTemplateConflicts =
+        Array.isArray(currentUser.templateSyncConflicts) && currentUser.templateSyncConflicts.length
 
     const copyToEdit = async () => {
         const { currentUser } = store.getState()
@@ -54,6 +55,10 @@ export default function OpenTasksAssistantData({ projectId }) {
             // Track source template assistant for update detection
             copiedFromTemplateAssistantId: currentUser.uid,
             copiedFromTemplateAssistantDate: Date.now(),
+            templateSyncSnapshot: getAssistantTemplateSnapshot(currentUser),
+            templateSyncConflicts: [],
+            templateSyncStatus: 'synced',
+            templateSyncedAt: Date.now(),
         }
 
         const newAssistant = await uploadNewAssistant(projectId, newAssistantData, null)
@@ -107,13 +112,8 @@ export default function OpenTasksAssistantData({ projectId }) {
                     buttonStyle={{ marginTop: 16 }}
                 />
             )}
-            {isAvailable && (isNormalAssistantAndCanBeEdited || isGlobalAssistantAndCanBeEdited) && (
-                <UpdateFromTemplate
-                    projectId={projectId}
-                    assistant={currentUser}
-                    disabled={false}
-                    onAssistantUpdated={updatedAssistant => dispatch(storeCurrentUser(updatedAssistant))}
-                />
+            {!!hasTemplateConflicts && isNormalAssistantAndCanBeEdited && (
+                <UpdateFromTemplate projectId={projectId} assistant={currentUser} disabled={false} />
             )}
             {canBeCopiedToEdit && (
                 <Button

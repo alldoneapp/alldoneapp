@@ -2375,5 +2375,17 @@
     "VM environment build failed": "Error al crear — vuelve a intentarlo",
     "VM environment not built": "Aún no creado",
     "Rebuild": "Recrear",
-    "Building": "Creando…"
+    "Building": "Creando…",
+    "(removed)": "(eliminado)",
+    "(empty)": "(vacío)",
+    "Synced from template": "Sincronizado desde la plantilla",
+    "Linked to template • waiting for the next template update": "Vinculado a la plantilla • esperando la próxima actualización",
+    "template changes need review": "cambios de plantilla requieren revisión",
+    "template change needs review": "cambio de plantilla requiere revisión",
+    "Your version": "Tu versión",
+    "Template version": "Versión de la plantilla",
+    "Keep mine": "Conservar la mía",
+    "Accept template": "Aceptar plantilla",
+    "Template task deleted • local changes preserved": "Tarea de plantilla eliminada • cambios locales conservados",
+    "Template changed • local changes preserved": "Plantilla modificada • cambios locales conservados"
 }

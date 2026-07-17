@@ -18,8 +18,12 @@ const deleteAssistantInGuidesWhenDeleteAssisntantInTemplate = async (projectId, 
     }
 }
 
-const onDeleteAssistantTask = async (projectId, assistantId, assistantTaskId) => {
-    if (projectId !== GLOBAL_PROJECT_ID) {
+const onDeleteAssistantTask = async (projectId, assistantId, assistantTaskId, deletedAssistantTask) => {
+    if (projectId === GLOBAL_PROJECT_ID) {
+        const { propagateTemplateTaskChange } = require('../Assistants/templateSync')
+        const previousTask = { ...(deletedAssistantTask || {}), id: assistantTaskId }
+        await propagateTemplateTaskChange(previousTask.assistantId, previousTask, null, 'delete')
+    } else {
         const promises = []
         promises.push(deleteAssistantInGuidesWhenDeleteAssisntantInTemplate(projectId, assistantId, assistantTaskId))
         await Promise.all(promises)

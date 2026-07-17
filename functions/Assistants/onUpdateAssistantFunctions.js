@@ -85,6 +85,13 @@ const onUpdateAssistant = async (projectId, assistantId, change) => {
         updateRecord(projectId, assistantId, oldAssistant, newAssistant, ASSISTANTS_OBJECTS_TYPE, admin.firestore())
     )
     if (projectId === GLOBAL_PROJECT_ID) {
+        const { propagateTemplateAssistantUpdate } = require('./templateSync')
+        promises.push(
+            propagateTemplateAssistantUpdate({ ...oldAssistant }, { ...newAssistant }).catch(error => {
+                console.error('Template assistant propagation failed', { assistantId, error })
+                throw error
+            })
+        )
         if (!oldAssistant.isDefault && newAssistant.isDefault) {
             promises.push(addGlobalAssistantToAllProject(admin, assistantId))
         }

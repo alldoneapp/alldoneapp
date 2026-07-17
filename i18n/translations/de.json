@@ -1951,5 +1951,17 @@
     "VM environment build failed": "Erstellung fehlgeschlagen – erneut versuchen",
     "VM environment not built": "Noch nicht erstellt",
     "Rebuild": "Neu erstellen",
-    "Building": "Wird erstellt…"
+    "Building": "Wird erstellt…",
+    "(removed)": "(entfernt)",
+    "(empty)": "(leer)",
+    "Synced from template": "Mit Vorlage synchronisiert",
+    "Linked to template • waiting for the next template update": "Mit Vorlage verknüpft • wartet auf die nächste Vorlagenänderung",
+    "template changes need review": "Vorlagenänderungen müssen geprüft werden",
+    "template change needs review": "Vorlagenänderung muss geprüft werden",
+    "Your version": "Deine Version",
+    "Template version": "Vorlagenversion",
+    "Keep mine": "Meine behalten",
+    "Accept template": "Vorlage übernehmen",
+    "Template task deleted • local changes preserved": "Vorlagenaufgabe gelöscht • lokale Änderungen beibehalten",
+    "Template changed • local changes preserved": "Vorlage geändert • lokale Änderungen beibehalten"
 }

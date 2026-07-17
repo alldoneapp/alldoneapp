@@ -51,6 +51,22 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
         discoveredToolsCount > 0
             ? translate('External tools discovered count', { count: discoveredToolsCount })
             : translate('External tool discovery failed')
+    let templateSyncText = ''
+    if (task.copiedFromTemplateTaskId) {
+        if (
+            task.templateSyncStatus === 'template_deleted_local_changes_preserved' ||
+            task.templateSyncStatus === 'template_missing_local_preserved'
+        ) {
+            templateSyncText = translate('Template task deleted • local changes preserved')
+        } else if (task.templateSyncStatus === 'needs_review') {
+            templateSyncText = translate('Template changed • local changes preserved')
+        } else {
+            templateSyncText = translate('Synced from template')
+            if (task.copiedFromTemplateTaskDate) {
+                templateSyncText += ' • ' + new Date(task.copiedFromTemplateTaskDate).toLocaleString()
+            }
+        }
+    }
 
     // Get icon based on task type
     const getIconForTaskType = () => {
@@ -91,6 +107,11 @@ export default function PreConfigTaskItem({ disabled, projectId, task, assistant
                             numberOfLines={1}
                         >
                             {iframeDiscoveryStatusText}
+                        </Text>
+                    )}
+                    {!!templateSyncText && (
+                        <Text style={localStyles.templateSyncText} numberOfLines={1}>
+                            {templateSyncText}
                         </Text>
                     )}
                 </View>
@@ -177,6 +198,11 @@ const localStyles = StyleSheet.create({
     },
     discoveryError: {
         color: colors.Yellow300,
+    },
+    templateSyncText: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginTop: 2,
     },
     tagsArea: {
         flexDirection: 'row',
