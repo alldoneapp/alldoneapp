@@ -1218,8 +1218,8 @@ const updateChildTasksDueDate = async (projectId, goalId, newDate) => {
     await batch.commit()
 }
 
-export async function autoPostponeGoal(projectId, goal, userId, cascadeToTasks = true) {
-    store.dispatch(startLoadingData())
+export async function autoPostponeGoal(projectId, goal, userId, cascadeToTasks = true, { background = false } = {}) {
+    if (!background) store.dispatch(startLoadingData())
     try {
         const date = getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
         const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
@@ -1236,7 +1236,7 @@ export async function autoPostponeGoal(projectId, goal, userId, cascadeToTasks =
         logEvent('goal_postponed')
         return result?.data?.date ?? dateTimestamp
     } finally {
-        store.dispatch(stopLoadingData())
+        if (!background) store.dispatch(stopLoadingData())
     }
 }
 

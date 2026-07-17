@@ -64,17 +64,21 @@ export default function AutoPostpone({
             return
         }
 
+        if (isGoalAutoPostpone) {
+            const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
+            autoPostponeGoal(projectId, goal, currentUserId, inParentGoal, { background: true }).catch(error => {
+                console.error('AutoPostpone: failed to apply auto-postpone', error)
+            })
+            dispatch(setLastSelectedDueDate(dateTimestamp))
+            closePopover()
+            return
+        }
+
         try {
-            if (goal && updateParentGoalReminderDate) {
-                // Goal auto-postpone keeps its existing cloud-backed flow.
-                const dateTimestamp = await autoPostponeGoal(projectId, goal, currentUserId, inParentGoal)
-                dispatch(setLastSelectedDueDate(dateTimestamp))
-            } else {
-                // Draft tasks have no server object yet, so keep the calculated date local.
-                const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
-                dispatch(setLastSelectedDueDate(dateTimestamp))
-                await saveDueDateBeforeSaveTask?.(dateTimestamp, isObservedTabActive)
-            }
+            // Draft tasks have no server object yet, so keep the calculated date local.
+            const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
+            dispatch(setLastSelectedDueDate(dateTimestamp))
+            await saveDueDateBeforeSaveTask?.(dateTimestamp, isObservedTabActive)
             closePopover()
         } catch (error) {
             console.error('AutoPostpone: failed to apply auto-postpone', error)

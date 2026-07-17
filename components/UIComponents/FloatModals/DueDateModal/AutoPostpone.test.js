@@ -113,16 +113,41 @@ describe('DueDateModal AutoPostpone', () => {
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 
-    test('postpones a goal and its connected tasks through one goal action', async () => {
+    test('closes immediately while postponing a goal and its connected tasks in the background', async () => {
         const goal = { id: 'goal-1', timesPostponed: 2 }
         const tasks = [{ id: 'task-1' }, { id: 'task-2' }]
+        let resolveRequest
+        const pendingRequest = new Promise(resolve => {
+            resolveRequest = resolve
+        })
+        mockAutoPostponeGoal.mockReturnValueOnce(pendingRequest)
 
         await renderAndPress({ goal, tasks, updateParentGoalReminderDate: jest.fn(), inParentGoal: true })
 
-        expect(mockAutoPostponeGoal).toHaveBeenCalledWith('project-1', goal, 'target-1', true)
+        expect(mockAutoPostponeGoal).toHaveBeenCalledWith('project-1', goal, 'target-1', true, { background: true })
         expect(mockAutoPostponeMultipleTasks).not.toHaveBeenCalled()
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_LAST_SELECTED_DUE_DATE', value: 654321 })
+        expect(mockDispatch).toHaveBeenCalledWith({
+            type: 'SET_LAST_SELECTED_DUE_DATE',
+            value: moment('2026-07-06T12:00:00').valueOf(),
+        })
         expect(baseProps.closePopover).toHaveBeenCalled()
+
+        resolveRequest(654321)
+        await act(async () => pendingRequest)
+    })
+
+    test('logs a goal auto-postpone background failure after closing', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+        mockAutoPostponeGoal.mockRejectedValueOnce(new Error('network'))
+
+        await renderAndPress({
+            goal: { id: 'goal-1', timesPostponed: 2 },
+            updateParentGoalReminderDate: jest.fn(),
+        })
+
+        expect(baseProps.closePopover).toHaveBeenCalled()
+        expect(consoleError).toHaveBeenCalledWith('AutoPostpone: failed to apply auto-postpone', expect.any(Error))
+        consoleError.mockRestore()
     })
 
     test('keeps an unsaved draft local', async () => {
