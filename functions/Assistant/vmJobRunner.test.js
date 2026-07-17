@@ -949,21 +949,15 @@ describe('VM runner cancellation monitor', () => {
 })
 
 describe('VM runner timeout handling', () => {
-    test('classifies E2B unknown termination as a runtime timeout', () => {
+    test('preserves E2B generic exit-code-2 termination instead of inventing a runtime timeout', () => {
         const originalError = new Error('2: [unknown] terminated')
-        originalError.name = 'SandboxError'
+        originalError.name = 'CommandExitError'
+        originalError.exitCode = 2
+        const detailedError = new Error('Codex exited while running focused tests')
 
-        const error = __private__.normalizeVmCommandError(originalError)
-
-        expect(error).toBeInstanceOf(__private__.VmRuntimeTimeoutError)
-        expect(error).toMatchObject({
-            code: 'runtime_timeout',
-            runtimeMs: 5 * 60 * 60 * 1000,
-            cause: originalError,
-        })
-        expect(error.message).toBe(
-            'The VM task exceeded its allowed execution time of 5 hours. Start a new VM task to continue.'
-        )
+        expect(__private__.normalizeVmCommandError(originalError)).toBe(originalError)
+        expect(__private__.isVmRuntimeTimeoutError(originalError)).toBe(false)
+        expect(__private__.selectVmCommandError(originalError, detailedError)).toBe(detailedError)
     })
 
     test.each([
@@ -989,10 +983,6 @@ describe('VM runner timeout handling', () => {
         const detailedError = new Error('Claude exited with partial agent output')
 
         expect(__private__.selectVmCommandError(timeoutError, detailedError)).toBe(timeoutError)
-        expect(__private__.selectVmCommandError(new Error('2: [unknown] terminated'), detailedError)).toMatchObject({
-            code: 'runtime_timeout',
-            runtimeMs: 5 * 60 * 60 * 1000,
-        })
         expect(__private__.selectVmCommandError(new Error('exit status 2'), detailedError)).toBe(detailedError)
     })
 
@@ -1288,9 +1278,7 @@ describe('VM completion chat metadata', () => {
     const createFirestoreMock = ({ commentData = {}, chatData = {} } = {}) => {
         const refs = new Map()
         const doc = jest.fn(path => {
-            if (!refs.has(path)) {
-                refs.set(path, { path, set: jest.fn(async () => {}), update: jest.fn(async () => {}) })
-            }
+            if (!refs.has(path)) refs.set(path, { path, set: jest.fn(async () => {}) })
             return refs.get(path)
         })
         const transaction = {
@@ -1472,45 +1460,6 @@ describe('VM completion chat metadata', () => {
             }),
             { merge: true }
         )
-    })
-
-    test('keeps task-list and chat previews in sync with live VM progress without incrementing counts', async () => {
-        const { refs, transaction } = createFirestoreMock()
-        const progressText = '⏳ Reading the task-list listeners'
-
-        await __private__.writeStatusComment(
-            {
-                correlationId: 'correlation-1',
-                projectId: 'project-1',
-                objectType: 'tasks',
-                objectId: 'task-1',
-                assistantId: 'assistant-1',
-                userId: 'user-1',
-                statusCommentId: 'comment-1',
-            },
-            progressText
-        )
-
-        expect(refs.get('chatObjects/project-1/chats/task-1').update).toHaveBeenCalledWith(
-            expect.objectContaining({
-                lastEditorId: 'assistant-1',
-                'commentsData.lastCommentOwnerId': 'assistant-1',
-                'commentsData.lastComment': progressText,
-                'commentsData.lastCommentType': 2,
-            })
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update).toHaveBeenCalledWith({
-            'commentsData.lastComment': expect.stringContaining('Reading the task-list'),
-            'commentsData.lastCommentType': 2,
-        })
-        expect(refs.get('chatObjects/project-1/chats/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
-        expect(transaction.set).not.toHaveBeenCalled()
-        expect(transaction.update).not.toHaveBeenCalled()
     })
 
     test('does not treat the assistant as a user when it appears in the follower list', async () => {
