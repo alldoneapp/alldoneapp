@@ -655,6 +655,39 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text) {
     })
 }
 
+/**
+ * Mirror an in-place VM status edit to the denormalized comment previews used by
+ * chat and parent-object lists. This deliberately does not increment amount,
+ * because editing the existing status comment does not add another comment.
+ */
+async function syncVmStatusCommentPreview(pendingWebhook, text) {
+    const { projectId, objectType = 'tasks', objectId, assistantId } = pendingWebhook
+    if (!projectId || !objectId || !assistantId) return
+
+    const db = admin.firestore()
+    const lastComment = cleanTextMetaData(removeFormatTagsFromText(text), true)
+    const previewUpdates = [
+        db.doc(`chatObjects/${projectId}/chats/${objectId}`).update({
+            lastEditionDate: Date.now(),
+            lastEditorId: assistantId,
+            [`commentsData.lastCommentOwnerId`]: assistantId,
+            [`commentsData.lastComment`]: lastComment,
+            [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
+        }),
+    ]
+    const parentObjectPath = getVmParentObjectPath(projectId, objectType, objectId)
+    if (parentObjectPath) {
+        previewUpdates.push(
+            db.doc(parentObjectPath).update({
+                [`commentsData.lastComment`]: shrinkTagText(lastComment, LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN),
+                [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
+            })
+        )
+    }
+
+    await Promise.all(previewUpdates)
+}
+
 // Static setup script. ALL dynamic values arrive via env vars (so nothing untrusted is
 // interpolated into the script text — no shell injection). The credential helper is
 // single-quoted so $GIT_TOKEN is resolved by git at push time from the live env, not baked
@@ -966,6 +999,15 @@ async function writeStatusComment(
             await applyVmCompletionMetadata(pendingWebhook, commentId, text)
         } catch (error) {
             console.warn('🖥️ VM JOB: Failed applying completion metadata', {
+                correlationId: pendingWebhook.correlationId,
+                error: error.message,
+            })
+        }
+    } else {
+        try {
+            await syncVmStatusCommentPreview(pendingWebhook, text)
+        } catch (error) {
+            console.warn('🖥️ VM JOB: Failed syncing live status preview', {
                 correlationId: pendingWebhook.correlationId,
                 error: error.message,
             })
