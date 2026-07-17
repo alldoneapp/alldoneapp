@@ -2017,6 +2017,33 @@ exports.menubarPushNote = onRequest(
     }
 )
 
+exports.menubarAssistantMessage = onRequest(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleMenubarAssistantMessage } = require('./MenubarApp/menubarApp')
+        return await handleMenubarAssistantMessage(req, res)
+    }
+)
+
+// MENUBAR ASSISTANT RUN QUEUE PROCESSOR - generates the assistant reply for
+// messages sent from the menubar app (queued by menubarAssistantMessage).
+exports.processMenubarAssistantRunSecondGen = onDocumentCreated(
+    {
+        document: 'menubarAssistantRuns/{runId}',
+        timeoutSeconds: 540,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { processMenubarAssistantRun } = require('./MenubarApp/menubarApp')
+        await processMenubarAssistantRun(event)
+    }
+)
+
 // "Every Day at 00:00."
 exports.resetDailyGoldLimitSecondGen = onSchedule(
     {

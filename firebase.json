@@ -121,6 +121,13 @@
                 }
             },
             {
+                "source": "/api/menubar/assistant-message",
+                "function": {
+                    "functionId": "menubarAssistantMessage",
+                    "region": "europe-west1"
+                }
+            },
+            {
                 "source": "/api/booking/**",
                 "function": {
                     "functionId": "bookingApi",
