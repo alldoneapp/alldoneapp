@@ -35,6 +35,33 @@ const clearClickThroughGuard = () => {
     }
 }
 
+const consumeEvent = event => {
+    event?.preventDefault?.()
+    event?.stopPropagation?.()
+    event?.stopImmediatePropagation?.()
+}
+
+const consumeDismissGestureEvent = event => {
+    const isTouch = event?.type?.startsWith('touch') || event?.pointerType === 'touch'
+    // Keep the emulated click for touch so the one-shot trailing guard can
+    // consume it and then get out of the way before the next tap.
+    if (!isTouch) event?.preventDefault?.()
+    event?.stopPropagation?.()
+    event?.stopImmediatePropagation?.()
+}
+
+const isInNewerPopover = (popupElement, target) => {
+    if (!popupElement?.closest || !target?.closest) return false
+
+    const popupContainer = popupElement.closest('.react-tiny-popover-container')
+    const targetContainer = target.closest('.react-tiny-popover-container')
+    if (!targetContainer || popupContainer === targetContainer) return false
+
+    const nodeApi = popupElement.ownerDocument?.defaultView?.Node
+    const popupReference = popupContainer || popupElement
+    return !!(nodeApi && popupReference.compareDocumentPosition(targetContainer) & nodeApi.DOCUMENT_POSITION_FOLLOWING)
+}
+
 // React Native Web calls TouchableOpacity.onPress on mouseup/touchend, before
 // the browser dispatches the corresponding click. If onPress unmounts a
 // portal, that trailing click can be retargeted to an actionable element that
@@ -51,17 +78,72 @@ export const protectModalDismissFromClickThrough = event => {
 
     clearClickThroughGuard()
 
-    const blockClick = clickEvent => {
-        clickEvent.preventDefault?.()
-        clickEvent.stopPropagation?.()
-        clickEvent.stopImmediatePropagation?.()
-        clearClickThroughGuard()
+    const trailingEventTypes =
+        eventType === 'touchend'
+            ? ['mousedown', 'mouseup', 'click']
+            : eventType === 'pointerup'
+            ? ['mouseup', 'click']
+            : ['click']
+    const blockTrailingEvent = trailingEvent => {
+        consumeEvent(trailingEvent)
+        if (trailingEvent.type === 'click') clearClickThroughGuard()
     }
     const timeout = setTimeout(clearClickThroughGuard, CLICK_THROUGH_GUARD_TIMEOUT_MS)
 
-    window.addEventListener('click', blockClick, true)
+    trailingEventTypes.forEach(type => window.addEventListener(type, blockTrailingEvent, true))
     removeClickThroughGuard = () => {
         clearTimeout(timeout)
-        window.removeEventListener('click', blockClick, true)
+        trailingEventTypes.forEach(type => window.removeEventListener(type, blockTrailingEvent, true))
+    }
+}
+
+// react-tiny-popover detects outside clicks on window during the bubble phase.
+// By then, React Native Web has already delivered the release to an underlying
+// Touchable. Capture the complete pointer gesture while the rich-comment popup
+// is open, then dismiss on release and block the trailing browser click.
+export const installRichCommentOutsideDismissGuard = (popupElement, onDismiss) => {
+    if (
+        !popupElement ||
+        typeof popupElement.contains !== 'function' ||
+        typeof window === 'undefined' ||
+        !window.addEventListener
+    )
+        return () => {}
+
+    let outsideGestureActive = false
+    let dismissed = false
+
+    const isOutside = event => {
+        const { target } = event
+        return !popupElement.contains(target) && !isInNewerPopover(popupElement, target)
+    }
+
+    const captureGestureStart = event => {
+        if (!isOutside(event)) return
+
+        outsideGestureActive = true
+        consumeDismissGestureEvent(event)
+    }
+
+    const captureGestureRelease = event => {
+        if (!outsideGestureActive && !isOutside(event)) return
+
+        outsideGestureActive = false
+        consumeDismissGestureEvent(event)
+        protectModalDismissFromClickThrough(event)
+        if (!dismissed) {
+            dismissed = true
+            onDismiss(event)
+        }
+    }
+
+    const startEventTypes = ['pointerdown', 'mousedown', 'touchstart']
+    const releaseEventTypes = ['pointerup', 'mouseup', 'touchend']
+    startEventTypes.forEach(type => window.addEventListener(type, captureGestureStart, true))
+    releaseEventTypes.forEach(type => window.addEventListener(type, captureGestureRelease, true))
+
+    return () => {
+        startEventTypes.forEach(type => window.removeEventListener(type, captureGestureStart, true))
+        releaseEventTypes.forEach(type => window.removeEventListener(type, captureGestureRelease, true))
     }
 }

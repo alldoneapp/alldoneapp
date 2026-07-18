@@ -10,10 +10,22 @@ import useWindowSize from '../../../../utils/useWindowSize'
 import CloseButton from './CloseButton'
 import CommentsList from './CommentsList'
 import AttachmentsSelectorModal from '../AttachmentsSelectorModal'
-import { insertAttachmentInsideEditor } from '../../../Feeds/CommentsTextInput/textInputHelper'
+import {
+    insertAttachmentInsideEditor,
+    RECORD_SCREEN_MODAL_ID,
+    RECORD_VIDEO_MODAL_ID,
+} from '../../../Feeds/CommentsTextInput/textInputHelper'
 import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import { exportRef } from '../../../NotesView/NotesDV/EditorView/NotesEditorView'
-import { BOT_OPTION_MODAL_ID, COMMENT_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
+import {
+    BOT_OPTION_MODAL_ID,
+    BOT_WARNING_MODAL_ID,
+    COMMENT_MODAL_ID,
+    MENTION_MODAL_ID,
+    removeModal,
+    RUN_OUT_OF_GOLD_MODAL_ID,
+    storeModal,
+} from '../../../ModalsManager/modalsManager'
 import useGetMessages from '../../../../hooks/Chats/useGetMessages'
 import { sortBy } from 'lodash'
 import ShowMoreButton from '../../../UIControls/ShowMoreButton'
@@ -45,6 +57,7 @@ import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZon
 import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
 import CommentPopupObjectHeader from './CommentPopupObjectHeader'
 import useShouldAutoFocusChatInput from '../../../ChatsView/Utils/useShouldAutoFocusChatInput'
+import { installRichCommentOutsideDismissGuard } from '../../../../utils/popupDismissGuard'
 
 export default function RichCommentModal({
     projectId,
@@ -75,6 +88,12 @@ export default function RichCommentModal({
     const gold = useSelector(state => state.loggedUser.gold)
     const chatNotifications = useSelector(state => state.projectChatNotifications[projectId][objectId])
     const botOptionModalIsOpen = useSelector(state => state.openModals[BOT_OPTION_MODAL_ID])
+    const botWarningModalIsOpen = useSelector(state => state.openModals[BOT_WARNING_MODAL_ID])
+    const mentionModalIsOpen = useSelector(state => state.openModals[MENTION_MODAL_ID])
+    const recordScreenModalIsOpen = useSelector(state => state.openModals[RECORD_SCREEN_MODAL_ID])
+    const recordVideoModalIsOpen = useSelector(state => state.openModals[RECORD_VIDEO_MODAL_ID])
+    const runOutOfGoldModalIsOpen = useSelector(state => state.openModals[RUN_OUT_OF_GOLD_MODAL_ID])
+    const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
     const showNotificationAboutTheBotBehavior = useSelector(state => state.showNotificationAboutTheBotBehavior)
     const [width, height] = useWindowSize()
@@ -89,6 +108,7 @@ export default function RichCommentModal({
     const selectedTab = useSelector(state => state.selectedNavItem)
     const editorOpsRef = useRef([])
     const commentListRef = useRef()
+    const modalSurfaceRef = useRef()
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
     const modalMountedRef = useRef(true)
     const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(initialAssistantEnabled)
@@ -367,6 +387,31 @@ export default function RichCommentModal({
     }, [])
 
     useEffect(() => {
+        const nestedPopupIsOpen =
+            botOptionModalIsOpen ||
+            botWarningModalIsOpen ||
+            mentionModalIsOpen ||
+            recordScreenModalIsOpen ||
+            recordVideoModalIsOpen ||
+            runOutOfGoldModalIsOpen ||
+            isQuillTagEditorOpen ||
+            showRunOutGoalModal
+
+        if (nestedPopupIsOpen) return
+        return installRichCommentOutsideDismissGuard(modalSurfaceRef.current, closeModal)
+    }, [
+        botOptionModalIsOpen,
+        botWarningModalIsOpen,
+        closeModal,
+        isQuillTagEditorOpen,
+        mentionModalIsOpen,
+        recordScreenModalIsOpen,
+        recordVideoModalIsOpen,
+        runOutOfGoldModalIsOpen,
+        showRunOutGoalModal,
+    ])
+
+    useEffect(() => {
         if (!showFileSelector) {
             dispatch(setActiveChatData(projectId, objectId, objectType))
             return () => {
@@ -398,7 +443,7 @@ export default function RichCommentModal({
     }
 
     return showNotificationAboutTheBotBehavior ? null : (
-        <View>
+        <View ref={modalSurfaceRef}>
             {showFileSelector ? (
                 <AttachmentsSelectorModal
                     closeModal={toggleShowFileSelector}
