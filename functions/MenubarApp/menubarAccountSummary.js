@@ -141,9 +141,19 @@ async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
 async function getMenubarAccountSummary(db, userId, userData = {}, now = Date.now()) {
     const projectIds = getActiveProjectIds(userData)
     const { endOfDay } = getUserLocalDayBounds(userData, now)
-    const projectSummaries = await Promise.all(
-        projectIds.map(projectId => getProjectAccountSummary(db, projectId, userId, endOfDay))
-    )
+    const projectSummaries = []
+
+    // Keep enough projects in flight for a quick response without retaining
+    // every project's Firestore snapshots in memory at the same time.
+    const batchSize = 4
+    for (let index = 0; index < projectIds.length; index += batchSize) {
+        const batch = await Promise.all(
+            projectIds
+                .slice(index, index + batchSize)
+                .map(projectId => getProjectAccountSummary(db, projectId, userId, endOfDay))
+        )
+        projectSummaries.push(...batch)
+    }
 
     return projectSummaries.reduce(
         (total, project) => ({
