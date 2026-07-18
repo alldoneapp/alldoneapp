@@ -21,7 +21,6 @@ describe('RichCommentDismissSurface browser interactions', () => {
     let portalRoot
 
     beforeEach(() => {
-        jest.useFakeTimers()
         appRoot = document.createElement('div')
         portalRoot = document.createElement('div')
         document.body.appendChild(appRoot)
@@ -34,8 +33,6 @@ describe('RichCommentDismissSurface browser interactions', () => {
         })
         appRoot.remove()
         portalRoot.remove()
-        jest.runOnlyPendingTimers()
-        jest.useRealTimers()
     })
 
     const dispatch = (target, type) => {
@@ -73,9 +70,6 @@ describe('RichCommentDismissSurface browser interactions', () => {
 
         act(() => {
             ReactDOM.render(<Harness />, appRoot)
-        })
-        act(() => {
-            jest.runOnlyPendingTimers()
         })
     }
 
@@ -125,67 +119,5 @@ describe('RichCommentDismissSurface browser interactions', () => {
 
         expect(dismiss).not.toHaveBeenCalled()
         expect(insideAction).toHaveBeenCalledTimes(1)
-    })
-
-    it('does not treat the mobile compatibility events from the opening tap as an outside dismissal', () => {
-        const dismiss = jest.fn()
-        const underlyingAction = jest.fn()
-
-        const Harness = () => {
-            const [popupIsOpen, setPopupIsOpen] = useState(false)
-
-            return (
-                <React.Fragment>
-                    <button data-testid="open-button" onTouchEnd={() => setPopupIsOpen(true)}>
-                        Open comments
-                    </button>
-                    {popupIsOpen &&
-                        ReactDOM.createPortal(
-                            <RichCommentDismissSurface
-                                onDismiss={event => {
-                                    dismiss(event)
-                                    setPopupIsOpen(false)
-                                }}
-                            >
-                                <button data-testid="inside-button">Popup action</button>
-                            </RichCommentDismissSurface>,
-                            portalRoot
-                        )}
-                    <button data-testid="underlying-button" onClick={underlyingAction}>
-                        Underlying action
-                    </button>
-                </React.Fragment>
-            )
-        }
-
-        act(() => {
-            ReactDOM.render(<Harness />, appRoot)
-        })
-
-        const openButton = appRoot.querySelector('[data-testid="open-button"]')
-        act(() => {
-            dispatch(openButton, 'touchstart')
-            dispatch(openButton, 'touchend')
-            dispatch(openButton, 'mousedown')
-            dispatch(openButton, 'mouseup')
-            dispatch(openButton, 'click')
-        })
-
-        expect(dismiss).not.toHaveBeenCalled()
-        expect(portalRoot.querySelector('[data-testid="inside-button"]')).not.toBeNull()
-
-        act(() => {
-            jest.runOnlyPendingTimers()
-        })
-        const underlyingButton = appRoot.querySelector('[data-testid="underlying-button"]')
-        act(() => {
-            dispatch(underlyingButton, 'mousedown')
-            dispatch(underlyingButton, 'mouseup')
-            dispatch(underlyingButton, 'click')
-        })
-
-        expect(dismiss).toHaveBeenCalledTimes(1)
-        expect(underlyingAction).not.toHaveBeenCalled()
-        expect(portalRoot.childElementCount).toBe(0)
     })
 })

@@ -10,9 +10,14 @@ const undoActionBarStyles = StyleSheet.create({
         top: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
         zIndex: 100000,
         alignItems: 'center',
+    },
+    viewport: {
+        // SafeAreaView's web styles use paddingLeft/paddingRight, which override paddingHorizontal.
+        width: '100%',
+        alignItems: 'center',
         paddingHorizontal: 16,
     },
-    mobileOverlay: {
+    mobileViewport: {
         paddingHorizontal: 24,
     },
     container: {

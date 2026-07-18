@@ -15,7 +15,8 @@ describe('UndoActionBar layout', () => {
     })
 
     it('adds extra horizontal viewport padding on mobile', () => {
-        expect(undoActionBarStyles.mobileOverlay.paddingHorizontal).toBe(24)
-        expect(undoActionBarStyles.overlay.paddingHorizontal).toBe(16)
+        expect(undoActionBarStyles.mobileViewport.paddingHorizontal).toBe(24)
+        expect(undoActionBarStyles.viewport.paddingHorizontal).toBe(16)
+        expect(undoActionBarStyles.overlay.paddingHorizontal).toBeUndefined()
     })
 })
