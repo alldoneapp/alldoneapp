@@ -3,6 +3,7 @@
 const crypto = require('crypto')
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { getMenubarAccountSummary } = require('./menubarAccountSummary')
 
 const TOKEN_PREFIX = 'adapp_'
 const TOKENS_COLLECTION = 'menubarAppTokens'
@@ -183,20 +184,32 @@ async function resolveTokenUser(token) {
     return { userId: tokenData.userId, userData }
 }
 
-async function resolveTokenSession(token) {
+async function resolveTokenSession(token, includeSummary = false) {
     const tokenUser = await resolveTokenUser(token)
     if (!tokenUser) return null
-    const { userData } = tokenUser
+    const { userId, userData } = tokenUser
 
-    return {
+    const session = {
         email: normalizeEmail(userData.email),
         name: getUserDisplayName(userData),
         gold: getUserGold(userData),
     }
+
+    if (includeSummary) {
+        try {
+            session.summary = await getMenubarAccountSummary(admin.firestore(), userId, userData)
+        } catch (error) {
+            // The summary is display-only. Keep session validation and gold
+            // available if one of its project queries is temporarily unavailable.
+            console.warn('menubarSession: account summary failed', { userId, error: error.message })
+        }
+    }
+
+    return session
 }
 
-// POST /api/menubar/session  { token } ->
-//   200 { valid: true, email, name, gold } | 200 { valid: false }
+// POST /api/menubar/session  { token, includeSummary? } ->
+//   200 { valid: true, email, name, gold, summary? } | 200 { valid: false }
 async function handleMenubarSession(req, res) {
     res.set('Cache-Control', 'no-store')
 
@@ -214,7 +227,7 @@ async function handleMenubarSession(req, res) {
     }
 
     try {
-        const session = await resolveTokenSession(token)
+        const session = await resolveTokenSession(token, req.body?.includeSummary === true)
         if (!session) {
             res.status(200).json({ valid: false })
             return
