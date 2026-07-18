@@ -141,28 +141,24 @@ async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
 async function getMenubarAccountSummary(db, userId, userData = {}, now = Date.now()) {
     const projectIds = getActiveProjectIds(userData)
     const { endOfDay } = getUserLocalDayBounds(userData, now)
-    const projectSummaries = await Promise.all(
-        projectIds.map(projectId => getProjectAccountSummary(db, projectId, userId, endOfDay))
-    )
+    const total = {
+        openTasksToday: 0,
+        unreadMessages: { followed: 0, unfollowed: 0 },
+        unreadNotifications: { followed: 0, all: 0 },
+    }
 
-    return projectSummaries.reduce(
-        (total, project) => ({
-            openTasksToday: total.openTasksToday + project.openTasksToday,
-            unreadMessages: {
-                followed: total.unreadMessages.followed + project.unreadMessages.followed,
-                unfollowed: total.unreadMessages.unfollowed + project.unreadMessages.unfollowed,
-            },
-            unreadNotifications: {
-                followed: total.unreadNotifications.followed + project.unreadNotifications.followed,
-                all: total.unreadNotifications.all + project.unreadNotifications.all,
-            },
-        }),
-        {
-            openTasksToday: 0,
-            unreadMessages: { followed: 0, unfollowed: 0 },
-            unreadNotifications: { followed: 0, all: 0 },
-        }
-    )
+    // Process projects one at a time so large Firestore snapshots from every
+    // project are not retained concurrently for the duration of the request.
+    for (const projectId of projectIds) {
+        const project = await getProjectAccountSummary(db, projectId, userId, endOfDay)
+        total.openTasksToday += project.openTasksToday
+        total.unreadMessages.followed += project.unreadMessages.followed
+        total.unreadMessages.unfollowed += project.unreadMessages.unfollowed
+        total.unreadNotifications.followed += project.unreadNotifications.followed
+        total.unreadNotifications.all += project.unreadNotifications.all
+    }
+
+    return total
 }
 
 module.exports = {

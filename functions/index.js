@@ -2003,7 +2003,7 @@ exports.revokeMenubarAppToken = onCall(
 exports.menubarSession = onRequest(
     {
         timeoutSeconds: 30,
-        memory: '256MiB',
+        memory: '512MiB',
         region: 'europe-west1',
     },
     async (req, res) => {
