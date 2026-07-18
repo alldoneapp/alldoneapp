@@ -1,4 +1,5 @@
 const { __private__ } = require('./menubarAccountSummary')
+const { selectNewFeeds } = require('../../utils/backends/Feeds/newFeedsHelper')
 
 const { countProjectOpenTasks, countVisibleFeedObjects, getActiveProjectIds } = __private__
 
@@ -44,20 +45,21 @@ describe('menubar account summary', () => {
     })
 
     test('counts each visible updated feed object once and respects private feeds', () => {
-        expect(
-            countVisibleFeedObjects(
-                {
-                    tasks: {
-                        task1: { one: { feed: {} }, two: { feed: {} } },
-                        hidden: { isPrivate: 'other', three: { feed: {} } },
-                    },
-                    notes: {
-                        note1: { isPrivate: 'user-1', four: { feed: {} } },
-                        empty: { metadata: true },
-                    },
-                },
-                'user-1'
-            )
-        ).toBe(2)
+        const feeds = {
+            tasks: {
+                task1: { one: { feed: {} }, two: { feed: {} } },
+                hidden: { isPrivate: 'other', three: { feed: {} } },
+            },
+            notes: {
+                note1: { isPrivate: 'user-1', four: { feed: {} } },
+                empty: { metadata: true },
+            },
+        }
+
+        const menubarCount = countVisibleFeedObjects(feeds, 'user-1')
+        const mainAppCount = selectNewFeeds(feeds, 99, 'user-1').feedsAmount
+
+        expect(menubarCount).toBe(2)
+        expect(menubarCount).toBe(mainAppCount)
     })
 })

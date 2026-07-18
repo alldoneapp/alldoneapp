@@ -25,20 +25,11 @@ function isVisibleForUser(data = {}, userId) {
     return isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userId)
 }
 
-function countProjectOpenTasks({ normalTasks = [], observedTasks = [], workstreamIds = [], userId, endOfDay }) {
+function countNormalTaskAssignments(normalTasks, workstreamIds, userId) {
     const userWorkstreamIds = new Set(workstreamIds)
     let count = 0
 
     normalTasks.forEach(task => {
-        if (
-            task?.done !== false ||
-            task?.parentId !== null ||
-            Number(task?.dueDate) > endOfDay ||
-            !isVisibleForUser(task, userId)
-        ) {
-            return
-        }
-
         if (task.currentReviewerId === userId) count++
         if (
             typeof task.userId === 'string' &&
@@ -49,20 +40,42 @@ function countProjectOpenTasks({ normalTasks = [], observedTasks = [], workstrea
         }
     })
 
+    return count
+}
+
+function countObservedTaskAssignments(observedTasks, userId, endOfDay) {
+    let count = 0
+
     observedTasks.forEach(task => {
         if (
-            task?.done !== false ||
-            task?.parentId !== null ||
-            !isVisibleForUser(task, userId) ||
-            !Array.isArray(task.observersIds) ||
-            !task.observersIds.includes(userId)
+            isVisibleForUser(task, userId) &&
+            Array.isArray(task.observersIds) &&
+            task.observersIds.includes(userId) &&
+            Number(task.dueDateByObserversIds?.[userId]) <= endOfDay
         ) {
-            return
+            count++
         }
-        if (Number(task.dueDateByObserversIds?.[userId]) <= endOfDay) count++
     })
 
     return count
+}
+
+function countProjectOpenTasks({ normalTasks = [], observedTasks = [], workstreamIds = [], userId, endOfDay }) {
+    const eligibleNormalTasks = normalTasks.filter(
+        task =>
+            task?.done === false &&
+            task?.parentId === null &&
+            Number(task?.dueDate) <= endOfDay &&
+            isVisibleForUser(task, userId)
+    )
+    const eligibleObservedTasks = observedTasks.filter(
+        task => task?.done === false && task?.parentId === null && isVisibleForUser(task, userId)
+    )
+
+    return (
+        countNormalTaskAssignments(eligibleNormalTasks, workstreamIds, userId) +
+        countObservedTaskAssignments(eligibleObservedTasks, userId, endOfDay)
+    )
 }
 
 function countVisibleFeedObjects(newFeeds, userId) {
@@ -91,7 +104,8 @@ async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
         normalSnapshot,
         observedSnapshot,
         workstreamsSnapshot,
-        messagesSnapshot,
+        followedMessagesCount,
+        allMessagesCount,
         followedFeedsDoc,
         allFeedsDoc,
     ] = await Promise.all([
@@ -100,33 +114,41 @@ async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
             .where('dueDate', '<=', endOfDay)
             .where('parentId', '==', null)
             .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .select('currentReviewerId', 'userId')
             .get(),
         tasksRef
             .where('done', '==', false)
             .where('parentId', '==', null)
-            .where('observersIds', '!=', [])
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
+            .where('observersIds', 'array-contains-any', [userId])
+            .select('observersIds', 'dueDateByObserversIds', 'isPublicFor')
             .get(),
-        db.collection(`projectsWorkstreams/${projectId}/workstreams`).where('userIds', 'array-contains', userId).get(),
-        db.collection(`chatNotifications/${projectId}/${userId}`).get(),
+        db
+            .collection(`projectsWorkstreams/${projectId}/workstreams`)
+            .where('userIds', 'array-contains', userId)
+            .select()
+            .get(),
+        db.collection(`chatNotifications/${projectId}/${userId}`).where('followed', '==', true).count().get(),
+        db.collection(`chatNotifications/${projectId}/${userId}`).count().get(),
         db.doc(`feedsCount/${projectId}/${userId}/followed`).get(),
         db.doc(`feedsCount/${projectId}/${userId}/all`).get(),
     ])
 
-    let followedMessages = 0
-    let unfollowedMessages = 0
-    messagesSnapshot.docs.forEach(doc => {
-        doc.data()?.followed ? followedMessages++ : unfollowedMessages++
-    })
+    const followedMessages = Number(followedMessagesCount.data()?.count) || 0
+    const allMessages = Number(allMessagesCount.data()?.count) || 0
+    const unfollowedMessages = Math.max(0, allMessages - followedMessages)
 
     return {
-        openTasksToday: countProjectOpenTasks({
-            normalTasks: normalSnapshot.docs.map(doc => doc.data()),
-            observedTasks: observedSnapshot.docs.map(doc => doc.data()),
-            workstreamIds: workstreamsSnapshot.docs.map(doc => doc.id),
-            userId,
-            endOfDay,
-        }),
+        openTasksToday:
+            countNormalTaskAssignments(
+                normalSnapshot.docs.map(doc => doc.data()),
+                workstreamsSnapshot.docs.map(doc => doc.id),
+                userId
+            ) +
+            countObservedTaskAssignments(
+                observedSnapshot.docs.map(doc => doc.data()),
+                userId,
+                endOfDay
+            ),
         unreadMessages: {
             followed: followedMessages,
             unfollowed: unfollowedMessages,
@@ -139,13 +161,14 @@ async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
 }
 
 async function getMenubarAccountSummary(db, userId, userData = {}, now = Date.now()) {
+    const startedAt = Date.now()
     const projectIds = getActiveProjectIds(userData)
     const { endOfDay } = getUserLocalDayBounds(userData, now)
     const projectSummaries = []
 
     // Keep enough projects in flight for a quick response without retaining
     // every project's Firestore snapshots in memory at the same time.
-    const batchSize = 4
+    const batchSize = 8
     for (let index = 0; index < projectIds.length; index += batchSize) {
         const batch = await Promise.all(
             projectIds
@@ -155,7 +178,7 @@ async function getMenubarAccountSummary(db, userId, userData = {}, now = Date.no
         projectSummaries.push(...batch)
     }
 
-    return projectSummaries.reduce(
+    const summary = projectSummaries.reduce(
         (total, project) => ({
             openTasksToday: total.openTasksToday + project.openTasksToday,
             unreadMessages: {
@@ -173,11 +196,19 @@ async function getMenubarAccountSummary(db, userId, userData = {}, now = Date.no
             unreadNotifications: { followed: 0, all: 0 },
         }
     )
+
+    console.info('menubarSession: account summary complete', {
+        projectCount: projectIds.length,
+        durationMs: Date.now() - startedAt,
+    })
+    return summary
 }
 
 module.exports = {
     getMenubarAccountSummary,
     __private__: {
+        countNormalTaskAssignments,
+        countObservedTaskAssignments,
         countProjectOpenTasks,
         countVisibleFeedObjects,
         getActiveProjectIds,
