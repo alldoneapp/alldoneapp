@@ -129,7 +129,10 @@ export default function RichCommentModal({
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
-    const shouldAutoFocusInput = useShouldAutoFocusChatInput(chatNotifications, openedFromUnreadComment)
+    const shouldAutoFocusInput = useShouldAutoFocusChatInput(chatNotifications, {
+        openedFromUnreadComment,
+        mobile: smallScreenNavigation,
+    })
 
     const comments = sortBy(messages, [item => -item.created])
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${objectType}:${objectId}`, chatNotifications)

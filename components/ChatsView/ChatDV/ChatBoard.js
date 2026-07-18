@@ -69,6 +69,7 @@ export default function ChatBoard({
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const chatPagesAmount = useSelector(state => state.chatPagesAmount)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const chatNotifications = useSelector(state => state.projectChatNotifications[projectId][chat.id])
     const [amountOfNewCommentsToHighligth, setAmountOfNewCommentsToHighligth] = useState(0)
     const [page, setPage] = useState(1)
@@ -109,7 +110,7 @@ export default function ChatBoard({
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
-    const shouldAutoFocusInput = useShouldAutoFocusChatInput(chatNotifications)
+    const shouldAutoFocusInput = useShouldAutoFocusChatInput(chatNotifications, { mobile: smallScreenNavigation })
 
     const amountOfCommentsToNotHighligth = messages.length - amountOfNewCommentsToHighligth
 

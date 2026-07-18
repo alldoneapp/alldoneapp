@@ -3,16 +3,19 @@ import { useEffect, useState } from 'react'
 export const hasUnreadChatComments = chatNotifications =>
     Number(chatNotifications?.totalFollowed || 0) > 0 || Number(chatNotifications?.totalUnfollowed || 0) > 0
 
-export default function useShouldAutoFocusChatInput(chatNotifications, openedFromUnreadComment = false) {
+export default function useShouldAutoFocusChatInput(
+    chatNotifications,
+    { openedFromUnreadComment = false, mobile = false } = {}
+) {
     const hasUnreadComments = openedFromUnreadComment || hasUnreadChatComments(chatNotifications)
-    const [openedWithUnreadComments, setOpenedWithUnreadComments] = useState(hasUnreadComments)
+    const suppressAutoFocus = mobile || hasUnreadComments
+    const [openedWithoutAutoFocus, setOpenedWithoutAutoFocus] = useState(suppressAutoFocus)
 
     useEffect(() => {
-        if (hasUnreadComments) setOpenedWithUnreadComments(true)
-    }, [hasUnreadComments])
+        if (suppressAutoFocus) setOpenedWithoutAutoFocus(true)
+    }, [suppressAutoFocus])
 
-    // Reading a thread clears its notifications asynchronously. Keep the decision made while
-    // opening sticky so that the input does not steal focus when the unread state disappears.
-    // Include the live value to also suppress focus immediately if notifications hydrate late.
-    return !hasUnreadComments && !openedWithUnreadComments
+    // Reading clears notifications asynchronously, and responsive state can settle after mount.
+    // Keep either reason for suppressing focus sticky for the lifetime of this thread opening.
+    return !suppressAutoFocus && !openedWithoutAutoFocus
 }

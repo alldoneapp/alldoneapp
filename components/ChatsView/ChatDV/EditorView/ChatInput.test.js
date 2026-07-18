@@ -217,6 +217,7 @@ describe('ChatInput auto focus', () => {
         jest.useFakeTimers()
         jest.clearAllMocks()
         mockState.disableAutoFocusInChat = false
+        mockState.quotedText = null
     })
 
     afterEach(() => {
@@ -320,6 +321,50 @@ describe('ChatInput auto focus', () => {
         act(() => jest.runOnlyPendingTimers())
         expect(mockInputBlur).toHaveBeenCalled()
         expect(mockInputFocus).not.toHaveBeenCalled()
+
+        tree.unmount()
+    })
+
+    it('focuses an explicit reply even when open-time auto focus is disabled', async () => {
+        mockState.quotedText = { text: 'Original message', userName: 'Karsten' }
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <ChatInput
+                    chat={{ id: 'chat-1', type: 'topics' }}
+                    projectId="project-1"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                    autoFocus={false}
+                />
+            )
+        })
+
+        act(() => jest.runOnlyPendingTimers())
+        expect(mockInputFocus).toHaveBeenCalled()
+
+        tree.unmount()
+    })
+
+    it('keeps message editing focused', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <ChatInput
+                    chat={{ id: 'chat-1', type: 'topics' }}
+                    projectId="project-1"
+                    editing
+                    initialText="Existing message"
+                    creatorId="user-1"
+                    closeEditMode={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                />
+            )
+        })
+
+        expect(tree.root.findByProps({ testID: 'chat-input' }).props.autoFocus).toBe(true)
+        act(() => jest.runOnlyPendingTimers())
+        expect(mockInputFocus).toHaveBeenCalled()
 
         tree.unmount()
     })

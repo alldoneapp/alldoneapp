@@ -8,8 +8,8 @@ import { Text } from 'react-native'
 
 import useShouldAutoFocusChatInput, { hasUnreadChatComments } from './useShouldAutoFocusChatInput'
 
-function TestComponent({ notifications, openedFromUnreadComment = false }) {
-    const shouldAutoFocus = useShouldAutoFocusChatInput(notifications, openedFromUnreadComment)
+function TestComponent({ notifications, openedFromUnreadComment = false, mobile = false }) {
+    const shouldAutoFocus = useShouldAutoFocusChatInput(notifications, { openedFromUnreadComment, mobile })
     return <Text testID="focus-result">{String(shouldAutoFocus)}</Text>
 }
 
@@ -23,15 +23,36 @@ describe('thread input auto focus', () => {
         expect(hasUnreadChatComments({ totalFollowed: 0, totalUnfollowed: 2 })).toBe(true)
     })
 
-    it('focuses a thread opened without unread comments', () => {
+    it('focuses a read thread on desktop', () => {
         const tree = renderer.create(<TestComponent notifications={{ totalFollowed: 0, totalUnfollowed: 0 }} />)
 
         expect(getResult(tree)).toBe('true')
     })
 
-    it('does not focus a thread opened from an unread preview', () => {
+    it('does not focus an unread thread on desktop', () => {
         const tree = renderer.create(<TestComponent openedFromUnreadComment />)
 
+        expect(getResult(tree)).toBe('false')
+    })
+
+    it.each([
+        ['read', { totalFollowed: 0, totalUnfollowed: 0 }],
+        ['unread', { totalFollowed: 1, totalUnfollowed: 0 }],
+    ])('does not focus a %s thread on mobile', (state, notifications) => {
+        const tree = renderer.create(<TestComponent notifications={notifications} mobile />)
+
+        expect(getResult(tree)).toBe('false')
+    })
+
+    it('keeps focus suppressed when mobile layout state changes after opening', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<TestComponent mobile />)
+        })
+
+        act(() => {
+            tree.update(<TestComponent mobile={false} />)
+        })
         expect(getResult(tree)).toBe('false')
     })
 
