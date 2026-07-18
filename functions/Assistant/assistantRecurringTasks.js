@@ -730,6 +730,14 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
 
         // WhatsApp notification is now handled inside generatePreConfigTaskResult
 
+        await finalizeGeneratedAssistantTask({
+            taskResult,
+            projectId: executionProjectId,
+            generatedTaskId: uniqueId,
+            activatorUserId,
+            activatorData,
+        })
+
         // Update the lastExecuted timestamp
         await taskDocRef.update({
             lastExecuted: Date.now(),
@@ -737,6 +745,9 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             lastExecutionCompleted: Date.now(),
             executionStatus: 'succeeded',
             lastExecutionError: null,
+            lastGeneratedTaskId: uniqueId,
+            lastGeneratedTaskCompletionStatus: 'succeeded',
+            lastGeneratedTaskCompletionError: null,
         })
 
         const nextExecutionAfterRun =
@@ -808,6 +819,84 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         })
         throw error
     }
+}
+
+async function completeGeneratedAssistantTask(projectId, generatedTaskId, activatorUserId, activatorData = {}) {
+    if (!generatedTaskId) {
+        throw new Error('Cannot complete recurring assistant task because the generated task ID is missing')
+    }
+
+    const database = admin.firestore()
+    const taskRef = database.doc(`items/${projectId}/tasks/${generatedTaskId}`)
+    const taskSnapshot = await taskRef.get()
+
+    if (!taskSnapshot.exists) {
+        throw new Error(`Generated recurring assistant task ${generatedTaskId} was not found`)
+    }
+
+    const currentTask = { id: generatedTaskId, ...taskSnapshot.data() }
+    if (currentTask.done === true && currentTask.inDone === true) {
+        return { success: true, persisted: false, alreadyCompleted: true, taskId: generatedTaskId }
+    }
+
+    const { TaskService } = require('../shared/TaskService')
+    const taskService = new TaskService({
+        database,
+        moment,
+        enableFeeds: true,
+        enableValidation: false,
+        isCloudFunction: true,
+    })
+    await taskService.initialize()
+
+    const feedUser = {
+        uid: activatorUserId,
+        id: activatorUserId,
+        creatorId: activatorUserId,
+        name: activatorData.name || activatorData.displayName || 'User',
+        displayName: activatorData.displayName || activatorData.name || 'User',
+        email: activatorData.email || '',
+    }
+
+    const result = await taskService.updateAndPersistTask(
+        {
+            taskId: generatedTaskId,
+            projectId,
+            currentTask,
+            completed: true,
+            feedUser,
+            initiatorId: activatorUserId,
+        },
+        {
+            projectId,
+            userId: activatorUserId,
+            lastEditorId: activatorUserId,
+        },
+        {
+            projectId,
+            feedUser,
+        }
+    )
+
+    console.log('Marked generated recurring assistant task as done:', {
+        projectId,
+        generatedTaskId,
+        activatorUserId,
+        persisted: result.persisted,
+    })
+
+    return result
+}
+
+async function finalizeGeneratedAssistantTask(
+    { taskResult, projectId, generatedTaskId, activatorUserId, activatorData },
+    completeTask = completeGeneratedAssistantTask
+) {
+    if (!taskResult || taskResult.success !== true) {
+        throw new Error('Recurring assistant task did not return a successful execution result')
+    }
+
+    return completeTask(projectId, generatedTaskId, activatorUserId, activatorData)
 }
 
 /**
@@ -1305,6 +1394,8 @@ module.exports = {
     shouldExecuteTask, // Exported for testing
     getNextExecutionTime, // Exported for testing
     __private__: {
+        completeGeneratedAssistantTask,
+        finalizeGeneratedAssistantTask,
         resolveTimezoneContext: (task, userData = {}, options = {}) =>
             resolveTimezoneContext(task, userData, options, getNextExecutionTime),
         buildOriginalScheduledMoment,
