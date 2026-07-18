@@ -56,7 +56,7 @@ import SharedHelper from '../../../../utils/SharedHelper'
 import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
 import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
 import CommentPopupObjectHeader from './CommentPopupObjectHeader'
-import useShouldAutoFocusChatInput from '../../../ChatsView/Utils/useShouldAutoFocusChatInput'
+import shouldAutoFocusChatInput from '../../../ChatsView/Utils/shouldAutoFocusChatInput'
 import RichCommentDismissSurface from './RichCommentDismissSurface'
 
 export default function RichCommentModal({
@@ -79,7 +79,6 @@ export default function RichCommentModal({
     objectName,
     externalAssistantId,
     initialAssistantEnabled = false,
-    openedFromUnreadComment = false,
 }) {
     const dispatch = useDispatch()
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -129,10 +128,7 @@ export default function RichCommentModal({
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
-    const shouldAutoFocusInput = useShouldAutoFocusChatInput(chatNotifications, {
-        openedFromUnreadComment,
-        mobile: smallScreenNavigation,
-    })
+    const shouldAutoFocusInput = shouldAutoFocusChatInput(smallScreenNavigation)
 
     const comments = sortBy(messages, [item => -item.created])
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${objectType}:${objectId}`, chatNotifications)

@@ -49,7 +49,7 @@ import Icon from '../../Icon'
 import global, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import useNewEmailCommentIds from './useNewEmailCommentIds'
-import useShouldAutoFocusChatInput from '../Utils/useShouldAutoFocusChatInput'
+import shouldAutoFocusChatInput from '../Utils/shouldAutoFocusChatInput'
 
 export default function ChatBoard({
     projectId,
@@ -110,7 +110,7 @@ export default function ChatBoard({
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
-    const shouldAutoFocusInput = useShouldAutoFocusChatInput(chatNotifications, { mobile: smallScreenNavigation })
+    const shouldAutoFocusInput = shouldAutoFocusChatInput(smallScreenNavigation)
 
     const amountOfCommentsToNotHighligth = messages.length - amountOfNewCommentsToHighligth
 
