@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, StyleSheet, View, Dimensions, Text, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, StyleSheet, View, Dimensions, Keyboard, Text, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -44,6 +44,7 @@ import SharedHelper from '../../../../utils/SharedHelper'
 import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
 import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
 import CommentPopupObjectHeader from './CommentPopupObjectHeader'
+import useShouldAutoFocusChatInput from '../../../ChatsView/Utils/useShouldAutoFocusChatInput'
 
 export default function RichCommentModal({
     projectId,
@@ -65,6 +66,7 @@ export default function RichCommentModal({
     objectName,
     externalAssistantId,
     initialAssistantEnabled = false,
+    openedFromUnreadComment = false,
 }) {
     const dispatch = useDispatch()
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -108,6 +110,7 @@ export default function RichCommentModal({
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const chatNotificationsAmount = totalFollowed || totalUnfollowed
+    const shouldAutoFocusInput = useShouldAutoFocusChatInput(chatNotifications, openedFromUnreadComment)
 
     const comments = sortBy(messages, [item => -item.created])
     const newEmailCommentIds = useNewEmailCommentIds(`${projectId}:${objectType}:${objectId}`, chatNotifications)
@@ -337,13 +340,21 @@ export default function RichCommentModal({
     }, [messages])
 
     useEffect(() => {
-        if (!inSuggested) {
-            setTimeout(() => {
-                exportRef?.getEditor()?.focus()
-                editForm?.current?.focus()
-            }, 1000)
+        if (inSuggested) return
+
+        if (!shouldAutoFocusInput) {
+            exportRef?.getEditor()?.blur()
+            editForm?.current?.blur()
+            Keyboard.dismiss()
+            return
         }
-    }, [])
+
+        const focusTimeout = setTimeout(() => {
+            exportRef?.getEditor()?.focus()
+            editForm?.current?.focus()
+        }, 1000)
+        return () => clearTimeout(focusTimeout)
+    }, [inSuggested, shouldAutoFocusInput])
 
     useEffect(() => {
         storeModal(COMMENT_MODAL_ID)
@@ -489,6 +500,7 @@ export default function RichCommentModal({
                                 }}
                                 isAssistantEnabled={isThreadAssistantEnabled}
                                 updateObjectState={updateObjectState}
+                                autoFocus={shouldAutoFocusInput}
                             />
                         </ChatImageDropZone>
                         {waitingForBotAnswer && !hasNewAssistantMessage && (

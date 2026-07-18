@@ -113,6 +113,7 @@ export default function LastAssistantCommentWrapper({
                     showBotButton={true}
                     objectName={objectName}
                     externalAssistantId={assistantId}
+                    openedFromUnreadComment={isNew}
                 />
             }
             onClickOutside={closeModal}

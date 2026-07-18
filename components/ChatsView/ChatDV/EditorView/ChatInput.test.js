@@ -4,9 +4,14 @@
 
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
+import { Keyboard } from 'react-native'
 
 import ChatInput from './ChatInput'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
+
+const mockInputFocus = jest.fn()
+const mockInputBlur = jest.fn()
+const mockKeyboardDismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(jest.fn())
 
 const mockState = {
     openModals: {},
@@ -43,9 +48,9 @@ jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
 
     return React.forwardRef((props, ref) => {
         React.useImperativeHandle(ref, () => ({
-            blur: jest.fn(),
+            blur: mockInputBlur,
             clear: jest.fn(),
-            focus: jest.fn(),
+            focus: mockInputFocus,
             getEditorId: jest.fn(() => 'editor-1'),
             isFocused: jest.fn(() => false),
         }))
@@ -202,6 +207,119 @@ describe('ChatInput assistant selection', () => {
             true,
             'anna-assistant'
         )
+
+        tree.unmount()
+    })
+})
+
+describe('ChatInput auto focus', () => {
+    beforeEach(() => {
+        jest.useFakeTimers()
+        jest.clearAllMocks()
+        mockState.disableAutoFocusInChat = false
+    })
+
+    afterEach(() => {
+        jest.runOnlyPendingTimers()
+        jest.useRealTimers()
+    })
+
+    it('focuses the input when the thread was opened without unread comments', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <ChatInput
+                    chat={{ id: 'chat-1', type: 'topics' }}
+                    projectId="project-1"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                    autoFocus
+                />
+            )
+        })
+
+        expect(tree.root.findByProps({ testID: 'chat-input' }).props.autoFocus).toBe(true)
+        act(() => jest.runOnlyPendingTimers())
+        expect(mockInputFocus).toHaveBeenCalled()
+        expect(mockInputBlur).not.toHaveBeenCalled()
+
+        tree.unmount()
+    })
+
+    it('keeps the input blurred when the thread was opened with unread comments', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <ChatInput
+                    chat={{ id: 'chat-1', type: 'topics' }}
+                    projectId="project-1"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                    autoFocus={false}
+                />
+            )
+        })
+
+        expect(tree.root.findByProps({ testID: 'chat-input' }).props.autoFocus).toBe(false)
+        act(() => jest.runOnlyPendingTimers())
+        expect(mockInputBlur).toHaveBeenCalled()
+        expect(mockKeyboardDismiss).toHaveBeenCalled()
+        expect(mockInputFocus).not.toHaveBeenCalled()
+
+        tree.unmount()
+    })
+
+    it('cancels pending focus when unread state arrives after mount', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <ChatInput
+                    chat={{ id: 'chat-1', type: 'topics' }}
+                    projectId="project-1"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                    autoFocus
+                />
+            )
+        })
+
+        await act(async () => {
+            tree.update(
+                <ChatInput
+                    chat={{ id: 'chat-1', type: 'topics' }}
+                    projectId="project-1"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                    autoFocus={false}
+                />
+            )
+        })
+
+        act(() => jest.runOnlyPendingTimers())
+        expect(mockInputBlur).toHaveBeenCalled()
+        expect(mockInputFocus).not.toHaveBeenCalled()
+
+        tree.unmount()
+    })
+
+    it('preserves the existing one-shot auto focus override', async () => {
+        mockState.disableAutoFocusInChat = true
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <ChatInput
+                    chat={{ id: 'chat-1', type: 'topics' }}
+                    projectId="project-1"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                />
+            )
+        })
+
+        expect(tree.root.findByProps({ testID: 'chat-input' }).props.autoFocus).toBe(false)
+        act(() => jest.runOnlyPendingTimers())
+        expect(mockInputBlur).toHaveBeenCalled()
+        expect(mockInputFocus).not.toHaveBeenCalled()
 
         tree.unmount()
     })

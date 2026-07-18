@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Keyboard, StyleSheet, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import { firebase } from '@firebase/app'
 import ReactQuill from 'react-quill'
@@ -49,6 +49,7 @@ export default function ChatInput({
     objectType,
     setAmountOfNewCommentsToHighligth,
     onMessageSent,
+    autoFocus = true,
 }) {
     const dispatch = useDispatch()
     const isMentionModalOpen = useSelector(state => state.openModals[MENTION_MODAL_ID])
@@ -58,6 +59,7 @@ export default function ChatInput({
     const gold = useSelector(state => state.loggedUser.gold)
     const disableAutoFocusInChat = useSelector(state => state.disableAutoFocusInChat)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
+    const [autoFocusDisabled, setAutoFocusDisabled] = useState(disableAutoFocusInChat)
     const [chatEditor, setChatEditor] = useState(null)
     const [inputText, setInputText] = useState('')
     const [inputCursorIndex, setInputCursorIndex] = useState(0)
@@ -80,6 +82,7 @@ export default function ChatInput({
     const explicitAssistantEnabled =
         hasExplicitChatAssistantState || hasParentAssistantState || assistantEnabled ? isAssistantActive : null
     const disabledEdition = editing && loggedUserId !== creatorId
+    const shouldAutoFocus = autoFocus && !disableAutoFocusInChat && !autoFocusDisabled
 
     const updateSelectedAssistant = selectedAssistantId => {
         selectedAssistantIdRef.current = selectedAssistantId
@@ -206,18 +209,30 @@ export default function ChatInput({
 
     useEffect(() => {
         if (disableAutoFocusInChat) {
-            setTimeout(() => {
-                inputRef.current?.blur()
-            })
+            setAutoFocusDisabled(true)
             dispatch(setDisableAutoFocusInChat(false))
         }
     }, [disableAutoFocusInChat])
 
     useEffect(() => {
-        setTimeout(() => {
-            if (!disableAutoFocusInChat) inputRef.current?.focus()
+        if (shouldAutoFocus) return
+
+        const blurTimeout = setTimeout(() => {
+            inputRef.current?.blur()
+            Keyboard.dismiss()
         })
 
+        return () => clearTimeout(blurTimeout)
+    }, [shouldAutoFocus])
+
+    useEffect(() => {
+        const focusTimeout = setTimeout(() => {
+            if (quotedText || shouldAutoFocus) inputRef.current?.focus()
+        })
+        return () => clearTimeout(focusTimeout)
+    }, [quotedText, shouldAutoFocus])
+
+    useEffect(() => {
         if (chatEditor && quotedText) {
             const regex = /\[quote\](.*?)\[quote\]/g
             const HELPER_KEY = '4FFG345GKSL23834MDF47SDF83JSDFKCNM27234SFKK475'
@@ -370,7 +385,7 @@ export default function ChatInput({
                 placeholder={translate('Type to add new comment')}
                 placeholderTextColor={colors.Text03}
                 onChangeText={text => setInputText(text.trim())}
-                autoFocus={disableAutoFocusInChat}
+                autoFocus={shouldAutoFocus}
                 projectId={projectId}
                 externalAlignment={localStyles.textInputAlignment}
                 containerStyle={localStyles.textInputContainer}

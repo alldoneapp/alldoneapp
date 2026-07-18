@@ -157,6 +157,7 @@ export default class EditForm extends Component {
             setAssistantId,
             isAssistantEnabled,
             updateObjectState,
+            autoFocus = true,
         } = this.props
 
         return (
@@ -171,7 +172,7 @@ export default class EditForm extends Component {
                             multiline={true}
                             externalTextStyle={localStyles.textInputText}
                             caretColor="white"
-                            autoFocus={true}
+                            autoFocus={autoFocus}
                             externalAlignment={{ paddingLeft: 0, paddingRight: 0 }}
                             setMentionsModalActive={this.setMentionsModalActive}
                             initialTextExtended={currentComment}
