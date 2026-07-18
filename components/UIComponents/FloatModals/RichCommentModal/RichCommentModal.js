@@ -57,7 +57,7 @@ import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZon
 import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
 import CommentPopupObjectHeader from './CommentPopupObjectHeader'
 import useShouldAutoFocusChatInput from '../../../ChatsView/Utils/useShouldAutoFocusChatInput'
-import { installRichCommentOutsideDismissGuard } from '../../../../utils/popupDismissGuard'
+import RichCommentDismissSurface from './RichCommentDismissSurface'
 
 export default function RichCommentModal({
     projectId,
@@ -108,7 +108,6 @@ export default function RichCommentModal({
     const selectedTab = useSelector(state => state.selectedNavItem)
     const editorOpsRef = useRef([])
     const commentListRef = useRef()
-    const modalSurfaceRef = useRef()
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
     const modalMountedRef = useRef(true)
     const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(initialAssistantEnabled)
@@ -387,31 +386,6 @@ export default function RichCommentModal({
     }, [])
 
     useEffect(() => {
-        const nestedPopupIsOpen =
-            botOptionModalIsOpen ||
-            botWarningModalIsOpen ||
-            mentionModalIsOpen ||
-            recordScreenModalIsOpen ||
-            recordVideoModalIsOpen ||
-            runOutOfGoldModalIsOpen ||
-            isQuillTagEditorOpen ||
-            showRunOutGoalModal
-
-        if (nestedPopupIsOpen) return
-        return installRichCommentOutsideDismissGuard(modalSurfaceRef.current, closeModal)
-    }, [
-        botOptionModalIsOpen,
-        botWarningModalIsOpen,
-        closeModal,
-        isQuillTagEditorOpen,
-        mentionModalIsOpen,
-        recordScreenModalIsOpen,
-        recordVideoModalIsOpen,
-        runOutOfGoldModalIsOpen,
-        showRunOutGoalModal,
-    ])
-
-    useEffect(() => {
         if (!showFileSelector) {
             dispatch(setActiveChatData(projectId, objectId, objectType))
             return () => {
@@ -442,8 +416,18 @@ export default function RichCommentModal({
         URLTrigger.processUrl(NavigationService, path)
     }
 
+    const nestedPopupIsOpen =
+        botOptionModalIsOpen ||
+        botWarningModalIsOpen ||
+        mentionModalIsOpen ||
+        recordScreenModalIsOpen ||
+        recordVideoModalIsOpen ||
+        runOutOfGoldModalIsOpen ||
+        isQuillTagEditorOpen ||
+        showRunOutGoalModal
+
     return showNotificationAboutTheBotBehavior ? null : (
-        <View ref={modalSurfaceRef}>
+        <RichCommentDismissSurface disabled={!!nestedPopupIsOpen} onDismiss={closeModal}>
             {showFileSelector ? (
                 <AttachmentsSelectorModal
                     closeModal={toggleShowFileSelector}
@@ -587,7 +571,7 @@ export default function RichCommentModal({
                     </View>
                 </CustomScrollView>
             )}
-        </View>
+        </RichCommentDismissSurface>
     )
 }
 
