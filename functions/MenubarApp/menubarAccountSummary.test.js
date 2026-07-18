@@ -4,15 +4,15 @@ const { selectNewFeeds } = require('../../utils/backends/Feeds/newFeedsHelper')
 const { countProjectOpenTasks, countVisibleFeedObjects, getActiveProjectIds } = __private__
 
 describe('menubar account summary', () => {
-    test('uses active and guide projects while excluding archived and template projects', () => {
+    test('uses normal active projects while excluding guide, archived, and template projects', () => {
         expect(
             getActiveProjectIds({
-                projectIds: ['active', 'archived', 'template'],
-                guideProjectIds: ['guide', 'active'],
+                projectIds: ['active', 'guide', 'archived', 'template'],
+                guideProjectIds: ['guide'],
                 archivedProjectIds: ['archived'],
                 templateProjectIds: ['template'],
             })
-        ).toEqual(['active', 'guide'])
+        ).toEqual(['active'])
     })
 
     test('counts today reviewer, workstream, and observed tasks like the sidebar', () => {

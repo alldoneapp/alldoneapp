@@ -7,14 +7,15 @@ const WORKSTREAM_ID_PREFIX = 'ws@'
 
 function getActiveProjectIds(userData = {}) {
     const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
-    const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
+    const guideProjectIds = new Set(Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : [])
     const archivedProjectIds = new Set(Array.isArray(userData.archivedProjectIds) ? userData.archivedProjectIds : [])
     const templateProjectIds = new Set(Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : [])
 
-    return [...new Set([...projectIds, ...guideProjectIds])].filter(
+    return [...new Set(projectIds)].filter(
         projectId =>
             typeof projectId === 'string' &&
             projectId &&
+            !guideProjectIds.has(projectId) &&
             !archivedProjectIds.has(projectId) &&
             !templateProjectIds.has(projectId)
     )
