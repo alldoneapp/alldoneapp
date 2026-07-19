@@ -5,7 +5,12 @@ jest.mock('firebase-admin', () => ({
 }))
 
 jest.mock('../Assistant/assistantHelper', () => ({
+    buildOpenAiPromptCacheKey: jest.fn(scope => `${scope}-cache-key`),
     getCachedEnvFunctions: jest.fn(() => ({ OPEN_AI_KEY: 'openai-key' })),
+    getOpenAiCacheUsage: jest.fn(usage => ({
+        cachedTokens: usage?.prompt_tokens_details?.cached_tokens || 0,
+        cacheWriteTokens: usage?.prompt_tokens_details?.cache_write_tokens || 0,
+    })),
     getOpenAIClient: jest.fn(() => ({
         chat: {
             completions: {
@@ -13,12 +18,20 @@ jest.mock('../Assistant/assistantHelper', () => ({
             },
         },
     })),
+    logOpenAiCacheUsage: jest.fn(),
     normalizeModelKey: jest.fn(modelKey => modelKey),
 }))
 
-const { classifyGmailMessage } = require('./gmailPromptClassifier')
+const {
+    buildClassifierLabelDefinitions,
+    buildClassifierMessage,
+    classifyGmailMessage,
+} = require('./gmailPromptClassifier')
 
 describe('gmailPromptClassifier', () => {
+    const getMessageText = content =>
+        Array.isArray(content) ? content.map(part => part?.text || '').join('\n') : String(content || '')
+
     beforeEach(() => {
         jest.clearAllMocks()
         jest.spyOn(console, 'warn').mockImplementation(() => {})
@@ -34,6 +47,26 @@ describe('gmailPromptClassifier', () => {
             usage,
         }
     }
+
+    test('strips action fields from labels and caps large email bodies before prompting', () => {
+        expect(
+            buildClassifierLabelDefinitions([
+                {
+                    key: 'project_jtl',
+                    gmailLabelName: 'JTL',
+                    description: 'Project work',
+                    postLabelPrompt: 'Create tasks and update notes with a long prompt',
+                    autoArchive: true,
+                    sourceProjectId: 'project-1',
+                },
+            ])
+        ).toEqual([{ key: 'project_jtl', gmailLabelName: 'JTL', description: 'Project work' }])
+
+        const compactMessage = buildClassifierMessage({ subject: 'Hello', bodyText: 'x'.repeat(20000) })
+        expect(compactMessage.subject).toBe('Hello')
+        expect(compactMessage.bodyText.length).toBeLessThan(12100)
+        expect(compactMessage.bodyText).toContain('[Older email content truncated]')
+    })
 
     test('audits no-match results when reasoning references a configured label', async () => {
         mockCreateCompletion
@@ -87,16 +120,23 @@ describe('gmailPromptClassifier', () => {
         })
 
         expect(mockCreateCompletion).toHaveBeenCalledTimes(2)
-        expect(mockCreateCompletion.mock.calls[0][0].messages[1].content).toContain(
-            'Configured confidence threshold: 0.83'
-        )
-        expect(mockCreateCompletion.mock.calls[0][0].messages[1].content).toContain(
+        const firstRequest = mockCreateCompletion.mock.calls[0][0]
+        const auditRequest = mockCreateCompletion.mock.calls[1][0]
+        const firstStaticContent = getMessageText(firstRequest.messages[1].content)
+        const auditStaticContent = getMessageText(auditRequest.messages[1].content)
+        const auditDynamicContent = getMessageText(auditRequest.messages[2].content)
+
+        expect(firstStaticContent).toContain('Configured confidence threshold: 0.83')
+        expect(firstStaticContent).toContain(
             'For matched:false, confidence means confidence that no configured label matches.'
         )
-        expect(mockCreateCompletion.mock.calls[1][0].messages[1].content).toContain(
-            'Configured confidence threshold: 0.83'
-        )
-        expect(mockCreateCompletion.mock.calls[1][0].messages[1].content).toContain('"matched": false')
+        expect(auditStaticContent).toContain('Configured confidence threshold: 0.83')
+        expect(auditDynamicContent).toContain('"matched": false')
+        expect(auditStaticContent).toContain('project_jtl')
+        expect(auditStaticContent).not.toContain('project_bechtle')
+        expect(firstRequest.prompt_cache_key).toBe('gmail-first-cache-key')
+        expect(auditRequest.prompt_cache_key).toBe('gmail-audit-cache-key')
+        expect(auditRequest.prompt_cache_options).toEqual({ mode: 'explicit', ttl: '30m' })
         expect(result).toEqual(
             expect.objectContaining({
                 matched: true,
@@ -111,7 +151,13 @@ describe('gmailPromptClassifier', () => {
                 }),
             })
         )
-        expect(result.usage).toEqual({ totalTokens: 30, promptTokens: 24, completionTokens: 6 })
+        expect(result.usage).toEqual({
+            totalTokens: 30,
+            promptTokens: 24,
+            completionTokens: 6,
+            cachedTokens: 0,
+            cacheWriteTokens: 0,
+        })
     })
 
     test('does not audit no-match results when reasoning references no configured label', async () => {

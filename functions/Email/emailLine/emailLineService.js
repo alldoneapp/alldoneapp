@@ -696,6 +696,7 @@ async function draftReply({
         guidance,
         language: userData?.language || userData?.appLanguage,
         groundingContext: await loadReplyGroundingContext({ userId, userData, projectId }),
+        cacheScope: `${userId}:${projectId}`,
     })
     if (!composed.body) throw new Error('Failed to compose a reply draft')
 
@@ -817,7 +818,11 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         throw error
     }
 
-    const summary = await summarizeEmailAsTaskName({ context, language: userData?.language || userData?.appLanguage })
+    const summary = await summarizeEmailAsTaskName({
+        context,
+        language: userData?.language || userData?.appLanguage,
+        cacheScope: `${userId}:${projectId}`,
+    })
 
     const taskName = summary.name || context.subject || 'Follow up on email'
 

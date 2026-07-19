@@ -50,6 +50,9 @@ const VM_JOB_CANCELLED_STATUS = 'cancelled'
 const VM_JOB_CANCEL_REQUESTED_STATUS = 'cancel_requested'
 const VM_JOB_CANCELLED_TEXT = 'Stopped.'
 const VM_RUNTIME_TIMEOUT_FAILURE_REASON = 'runtime_timeout'
+const VM_SUBSCRIPTION_AUTH_FAILURE_REASON = 'subscription_auth_refresh_required'
+const VM_AUTH_RECOVERY_WAIT_MS = 2 * 60 * 1000
+const VM_AUTH_RECOVERY_POLL_MS = 5 * 1000
 const VM_JOB_HEARTBEAT_INTERVAL_MS = 30 * 1000
 const VM_JOB_LEASE_MS = 2 * 60 * 1000
 const VM_SESSION_HEARTBEAT_INTERVAL_MS = 30 * 1000
@@ -1589,6 +1592,85 @@ function buildAgentExitError(agentLabel, result, state, stderr = '', fallbackErr
     return new Error(`${agentLabel} exited${status}.${detail ? ` ${detail}` : ''}`)
 }
 
+function isVmSubscriptionAuthError(error, provider) {
+    const text = String(error?.message || error || '').toLowerCase()
+    if (!text) return false
+    if (provider === 'codex') {
+        return [
+            'refresh_token_reused',
+            'refresh token has already been used',
+            'refresh token was already used',
+            'access token could not be refreshed',
+            'failed to refresh token',
+            'invalid_grant',
+        ].some(pattern => text.includes(pattern))
+    }
+    if (provider === 'claude') {
+        return [
+            'oauth token has expired',
+            'oauth token expired',
+            'oauth token has been revoked',
+            'oauth token revoked',
+            'not logged in',
+            'authentication_error',
+            'invalid oauth token',
+            'please run /login',
+            'please log in',
+        ].some(pattern => text.includes(pattern))
+    }
+    return false
+}
+
+function markSafeVmSubscriptionAuthRetry(error, provider, state) {
+    if (!isVmSubscriptionAuthError(error, provider)) return error
+    const hasAgentWork = !!(
+        state?.finalResult ||
+        state?.assistantText ||
+        state?.usage ||
+        state?.interaction ||
+        state?.providerState
+    )
+    const hasNonAuthActivity = (state?.activity || []).some(activity => !isVmSubscriptionAuthError(activity, provider))
+    error.vmAuthRetrySafe = !hasAgentWork && !hasNonAuthActivity
+    return error
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function waitForVmSubscriptionAuthChange(
+    userId,
+    provider,
+    previousCredentialVersion,
+    {
+        timeoutMs = VM_AUTH_RECOVERY_WAIT_MS,
+        pollMs = VM_AUTH_RECOVERY_POLL_MS,
+        loadAuth = require('./vmSubscriptionAuth').loadVmSubscriptionAuth,
+        wait = sleep,
+        now = Date.now,
+    } = {}
+) {
+    const deadline = now() + timeoutMs
+    while (true) {
+        const currentAuth = await loadAuth(userId, provider, { markUsed: false }).catch(() => null)
+        if (currentAuth?.credentialVersion && currentAuth.credentialVersion !== previousCredentialVersion) {
+            return currentAuth
+        }
+        const remainingMs = deadline - now()
+        if (remainingMs <= 0) return null
+        await wait(Math.min(pollMs, remainingMs))
+    }
+}
+
+function buildVmSubscriptionAuthWaitingText(agentLabel) {
+    return `🔐 ${agentLabel} needs a refreshed subscription login. I’ll retry automatically when the connection updates. If this remains here, reconnect ${agentLabel} in Settings → Integrations.`
+}
+
+function buildVmSubscriptionAuthFailureText(agentLabel) {
+    return `❌ The VM task could not continue because the ${agentLabel} subscription login needs to be refreshed. Reconnect it in Settings → Integrations, then try again.`
+}
+
 async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header) {
     const command = typeof config.installGuard === 'function' ? config.installGuard() : config.installGuard
     if (!command) return
@@ -2461,7 +2543,7 @@ async function persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth,
     try {
         const refreshedAuthJson = await sandbox.files.read(CODEX_AUTH_PATH)
         const { persistRefreshedCodexAuth } = require('./vmSubscriptionAuth')
-        await persistRefreshedCodexAuth(userId, refreshedAuthJson)
+        await persistRefreshedCodexAuth(userId, refreshedAuthJson, subscriptionAuth.credentialVersion)
     } catch (error) {
         console.warn('🖥️ VM JOB: could not persist refreshed Codex subscription auth', {
             userId,
@@ -2506,7 +2588,8 @@ async function runAgentInSandbox(
     gcpContext = null,
     pendingWebhook = null,
     pendingRef = null,
-    subscriptionAuth = null
+    subscriptionAuth = null,
+    allowAuthRecovery = true
 ) {
     const { Sandbox } = require('e2b')
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
@@ -2991,7 +3074,11 @@ async function runAgentInSandbox(
                 stderrPreview: sanitizeVmErrorText(stderr, 800),
                 runtimeGoldCharged,
             })
-            const errorToThrow = selectVmCommandError(runError, detailedError)
+            const errorToThrow = markSafeVmSubscriptionAuthRetry(
+                selectVmCommandError(runError, detailedError),
+                subscriptionAuth?.provider,
+                state
+            )
             if (typeof errorToThrow.runtimeGoldCharged !== 'number') {
                 errorToThrow.runtimeGoldCharged =
                     typeof runError.runtimeGoldCharged === 'number' ? runError.runtimeGoldCharged : runtimeGoldCharged
@@ -3037,7 +3124,11 @@ async function runAgentInSandbox(
 
         const output = (state.finalResult || state.assistantText || '').trim()
         if (result?.exitCode !== undefined && result.exitCode !== 0) {
-            throw buildAgentExitError(agentLabel, result, state, stderr)
+            throw markSafeVmSubscriptionAuthRetry(
+                buildAgentExitError(agentLabel, result, state, stderr),
+                subscriptionAuth?.provider,
+                state
+            )
         }
         if (state.bridgeError) {
             throw new Error(`${agentLabel} interactive bridge failed: ${state.bridgeError}`)
@@ -3107,6 +3198,7 @@ async function runAgentInSandbox(
             activeRuntimeMs: (Number(pendingWebhook?.vmActiveRuntimeMs) || 0) + (Date.now() - runStartMs),
         }
     } catch (err) {
+        if (!allowAuthRecovery) err.vmAuthRetrySafe = false
         if (subscriptionCredentialPrepared) {
             await persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth, vmJob.requestUserId)
             subscriptionCredentialPrepared = false
@@ -3145,7 +3237,7 @@ async function runAgentInSandbox(
         if (sessionHeartbeat) sessionHeartbeat.stop()
         // Hand the thread to the next queued follow-up even though this run failed — "done running"
         // includes failures. The next job resumes (normal failure) or starts cold (unhealthy).
-        if (ownsSessionLease) await drainThreadAfterRun(sessionRef)
+        if (ownsSessionLease && !err.vmAuthRetrySafe) await drainThreadAfterRun(sessionRef)
         if (typeof err.runtimeGoldCharged !== 'number') err.runtimeGoldCharged = runtimeGoldCharged
         throw err
     }
@@ -3446,7 +3538,7 @@ async function runVmJobByCorrelationId(correlationId) {
         console.error('🖥️ VM JOB RUNNER: Job records missing', { correlationId })
         return
     }
-    const pendingWebhook = pendingDoc.data()
+    let pendingWebhook = pendingDoc.data()
     const vmJob = jobDoc.data()
     // Thread session doc — used to hand off to queued follow-ups when this job settles.
     const threadSessionRef = db.doc(`vmSessions/${vmSessionDocId(vmJob)}`)
@@ -3490,7 +3582,7 @@ async function runVmJobByCorrelationId(correlationId) {
     const runDetails = resolveAgentRunDetails(vmJob)
     const wantsSubscription = vmJob.credentialMode === 'subscription'
     const wantsByok = vmJob.credentialMode === 'byok'
-    const subscriptionAuth = wantsSubscription
+    let subscriptionAuth = wantsSubscription
         ? await require('./vmSubscriptionAuth').loadVmSubscriptionAuth(
               vmJob.requestUserId,
               vmJob.agent || DEFAULT_AGENT
@@ -3580,18 +3672,101 @@ async function runVmJobByCorrelationId(correlationId) {
             })
             .catch(() => {})
         await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, credentialMode))
-        const agentResult = await runAgentInSandbox(
-            vmJob,
-            config,
-            apiKey,
-            e2bApiKey,
-            onActivity,
-            gitContext && gitContext.enabled ? gitContext : null,
-            gcpContext && gcpContext.enabled ? gcpContext : null,
-            pendingWebhook,
-            pendingRef,
-            subscriptionAuth
-        )
+        const runAgent = (allowAuthRecovery = true) =>
+            runAgentInSandbox(
+                vmJob,
+                config,
+                apiKey,
+                e2bApiKey,
+                onActivity,
+                gitContext && gitContext.enabled ? gitContext : null,
+                gcpContext && gcpContext.enabled ? gcpContext : null,
+                pendingWebhook,
+                pendingRef,
+                subscriptionAuth,
+                allowAuthRecovery
+            )
+        let agentResult
+        try {
+            agentResult = await runAgent()
+        } catch (error) {
+            if (!subscriptionAuth || !error.vmAuthRetrySafe) throw error
+            console.warn('🖥️ VM JOB RUNNER: subscription auth failed before work; waiting for refresh', {
+                correlationId,
+                provider: subscriptionAuth.provider,
+            })
+            let retryStarted = false
+            try {
+                const waitingText = buildVmSubscriptionAuthWaitingText(agentLabel)
+                await pendingRef
+                    .set(
+                        {
+                            status: 'waiting_for_auth_refresh',
+                            authRecoveryProvider: subscriptionAuth.provider,
+                            authRecoveryAttempt: 1,
+                            authRecoveryStartedAt: Date.now(),
+                        },
+                        { merge: true }
+                    )
+                    .catch(() => {})
+                await writeStatusComment(pendingWebhook, waitingText)
+
+                const refreshedAuth = await waitForVmSubscriptionAuthChange(
+                    vmJob.requestUserId,
+                    subscriptionAuth.provider,
+                    subscriptionAuth.credentialVersion
+                )
+                if (!refreshedAuth) {
+                    console.warn('🖥️ VM JOB RUNNER: subscription auth did not change before retry deadline', {
+                        correlationId,
+                        provider: subscriptionAuth.provider,
+                    })
+                    const authError = new Error(buildVmSubscriptionAuthFailureText(agentLabel).replace(/^❌\s*/, ''))
+                    authError.failureReason = VM_SUBSCRIPTION_AUTH_FAILURE_REASON
+                    authError.runtimeGoldCharged = Number(error.runtimeGoldCharged) || 0
+                    throw authError
+                }
+
+                subscriptionAuth = refreshedAuth
+                console.log('🖥️ VM JOB RUNNER: refreshed subscription auth found; retrying once', {
+                    correlationId,
+                    provider: subscriptionAuth.provider,
+                })
+                await throwIfVmJobCancelled(pendingRef, Number(error.runtimeGoldCharged) || 0)
+                const refreshedPendingSnapshot = await pendingRef.get().catch(() => null)
+                if (refreshedPendingSnapshot?.exists) {
+                    pendingWebhook = { ...pendingWebhook, ...(refreshedPendingSnapshot.data() || {}) }
+                }
+                await pendingRef
+                    .set(
+                        {
+                            status: 'running',
+                            authRecoveryRetriedAt: Date.now(),
+                        },
+                        { merge: true }
+                    )
+                    .catch(() => {})
+                await writeStatusComment(
+                    pendingWebhook,
+                    `${renderVmWorkingHeader(
+                        agentLabel,
+                        runDetails,
+                        credentialMode
+                    )}\n\n🔄 Subscription login refreshed; retrying automatically…`
+                )
+                retryStarted = true
+                try {
+                    agentResult = await runAgent(false)
+                } catch (retryError) {
+                    // One retry per credential version. Let the normal failure path settle the job.
+                    retryError.vmAuthRetrySafe = false
+                    throw retryError
+                }
+            } catch (recoveryError) {
+                if (!retryStarted) await drainThreadAfterRun(threadSessionRef)
+                throw recoveryError
+            }
+        }
         if (agentResult.awaitingInteraction) {
             await writeStatusComment(pendingWebhook, renderVmInteractionStatus(agentResult.interaction, agentLabel), {
                 assistantRunStatus: 'awaiting_user',
@@ -3786,7 +3961,12 @@ async function runVmJobByCorrelationId(correlationId) {
             return
         }
 
-        const message = `The VM task could not be completed: ${error.message}`
+        const subscriptionAuthFailure =
+            error.failureReason === VM_SUBSCRIPTION_AUTH_FAILURE_REASON ||
+            (wantsSubscription && isVmSubscriptionAuthError(error, vmJob.agent || DEFAULT_AGENT))
+        const message = subscriptionAuthFailure
+            ? buildVmSubscriptionAuthFailureText(agentLabel).replace(/^❌\s*/, '')
+            : `The VM task could not be completed: ${error.message}`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
         await notifyVmResultChannels(pendingWebhook, failureText, {
@@ -3797,6 +3977,7 @@ async function runVmJobByCorrelationId(correlationId) {
             .update({
                 status: 'failed',
                 error: error.message,
+                ...(subscriptionAuthFailure ? { failureReason: VM_SUBSCRIPTION_AUTH_FAILURE_REASON } : {}),
                 failedAt: Date.now(),
                 runtimeGoldCharged,
                 proxyTokenGoldCharged,
@@ -3835,6 +4016,11 @@ module.exports = {
         sanitizeVmErrorText,
         buildStageError,
         buildAgentExitError,
+        isVmSubscriptionAuthError,
+        markSafeVmSubscriptionAuthRetry,
+        waitForVmSubscriptionAuthChange,
+        buildVmSubscriptionAuthWaitingText,
+        buildVmSubscriptionAuthFailureText,
         ensureAgentCliAvailable,
         appendClaudeActivity,
         appendCodexActivity,

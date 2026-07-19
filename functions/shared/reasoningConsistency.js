@@ -55,8 +55,8 @@ function extractDistinctiveTokens(text = '') {
 // Detect whether `reasoning` references a DIFFERENT configured option than the chosen one.
 // Matches on distinctive tokens (so a partial mention like "JTL" is caught even when the
 // option's full name isn't repeated), and ignores tokens that also belong to the chosen
-// option. False positives only cost one extra verification call, so the gate errs toward
-// triggering.
+// option. Rejected alternatives such as "Privat rather than Ads" are ignored: at Gmail
+// volume, those false positives cause a material number of unnecessary audit calls.
 //
 // options: Array<{ key: string, names: string[] }>
 // Returns { otherKey, token } when a different option is referenced, otherwise null.
@@ -79,8 +79,48 @@ function reasoningReferencesDifferentOption(reasoning = '', chosenKey = '', opti
         if (option.key === chosenKey) continue
         for (const token of option.tokens) {
             if (chosenTokens.has(token)) continue
-            const pattern = new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
-            if (pattern.test(text)) {
+            const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const pattern = new RegExp(`\\b${escapedToken}\\b`, 'g')
+            const matches = Array.from(text.matchAll(pattern))
+            const hasPositiveReference = matches.some(match => {
+                const index = match.index || 0
+                const clauseStart = Math.max(
+                    text.lastIndexOf('.', index),
+                    text.lastIndexOf('!', index),
+                    text.lastIndexOf('?', index),
+                    text.lastIndexOf(';', index)
+                )
+                const clauseEndCandidates = [
+                    text.indexOf('.', index + token.length),
+                    text.indexOf('!', index + token.length),
+                    text.indexOf('?', index + token.length),
+                    text.indexOf(';', index + token.length),
+                ].filter(value => value >= 0)
+                const clauseEnd = clauseEndCandidates.length > 0 ? Math.min(...clauseEndCandidates) : text.length
+                const clauseBefore = text.slice(clauseStart + 1, index)
+                const contrastBoundary = Math.max(
+                    clauseBefore.lastIndexOf(' but '),
+                    clauseBefore.lastIndexOf(' however '),
+                    clauseBefore.lastIndexOf(' yet ')
+                )
+                const before = contrastBoundary >= 0 ? clauseBefore.slice(contrastBoundary + 1) : clauseBefore
+                const after = text.slice(index + token.length, clauseEnd)
+
+                const rejectedBefore = new RegExp(
+                    `(?:\\b(?:not|never)\\s+|\\b(?:rather than|instead of|unrelated to|exclude|excluding|rule out|ruled out)\\s+|` +
+                        `\\b(?:does not|do not|did not|doesn't|don't|didn't|is not|isn't|was not|wasn't|` +
+                        `should not|shouldn't|would not|wouldn't|could not|couldn't|cannot|can't)\\s+` +
+                        `[^.!?;]{0,160})$`
+                )
+                const rejectedAfter = new RegExp(
+                    `^\\s*(?:label\\s+)?(?:does not|do not|did not|doesn't|don't|didn't|is not|isn't|` +
+                        `was not|wasn't|should not|shouldn't|would not|wouldn't|could not|couldn't|` +
+                        `doesn't apply|does not apply|is unrelated|is excluded)\\b`
+                )
+
+                return !rejectedBefore.test(before) && !rejectedAfter.test(after)
+            })
+            if (hasPositiveReference) {
                 return { otherKey: option.key, token }
             }
         }

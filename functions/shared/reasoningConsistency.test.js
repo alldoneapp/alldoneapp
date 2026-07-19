@@ -45,6 +45,29 @@ describe('reasoningConsistency', () => {
             ).toBeNull()
         })
 
+        test('ignores labels mentioned only as rejected alternatives', () => {
+            const options = [
+                { key: 'privat', names: ['Privat'] },
+                { key: 'ads', names: ['Ads'] },
+            ]
+            expect(
+                reasoningReferencesDifferentOption('This belongs to Privat rather than Ads.', 'privat', options)
+            ).toBeNull()
+            expect(reasoningReferencesDifferentOption('This should not be Ads.', 'privat', options)).toBeNull()
+            expect(reasoningReferencesDifferentOption('Ads does not apply here.', 'privat', options)).toBeNull()
+        })
+
+        test('still flags a positive option after a rejected alternative', () => {
+            const options = [
+                { key: 'ads', names: ['Ads'] },
+                { key: 'privat', names: ['Privat'] },
+            ]
+            expect(reasoningReferencesDifferentOption('Not Ads, but clearly Privat.', 'ads', options)).toEqual({
+                otherKey: 'privat',
+                token: 'privat',
+            })
+        })
+
         test('ignores tokens that also belong to the chosen option', () => {
             const overlapping = [
                 { key: 'a', names: ['JTL Core'] },

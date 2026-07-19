@@ -321,6 +321,7 @@ const {
     buildCurrentObjectContextMessage,
     buildVmThreadContext,
     buildConversationAfterToolExecution,
+    buildConversationAfterToolExecutions,
     getSilentModeFinalResponseText,
     storeBotAnswerStream,
     calculateGoldCostFromTokens,
@@ -329,6 +330,9 @@ const {
     convertMessageContentToResponsesInput,
     convertMessagesToResponsesInput,
     convertToolsToResponsesFormat,
+    buildResponsesTools,
+    buildOpenAiPromptCacheKey,
+    getOpenAiCacheUsage,
     convertResponsesStream,
     interactWithChatStream,
 } = require('./assistantHelper')
@@ -435,6 +439,82 @@ describe('Responses API compatibility helpers', () => {
         ])
     })
 
+    test('adds internal prompt cache markers only when explicit caching is enabled', () => {
+        const messages = [
+            { role: 'system', content: 'Stable instructions', promptCacheBreakpoint: true },
+            { role: 'user', content: 'Volatile request' },
+        ]
+
+        expect(convertMessagesToResponsesInput(messages)).toEqual([
+            { role: 'system', content: 'Stable instructions' },
+            { role: 'user', content: 'Volatile request' },
+        ])
+        expect(convertMessagesToResponsesInput(messages, { includePromptCacheBreakpoints: true })).toEqual([
+            {
+                role: 'system',
+                content: [
+                    {
+                        type: 'input_text',
+                        text: 'Stable instructions',
+                        prompt_cache_breakpoint: { mode: 'explicit' },
+                    },
+                ],
+            },
+            { role: 'user', content: 'Volatile request' },
+        ])
+    })
+
+    test('builds stable scoped cache keys and reads both Responses and Chat usage details', () => {
+        expect(buildOpenAiPromptCacheKey('gmail-first', 'model', 'project', 'prompt')).toBe(
+            buildOpenAiPromptCacheKey('gmail-first', 'model', 'project', 'prompt')
+        )
+        expect(buildOpenAiPromptCacheKey('gmail-first', 'model', 'project', 'prompt')).not.toBe(
+            buildOpenAiPromptCacheKey('gmail-first', 'model', 'project', 'changed prompt')
+        )
+        expect(getOpenAiCacheUsage({ input_tokens: 1000, input_tokens_details: { cached_tokens: 750 } })).toEqual({
+            inputTokens: 1000,
+            cachedTokens: 750,
+            cacheWriteTokens: 0,
+            uncachedInputTokens: 250,
+            cacheReadRate: 0.75,
+        })
+        expect(
+            getOpenAiCacheUsage({
+                prompt_tokens: 500,
+                prompt_tokens_details: { cached_tokens: 200, cache_write_tokens: 100 },
+            })
+        ).toEqual(expect.objectContaining({ inputTokens: 500, cachedTokens: 200, cacheWriteTokens: 100 }))
+    })
+
+    test('sends an explicit GPT-5.6 cache breakpoint without changing the source message content', async () => {
+        mockResponsesCreate.mockResolvedValue([{ type: 'response.completed', response: { output: [] } }])
+        const prompt = [
+            ['system', 'Stable instructions', { promptCacheBreakpoint: true }],
+            ['user', 'Volatile request'],
+        ]
+
+        const stream = await interactWithChatStream(prompt, 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', [])
+        await stream.next()
+
+        expect(prompt[0][1]).toBe('Stable instructions')
+        expect(mockResponsesCreate.mock.calls[0][0]).toEqual(
+            expect.objectContaining({
+                prompt_cache_options: { mode: 'explicit', ttl: '30m' },
+                input: expect.arrayContaining([
+                    expect.objectContaining({
+                        role: 'system',
+                        content: expect.arrayContaining([
+                            expect.objectContaining({
+                                text: 'Stable instructions',
+                                prompt_cache_breakpoint: { mode: 'explicit' },
+                            }),
+                        ]),
+                    }),
+                ]),
+            })
+        )
+    })
+
     test('maps Chat Completions function schemas to Responses function schemas without enabling strict mode', () => {
         expect(
             convertToolsToResponsesFormat([
@@ -458,9 +538,46 @@ describe('Responses API compatibility helpers', () => {
         ])
     })
 
+    test('defers large supported tool sets into small searchable namespaces', () => {
+        const tools = Array.from({ length: 12 }, (_, index) => ({
+            type: 'function',
+            function: {
+                name: index < 6 ? `get_task_${index}` : `search_gmail_${index}`,
+                description: `Tool ${index}`,
+                parameters: { type: 'object', properties: {} },
+            },
+        }))
+
+        const result = buildResponsesTools(tools, 'MODEL_GPT5_6_SOL')
+        const namespaces = result.tools.filter(tool => tool.type === 'namespace')
+
+        expect(result.toolSearchEnabled).toBe(true)
+        expect(result.tools[0]).toEqual({ type: 'tool_search' })
+        expect(namespaces).toHaveLength(2)
+        expect(namespaces.every(namespace => namespace.tools.length <= 8)).toBe(true)
+        expect(namespaces.flatMap(namespace => namespace.tools)).toHaveLength(12)
+        expect(namespaces.flatMap(namespace => namespace.tools).every(tool => tool.defer_loading === true)).toBe(true)
+        expect(result.fallbackTools.every(tool => tool.type === 'function')).toBe(true)
+    })
+
+    test('keeps full function schemas for unsupported models and small tool sets', () => {
+        const buildTools = count =>
+            Array.from({ length: count }, (_, index) => ({
+                type: 'function',
+                function: { name: `tool_${index}`, description: '', parameters: { type: 'object' } },
+            }))
+
+        expect(buildResponsesTools(buildTools(12), 'MODEL_GPT5_2').toolSearchEnabled).toBe(false)
+        expect(buildResponsesTools(buildTools(3), 'MODEL_GPT5_6_SOL').toolSearchEnabled).toBe(false)
+    })
+
     test('converts typed Responses stream events to the existing text and tool-call stream contract', async () => {
         const responseEvents = [
             { type: 'response.output_text.delta', delta: 'Hello' },
+            {
+                type: 'response.output_item.done',
+                item: { id: 'search-1', type: 'tool_search_call', status: 'completed' },
+            },
             {
                 type: 'response.function_call_arguments.done',
                 item_id: 'item-1',
@@ -824,6 +941,19 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('light humor, playful observations, or a small joke')
         expect(systemMessages).toContain('never forced, repetitive, distracting, or insensitive')
         expect(systemMessages).not.toContain('occasionally use web_search without an explicit search request')
+    })
+
+    test('keeps volatile clock data after the internal reusable-prefix boundary', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', [], 120)
+
+        const breakpointIndex = messages.findIndex(message => message[2]?.promptCacheBreakpoint)
+        const clockIndex = messages.findIndex(message => String(message[1]).startsWith('The current date and time'))
+
+        expect(breakpointIndex).toBeGreaterThanOrEqual(0)
+        expect(clockIndex).toBeGreaterThan(breakpointIndex)
+        expect(typeof messages[breakpointIndex][1]).toBe('string')
     })
 
     test('allows restrained proactive research when web search is enabled', async () => {
@@ -4071,6 +4201,36 @@ describe('assistant thread compaction tool', () => {
         expect(updatedConversation[updatedConversation.length - 1].content).toContain(
             'Do not infer current-run failure from nested historical text'
         )
+    })
+
+    test('returns every parallel tool result in one continuation turn', () => {
+        const updatedConversation = buildConversationAfterToolExecutions({
+            currentConversation: [['user', 'Create both follow-ups']],
+            responseText: 'I will create both.',
+            toolExecutions: [
+                {
+                    toolName: 'create_task',
+                    toolArgs: { name: 'First task' },
+                    toolCallId: 'call-1',
+                    conversationSafeToolResult: { success: true, taskId: 'task-1' },
+                },
+                {
+                    toolName: 'create_note',
+                    toolArgs: { title: 'Follow-up note' },
+                    toolCallId: 'call-2',
+                    conversationSafeToolResult: { success: true, noteId: 'note-1' },
+                },
+            ],
+        })
+
+        const assistantMessage = updatedConversation.find(message => message.role === 'assistant')
+        const toolMessages = updatedConversation.filter(message => message.role === 'tool')
+        expect(assistantMessage.tool_calls.map(call => call.id)).toEqual(['call-1', 'call-2'])
+        expect(toolMessages.map(message => message.tool_call_id)).toEqual(['call-1', 'call-2'])
+        expect(updatedConversation[updatedConversation.length - 1]).toMatchObject({
+            role: 'user',
+            content: expect.stringContaining('Based on the tool results above'),
+        })
     })
 
     test('reads compacted thread state as assistant context text', async () => {

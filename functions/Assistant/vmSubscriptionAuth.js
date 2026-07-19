@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const crypto = require('crypto')
 const { HttpsError } = require('firebase-functions/v2/https')
 
 const VM_SUBSCRIPTION_DOC = 'vmAgentSubscriptions'
@@ -37,6 +38,28 @@ function parseCodexAuthJson(rawCredential) {
         )
     }
     return auth
+}
+
+function stableStringify(value) {
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value)
+            .sort()
+            .map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+            .join(',')}}`
+    }
+    return JSON.stringify(value)
+}
+
+function getVmSubscriptionCredentialVersion(provider, credential) {
+    if (!VALID_PROVIDERS.includes(provider) || !credential) return null
+    let normalized = String(credential).trim()
+    if (provider === 'codex') {
+        try {
+            normalized = stableStringify(JSON.parse(normalized))
+        } catch (_) {}
+    }
+    return crypto.createHash('sha256').update(normalized).digest('hex')
 }
 
 function sanitizeStatus(data, apiKeyStatus = {}) {
@@ -126,7 +149,7 @@ async function hasVmSubscription(userId, provider) {
     return provider === 'claude' ? !!data.claude?.oauthToken : !!data.codex?.authJson
 }
 
-async function loadVmSubscriptionAuth(userId, provider) {
+async function loadVmSubscriptionAuth(userId, provider, { markUsed = true } = {}) {
     if (!userId || !VALID_PROVIDERS.includes(provider)) return null
     const ref = getSubscriptionRef(userId)
     const snap = await ref.get()
@@ -135,11 +158,21 @@ async function loadVmSubscriptionAuth(userId, provider) {
     const providerData = data[provider] || {}
     const credential = provider === 'claude' ? providerData.oauthToken : providerData.authJson
     if (!credential) return null
-    await ref.update({ [`${provider}.lastUsedAt`]: Date.now() }).catch(() => {})
-    return { provider, credential, mode: 'subscription' }
+    if (markUsed) await ref.update({ [`${provider}.lastUsedAt`]: Date.now() }).catch(() => {})
+    return {
+        provider,
+        credential,
+        credentialVersion: getVmSubscriptionCredentialVersion(provider, credential),
+        mode: 'subscription',
+    }
 }
 
-async function persistRefreshedCodexAuth(userId, rawAuthJson) {
+function parseAuthRefreshTime(auth) {
+    const value = Date.parse(auth?.last_refresh || '')
+    return Number.isFinite(value) ? value : null
+}
+
+async function persistRefreshedCodexAuth(userId, rawAuthJson, expectedCredentialVersion = null) {
     if (!userId || !rawAuthJson) return false
     let auth
     try {
@@ -147,12 +180,39 @@ async function persistRefreshedCodexAuth(userId, rawAuthJson) {
     } catch (_) {
         return false
     }
-    await getSubscriptionRef(userId).update({
-        'codex.authJson': JSON.stringify(auth),
-        'codex.lastUsedAt': Date.now(),
-        updatedAt: Date.now(),
+    const nextAuthJson = JSON.stringify(auth)
+    const nextVersion = getVmSubscriptionCredentialVersion('codex', nextAuthJson)
+    const ref = getSubscriptionRef(userId)
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(ref)
+        const currentAuthJson = snapshot.exists ? snapshot.data()?.codex?.authJson : null
+        if (!currentAuthJson) return false
+
+        const currentVersion = getVmSubscriptionCredentialVersion('codex', currentAuthJson)
+        if (currentVersion === nextVersion) return false
+
+        // Another VM may already have rotated this single-use refresh token. Never let an
+        // older run overwrite that credential unless its auth file is demonstrably newer.
+        if (!expectedCredentialVersion || currentVersion !== expectedCredentialVersion) {
+            let currentAuth
+            try {
+                currentAuth = parseCodexAuthJson(currentAuthJson)
+            } catch (_) {
+                return false
+            }
+            const currentRefreshTime = parseAuthRefreshTime(currentAuth)
+            const nextRefreshTime = parseAuthRefreshTime(auth)
+            if (!currentRefreshTime || !nextRefreshTime || nextRefreshTime <= currentRefreshTime) return false
+        }
+
+        const now = Date.now()
+        transaction.update(ref, {
+            'codex.authJson': nextAuthJson,
+            'codex.lastUsedAt': now,
+            updatedAt: now,
+        })
+        return true
     })
-    return true
 }
 
 module.exports = {
@@ -162,6 +222,7 @@ module.exports = {
     hasVmSubscription,
     loadVmSubscriptionAuth,
     persistRefreshedCodexAuth,
+    getVmSubscriptionCredentialVersion,
     normalizeClaudeOauthToken,
     parseCodexAuthJson,
     VM_SUBSCRIPTION_DOC,

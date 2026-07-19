@@ -5,7 +5,14 @@ const {
     DEFAULT_GMAIL_LABELING_MODEL,
     DEFAULT_GMAIL_CONSISTENCY_MODEL,
 } = require('../Gmail/gmailLabelingConfig')
-const { getCachedEnvFunctions, getOpenAIClient, normalizeModelKey } = require('../Assistant/assistantHelper')
+const {
+    buildOpenAiPromptCacheKey,
+    getCachedEnvFunctions,
+    getOpenAiCacheUsage,
+    getOpenAIClient,
+    logOpenAiCacheUsage,
+    normalizeModelKey,
+} = require('../Assistant/assistantHelper')
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
 
 const CALENDAR_PROJECT_ROUTER_SYSTEM_PROMPT =
@@ -175,6 +182,21 @@ function buildCalendarClassifierRequestParams({
     definitions,
     normalizedEvent,
 }) {
+    const supportsExplicitCaching = selectedModel.startsWith('gpt-5.6')
+    const staticUserContent =
+        `Prompt:\n${config.prompt}\n\n` +
+        `Active projects:\n${JSON.stringify(definitions)}\n\n` +
+        `Configured confidence threshold: ${config.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD}.`
+    const dynamicUserContent =
+        `Calendar event:\n${JSON.stringify(normalizedEvent)}\n\n` +
+        'Return JSON exactly like {"matched":true,"projectId":"project-123","projectName":"Project name exactly as provided","confidence":0.92,"reasoning":"..."}. If no project matches clearly, return {"matched":false,"projectId":null,"projectName":null,"confidence":0.2,"reasoning":"..."}'
+    const promptCacheKey = buildOpenAiPromptCacheKey(
+        'calendar-route',
+        selectedModel,
+        config?.projectId || '',
+        config?.calendarEmail || '',
+        staticUserContent
+    )
     const requestParams = {
         model: selectedModel,
         messages: [
@@ -184,13 +206,23 @@ function buildCalendarClassifierRequestParams({
             },
             {
                 role: 'user',
-                content:
-                    `Prompt:\n${config.prompt}\n\n` +
-                    `Active projects:\n${JSON.stringify(definitions, null, 2)}\n\n` +
-                    `Calendar event:\n${JSON.stringify(normalizedEvent, null, 2)}\n\n` +
-                    'Return JSON exactly like {"matched":true,"projectId":"project-123","projectName":"Project name exactly as provided","confidence":0.92,"reasoning":"..."}. If no project matches clearly, return {"matched":false,"projectId":null,"projectName":null,"confidence":0.2,"reasoning":"..."}',
+                content: supportsExplicitCaching
+                    ? [
+                          {
+                              type: 'text',
+                              text: staticUserContent,
+                              prompt_cache_breakpoint: { mode: 'explicit' },
+                          },
+                      ]
+                    : staticUserContent,
             },
+            { role: 'user', content: dynamicUserContent },
         ],
+        prompt_cache_key: promptCacheKey,
+    }
+
+    if (supportsExplicitCaching) {
+        requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
     }
 
     if (!isReasoningModel) {
@@ -231,19 +263,26 @@ function buildCalendarClassifierRepairRequestParams({
 }
 
 function buildUsage(completion) {
-    return completion?.usage
-        ? {
-              totalTokens: Number.isFinite(completion.usage.total_tokens) ? completion.usage.total_tokens : 0,
-              promptTokens: Number.isFinite(completion.usage.prompt_tokens) ? completion.usage.prompt_tokens : 0,
-              completionTokens: Number.isFinite(completion.usage.completion_tokens)
-                  ? completion.usage.completion_tokens
-                  : 0,
-          }
-        : null
+    if (!completion?.usage) return null
+    const cacheUsage = getOpenAiCacheUsage(completion.usage)
+    return {
+        totalTokens: Number.isFinite(completion.usage.total_tokens) ? completion.usage.total_tokens : 0,
+        promptTokens: Number.isFinite(completion.usage.prompt_tokens) ? completion.usage.prompt_tokens : 0,
+        completionTokens: Number.isFinite(completion.usage.completion_tokens) ? completion.usage.completion_tokens : 0,
+        cachedTokens: cacheUsage.cachedTokens,
+        cacheWriteTokens: cacheUsage.cacheWriteTokens,
+    }
 }
 
 async function runCalendarClassifierCompletion(openai, requestParams) {
     const completion = await openai.chat.completions.create(requestParams)
+    logOpenAiCacheUsage({
+        usage: completion?.usage,
+        route: 'calendar-project-classifier',
+        model: requestParams.model,
+        cacheKey: requestParams.prompt_cache_key,
+        cacheMode: requestParams.prompt_cache_options?.mode || 'automatic',
+    })
     const content = completion?.choices?.[0]?.message?.content || ''
     const parsed = extractJsonFromText(content)
     return {
@@ -262,7 +301,9 @@ function getCalendarClassificationRetryReason(result) {
 async function classifyCalendarEventProject({ config, event, projectDefinitions, calendarEmail = '' }) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
-    const definitions = Array.isArray(projectDefinitions) ? projectDefinitions : []
+    const definitions = (Array.isArray(projectDefinitions) ? projectDefinitions : [])
+        .slice()
+        .sort((a, b) => String(a?.projectId || a?.id || '').localeCompare(String(b?.projectId || b?.id || '')))
     const confidenceThreshold = Number.isFinite(config?.confidenceThreshold)
         ? Number(config.confidenceThreshold)
         : DEFAULT_CONFIDENCE_THRESHOLD
@@ -293,13 +334,17 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
     const auditIsReasoningModel = isGpt5ReasoningModel(auditModelKey)
 
     const normalizedEvent = normalizeCalendarEventForClassifier(event, calendarEmail)
+    const cacheConfig = {
+        ...config,
+        calendarEmail,
+    }
 
     const firstCompletion = await runCalendarClassifierCompletion(
         openai,
         buildCalendarClassifierRequestParams({
             selectedModel,
             isReasoningModel,
-            config,
+            config: cacheConfig,
             definitions,
             normalizedEvent,
         })
@@ -323,7 +368,7 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
         buildCalendarClassifierRepairRequestParams({
             selectedModel: auditModel,
             isReasoningModel: auditIsReasoningModel,
-            config,
+            config: cacheConfig,
             definitions,
             normalizedEvent,
             previousResult: firstCompletion.parsed,
@@ -342,6 +387,9 @@ async function classifyCalendarEventProject({ config, event, projectDefinitions,
                 promptTokens: (firstCompletion.usage?.promptTokens || 0) + (repairCompletion.usage?.promptTokens || 0),
                 completionTokens:
                     (firstCompletion.usage?.completionTokens || 0) + (repairCompletion.usage?.completionTokens || 0),
+                cachedTokens: (firstCompletion.usage?.cachedTokens || 0) + (repairCompletion.usage?.cachedTokens || 0),
+                cacheWriteTokens:
+                    (firstCompletion.usage?.cacheWriteTokens || 0) + (repairCompletion.usage?.cacheWriteTokens || 0),
                 retriedAfterInconsistentResult: retryReason === 'inconsistent_result',
                 retriedAfterZeroConfidence: retryReason === 'zero_confidence',
                 auditModel,

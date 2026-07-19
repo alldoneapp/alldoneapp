@@ -2,7 +2,7 @@
 
 const admin = require('firebase-admin')
 
-const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
+const { getCachedEnvFunctions, getOpenAIClient, logOpenAiCacheUsage } = require('../Assistant/assistantHelper')
 const { extractJsonFromText, isGpt5ReasoningModel, mapAssistantModelToOpenAIModel } = require('./gmailPromptClassifier')
 const { MAX_LEARNED_RULES_LENGTH, getGmailLabelingStateRef } = require('./gmailLabelingConfig')
 const { invalidateResolvedThreadIds } = require('../Email/emailLine/gmailResolvedThreadCache')
@@ -143,8 +143,19 @@ async function reviseLearnedRules({
     if (!isGpt5ReasoningModel(FEEDBACK_REVISION_MODEL)) {
         requestParams.temperature = 0.1
     }
+    if (selectedModel.startsWith('gpt-5.6')) {
+        // Each revision changes the learned-rules prefix and is already persisted by input hash,
+        // so there is no reusable prefix worth paying the GPT-5.6 cache-write premium for.
+        requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
+    }
 
     const completion = await openai.chat.completions.create(requestParams)
+    logOpenAiCacheUsage({
+        usage: completion?.usage,
+        route: 'gmail-feedback-revision',
+        model: selectedModel,
+        cacheMode: requestParams.prompt_cache_options ? 'explicit-no-breakpoint' : 'automatic',
+    })
     const content = completion?.choices?.[0]?.message?.content || ''
     const parsed = extractJsonFromText(content)
     const revised = typeof parsed?.learnedRules === 'string' ? parsed.learnedRules.trim() : ''

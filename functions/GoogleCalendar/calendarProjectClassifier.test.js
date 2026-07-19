@@ -1,6 +1,12 @@
 jest.mock('../Assistant/assistantHelper', () => ({
+    buildOpenAiPromptCacheKey: jest.fn(scope => `${scope}-cache-key`),
     getCachedEnvFunctions: jest.fn(),
+    getOpenAiCacheUsage: jest.fn(usage => ({
+        cachedTokens: usage?.prompt_tokens_details?.cached_tokens || 0,
+        cacheWriteTokens: usage?.prompt_tokens_details?.cache_write_tokens || 0,
+    })),
     getOpenAIClient: jest.fn(),
+    logOpenAiCacheUsage: jest.fn(),
     normalizeModelKey: jest.fn(model => model),
 }))
 
@@ -211,7 +217,7 @@ describe('calendarProjectClassifier', () => {
         })
 
         expect(create).toHaveBeenCalledTimes(2)
-        expect(create.mock.calls[1][0].messages[2].content).toContain('previous JSON was inconsistent')
+        expect(create.mock.calls[1][0].messages[3].content).toContain('previous JSON was inconsistent')
         expect(result).toEqual(
             expect.objectContaining({
                 matched: true,
@@ -276,7 +282,9 @@ describe('calendarProjectClassifier', () => {
 
         expect(create).toHaveBeenCalledTimes(2)
         expect(create.mock.calls[1][0].model).toBe('gpt-5.6-terra')
-        expect(create.mock.calls[1][0].messages[2].content).toContain('previous JSON had zero confidence')
+        expect(create.mock.calls[1][0].messages[3].content).toContain('previous JSON had zero confidence')
+        expect(create.mock.calls[1][0].prompt_cache_key).toBe('calendar-route-cache-key')
+        expect(create.mock.calls[1][0].prompt_cache_options).toEqual({ mode: 'explicit', ttl: '30m' })
         expect(result).toEqual(
             expect.objectContaining({
                 matched: true,

@@ -76,6 +76,9 @@ const DEFAULT_ACTIVE_PROJECTS_PROMPT =
     DEFAULT_ADS_LABEL_GUIDANCE +
     ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead.'
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
+const DEFAULT_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_LUNA'
+const CUSTOM_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_TERRA'
+const POST_LABEL_MAX_TOOL_CALL_ROUNDS = 8
 const DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER = "[today's date]"
 const DEFAULT_DATE_FORMAT_EUROPE = 'DD.MM.YYYY'
 const DEFAULT_DATE_FORMAT_AMERICA = 'MM.DD.YYYY'
@@ -287,6 +290,12 @@ function resolveDefaultFollowUpTopicPrompt(prompt = '', selectedDefinition = {},
         prompt: prompt.replace(DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER, formattedDate),
         topicChatTitle,
     }
+}
+
+function resolvePostLabelAssistantModel(selectedDefinition = {}, configuredPrompt = '') {
+    const defaultPrompt = buildDefaultProjectFollowUpPrompt(selectedDefinition.gmailLabelName || '')
+    const isGeneratedDefaultPrompt = !!selectedDefinition.sourceProjectId && configuredPrompt === defaultPrompt
+    return isGeneratedDefaultPrompt ? DEFAULT_POST_LABEL_ASSISTANT_MODEL : CUSTOM_POST_LABEL_ASSISTANT_MODEL
 }
 
 function buildDefaultActiveProjectLabelDefinitions(projects = [], defaultProjectId = '') {
@@ -1214,6 +1223,7 @@ async function executePostLabelPrompt({
     }
 
     const allowedTools = Array.isArray(assistant.allowedTools) ? assistant.allowedTools : []
+    const executionModel = resolvePostLabelAssistantModel(selectedDefinition, configuredPrompt)
     const messages = []
     const targetContactName = getTargetContactName(normalizedMessage, direction, targetContactEmail)
 
@@ -1257,29 +1267,37 @@ async function executePostLabelPrompt({
             topicChatTitle,
             followUpType,
         })
-        const stream = await interactWithChatStream(messages, assistant.model, assistant.temperature, allowedTools, {
+        const toolRuntimeContext = {
             projectId: assistantProjectId,
             assistantId,
             requestUserId: userId,
             gmailContext,
-        })
+            openAiReasoningEffort: 'low',
+            maxToolCallIterations: POST_LABEL_MAX_TOOL_CALL_ROUNDS,
+            promptCacheScope:
+                executionModel === DEFAULT_POST_LABEL_ASSISTANT_MODEL
+                    ? 'gmail-post-label-default'
+                    : 'gmail-post-label-custom',
+        }
+        const stream = await interactWithChatStream(
+            messages,
+            executionModel,
+            assistant.temperature,
+            allowedTools,
+            toolRuntimeContext
+        )
         const result = await collectAssistantTextWithToolCalls({
             stream,
             conversationHistory: messages,
-            modelKey: assistant.model,
+            modelKey: executionModel,
             temperatureKey: assistant.temperature,
             allowedTools,
-            toolRuntimeContext: {
-                projectId: assistantProjectId,
-                assistantId,
-                requestUserId: userId,
-                gmailContext,
-            },
+            toolRuntimeContext,
         })
         const totalTokens = calculateTokens(
             result?.assistantResponse || '',
             Array.isArray(result?.finalConversation) ? result.finalConversation : messages,
-            assistant.model
+            executionModel
         )
         const routingCommentResults = await addRoutingCommentsToCreatedGmailTasks({
             userData,
@@ -1291,7 +1309,7 @@ async function executePostLabelPrompt({
             selectedProjectId,
             consistencyCheck,
         })
-        const estimatedNormalGoldCost = calculateGoldCostFromTokens(totalTokens, assistant.model)
+        const estimatedNormalGoldCost = calculateGoldCostFromTokens(totalTokens, executionModel)
         let goldSpent = 0
         if (estimatedNormalGoldCost > 0) {
             const goldResult = await deductGold(userId, estimatedNormalGoldCost, {
@@ -1319,6 +1337,7 @@ async function executePostLabelPrompt({
             promptHash,
             assistantProjectId,
             assistantId,
+            executionModel,
             executedToolNames: Array.isArray(result?.executedToolNames) ? result.executedToolNames : [],
             executedToolCallsCount: Number(result?.executedToolCallsCount) || 0,
             createdTaskResults: Array.isArray(result?.createdTaskResults) ? result.createdTaskResults : [],
@@ -1340,6 +1359,7 @@ async function executePostLabelPrompt({
             promptHash,
             assistantProjectId,
             assistantId,
+            executionModel,
             executedToolNames: [],
             executedToolCallsCount: 0,
             assistantResponse: '',
@@ -2240,6 +2260,7 @@ module.exports = {
     processSingleMessage,
     resolveEffectiveGmailLabelingConfig,
     resolveEffectiveLabelingConfig,
+    resolvePostLabelAssistantModel,
     resolvePostLabelAssistantContext,
     shouldAutoArchiveLabeledMessage,
     syncGmailLabeling,

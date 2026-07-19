@@ -2,7 +2,14 @@
 
 const { __private__ } = require('./menubarApp')
 
-const { buildAssistantMessageDocId, decodeAssistantMessageImage } = __private__
+const {
+    buildAssistantMessageDocId,
+    decodeAssistantMessageImage,
+    isOwnedMacAppTopic,
+    normalizeAssistantThreadMessage,
+    resolveMenubarAssistantThread,
+    toMillis,
+} = __private__
 
 const PNG_BASE64 = Buffer.from('fake-png-bytes').toString('base64')
 
@@ -64,5 +71,100 @@ describe('menubar assistant message image validation', () => {
         }
         expect(caught).toBeDefined()
         expect(caught.code).toBe('IMAGE_TOO_LARGE')
+    })
+})
+
+describe('menubar assistant thread responses', () => {
+    test('normalizes assistant loading comments without leaking app media tokens', () => {
+        const imageToken =
+            'O2TI5plHBf1QfdYhttps://example.com/full.jpgO2TI5plHBf1QfdYhttps://example.com/preview.jpgO2TI5plHBf1QfdYscreen.jpgO2TI5plHBf1QfdY0'
+        const message = normalizeAssistantThreadMessage(
+            'comment-1',
+            {
+                commentText: `**Looking at this** ${imageToken}`,
+                creatorId: 'assistant-1',
+                created: 1234,
+                isThinking: true,
+            },
+            'assistant-1',
+            'Anna',
+            'user-1',
+            'Karsten'
+        )
+
+        expect(message).toMatchObject({
+            id: 'comment-1',
+            role: 'assistant',
+            authorName: 'Anna',
+            createdAt: 1234,
+            pending: true,
+        })
+        expect(message.text).toContain('Looking at this')
+        expect(message.text).not.toContain('O2TI5plHBf1QfdY')
+        expect(message.attachments).toEqual([
+            expect.objectContaining({
+                kind: 'image',
+                fileName: 'screen.jpg',
+                url: 'https://example.com/full.jpg',
+                previewUrl: 'https://example.com/preview.jpg',
+            }),
+        ])
+    })
+
+    test('keeps user comments distinct from assistant comments', () => {
+        const message = normalizeAssistantThreadMessage(
+            'comment-2',
+            { commentText: 'Hello Anna', creatorId: 'user-1', created: 50 },
+            'assistant-1',
+            'Anna',
+            'user-1',
+            'Karsten'
+        )
+        expect(message).toMatchObject({ role: 'user', authorName: 'Karsten', text: 'Hello Anna', pending: false })
+    })
+
+    test('only accepts Mac App topics owned by the authenticated user', () => {
+        expect(isOwnedMacAppTopic('MacApp20260719user-1', { type: 'topics', creatorId: 'user-1' }, 'user-1')).toBe(true)
+        expect(isOwnedMacAppTopic('MacApp20260719user-1', { type: 'topics', creatorId: 'other' }, 'user-1')).toBe(false)
+        expect(isOwnedMacAppTopic('WhatsApp20260719user-1', { type: 'topics', creatorId: 'user-1' }, 'user-1')).toBe(
+            false
+        )
+    })
+
+    test('converts Firestore timestamps to milliseconds', () => {
+        expect(toMillis({ seconds: 12, nanoseconds: 500000000 })).toBe(12500)
+        expect(toMillis({ toMillis: () => 99 })).toBe(99)
+    })
+
+    test('resolves only an owned Mac App topic in the default project', async () => {
+        const docs = {
+            'projects/project-1': { userIds: ['user-1'], name: 'Project' },
+            'chatObjects/project-1/chats/MacAppOwned': {
+                id: 'MacAppOwned',
+                type: 'topics',
+                creatorId: 'user-1',
+            },
+        }
+        const db = {
+            doc: path => ({
+                get: async () => ({
+                    exists: !!docs[path],
+                    data: () => docs[path],
+                }),
+            }),
+        }
+
+        const resolved = await resolveMenubarAssistantThread(
+            db,
+            'user-1',
+            { defaultProjectId: 'project-1' },
+            'MacAppOwned'
+        )
+        expect(resolved).toMatchObject({ projectId: 'project-1', chatId: 'MacAppOwned' })
+
+        docs['chatObjects/project-1/chats/MacAppOwned'].creatorId = 'other-user'
+        await expect(
+            resolveMenubarAssistantThread(db, 'user-1', { defaultProjectId: 'project-1' }, 'MacAppOwned')
+        ).resolves.toBeNull()
     })
 })

@@ -56,11 +56,12 @@ describe('buildSkillMarkdown', () => {
 describe('buildSkillsIndexBlock', () => {
     it('lists one line per skill and instructs to call load_skill', () => {
         const block = buildSkillsIndexBlock([
-            { name: 'a-skill', description: 'When doing A' },
             { name: 'b-skill', description: 'When doing B' },
+            { name: 'a-skill', description: 'When doing A' },
         ])
         expect(block).toContain('- a-skill: When doing A')
         expect(block).toContain('- b-skill: When doing B')
+        expect(block.indexOf('- a-skill')).toBeLessThan(block.indexOf('- b-skill'))
         expect(block).toContain('load_skill')
     })
 })

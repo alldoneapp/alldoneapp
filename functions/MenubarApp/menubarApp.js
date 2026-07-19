@@ -1126,6 +1126,8 @@ const MAX_ASSISTANT_COMMENT_LENGTH = 4000
 const MAX_ASSISTANT_IMAGE_BYTES = 5000000
 const ALLOWED_ASSISTANT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
 const ASSISTANT_MESSAGE_PENDING_TIMEOUT_MS = 2 * 60 * 1000
+const DEFAULT_ASSISTANT_THREAD_PAGE_SIZE = 30
+const MAX_ASSISTANT_THREAD_PAGE_SIZE = 50
 
 function buildAssistantMessageDocId(userId, requestId) {
     return hashToken(`${userId}__${requestId}`)
@@ -1247,6 +1249,245 @@ async function getOrCreateMacAppDailyTopic(db, userId, projectId, assistantId, u
     ])
 
     return { chatId, isNew: true }
+}
+
+function toMillis(value) {
+    if (value === null || value === undefined) return 0
+    if (typeof value?.toMillis === 'function') return value.toMillis()
+    if (value instanceof Date) return value.getTime()
+    if (Number.isFinite(value?.seconds)) {
+        return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000)
+    }
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+}
+
+function sanitizeAssistantMediaUrl(value) {
+    if (typeof value !== 'string' || !value) return ''
+    try {
+        const url = new URL(value)
+        return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : ''
+    } catch (error) {
+        return ''
+    }
+}
+
+function normalizeAssistantThreadMessage(id, data = {}, assistantId, assistantName, userId, userName) {
+    const {
+        cleanTextMetaData,
+        extractMediaContextFromText,
+        removeFormatTagsFromText,
+    } = require('../Utils/parseTextUtils')
+    const rawText = typeof data.commentText === 'string' ? data.commentText : ''
+    const text = cleanTextMetaData(removeFormatTagsFromText(rawText), false).trim()
+    const attachments = Array.isArray(data.mediaContext) ? data.mediaContext : extractMediaContextFromText(rawText)
+    const assistantRunStatus = typeof data.assistantRun?.status === 'string' ? data.assistantRun.status : ''
+    const pending =
+        data.isLoading === true ||
+        data.isThinking === true ||
+        data.isPartial === true ||
+        assistantRunStatus === 'running' ||
+        assistantRunStatus === 'cancel_requested'
+    const fromAssistant = data.fromAssistant === true || data.creatorId === assistantId
+
+    return {
+        id,
+        role: fromAssistant ? 'assistant' : 'user',
+        authorName: fromAssistant ? assistantName || 'Anna' : userName || 'You',
+        text,
+        createdAt: toMillis(data.created || data.lastChangeDate),
+        updatedAt: toMillis(data.lastChangeDate || data.created),
+        pending,
+        attachments: attachments
+            .filter(item => item && typeof item === 'object')
+            .map(item => {
+                const url = sanitizeAssistantMediaUrl(item.storageUrl) || sanitizeAssistantMediaUrl(item.previewUrl)
+                return {
+                    kind: typeof item.kind === 'string' ? item.kind : 'file',
+                    fileName: typeof item.fileName === 'string' ? item.fileName : 'Attachment',
+                    mimeType: typeof item.mimeType === 'string' ? item.mimeType : 'application/octet-stream',
+                    url,
+                    previewUrl: sanitizeAssistantMediaUrl(item.previewUrl) || null,
+                }
+            })
+            .filter(item => item.url),
+    }
+}
+
+function isOwnedMacAppTopic(chatId, chat = {}, userId) {
+    return (
+        typeof chatId === 'string' && chatId.startsWith('MacApp') && chat.type === 'topics' && chat.creatorId === userId
+    )
+}
+
+async function deleteMenubarThreadNotifications(db, projectId, chatId, userId, notificationDocs) {
+    for (let index = 0; index < notificationDocs.length; index += 400) {
+        const batch = db.batch()
+        notificationDocs.slice(index, index + 400).forEach(doc => batch.delete(doc.ref))
+        await batch.commit()
+    }
+
+    const [emailDoc, pushSnapshot] = await Promise.all([
+        db.doc(`emailNotifications/${chatId}`).get(),
+        db
+            .collection('pushNotifications')
+            .where('chatId', '==', chatId)
+            .where('userIds', 'array-contains', userId)
+            .get(),
+    ])
+
+    const batch = db.batch()
+    if (emailDoc.exists) {
+        const userIds = Array.isArray(emailDoc.data()?.userIds) ? emailDoc.data().userIds : []
+        if (userIds.includes(userId)) {
+            if (userIds.length > 1) {
+                batch.set(emailDoc.ref, { userIds: admin.firestore.FieldValue.arrayRemove(userId) }, { merge: true })
+            } else {
+                batch.delete(emailDoc.ref)
+            }
+        }
+    }
+    pushSnapshot.docs.forEach(doc => {
+        const userIds = Array.isArray(doc.data()?.userIds) ? doc.data().userIds : []
+        if (userIds.length > 1) {
+            batch.set(doc.ref, { userIds: admin.firestore.FieldValue.arrayRemove(userId) }, { merge: true })
+        } else {
+            batch.delete(doc.ref)
+        }
+    })
+    await batch.commit()
+}
+
+async function resolveMenubarAssistantThread(db, userId, userData, requestedChatId) {
+    const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
+    if (!defaultProjectId) return null
+
+    const projectDoc = await db.doc(`projects/${defaultProjectId}`).get()
+    const project = projectDoc.exists ? projectDoc.data() || {} : null
+    if (!project || !Array.isArray(project.userIds) || !project.userIds.includes(userId)) return null
+
+    const { getUserLocalDateContext } = require('../Assistant/contextTimestampHelper')
+    const todayChatId = `MacApp${getUserLocalDateContext(userData).dateKey}${userId}`
+    const pointer = userData.menubarAssistantThread
+    const assistantLinePointer = userData.lastAssistantCommentData?.[defaultProjectId]
+    const candidateIds = [
+        requestedChatId,
+        todayChatId,
+        pointer?.projectId === defaultProjectId ? pointer.chatId : null,
+        assistantLinePointer?.objectType === 'topics' ? assistantLinePointer.objectId : null,
+    ].filter((value, index, values) => typeof value === 'string' && value && values.indexOf(value) === index)
+
+    for (const chatId of candidateIds) {
+        const chatDoc = await db.doc(`chatObjects/${defaultProjectId}/chats/${chatId}`).get()
+        if (!chatDoc.exists) continue
+        const chat = chatDoc.data() || {}
+        if (!isOwnedMacAppTopic(chatId, chat, userId)) continue
+        return { projectId: defaultProjectId, project, chatId, chat }
+    }
+    return null
+}
+
+// POST /api/menubar/assistant-thread
+//   { token, chatId?, before?, limit?, markRead? }
+// Returns a safe, paginated view of the user's current/recent Mac App topic.
+// Merely fetching the compact preview never clears unread markers; the macOS
+// conversation panel opts into `markRead` while it is visible, matching the
+// web RichCommentModal behavior.
+async function handleMenubarAssistantThread(req, res) {
+    res.set('Cache-Control', 'no-store')
+
+    if (req.method !== 'POST') {
+        res.status(405).json({ success: false, error: 'Method not allowed' })
+        return
+    }
+
+    const token = req.body?.token
+    const ip = getRequestIp(req)
+    const tokenKey = typeof token === 'string' ? hashToken(token).slice(0, 16) : 'invalid'
+    if (isRateLimited(`mbt:ip:${ip}`, 240, 60 * 1000) || isRateLimited(`mbt:token:${tokenKey}`, 120, 60 * 1000)) {
+        res.status(429).json({ success: false, error: 'Rate limit exceeded' })
+        return
+    }
+
+    try {
+        const tokenUser = await resolveTokenUser(token)
+        if (!tokenUser) {
+            res.status(401).json({ success: false, error: 'Invalid token' })
+            return
+        }
+        const { userId, userData } = tokenUser
+        const requestedChatId = typeof req.body?.chatId === 'string' ? req.body.chatId.trim() : ''
+        if (requestedChatId && (!requestedChatId.startsWith('MacApp') || requestedChatId.length > 160)) {
+            res.status(400).json({ success: false, error: 'chatId is invalid' })
+            return
+        }
+
+        const db = admin.firestore()
+        const resolved = await resolveMenubarAssistantThread(db, userId, userData, requestedChatId)
+        if (!resolved) {
+            res.status(200).json({ success: true, thread: null, messages: [], unreadCount: 0, hasMore: false })
+            return
+        }
+
+        const { projectId, project, chatId, chat } = resolved
+        const actor = await getMenubarAssistantActor(db, userData)
+        const assistantId = chat.assistantId || actor.assistantId || ''
+        const assistantName = actor.assistantId === assistantId ? actor.feedUser.displayName || 'Anna' : 'Anna'
+        const requestedLimit = Number(req.body?.limit)
+        const limit = Number.isFinite(requestedLimit)
+            ? Math.max(1, Math.min(Math.floor(requestedLimit), MAX_ASSISTANT_THREAD_PAGE_SIZE))
+            : DEFAULT_ASSISTANT_THREAD_PAGE_SIZE
+        const before = Number(req.body?.before)
+
+        let commentsQuery = db
+            .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
+            .orderBy('created', 'desc')
+        if (Number.isFinite(before) && before > 0) commentsQuery = commentsQuery.where('created', '<', before)
+        const [commentsSnapshot, notificationsSnapshot] = await Promise.all([
+            commentsQuery.limit(limit + 1).get(),
+            db.collection(`chatNotifications/${projectId}/${userId}`).where('chatId', '==', chatId).get(),
+        ])
+
+        const hasMore = commentsSnapshot.size > limit
+        const docs = commentsSnapshot.docs.slice(0, limit)
+        const messages = docs
+            .map(doc =>
+                normalizeAssistantThreadMessage(
+                    doc.id,
+                    doc.data(),
+                    assistantId,
+                    assistantName,
+                    userId,
+                    getUserDisplayName(userData)
+                )
+            )
+            .reverse()
+        const markRead = req.body?.markRead === true
+        if (markRead && !notificationsSnapshot.empty) {
+            await deleteMenubarThreadNotifications(db, projectId, chatId, userId, notificationsSnapshot.docs)
+        }
+
+        res.status(200).json({
+            success: true,
+            thread: {
+                projectId,
+                projectName: project.name || '',
+                assistantId,
+                assistantName,
+                chatId,
+                title: chat.title || 'Mac App',
+                url: `${getAppBaseUrl()}/projects/${projectId}/chats/${chatId}/chat`,
+            },
+            messages,
+            unreadCount: markRead ? 0 : notificationsSnapshot.size,
+            clearedUnreadCount: markRead ? notificationsSnapshot.size : 0,
+            hasMore,
+            nextBefore: hasMore && docs.length ? toMillis(docs[docs.length - 1].data().created) : null,
+        })
+    } catch (error) {
+        console.error('menubarAssistantThread: error', error)
+        if (!res.headersSent) res.status(500).json({ success: false, error: 'Internal error' })
+    }
 }
 
 // POST /api/menubar/assistant-message  ->
@@ -1392,6 +1633,18 @@ async function handleMenubarAssistantMessage(req, res) {
             // the WhatsApp daily chat.
             const { chatId } = await getOrCreateMacAppDailyTopic(db, userId, defaultProjectId, assistantId, userData)
             const chatRef = db.doc(`chatObjects/${defaultProjectId}/chats/${chatId}`)
+
+            await db.doc(`users/${userId}`).set(
+                {
+                    menubarAssistantThread: {
+                        projectId: defaultProjectId,
+                        chatId,
+                        assistantId,
+                        updatedAt: now,
+                    },
+                },
+                { merge: true }
+            )
 
             const commentId = db.collection('_').doc().id
             await db.doc(`chatComments/${defaultProjectId}/topics/${chatId}/comments/${commentId}`).set({
@@ -1564,6 +1817,7 @@ module.exports = {
     handleMenubarProjects,
     handleMenubarPushNote,
     handleMenubarAssistantMessage,
+    handleMenubarAssistantThread,
     processMenubarAssistantRun,
     __private__: {
         buildNotePushDocId,
@@ -1574,5 +1828,9 @@ module.exports = {
         rewriteMarkdownAttachmentUrls,
         buildAssistantMessageDocId,
         decodeAssistantMessageImage,
+        isOwnedMacAppTopic,
+        normalizeAssistantThreadMessage,
+        resolveMenubarAssistantThread,
+        toMillis,
     },
 }

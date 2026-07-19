@@ -2061,6 +2061,18 @@ exports.menubarAssistantMessage = onRequest(
     }
 )
 
+exports.menubarAssistantThread = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleMenubarAssistantThread } = require('./MenubarApp/menubarApp')
+        return await handleMenubarAssistantThread(req, res)
+    }
+)
+
 // MENUBAR ASSISTANT RUN QUEUE PROCESSOR - generates the assistant reply for
 // messages sent from the menubar app (queued by menubarAssistantMessage).
 exports.processMenubarAssistantRunSecondGen = onDocumentCreated(

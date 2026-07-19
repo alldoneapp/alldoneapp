@@ -120,6 +120,7 @@ const {
     processSingleMessage,
     resolveEffectiveGmailLabelingConfig,
     resolveEffectiveLabelingConfig,
+    resolvePostLabelAssistantModel,
     shouldAutoArchiveLabeledMessage,
 } = require('./serverSideGmailLabelingSync')
 
@@ -262,6 +263,19 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(prompt).not.toContain('LINK: Email from')
         expect(prompt).toContain('hello@cal.com')
         expect(prompt).toContain('with a space at the end')
+    })
+
+    test('uses Luna for generated default follow-ups and Terra for custom prompts', () => {
+        const defaultDefinition = buildDefaultActiveProjectLabelDefinitions([
+            { id: 'project-a', name: 'Client', description: '' },
+        ])[0]
+
+        expect(resolvePostLabelAssistantModel(defaultDefinition, defaultDefinition.postLabelPrompt)).toBe(
+            'MODEL_GPT5_6_LUNA'
+        )
+        expect(resolvePostLabelAssistantModel(defaultDefinition, 'Create a custom follow-up')).toBe(
+            'MODEL_GPT5_6_TERRA'
+        )
     })
 
     test('formats default follow-up topic titles using the user date format and timezone', () => {
@@ -561,10 +575,14 @@ describe('serverSideGmailLabelingSync helpers', () => {
                     ),
                 ]),
             ]),
+            'MODEL_GPT5_6_TERRA',
             expect.anything(),
             expect.anything(),
-            expect.anything(),
-            expect.anything()
+            expect.objectContaining({
+                openAiReasoningEffort: 'low',
+                maxToolCallIterations: 8,
+                promptCacheScope: 'gmail-post-label-custom',
+            })
         )
         expect(addProjectRoutingReasonComment).toHaveBeenCalledWith(
             expect.objectContaining({

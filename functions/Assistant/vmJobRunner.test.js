@@ -575,6 +575,79 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(error.message).not.toContain('super-secret')
     })
 
+    test('recognizes provider-specific subscription authentication failures', () => {
+        expect(
+            __private__.isVmSubscriptionAuthError(
+                new Error('401 Unauthorized: {"code":"refresh_token_reused"}'),
+                'codex'
+            )
+        ).toBe(true)
+        expect(
+            __private__.isVmSubscriptionAuthError(new Error('OAuth token has expired. Please log in again.'), 'claude')
+        ).toBe(true)
+        expect(
+            __private__.isVmSubscriptionAuthError(new Error('Invalid OAuth token. Please run /login.'), 'claude')
+        ).toBe(true)
+        expect(__private__.isVmSubscriptionAuthError(new Error('Repository returned 401'), 'codex')).toBe(false)
+    })
+
+    test('only marks a pre-work subscription auth failure as safe to retry', () => {
+        const preWorkError = __private__.markSafeVmSubscriptionAuthRetry(
+            new Error('refresh token was already used'),
+            'codex',
+            { activity: ['Failed to refresh token: refresh token was already used'] }
+        )
+        const afterWorkError = __private__.markSafeVmSubscriptionAuthRetry(
+            new Error('OAuth token has expired'),
+            'claude',
+            { activity: ['💻 Created a pull request'] }
+        )
+
+        expect(preWorkError.vmAuthRetrySafe).toBe(true)
+        expect(afterWorkError.vmAuthRetrySafe).toBe(false)
+    })
+
+    test('waits for a newer subscription credential before retrying', async () => {
+        let clock = 0
+        const loadAuth = jest
+            .fn()
+            .mockResolvedValueOnce({ credentialVersion: 'old-version' })
+            .mockResolvedValueOnce({ credentialVersion: 'new-version', credential: 'new-token' })
+        const wait = jest.fn(async ms => {
+            clock += ms
+        })
+
+        await expect(
+            __private__.waitForVmSubscriptionAuthChange('user-1', 'claude', 'old-version', {
+                timeoutMs: 100,
+                pollMs: 10,
+                loadAuth,
+                wait,
+                now: () => clock,
+            })
+        ).resolves.toEqual({ credentialVersion: 'new-version', credential: 'new-token' })
+        expect(loadAuth).toHaveBeenLastCalledWith('user-1', 'claude', { markUsed: false })
+        expect(wait).toHaveBeenCalledTimes(1)
+    })
+
+    test('stops auth recovery without blindly retrying the same credential', async () => {
+        let clock = 0
+        const wait = jest.fn(async ms => {
+            clock += ms
+        })
+
+        await expect(
+            __private__.waitForVmSubscriptionAuthChange('user-1', 'codex', 'same-version', {
+                timeoutMs: 20,
+                pollMs: 10,
+                loadAuth: jest.fn(async () => ({ credentialVersion: 'same-version' })),
+                wait,
+                now: () => clock,
+            })
+        ).resolves.toBeNull()
+        expect(wait).toHaveBeenCalledTimes(2)
+    })
+
     test('routes Codex through the HTTP proxy and disables Responses WebSockets', () => {
         const overrides = __private__.buildCodexProxyConfigOverrides('https://vm-proxy.example/functions/vmLlmProxy/')
 

@@ -2,7 +2,7 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 
 const { GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
-const { getCachedEnvFunctions, getOpenAIClient } = require('./assistantHelper')
+const { getCachedEnvFunctions, getOpenAIClient, logOpenAiCacheUsage } = require('./assistantHelper')
 
 const MAX_GENERATED_DESCRIPTION_LENGTH = 420
 const MAX_TASK_EXAMPLES = 50
@@ -275,7 +275,7 @@ async function generateDelegationDescription(inputs, languageCode = 'en') {
 
         const openai = getOpenAIClient(openAiKey)
         const selectedModel = getOpenAIModelFromAssistantModel(inputs?.assistant?.model)
-        const completion = await openai.chat.completions.create({
+        const requestParams = {
             model: selectedModel,
             temperature: 0.2,
             messages: [
@@ -296,6 +296,18 @@ async function generateDelegationDescription(inputs, languageCode = 'en') {
                         'Style requirements: action-oriented, selection-focused, truthful, no hype, no emojis.',
                 },
             ],
+        }
+        if (selectedModel.startsWith('gpt-5.6')) {
+            // Descriptions are regenerated only when the persisted input hash changes, so a
+            // one-off implicit cache write would add cost without a likely subsequent read.
+            requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
+        }
+        const completion = await openai.chat.completions.create(requestParams)
+        logOpenAiCacheUsage({
+            usage: completion?.usage,
+            route: 'delegation-description',
+            model: selectedModel,
+            cacheMode: requestParams.prompt_cache_options ? 'explicit-no-breakpoint' : 'automatic',
         })
 
         const generated = extractTextFromCompletionMessage(completion?.choices?.[0]?.message)

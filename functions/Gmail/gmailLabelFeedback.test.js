@@ -44,6 +44,7 @@ jest.mock('../Assistant/assistantHelper', () => ({
             },
         },
     })),
+    logOpenAiCacheUsage: jest.fn(),
 }))
 
 jest.mock('./gmailPromptClassifier', () => ({

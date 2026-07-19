@@ -1,6 +1,11 @@
 'use strict'
 
-const { getCachedEnvFunctions, getOpenAIClient } = require('../../Assistant/assistantHelper')
+const {
+    buildOpenAiPromptCacheKey,
+    getCachedEnvFunctions,
+    getOpenAIClient,
+    logOpenAiCacheUsage,
+} = require('../../Assistant/assistantHelper')
 
 // Model used to compose email replies. The MODEL_ key is what the Gold metering
 // (calculateGoldCostFromTokens) expects; the OpenAI id is what the API needs.
@@ -55,18 +60,26 @@ function buildUserContent({ context = {}, guidance, language, groundingContext =
 }
 
 // Returns { body, totalTokens }. Throws when the OpenAI key is unavailable.
-async function composeReply({ context, guidance, language, groundingContext } = {}) {
+async function composeReply({ context, guidance, language, groundingContext, cacheScope = '' } = {}) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
     if (!openAiKey) throw new Error('OpenAI key unavailable for reply composition')
 
     const openai = getOpenAIClient(openAiKey)
+    const promptCacheKey = buildOpenAiPromptCacheKey('email-reply', REPLY_OPENAI_MODEL, cacheScope, REPLY_SYSTEM_PROMPT)
     const completion = await openai.chat.completions.create({
         model: REPLY_OPENAI_MODEL,
         messages: [
             { role: 'system', content: REPLY_SYSTEM_PROMPT },
             { role: 'user', content: buildUserContent({ context, guidance, language, groundingContext }) },
         ],
+        prompt_cache_key: promptCacheKey,
+    })
+    logOpenAiCacheUsage({
+        usage: completion?.usage,
+        route: 'email-reply-composer',
+        model: REPLY_OPENAI_MODEL,
+        cacheKey: promptCacheKey,
     })
 
     const body = completion?.choices?.[0]?.message?.content?.trim() || ''

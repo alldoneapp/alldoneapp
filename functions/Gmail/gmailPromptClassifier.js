@@ -1,6 +1,13 @@
 'use strict'
 
-const { getCachedEnvFunctions, getOpenAIClient, normalizeModelKey } = require('../Assistant/assistantHelper')
+const {
+    buildOpenAiPromptCacheKey,
+    getCachedEnvFunctions,
+    getOpenAiCacheUsage,
+    getOpenAIClient,
+    logOpenAiCacheUsage,
+    normalizeModelKey,
+} = require('../Assistant/assistantHelper')
 const {
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_GMAIL_LABELING_MODEL,
@@ -28,6 +35,8 @@ const GPT5_REASONING_MODEL_KEYS = new Set([
     'MODEL_GPT5_4_MINI',
     'MODEL_GPT5_4_NANO',
 ])
+const MAX_CLASSIFIER_LABEL_DESCRIPTION_CHARS = 900
+const MAX_CLASSIFIER_BODY_CHARS = 12000
 
 function mapAssistantModelToOpenAIModel(modelKey) {
     const normalizedKey = normalizeModelKey(modelKey || DEFAULT_GMAIL_LABELING_MODEL)
@@ -193,10 +202,13 @@ function noMatchReasoningSuggestsPositiveMatch(reasoning = '') {
 
 function extractUsage(completion) {
     if (!completion?.usage) return null
+    const cacheUsage = getOpenAiCacheUsage(completion.usage)
     return {
         totalTokens: Number.isFinite(completion.usage.total_tokens) ? completion.usage.total_tokens : 0,
         promptTokens: Number.isFinite(completion.usage.prompt_tokens) ? completion.usage.prompt_tokens : 0,
         completionTokens: Number.isFinite(completion.usage.completion_tokens) ? completion.usage.completion_tokens : 0,
+        cachedTokens: cacheUsage.cachedTokens,
+        cacheWriteTokens: cacheUsage.cacheWriteTokens,
     }
 }
 
@@ -207,16 +219,39 @@ function combineUsage(a, b) {
         totalTokens: (a.totalTokens || 0) + (b.totalTokens || 0),
         promptTokens: (a.promptTokens || 0) + (b.promptTokens || 0),
         completionTokens: (a.completionTokens || 0) + (b.completionTokens || 0),
+        cachedTokens: (a.cachedTokens || 0) + (b.cachedTokens || 0),
+        cacheWriteTokens: (a.cacheWriteTokens || 0) + (b.cacheWriteTokens || 0),
     }
 }
 
-async function runClassifierCompletion(openai, { selectedModel, isReasoningModel, systemPrompt, userContent }) {
+async function runClassifierCompletion(
+    openai,
+    { selectedModel, isReasoningModel, systemPrompt, staticUserContent, dynamicUserContent, cacheKey, cacheRoute }
+) {
+    const supportsExplicitCaching = selectedModel.startsWith('gpt-5.6')
     const requestParams = {
         model: selectedModel,
         messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: userContent },
+            {
+                role: 'user',
+                content: supportsExplicitCaching
+                    ? [
+                          {
+                              type: 'text',
+                              text: staticUserContent,
+                              prompt_cache_breakpoint: { mode: 'explicit' },
+                          },
+                      ]
+                    : staticUserContent,
+            },
+            { role: 'user', content: dynamicUserContent },
         ],
+        prompt_cache_key: cacheKey,
+    }
+
+    if (supportsExplicitCaching) {
+        requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
     }
 
     // GPT-5 reasoning models use the provider default reasoning effort (medium).
@@ -227,6 +262,13 @@ async function runClassifierCompletion(openai, { selectedModel, isReasoningModel
     }
 
     const completion = await openai.chat.completions.create(requestParams)
+    logOpenAiCacheUsage({
+        usage: completion?.usage,
+        route: cacheRoute,
+        model: selectedModel,
+        cacheKey,
+        cacheMode: supportsExplicitCaching ? 'explicit' : 'automatic',
+    })
     const content = completion?.choices?.[0]?.message?.content || ''
     return {
         parsed: extractJsonFromText(content),
@@ -239,6 +281,61 @@ function buildConsistencyOptionsFromLabels(labelDefinitions = []) {
     return (Array.isArray(labelDefinitions) ? labelDefinitions : [])
         .filter(label => label && label.key)
         .map(label => ({ key: label.key, names: [label.gmailLabelName || '', label.key] }))
+}
+
+function buildClassifierLabelDefinitions(labelDefinitions = []) {
+    return (Array.isArray(labelDefinitions) ? labelDefinitions : [])
+        .filter(label => label && label.key)
+        .map(label => ({
+            key: label.key,
+            gmailLabelName: label.gmailLabelName || '',
+            description: String(label.description || '').slice(0, MAX_CLASSIFIER_LABEL_DESCRIPTION_CHARS),
+        }))
+        .sort((a, b) => String(a.key).localeCompare(String(b.key)))
+}
+
+function compactClassifierBody(body = '') {
+    const normalizedBody = String(body || '')
+    if (normalizedBody.length <= MAX_CLASSIFIER_BODY_CHARS) return normalizedBody
+    return `${normalizedBody.slice(0, MAX_CLASSIFIER_BODY_CHARS)}\n[Older email content truncated]`
+}
+
+function buildClassifierMessage(message = {}) {
+    return {
+        direction: message.direction || '',
+        from: message.from || '',
+        to: message.to || '',
+        cc: message.cc || '',
+        bcc: message.bcc || '',
+        date: message.date || '',
+        subject: message.subject || '',
+        snippet: message.snippet || '',
+        bodyText: compactClassifierBody(message.bodyText || message.body || ''),
+        inReplyTo: message.inReplyTo || '',
+        references: message.references || '',
+        gmailLabelIds: Array.isArray(message.gmailLabelIds)
+            ? message.gmailLabelIds
+            : Array.isArray(message.labelIds)
+            ? message.labelIds
+            : [],
+        listUnsubscribe: message.listUnsubscribe || '',
+    }
+}
+
+function buildAuditLabelDefinitions(labelDefinitions, firstResult, crossReference, consistencyTrigger) {
+    if (consistencyTrigger?.type === 'zero_confidence') return labelDefinitions
+
+    const candidateKeys = new Set()
+    if (firstResult?.labelKey) candidateKeys.add(firstResult.labelKey)
+    if (crossReference?.otherKey) candidateKeys.add(crossReference.otherKey)
+    if (firstResult?.rawLabelKey) {
+        const resolvedRawKey = resolveConfiguredLabelKey(firstResult.rawLabelKey, labelDefinitions)
+        if (resolvedRawKey) candidateKeys.add(resolvedRawKey)
+    }
+
+    if (candidateKeys.size === 0) return labelDefinitions
+    const candidates = labelDefinitions.filter(label => candidateKeys.has(label.key))
+    return candidates.length > 0 ? candidates : labelDefinitions
 }
 
 // Optional "who is the user" section — helps judge relevance (cold outreach vs a real
@@ -260,12 +357,13 @@ async function verifyClassificationConsistency(
     openai,
     { selectedModel, isReasoningModel, config, message, labelDefinitions, confidenceThreshold, firstResult }
 ) {
-    const userContent =
+    const staticUserContent =
         `Prompt:\n${config.prompt}\n\n` +
         buildUserDescriptionSection(config) +
-        `Configured labels:\n${JSON.stringify(labelDefinitions, null, 2)}\n\n` +
-        `Email:\n${JSON.stringify(message, null, 2)}\n\n` +
-        `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}\n\n` +
+        `Configured labels:\n${JSON.stringify(labelDefinitions)}\n\n` +
+        `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}`
+    const dynamicUserContent =
+        `Email:\n${JSON.stringify(message)}\n\n` +
         `First-pass decision:\n${JSON.stringify(
             {
                 matched: firstResult.matched,
@@ -287,7 +385,16 @@ async function verifyClassificationConsistency(
         selectedModel,
         isReasoningModel,
         systemPrompt: GMAIL_CONSISTENCY_SYSTEM_PROMPT,
-        userContent,
+        staticUserContent,
+        dynamicUserContent,
+        cacheKey: buildOpenAiPromptCacheKey(
+            'gmail-audit',
+            selectedModel,
+            config?.projectId || '',
+            config?.gmailEmail || '',
+            staticUserContent
+        ),
+        cacheRoute: 'gmail-classifier-audit',
     })
 
     const verified = coerceClassifierResult({ ...parsed }, labelDefinitions, confidenceThreshold)
@@ -321,13 +428,16 @@ async function classifyGmailMessage({ config, message }) {
     const auditModelKey = config?.consistencyModel || DEFAULT_GMAIL_CONSISTENCY_MODEL
     const auditModel = mapAssistantModelToOpenAIModel(auditModelKey)
     const auditIsReasoningModel = isGpt5ReasoningModel(auditModelKey)
+    const classifierLabelDefinitions = buildClassifierLabelDefinitions(labelDefinitions)
+    const classifierMessage = buildClassifierMessage(message)
 
-    const firstUserContent =
+    const firstStaticUserContent =
         `Prompt:\n${config.prompt}\n\n` +
         buildUserDescriptionSection(config) +
-        `Configured labels:\n${JSON.stringify(labelDefinitions, null, 2)}\n\n` +
-        `Email:\n${JSON.stringify(message, null, 2)}\n\n` +
-        `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}\n\n` +
+        `Configured labels:\n${JSON.stringify(classifierLabelDefinitions)}\n\n` +
+        `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}`
+    const firstDynamicUserContent =
+        `Email:\n${JSON.stringify(classifierMessage)}\n\n` +
         'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","confidence":0.92,"reasoning":"..."}. ' +
         `${buildNoMatchResponseGuidance(
             config
@@ -337,7 +447,16 @@ async function classifyGmailMessage({ config, message }) {
         selectedModel,
         isReasoningModel,
         systemPrompt: GMAIL_CLASSIFIER_SYSTEM_PROMPT,
-        userContent: firstUserContent,
+        staticUserContent: firstStaticUserContent,
+        dynamicUserContent: firstDynamicUserContent,
+        cacheKey: buildOpenAiPromptCacheKey(
+            'gmail-first',
+            selectedModel,
+            config?.projectId || '',
+            config?.gmailEmail || '',
+            firstStaticUserContent
+        ),
+        cacheRoute: 'gmail-classifier-first-pass',
     })
 
     const firstResult = coerceClassifierResult({ ...parsed, usage: firstUsage }, labelDefinitions, confidenceThreshold)
@@ -383,12 +502,18 @@ async function classifyGmailMessage({ config, message }) {
     }
 
     try {
+        const auditLabelDefinitions = buildAuditLabelDefinitions(
+            classifierLabelDefinitions,
+            firstResult,
+            crossReference,
+            consistencyTrigger
+        )
         const { verified, usage: verifyUsage, parsed: verifyParsed } = await verifyClassificationConsistency(openai, {
             selectedModel: auditModel,
             isReasoningModel: auditIsReasoningModel,
             config,
-            message,
-            labelDefinitions,
+            message: classifierMessage,
+            labelDefinitions: auditLabelDefinitions,
             confidenceThreshold,
             firstResult,
         })
@@ -460,6 +585,9 @@ async function classifyGmailMessage({ config, message }) {
 }
 
 module.exports = {
+    buildAuditLabelDefinitions,
+    buildClassifierLabelDefinitions,
+    buildClassifierMessage,
     classifyGmailMessage,
     extractJsonFromText,
     isGpt5ReasoningModel,

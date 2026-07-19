@@ -105,7 +105,9 @@ function buildSkillMarkdown(skill) {
 // One compact index line per skill — this is the only part that is always in
 // context for the in-app assistant (progressive disclosure level 1).
 function buildSkillsIndexBlock(skills) {
-    const lines = skills.map(skill => `- ${skill.name}: ${skill.description || ''}`)
+    const lines = [...skills]
+        .sort((firstSkill, secondSkill) => firstSkill.name.localeCompare(secondSkill.name))
+        .map(skill => `- ${skill.name}: ${skill.description || ''}`)
     return [
         'You have access to the following skills (expert instruction packs). Each line is "name: when to use it":',
         ...lines,

@@ -1,8 +1,10 @@
 const mockCreate = jest.fn()
 
 jest.mock('../../Assistant/assistantHelper', () => ({
+    buildOpenAiPromptCacheKey: jest.fn(scope => `${scope}-cache-key`),
     getCachedEnvFunctions: jest.fn(() => ({ OPEN_AI_KEY: 'key' })),
     getOpenAIClient: jest.fn(() => ({ chat: { completions: { create: (...args) => mockCreate(...args) } } })),
+    logOpenAiCacheUsage: jest.fn(),
 }))
 
 const { getCachedEnvFunctions } = require('../../Assistant/assistantHelper')
@@ -55,6 +57,7 @@ describe('replyComposer', () => {
         const result = await composeReply({ context: { subject: 'Hi', body: 'x' }, guidance: 'ok' })
         expect(result.body).toBe('Sure, that works.')
         expect(result.totalTokens).toBe(123)
+        expect(mockCreate.mock.calls[0][0].prompt_cache_key).toBe('email-reply-cache-key')
     })
 
     test('composeReply instructs the model to match the original email language over app language', async () => {

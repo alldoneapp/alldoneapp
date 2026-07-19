@@ -192,6 +192,9 @@ const DELEGATION_PROJECT_SCAN_CONCURRENCY = 25
 const MAX_EXTERNAL_INTEGRATION_TOOLS = 40
 const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 200
+const TOOL_SEARCH_MIN_FUNCTIONS = 10
+const TOOL_SEARCH_NAMESPACE_MAX_FUNCTIONS = 8
+const ASSISTANT_PROMPT_CACHE_VERSION = 'assistant-prefix-v2'
 // Fallback wall-clock budget for callers that do not provide an explicit limit. Assistant-task
 // and interactive-chat entry points provide their longer budget through toolRuntimeContext when
 // their platform timeout leaves enough cleanup headroom.
@@ -623,6 +626,50 @@ function buildConversationAfterToolExecution({
     ]
 }
 
+function buildConversationAfterToolExecutions({
+    currentConversation,
+    responseText,
+    toolExecutions,
+    userContext = null,
+}) {
+    const executions = Array.isArray(toolExecutions) ? toolExecutions.filter(Boolean) : []
+    if (executions.length === 1) {
+        return buildConversationAfterToolExecution({
+            currentConversation,
+            responseText,
+            userContext,
+            ...executions[0],
+        })
+    }
+
+    return [
+        ...currentConversation,
+        {
+            role: 'assistant',
+            content: responseText,
+            tool_calls: executions.map(execution => ({
+                id: execution.toolCallId,
+                type: 'function',
+                function: {
+                    name: execution.toolName,
+                    arguments: JSON.stringify(
+                        buildConversationSafeToolArgs(execution.toolName, execution.toolArgs, null)
+                    ),
+                },
+            })),
+        },
+        ...executions.map(execution => ({
+            role: 'tool',
+            content: JSON.stringify(execution.conversationSafeToolResult),
+            tool_call_id: execution.toolCallId,
+        })),
+        {
+            role: 'user',
+            content: TOOL_RESULT_FOLLOW_UP_PROMPT,
+        },
+    ]
+}
+
 function mapAssistantTaskForToolResponse(task, requestingUserId = '') {
     const completedAt = Number(task?.completed)
     const dueDate = Number(task?.dueDate)
@@ -898,6 +945,30 @@ const modelSupportsNativeTools = modelKey => {
         modelKey === MODEL_GPT5_4_MINI ||
         modelKey === MODEL_GPT5_4_NANO ||
         modelKey === MODEL_GPT5_2
+    )
+}
+
+// Hosted tool search was introduced for GPT-5.4 and newer. Keep the explicit
+// allowlist so older configured assistants continue receiving ordinary function
+// schemas instead of failing the whole request on an unsupported built-in tool.
+const modelSupportsToolSearch = modelKey => {
+    const normalizedKey = normalizeModelKey(modelKey)
+    return (
+        normalizedKey === MODEL_GPT5_5 ||
+        normalizedKey === MODEL_GPT5_6_SOL ||
+        normalizedKey === MODEL_GPT5_6_TERRA ||
+        normalizedKey === MODEL_GPT5_6_LUNA ||
+        normalizedKey === MODEL_GPT5_4_MINI ||
+        normalizedKey === MODEL_GPT5_4_NANO
+    )
+}
+
+const modelSupportsExplicitPromptCaching = modelKey => {
+    const normalizedKey = normalizeModelKey(modelKey)
+    return (
+        normalizedKey === MODEL_GPT5_6_SOL ||
+        normalizedKey === MODEL_GPT5_6_TERRA ||
+        normalizedKey === MODEL_GPT5_6_LUNA
     )
 }
 
@@ -2194,89 +2265,107 @@ async function collectAssistantTextWithToolCalls({
     let responseText = ''
     let currentConversation = conversationHistory
     let currentToolCalls = null
-    let toolCallIteration = 0
+    let toolCallRound = 0
+    let executedToolCallsCount = 0
     const executedToolNames = []
     const createdTaskResults = []
     const createdNoteResults = []
     let pendingAttachmentPayload = null
+    const maxToolCallRounds = Math.max(
+        1,
+        Math.min(
+            MAX_NATIVE_TOOL_CALL_ITERATIONS,
+            Number(toolRuntimeContext?.maxToolCallIterations) || MAX_NATIVE_TOOL_CALL_ITERATIONS
+        )
+    )
 
     const collectStreamContent = async activeStream => {
         let nextToolCalls = null
+        let assistantText = ''
         for await (const chunk of activeStream) {
             if (chunk.additional_kwargs?.tool_calls && Array.isArray(chunk.additional_kwargs.tool_calls)) {
                 nextToolCalls = chunk.additional_kwargs.tool_calls
             } else if (chunk.content) {
                 responseText += chunk.content
+                assistantText += chunk.content
             }
         }
-        return nextToolCalls
+        return { toolCalls: nextToolCalls, assistantText }
     }
 
-    currentToolCalls = await collectStreamContent(stream)
+    let collectedStream = await collectStreamContent(stream)
+    currentToolCalls = collectedStream.toolCalls
 
-    while (currentToolCalls && currentToolCalls.length > 0 && toolCallIteration < MAX_NATIVE_TOOL_CALL_ITERATIONS) {
-        toolCallIteration++
+    while (currentToolCalls && currentToolCalls.length > 0 && toolCallRound < maxToolCallRounds) {
+        toolCallRound++
+        const toolExecutions = []
 
-        const toolCall = currentToolCalls[0]
-        const toolName = toolCall?.function?.name
-        const toolCallId = toolCall?.id
-        let toolArgs = {}
+        // A Responses turn may emit several independent function calls. Execute every
+        // authorized call and return all outputs in one follow-up request; previously only
+        // index 0 survived, forcing extra rounds or silently dropping requested work.
+        for (const toolCall of currentToolCalls) {
+            const toolName = toolCall?.function?.name
+            const toolCallId = toolCall?.id
+            let toolArgs = {}
 
-        try {
-            toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
-        } catch (error) {
-            throw new Error(`Failed to parse tool arguments for ${toolName}`)
-        }
+            try {
+                toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
+            } catch (error) {
+                throw new Error(`Failed to parse tool arguments for ${toolName}`)
+            }
 
-        const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(toolName, toolArgs, pendingAttachmentPayload)
-        toolArgs = enrichedToolArgs.toolArgs
-        if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
+            const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(toolName, toolArgs, pendingAttachmentPayload)
+            toolArgs = enrichedToolArgs.toolArgs
+            if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
 
-        const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(toolName, toolArgs, userContext)
-        toolArgs = createTaskImageArgs.toolArgs
+            const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(toolName, toolArgs, userContext)
+            toolArgs = createTaskImageArgs.toolArgs
 
-        const isAllowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
-        if (!isAllowed) {
-            throw new Error(`Tool not permitted: ${toolName}`)
-        }
+            const isAllowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
+            if (!isAllowed) throw new Error(`Tool not permitted: ${toolName}`)
 
-        const toolResult = await executeToolNatively(
-            toolName,
-            toolArgs,
-            toolRuntimeContext?.projectId,
-            toolRuntimeContext?.assistantId,
-            toolRuntimeContext?.requestUserId,
-            userContext,
-            toolRuntimeContext
-        )
-        executedToolNames.push(toolName)
-        if (
-            toolName === 'create_task' &&
-            toolResult?.success !== false &&
-            toolResult?.taskId &&
-            toolResult?.projectId
-        ) {
-            createdTaskResults.push({
-                taskId: toolResult.taskId,
-                projectId: toolResult.projectId,
-                projectName: toolResult.projectName || '',
-                task: toolResult.task || null,
+            const toolResult = await executeToolNatively(
+                toolName,
+                toolArgs,
+                toolRuntimeContext?.projectId,
+                toolRuntimeContext?.assistantId,
+                toolRuntimeContext?.requestUserId,
+                userContext,
+                toolRuntimeContext
+            )
+            executedToolCallsCount++
+            executedToolNames.push(toolName)
+            if (
+                toolName === 'create_task' &&
+                toolResult?.success !== false &&
+                toolResult?.taskId &&
+                toolResult?.projectId
+            ) {
+                createdTaskResults.push({
+                    taskId: toolResult.taskId,
+                    projectId: toolResult.projectId,
+                    projectName: toolResult.projectName || '',
+                    task: toolResult.task || null,
+                })
+            }
+            if (toolName === 'create_note' && toolResult?.success !== false) {
+                const createdNote = normalizeCreatedNote(toolResult)
+                if (createdNote) createdNoteResults.push(createdNote)
+            }
+            const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
+            pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+            toolExecutions.push({
+                toolName,
+                toolArgs,
+                toolCallId,
+                conversationSafeToolResult,
             })
         }
-        if (toolName === 'create_note' && toolResult?.success !== false) {
-            const createdNote = normalizeCreatedNote(toolResult)
-            if (createdNote) createdNoteResults.push(createdNote)
-        }
-        const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
-        pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
 
-        currentConversation = buildConversationAfterToolExecution({
+        currentConversation = buildConversationAfterToolExecutions({
             currentConversation,
-            responseText,
-            toolName,
-            toolArgs,
-            toolCallId,
-            conversationSafeToolResult,
+            responseText: collectedStream.assistantText,
+            toolExecutions,
             userContext,
         })
 
@@ -2287,20 +2376,23 @@ async function collectAssistantTextWithToolCalls({
             allowedTools,
             toolRuntimeContext
         )
-        currentToolCalls = await collectStreamContent(resumedStream)
+        collectedStream = await collectStreamContent(resumedStream)
+        currentToolCalls = collectedStream.toolCalls
     }
 
-    if (toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS) {
+    const reachedMaxToolIterations =
+        !!(currentToolCalls && currentToolCalls.length > 0) && toolCallRound >= maxToolCallRounds
+    if (reachedMaxToolIterations) {
         responseText += '\n\nMaximum tool call iterations reached.'
     }
 
     return {
         assistantResponse: ensureCreatedNoteLinksInResponse(responseText, createdNoteResults),
-        executedToolCallsCount: toolCallIteration,
+        executedToolCallsCount,
         executedToolNames,
         createdTaskResults,
         createdNoteResults,
-        reachedMaxToolIterations: toolCallIteration >= MAX_NATIVE_TOOL_CALL_ITERATIONS,
+        reachedMaxToolIterations,
         finalConversation: currentConversation,
     }
 }
@@ -2533,7 +2625,7 @@ async function interactWithChatStream(
                 ? formattedPrompt.map(msg => {
                       // Handle array format [role, content]
                       if (Array.isArray(msg)) {
-                          return msg
+                          return [msg[0], msg[1]]
                       }
                       // Handle object format { role, content }
                       if (typeof msg === 'object' && msg.role && msg.content) {
@@ -2570,7 +2662,11 @@ async function interactWithChatStream(
             ? formattedPrompt.map(msg => {
                   // Handle array format [role, content]
                   if (Array.isArray(msg)) {
-                      return { role: msg[0], content: msg[1] }
+                      return {
+                          role: msg[0],
+                          content: msg[1],
+                          promptCacheBreakpoint: !!msg[2]?.promptCacheBreakpoint,
+                      }
                   }
                   // Handle object format { role, content, tool_calls?, tool_call_id? }
                   if (typeof msg === 'object' && msg.role) {
@@ -2583,6 +2679,9 @@ async function interactWithChatStream(
                       if (msg.tool_call_id) {
                           result.tool_call_id = msg.tool_call_id
                       }
+                      if (msg.promptCacheBreakpoint) {
+                          result.promptCacheBreakpoint = true
+                      }
                       return result
                   }
                   console.error('Unexpected message format:', JSON.stringify(msg))
@@ -2591,11 +2690,33 @@ async function interactWithChatStream(
             : formattedPrompt
         console.log(`📊 [TIMING] Message formatting: ${Date.now() - formatStart}ms`)
 
+        const includePromptCacheBreakpoints = modelSupportsExplicitPromptCaching(modelKey)
+        const responsesInput = convertMessagesToResponsesInput(messages, {
+            includePromptCacheBreakpoints,
+        })
         const requestParams = {
             model: model,
-            input: convertMessagesToResponsesInput(messages),
+            input: responsesInput,
             stream: true,
             store: false,
+        }
+        let responsesToolConfig = null
+
+        const reasoningEffort = toolRuntimeContext?.openAiReasoningEffort
+        if (modelSupportsToolSearch(modelKey) && ['low', 'medium', 'high'].includes(reasoningEffort)) {
+            requestParams.reasoning = { effort: reasoningEffort }
+        }
+
+        const promptCacheKey =
+            toolRuntimeContext?.promptCacheKey || buildAssistantPromptCacheKey(modelKey, toolRuntimeContext)
+        if (promptCacheKey && modelSupportsToolSearch(modelKey)) {
+            requestParams.prompt_cache_key = promptCacheKey
+        }
+        if (includePromptCacheBreakpoints && responsesInputHasPromptCacheBreakpoint(responsesInput)) {
+            requestParams.prompt_cache_options = {
+                mode: 'explicit',
+                ttl: '30m',
+            }
         }
 
         // Let OpenAI manage token limits naturally - don't set max_completion_tokens
@@ -2677,7 +2798,17 @@ async function interactWithChatStream(
                     'Using native tool schemas:',
                     toolSchemas.map(t => t.function.name)
                 )
-                requestParams.tools = convertToolsToResponsesFormat(toolSchemas)
+                responsesToolConfig = buildResponsesTools(toolSchemas, modelKey, {
+                    disableToolSearch: toolRuntimeContext?.disableToolSearch === true,
+                })
+                requestParams.tools = responsesToolConfig.tools
+                console.log('🔎 TOOL SEARCH: Request tool loading strategy', {
+                    enabled: responsesToolConfig.toolSearchEnabled,
+                    namespaceCount: responsesToolConfig.namespaceCount,
+                    deferredFunctionCount: responsesToolConfig.deferredFunctionCount,
+                    directToolCount: requestParams.tools.length,
+                    model,
+                })
             }
         }
 
@@ -2692,10 +2823,14 @@ async function interactWithChatStream(
             messageCount: messages.length,
             hasTools: !!requestParams.tools,
             toolCount: requestParams.tools?.length,
+            toolSearchEnabled: !!responsesToolConfig?.toolSearchEnabled,
+            hasPromptCacheKey: !!requestParams.prompt_cache_key,
+            promptCacheMode: requestParams.prompt_cache_options?.mode,
+            reasoningEffort: requestParams.reasoning?.effort,
         })
         if (ENABLE_DETAILED_LOGGING) {
             console.log('Creating OpenAI stream — message detail:', {
-                toolNames: requestParams.tools?.map(t => t.function.name),
+                toolNames: requestParams.tools?.map(t => t.name || t.function?.name || t.type),
                 messagesPreview: messages.map((m, idx) => ({
                     index: idx,
                     role: m.role,
@@ -2723,7 +2858,24 @@ async function interactWithChatStream(
         // Make the actual API call to OpenAI
         const apiCallStart = Date.now()
         console.log('📞 [TIMING] Calling OpenAI API...')
-        const stream = await openai.responses.create(requestParams)
+        let stream
+        try {
+            stream = await openai.responses.create(requestParams)
+        } catch (error) {
+            if (!responsesToolConfig?.toolSearchEnabled || !shouldRetryWithoutToolSearch(error)) throw error
+
+            console.warn('🔎 TOOL SEARCH: Deferred loading rejected; retrying with full function schemas', {
+                model,
+                status: error.status || null,
+                error: error.message,
+            })
+            requestParams.tools = responsesToolConfig.fallbackTools
+            responsesToolConfig = {
+                ...responsesToolConfig,
+                toolSearchEnabled: false,
+            }
+            stream = await openai.responses.create(requestParams)
+        }
         const apiCallDuration = Date.now() - apiCallStart
         console.log(`✅ [TIMING] OpenAI API call successful: ${apiCallDuration}ms`)
 
@@ -2740,14 +2892,23 @@ async function interactWithChatStream(
         })
 
         // Convert Responses typed events to the stream contract used by the rest of the assistant runtime.
-        return convertResponsesStream(stream)
+        return convertResponsesStream(stream, {
+            route:
+                toolRuntimeContext?.promptCacheScope ||
+                toolRuntimeContext?.sourceChannel ||
+                toolRuntimeContext?.objectType ||
+                'assistant',
+            model,
+            cacheKey: requestParams.prompt_cache_key || '',
+            cacheMode: requestParams.prompt_cache_options?.mode || 'automatic',
+        })
     }
 }
 
 /**
  * Convert Responses API typed events to our expected format.
  */
-async function* convertResponsesStream(stream) {
+async function* convertResponsesStream(stream, usageContext = {}) {
     const accumulatedToolCalls = new Map()
     let chunkCount = 0
     let totalContentLength = 0
@@ -2811,6 +2972,23 @@ async function* convertResponsesStream(stream) {
                         name: item.name,
                         arguments: item.arguments || '{}',
                     },
+                })
+            }
+            const usage = chunk.response?.usage
+            if (usage) {
+                logOpenAiCacheUsage({
+                    usage,
+                    route: usageContext.route,
+                    model: chunk.response?.model || usageContext.model || '',
+                    cacheKey: usageContext.cacheKey,
+                    cacheMode: usageContext.cacheMode,
+                })
+                console.log('📊 OPENAI USAGE: Responses request completed', {
+                    route: usageContext.route || 'assistant',
+                    model: chunk.response?.model || usageContext.model || null,
+                    outputTokens: usage.output_tokens || 0,
+                    reasoningTokens: usage.output_tokens_details?.reasoning_tokens || 0,
+                    totalTokens: usage.total_tokens || 0,
                 })
             }
             break
@@ -10912,14 +11090,16 @@ async function addBaseInstructions(
         currentDateTime = moment().utc()
         timezoneInfo = 'UTC'
     }
-    messages.push([
-        'system',
-        `The current date and time for the user is ${currentDateTime.format(
-            'dddd, MMMM Do YYYY, h:mm:ss a'
-        )} (${timezoneInfo}).`,
-    ])
+    const volatileDateTimeMessages = [
+        [
+            'system',
+            `The current date and time for the user is ${currentDateTime.format(
+                'dddd, MMMM Do YYYY, h:mm:ss a'
+            )} (${timezoneInfo}).`,
+        ],
+    ]
     if (assistantContext?.userTimezoneName) {
-        messages.push([
+        volatileDateTimeMessages.push([
             'system',
             `The user's IANA timezone is ${assistantContext.userTimezoneName}. Use this timezone when creating calendar events that do not already include an explicit offset.`,
         ])
@@ -11237,6 +11417,30 @@ async function addBaseInstructions(
     ])
     // Note: Tool instructions removed - using OpenAI native tool calling instead of manual TOOL: format
     if (instructions) messages.push(['system', parseTextForUseLiKePrompt(instructions)])
+
+    // Everything above this point is stable or changes only when the assistant/user/project
+    // configuration changes. Mark it as the reusable prefix; volatile clock data stays after
+    // the boundary so second-level timestamp changes cannot invalidate the expensive prefix.
+    markLatestMessageAsPromptCacheBreakpoint(messages)
+    messages.push(...volatileDateTimeMessages)
+}
+
+function markLatestMessageAsPromptCacheBreakpoint(messages = []) {
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index]
+        const content = Array.isArray(message) ? message[1] : message?.content
+        if (typeof content !== 'string' || !content) continue
+        if (Array.isArray(message)) {
+            message[2] = {
+                ...(message[2] || {}),
+                promptCacheBreakpoint: true,
+            }
+        } else {
+            message.promptCacheBreakpoint = true
+        }
+        return true
+    }
+    return false
 }
 
 function parseTextForUseLiKePrompt(text) {
@@ -11728,7 +11932,7 @@ function buildMultimodalUserContent(text, imageUrls = []) {
     return content
 }
 
-function convertMessageContentToResponsesInput(content) {
+function convertMessageContentToResponsesInput(content, { includePromptCacheBreakpoints = false } = {}) {
     if (!Array.isArray(content)) return content || ''
 
     return content.map(part => {
@@ -11736,7 +11940,13 @@ function convertMessageContentToResponsesInput(content) {
             return { type: 'input_text', text: String(part || '') }
         }
         if (part.type === 'text') {
-            return { type: 'input_text', text: part.text || '' }
+            return {
+                type: 'input_text',
+                text: part.text || '',
+                ...(includePromptCacheBreakpoints && part.prompt_cache_breakpoint
+                    ? { prompt_cache_breakpoint: part.prompt_cache_breakpoint }
+                    : {}),
+            }
         }
         if (part.type === 'image_url') {
             return {
@@ -11749,7 +11959,7 @@ function convertMessageContentToResponsesInput(content) {
     })
 }
 
-function convertMessagesToResponsesInput(messages) {
+function convertMessagesToResponsesInput(messages, { includePromptCacheBreakpoints = false } = {}) {
     const input = []
 
     for (const message of messages || []) {
@@ -11765,9 +11975,29 @@ function convertMessagesToResponsesInput(messages) {
         }
 
         if (message.content || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
+            let convertedContent = convertMessageContentToResponsesInput(message.content, {
+                includePromptCacheBreakpoints,
+            })
+            if (includePromptCacheBreakpoints && message.promptCacheBreakpoint) {
+                if (Array.isArray(convertedContent) && convertedContent.length > 0) {
+                    const finalContentIndex = convertedContent.length - 1
+                    convertedContent[finalContentIndex] = {
+                        ...convertedContent[finalContentIndex],
+                        prompt_cache_breakpoint: { mode: 'explicit' },
+                    }
+                } else {
+                    convertedContent = [
+                        {
+                            type: 'input_text',
+                            text: String(convertedContent || ''),
+                            prompt_cache_breakpoint: { mode: 'explicit' },
+                        },
+                    ]
+                }
+            }
             input.push({
                 role: message.role,
-                content: convertMessageContentToResponsesInput(message.content),
+                content: convertedContent,
             })
         }
 
@@ -11785,6 +12015,12 @@ function convertMessagesToResponsesInput(messages) {
     return input
 }
 
+function responsesInputHasPromptCacheBreakpoint(input = []) {
+    return (Array.isArray(input) ? input : []).some(item =>
+        Array.isArray(item?.content) ? item.content.some(contentPart => !!contentPart?.prompt_cache_breakpoint) : false
+    )
+}
+
 function convertToolsToResponsesFormat(tools) {
     return (tools || []).map(tool => {
         if (tool?.type !== 'function' || !tool.function) return tool
@@ -11796,6 +12032,151 @@ function convertToolsToResponsesFormat(tools) {
             strict: tool.function.strict ?? false,
         }
     })
+}
+
+const TOOL_SEARCH_NAMESPACE_DESCRIPTIONS = {
+    tasks_and_goals: 'Create, find, and update tasks, goals, focus work, and execution jobs.',
+    gmail: 'Search Gmail, inspect attachments, manage messages and drafts, and correct email classification.',
+    calendar: 'Find availability and search, create, update, or delete calendar events.',
+    chats_and_media: 'Read chats, comments, attachments, recent media, and conversation updates.',
+    notes: 'Find, create, and update notes and note content.',
+    people_and_projects: 'Work with contacts, users, projects, project health, and project objectives.',
+    assistant_settings: 'Manage assistant settings, memory, heartbeat behavior, skills, and thread context.',
+    research: 'Search the web and get weather, routes, places, and other external information.',
+    integrations: 'Use delegated assistants, configured integrations, and remote MCP tools.',
+    other: 'Additional tools available to this assistant.',
+}
+
+function getToolSearchNamespaceName(toolName = '') {
+    const name = String(toolName || '').toLowerCase()
+    if (/gmail|email/.test(name)) return 'gmail'
+    if (/calendar|availability/.test(name)) return 'calendar'
+    if (/task|goal|focus|execute_.*vm/.test(name)) return 'tasks_and_goals'
+    if (/chat|comment|attachment|media|update\b/.test(name)) return 'chats_and_media'
+    if (/note/.test(name)) return 'notes'
+    if (/contact|project|user/.test(name)) return 'people_and_projects'
+    if (/assistant|heartbeat|memory|skill|compact_thread/.test(name)) return 'assistant_settings'
+    if (/search|weather|route|recommendation|local/.test(name)) return 'research'
+    if (
+        name.startsWith(TALK_TO_ASSISTANT_TOOL_PREFIX) ||
+        name.startsWith(EXTERNAL_TOOL_PREFIX) ||
+        name.startsWith(MCP_TOOL_PREFIX)
+    ) {
+        return 'integrations'
+    }
+    return 'other'
+}
+
+function buildResponsesTools(tools, modelKey, { disableToolSearch = false } = {}) {
+    const convertedTools = convertToolsToResponsesFormat(tools).sort((firstTool, secondTool) => {
+        const firstName = firstTool?.name || firstTool?.type || ''
+        const secondName = secondTool?.name || secondTool?.type || ''
+        return firstName.localeCompare(secondName)
+    })
+    const functionTools = convertedTools.filter(tool => tool?.type === 'function' && tool.name)
+    const directTools = convertedTools.filter(tool => tool?.type !== 'function' || !tool.name)
+
+    if (disableToolSearch || !modelSupportsToolSearch(modelKey) || functionTools.length < TOOL_SEARCH_MIN_FUNCTIONS) {
+        return {
+            tools: convertedTools,
+            fallbackTools: convertedTools,
+            toolSearchEnabled: false,
+            namespaceCount: 0,
+            deferredFunctionCount: 0,
+        }
+    }
+
+    const groupedTools = new Map()
+    for (const tool of functionTools) {
+        const namespaceName = getToolSearchNamespaceName(tool.name)
+        if (!groupedTools.has(namespaceName)) groupedTools.set(namespaceName, [])
+        groupedTools.get(namespaceName).push(tool)
+    }
+
+    const namespaces = []
+    for (const [baseName, namespaceTools] of groupedTools.entries()) {
+        for (let index = 0; index < namespaceTools.length; index += TOOL_SEARCH_NAMESPACE_MAX_FUNCTIONS) {
+            const chunk = namespaceTools.slice(index, index + TOOL_SEARCH_NAMESPACE_MAX_FUNCTIONS)
+            const chunkNumber = Math.floor(index / TOOL_SEARCH_NAMESPACE_MAX_FUNCTIONS) + 1
+            const namespaceName =
+                namespaceTools.length > TOOL_SEARCH_NAMESPACE_MAX_FUNCTIONS ? `${baseName}_${chunkNumber}` : baseName
+            namespaces.push({
+                type: 'namespace',
+                name: namespaceName,
+                description: TOOL_SEARCH_NAMESPACE_DESCRIPTIONS[baseName],
+                tools: chunk.map(tool => ({ ...tool, defer_loading: true })),
+            })
+        }
+    }
+
+    return {
+        tools: [{ type: 'tool_search' }, ...directTools, ...namespaces],
+        fallbackTools: convertedTools,
+        toolSearchEnabled: true,
+        namespaceCount: namespaces.length,
+        deferredFunctionCount: functionTools.length,
+    }
+}
+
+function shouldRetryWithoutToolSearch(error) {
+    if (!error || Number(error.status) !== 400) return false
+    const message = String(error.message || error.error?.message || '').toLowerCase()
+    return /tool_search|namespace|defer_loading|deferred tool|tools?/.test(message)
+}
+
+function buildAssistantPromptCacheKey(modelKey, toolRuntimeContext = null) {
+    if (!modelSupportsToolSearch(modelKey)) return ''
+    const projectId = toolRuntimeContext?.projectId || ''
+    const assistantId = toolRuntimeContext?.assistantId || ''
+    const requestUserId = toolRuntimeContext?.requestUserId || ''
+    if (!projectId || !assistantId) return ''
+    const cacheScope = toolRuntimeContext?.promptCacheScope || 'assistant'
+    const digest = crypto
+        .createHash('sha256')
+        .update(
+            `${ASSISTANT_PROMPT_CACHE_VERSION}:${normalizeModelKey(
+                modelKey
+            )}:${projectId}:${assistantId}:${requestUserId}:${cacheScope}`
+        )
+        .digest('hex')
+        .slice(0, 40)
+    return `alldone-${digest}`
+}
+
+function buildOpenAiPromptCacheKey(scope, ...parts) {
+    const normalizedScope = String(scope || 'openai')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .slice(0, 20)
+    const digest = crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex').slice(0, 40)
+    return `${normalizedScope}-${digest}`
+}
+
+function getOpenAiCacheUsage(usage = {}) {
+    const inputDetails = usage.input_tokens_details || usage.prompt_tokens_details || {}
+    const inputTokens = Number(usage.input_tokens ?? usage.prompt_tokens) || 0
+    const cachedTokens = Number(inputDetails.cached_tokens) || 0
+    const cacheWriteTokens = Number(inputDetails.cache_write_tokens ?? inputDetails.cache_creation_input_tokens) || 0
+    return {
+        inputTokens,
+        cachedTokens,
+        cacheWriteTokens,
+        uncachedInputTokens: Math.max(0, inputTokens - cachedTokens),
+        cacheReadRate: inputTokens > 0 ? Number((cachedTokens / inputTokens).toFixed(4)) : 0,
+    }
+}
+
+function logOpenAiCacheUsage({ usage, route = 'unknown', model = '', cacheKey = '', cacheMode = '' } = {}) {
+    if (!usage) return null
+    const cacheUsage = getOpenAiCacheUsage(usage)
+    console.log('📊 OPENAI CACHE: Request usage', {
+        route,
+        model,
+        hasCacheKey: !!cacheKey,
+        cacheMode: cacheMode || 'automatic',
+        ...cacheUsage,
+    })
+    return cacheUsage
 }
 
 function getMessageTextForTokenCounting(content) {
@@ -12216,8 +12597,13 @@ async function getOptimizedContextMessages(
         }
     }
 
-    // Add base instructions
-    await addBaseInstructions(messages, assistantName, language, instructions, allowedTools, userTimezoneOffset, {
+    const conversationMessages = messages.reverse()
+    const baseMessages = []
+    const volatileContextMessages = []
+
+    // Keep the reusable assistant prefix first. Conversation history and live object/task
+    // context follow it so their frequent changes do not invalidate the stable cache prefix.
+    await addBaseInstructions(baseMessages, assistantName, language, instructions, allowedTools, userTimezoneOffset, {
         projectId,
         assistantId,
         requestUserId: userId,
@@ -12227,7 +12613,7 @@ async function getOptimizedContextMessages(
         ? buildCompactThreadContextMessage(compactedThreadState)
         : ''
     if (compactedThreadContextMessage) {
-        messages.push(['system', parseTextForUseLiKePrompt(compactedThreadContextMessage)])
+        volatileContextMessages.push(['system', parseTextForUseLiKePrompt(compactedThreadContextMessage)])
     }
 
     // Add canonical parent-object context. For tasks this includes identity, project, title,
@@ -12240,12 +12626,12 @@ async function getOptimizedContextMessages(
         ...currentObjectContextData,
     })
     if (currentObjectContextMessage) {
-        messages.push(['system', parseTextForUseLiKePrompt(currentObjectContextMessage)])
+        volatileContextMessages.push(['system', parseTextForUseLiKePrompt(currentObjectContextMessage)])
     }
 
     const currentNoteContextMessage = formatCurrentNoteContextMessage(currentNoteContext)
     if (currentNoteContextMessage) {
-        messages.push(['system', currentNoteContextMessage])
+        volatileContextMessages.push(['system', currentNoteContextMessage])
     }
 
     // Add open task counts context if available
@@ -12257,18 +12643,18 @@ async function getOptimizedContextMessages(
             projectCount: projects.length,
             projects: projects.map(p => ({ name: p.name, count: p.openTaskCount })),
         })
-        messages.push(['system', openTasksData.message])
+        volatileContextMessages.push(['system', openTasksData.message])
     }
 
-    const reversedMessages = messages.reverse()
+    const orderedMessages = [...baseMessages, ...volatileContextMessages, ...conversationMessages]
 
     // Add notes context if available
-    if (notesContext && reversedMessages.length > 0) {
-        const lastMessageIndex = reversedMessages.length - 1
-        if (reversedMessages[lastMessageIndex][0] === 'user') {
-            const currentContent = reversedMessages[lastMessageIndex][1]
+    if (notesContext && orderedMessages.length > 0) {
+        const lastMessageIndex = orderedMessages.length - 1
+        if (orderedMessages[lastMessageIndex][0] === 'user') {
+            const currentContent = orderedMessages[lastMessageIndex][1]
             if (typeof currentContent === 'string') {
-                reversedMessages[lastMessageIndex][1] = currentContent + notesContext
+                orderedMessages[lastMessageIndex][1] = currentContent + notesContext
             } else if (Array.isArray(currentContent)) {
                 const textPart = currentContent.find(part => part?.type === 'text')
                 if (textPart) {
@@ -12280,7 +12666,7 @@ async function getOptimizedContextMessages(
         }
     }
 
-    return reversedMessages
+    return orderedMessages
 }
 
 /**
@@ -12454,6 +12840,13 @@ module.exports = {
     convertMessageContentToResponsesInput,
     convertMessagesToResponsesInput,
     convertToolsToResponsesFormat,
+    buildResponsesTools,
+    buildAssistantPromptCacheKey,
+    buildOpenAiPromptCacheKey,
+    getOpenAiCacheUsage,
+    logOpenAiCacheUsage,
+    modelSupportsToolSearch,
+    modelSupportsExplicitPromptCaching,
     convertResponsesStream,
     normalizeCreateTaskImageUrls,
     buildCreateTaskImageTokens,
@@ -12462,6 +12855,7 @@ module.exports = {
     injectCurrentMessageImagesIntoCreateTaskArgs,
     collectAssistantTextWithToolCalls,
     buildConversationAfterToolExecution,
+    buildConversationAfterToolExecutions,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     buildConversationSafeToolArgs,
