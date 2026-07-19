@@ -16,6 +16,7 @@ import { sortBy } from 'lodash'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import NothingToShowOnChats from '../UIComponents/NothingToShowOnChats'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
+import MarkAsRead from './MarkAsRead'
 
 function ChatsView() {
     const dispatch = useDispatch()
@@ -77,7 +78,14 @@ function ChatsView() {
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
-            {inAllProjects && <AllProjectsLine showActions={false} />}
+            {inAllProjects && (
+                <AllProjectsLine
+                    showActions={false}
+                    customRight={
+                        <MarkAsRead projectIds={sortedProjects.map(project => project.id)} userId={loggedUserId} />
+                    }
+                />
+            )}
 
             <HashtagFiltersView />
 
