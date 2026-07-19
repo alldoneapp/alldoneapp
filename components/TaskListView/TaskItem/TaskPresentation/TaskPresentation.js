@@ -34,6 +34,7 @@ import TaskTagsContainerByTime from './TaskTagsContainerByTime'
 import TaskTagsContainer from './TaskTagsContainer'
 import TaskPriorityTagButton from '../../TaskPriorityTagButton'
 import TaskVmStatusTag from '../../../Tags/InProgressVmTag'
+import { doTrailingTagsCrowdTaskTitle } from '../../TagsArea/taskTagSummaryHelper'
 
 function TaskPresentation(
     {
@@ -94,6 +95,12 @@ function TaskPresentation(
     )
 
     const inMyDayAndNotSubtask = inMyDay && !task.isSubtask
+
+    const trailingTagsCrowdTitle = doTrailingTagsCrowdTaskTitle({
+        taskTagsWidth,
+        taskItemWidth,
+        inMyDayAndNotSubtask,
+    })
 
     const hasStar = task.hasStar.toUpperCase() === '#FFFFFF' && inMyDayAndNotSubtask ? colors.Grey500 : task.hasStar
 
@@ -388,6 +395,7 @@ function TaskPresentation(
                                     accessGranted={accessGranted}
                                     taskTagsSection={taskTagsSection}
                                     forceTagsMobile={forceTagsMobile}
+                                    trailingTagsCrowdTitle={trailingTagsCrowdTitle}
                                     setTagsExpandedHeight={setTagsExpandedHeight}
                                     inCommentPopup={inCommentPopup}
                                 />

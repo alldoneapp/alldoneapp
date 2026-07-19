@@ -1,4 +1,4 @@
-import { shouldSummarizeTaskTags } from './taskTagSummaryHelper'
+import { doTrailingTagsCrowdTaskTitle, shouldSummarizeTaskTags } from './taskTagSummaryHelper'
 
 const shouldSummarize = overrides =>
     shouldSummarizeTaskTags({
@@ -7,6 +7,7 @@ const shouldSummarize = overrides =>
         showSummarizeTagInByTime: false,
         isCalendarTask: false,
         hasPriorityTag: false,
+        trailingTagsCrowdTitle: false,
         tablet: false,
         isMobile: false,
         ...overrides,
@@ -32,6 +33,12 @@ describe('shouldSummarizeTaskTags', () => {
     it('summarizes plain tasks past the desktop limit', () => {
         expect(shouldSummarize({ amountTags: 5 })).toBe(true)
         expect(shouldSummarize({ amountTags: 4 })).toBe(false)
+    })
+
+    it('summarizes a small number of wide tags before they crowd out the title', () => {
+        expect(shouldSummarize({ amountTags: 3, trailingTagsCrowdTitle: true })).toBe(true)
+        expect(shouldSummarize({ amountTags: 1, trailingTagsCrowdTitle: true })).toBe(true)
+        expect(shouldSummarize({ amountTags: 0, trailingTagsCrowdTitle: true })).toBe(false)
     })
 
     it('summarizes calendar tasks one tag earlier outside My Day', () => {
@@ -73,5 +80,23 @@ describe('shouldSummarizeTaskTags', () => {
         expect(shouldSummarize({ amountTags: 1, isCalendarTask: true, hasPriorityTag: true, isMobile: true })).toBe(
             true
         )
+    })
+})
+
+describe('doTrailingTagsCrowdTaskTitle', () => {
+    it('reserves half of a regular task row for the task title', () => {
+        expect(doTrailingTagsCrowdTaskTitle({ taskTagsWidth: 301, taskItemWidth: 600 })).toBe(true)
+        expect(doTrailingTagsCrowdTaskTitle({ taskTagsWidth: 300, taskItemWidth: 600 })).toBe(false)
+    })
+
+    it('waits for valid measurements and leaves the My Day layout to its own overflow handling', () => {
+        expect(doTrailingTagsCrowdTaskTitle({ taskTagsWidth: 300, taskItemWidth: 0 })).toBe(false)
+        expect(
+            doTrailingTagsCrowdTaskTitle({
+                taskTagsWidth: 400,
+                taskItemWidth: 600,
+                inMyDayAndNotSubtask: true,
+            })
+        ).toBe(false)
     })
 })

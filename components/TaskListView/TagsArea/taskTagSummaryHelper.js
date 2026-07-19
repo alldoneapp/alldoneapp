@@ -3,6 +3,13 @@ const TABLET_TAG_LIMIT = 3
 const MOBILE_TAG_LIMIT = 2
 const MY_DAY_DESKTOP_TAG_LIMIT = 3
 const MY_DAY_COMPACT_TAG_LIMIT = 1
+const MAX_TRAILING_TAGS_WIDTH_RATIO = 0.5
+
+export const doTrailingTagsCrowdTaskTitle = ({ taskTagsWidth, taskItemWidth, inMyDayAndNotSubtask }) =>
+    !inMyDayAndNotSubtask &&
+    taskTagsWidth > 0 &&
+    taskItemWidth > 0 &&
+    taskTagsWidth > taskItemWidth * MAX_TRAILING_TAGS_WIDTH_RATIO
 
 export const shouldSummarizeTaskTags = ({
     amountTags,
@@ -10,6 +17,7 @@ export const shouldSummarizeTaskTags = ({
     showSummarizeTagInByTime,
     isCalendarTask,
     hasPriorityTag,
+    trailingTagsCrowdTitle,
     tablet,
     isMobile,
 }) => {
@@ -23,6 +31,8 @@ export const shouldSummarizeTaskTags = ({
 
         return amountTags > 0 && (showSummarizeTagInByTime || leadingTagsReachedLimit)
     }
+
+    if (amountTags > 0 && trailingTagsCrowdTitle) return true
 
     return (
         amountTags > DESKTOP_TAG_LIMIT - leadingTagsOffset ||

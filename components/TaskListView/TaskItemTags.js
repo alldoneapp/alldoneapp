@@ -29,6 +29,7 @@ const TaskItemTags = ({
     setExpandTags,
     expandTags,
     showSummarizeTagInByTime,
+    trailingTagsCrowdTitle,
     inCommentPopup,
 }) => {
     const showAllProjectsByTime = useSelector(state => state.loggedUser.showAllProjectsByTime)
@@ -67,6 +68,7 @@ const TaskItemTags = ({
         showSummarizeTagInByTime,
         isCalendarTask: !!task.calendarData,
         hasPriorityTag: normalizeTaskPriority(task.priority) !== TASK_PRIORITY_NONE,
+        trailingTagsCrowdTitle,
         tablet,
         isMobile,
     })

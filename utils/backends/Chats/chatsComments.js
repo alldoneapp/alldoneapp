@@ -1045,26 +1045,26 @@ export async function markMessagesAsRead(projectId, userId, chatsActiveTab) {
     let newCommentsRef = getDb().collection(`chatNotifications/${projectId}/${userId}`)
     if (chatsActiveTab === FOLLOWED_TAB) newCommentsRef = newCommentsRef.where('followed', '==', true)
 
-    const pushNotificationsRef = getDb()
+    newCommentsRef.get().then(snapshot => {
+        removeAllChatNotifications(projectId, userId, snapshot.docs)
+    })
+
+    getDb()
         .collection(`pushNotifications`)
         .where('projectId', '==', projectId)
         .where('userIds', 'array-contains', loggedUser.uid)
-    const emailNotificationsRef = getDb()
+        .get()
+        .then(snapshot => {
+            removeAllChatPushNotifications(snapshot)
+        })
+    getDb()
         .collection(`emailNotifications`)
         .where('projectId', '==', projectId)
         .where('userIds', 'array-contains', loggedUser.uid)
-
-    const [chatSnapshot, pushSnapshot, emailSnapshot] = await Promise.all([
-        newCommentsRef.get(),
-        pushNotificationsRef.get(),
-        emailNotificationsRef.get(),
-    ])
-
-    await Promise.all([
-        removeAllChatNotifications(projectId, userId, chatSnapshot.docs),
-        removeAllChatPushNotifications(pushSnapshot),
-        removeAllChatEmailNotifications(emailSnapshot),
-    ])
+        .get()
+        .then(snapshot => {
+            removeAllChatEmailNotifications(snapshot)
+        })
 }
 
 export async function markChatMessagesAsRead(projectId, chatId) {
@@ -1110,7 +1110,7 @@ async function removeAllChatNotifications(projectId, userId, docs) {
     docs.forEach(doc => {
         batch.delete(getDb().doc(`chatNotifications/${projectId}/${userId}/${doc.id}`))
     })
-    await batch.commit()
+    batch.commit()
 }
 
 async function removeAllChatPushNotifications(docs) {
@@ -1129,7 +1129,7 @@ async function removeAllChatPushNotifications(docs) {
               )
             : batch.delete(getDb().doc(`pushNotifications/${doc.id}`))
     })
-    await batch.commit()
+    batch.commit()
 }
 
 async function removeAllChatEmailNotifications(docs) {
@@ -1148,5 +1148,5 @@ async function removeAllChatEmailNotifications(docs) {
               )
             : batch.delete(getDb().doc(`emailNotifications/${doc.id}`))
     })
-    await batch.commit()
+    batch.commit()
 }

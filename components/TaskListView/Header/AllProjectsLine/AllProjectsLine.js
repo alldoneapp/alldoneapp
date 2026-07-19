@@ -11,7 +11,7 @@ import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOf
 import ToggleByTime from '../../ToggleByTime'
 import AllProjectsEmailLabelChips from '../../EmailLine/AllProjectsEmailLabelChips'
 
-export default function AllProjectsLine({ showActions = true, showEmailLabels = false, customRight }) {
+export default function AllProjectsLine({ showActions = true, showEmailLabels = false }) {
     const defaultProjectId = useSelector(state => state.loggedUser.defaultProjectId)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
@@ -34,7 +34,6 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
                 {showEmailLabels && <AllProjectsEmailLabelChips />}
             </View>
             <View style={localStyles.leftContainer}>
-                {customRight}
                 {showActions && inOpenSection && (
                     <>
                         <AddTaskTag

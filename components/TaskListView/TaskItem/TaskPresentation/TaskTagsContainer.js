@@ -22,6 +22,7 @@ export default function TaskTagsContainer({
     accessGranted,
     taskTagsSection,
     forceTagsMobile,
+    trailingTagsCrowdTitle,
     setTagsExpandedHeight,
     inCommentPopup,
 }) {
@@ -46,6 +47,7 @@ export default function TaskTagsContainer({
                     accessGranted={accessGranted}
                     anonymousGranted={anonymousGranted}
                     forceTagsMobile={forceTagsMobile}
+                    trailingTagsCrowdTitle={trailingTagsCrowdTitle}
                     setTagsExpandedHeight={setTagsExpandedHeight}
                     isLocked={isLocked}
                     isPending={isPending}
