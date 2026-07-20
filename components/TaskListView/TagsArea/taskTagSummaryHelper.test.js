@@ -84,9 +84,9 @@ describe('shouldSummarizeTaskTags', () => {
 })
 
 describe('doTrailingTagsCrowdTaskTitle', () => {
-    it('allows trailing tags to use up to 70% of a regular task row', () => {
-        expect(doTrailingTagsCrowdTaskTitle({ taskTagsWidth: 421, taskItemWidth: 600 })).toBe(true)
-        expect(doTrailingTagsCrowdTaskTitle({ taskTagsWidth: 420, taskItemWidth: 600 })).toBe(false)
+    it('reserves half of a regular task row for the task title', () => {
+        expect(doTrailingTagsCrowdTaskTitle({ taskTagsWidth: 301, taskItemWidth: 600 })).toBe(true)
+        expect(doTrailingTagsCrowdTaskTitle({ taskTagsWidth: 300, taskItemWidth: 600 })).toBe(false)
     })
 
     it('waits for valid measurements and leaves the My Day layout to its own overflow handling', () => {
