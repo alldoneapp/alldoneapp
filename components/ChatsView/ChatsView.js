@@ -17,7 +17,6 @@ import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import NothingToShowOnChats from '../UIComponents/NothingToShowOnChats'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 import MarkAsRead from './MarkAsRead'
-import ChatFiltersLine from './ChatFiltersLine'
 
 function ChatsView() {
     const dispatch = useDispatch()
@@ -46,11 +45,6 @@ function ChatsView() {
     ]
 
     const [areThereChats, setAreThereChats] = useState({})
-    const [unreadOnly, setUnreadOnly] = useState(false)
-
-    useEffect(() => {
-        setUnreadOnly(false)
-    }, [selectedProjectIndex, chatsActiveTab])
 
     const writeBrowserURL = () => {
         if (inSelectedProject) {
@@ -95,19 +89,11 @@ function ChatsView() {
 
             <HashtagFiltersView />
 
-            <ChatFiltersLine
-                projectIds={
-                    inSelectedProject ? [loggedUserProjects[selectedProjectIndex].id] : sortedProjects.map(p => p.id)
-                }
-                unreadOnly={unreadOnly}
-                setUnreadOnly={setUnreadOnly}
-            />
-
             {inSelectedProject ? (
                 <ChatsByProject
                     project={loggedUserProjects[selectedProjectIndex]}
+                    chatXProject={areThereChats}
                     setChatXProject={setAreThereChats}
-                    unreadOnly={unreadOnly}
                 />
             ) : (
                 <>
@@ -117,8 +103,8 @@ function ChatsView() {
                             key={project.id}
                             project={project}
                             isInAllProjects
+                            chatXProject={areThereChats}
                             setChatXProject={setAreThereChats}
-                            unreadOnly={unreadOnly}
                         />
                     ))}
                 </>
