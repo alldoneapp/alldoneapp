@@ -1963,5 +1963,7 @@
     "Keep mine": "Meine behalten",
     "Accept template": "Vorlage übernehmen",
     "Template task deleted • local changes preserved": "Vorlagenaufgabe gelöscht • lokale Änderungen beibehalten",
-    "Template changed • local changes preserved": "Vorlage geändert • lokale Änderungen beibehalten"
+    "Template changed • local changes preserved": "Vorlage geändert • lokale Änderungen beibehalten",
+    "Chat Filters": "Chatfilter",
+    "Unread": "Ungelesen"
 }

@@ -25,8 +25,9 @@ import StickyChats from './StickyChats'
 import useGetStickyChats from '../../hooks/Chats/useGetStickyChats'
 import { unwatchChatsAmount, watchChatsAmount } from '../../utils/backends/Chats/chatNumbers'
 import ChatsMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton'
+import { filterChatsByUnread, filterStickyChatsByUnread } from './Utils/unreadChatFilter'
 
-function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProject }) {
+function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const chatsActiveTab = useSelector(state => state.chatsActiveTab)
@@ -38,8 +39,13 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
         isInAllProjects && loggedUser.numberChatsAllTeams ? loggedUser.numberChatsAllTeams : 10
     )
     const [atEnd, setAtEnd] = useState(false)
-    const chats = useGetChats(project.id, toRender, chatsActiveTab)
-    const stickyChats = useGetStickyChats(project.id, toRender, chatsActiveTab)
+    const projectNotifications = useSelector(state => state.projectChatNotifications[project.id])
+    const loadedChats = useGetChats(project.id, toRender, chatsActiveTab, unreadOnly)
+    const loadedStickyChats = useGetStickyChats(project.id, toRender, chatsActiveTab, unreadOnly)
+    const chats = unreadOnly ? filterChatsByUnread(loadedChats, projectNotifications, chatsActiveTab) : loadedChats
+    const stickyChats = unreadOnly
+        ? filterStickyChatsByUnread(loadedStickyChats, projectNotifications, chatsActiveTab)
+        : loadedStickyChats
 
     console.log(
         '📊 ChatsByProject: Loading state for project:',
@@ -64,7 +70,7 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
     }, [project.id, chatsActiveTab])
 
     useEffect(() => {
-        setChatXProject({ ...chatXProject, [project.id]: isThereChats })
+        setChatXProject(current => ({ ...current, [project.id]: isThereChats }))
     }, [isThereChats])
 
     const contractChat = () => {
@@ -150,7 +156,7 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
                     )
                 })}
             <View style={localStyles.container}>
-                {totalChats > toRender && isThereChats && (
+                {!unreadOnly && totalChats > toRender && isThereChats && (
                     <ShowMoreButton
                         expanded={false}
                         expand={expandChat}
@@ -158,7 +164,7 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
                     />
                 )}
 
-                {toRender <= totalChats && expanded && toRender !== 10 && isThereChats && (
+                {!unreadOnly && toRender <= totalChats && expanded && toRender !== 10 && isThereChats && (
                     <ShowMoreButton
                         expanded={true}
                         contract={contractChat}
@@ -167,7 +173,7 @@ function ChatsByProject({ project, isInAllProjects, chatXProject, setChatXProjec
                     />
                 )}
 
-                {atEnd && isThereChats && (
+                {!unreadOnly && atEnd && isThereChats && (
                     <ShowMoreButton
                         expanded={true}
                         contract={contractChat}
