@@ -76,6 +76,7 @@ import { setGoalAssistant } from '../../../utils/backends/Goals/goalsFirestore'
 import { setSkillAssistant } from '../../../utils/backends/Skills/skillsFirestore'
 import { updateChatAssistant } from '../../../utils/backends/Chats/chatsFirestore'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
+import { createAutoExpandMeasurement, getNaturalEditorSize } from './autoExpandMeasurement'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -142,6 +143,10 @@ function CustomTextInput3(
     const selectionRef = useRef({ index: 0, length: 0 })
     const mentionTextRef = useRef('')
     const quillKeyboardBindingsTabRef = useRef(null)
+    const autoExpandMeasurementRef = useRef(null)
+    const onContentSizeChangeRef = useRef(onContentSizeChange)
+
+    onContentSizeChangeRef.current = onContentSizeChange
 
     const gold = useSelector(state => state.loggedUser.gold)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -972,9 +977,12 @@ function CustomTextInput3(
 
     useEffect(() => {
         if (editorElement) {
-            editorElement.style.overflowY = scrollEnabled ? 'auto' : 'hidden'
+            // The outer ScrollView owns scrolling for auto-expanding editors.
+            // Giving Quill its own scrollbar changes the line-wrapping width at
+            // the threshold and can make the measured height alternate forever.
+            editorElement.style.overflowY = autoExpand ? 'visible' : scrollEnabled ? 'auto' : 'hidden'
         }
-    }, [editorElement, scrollEnabled])
+    }, [autoExpand, editorElement, scrollEnabled])
 
     useEffect(() => {
         if (containerElement && editorElement && autoExpand) {
@@ -985,6 +993,48 @@ function CustomTextInput3(
             editorElement.style.height = 'auto'
         }
     }, [autoExpand, containerElement, editorElement])
+
+    useEffect(() => {
+        if (!autoExpand || !editorElement) return
+
+        const requestFrame = callback =>
+            typeof window !== 'undefined' && window.requestAnimationFrame
+                ? window.requestAnimationFrame(callback)
+                : setTimeout(callback, 0)
+        const cancelFrame = frame =>
+            typeof window !== 'undefined' && window.cancelAnimationFrame
+                ? window.cancelAnimationFrame(frame)
+                : clearTimeout(frame)
+        const measurement = createAutoExpandMeasurement({
+            measure: () => getNaturalEditorSize(editorElement),
+            report: (width, height) => onContentSizeChangeRef.current?.(width, height),
+            requestFrame,
+            cancelFrame,
+        })
+        autoExpandMeasurementRef.current = measurement
+
+        const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measurement.request) : null
+        resizeObserver?.observe(editorElement)
+        if (typeof window !== 'undefined') window.addEventListener('resize', measurement.request)
+
+        let active = true
+        if (typeof document !== 'undefined' && document.fonts?.ready) {
+            document.fonts.ready.then(() => active && measurement.request())
+        }
+        measurement.request()
+
+        return () => {
+            active = false
+            resizeObserver?.disconnect()
+            if (typeof window !== 'undefined') window.removeEventListener('resize', measurement.request)
+            measurement.cancel()
+            autoExpandMeasurementRef.current = null
+        }
+    }, [autoExpand, editorElement])
+
+    useEffect(() => {
+        if (autoExpand) autoExpandMeasurementRef.current?.request()
+    }, [autoExpand, html])
 
     useEffect(() => {
         document.addEventListener('keydown', onKeyDown)
@@ -1178,7 +1228,7 @@ function CustomTextInput3(
                     overflow: 'hidden',
                 },
             ]}
-            onContentSizeChange={onContentSizeChange}
+            onContentSizeChange={autoExpand ? undefined : onContentSizeChange}
             scrollEnabled={scrollEnabled}
             showIndicator={showScrollIndicator}
         >
