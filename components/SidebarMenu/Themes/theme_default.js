@@ -89,9 +89,6 @@ const ThemeColors = {
 
                 // ProjectItemIcon component
                 ProjectItemIcon: {
-                    indicator: {
-                        backgroundColor: Colors.UtilityRed200,
-                    },
                     marker: color => {
                         return (
                             PROJECT_COLOR_SYSTEM[color]?.MARKER || PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT]?.MARKER
@@ -99,9 +96,6 @@ const ThemeColors = {
                     },
                     markerText: _color => {
                         return Colors.White
-                    },
-                    indicatorText: {
-                        color: Colors.White,
                     },
                 },
 
