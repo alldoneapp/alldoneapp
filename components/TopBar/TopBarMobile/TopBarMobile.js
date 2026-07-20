@@ -12,6 +12,7 @@ import { Themes } from '../Themes'
 import TasksStatisticsArea from '../TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../../Premium/PremiumHelper'
 import XpBar, { XP_BAR_MOBILE } from '../../XpBar/XpBar'
+import HomeButton from '../HomeButton'
 
 const SECONDARY_BAR_MOBILE = 36
 
@@ -63,6 +64,11 @@ export default function TopBarMobile() {
         <View>
             <View style={[localStyles.container, theme.container]}>
                 <View style={localStyles.statisticArea}>
+                    <HomeButton
+                        color={theme.homeIcon}
+                        style={localStyles.homeButton}
+                        expandSecondaryBar={expandSecondaryBar}
+                    />
                     <TopBarMobileStatisticArea expandSecondaryBar={expandSecondaryBar} />
                 </View>
                 <View style={localStyles.notificationArea}>
@@ -101,6 +107,10 @@ const localStyles = StyleSheet.create({
     },
     statisticArea: {
         flexDirection: 'row',
+        alignItems: 'center',
+    },
+    homeButton: {
+        marginRight: 8,
     },
     notificationArea: {
         flexDirection: 'row',

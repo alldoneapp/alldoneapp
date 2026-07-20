@@ -3,16 +3,8 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Icon from '../Icon'
-import {
-    hideFloatPopup,
-    navigateToAllProjectsTasks,
-    navigateToUpdates,
-    setReloadGlobalFeeds,
-    setSelectedSidebarTab,
-    showGlobalSearchPopup,
-    switchProject,
-} from '../../redux/actions'
-import { ROOT_ROUTES, DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
+import { hideFloatPopup, navigateToUpdates, setReloadGlobalFeeds, showGlobalSearchPopup } from '../../redux/actions'
+import { ROOT_ROUTES } from '../../utils/TabNavigationConstants'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
 import { dismissAllPopups } from '../../utils/HelperFunctions'
 import Shortcut from '../UIControls/Shortcut'
@@ -22,6 +14,7 @@ import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 import { ALL_PROJECTS_INDEX, checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../redux/store'
 import NavigationService from '../../utils/NavigationService'
+import ChatsButton from './ChatsButton'
 
 export default function NotificationArea() {
     const dispatch = useDispatch()
@@ -32,17 +25,6 @@ export default function NotificationArea() {
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 
     const theme = getTheme(Themes, themeName, 'TopBar.NotificationArea')
-
-    const onPressHome = e => {
-        e?.preventDefault()
-        dismissAllPopups()
-        dispatch([
-            switchProject(ALL_PROJECTS_INDEX),
-            setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-            navigateToAllProjectsTasks({ taskViewToggleSection: 'Open', taskViewToggleIndex: 0 }),
-        ])
-        NavigationService.navigate('Root')
-    }
 
     const onPressSearch = e => {
         e?.preventDefault()
@@ -73,11 +55,7 @@ export default function NotificationArea() {
 
     return (
         <View style={localStyles.container}>
-            <TouchableOpacity style={[localStyles.cog, { marginLeft: 0 }]} onPress={onPressHome} accessible={false}>
-                <Icon size={24} name={'home'} color={theme.iconColor} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={localStyles.cog} onPress={onPressSearch} accessible={false}>
+            <TouchableOpacity style={[localStyles.cog, { marginLeft: 0 }]} onPress={onPressSearch} accessible={false}>
                 <Icon size={24} name={'search'} color={theme.iconColor} />
 
                 {showShortcuts && (
@@ -86,6 +64,8 @@ export default function NotificationArea() {
                     </View>
                 )}
             </TouchableOpacity>
+
+            {!userIsAnonymous && <ChatsButton color={theme.iconColor} style={localStyles.cog} />}
 
             <TouchableOpacity style={localStyles.updates} onPress={onPressUpdates} accessible={false}>
                 <Icon size={24} name={'bell'} color={theme.iconColor} />
