@@ -296,26 +296,8 @@ function parseGoogleEventBoundary(value = {}, timeZone) {
     return null
 }
 
-function isGoogleAllDayOrMultiDayEvent(event) {
-    if (safeTrim(event?.start?.date) || safeTrim(event?.end?.date)) return true
-
-    const startDateTime = safeTrim(event?.start?.dateTime)
-    const endDateTime = safeTrim(event?.end?.dateTime)
-    if (!startDateTime || !endDateTime) return false
-
-    const startDate = startDateTime.substring(0, 10)
-    const endDate = endDateTime.substring(0, 10)
-    return isIsoDate(startDate) && isIsoDate(endDate) && startDate !== endDate
-}
-
 function normalizeGoogleBusyInterval(event, timeZone) {
-    if (
-        event?.status === 'cancelled' ||
-        event?.transparency === 'transparent' ||
-        isGoogleAllDayOrMultiDayEvent(event)
-    ) {
-        return null
-    }
+    if (event?.status === 'cancelled' || event?.transparency === 'transparent') return null
 
     const startMs = parseGoogleEventBoundary(event?.start, timeZone)
     const endMs = parseGoogleEventBoundary(event?.end, timeZone)
@@ -532,7 +514,6 @@ async function findCalendarAvailabilityForAssistantRequest({
         userId,
         timeMin: normalizedTimeMin,
         timeMax: normalizedTimeMax,
-        timeZone: resolvedTimeZone,
     }).catch(() => ({
         busyIntervals: [],
         searchedCalendarCount: 0,

@@ -228,14 +228,6 @@ function parseMicrosoftEventDateTime(value = {}) {
     return parsed.isValid() ? parsed.valueOf() : null
 }
 
-function isMicrosoftMultiDayEvent(startMs, endMs, timeZone) {
-    const resolvedTimeZone = moment.tz.zone(timeZone) ? timeZone : 'UTC'
-    return (
-        moment(startMs).tz(resolvedTimeZone).format('YYYY-MM-DD') !==
-        moment(endMs).tz(resolvedTimeZone).format('YYYY-MM-DD')
-    )
-}
-
 function normalizeMicrosoftGraphNextLink(nextLink = '') {
     const normalized = safeTrim(nextLink)
     if (!normalized) return ''
@@ -256,7 +248,7 @@ function normalizeMicrosoftGraphNextLink(nextLink = '') {
     return /^\/me\/calendarView(?:\?|$)/.test(path) ? path : ''
 }
 
-async function getMicrosoftBusyIntervalsForConnectedAccount({ userId, account, timeMin, timeMax, timeZone }) {
+async function getMicrosoftBusyIntervalsForConnectedAccount({ userId, account, timeMin, timeMax }) {
     const client = await getMicrosoftGraphClient(userId, account.projectId, 'calendar')
     const busyIntervals = []
     const seenPaths = new Set()
@@ -266,7 +258,7 @@ async function getMicrosoftBusyIntervalsForConnectedAccount({ userId, account, t
         endDateTime: timeMax,
         $top: 1000,
         $orderby: 'start/dateTime',
-        $select: 'start,end,showAs,isCancelled,isAllDay',
+        $select: 'start,end,showAs,isCancelled',
     })}`
 
     while (path) {
@@ -280,21 +272,15 @@ async function getMicrosoftBusyIntervalsForConnectedAccount({ userId, account, t
         const response = await client.request(path, { headers: { Prefer: 'outlook.timezone="UTC"' } })
         busyIntervals.push(
             ...(Array.isArray(response?.value) ? response.value : [])
-                .filter(event => {
-                    return !event?.isCancelled && String(event?.showAs || '').toLowerCase() !== 'free'
-                })
+                .filter(event => !event?.isCancelled && String(event?.showAs || '').toLowerCase() !== 'free')
                 .map(event => {
-                    if (event?.isAllDay) return null
-
                     const startMs = parseMicrosoftEventDateTime(event.start)
                     const endMs = parseMicrosoftEventDateTime(event.end)
                     if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
                         throw new Error('Microsoft Calendar returned invalid busy-event timing.')
                     }
-                    if (isMicrosoftMultiDayEvent(startMs, endMs, timeZone)) return null
                     return { startMs, endMs }
                 })
-                .filter(Boolean)
         )
 
         const nextLink = safeTrim(response?.['@odata.nextLink'])
@@ -305,7 +291,7 @@ async function getMicrosoftBusyIntervalsForConnectedAccount({ userId, account, t
     return busyIntervals
 }
 
-async function getMicrosoftCalendarBusyIntervalsForAssistantRequest({ userId, timeMin, timeMax, timeZone }) {
+async function getMicrosoftCalendarBusyIntervalsForAssistantRequest({ userId, timeMin, timeMax }) {
     const accounts = await getConnectedMicrosoftCalendarAccounts(userId)
     const settledResults = await settleAll(
         accounts.map(account =>
@@ -314,7 +300,6 @@ async function getMicrosoftCalendarBusyIntervalsForAssistantRequest({ userId, ti
                 account,
                 timeMin,
                 timeMax,
-                timeZone,
             })
         )
     )

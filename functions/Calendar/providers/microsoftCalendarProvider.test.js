@@ -92,54 +92,8 @@ describe('microsoftCalendarProvider availability', () => {
         expect(JSON.stringify(result)).not.toMatch(
             /Private meeting|Second private meeting|secret@example.com|owner@example.com/
         )
-        expect(request.mock.calls[0][0]).toContain('%24select=start%2Cend%2CshowAs%2CisCancelled%2CisAllDay')
+        expect(request.mock.calls[0][0]).toContain('%24select=start%2Cend%2CshowAs%2CisCancelled')
         expect(request.mock.calls[1][0]).toBe('/me/calendarView?$skiptoken=private-pagination-token')
-    })
-
-    test('ignores all-day and multi-day events while timed same-day events remain busy', async () => {
-        const request = jest.fn().mockResolvedValue({
-            value: [
-                {
-                    showAs: 'busy',
-                    isCancelled: false,
-                    isAllDay: true,
-                    start: { dateTime: '2026-03-10T00:00:00', timeZone: 'UTC' },
-                    end: { dateTime: '2026-03-11T00:00:00', timeZone: 'UTC' },
-                },
-                {
-                    showAs: 'busy',
-                    isCancelled: false,
-                    isAllDay: false,
-                    start: { dateTime: '2026-03-10T09:00:00', timeZone: 'UTC' },
-                    end: { dateTime: '2026-03-11T11:00:00', timeZone: 'UTC' },
-                },
-                {
-                    showAs: 'busy',
-                    isCancelled: false,
-                    isAllDay: false,
-                    start: { dateTime: '2026-03-10T10:00:00', timeZone: 'UTC' },
-                    end: { dateTime: '2026-03-10T10:30:00', timeZone: 'UTC' },
-                },
-            ],
-        })
-        getMicrosoftGraphClient.mockResolvedValue({ request })
-
-        const result = await getMicrosoftCalendarBusyIntervalsForAssistantRequest({
-            userId: 'user-1',
-            timeMin: '2026-03-10T09:00:00.000Z',
-            timeMax: '2026-03-10T17:00:00.000Z',
-        })
-
-        expect(result).toEqual({
-            busyIntervals: [
-                {
-                    startMs: Date.parse('2026-03-10T10:00:00.000Z'),
-                    endMs: Date.parse('2026-03-10T10:30:00.000Z'),
-                },
-            ],
-            searchedCalendarCount: 1,
-            failedCalendarCount: 0,
-        })
     })
 
     test('fails the account check when a busy event has invalid timing', async () => {

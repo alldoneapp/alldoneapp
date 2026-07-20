@@ -1,8 +1,11 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import moment from 'moment-timezone'
+import * as Localization from 'expo-localization'
 
 import MeetingBookingPage from './MeetingBookingPage'
+import { BOOKING_LANGUAGE_STORAGE_KEY } from './bookingLanguage'
+import { setLanguage } from '../../i18n/TranslationService'
 import {
     bookPublicMeeting,
     getPublicBookingPage,
@@ -53,6 +56,9 @@ const flushPromises = () => new Promise(resolve => setImmediate(resolve))
 describe('MeetingBookingPage', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        window.localStorage.clear()
+        Localization.locale = 'en-US'
+        setLanguage('en')
         getPublicBookingPage.mockResolvedValue({ success: true, page })
         getPublicBookingSlots.mockResolvedValue({ success: true, timeZone: 'Europe/Berlin', options: [] })
         bookPublicMeeting.mockResolvedValue({
@@ -78,6 +84,86 @@ describe('MeetingBookingPage', () => {
         })
 
         expect(tree.root.findAllByProps({ children: 'No times are available on this day.' }).length).toBeGreaterThan(0)
+    })
+
+    test('uses a supported browser language on the first visit', async () => {
+        Localization.locale = 'de-DE'
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+            await flushPromises()
+            await flushPromises()
+        })
+
+        expect(tree.root.findAllByProps({ children: 'Termin mit Karsten Wysk buchen' }).length).toBeGreaterThan(0)
+        expect(tree.root.findByProps({ testID: 'booking-language-de' }).props.accessibilityState.selected).toBe(true)
+    })
+
+    test('falls back to English for an unsupported browser language', async () => {
+        Localization.locale = 'fr-FR'
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+            await flushPromises()
+            await flushPromises()
+        })
+
+        expect(tree.root.findAllByProps({ children: 'Book a meeting with Karsten Wysk' }).length).toBeGreaterThan(0)
+        expect(tree.root.findByProps({ testID: 'booking-language-en' }).props.accessibilityState.selected).toBe(true)
+    })
+
+    test('prefers a persisted choice over the browser language', async () => {
+        Localization.locale = 'de-DE'
+        window.localStorage.setItem(BOOKING_LANGUAGE_STORAGE_KEY, 'es')
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+            await flushPromises()
+            await flushPromises()
+        })
+
+        expect(tree.root.findAllByProps({ children: 'Reservar una reunión con Karsten Wysk' }).length).toBeGreaterThan(
+            0
+        )
+        expect(tree.root.findByProps({ testID: 'booking-language-es' }).props.accessibilityState.selected).toBe(true)
+    })
+
+    test('reactively switches copy and persists a manual choice', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+            await flushPromises()
+            await flushPromises()
+        })
+
+        await act(async () => {
+            tree.root.findByProps({ testID: 'booking-language-de' }).props.onPress()
+        })
+
+        expect(tree.root.findAllByProps({ children: 'Termin mit Karsten Wysk buchen' }).length).toBeGreaterThan(0)
+        expect(tree.root.findAllByProps({ children: 'Tag auswählen' }).length).toBeGreaterThan(0)
+        expect(document.title).toBe('Karsten Wysk - Termin buchen')
+        expect(window.localStorage.getItem(BOOKING_LANGUAGE_STORAGE_KEY)).toBe('de')
+    })
+
+    test('formats booking dates with the selected language', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<MeetingBookingPage navigation={navigation} />)
+            await flushPromises()
+            await flushPromises()
+        })
+
+        const firstDay = moment().tz('Europe/Berlin').startOf('day')
+        const firstDayButton = tree.root.findByProps({ testID: `booking-day-${firstDay.format('YYYY-MM-DD')}` })
+
+        await act(async () => {
+            tree.root.findByProps({ testID: 'booking-language-es' }).props.onPress()
+        })
+
+        const dateLabels = firstDayButton.findAllByType(require('react-native').Text).map(node => node.props.children)
+        expect(dateLabels).toContain(firstDay.clone().locale('es').format('ddd'))
+        expect(dateLabels).toContain(firstDay.clone().locale('es').format('MMM'))
     })
 
     test('can request availability for a day 30 days in the future', async () => {
