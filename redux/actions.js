@@ -926,6 +926,11 @@ export const setChatsActiveTab = chatsActiveTab => {
     return action
 }
 
+export const setChatsUnreadOnly = unreadOnly => ({
+    type: 'Set chats unread only',
+    unreadOnly,
+})
+
 export const updateContactsActiveTab = contactsActiveTab => {
     const action = {
         type: 'Update contacts active tab',

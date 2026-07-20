@@ -38,7 +38,10 @@ export default function ChatsButton({ color, style, onNavigate }) {
         const { route } = store.getState()
 
         dismissAllPopups(true, true, true)
-        dispatch([hideFloatPopup(), navigateToAllProjectsChats({ chatsActiveTab: badge.tab })])
+        dispatch([
+            hideFloatPopup(),
+            navigateToAllProjectsChats({ chatsActiveTab: badge.tab, unreadOnly: badge.amount > 0 }),
+        ])
 
         if (!ROOT_ROUTES.includes(route)) NavigationService.navigate('Root')
         onNavigate?.()
@@ -46,7 +49,7 @@ export default function ChatsButton({ color, style, onNavigate }) {
 
     return (
         <TouchableOpacity style={[localStyles.button, style]} onPress={onPress} accessible={false}>
-            <Icon size={24} name={'comments-thread'} color={color} />
+            <Icon size={24} name={'message-circle'} color={color} />
 
             {badge.amount > 0 && (
                 <View style={localStyles.badge}>

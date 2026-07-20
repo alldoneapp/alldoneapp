@@ -7,6 +7,7 @@ import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 
 const mockDispatch = jest.fn()
 const mockUseSelector = jest.fn()
+const mockGetNotificationAmounts = jest.fn()
 
 jest.mock('react-redux', () => ({
     useDispatch: () => mockDispatch,
@@ -23,7 +24,7 @@ jest.mock('../../redux/actions', () => ({
 }))
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({
     resetNotificationsWhenUserHasAnActiveChat: notifications => notifications,
-    getFollowedAndUnfollowedChatNotificationsAmount: () => ({ totalFollowed: 4, totalUnfollowed: 9 }),
+    getFollowedAndUnfollowedChatNotificationsAmount: () => mockGetNotificationAmounts(),
 }))
 
 const ChatsButton = require('./ChatsButton').default
@@ -45,6 +46,7 @@ describe('getChatsButtonBadge', () => {
 describe('ChatsButton', () => {
     beforeEach(() => {
         mockDispatch.mockClear()
+        mockGetNotificationAmounts.mockReturnValue({ totalFollowed: 4, totalUnfollowed: 9 })
         mockUseSelector.mockImplementation(selector =>
             selector({
                 loggedUser: { archivedProjectIds: [], templateProjectIds: [] },
@@ -54,7 +56,13 @@ describe('ChatsButton', () => {
         )
     })
 
-    it('opens the cross-project followed chat list when the red count is available', () => {
+    it('uses a single chat bubble icon', () => {
+        const component = renderer.create(<ChatsButton color={'black'} />)
+
+        expect(component.root.findByType('Icon').props.name).toBe('message-circle')
+    })
+
+    it('opens the cross-project followed chat list with the unread filter when the red count is available', () => {
         const component = renderer.create(<ChatsButton color={'black'} />)
 
         expect(component.root.findByType('AmountTag').props.feedAmount).toBe(4)
@@ -63,7 +71,31 @@ describe('ChatsButton', () => {
 
         expect(mockDispatch).toHaveBeenCalledWith([
             { type: 'hide popup' },
-            { type: 'all chats', options: { chatsActiveTab: FOLLOWED_TAB } },
+            { type: 'all chats', options: { chatsActiveTab: FOLLOWED_TAB, unreadOnly: true } },
+        ])
+    })
+
+    it('opens the cross-project all chat list with the unread filter when only the grey count is available', () => {
+        mockGetNotificationAmounts.mockReturnValue({ totalFollowed: 0, totalUnfollowed: 9 })
+        const component = renderer.create(<ChatsButton color={'black'} />)
+
+        act(() => component.root.findByType(TouchableOpacity).props.onPress())
+
+        expect(mockDispatch).toHaveBeenCalledWith([
+            { type: 'hide popup' },
+            { type: 'all chats', options: { chatsActiveTab: ALL_TAB, unreadOnly: true } },
+        ])
+    })
+
+    it('opens the normal cross-project chat list when there are no unread messages', () => {
+        mockGetNotificationAmounts.mockReturnValue({ totalFollowed: 0, totalUnfollowed: 0 })
+        const component = renderer.create(<ChatsButton color={'black'} />)
+
+        act(() => component.root.findByType(TouchableOpacity).props.onPress())
+
+        expect(mockDispatch).toHaveBeenCalledWith([
+            { type: 'hide popup' },
+            { type: 'all chats', options: { chatsActiveTab: FOLLOWED_TAB, unreadOnly: false } },
         ])
     })
 })
