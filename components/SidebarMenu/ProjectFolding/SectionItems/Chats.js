@@ -45,9 +45,6 @@ export default function Chats({ navigateToRoot, projectColor, selected, projectI
             selected={selected}
             onPress={onPress}
             projectColor={projectColor}
-            inChats={true}
-            inAllProjects={inAllProjects}
-            projectId={projectId}
         />
     )
 }

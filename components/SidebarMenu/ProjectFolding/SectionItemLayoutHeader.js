@@ -4,14 +4,12 @@ import { useSelector } from 'react-redux'
 
 import styles from '../../styles/global'
 import Icon from '../../Icon'
-import ChatIndicator from '../../ChatsView/ChatIndicator'
 import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import { PROJECT_TYPE_SHARED } from '../../SettingsView/ProjectsSettings/ProjectsSettings'
 import useCollapsibleSidebar from '../Collapsible/UseCollapsibleSidebar'
 import useOnHover from '../../../hooks/UseOnHover'
 import TasksAmount from './SectionItems/TasksAmount'
-import ChatsAmount from './SectionItems/ChatsAmount'
 import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 
 export default function SectionItemLayoutHeader({
@@ -24,8 +22,6 @@ export default function SectionItemLayoutHeader({
     inTasks,
     projectId,
     projectSelected,
-    inAllProjects,
-    inChats,
 }) {
     const themeName = useSelector(state => state.loggedUser.themeName)
     const selectedTypeOfProject = useSelector(state => state.selectedTypeOfProject)
@@ -73,7 +69,6 @@ export default function SectionItemLayoutHeader({
 
                 <View style={expanded ? localStyles.tasksAmountContainer : localStyles.tasksAmountCollapsed}>
                     <>
-                        {inChats && <ChatsAmount inAllProjects={inAllProjects} projectId={projectId} />}
                         {inTasks && (
                             <TasksAmount
                                 projectId={projectId}

@@ -1,11 +1,5 @@
 import { ALL_TAB, FOLLOWED_TAB } from '../../Feeds/Utils/FeedsConstants'
-import {
-    filterChatsByUnread,
-    filterStickyChatsByUnread,
-    getUnreadChatIds,
-    getUnreadThreadCount,
-    isUnreadChat,
-} from './unreadChatFilter'
+import { filterChatsByUnread, filterStickyChatsByUnread, getUnreadThreadCount, isUnreadChat } from './unreadChatFilter'
 
 const notifications = {
     totalFollowed: 3,
@@ -37,11 +31,6 @@ describe('unread chat filtering', () => {
 
         expect(getUnreadThreadCount(allNotifications, ['project1', 'project2'], ALL_TAB)).toBe(3)
         expect(getUnreadThreadCount(allNotifications, ['project1', 'project2'], FOLLOWED_TAB)).toBe(1)
-    })
-
-    it('returns only unread chat ids for the active tab', () => {
-        expect(getUnreadChatIds(notifications, ALL_TAB).sort()).toEqual(['followed', 'unfollowed'])
-        expect(getUnreadChatIds(notifications, FOLLOWED_TAB)).toEqual(['followed'])
     })
 
     it('keeps only unread regular and sticky chats and removes empty date groups', () => {

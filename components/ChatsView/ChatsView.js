@@ -4,7 +4,7 @@ import { checkIfSelectedAllProjects, checkIfSelectedProject } from '../SettingsV
 import { useDispatch, useSelector } from 'react-redux'
 import { DV_TAB_ROOT_CHATS } from '../../utils/TabNavigationConstants'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
-import { setChatsUnreadOnly, setNavigationRoute } from '../../redux/actions'
+import { setNavigationRoute } from '../../redux/actions'
 import URLsChats, {
     URL_ALL_PROJECTS_CHATS_ALL,
     URL_ALL_PROJECTS_CHATS_FOLLOWED,
@@ -27,7 +27,6 @@ function ChatsView() {
     const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds)
     const templateProjectIds = useSelector(state => state.loggedUser.templateProjectIds)
     const chatsActiveTab = useSelector(state => state.chatsActiveTab)
-    const unreadOnly = useSelector(state => state.chatsUnreadOnly)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
 
@@ -47,9 +46,11 @@ function ChatsView() {
     ]
 
     const [areThereChats, setAreThereChats] = useState({})
-    const setUnreadOnly = value => dispatch(setChatsUnreadOnly(value))
+    const [unreadOnly, setUnreadOnly] = useState(false)
 
-    useEffect(() => () => dispatch(setChatsUnreadOnly(false)), [])
+    useEffect(() => {
+        setUnreadOnly(false)
+    }, [selectedProjectIndex, chatsActiveTab])
 
     const writeBrowserURL = () => {
         if (inSelectedProject) {
