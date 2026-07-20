@@ -4,12 +4,19 @@ const MOBILE_TAG_LIMIT = 2
 const MY_DAY_DESKTOP_TAG_LIMIT = 3
 const MY_DAY_COMPACT_TAG_LIMIT = 1
 const MAX_TRAILING_TAGS_WIDTH_RATIO = 0.7
+const MAX_MULTILINE_TRAILING_TAGS_WIDTH_RATIO = 1
 
-export const doTrailingTagsCrowdTaskTitle = ({ taskTagsWidth, taskItemWidth, inMyDayAndNotSubtask }) =>
+export const doTrailingTagsCrowdTaskTitle = ({
+    taskTagsWidth,
+    taskItemWidth,
+    taskTitleIsMultiline,
+    inMyDayAndNotSubtask,
+}) =>
     !inMyDayAndNotSubtask &&
     taskTagsWidth > 0 &&
     taskItemWidth > 0 &&
-    taskTagsWidth > taskItemWidth * MAX_TRAILING_TAGS_WIDTH_RATIO
+    taskTagsWidth >
+        taskItemWidth * (taskTitleIsMultiline ? MAX_MULTILINE_TRAILING_TAGS_WIDTH_RATIO : MAX_TRAILING_TAGS_WIDTH_RATIO)
 
 export const shouldSummarizeTaskTags = ({
     amountTags,

@@ -77,6 +77,7 @@ function TaskPresentation(
 
     const [taskItemWidth, setTaskItemWidth] = useState(0)
     const [taskTagsWidth, setTaskTagsWidth] = useState(0)
+    const [taskTitleIsMultiline, setTaskTitleIsMultiline] = useState(false)
     const [blockOpen, setBlockOpen] = useState(false)
     const [tagsExpandedHeight, setTagsExpandedHeight] = useState(0)
     const [panColor, setPanColor] = useState(new Animated.Value(0))
@@ -99,6 +100,7 @@ function TaskPresentation(
     const trailingTagsCrowdTitle = doTrailingTagsCrowdTaskTitle({
         taskTagsWidth,
         taskItemWidth,
+        taskTitleIsMultiline,
         inMyDayAndNotSubtask,
     })
 
@@ -349,6 +351,7 @@ function TaskPresentation(
                                     leadingVmStatusTag={leadingVmStatusTag}
                                     leadingPriorityTag={leadingPriorityTag}
                                     useCommentPopupTextColor={inCommentPopup}
+                                    setTaskTitleIsMultiline={setTaskTitleIsMultiline}
                                 />
                             </View>
                             {inMyDayAndNotSubtask && (

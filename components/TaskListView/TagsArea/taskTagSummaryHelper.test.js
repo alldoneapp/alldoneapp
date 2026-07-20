@@ -84,9 +84,48 @@ describe('shouldSummarizeTaskTags', () => {
 })
 
 describe('doTrailingTagsCrowdTaskTitle', () => {
-    it('allows trailing tags to use up to 70% of a regular task row', () => {
-        expect(doTrailingTagsCrowdTaskTitle({ taskTagsWidth: 421, taskItemWidth: 600 })).toBe(true)
-        expect(doTrailingTagsCrowdTaskTitle({ taskTagsWidth: 420, taskItemWidth: 600 })).toBe(false)
+    it('collapses single-line task tags only above 70% of the available width', () => {
+        expect(
+            doTrailingTagsCrowdTaskTitle({
+                taskTagsWidth: 420,
+                taskItemWidth: 600,
+                taskTitleIsMultiline: false,
+            })
+        ).toBe(false)
+        expect(
+            doTrailingTagsCrowdTaskTitle({
+                taskTagsWidth: 421,
+                taskItemWidth: 600,
+                taskTitleIsMultiline: false,
+            })
+        ).toBe(true)
+    })
+
+    it('allows multi-line task tags to fill the available width', () => {
+        expect(
+            doTrailingTagsCrowdTaskTitle({
+                taskTagsWidth: 421,
+                taskItemWidth: 600,
+                taskTitleIsMultiline: true,
+            })
+        ).toBe(false)
+        expect(
+            doTrailingTagsCrowdTaskTitle({
+                taskTagsWidth: 600,
+                taskItemWidth: 600,
+                taskTitleIsMultiline: true,
+            })
+        ).toBe(false)
+    })
+
+    it('still collapses multi-line task tags that overflow the available width', () => {
+        expect(
+            doTrailingTagsCrowdTaskTitle({
+                taskTagsWidth: 601,
+                taskItemWidth: 600,
+                taskTitleIsMultiline: true,
+            })
+        ).toBe(true)
     })
 
     it('waits for valid measurements and leaves the My Day layout to its own overflow handling', () => {

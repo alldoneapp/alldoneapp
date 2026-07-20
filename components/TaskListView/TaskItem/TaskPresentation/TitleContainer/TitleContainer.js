@@ -21,6 +21,7 @@ export default function TitleContainer({
     leadingVmStatusTag,
     leadingPriorityTag,
     useCommentPopupTextColor,
+    setTaskTitleIsMultiline,
 }) {
     const gmailTag = isGmailLabelFollowUpTask(task) ? (
         <GmailTag gmailData={task.gmailData} propStyles={localStyles.gmailTag} showLabel iconSize={12} />
@@ -35,6 +36,12 @@ export default function TitleContainer({
         </>
     )
 
+    const onTaskTitleLayout = ({ nativeEvent: { layout } }) => {
+        const lineHeight = task.isSubtask ? styles.body2.lineHeight : styles.body1.lineHeight
+        const wrappedTextVerticalMargins = 6
+        setTaskTitleIsMultiline(layout.height > lineHeight + wrappedTextVerticalMargins)
+    }
+
     return (
         <View
             style={[
@@ -44,6 +51,7 @@ export default function TitleContainer({
         >
             <SocialText
                 elementId={`social_text_${projectId}_${task.id}_${isObservedTask}`}
+                onTextLayout={onTaskTitleLayout}
                 style={[
                     task.isSubtask ? styles.body2 : styles.body1,
                     localStyles.descriptionText,
