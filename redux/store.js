@@ -160,6 +160,7 @@ export const initialState = {
     notesActiveTab: FOLLOWED_TAB,
     contactsActiveTab: FOLLOWED_TAB,
     chatsActiveTab: FOLLOWED_TAB,
+    chatsUnreadOnly: false,
     screenDimensions: {},
     showNewDayNotification: false,
     showNewVersionMandtoryNotifcation: false,
@@ -536,7 +537,7 @@ export const theReducer = (state = initialState, action) => {
         case 'Set optional version notification':
             return { ...state, showOptionalVersionNotification: action.showOptionalVersionNotification }
         case 'Switch project':
-            return { ...state, selectedProjectIndex: action.index }
+            return { ...state, selectedProjectIndex: action.index, chatsUnreadOnly: false }
         case 'Update user project': {
             const { project } = action
 
@@ -1049,7 +1050,9 @@ export const theReducer = (state = initialState, action) => {
         case 'Set goals active tab':
             return { ...state, goalsActiveTab: action.goalsActiveTab }
         case 'Set chats active tab':
-            return { ...state, chatsActiveTab: action.chatsActiveTab }
+            return { ...state, chatsActiveTab: action.chatsActiveTab, chatsUnreadOnly: false }
+        case 'Set chats unread only':
+            return { ...state, chatsUnreadOnly: action.unreadOnly }
         case 'Update contacts active tab':
             return { ...state, contactsActiveTab: action.contactsActiveTab }
         case 'Set screen dimensions':
@@ -2685,6 +2688,7 @@ export const theReducer = (state = initialState, action) => {
                 shortcutSelectedProjectIndex: null,
                 selectedSidebarTab: DV_TAB_ROOT_CHATS,
                 chatsActiveTab: options.chatsActiveTab || FOLLOWED_TAB,
+                chatsUnreadOnly: options.unreadOnly === true,
             }
         }
 

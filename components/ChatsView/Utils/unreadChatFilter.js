@@ -18,9 +18,6 @@ export const getUnreadThreadCount = (projectChatNotifications, projectIds, chats
         return total + unreadInProject
     }, 0)
 
-export const getUnreadChatIds = (projectNotifications = {}, chatsActiveTab) =>
-    Object.keys(projectNotifications).filter(chatId => isUnreadChat(projectNotifications, chatId, chatsActiveTab))
-
 export const filterChatsByUnread = (chatsByDate, projectNotifications, chatsActiveTab) =>
     Object.keys(chatsByDate).reduce((filteredChats, date) => {
         const unreadChats = chatsByDate[date].filter(chat =>
