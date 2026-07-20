@@ -7,7 +7,6 @@ import NotificationArea from './NotificationArea'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
 import { setTopBarWidth } from '../../redux/actions'
-import HomeButton from './HomeButton'
 
 export default function TopBar() {
     const dispatch = useDispatch()
@@ -41,10 +40,7 @@ export default function TopBar() {
             ]}
             onLayout={onLayout}
         >
-            <View style={localStyles.leftArea}>
-                <HomeButton color={theme.homeIcon} style={localStyles.homeButton} />
-                {userIsAnonymous ? <View style={{ flex: 1 }} /> : <TopBarStatisticArea />}
-            </View>
+            {userIsAnonymous ? <View style={{ flex: 1 }} /> : <TopBarStatisticArea />}
             <NotificationArea />
         </View>
     )
@@ -60,12 +56,5 @@ const localStyles = StyleSheet.create({
         paddingRight: 24,
         paddingLeft: 10,
         height: 48,
-    },
-    leftArea: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    homeButton: {
-        marginRight: 16,
     },
 })
