@@ -10,8 +10,16 @@ import {
 const notifications = {
     totalFollowed: 3,
     totalUnfollowed: 2,
-    followed: { totalFollowed: 3, totalUnfollowed: 0 },
-    unfollowed: { totalFollowed: 0, totalUnfollowed: 2 },
+    followed: {
+        totalFollowed: 3,
+        totalUnfollowed: 0,
+        followedNotifications: [{ date: 100 }],
+    },
+    unfollowed: {
+        totalFollowed: 0,
+        totalUnfollowed: 2,
+        unfollowedNotifications: [{ date: 200 }],
+    },
     read: { totalFollowed: 0, totalUnfollowed: 0 },
 }
 
@@ -40,8 +48,20 @@ describe('unread chat filtering', () => {
     })
 
     it('returns only unread chat ids for the active tab', () => {
-        expect(getUnreadChatIds(notifications, ALL_TAB).sort()).toEqual(['followed', 'unfollowed'])
+        expect(getUnreadChatIds(notifications, ALL_TAB)).toEqual(['unfollowed', 'followed'])
         expect(getUnreadChatIds(notifications, FOLLOWED_TAB)).toEqual(['followed'])
+    })
+
+    it('keeps legacy unread chats without notification dates in their existing order', () => {
+        expect(
+            getUnreadChatIds(
+                {
+                    first: { totalFollowed: 1 },
+                    second: { totalFollowed: 1 },
+                },
+                FOLLOWED_TAB
+            )
+        ).toEqual(['first', 'second'])
     })
 
     it('keeps only unread regular and sticky chats and removes empty date groups', () => {

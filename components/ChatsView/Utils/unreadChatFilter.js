@@ -18,8 +18,32 @@ export const getUnreadThreadCount = (projectChatNotifications, projectIds, chats
         return total + unreadInProject
     }, 0)
 
+const getLatestNotificationDate = (chatNotifications, chatsActiveTab) => {
+    const followedNotifications = chatNotifications?.followedNotifications || []
+    const unfollowedNotifications = chatsActiveTab === ALL_TAB ? chatNotifications?.unfollowedNotifications || [] : []
+
+    return [...followedNotifications, ...unfollowedNotifications].reduce((latestDate, notification) => {
+        const date = Number(notification?.date)
+        return Number.isFinite(date) ? Math.max(latestDate, date) : latestDate
+    }, 0)
+}
+
 export const getUnreadChatIds = (projectNotifications = {}, chatsActiveTab) =>
-    Object.keys(projectNotifications).filter(chatId => isUnreadChat(projectNotifications, chatId, chatsActiveTab))
+    Object.keys(projectNotifications)
+        .filter(chatId => isUnreadChat(projectNotifications, chatId, chatsActiveTab))
+        .map((chatId, index) => ({
+            chatId,
+            index,
+            latestNotificationDate: getLatestNotificationDate(projectNotifications[chatId], chatsActiveTab),
+        }))
+        .sort(
+            (a, b) =>
+                b.latestNotificationDate - a.latestNotificationDate ||
+                // Preserve the Firestore snapshot order for legacy notification
+                // entries that do not include their dates.
+                a.index - b.index
+        )
+        .map(({ chatId }) => chatId)
 
 export const filterChatsByUnread = (chatsByDate, projectNotifications, chatsActiveTab) =>
     Object.keys(chatsByDate).reduce((filteredChats, date) => {

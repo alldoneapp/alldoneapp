@@ -25,8 +25,8 @@ const notifications = {
 
 const createDoc = (id, data) => ({ id, exists: true, data: () => data })
 
-function HookHarness({ enabled, onRender }) {
-    onRender(useGetUnreadChats('project-1', notifications, ALL_TAB, enabled))
+function HookHarness({ enabled, onRender, limit = 10, projectNotifications = notifications }) {
+    onRender(useGetUnreadChats('project-1', projectNotifications, ALL_TAB, enabled, limit))
     return null
 }
 
@@ -69,6 +69,42 @@ describe('useGetUnreadChats', () => {
         })
 
         expect(get).toHaveBeenCalledTimes(2)
-        expect(renders[renders.length - 1]).toEqual({ chats: {}, stickyChats: [] })
+        expect(renders[renders.length - 1]).toEqual({ chats: {}, stickyChats: [], total: 0 })
+    })
+
+    it('only loads the visible unread page and reports the full unread total', async () => {
+        const manyNotifications = Array.from({ length: 25 }).reduce(
+            (result, _, index) => ({
+                ...result,
+                [`chat-${index}`]: {
+                    totalFollowed: 1,
+                    totalUnfollowed: 0,
+                    followedNotifications: [{ date: 1000 - index }],
+                },
+            }),
+            { totalFollowed: 25, totalUnfollowed: 0 }
+        )
+        const get = jest.fn(id =>
+            Promise.resolve(createDoc(id, { lastEditionDate: 1784512800000, stickyData: { days: 0 } }))
+        )
+        getDb.mockReturnValue({
+            doc: path => ({ get: () => get(path.split('/').pop()) }),
+        })
+        const renders = []
+
+        await act(async () => {
+            renderer.create(
+                <HookHarness
+                    enabled
+                    limit={10}
+                    projectNotifications={manyNotifications}
+                    onRender={value => renders.push(value)}
+                />
+            )
+        })
+
+        expect(get).toHaveBeenCalledTimes(10)
+        expect(get.mock.calls.map(([id]) => id)).toEqual(Array.from({ length: 10 }, (_, index) => `chat-${index}`))
+        expect(renders[renders.length - 1].total).toBe(25)
     })
 })

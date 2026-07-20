@@ -6,8 +6,12 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
-jest.mock('react-redux', () => ({ useDispatch: () => jest.fn(), useSelector: jest.fn() }))
-jest.mock('../../redux/actions', () => ({ setNavigationRoute: jest.fn() }))
+const mockDispatch = jest.fn()
+jest.mock('react-redux', () => ({ useDispatch: () => mockDispatch, useSelector: jest.fn() }))
+jest.mock('../../redux/actions', () => ({
+    setChatsUnreadOnly: unreadOnly => ({ type: 'Set chats unread only', unreadOnly }),
+    setNavigationRoute: jest.fn(),
+}))
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedAllProjects: index => index === -1,
     checkIfSelectedProject: index => index > -1,
@@ -67,6 +71,7 @@ const renderView = selectedProjectIndex => {
         loggedUserProjects: projects,
         loggedUser: { uid: 'user-1', archivedProjectIds: [], templateProjectIds: [] },
         chatsActiveTab: ALL_TAB,
+        chatsUnreadOnly: false,
         smallScreenNavigation: false,
         isMiddleScreen: false,
     }
@@ -90,21 +95,19 @@ describe('ChatsView unread filter', () => {
         const component = renderView(0)
 
         act(() => component.root.findByProps({ testID: 'select-unread' }).props.onPress())
-        expect(component.root.findByProps({ testID: 'project-chats-project-1' }).props.unreadOnly).toBe(true)
         switchToAll(component)
 
-        expect(component.root.findByProps({ testID: 'project-chats-project-1' }).props.unreadOnly).toBe(false)
+        expect(mockDispatch).toHaveBeenNthCalledWith(2, { type: 'Set chats unread only', unreadOnly: true })
+        expect(mockDispatch).toHaveBeenNthCalledWith(3, { type: 'Set chats unread only', unreadOnly: false })
     })
 
     it('switches Unread back to All for every project in the All projects chat view', () => {
         const component = renderView(-1)
 
         act(() => component.root.findByProps({ testID: 'select-unread' }).props.onPress())
-        expect(component.root.findByProps({ testID: 'project-chats-project-1' }).props.unreadOnly).toBe(true)
-        expect(component.root.findByProps({ testID: 'project-chats-project-2' }).props.unreadOnly).toBe(true)
         switchToAll(component)
 
-        expect(component.root.findByProps({ testID: 'project-chats-project-1' }).props.unreadOnly).toBe(false)
-        expect(component.root.findByProps({ testID: 'project-chats-project-2' }).props.unreadOnly).toBe(false)
+        expect(mockDispatch).toHaveBeenNthCalledWith(2, { type: 'Set chats unread only', unreadOnly: true })
+        expect(mockDispatch).toHaveBeenNthCalledWith(3, { type: 'Set chats unread only', unreadOnly: false })
     })
 })

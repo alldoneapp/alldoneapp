@@ -42,7 +42,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const projectNotifications = useSelector(state => state.projectChatNotifications[project.id])
     const loadedChats = useGetChats(project.id, toRender, chatsActiveTab)
     const loadedStickyChats = useGetStickyChats(project.id, toRender, chatsActiveTab)
-    const unreadChats = useGetUnreadChats(project.id, projectNotifications, chatsActiveTab, unreadOnly)
+    const unreadChats = useGetUnreadChats(project.id, projectNotifications, chatsActiveTab, unreadOnly, toRender)
     const chats = unreadOnly ? unreadChats.chats : loadedChats
     const stickyChats = unreadOnly ? unreadChats.stickyChats : loadedStickyChats
 
@@ -58,6 +58,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const today = moment().format('YYYYMMDD')
     const { [today]: todayChats, ...rest } = chats
     const isThereChats = Object.keys(chats).length > 0 || Object.keys(stickyChats).length > 0
+    const totalVisibleChats = unreadOnly ? unreadChats.total : totalChats
     const inSelectedProject = !isInAllProjects
 
     useEffect(() => {
@@ -100,7 +101,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
         if (totalChats / toRender < 1) {
             setAtEnd(true)
         } else setAtEnd(false)
-    }, [toRender])
+    }, [toRender, totalChats])
 
     return (isInAllProjects ? isThereChats : true) ? (
         <View style={checkIfSelectedAllProjects(selectedProjectIndex) && { marginBottom: 25 }}>
@@ -155,7 +156,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                     )
                 })}
             <View style={localStyles.container}>
-                {!unreadOnly && totalChats > toRender && isThereChats && (
+                {totalVisibleChats > toRender && isThereChats && (
                     <ShowMoreButton
                         expanded={false}
                         expand={expandChat}
@@ -163,7 +164,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                     />
                 )}
 
-                {!unreadOnly && toRender <= totalChats && expanded && toRender !== 10 && isThereChats && (
+                {(unreadOnly || toRender <= totalVisibleChats) && expanded && toRender !== 10 && isThereChats && (
                     <ShowMoreButton
                         expanded={true}
                         contract={contractChat}

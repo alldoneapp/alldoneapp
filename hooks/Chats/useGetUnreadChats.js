@@ -28,11 +28,12 @@ export const groupUnreadChats = chatDocs => {
     return { chats, stickyChats }
 }
 
-export default function useGetUnreadChats(projectId, projectNotifications, chatsActiveTab, enabled) {
+export default function useGetUnreadChats(projectId, projectNotifications, chatsActiveTab, enabled, toRender = 10) {
     const [, filtersArray] = useSelectorHashtagFilters()
     const [unreadChats, setUnreadChats] = useState(EMPTY_UNREAD_CHATS)
-    const unreadChatIds = getUnreadChatIds(projectNotifications, chatsActiveTab)
-    const unreadChatIdsKey = unreadChatIds.sort().join('|')
+    const allUnreadChatIds = getUnreadChatIds(projectNotifications, chatsActiveTab)
+    const unreadChatIds = allUnreadChatIds.slice(0, toRender)
+    const unreadChatIdsKey = unreadChatIds.join('|')
 
     useEffect(() => {
         let cancelled = false
@@ -75,5 +76,5 @@ export default function useGetUnreadChats(projectId, projectNotifications, chats
         }
     }, [projectId, chatsActiveTab, enabled, unreadChatIdsKey, JSON.stringify(filtersArray)])
 
-    return unreadChats
+    return { ...unreadChats, total: enabled ? allUnreadChatIds.length : 0 }
 }
