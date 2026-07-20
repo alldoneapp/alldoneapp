@@ -176,6 +176,28 @@ describe('AssistantOptions search button', () => {
         expect(getControlsStyle().flexDirection).toBe('column')
     })
 
+    it('keeps the input stable when content measurements oscillate at the scroll boundary', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        const getInput = () => tree.root.findByType(TextInput)
+        expect(getInput().props.autoExpand).toBe(true)
+
+        await act(async () => {
+            getInput().props.onContentSizeChange(100, 121)
+        })
+        expect(getInput().props.fixedHeight).toBe(120)
+        expect(getInput().props.scrollEnabled).toBe(true)
+
+        await act(async () => {
+            getInput().props.onContentSizeChange(100, 119)
+        })
+        expect(getInput().props.fixedHeight).toBe(120)
+        expect(getInput().props.scrollEnabled).toBe(true)
+    })
+
     it('removes input focus and dismisses the keyboard when sending a message', async () => {
         createBotQuickTopic.mockResolvedValue({
             projectId: 'selected-project',

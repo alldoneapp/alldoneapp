@@ -131,6 +131,7 @@ function CustomTextInput3(
         onContentSizeChange,
         scrollEnabled = true,
         showScrollIndicator = true,
+        autoExpand = false,
     },
     ref
 ) {
@@ -974,6 +975,16 @@ function CustomTextInput3(
             editorElement.style.overflowY = scrollEnabled ? 'auto' : 'hidden'
         }
     }, [editorElement, scrollEnabled])
+
+    useEffect(() => {
+        if (containerElement && editorElement && autoExpand) {
+            // Quill defaults both elements to height: 100%. Measuring that
+            // constrained height and feeding it back into the wrapper creates
+            // an oscillation at line-wrap and scrollbar boundaries.
+            containerElement.style.height = 'auto'
+            editorElement.style.height = 'auto'
+        }
+    }, [autoExpand, containerElement, editorElement])
 
     useEffect(() => {
         document.addEventListener('keydown', onKeyDown)

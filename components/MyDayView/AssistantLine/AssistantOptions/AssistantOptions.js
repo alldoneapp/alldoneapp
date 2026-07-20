@@ -24,10 +24,12 @@ import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
-
-const ASSISTANT_INPUT_MIN_HEIGHT = 40
-const ASSISTANT_INPUT_MAX_HEIGHT = 120
-const ASSISTANT_INPUT_SCROLL_BUFFER = 1
+import {
+    ASSISTANT_INPUT_MAX_HEIGHT,
+    ASSISTANT_INPUT_MIN_HEIGHT,
+    getAssistantInputLayout,
+    INITIAL_ASSISTANT_INPUT_LAYOUT,
+} from '../assistantInputLayout'
 
 export default function AssistantOptions({
     amountOfButtonOptions,
@@ -48,8 +50,7 @@ export default function AssistantOptions({
     const [message, setMessage] = useState('')
     const [isSending, setIsSending] = useState(false)
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
-    const [inputHeight, setInputHeight] = useState(ASSISTANT_INPUT_MIN_HEIGHT)
-    const [inputScrollEnabled, setInputScrollEnabled] = useState(false)
+    const [inputLayout, setInputLayout] = useState(INITIAL_ASSISTANT_INPUT_LAYOUT)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
@@ -112,8 +113,7 @@ export default function AssistantOptions({
             }
 
             setMessage('')
-            setInputHeight(ASSISTANT_INPUT_MIN_HEIGHT)
-            setInputScrollEnabled(false)
+            setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
             inputRef.current?.clear()
 
             // Unblock the input now that the thread has been created
@@ -140,47 +140,13 @@ export default function AssistantOptions({
     }, [assistant, conversationProject, conversationProjectId, message, gold])
 
     const updateInputHeight = useCallback(contentHeight => {
-        const roundedContentHeight = Math.ceil(contentHeight)
-        const nextInputHeight = Math.min(
-            Math.max(ASSISTANT_INPUT_MIN_HEIGHT, roundedContentHeight),
-            ASSISTANT_INPUT_MAX_HEIGHT
-        )
-
-        setInputHeight(nextInputHeight)
-        setInputScrollEnabled(roundedContentHeight > ASSISTANT_INPUT_MAX_HEIGHT + ASSISTANT_INPUT_SCROLL_BUFFER)
+        setInputLayout(previousLayout => getAssistantInputLayout(contentHeight, previousLayout))
     }, [])
 
-    const measureInputHeight = useCallback(() => {
-        const editorRoot = inputRef.current?.getEditor?.()?.root
-        if (editorRoot?.scrollHeight) {
-            updateInputHeight(editorRoot.scrollHeight)
-        }
-    }, [updateInputHeight])
-
-    const requestInputHeightMeasure = useCallback(() => {
-        if (typeof window !== 'undefined' && window.requestAnimationFrame) {
-            window.requestAnimationFrame(measureInputHeight)
-        } else {
-            setTimeout(measureInputHeight)
-        }
-    }, [measureInputHeight])
-
-    const updateMessage = useCallback(
-        text => {
-            setMessage(text)
-
-            if (!text) {
-                setInputHeight(ASSISTANT_INPUT_MIN_HEIGHT)
-                setInputScrollEnabled(false)
-                return
-            }
-
-            const lineCount = text.split('\n').length
-            updateInputHeight(lineCount * 34 + 6)
-            requestInputHeightMeasure()
-        },
-        [requestInputHeightMeasure, updateInputHeight]
-    )
+    const updateMessage = useCallback(text => {
+        setMessage(text)
+        if (!text) setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
+    }, [])
 
     const handleKeyDown = useCallback(
         event => {
@@ -226,7 +192,7 @@ export default function AssistantOptions({
 
     const hasQuickActions = true
     const canSend = message.trim().length > 0 && !isSending
-    const isInputExpanded = inputHeight > ASSISTANT_INPUT_MIN_HEIGHT
+    const isInputExpanded = inputLayout.height > ASSISTANT_INPUT_MIN_HEIGHT
 
     const sendLabel = translate('Send')
     const sendButtonTitle = isMobile ? '' : sendLabel
@@ -253,7 +219,7 @@ export default function AssistantOptions({
                 <CustomTextInput3
                     ref={inputRef}
                     containerStyle={localStyles.messageInput}
-                    fixedHeight={inputHeight}
+                    fixedHeight={inputLayout.height}
                     maxHeight={ASSISTANT_INPUT_MAX_HEIGHT}
                     onChangeText={updateMessage}
                     onContentSizeChange={(width, height) => updateInputHeight(height)}
@@ -263,9 +229,9 @@ export default function AssistantOptions({
                     disabledEdition={isSending}
                     setMentionsModalActive={setMentionsModalActive}
                     keepBreakLines={true}
-                    scrollEnabled={inputScrollEnabled}
-                    showScrollIndicator={inputScrollEnabled}
-                    setEditor={requestInputHeightMeasure}
+                    scrollEnabled={inputLayout.scrollEnabled}
+                    showScrollIndicator={inputLayout.scrollEnabled}
+                    autoExpand={true}
                 />
                 <Popover
                     content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
@@ -287,10 +253,7 @@ export default function AssistantOptions({
                             assistant={assistant}
                             projectId={conversationProjectId}
                             skipNavigationOnThreadCreate
-                            buttonStyle={[
-                                localStyles.voiceButton,
-                                isInputExpanded && localStyles.voiceButtonExpanded,
-                            ]}
+                            buttonStyle={[localStyles.voiceButton, isInputExpanded && localStyles.voiceButtonExpanded]}
                         />
                         <Button
                             title={isSending ? null : sendButtonTitle}
