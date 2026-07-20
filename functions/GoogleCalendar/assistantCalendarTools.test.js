@@ -241,6 +241,56 @@ describe('assistantCalendarTools', () => {
         )
     })
 
+    test('ignores all-day and multi-day events while timed same-day events remain busy', async () => {
+        setUser('user-1', {
+            timezone: 'Europe/Berlin',
+            projectIds: ['p1'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'private@example.com' },
+            },
+        })
+
+        const client = setCalendarClient('p1')
+        client.events.list.mockResolvedValue({
+            data: {
+                items: [
+                    {
+                        status: 'confirmed',
+                        start: { date: '2026-03-10' },
+                        end: { date: '2026-03-11' },
+                    },
+                    {
+                        status: 'confirmed',
+                        start: { dateTime: '2026-03-10T09:00:00+01:00' },
+                        end: { dateTime: '2026-03-11T11:00:00+01:00' },
+                    },
+                    {
+                        status: 'confirmed',
+                        start: { dateTime: '2026-03-10T10:00:00+01:00' },
+                        end: { dateTime: '2026-03-10T10:30:00+01:00' },
+                    },
+                ],
+            },
+        })
+
+        const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
+            userId: 'user-1',
+            timeMin: '2026-03-10T09:00:00+01:00',
+            timeMax: '2026-03-10T12:00:00+01:00',
+            durationMinutes: 30,
+            maxOptions: 6,
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.options).toEqual([
+            { start: '2026-03-10T09:00:00+01:00', end: '2026-03-10T09:30:00+01:00' },
+            { start: '2026-03-10T09:30:00+01:00', end: '2026-03-10T10:00:00+01:00' },
+            { start: '2026-03-10T10:30:00+01:00', end: '2026-03-10T11:00:00+01:00' },
+            { start: '2026-03-10T11:00:00+01:00', end: '2026-03-10T11:30:00+01:00' },
+            { start: '2026-03-10T11:30:00+01:00', end: '2026-03-10T12:00:00+01:00' },
+        ])
+    })
+
     test('fails closed when any connected calendar cannot be checked', async () => {
         setUser('user-1', {
             timezone: 'Europe/Berlin',
