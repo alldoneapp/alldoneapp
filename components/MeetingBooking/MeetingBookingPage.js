@@ -4,8 +4,7 @@ import moment from 'moment-timezone'
 
 import Button from '../UIControls/Button'
 import styles, { colors } from '../styles/global'
-import { setLanguage, translate } from '../../i18n/TranslationService'
-import { BOOKING_LANGUAGES, getInitialBookingLanguage, persistBookingLanguage } from './bookingLanguage'
+import { getDeviceLanguage, translate } from '../../i18n/TranslationService'
 import {
     bookPublicMeeting,
     getPublicBookingPage,
@@ -29,11 +28,6 @@ function getFirstName(name) {
 
 export default function MeetingBookingPage({ navigation }) {
     const slug = navigation.getParam('slug') || ''
-    const [language, setBookingLanguage] = useState(() => {
-        const initialLanguage = getInitialBookingLanguage()
-        setLanguage(initialLanguage)
-        return initialLanguage
-    })
     const [page, setPage] = useState(null)
     const [slots, setSlots] = useState([])
     const [selectedDay, setSelectedDay] = useState(null)
@@ -46,8 +40,6 @@ export default function MeetingBookingPage({ navigation }) {
     const [loadingSlots, setLoadingSlots] = useState(false)
     const [booking, setBooking] = useState(false)
     const [error, setError] = useState('')
-    const [errorTranslationKey, setErrorTranslationKey] = useState('')
-    const [pageUnavailable, setPageUnavailable] = useState(false)
     const [success, setSuccess] = useState(null)
     const [displayTimeZone, setDisplayTimeZone] = useState(null)
     const [pickerOpen, setPickerOpen] = useState(false)
@@ -65,27 +57,10 @@ export default function MeetingBookingPage({ navigation }) {
         )
     }, [hostTimeZone])
 
-    const changeLanguage = nextLanguage => {
-        setLanguage(nextLanguage)
-        setBookingLanguage(nextLanguage)
-        persistBookingLanguage(nextLanguage)
-    }
-
-    const clearError = () => {
-        setError('')
-        setErrorTranslationKey('')
-    }
-
-    const setTranslatedError = translationKey => {
-        setError('')
-        setErrorTranslationKey(translationKey)
-    }
-
     useEffect(() => {
         const loadPage = async () => {
             setLoadingPage(true)
-            clearError()
-            setPageUnavailable(false)
+            setError('')
             try {
                 const result = await getPublicBookingPage(slug)
                 setPage(result.page)
@@ -96,10 +71,13 @@ export default function MeetingBookingPage({ navigation }) {
                         .tz(result.page?.settings?.timeZone || moment.tz.guess())
                         .startOf('day')
                 )
+                if (typeof document !== 'undefined') {
+                    document.title = translate('Book a meeting document title', {
+                        name: result.page?.profile?.displayName || 'Alldone',
+                    })
+                }
             } catch (loadError) {
-                setPageUnavailable(true)
-                if (loadError.message) setError(loadError.message)
-                else setTranslatedError('Booking page not found')
+                setError(loadError.message || translate('Booking page not found'))
             } finally {
                 setLoadingPage(false)
             }
@@ -108,19 +86,11 @@ export default function MeetingBookingPage({ navigation }) {
     }, [slug])
 
     useEffect(() => {
-        if (page && typeof document !== 'undefined') {
-            document.title = translate('Book a meeting document title', {
-                name: page.profile?.displayName || 'Alldone',
-            })
-        }
-    }, [page, language])
-
-    useEffect(() => {
         if (!page || !selectedDay) return
         const loadSlots = async () => {
             setLoadingSlots(true)
             setSelectedSlot(null)
-            clearError()
+            setError('')
             try {
                 const now = moment().tz(hostTimeZone)
                 const dayStart = selectedDay.clone().tz(hostTimeZone).startOf('day')
@@ -136,8 +106,7 @@ export default function MeetingBookingPage({ navigation }) {
                 setSlots(result.options || [])
             } catch (slotsError) {
                 setSlots([])
-                if (slotsError.message) setError(slotsError.message)
-                else setTranslatedError('Could not load available times')
+                setError(slotsError.message || translate('Could not load available times'))
             } finally {
                 setLoadingSlots(false)
             }
@@ -147,16 +116,16 @@ export default function MeetingBookingPage({ navigation }) {
 
     const onBook = async () => {
         if (!selectedSlot) {
-            setTranslatedError('Choose a time first')
+            setError(translate('Choose a time first'))
             return
         }
         if (!visitorName.trim() || !visitorEmail.trim()) {
-            setTranslatedError('Enter your name and email')
+            setError(translate('Enter your name and email'))
             return
         }
 
         setBooking(true)
-        clearError()
+        setError('')
         try {
             const result = await bookPublicMeeting({
                 slug,
@@ -170,8 +139,7 @@ export default function MeetingBookingPage({ navigation }) {
             })
             setSuccess(result)
         } catch (bookError) {
-            if (bookError.message) setError(bookError.message)
-            else setTranslatedError('Could not book this meeting')
+            setError(bookError.message || translate('Could not book this meeting'))
         } finally {
             setBooking(false)
         }
@@ -181,24 +149,20 @@ export default function MeetingBookingPage({ navigation }) {
         return <BookingPageSkeleton />
     }
 
-    const displayedError = errorTranslationKey ? translate(errorTranslationKey) : error
-
-    if (!page || pageUnavailable) {
+    if (!page || error === translate('Booking page not found')) {
         return (
             <View style={localStyles.centered}>
-                <LanguageSelector language={language} onSelect={changeLanguage} />
                 <Text style={localStyles.title}>{translate('Booking page unavailable')}</Text>
-                <Text style={localStyles.meta}>{displayedError || translate('This booking link is not active.')}</Text>
+                <Text style={localStyles.meta}>{error || translate('This booking link is not active.')}</Text>
             </View>
         )
     }
 
     if (success) {
-        const when = moment(success.start).tz(activeTimeZone).locale(language)
+        const when = moment(success.start).tz(activeTimeZone).locale(getDeviceLanguage())
         return (
             <View style={localStyles.centered}>
                 <View style={localStyles.successCard}>
-                    <LanguageSelector language={language} onSelect={changeLanguage} />
                     <View style={localStyles.successBadge}>
                         <Text style={localStyles.successBadgeCheck}>✓</Text>
                     </View>
@@ -226,7 +190,6 @@ export default function MeetingBookingPage({ navigation }) {
     return (
         <View style={localStyles.root}>
             <ScrollView style={localStyles.page} contentContainerStyle={localStyles.content}>
-                <LanguageSelector language={language} onSelect={changeLanguage} />
                 <View style={localStyles.header}>
                     {!!page.profile?.photoURL && <Image source={page.profile.photoURL} style={localStyles.avatar} />}
                     <View style={localStyles.headerText}>
@@ -286,13 +249,13 @@ export default function MeetingBookingPage({ navigation }) {
                                     onPress={() => setSelectedDay(day)}
                                 >
                                     <Text style={[localStyles.dayName, active && localStyles.dayTextActive]}>
-                                        {day.clone().locale(language).format('ddd')}
+                                        {day.format('ddd')}
                                     </Text>
                                     <Text style={[localStyles.dayNumber, active && localStyles.dayTextActive]}>
                                         {day.format('D')}
                                     </Text>
                                     <Text style={[localStyles.dayMonth, active && localStyles.dayTextActive]}>
-                                        {day.clone().locale(language).format('MMM')}
+                                        {day.format('MMM')}
                                     </Text>
                                 </TouchableOpacity>
                             )
@@ -310,7 +273,7 @@ export default function MeetingBookingPage({ navigation }) {
                         <View style={localStyles.slotGrid}>
                             {slots.map(slot => {
                                 const active = selectedSlot?.start === slot.start
-                                const slotMoment = moment(slot.start).tz(activeTimeZone).locale(language)
+                                const slotMoment = moment(slot.start).tz(activeTimeZone)
                                 // When the display timezone shifts a slot onto a different calendar
                                 // day than the selected (host) day, show the date so it isn't misread.
                                 const crossesDay = slotMoment.format('YYYY-MM-DD') !== selectedDay.format('YYYY-MM-DD')
@@ -363,7 +326,7 @@ export default function MeetingBookingPage({ navigation }) {
                     />
                 </View>
 
-                {!!displayedError && <Text style={localStyles.error}>{displayedError}</Text>}
+                {!!error && <Text style={localStyles.error}>{error}</Text>}
                 <Button
                     testID="booking-confirm-button"
                     title={translate('Confirm meeting')}
@@ -387,36 +350,6 @@ export default function MeetingBookingPage({ navigation }) {
                     onClose={() => setPickerOpen(false)}
                 />
             )}
-        </View>
-    )
-}
-
-const LANGUAGE_LABEL_KEYS = {
-    en: 'English',
-    de: 'German',
-    es: 'Spanish',
-}
-
-function LanguageSelector({ language, onSelect }) {
-    return (
-        <View style={localStyles.languageSelector} accessibilityLabel={translate('Language')}>
-            {BOOKING_LANGUAGES.map(option => {
-                const active = option === language
-                return (
-                    <TouchableOpacity
-                        key={option}
-                        testID={`booking-language-${option}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                        style={[localStyles.languageButton, active && localStyles.languageButtonActive]}
-                        onPress={() => onSelect(option)}
-                    >
-                        <Text style={[localStyles.languageText, active && localStyles.languageTextActive]}>
-                            {translate(LANGUAGE_LABEL_KEYS[option])}
-                        </Text>
-                    </TouchableOpacity>
-                )
-            })}
         </View>
     )
 }
@@ -651,29 +584,6 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 24,
-    },
-    languageSelector: {
-        flexDirection: 'row',
-        alignSelf: 'flex-end',
-        padding: 3,
-        marginBottom: 20,
-        borderRadius: 8,
-        backgroundColor: colors.Grey200,
-    },
-    languageButton: {
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-        borderRadius: 6,
-    },
-    languageButtonActive: {
-        backgroundColor: '#FFFFFF',
-    },
-    languageText: {
-        ...styles.caption2,
-        color: colors.Text03,
-    },
-    languageTextActive: {
-        color: colors.Primary300,
     },
     avatar: {
         width: 64,

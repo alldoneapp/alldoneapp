@@ -2387,5 +2387,7 @@
     "Keep mine": "Conservar la mía",
     "Accept template": "Aceptar plantilla",
     "Template task deleted • local changes preserved": "Tarea de plantilla eliminada • cambios locales conservados",
-    "Template changed • local changes preserved": "Plantilla modificada • cambios locales conservados"
+    "Template changed • local changes preserved": "Plantilla modificada • cambios locales conservados",
+    "Chat Filters": "Filtros de chat",
+    "Unread": "No leídos"
 }
