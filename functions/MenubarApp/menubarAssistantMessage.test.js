@@ -254,6 +254,10 @@ describe('menubar assistant thread responses', () => {
     test('resolves a visible object thread in any project the user belongs to', async () => {
         const docs = {
             'projects/project-2': { userIds: ['user-1'], name: 'Second project' },
+            'items/project-2/tasks/task-9': {
+                assistantId: 'assistant-2',
+                isAssistantEnabled: true,
+            },
             'chatObjects/project-2/chats/task-9': {
                 id: 'task-9',
                 type: 'tasks',
@@ -277,6 +281,8 @@ describe('menubar assistant thread responses', () => {
             projectId: 'project-2',
             chatId: 'task-9',
             objectType: 'tasks',
+            assistantId: 'assistant-2',
+            assistantReplyEnabled: true,
             isAssistantThread: false,
         })
 
@@ -288,5 +294,47 @@ describe('menubar assistant thread responses', () => {
                 objectType: 'tasks',
             })
         ).resolves.toBeNull()
+    })
+
+    test('uses an explicit chat setting and suppresses regular replies for webhook tasks', async () => {
+        const docs = {
+            'projects/project-2': { userIds: ['user-1'], name: 'Second project' },
+            'items/project-2/tasks/task-9': {
+                assistantId: 'assistant-2',
+                isAssistantEnabled: true,
+                taskMetadata: { isWebhookTask: true },
+            },
+            'chatObjects/project-2/chats/task-9': {
+                type: 'tasks',
+                isPublicFor: [0],
+                isAssistantEnabled: true,
+            },
+        }
+        const db = {
+            doc: path => ({
+                get: async () => ({ exists: !!docs[path], data: () => docs[path] }),
+            }),
+        }
+
+        await expect(
+            resolveMenubarConversationTarget(db, 'user-1', {
+                projectId: 'project-2',
+                objectId: 'task-9',
+                objectType: 'tasks',
+            })
+        ).resolves.toMatchObject({
+            assistantId: 'assistant-2',
+            assistantReplyEnabled: false,
+        })
+
+        docs['items/project-2/tasks/task-9'].taskMetadata.isWebhookTask = false
+        docs['chatObjects/project-2/chats/task-9'].isAssistantEnabled = false
+        await expect(
+            resolveMenubarConversationTarget(db, 'user-1', {
+                projectId: 'project-2',
+                objectId: 'task-9',
+                objectType: 'tasks',
+            })
+        ).resolves.toMatchObject({ assistantReplyEnabled: false })
     })
 })

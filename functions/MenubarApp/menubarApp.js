@@ -1426,12 +1426,29 @@ async function resolveMenubarConversationTarget(db, userId, target) {
         (chat.type === 'contacts' && target.objectType === 'users')
     if (!typeMatches) return null
 
+    const { getObjectDocPath } = require('../shared/privacyAccess')
+    const objectPath = getObjectDocPath(target.projectId, target.objectType, target.objectId)
+    let parentObject = chat
+    if (objectPath && objectPath !== `chatObjects/${target.projectId}/chats/${target.objectId}`) {
+        const objectDoc = await db.doc(objectPath).get()
+        parentObject = objectDoc.exists ? objectDoc.data() || {} : null
+    }
+    const assistantStateSource = typeof chat.isAssistantEnabled === 'boolean' ? chat : parentObject
+    const isWebhookTask = target.objectType === 'tasks' && parentObject?.taskMetadata?.isWebhookTask === true
+    const assistantReplyEnabled = assistantStateSource?.isAssistantEnabled === true && !isWebhookTask
+
     return {
         projectId: target.projectId,
         project,
         chatId: target.objectId,
         objectType: target.objectType,
         chat,
+        parentObject,
+        assistantId:
+            (typeof parentObject?.assistantId === 'string' && parentObject.assistantId.trim()) ||
+            (typeof chat.assistantId === 'string' && chat.assistantId.trim()) ||
+            '',
+        assistantReplyEnabled,
         isAssistantThread: isOwnedMacAppTopic(target.objectId, chat, userId),
     }
 }
@@ -1562,13 +1579,17 @@ async function handleMenubarAssistantThread(req, res) {
             return
         }
 
-        const { projectId, project, chatId, objectType, chat, isAssistantThread } = resolved
+        const { projectId, project, chatId, objectType, chat, isAssistantThread, assistantReplyEnabled } = resolved
         const actor = await getMenubarAssistantActor(db, userData)
-        const assistantId = chat.assistantId || actor.assistantId || ''
+        const assistantId = resolved.assistantId || chat.assistantId || actor.assistantId || ''
         const assistantName = isAssistantThread
             ? actor.assistantId === assistantId
                 ? actor.feedUser.displayName || 'Anna'
                 : 'Anna'
+            : assistantReplyEnabled
+            ? actor.assistantId === assistantId
+                ? actor.feedUser.displayName || 'Assistant'
+                : 'Assistant'
             : 'Comments'
         const requestedLimit = Number(req.body?.limit)
         const limit = Number.isFinite(requestedLimit)
@@ -1632,6 +1653,7 @@ async function handleMenubarAssistantThread(req, res) {
                 chatId,
                 objectType,
                 isAssistantThread,
+                assistantReplyEnabled: isAssistantThread ? true : assistantReplyEnabled === true,
                 title: chat.title || 'Mac App',
                 url: require('./menubarLastComment').__private__.buildLastCommentUrl(
                     getAppBaseUrl(),
@@ -1760,6 +1782,9 @@ async function handleMenubarAssistantMessage(req, res) {
                 return
             }
             assistantId = actor.assistantId
+        } else if (resolvedTarget.assistantReplyEnabled) {
+            actor = await getMenubarAssistantActor(db, userData)
+            assistantId = resolvedTarget.assistantId || actor.assistantId || ''
         }
 
         // Idempotency: repeats of the same requestId return the original result.
@@ -1886,16 +1911,39 @@ async function handleMenubarAssistantMessage(req, res) {
                 })
                 await batch.commit()
 
+                const targetAssistantId = assistantId || resolvedTarget.assistantId || ''
+                const expectsAssistantReply = resolvedTarget.assistantReplyEnabled === true && !!targetAssistantId
+                if (expectsAssistantReply) {
+                    await db.collection(ASSISTANT_RUNS_COLLECTION).add({
+                        userId,
+                        projectId,
+                        objectType,
+                        objectId: chatId,
+                        assistantId: targetAssistantId,
+                        messageId: commentId,
+                        userIdsToNotify: Array.from(new Set([...visibleUserIds, userId])),
+                        isPublicFor,
+                        followerIds,
+                        language,
+                        requestId,
+                        status: 'pending',
+                        createdAt: now,
+                    })
+                }
+
                 const response = {
                     success: true,
                     deduplicated: false,
                     projectId,
                     projectName: project.name || '',
-                    assistantId: chat.assistantId || '',
-                    assistantName: '',
+                    assistantId: targetAssistantId,
+                    assistantName:
+                        expectsAssistantReply && actor?.assistantId === targetAssistantId
+                            ? actor.feedUser.displayName || 'Assistant'
+                            : '',
                     chatId,
                     commentId,
-                    expectsAssistantReply: false,
+                    expectsAssistantReply,
                     url: require('./menubarLastComment').__private__.buildLastCommentUrl(
                         getAppBaseUrl(),
                         projectId,
