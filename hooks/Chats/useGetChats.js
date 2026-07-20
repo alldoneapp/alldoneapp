@@ -8,7 +8,7 @@ import useSelectorHashtagFilters from '../../components/HashtagFilters/UseSelect
 import { filterChats } from '../../components/HashtagFilters/FilterHelpers/FilterChats'
 import { getDb } from '../../utils/backends/firestore'
 
-export default function useGetChats(projectId, toRender, chatsActiveTab, loadAll = false) {
+export default function useGetChats(projectId, toRender, chatsActiveTab) {
     const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const [chats, setChats] = useState({})
@@ -40,8 +40,7 @@ export default function useGetChats(projectId, toRender, chatsActiveTab, loadAll
             chatsActiveTab === ALL_TAB
                 ? query.where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
                 : query.where('usersFollowing', 'array-contains', loggedUserId)
-        query = query.where('stickyData.days', '==', 0).orderBy('lastEditionDate', 'desc')
-        if (!loadAll) query = query.limit(toRender)
+        query = query.where('stickyData.days', '==', 0).orderBy('lastEditionDate', 'desc').limit(toRender)
         const unsubscribe = query.onSnapshot(handleSnapshot, error => {
             console.error('❌ useGetChats: Firebase snapshot error for project:', projectId, error)
             if (isLoadingStartedRef.current) {
@@ -59,7 +58,7 @@ export default function useGetChats(projectId, toRender, chatsActiveTab, loadAll
             }
             unsubscribe()
         }
-    }, [projectId, toRender, chatsActiveTab, loadAll, JSON.stringify(filtersArray)])
+    }, [projectId, toRender, chatsActiveTab, JSON.stringify(filtersArray)])
 
     async function handleSnapshot(chatDocs) {
         console.log('✅ useGetChats: Received snapshot for project:', projectId, 'docs count:', chatDocs.size)
