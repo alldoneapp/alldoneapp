@@ -23,9 +23,9 @@ import { DV_TAB_ROOT_CHATS } from '../../utils/TabNavigationConstants'
 import MarkAsRead from './MarkAsRead'
 import StickyChats from './StickyChats'
 import useGetStickyChats from '../../hooks/Chats/useGetStickyChats'
+import useGetUnreadChats from '../../hooks/Chats/useGetUnreadChats'
 import { unwatchChatsAmount, watchChatsAmount } from '../../utils/backends/Chats/chatNumbers'
 import ChatsMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton'
-import { filterChatsByUnread, filterStickyChatsByUnread } from './Utils/unreadChatFilter'
 
 function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -40,12 +40,11 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     )
     const [atEnd, setAtEnd] = useState(false)
     const projectNotifications = useSelector(state => state.projectChatNotifications[project.id])
-    const loadedChats = useGetChats(project.id, toRender, chatsActiveTab, unreadOnly)
-    const loadedStickyChats = useGetStickyChats(project.id, toRender, chatsActiveTab, unreadOnly)
-    const chats = unreadOnly ? filterChatsByUnread(loadedChats, projectNotifications, chatsActiveTab) : loadedChats
-    const stickyChats = unreadOnly
-        ? filterStickyChatsByUnread(loadedStickyChats, projectNotifications, chatsActiveTab)
-        : loadedStickyChats
+    const loadedChats = useGetChats(project.id, toRender, chatsActiveTab)
+    const loadedStickyChats = useGetStickyChats(project.id, toRender, chatsActiveTab)
+    const unreadChats = useGetUnreadChats(project.id, projectNotifications, chatsActiveTab, unreadOnly)
+    const chats = unreadOnly ? unreadChats.chats : loadedChats
+    const stickyChats = unreadOnly ? unreadChats.stickyChats : loadedStickyChats
 
     console.log(
         '📊 ChatsByProject: Loading state for project:',
