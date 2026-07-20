@@ -54,6 +54,12 @@ describe('ChatsButton', () => {
         )
     })
 
+    it('uses a single chat bubble icon', () => {
+        const component = renderer.create(<ChatsButton color={'black'} />)
+
+        expect(component.root.findByType('Icon').props.name).toBe('message-circle')
+    })
+
     it('opens the cross-project followed chat list when the red count is available', () => {
         const component = renderer.create(<ChatsButton color={'black'} />)
 
