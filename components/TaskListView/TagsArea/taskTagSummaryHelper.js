@@ -3,7 +3,7 @@ const TABLET_TAG_LIMIT = 3
 const MOBILE_TAG_LIMIT = 2
 const MY_DAY_DESKTOP_TAG_LIMIT = 3
 const MY_DAY_COMPACT_TAG_LIMIT = 1
-const MAX_TRAILING_TAGS_WIDTH_RATIO = 0.5
+const MAX_TRAILING_TAGS_WIDTH_RATIO = 0.7
 
 export const doTrailingTagsCrowdTaskTitle = ({ taskTagsWidth, taskItemWidth, inMyDayAndNotSubtask }) =>
     !inMyDayAndNotSubtask &&
