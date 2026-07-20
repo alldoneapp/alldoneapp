@@ -1136,6 +1136,16 @@ const ALLOWED_ASSISTANT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
 const ASSISTANT_MESSAGE_PENDING_TIMEOUT_MS = 2 * 60 * 1000
 const DEFAULT_ASSISTANT_THREAD_PAGE_SIZE = 30
 const MAX_ASSISTANT_THREAD_PAGE_SIZE = 50
+const MENUBAR_CONVERSATION_OBJECT_TYPES = new Set([
+    'topics',
+    'tasks',
+    'notes',
+    'goals',
+    'skills',
+    'users',
+    'contacts',
+    'assistants',
+])
 
 function buildAssistantMessageDocId(userId, requestId) {
     return hashToken(`${userId}__${requestId}`)
@@ -1318,7 +1328,15 @@ function sanitizeAssistantMediaUrl(value) {
     }
 }
 
-function normalizeAssistantThreadMessage(id, data = {}, assistantId, assistantName, userId, userName) {
+function normalizeAssistantThreadMessage(
+    id,
+    data = {},
+    assistantId,
+    assistantName,
+    userId,
+    userName,
+    resolvedAuthorName = ''
+) {
     const {
         cleanTextMetaData,
         extractMediaContextFromText,
@@ -1339,7 +1357,7 @@ function normalizeAssistantThreadMessage(id, data = {}, assistantId, assistantNa
     return {
         id,
         role: fromAssistant ? 'assistant' : 'user',
-        authorName: fromAssistant ? assistantName || 'Anna' : userName || 'You',
+        authorName: resolvedAuthorName || (fromAssistant ? assistantName || 'Anna' : userName || 'You'),
         text,
         richText: rawText,
         createdAt: toMillis(data.created || data.lastChangeDate),
@@ -1365,6 +1383,57 @@ function isOwnedMacAppTopic(chatId, chat = {}, userId) {
     return (
         typeof chatId === 'string' && chatId.startsWith('MacApp') && chat.type === 'topics' && chat.creatorId === userId
     )
+}
+
+function normalizeMenubarConversationTarget(rawTarget) {
+    if (rawTarget === undefined || rawTarget === null) return null
+    if (!rawTarget || typeof rawTarget !== 'object' || Array.isArray(rawTarget)) {
+        throw new Error('target is invalid')
+    }
+    const projectId = typeof rawTarget.projectId === 'string' ? rawTarget.projectId.trim() : ''
+    const objectId = typeof rawTarget.objectId === 'string' ? rawTarget.objectId.trim() : ''
+    const objectType = typeof rawTarget.objectType === 'string' ? rawTarget.objectType.trim() : ''
+    if (
+        !projectId ||
+        projectId.length > 160 ||
+        !objectId ||
+        objectId.length > 200 ||
+        !MENUBAR_CONVERSATION_OBJECT_TYPES.has(objectType)
+    ) {
+        throw new Error('target is invalid')
+    }
+    return { projectId, objectId, objectType }
+}
+
+async function resolveMenubarConversationTarget(db, userId, target) {
+    if (!target) return null
+    const [projectDoc, chatDoc] = await Promise.all([
+        db.doc(`projects/${target.projectId}`).get(),
+        db.doc(`chatObjects/${target.projectId}/chats/${target.objectId}`).get(),
+    ])
+    if (!projectDoc.exists || !chatDoc.exists) return null
+
+    const project = projectDoc.data() || {}
+    if (!Array.isArray(project.userIds) || !project.userIds.includes(userId)) return null
+
+    const chat = chatDoc.data() || {}
+    const { isChatVisibleToUser } = require('./menubarLastComment').__private__
+    if (!isChatVisibleToUser(chat, userId)) return null
+    const typeMatches =
+        !chat.type ||
+        chat.type === target.objectType ||
+        (chat.type === 'users' && target.objectType === 'contacts') ||
+        (chat.type === 'contacts' && target.objectType === 'users')
+    if (!typeMatches) return null
+
+    return {
+        projectId: target.projectId,
+        project,
+        chatId: target.objectId,
+        objectType: target.objectType,
+        chat,
+        isAssistantThread: isOwnedMacAppTopic(target.objectId, chat, userId),
+    }
 }
 
 async function deleteMenubarThreadNotifications(db, projectId, chatId, userId, notificationDocs) {
@@ -1429,14 +1498,22 @@ async function resolveMenubarAssistantThread(db, userId, userData, requestedChat
         if (!chatDoc.exists) continue
         const chat = chatDoc.data() || {}
         if (!isOwnedMacAppTopic(chatId, chat, userId)) continue
-        return { projectId: defaultProjectId, project, chatId, chat }
+        return {
+            projectId: defaultProjectId,
+            project,
+            chatId,
+            objectType: 'topics',
+            chat,
+            isAssistantThread: true,
+        }
     }
     return null
 }
 
 // POST /api/menubar/assistant-thread
-//   { token, chatId?, before?, limit?, markRead? }
-// Returns a safe, paginated view of the user's current/recent Mac App topic.
+//   { token, chatId?, target?: { projectId, objectId, objectType }, before?, limit?, markRead? }
+// Returns a safe, paginated view of the requested visible object thread, or
+// the user's current/recent Mac App topic when no explicit target is supplied.
 // Merely fetching the compact preview never clears unread markers; the macOS
 // conversation panel opts into `markRead` while it is visible, matching the
 // web RichCommentModal behavior.
@@ -1463,23 +1540,36 @@ async function handleMenubarAssistantThread(req, res) {
             return
         }
         const { userId, userData } = tokenUser
+        let target
+        try {
+            target = normalizeMenubarConversationTarget(req.body?.target)
+        } catch (targetError) {
+            res.status(400).json({ success: false, error: targetError.message })
+            return
+        }
         const requestedChatId = typeof req.body?.chatId === 'string' ? req.body.chatId.trim() : ''
-        if (requestedChatId && (!requestedChatId.startsWith('MacApp') || requestedChatId.length > 160)) {
+        if (!target && requestedChatId && (!requestedChatId.startsWith('MacApp') || requestedChatId.length > 160)) {
             res.status(400).json({ success: false, error: 'chatId is invalid' })
             return
         }
 
         const db = admin.firestore()
-        const resolved = await resolveMenubarAssistantThread(db, userId, userData, requestedChatId)
+        const resolved = target
+            ? await resolveMenubarConversationTarget(db, userId, target)
+            : await resolveMenubarAssistantThread(db, userId, userData, requestedChatId)
         if (!resolved) {
             res.status(200).json({ success: true, thread: null, messages: [], unreadCount: 0, hasMore: false })
             return
         }
 
-        const { projectId, project, chatId, chat } = resolved
+        const { projectId, project, chatId, objectType, chat, isAssistantThread } = resolved
         const actor = await getMenubarAssistantActor(db, userData)
         const assistantId = chat.assistantId || actor.assistantId || ''
-        const assistantName = actor.assistantId === assistantId ? actor.feedUser.displayName || 'Anna' : 'Anna'
+        const assistantName = isAssistantThread
+            ? actor.assistantId === assistantId
+                ? actor.feedUser.displayName || 'Anna'
+                : 'Anna'
+            : 'Comments'
         const requestedLimit = Number(req.body?.limit)
         const limit = Number.isFinite(requestedLimit)
             ? Math.max(1, Math.min(Math.floor(requestedLimit), MAX_ASSISTANT_THREAD_PAGE_SIZE))
@@ -1487,7 +1577,7 @@ async function handleMenubarAssistantThread(req, res) {
         const before = Number(req.body?.before)
 
         let commentsQuery = db
-            .collection(`chatComments/${projectId}/topics/${chatId}/comments`)
+            .collection(`chatComments/${projectId}/${objectType}/${chatId}/comments`)
             .orderBy('created', 'desc')
         if (Number.isFinite(before) && before > 0) commentsQuery = commentsQuery.where('created', '<', before)
         const [commentsSnapshot, notificationsSnapshot] = await Promise.all([
@@ -1500,13 +1590,25 @@ async function handleMenubarAssistantThread(req, res) {
         const messages = (
             await Promise.all(
                 docs.map(async doc => {
+                    const data = doc.data() || {}
+                    const fromAssistant = data.fromAssistant === true || data.creatorId === assistantId
+                    const { resolveAuthorName } = require('./menubarLastComment').__private__
+                    const authorName = await resolveAuthorName(
+                        db,
+                        projectId,
+                        data.creatorId || '',
+                        fromAssistant ? 'assistant' : 'user',
+                        userId,
+                        userData
+                    )
                     const message = normalizeAssistantThreadMessage(
                         doc.id,
-                        doc.data(),
+                        data,
                         assistantId,
                         assistantName,
                         userId,
-                        getUserDisplayName(userData)
+                        getUserDisplayName(userData),
+                        authorName
                     )
                     return {
                         ...message,
@@ -1528,8 +1630,15 @@ async function handleMenubarAssistantThread(req, res) {
                 assistantId,
                 assistantName,
                 chatId,
+                objectType,
+                isAssistantThread,
                 title: chat.title || 'Mac App',
-                url: `${getAppBaseUrl()}/projects/${projectId}/chats/${chatId}/chat`,
+                url: require('./menubarLastComment').__private__.buildLastCommentUrl(
+                    getAppBaseUrl(),
+                    projectId,
+                    objectType,
+                    chatId
+                ),
             },
             messages,
             unreadCount: markRead ? 0 : notificationsSnapshot.size,
@@ -1546,12 +1655,13 @@ async function handleMenubarAssistantThread(req, res) {
 // POST /api/menubar/assistant-message  ->
 //   { token, requestId, comment,
 //     image?: { mimeType, dataBase64, width?, height? },
-//     attachment?: { fileName, mimeType, dataBase64 }, client? }
+//     attachment?: { fileName, mimeType, dataBase64 },
+//     target?: { projectId, objectId, objectType }, client? }
 //   200 { success: true, deduplicated, projectId, projectName, assistantId,
 //         assistantName, chatId, commentId, url }
 //
-// Appends the comment (plus one optional screenshot/file) to the user's daily
-// "Mac App" topic chat with the default assistant in their default project
+// With an explicit target, appends a regular comment to that visible object.
+// Otherwise appends to the user's daily "Mac App" topic with the default assistant
 // (same daily-topic model as the WhatsApp chat), then queues the assistant
 // reply via ASSISTANT_RUNS_COLLECTION — the reply is generated by the
 // processMenubarAssistantRun Firestore trigger, never inside this request
@@ -1617,21 +1727,40 @@ async function handleMenubarAssistantMessage(req, res) {
 
         const db = admin.firestore()
 
-        // Resolve the default project (must exist and include the user).
-        const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
-        const projectDoc = defaultProjectId ? await db.doc(`projects/${defaultProjectId}`).get() : null
-        const project = projectDoc && projectDoc.exists ? projectDoc.data() || {} : null
-        if (!project || !Array.isArray(project.userIds) || !project.userIds.includes(userId)) {
-            res.status(404).json({ success: false, error: 'No default project or assistant configured' })
+        let target
+        try {
+            target = normalizeMenubarConversationTarget(req.body?.target)
+        } catch (targetError) {
+            res.status(400).json({ success: false, error: targetError.message })
+            return
+        }
+        const resolvedTarget = target ? await resolveMenubarConversationTarget(db, userId, target) : null
+        if (target && !resolvedTarget) {
+            res.status(404).json({ success: false, error: 'Conversation not found or not accessible' })
             return
         }
 
-        const actor = await getMenubarAssistantActor(db, userData)
-        if (!actor.assistantId) {
-            res.status(404).json({ success: false, error: 'No default project or assistant configured' })
-            return
+        // Default Ask Anna sends still resolve the user's configured project
+        // and assistant. Explicit object comments use the selected project.
+        const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
+        let project = resolvedTarget?.project || null
+        let actor = null
+        let assistantId = ''
+        if (!resolvedTarget) {
+            const projectDoc = defaultProjectId ? await db.doc(`projects/${defaultProjectId}`).get() : null
+            project = projectDoc && projectDoc.exists ? projectDoc.data() || {} : null
+            if (!project || !Array.isArray(project.userIds) || !project.userIds.includes(userId)) {
+                res.status(404).json({ success: false, error: 'No default project or assistant configured' })
+                return
+            }
+
+            actor = await getMenubarAssistantActor(db, userData)
+            if (!actor.assistantId) {
+                res.status(404).json({ success: false, error: 'No default project or assistant configured' })
+                return
+            }
+            assistantId = actor.assistantId
         }
-        const assistantId = actor.assistantId
 
         // Idempotency: repeats of the same requestId return the original result.
         const messageRef = db
@@ -1693,8 +1822,97 @@ async function handleMenubarAssistantMessage(req, res) {
             const mediaContext = extractMediaContextFromText(commentText)
 
             const now = Date.now()
-            const assistantName = actor.feedUser.displayName || 'Assistant'
             const preview = comment.substring(0, 200)
+
+            if (resolvedTarget) {
+                const { projectId, chatId, objectType, chat } = resolvedTarget
+                const commentId = db.collection('_').doc().id
+                const isPublicFor = Array.isArray(chat.isPublicFor) ? chat.isPublicFor : [FEED_PUBLIC_FOR_ALL]
+                const visibleUserIds = Array.isArray(project.userIds)
+                    ? project.userIds.filter(
+                          candidateId =>
+                              candidateId !== userId &&
+                              (isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(candidateId))
+                      )
+                    : []
+                const followerIds = Array.from(
+                    new Set([userId, ...(Array.isArray(chat.usersFollowing) ? chat.usersFollowing : [])])
+                ).filter(candidateId => project.userIds.includes(candidateId))
+                const followers = new Set(followerIds)
+                const pointer = {
+                    objectType,
+                    objectId: chatId,
+                    creatorId: userId,
+                    creatorType: 'user',
+                    date: now,
+                }
+
+                const batch = db.batch()
+                batch.set(db.doc(`chatComments/${projectId}/${objectType}/${chatId}/comments/${commentId}`), {
+                    commentText,
+                    mediaContext,
+                    lastChangeDate: admin.firestore.Timestamp.now(),
+                    created: now,
+                    creatorId: userId,
+                    fromAssistant: false,
+                    source: 'menubar',
+                    ...(objectType === 'tasks' ? { commentType: STAYWARD_COMMENT } : {}),
+                })
+                batch.update(db.doc(`chatObjects/${projectId}/chats/${chatId}`), {
+                    members: admin.firestore.FieldValue.arrayUnion(userId),
+                    usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
+                    lastEditionDate: now,
+                    lastEditorId: userId,
+                    'commentsData.lastComment': preview || 'Comment',
+                    'commentsData.lastCommentOwnerId': userId,
+                    'commentsData.lastCommentType': STAYWARD_COMMENT,
+                    'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                })
+                visibleUserIds.forEach(candidateId => {
+                    batch.set(db.doc(`chatNotifications/${projectId}/${candidateId}/${commentId}`), {
+                        chatId,
+                        chatType: objectType,
+                        followed: followers.has(candidateId),
+                        date: now,
+                        creatorId: userId,
+                        creatorType: 'user',
+                    })
+                })
+                followerIds.forEach(candidateId => {
+                    batch.update(db.doc(`users/${candidateId}`), {
+                        [`lastAssistantCommentData.${projectId}`]: pointer,
+                        'lastAssistantCommentData.allProjects': { ...pointer, projectId },
+                    })
+                })
+                await batch.commit()
+
+                const response = {
+                    success: true,
+                    deduplicated: false,
+                    projectId,
+                    projectName: project.name || '',
+                    assistantId: chat.assistantId || '',
+                    assistantName: '',
+                    chatId,
+                    commentId,
+                    expectsAssistantReply: false,
+                    url: require('./menubarLastComment').__private__.buildLastCommentUrl(
+                        getAppBaseUrl(),
+                        projectId,
+                        objectType,
+                        chatId
+                    ),
+                }
+
+                await messageRef.set(
+                    { status: 'completed', response, commentId, chatId, updatedAt: Date.now() },
+                    { merge: true }
+                )
+                res.status(200).json(response)
+                return
+            }
+
+            const assistantName = actor.feedUser.displayName || 'Assistant'
 
             // Messages collect in a daily "Mac App" topic — the same model as
             // the WhatsApp daily chat.
@@ -1762,6 +1980,7 @@ async function handleMenubarAssistantMessage(req, res) {
                 assistantName,
                 chatId,
                 commentId,
+                expectsAssistantReply: true,
                 url: `${getAppBaseUrl()}/projects/${defaultProjectId}/chats/${chatId}/chat`,
             }
 
@@ -1897,7 +2116,9 @@ module.exports = {
         decodeAssistantMessageAttachment,
         decodeAssistantMessageImage,
         isOwnedMacAppTopic,
+        normalizeMenubarConversationTarget,
         normalizeAssistantThreadMessage,
+        resolveMenubarConversationTarget,
         resolveMenubarAssistantThread,
         toMillis,
     },

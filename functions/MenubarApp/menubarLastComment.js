@@ -198,6 +198,7 @@ module.exports = {
     __private__: {
         buildLastCommentUrl,
         isChatVisibleToUser,
+        resolveAuthorName,
         isPreferredChatNotification,
         selectLastCommentSource,
         selectPreferredChatNotification,

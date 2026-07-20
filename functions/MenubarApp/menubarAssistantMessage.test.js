@@ -7,7 +7,9 @@ const {
     decodeAssistantMessageAttachment,
     decodeAssistantMessageImage,
     isOwnedMacAppTopic,
+    normalizeMenubarConversationTarget,
     normalizeAssistantThreadMessage,
+    resolveMenubarConversationTarget,
     resolveMenubarAssistantThread,
     toMillis,
 } = __private__
@@ -143,6 +145,18 @@ describe('menubar assistant message attachment validation', () => {
 })
 
 describe('menubar assistant thread responses', () => {
+    test('validates explicit cross-project conversation targets', () => {
+        expect(
+            normalizeMenubarConversationTarget({ projectId: 'project-2', objectId: 'task-9', objectType: 'tasks' })
+        ).toEqual({ projectId: 'project-2', objectId: 'task-9', objectType: 'tasks' })
+        expect(() =>
+            normalizeMenubarConversationTarget({ projectId: 'project-2', objectId: 'task-9', objectType: 'unknown' })
+        ).toThrow('target is invalid')
+        expect(() =>
+            normalizeMenubarConversationTarget({ projectId: '', objectId: 'task-9', objectType: 'tasks' })
+        ).toThrow('target is invalid')
+    })
+
     test('normalizes assistant loading comments without leaking app media tokens', () => {
         const imageToken =
             'O2TI5plHBf1QfdYhttps://example.com/full.jpgO2TI5plHBf1QfdYhttps://example.com/preview.jpgO2TI5plHBf1QfdYscreen.jpgO2TI5plHBf1QfdY0'
@@ -234,6 +248,45 @@ describe('menubar assistant thread responses', () => {
         docs['chatObjects/project-1/chats/MacAppOwned'].creatorId = 'other-user'
         await expect(
             resolveMenubarAssistantThread(db, 'user-1', { defaultProjectId: 'project-1' }, 'MacAppOwned')
+        ).resolves.toBeNull()
+    })
+
+    test('resolves a visible object thread in any project the user belongs to', async () => {
+        const docs = {
+            'projects/project-2': { userIds: ['user-1'], name: 'Second project' },
+            'chatObjects/project-2/chats/task-9': {
+                id: 'task-9',
+                type: 'tasks',
+                title: 'Important task',
+                isPublicFor: [0],
+            },
+        }
+        const db = {
+            doc: path => ({
+                get: async () => ({ exists: !!docs[path], data: () => docs[path] }),
+            }),
+        }
+
+        await expect(
+            resolveMenubarConversationTarget(db, 'user-1', {
+                projectId: 'project-2',
+                objectId: 'task-9',
+                objectType: 'tasks',
+            })
+        ).resolves.toMatchObject({
+            projectId: 'project-2',
+            chatId: 'task-9',
+            objectType: 'tasks',
+            isAssistantThread: false,
+        })
+
+        docs['chatObjects/project-2/chats/task-9'].isPublicFor = ['other-user']
+        await expect(
+            resolveMenubarConversationTarget(db, 'user-1', {
+                projectId: 'project-2',
+                objectId: 'task-9',
+                objectType: 'tasks',
+            })
         ).resolves.toBeNull()
     })
 })
