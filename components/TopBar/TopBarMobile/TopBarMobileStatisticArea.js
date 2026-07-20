@@ -10,12 +10,13 @@ import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import Colors from '../../../Themes/Colors'
 import GoldArea from '../GoldArea'
+import HomeButton from '../HomeButton'
 import {
     getFollowedAndUnfollowedChatNotificationsAmount,
     resetNotificationsWhenUserHasAnActiveChat,
 } from '../../../utils/backends/Chats/chatsComments'
 
-export default function TopBarMobileStatisticArea({ expandSecondaryBar }) {
+export default function TopBarMobileStatisticArea({ expandSecondaryBar, homeIconColor }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -52,6 +53,7 @@ export default function TopBarMobileStatisticArea({ expandSecondaryBar }) {
             <TouchableOpacity style={localStyle.menu} onPress={showSideBar} accessible={false}>
                 <Icon name={'menu'} size={24} color={theme.menuIcon} />
             </TouchableOpacity>
+            <HomeButton color={homeIconColor} style={localStyle.homeButton} expandSecondaryBar={expandSecondaryBar} />
 
             {!isAnonymous && <GoldArea />}
         </View>
@@ -68,8 +70,11 @@ const localStyle = StyleSheet.create({
         justifyContent: 'center',
         width: 28,
         height: 28,
-        marginRight: 18,
+        marginRight: 8,
         overflow: 'hidden',
+    },
+    homeButton: {
+        marginRight: 18,
     },
     indicator: {
         position: 'absolute',
