@@ -4,6 +4,7 @@ const crypto = require('crypto')
 const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { getMenubarAccountSummary } = require('./menubarAccountSummary')
+const { resolveMenubarRichTextLinks } = require('./menubarRichText')
 
 const TOKEN_PREFIX = 'adapp_'
 const TOKENS_COLLECTION = 'menubarAppTokens'
@@ -197,7 +198,13 @@ async function resolveTokenSession(token, includeSummary = false) {
 
     if (includeSummary) {
         try {
-            session.summary = await getMenubarAccountSummary(admin.firestore(), userId, userData)
+            session.summary = await getMenubarAccountSummary(
+                admin.firestore(),
+                userId,
+                userData,
+                Date.now(),
+                getAppBaseUrl()
+            )
         } catch (error) {
             // The summary is display-only. Keep session validation and gold
             // available if one of its project queries is temporarily unavailable.
@@ -1124,6 +1131,7 @@ const ASSISTANT_MESSAGES_COLLECTION = 'menubarAssistantMessages'
 const ASSISTANT_RUNS_COLLECTION = 'menubarAssistantRuns'
 const MAX_ASSISTANT_COMMENT_LENGTH = 4000
 const MAX_ASSISTANT_IMAGE_BYTES = 5000000
+const MAX_ASSISTANT_ATTACHMENT_BYTES = 10000000
 const ALLOWED_ASSISTANT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
 const ASSISTANT_MESSAGE_PENDING_TIMEOUT_MS = 2 * 60 * 1000
 const DEFAULT_ASSISTANT_THREAD_PAGE_SIZE = 30
@@ -1162,17 +1170,55 @@ function decodeAssistantMessageImage(rawImage) {
     return { mimeType, data, fileName: `screenshot-${Date.now()}.${extension}` }
 }
 
-// Uploads a chat image to the same Storage path the web app's chat input uses.
-async function uploadAssistantChatImage(image) {
+// Validates a file/image selected in the native conversation panel. The JSON
+// endpoint has a lower cap than the web app's direct-to-Storage upload because
+// base64 expands the request body by roughly one third.
+function decodeAssistantMessageAttachment(rawAttachment) {
+    if (rawAttachment === undefined || rawAttachment === null) return null
+    if (!rawAttachment || typeof rawAttachment !== 'object') throw new Error('attachment must be an object')
+
+    const rawFileName = typeof rawAttachment.fileName === 'string' ? rawAttachment.fileName.trim() : ''
+    const fileName = rawFileName.replace(/[\\/\u0000-\u001f\u007f]/g, '_').slice(0, 180)
+    const mimeType = typeof rawAttachment.mimeType === 'string' ? rawAttachment.mimeType.toLowerCase().trim() : ''
+    const dataBase64 = typeof rawAttachment.dataBase64 === 'string' ? rawAttachment.dataBase64.trim() : ''
+
+    if (!fileName) throw new Error('attachment fileName is required')
+    if (
+        !mimeType ||
+        mimeType.length > 150 ||
+        !/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i.test(mimeType)
+    ) {
+        throw new Error('attachment mimeType is invalid')
+    }
+    if (!dataBase64 || dataBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64)) {
+        throw new Error('attachment dataBase64 is invalid')
+    }
+
+    const data = Buffer.from(dataBase64, 'base64')
+    if (!data.length) throw new Error('attachment dataBase64 is invalid')
+    if (data.length > MAX_ASSISTANT_ATTACHMENT_BYTES) {
+        const error = new Error(`attachment exceeds ${MAX_ASSISTANT_ATTACHMENT_BYTES} bytes`)
+        error.code = 'ATTACHMENT_TOO_LARGE'
+        throw error
+    }
+    if (data.toString('base64').replace(/=+$/, '') !== dataBase64.replace(/=+$/, '')) {
+        throw new Error('attachment dataBase64 is invalid')
+    }
+
+    return { mimeType, data, fileName }
+}
+
+// Uploads chat media to the same Storage path the web app's chat input uses.
+async function uploadAssistantChatAttachment(attachment) {
     const moment = require('moment')
     const bucket = admin.storage().bucket()
     const randomHash = crypto.randomUUID().replace(/-/g, '')
-    const filePath = `feedAttachments/${moment().format('DDMMYYYY')}/${randomHash}/${image.fileName}`
+    const filePath = `feedAttachments/${moment().format('DDMMYYYY')}/${randomHash}/${attachment.fileName}`
     const downloadToken = crypto.randomUUID()
     const file = bucket.file(filePath)
-    await file.save(image.data, {
+    await file.save(attachment.data, {
         metadata: {
-            contentType: image.mimeType,
+            contentType: attachment.mimeType,
             cacheControl: 'public,max-age=31536000',
             metadata: { firebaseStorageDownloadTokens: downloadToken },
         },
@@ -1295,6 +1341,7 @@ function normalizeAssistantThreadMessage(id, data = {}, assistantId, assistantNa
         role: fromAssistant ? 'assistant' : 'user',
         authorName: fromAssistant ? assistantName || 'Anna' : userName || 'You',
         text,
+        richText: rawText,
         createdAt: toMillis(data.created || data.lastChangeDate),
         updatedAt: toMillis(data.lastChangeDate || data.created),
         pending,
@@ -1450,18 +1497,24 @@ async function handleMenubarAssistantThread(req, res) {
 
         const hasMore = commentsSnapshot.size > limit
         const docs = commentsSnapshot.docs.slice(0, limit)
-        const messages = docs
-            .map(doc =>
-                normalizeAssistantThreadMessage(
-                    doc.id,
-                    doc.data(),
-                    assistantId,
-                    assistantName,
-                    userId,
-                    getUserDisplayName(userData)
-                )
+        const messages = (
+            await Promise.all(
+                docs.map(async doc => {
+                    const message = normalizeAssistantThreadMessage(
+                        doc.id,
+                        doc.data(),
+                        assistantId,
+                        assistantName,
+                        userId,
+                        getUserDisplayName(userData)
+                    )
+                    return {
+                        ...message,
+                        links: await resolveMenubarRichTextLinks(db, message.richText, userId, getAppBaseUrl()),
+                    }
+                })
             )
-            .reverse()
+        ).reverse()
         const markRead = req.body?.markRead === true
         if (markRead && !notificationsSnapshot.empty) {
             await deleteMenubarThreadNotifications(db, projectId, chatId, userId, notificationsSnapshot.docs)
@@ -1491,11 +1544,13 @@ async function handleMenubarAssistantThread(req, res) {
 }
 
 // POST /api/menubar/assistant-message  ->
-//   { token, requestId, comment, image?: { mimeType, dataBase64, width?, height? }, client? }
+//   { token, requestId, comment,
+//     image?: { mimeType, dataBase64, width?, height? },
+//     attachment?: { fileName, mimeType, dataBase64 }, client? }
 //   200 { success: true, deduplicated, projectId, projectName, assistantId,
 //         assistantName, chatId, commentId, url }
 //
-// Appends the comment (plus optional screenshot) to the user's daily
+// Appends the comment (plus one optional screenshot/file) to the user's daily
 // "Mac App" topic chat with the default assistant in their default project
 // (same daily-topic model as the WhatsApp chat), then queues the assistant
 // reply via ASSISTANT_RUNS_COLLECTION — the reply is generated by the
@@ -1545,11 +1600,14 @@ async function handleMenubarAssistantMessage(req, res) {
         }
 
         let image
+        let attachment
         try {
             image = decodeAssistantMessageImage(req.body?.image)
-        } catch (imageError) {
-            const status = imageError.code === 'IMAGE_TOO_LARGE' ? 413 : 400
-            res.status(status).json({ success: false, error: imageError.message })
+            attachment = decodeAssistantMessageAttachment(req.body?.attachment)
+            if (image && attachment) throw new Error('Only one attachment can be sent at a time')
+        } catch (attachmentError) {
+            const status = ['IMAGE_TOO_LARGE', 'ATTACHMENT_TOO_LARGE'].includes(attachmentError.code) ? 413 : 400
+            res.status(status).json({ success: false, error: attachmentError.message })
             return
         }
 
@@ -1602,21 +1660,30 @@ async function handleMenubarAssistantMessage(req, res) {
                 .catch(error => console.warn('menubarAssistantMessage: marking failed errored', error))
         }
 
-        // Upload the screenshot and embed it in the comment via the app's
-        // native image token (the same format the web chat input writes —
-        // markdown does not render as an image in chat comments).
+        // Upload the screenshot/file and embed it via the app's native media
+        // tokens (the same formats the web chat input writes).
         let uploaded = null
         let commentText = comment
         try {
-            if (image) {
-                uploaded = await uploadAssistantChatImage(image)
-                const { buildImageToken } = require('../WhatsApp/whatsAppMediaTokens')
-                commentText = `${comment}\n\n${buildImageToken(uploaded.url, uploaded.url, image.fileName)}`
+            const media = attachment || image
+            if (media) {
+                uploaded = await uploadAssistantChatAttachment(media)
+                const {
+                    buildAttachmentToken,
+                    buildImageToken,
+                    buildVideoToken,
+                } = require('../WhatsApp/whatsAppMediaTokens')
+                const token = media.mimeType.startsWith('image/')
+                    ? buildImageToken(uploaded.url, uploaded.url, media.fileName)
+                    : media.mimeType.startsWith('video/')
+                    ? buildVideoToken(uploaded.url, media.fileName)
+                    : buildAttachmentToken(uploaded.url, media.fileName)
+                commentText = `${comment}\n\n${token}`
             }
         } catch (uploadError) {
-            console.error('menubarAssistantMessage: image upload failed', uploadError)
+            console.error('menubarAssistantMessage: attachment upload failed', uploadError)
             failMessage()
-            res.status(500).json({ success: false, error: 'Failed to upload image' })
+            res.status(500).json({ success: false, error: 'Failed to upload attachment' })
             return
         }
 
@@ -1710,7 +1777,7 @@ async function handleMenubarAssistantMessage(req, res) {
                 await uploaded.file
                     .delete()
                     .catch(error =>
-                        console.warn('menubarAssistantMessage: image cleanup failed', { error: error.message })
+                        console.warn('menubarAssistantMessage: attachment cleanup failed', { error: error.message })
                     )
             }
             failMessage()
@@ -1827,6 +1894,7 @@ module.exports = {
         decodeNoteAttachments,
         rewriteMarkdownAttachmentUrls,
         buildAssistantMessageDocId,
+        decodeAssistantMessageAttachment,
         decodeAssistantMessageImage,
         isOwnedMacAppTopic,
         normalizeAssistantThreadMessage,

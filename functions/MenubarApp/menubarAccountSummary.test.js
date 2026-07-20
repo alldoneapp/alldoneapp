@@ -1,7 +1,7 @@
 const { __private__ } = require('./menubarAccountSummary')
 const { selectNewFeeds } = require('../../utils/backends/Feeds/newFeedsHelper')
 
-const { countProjectOpenTasks, countVisibleFeedObjects, getActiveProjectIds } = __private__
+const { countProjectOpenTasks, countVisibleFeedObjects, getActiveProjectIds, summarizeChatNotifications } = __private__
 
 describe('menubar account summary', () => {
     test('uses normal active projects while excluding guide, archived, and template projects', () => {
@@ -61,5 +61,23 @@ describe('menubar account summary', () => {
 
         expect(menubarCount).toBe(2)
         expect(menubarCount).toBe(mainAppCount)
+    })
+
+    test('keeps exact followed and unfollowed message counts while retaining preview metadata', () => {
+        const docs = [
+            { id: 'followed', data: () => ({ followed: true, chatId: 'chat-1' }) },
+            { id: 'unfollowed', data: () => ({ followed: false, chatId: 'chat-2' }) },
+            { id: 'legacy-unfollowed', data: () => ({ chatId: 'chat-3' }) },
+        ]
+
+        expect(summarizeChatNotifications(docs, 'project-1')).toEqual({
+            followed: 1,
+            unfollowed: 2,
+            chatNotifications: [
+                { followed: true, chatId: 'chat-1', commentId: 'followed', projectId: 'project-1' },
+                { followed: false, chatId: 'chat-2', commentId: 'unfollowed', projectId: 'project-1' },
+                { chatId: 'chat-3', commentId: 'legacy-unfollowed', projectId: 'project-1' },
+            ],
+        })
     })
 })

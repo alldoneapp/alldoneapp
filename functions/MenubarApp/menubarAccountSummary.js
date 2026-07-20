@@ -1,6 +1,7 @@
 'use strict'
 
 const { getUserLocalDayBounds } = require('../Assistant/contextTimestampHelper')
+const { getMenubarLastComment } = require('./menubarLastComment')
 
 const FEED_PUBLIC_FOR_ALL = 0
 const WORKSTREAM_ID_PREFIX = 'ws@'
@@ -97,6 +98,16 @@ function countVisibleFeedObjects(newFeeds, userId) {
     return updatedObjects.size
 }
 
+function summarizeChatNotifications(docs = [], projectId) {
+    const chatNotifications = docs.map(doc => ({ ...doc.data(), commentId: doc.id, projectId }))
+    const followed = chatNotifications.filter(notification => notification.followed === true).length
+    return {
+        chatNotifications,
+        followed,
+        unfollowed: Math.max(0, chatNotifications.length - followed),
+    }
+}
+
 async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
     const allowUserIds = [FEED_PUBLIC_FOR_ALL, userId]
     const tasksRef = db.collection(`items/${projectId}/tasks`)
@@ -105,8 +116,7 @@ async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
         normalSnapshot,
         observedSnapshot,
         workstreamsSnapshot,
-        followedMessagesCount,
-        allMessagesCount,
+        messagesSnapshot,
         followedFeedsDoc,
         allFeedsDoc,
     ] = await Promise.all([
@@ -128,15 +138,12 @@ async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
             .where('userIds', 'array-contains', userId)
             .select()
             .get(),
-        db.collection(`chatNotifications/${projectId}/${userId}`).where('followed', '==', true).count().get(),
-        db.collection(`chatNotifications/${projectId}/${userId}`).count().get(),
+        db.collection(`chatNotifications/${projectId}/${userId}`).get(),
         db.doc(`feedsCount/${projectId}/${userId}/followed`).get(),
         db.doc(`feedsCount/${projectId}/${userId}/all`).get(),
     ])
 
-    const followedMessages = Number(followedMessagesCount.data()?.count) || 0
-    const allMessages = Number(allMessagesCount.data()?.count) || 0
-    const unfollowedMessages = Math.max(0, allMessages - followedMessages)
+    const messages = summarizeChatNotifications(messagesSnapshot.docs, projectId)
 
     return {
         openTasksToday:
@@ -151,21 +158,29 @@ async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
                 endOfDay
             ),
         unreadMessages: {
-            followed: followedMessages,
-            unfollowed: unfollowedMessages,
+            followed: messages.followed,
+            unfollowed: messages.unfollowed,
         },
         unreadNotifications: {
             followed: countVisibleFeedObjects(followedFeedsDoc.data(), userId),
             all: countVisibleFeedObjects(allFeedsDoc.data(), userId),
         },
+        chatNotifications: messages.chatNotifications,
     }
 }
 
-async function getMenubarAccountSummary(db, userId, userData = {}, now = Date.now()) {
+async function getMenubarAccountSummary(
+    db,
+    userId,
+    userData = {},
+    now = Date.now(),
+    appBaseUrl = 'https://my.alldone.app'
+) {
     const startedAt = Date.now()
     const projectIds = getActiveProjectIds(userData)
     const { endOfDay } = getUserLocalDayBounds(userData, now)
     const projectSummaries = []
+    const chatNotifications = []
 
     // Keep enough projects in flight for a quick response without retaining
     // every project's Firestore snapshots in memory at the same time.
@@ -176,6 +191,10 @@ async function getMenubarAccountSummary(db, userId, userData = {}, now = Date.no
                 .slice(index, index + batchSize)
                 .map(projectId => getProjectAccountSummary(db, projectId, userId, endOfDay))
         )
+        batch.forEach(project => {
+            chatNotifications.push(...project.chatNotifications)
+            delete project.chatNotifications
+        })
         projectSummaries.push(...batch)
     }
 
@@ -198,6 +217,20 @@ async function getMenubarAccountSummary(db, userId, userData = {}, now = Date.no
         }
     )
 
+    try {
+        summary.lastComment = await getMenubarLastComment(
+            db,
+            userId,
+            userData,
+            projectIds,
+            appBaseUrl,
+            chatNotifications
+        )
+    } catch (error) {
+        console.warn('menubarSession: last comment failed', { userId, error: error.message })
+        summary.lastComment = null
+    }
+
     console.info('menubarSession: account summary complete', {
         projectCount: projectIds.length,
         durationMs: Date.now() - startedAt,
@@ -213,5 +246,6 @@ module.exports = {
         countProjectOpenTasks,
         countVisibleFeedObjects,
         getActiveProjectIds,
+        summarizeChatNotifications,
     },
 }

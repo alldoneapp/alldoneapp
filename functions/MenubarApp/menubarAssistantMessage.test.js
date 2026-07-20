@@ -4,6 +4,7 @@ const { __private__ } = require('./menubarApp')
 
 const {
     buildAssistantMessageDocId,
+    decodeAssistantMessageAttachment,
     decodeAssistantMessageImage,
     isOwnedMacAppTopic,
     normalizeAssistantThreadMessage,
@@ -74,6 +75,73 @@ describe('menubar assistant message image validation', () => {
     })
 })
 
+describe('menubar assistant message attachment validation', () => {
+    test('attachment is optional', () => {
+        expect(decodeAssistantMessageAttachment(undefined)).toBeNull()
+        expect(decodeAssistantMessageAttachment(null)).toBeNull()
+    })
+
+    test('accepts a file and preserves its metadata', () => {
+        const attachment = decodeAssistantMessageAttachment({
+            fileName: 'brief.pdf',
+            mimeType: 'application/pdf',
+            dataBase64: PNG_BASE64,
+        })
+        expect(attachment.fileName).toBe('brief.pdf')
+        expect(attachment.mimeType).toBe('application/pdf')
+        expect(attachment.data.equals(Buffer.from('fake-png-bytes'))).toBe(true)
+    })
+
+    test('sanitizes path separators from the file name', () => {
+        const attachment = decodeAssistantMessageAttachment({
+            fileName: '../folder\\brief.pdf',
+            mimeType: 'application/pdf',
+            dataBase64: PNG_BASE64,
+        })
+        expect(attachment.fileName).toBe('.._folder_brief.pdf')
+    })
+
+    test('rejects invalid metadata and malformed base64', () => {
+        expect(() =>
+            decodeAssistantMessageAttachment({
+                fileName: '',
+                mimeType: 'application/pdf',
+                dataBase64: PNG_BASE64,
+            })
+        ).toThrow('attachment fileName is required')
+        expect(() =>
+            decodeAssistantMessageAttachment({
+                fileName: 'brief.pdf',
+                mimeType: 'not-a-mime',
+                dataBase64: PNG_BASE64,
+            })
+        ).toThrow('attachment mimeType is invalid')
+        expect(() =>
+            decodeAssistantMessageAttachment({
+                fileName: 'brief.pdf',
+                mimeType: 'application/pdf',
+                dataBase64: 'not base64!!',
+            })
+        ).toThrow('attachment dataBase64 is invalid')
+    })
+
+    test('rejects oversized attachments with a 413-mapped code', () => {
+        const big = Buffer.alloc(10000001).toString('base64')
+        let caught
+        try {
+            decodeAssistantMessageAttachment({
+                fileName: 'large.pdf',
+                mimeType: 'application/pdf',
+                dataBase64: big,
+            })
+        } catch (error) {
+            caught = error
+        }
+        expect(caught).toBeDefined()
+        expect(caught.code).toBe('ATTACHMENT_TOO_LARGE')
+    })
+})
+
 describe('menubar assistant thread responses', () => {
     test('normalizes assistant loading comments without leaking app media tokens', () => {
         const imageToken =
@@ -98,6 +166,7 @@ describe('menubar assistant thread responses', () => {
             authorName: 'Anna',
             createdAt: 1234,
             pending: true,
+            richText: `**Looking at this** ${imageToken}`,
         })
         expect(message.text).toContain('Looking at this')
         expect(message.text).not.toContain('O2TI5plHBf1QfdY')
