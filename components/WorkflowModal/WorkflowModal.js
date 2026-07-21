@@ -37,6 +37,7 @@ import ChangeAssigneeEstimation from './ChangeAssigneeEstimation'
 import RecurringTaskDateBasisModal, {
     shouldShowRecurringTaskDateBasisModal,
 } from '../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
+import { getWorkflowCommentAssistantProps } from './workflowCommentAssistant'
 
 export const WORKFLOW_FORWARD = 'FORWARD'
 export const WORKFLOW_BACKWARD = 'BACKWARD'
@@ -489,7 +490,7 @@ export default class WorkflowModal extends Component {
                 currentKarma={hasKarma}
                 inTaskModal={true}
                 userGettingKarmaId={ownerId}
-                externalAssistantId={task.assistantId}
+                {...getWorkflowCommentAssistantProps(task)}
                 objectName={task.name}
             />
         ) : this.state.inEstimation ? (
