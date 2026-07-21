@@ -11,6 +11,7 @@ import NavigationService from '../../utils/NavigationService'
 import store from '../../redux/store'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
 import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
+import { colors } from '../styles/global'
 
 export default function HomeButton({ color, style, expandSecondaryBar }) {
     const dispatch = useDispatch()
@@ -44,7 +45,12 @@ export default function HomeButton({ color, style, expandSecondaryBar }) {
             <Icon size={24} name={'home'} color={color} />
             {openTasksAmount > 0 && (
                 <View style={localStyles.badge} testID="home-open-tasks-badge">
-                    <AmountTag feedAmount={openTasksAmount} isFollowedButton={false} />
+                    <AmountTag
+                        feedAmount={openTasksAmount}
+                        isFollowedButton={false}
+                        showFullAmount={true}
+                        style={localStyles.badgeTag}
+                    />
                 </View>
             )}
         </TouchableOpacity>
@@ -62,5 +68,8 @@ const localStyles = StyleSheet.create({
         position: 'absolute',
         top: 0,
         left: 14,
+    },
+    badgeTag: {
+        backgroundColor: colors.Primary100,
     },
 })

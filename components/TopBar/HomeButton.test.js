@@ -1,5 +1,8 @@
 import React from 'react'
 import renderer from 'react-test-renderer'
+import { StyleSheet } from 'react-native'
+
+import { colors } from '../styles/global'
 
 const mockDispatch = jest.fn()
 let mockState
@@ -45,8 +48,9 @@ describe('HomeButton open tasks badge', () => {
         const badge = component.root.findByProps({ testID: 'home-open-tasks-badge' })
 
         expect(badge.findByType('AmountTag').props).toEqual(
-            expect.objectContaining({ feedAmount: 43, isFollowedButton: false })
+            expect.objectContaining({ feedAmount: 43, isFollowedButton: false, showFullAmount: true })
         )
+        expect(StyleSheet.flatten(badge.findByType('AmountTag').props.style).backgroundColor).toBe(colors.Primary100)
     })
 
     it('does not show a badge while the count is zero or loading', () => {
@@ -56,10 +60,12 @@ describe('HomeButton open tasks badge', () => {
         expect(component.root.findAllByProps({ testID: 'home-open-tasks-badge' })).toHaveLength(0)
     })
 
-    it('passes large counts to the existing capped amount tag', () => {
+    it('configures the badge to show the full amount for large counts', () => {
         mockState.sidebarNumbers.active['user-1'] = 123
         const component = renderer.create(<HomeButton color="black" />)
+        const amountTag = component.root.findByType('AmountTag')
 
-        expect(component.root.findByType('AmountTag').props.feedAmount).toBe(123)
+        expect(amountTag.props.feedAmount).toBe(123)
+        expect(amountTag.props.showFullAmount).toBe(true)
     })
 })

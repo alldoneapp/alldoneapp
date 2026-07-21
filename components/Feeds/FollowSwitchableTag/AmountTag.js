@@ -3,8 +3,8 @@ import { StyleSheet, View, Text } from 'react-native'
 
 import { colors } from '../../styles/global'
 
-export default function AmountTag({ feedAmount, isFollowedButton, style }) {
-    const feedAmountParsed = feedAmount < 100 ? feedAmount : '+99'
+export default function AmountTag({ feedAmount, isFollowedButton, showFullAmount = false, style }) {
+    const feedAmountParsed = showFullAmount || feedAmount < 100 ? feedAmount : '+99'
 
     return (
         <View style={[localStyles.container, isFollowedButton ? localStyles.followedTag : localStyles.allTag, style]}>
