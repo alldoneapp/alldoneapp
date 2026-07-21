@@ -9,6 +9,7 @@ const {
 } = require('../Utils/HelperFunctionsCloud')
 const { getNextWorkflowStepId, isAiWorkflowStep, buildAiStepPrompt } = require('./workflowStepHelper')
 const { ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = require('../Assistant/assistantRunLimits')
+const { TARGET_MAX_VM_RUNTIME_MS, VM_JOB_FINALIZATION_HEADROOM_MS } = require('../Assistant/vmJobConfig')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
 
@@ -25,6 +26,17 @@ const STALLED_RUN_MS = RUN_LEASE_MS + TRANSPORT_HEADROOM_MS
 // the longest single run rather than their sum. That makes this equally the cap on how many
 // assistant runs a single tick can have in flight.
 const MAX_RUNS_PER_TICK = 5
+
+// A step is not finished when the assistant stops talking, only when the work it started has
+// finished. execute_task_in_vm returns as soon as the job is enqueued, so a run that dispatched one
+// parks here instead of settling, and the next tick advances the task once the VM job settles.
+const RUN_STATUS_AWAITING_VM = 'awaiting_vm'
+const VM_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
+
+// How long to hold a step open for its VM work: the VM's own five-hour agent runtime plus the
+// finalization window its Cloud Run task gets for artifacts, Gold settlement and result posting.
+// Derived from vmJobConfig so raising the VM budget cannot silently leave this behind.
+const AWAITING_VM_TIMEOUT_MS = TARGET_MAX_VM_RUNTIME_MS + VM_JOB_FINALIZATION_HEADROOM_MS
 
 const RUN_STATUS_PENDING = 'pending'
 const RUN_STATUS_RUNNING = 'running'
@@ -278,6 +290,8 @@ const runWorkflowAiStep = async (runId, run) => {
     const { projectId, taskId, stepId, assistantId, assigneeUserId } = run
     const runRef = admin.firestore().doc(`${RUNS_COLLECTION}/${runId}`)
     const taskRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
+    // Scopes the VM-job check below to jobs this run started, not ones already on the task.
+    const runStartedAt = Date.now()
 
     // claimWorkflowAiRun already flipped the doc to `running` and took the lease.
     const taskDoc = await taskRef.get()
@@ -353,6 +367,41 @@ const runWorkflowAiStep = async (runId, run) => {
         }
     }
 
+    // The assistant answering is not the same as the step's work being finished. execute_task_in_vm
+    // returns as soon as the job is enqueued, so a step that dispatched one would otherwise hand the
+    // task to the next reviewer while the work it asked for is still running — for up to five hours.
+    if (!failureReason) {
+        const awaitingCorrelationIds = await findUnsettledVmJobs(projectId, taskId, runStartedAt)
+        if (awaitingCorrelationIds.length > 0) {
+            await runRef.set(
+                {
+                    status: RUN_STATUS_AWAITING_VM,
+                    awaitingCorrelationIds,
+                    awaitingSince: Date.now(),
+                    awaitingUntil: Date.now() + AWAITING_VM_TIMEOUT_MS,
+                },
+                { merge: true }
+            )
+            console.log('[workflowAiStep] Holding the step until its VM work finishes', {
+                runId,
+                taskId,
+                awaitingCorrelationIds,
+            })
+            return
+        }
+    }
+
+    await finalizeWorkflowAiRun(runId, run, workflow, failureReason)
+}
+
+/**
+ * Moves the task off the step and settles the run. Split out of runWorkflowAiStep because a run that
+ * dispatched VM work reaches this point later, from resolveAwaitingVmRuns.
+ */
+const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason) => {
+    const { projectId, taskId, stepId } = run
+    const taskRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
+
     // Re-read before moving: the assistant can move the task itself (update_task), and a human may
     // have moved it while the run was in flight. Whoever moved it last wins.
     const latestDoc = await taskRef.get()
@@ -364,14 +413,120 @@ const runWorkflowAiStep = async (runId, run) => {
         console.log('[workflowAiStep] Task already moved on, skipping advance', { runId, taskId })
     }
 
-    await runRef.set(
-        {
-            status: failureReason ? RUN_STATUS_FAILED : RUN_STATUS_COMPLETED,
-            ...(failureReason ? { failureReason } : {}),
-            settledAt: Date.now(),
-        },
-        { merge: true }
-    )
+    await admin
+        .firestore()
+        .doc(`${RUNS_COLLECTION}/${runId}`)
+        .set(
+            {
+                status: failureReason ? RUN_STATUS_FAILED : RUN_STATUS_COMPLETED,
+                ...(failureReason ? { failureReason } : {}),
+                settledAt: Date.now(),
+            },
+            { merge: true }
+        )
+}
+
+/**
+ * Correlation ids of VM jobs started on this task during the run that have not settled yet.
+ *
+ * Queried on objectId alone — a single-field lookup Firestore indexes automatically — and narrowed in
+ * memory, because a task only ever has a handful of VM jobs and a composite index would have to be
+ * created by hand (see the Firestore indexes notes in CLAUDE.md).
+ */
+const findUnsettledVmJobs = async (projectId, taskId, sinceMs) => {
+    try {
+        const snapshot = await admin.firestore().collection('pendingWebhooks').where('objectId', '==', taskId).get()
+
+        return snapshot.docs
+            .filter(doc => {
+                const job = doc.data() || {}
+                return (
+                    job.kind === 'vm_job' &&
+                    job.projectId === projectId &&
+                    Number(job.createdAt) >= sinceMs &&
+                    !VM_TERMINAL_STATUSES.includes(job.status)
+                )
+            })
+            .map(doc => doc.id)
+    } catch (error) {
+        // Failing open advances the task, which is the behaviour this had before it waited at all.
+        console.warn('[workflowAiStep] Could not check for VM jobs, advancing', { taskId, error: error.message })
+        return []
+    }
+}
+
+/**
+ * Of the given VM correlation ids, the ones that have not reached a terminal status. A job whose doc
+ * has gone is treated as settled rather than waited on forever.
+ */
+const filterUnsettledVmJobs = async correlationIds => {
+    const ids = Array.isArray(correlationIds) ? correlationIds : []
+    const unsettled = []
+
+    for (const correlationId of ids) {
+        try {
+            const doc = await admin.firestore().doc(`pendingWebhooks/${correlationId}`).get()
+            if (!doc.exists) continue
+            if (!VM_TERMINAL_STATUSES.includes((doc.data() || {}).status)) unsettled.push(correlationId)
+        } catch (error) {
+            // Failing open advances the step rather than parking the task on a read error.
+            console.warn('[workflowAiStep] Could not read VM job status', { correlationId, error: error.message })
+        }
+    }
+
+    return unsettled
+}
+
+/**
+ * Advances runs that were parked waiting on VM work, once that work settles.
+ *
+ * A failed or cancelled VM job still advances the task: it matches how a failed assistant run behaves
+ * (the error is posted into the chat and the pipeline keeps moving) rather than parking the task
+ * where nobody is looking. The same applies once awaitingUntil passes, which is the backstop for a
+ * VM job whose status never reaches a terminal state.
+ */
+const resolveAwaitingVmRuns = async ({ now = Date.now() } = {}) => {
+    const snapshot = await admin
+        .firestore()
+        .collection(RUNS_COLLECTION)
+        .where('status', '==', RUN_STATUS_AWAITING_VM)
+        .limit(MAX_RUNS_PER_TICK)
+        .get()
+
+    if (snapshot.empty) return 0
+
+    let resolved = 0
+    for (const doc of snapshot.docs) {
+        const run = doc.data() || {}
+        try {
+            // Checked by the ids recorded when the run parked, not by re-querying the task: the jobs
+            // were started before the run parked, so any time-windowed lookup would miss them and
+            // advance the step immediately — the exact behaviour this exists to prevent.
+            const stillRunning = await filterUnsettledVmJobs(run.awaitingCorrelationIds)
+            const timedOut = now >= (Number(run.awaitingUntil) || 0)
+            if (stillRunning.length > 0 && !timedOut) continue
+
+            const assignee = await admin.firestore().doc(`users/${run.assigneeUserId}`).get()
+            const workflow = getUserWorkflow(assignee.exists ? assignee.data() : null, run.projectId)
+
+            await finalizeWorkflowAiRun(
+                doc.id,
+                run,
+                workflow,
+                timedOut && stillRunning.length > 0 ? 'vm_timeout' : null
+            )
+            resolved++
+            console.log('[workflowAiStep] VM work finished, advancing the step', {
+                runId: doc.id,
+                taskId: run.taskId,
+                timedOut,
+            })
+        } catch (error) {
+            console.error('[workflowAiStep] Could not resolve awaiting run', { runId: doc.id, error: error.message })
+        }
+    }
+
+    return resolved
 }
 
 /**
@@ -408,6 +563,12 @@ const claimWorkflowAiRun = async (runRef, leaseOwner, now = Date.now()) => {
  * assistant work for the same budget.
  */
 const dispatchPendingWorkflowAiRuns = async ({ now = Date.now(), leaseOwner = uuidv4() } = {}) => {
+    // Runs parked on VM work are settled by the same tick, so a finished VM job advances its step
+    // within a minute without needing a schedule of its own.
+    await resolveAwaitingVmRuns({ now }).catch(error =>
+        console.error('[workflowAiStep] Could not resolve awaiting runs', { error: error.message })
+    )
+
     const snapshot = await admin
         .firestore()
         .collection(RUNS_COLLECTION)
@@ -497,14 +658,17 @@ const sweepStalledWorkflowAiRuns = async () => {
 }
 
 module.exports = {
+    AWAITING_VM_TIMEOUT_MS,
     MAX_RUNS_PER_TICK,
     RUNS_COLLECTION,
     RUN_LEASE_MS,
+    RUN_STATUS_AWAITING_VM,
     STALLED_RUN_MS,
     advanceTaskFromWorkflowStep,
     claimWorkflowAiRun,
     dispatchPendingWorkflowAiRuns,
     enqueueWorkflowAiRunIfNeeded,
+    resolveAwaitingVmRuns,
     runWorkflowAiStep,
     sweepStalledWorkflowAiRuns,
 }

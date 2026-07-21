@@ -119,11 +119,14 @@ jest.mock('../BatchWrapper/batchWrapper', () => ({
 }))
 
 const {
+    AWAITING_VM_TIMEOUT_MS,
     MAX_RUNS_PER_TICK,
+    RUN_STATUS_AWAITING_VM,
     advanceTaskFromWorkflowStep,
     claimWorkflowAiRun,
     dispatchPendingWorkflowAiRuns,
     enqueueWorkflowAiRunIfNeeded,
+    resolveAwaitingVmRuns,
     runWorkflowAiStep,
 } = require('./workflowAiStep')
 
@@ -495,5 +498,94 @@ describe('claimWorkflowAiRun', () => {
 
     it('returns null for a run that no longer exists', async () => {
         expect(await claimWorkflowAiRun(runRef(), 'tick-a', 5000)).toBeNull()
+    })
+})
+
+describe('a step whose assistant dispatched VM work', () => {
+    const RUN_ID = 'run-vm'
+    const CORRELATION = 'vm-correlation-1'
+    const run = { projectId: PROJECT, taskId: TASK, stepId: AI_STEP, assistantId: ASSISTANT, assigneeUserId: ASSIGNEE }
+
+    const seedVmJob = (status, overrides = {}) => {
+        mockStore.set(`pendingWebhooks/${CORRELATION}`, {
+            kind: 'vm_job',
+            projectId: PROJECT,
+            objectId: TASK,
+            createdAt: Date.now(),
+            status,
+            ...overrides,
+        })
+    }
+
+    beforeEach(() => {
+        seedAssignee()
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
+        // As enqueueWorkflowAiRunIfNeeded writes it: resolveAwaitingVmRuns picks the run back up from
+        // this doc alone, so it has to carry the same fields in the test as it does in production.
+        mockStore.set(`workflowAiRuns/${RUN_ID}`, { ...run, status: 'running', createdAt: 1000 })
+        // execute_task_in_vm enqueues the job during the assistant run and returns immediately.
+        mockGeneratePreConfigTaskResult.mockImplementationOnce(async () => {
+            seedVmJob('initiated')
+            return { success: true }
+        })
+    })
+
+    it('holds the task on the step instead of advancing while the VM runs', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: RUN_STATUS_AWAITING_VM,
+            awaitingCorrelationIds: [CORRELATION],
+        })
+    })
+
+    it('keeps waiting while the VM job is still going', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(0)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+    })
+
+    it('advances the step once the VM job completes', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+        seedVmJob('completed')
+
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+    })
+
+    it('advances anyway when the VM job failed', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+        seedVmJob('failed')
+
+        await resolveAwaitingVmRuns({ now: Date.now() })
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+    })
+
+    it('gives up and advances once the VM has had its full budget', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+
+        // Still 'initiated' well past the point a healthy VM job must have settled.
+        await resolveAwaitingVmRuns({ now: Date.now() + AWAITING_VM_TIMEOUT_MS + 1000 })
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: 'failed',
+            failureReason: 'vm_timeout',
+        })
+    })
+
+    it('settles normally when the step dispatched no VM work', async () => {
+        mockGeneratePreConfigTaskResult.mockReset()
+        mockGeneratePreConfigTaskResult.mockResolvedValue({ success: true })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
     })
 })
