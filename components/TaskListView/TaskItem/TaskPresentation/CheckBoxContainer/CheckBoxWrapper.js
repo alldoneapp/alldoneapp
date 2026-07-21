@@ -40,6 +40,7 @@ function CheckBoxWrapper(
         accessGranted,
         pending,
         showWorkflowIndicator,
+        isNextStepAi,
     },
     ref
 ) {
@@ -355,6 +356,8 @@ function CheckBoxWrapper(
                         pending={pending}
                         showWorkflowIndicator={showWorkflowIndicator}
                         showEmailCompletionIndicator={!!emailArchiveData}
+                        isNextStepAi={isNextStepAi}
+                        aiStepRunning={isNextStepAi && taskTransitionPending}
                         onCheckboxPress={onCheckboxPress}
                         checkBoxIdRef={checkBoxIdRef}
                         checked={checked}
@@ -390,6 +393,8 @@ function CheckBoxWrapper(
                         pending={pending}
                         showWorkflowIndicator={showWorkflowIndicator}
                         showEmailCompletionIndicator={!!emailArchiveData}
+                        isNextStepAi={isNextStepAi}
+                        aiStepRunning={isNextStepAi && taskTransitionPending}
                         onCheckboxPress={onCheckboxPress}
                         checkBoxIdRef={checkBoxIdRef}
                         checked={checked}
@@ -433,6 +438,8 @@ function CheckBoxWrapper(
                         pending={pending}
                         showWorkflowIndicator={showWorkflowIndicator}
                         showEmailCompletionIndicator={!!emailArchiveData}
+                        isNextStepAi={isNextStepAi}
+                        aiStepRunning={isNextStepAi && taskTransitionPending}
                         onCheckboxPress={onCheckboxPress}
                         checkBoxIdRef={checkBoxIdRef}
                         checked={checked}
@@ -452,6 +459,8 @@ function CheckBoxWrapper(
                     pending={pending}
                     showWorkflowIndicator={showWorkflowIndicator}
                     showEmailCompletionIndicator={!!emailArchiveData}
+                    isNextStepAi={isNextStepAi}
+                    aiStepRunning={isNextStepAi && taskTransitionPending}
                     onCheckboxPress={onCheckboxPress}
                     checkBoxIdRef={checkBoxIdRef}
                     checked={checked}
