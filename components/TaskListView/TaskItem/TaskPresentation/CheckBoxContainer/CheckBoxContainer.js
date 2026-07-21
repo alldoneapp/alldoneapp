@@ -5,8 +5,6 @@ import CheckBox from '../../../../CheckBox'
 import { colors } from '../../../../styles/global'
 import Icon from '../../../../Icon'
 import ActionPopupIndicator from './ActionPopupIndicator'
-import AiStepCheckBox from './AiStepCheckBox'
-import { translate } from '../../../../../i18n/TranslationService'
 
 export default function CheckBoxContainer({
     isSubtask,
@@ -20,8 +18,6 @@ export default function CheckBoxContainer({
     pending,
     showWorkflowIndicator,
     showEmailCompletionIndicator,
-    isNextStepAi,
-    aiStepRunning,
     onCheckboxPress,
     checkBoxIdRef,
     checked,
@@ -39,9 +35,7 @@ export default function CheckBoxContainer({
     return (
         <TouchableOpacity
             style={[localStyles.checkBox, isSubtask && subTaskStyles.checkBox]}
-            accessible={!!isNextStepAi}
-            accessibilityLabel={isNextStepAi ? translate('Run AI step') : undefined}
-            title={isNextStepAi ? translate('Run AI step') : undefined}
+            accessible={false}
             activeOpacity={0.35}
             onPress={() => onCheckboxPress(needToShowAnInteractionModal)}
             onLongPress={() => onCheckboxPress(true)}
@@ -49,8 +43,6 @@ export default function CheckBoxContainer({
         >
             {pending ? (
                 <Icon name={'clock'} size={24} color={colors.Text03} />
-            ) : isNextStepAi && (!checked || aiStepRunning) ? (
-                <AiStepCheckBox running={aiStepRunning} />
             ) : (
                 <CheckBox
                     checked={checked}

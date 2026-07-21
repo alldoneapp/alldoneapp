@@ -72,6 +72,7 @@ const baseTask = {
     genericData: true,
     isPrivate: false,
     calendarData: null,
+    gmailData: null,
 }
 
 const renderWrapper = task =>
@@ -79,7 +80,7 @@ const renderWrapper = task =>
         <CheckBoxWrapper task={task} projectId={'project-1'} accessGranted={true} loggedUserCanUpdateObject={true} />
     )
 
-describe('CheckBoxWrapper email task completion', () => {
+describe('CheckBoxWrapper task completion', () => {
     let consoleErrorSpy
 
     beforeEach(() => {
@@ -110,6 +111,28 @@ describe('CheckBoxWrapper email task completion', () => {
             await Promise.resolve()
         })
         expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
+    })
+
+    test('clears the checkbox when a workflow moves between steps assigned to the same user', () => {
+        const task = {
+            ...baseTask,
+            genericData: false,
+            userIds: ['user-1', 'user-1'],
+            stepHistory: ['open', 'step-1'],
+        }
+        let tree
+        act(() => {
+            tree = renderWrapper(task)
+        })
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(true))
+        expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(true)
+
+        const flowModal = tree.root.find(node => typeof node.props.setVisiblePopover === 'function')
+        act(() => flowModal.props.setVisiblePopover(false))
+
+        expect(tree.root.findAll(node => typeof node.props.setVisiblePopover === 'function')).toHaveLength(0)
+        expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(false)
     })
 
     test('email-linked tasks open the choice popup before completion', async () => {

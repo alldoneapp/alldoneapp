@@ -40,7 +40,6 @@ function CheckBoxWrapper(
         accessGranted,
         pending,
         showWorkflowIndicator,
-        isNextStepAi,
     },
     ref
 ) {
@@ -313,6 +312,11 @@ function CheckBoxWrapper(
         }
     }
 
+    const setFlowModalVisibility = visible => {
+        safeSetIsOpen(visible)
+        if (!visible) safeSetChecked(done)
+    }
+
     useImperativeHandle(ref, () => ({
         onCheckboxPress,
     }))
@@ -351,8 +355,6 @@ function CheckBoxWrapper(
                         pending={pending}
                         showWorkflowIndicator={showWorkflowIndicator}
                         showEmailCompletionIndicator={!!emailArchiveData}
-                        isNextStepAi={isNextStepAi}
-                        aiStepRunning={isNextStepAi && taskTransitionPending}
                         onCheckboxPress={onCheckboxPress}
                         checkBoxIdRef={checkBoxIdRef}
                         checked={checked}
@@ -388,8 +390,6 @@ function CheckBoxWrapper(
                         pending={pending}
                         showWorkflowIndicator={showWorkflowIndicator}
                         showEmailCompletionIndicator={!!emailArchiveData}
-                        isNextStepAi={isNextStepAi}
-                        aiStepRunning={isNextStepAi && taskTransitionPending}
                         onCheckboxPress={onCheckboxPress}
                         checkBoxIdRef={checkBoxIdRef}
                         checked={checked}
@@ -410,7 +410,7 @@ function CheckBoxWrapper(
                             pending={pending}
                             cancelPopover={closeModal}
                             checkBoxIdRef={checkBoxIdRef}
-                            setVisiblePopover={safeSetIsOpen}
+                            setVisiblePopover={setFlowModalVisibility}
                         />
                     }
                     onClickOutside={closeModal}
@@ -433,8 +433,6 @@ function CheckBoxWrapper(
                         pending={pending}
                         showWorkflowIndicator={showWorkflowIndicator}
                         showEmailCompletionIndicator={!!emailArchiveData}
-                        isNextStepAi={isNextStepAi}
-                        aiStepRunning={isNextStepAi && taskTransitionPending}
                         onCheckboxPress={onCheckboxPress}
                         checkBoxIdRef={checkBoxIdRef}
                         checked={checked}
@@ -454,8 +452,6 @@ function CheckBoxWrapper(
                     pending={pending}
                     showWorkflowIndicator={showWorkflowIndicator}
                     showEmailCompletionIndicator={!!emailArchiveData}
-                    isNextStepAi={isNextStepAi}
-                    aiStepRunning={isNextStepAi && taskTransitionPending}
                     onCheckboxPress={onCheckboxPress}
                     checkBoxIdRef={checkBoxIdRef}
                     checked={checked}

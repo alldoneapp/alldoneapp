@@ -28,7 +28,6 @@ export default function TaskFlowModal({
     const hidePopover = () => {
         if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
             setVisiblePopover(false)
-            isChecked = false
         }
     }
 

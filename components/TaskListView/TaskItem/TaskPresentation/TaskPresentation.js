@@ -35,7 +35,6 @@ import TaskTagsContainer from './TaskTagsContainer'
 import TaskPriorityTagButton from '../../TaskPriorityTagButton'
 import TaskVmStatusTag from '../../../Tags/InProgressVmTag'
 import { doTrailingTagsCrowdTaskTitle } from '../../TagsArea/taskTagSummaryHelper'
-import { isNextWorkflowStepAi } from '../../../WorkflowView/workflowStepHelper'
 
 function TaskPresentation(
     {
@@ -128,16 +127,6 @@ function TaskPresentation(
         (task.userIds?.[task.userIds?.length - 1] !== currentUserId || route === 'GoalDetailedView') &&
         task.done === false &&
         !task.parentId
-
-    const showAiStepControl =
-        showWorkflowIndicator &&
-        !pending &&
-        !isObservedTask &&
-        !isSuggested &&
-        !task.genericData &&
-        !task.calendarData &&
-        !isInboxSummaryGmailTask(task) &&
-        isNextWorkflowStepAi(workflow, task)
 
     useImperativeHandle(ref, () => ({
         onCheckboxPress: () => {
@@ -323,7 +312,6 @@ function TaskPresentation(
                                     accessGranted={accessGranted}
                                     pending={pending}
                                     showWorkflowIndicator={showWorkflowIndicator}
-                                    isNextStepAi={showAiStepControl}
                                 />
                                 {!inMyDayAndNotSubtask && isInboxSummaryGmailTask(task) && (
                                     <GmailTag
