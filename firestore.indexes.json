@@ -4,7 +4,11 @@
         "Regenerate with: firebase firestore:indexes --project alldonealeph  (then strip density + trailing __name__).",
         "NEVER deploy this file with --force. firebase-tools deletes any live index or field",
         "override missing from this file, and staging/prod legitimately hold extra ones.",
-        "Deploy create-only:  firebase deploy --only firestore:indexes --project <id> --non-interactive"
+        "There is no non-interactive create-only deploy: with --non-interactive and no --force,",
+        "firebase-tools throws as soon as anything live is missing here, before creating anything.",
+        "To create missing indexes, deploy INTERACTIVELY and answer no to the delete prompt:",
+        "  firebase deploy --only firestore:indexes --project <id>",
+        "Check drift first: node ci/check-firestore-indexes.js <id>"
     ],
     "indexes": [
         {

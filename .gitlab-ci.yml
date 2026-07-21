@@ -335,27 +335,28 @@ deploy:cloud:runner:production:
         changes:
             - functions/**/*
 
-# Keep Firestore composite indexes in sync from firestore.indexes.json.
+# Report drift between firestore.indexes.json and the live Firestore indexes.
 #
-# CRITICAL: never add --force. `firebase deploy --only firestore:indexes` treats the
-# file as the desired state, so --force DELETES every live index and field override
-# the file omits. Without --force the deploy is create-only: it adds what the file
-# declares, lists anything undeclared, and deletes nothing. That makes drift a
-# reported warning instead of an outage.
+# These jobs are READ-ONLY on purpose. CI cannot deploy indexes safely:
+#   - with --force, `firebase deploy --only firestore:indexes` DELETES every live
+#     index and field override the file omits (~200 indexes and 69 single-field
+#     index exemptions back when this file had drifted), so --force is never an
+#     option here;
+#   - without --force but with --non-interactive, firebase-tools does NOT fall back
+#     to "create only". Its confirm() helper throws outright as soon as anything
+#     live is missing from the file, and it throws before creating anything.
+#     Production always has at least one such index - a `tasks` index on `__name__`
+#     alone, which the file format cannot express - so a non-interactive deploy can
+#     only ever fail. This job used to run one and reliably failed the pipeline.
 #
-# These run on every pipeline rather than behind a `changes:` gate: the deploy is a
-# no-op when the file already matches, and running the check every time is what stops
-# console-created indexes from drifting back in unnoticed.
-#
-# `--only firestore:indexes` compiles firestore.rules for validation but does not
-# publish them (release is gated on context.firestoreRules, which this flag clears).
-deploy:firestore:indexes:staging:
+# To create missing indexes, run the deploy interactively and answer "no" when it
+# offers to delete the undeclared ones; that path creates and then skips deletions:
+#   firebase deploy --only firestore:indexes --project <projectId>
+check:firestore:indexes:staging:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
-    resource_group: firestore-indexes-staging-deploy
     script:
         - firebase --version
-        - firebase deploy --only firestore:indexes --project $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive
         # Staging legitimately holds indexes production does not, so report drift
         # without failing the pipeline.
         - node ci/check-firestore-indexes.js $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV --warn-only
@@ -365,13 +366,11 @@ deploy:firestore:indexes:staging:
         refs:
             - develop
 
-deploy:firestore:indexes:production:
+check:firestore:indexes:production:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
-    resource_group: firestore-indexes-production-deploy
     script:
         - firebase --version
-        - firebase deploy --only firestore:indexes --project $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive
         # The file mirrors production, so any difference here is real drift worth
         # a red pipeline.
         - node ci/check-firestore-indexes.js $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD
