@@ -189,6 +189,27 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         })
     })
 
+    it('enqueues a new run when a task is sent back from a later step to an AI step', async () => {
+        seedAssignee()
+        const oldTask = {
+            ...taskOnAiStep(),
+            userIds: [ASSIGNEE, ASSISTANT, HUMAN_REVIEWER],
+            stepHistory: [-1, AI_STEP, NEXT_STEP],
+            currentReviewerId: HUMAN_REVIEWER,
+            completed: 1000,
+        }
+        const sentBackTask = taskOnAiStep({ completed: 2000 })
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, sentBackTask)
+
+        expect(runId).toBe(`${PROJECT}__${TASK}__${AI_STEP}__2000`)
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
+            stepId: AI_STEP,
+            assistantId: ASSISTANT,
+            status: 'pending',
+        })
+    })
+
     it('is idempotent, so a redelivered task update does not pay for the run twice', async () => {
         seedAssignee()
         const newTask = taskOnAiStep({ completed: 1000 })

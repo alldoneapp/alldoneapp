@@ -38,6 +38,7 @@ import RecurringTaskDateBasisModal, {
     shouldShowRecurringTaskDateBasisModal,
 } from '../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
 import { getWorkflowCommentAssistantProps } from './workflowCommentAssistant'
+import { getWorkflowTargetStepIndex } from './workflowNavigation'
 
 export const WORKFLOW_FORWARD = 'FORWARD'
 export const WORKFLOW_BACKWARD = 'BACKWARD'
@@ -296,7 +297,7 @@ export default class WorkflowModal extends Component {
 
     onDonePress = direction => {
         const { task, projectId, checkBoxId } = this.props
-        const { steps, estimations, selectedNextStep, comment, disabledMainButtons } = this.state
+        const { steps, estimations, selectedNextStep, selectedPreviousStep, comment, disabledMainButtons } = this.state
 
         if (disabledMainButtons) return
 
@@ -306,7 +307,7 @@ export default class WorkflowModal extends Component {
             const { stepHistory } = task
             const stepsIds = getWorkflowStepsIdsSorted(steps)
 
-            const stepToMoveIndex = direction === WORKFLOW_BACKWARD ? OPEN_STEP : selectedNextStep
+            const stepToMoveIndex = getWorkflowTargetStepIndex(direction, selectedNextStep, selectedPreviousStep)
             const stepToMoveId = getWorkflowStepId(stepToMoveIndex, stepsIds)
             const commentType =
                 commentWithAttachments && commentWithAttachments.length > 0
