@@ -189,27 +189,6 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         })
     })
 
-    it('enqueues a new run when a task is sent back from a later step to an AI step', async () => {
-        seedAssignee()
-        const oldTask = {
-            ...taskOnAiStep(),
-            userIds: [ASSIGNEE, ASSISTANT, HUMAN_REVIEWER],
-            stepHistory: [-1, AI_STEP, NEXT_STEP],
-            currentReviewerId: HUMAN_REVIEWER,
-            completed: 1000,
-        }
-        const sentBackTask = taskOnAiStep({ completed: 2000 })
-
-        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, sentBackTask)
-
-        expect(runId).toBe(`${PROJECT}__${TASK}__${AI_STEP}__2000`)
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-            stepId: AI_STEP,
-            assistantId: ASSISTANT,
-            status: 'pending',
-        })
-    })
-
     it('is idempotent, so a redelivered task update does not pay for the run twice', async () => {
         seedAssignee()
         const newTask = taskOnAiStep({ completed: 1000 })
@@ -349,7 +328,7 @@ describe('runWorkflowAiStep', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
-    it('reactivates the workflow assistant on both task and chat for the next step comment', async () => {
+    it('preserves the task thread assistant state after the workflow assistant runs', async () => {
         mockStore.set(
             `items/${PROJECT}/tasks/${TASK}`,
             taskOnAiStep({ assistantId: 'previous-assistant', isAssistantEnabled: false })
@@ -364,13 +343,13 @@ describe('runWorkflowAiStep', () => {
 
         expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
+            assistantId: 'previous-assistant',
+            isAssistantEnabled: false,
             currentReviewerId: HUMAN_REVIEWER,
         })
         expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
+            assistantId: 'previous-assistant',
+            isAssistantEnabled: false,
             title: 'Write the spec',
         })
     })
@@ -568,7 +547,14 @@ describe('a step whose assistant dispatched VM work', () => {
 
     beforeEach(() => {
         seedAssignee()
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
+        mockStore.set(
+            `items/${PROJECT}/tasks/${TASK}`,
+            taskOnAiStep({ assistantId: 'previous-assistant', isAssistantEnabled: false })
+        )
+        mockStore.set(`chatObjects/${PROJECT}/chats/${TASK}`, {
+            assistantId: 'previous-assistant',
+            isAssistantEnabled: false,
+        })
         // As enqueueWorkflowAiRunIfNeeded writes it: resolveAwaitingVmRuns picks the run back up from
         // this doc alone, so it has to carry the same fields in the test as it does in production.
         mockStore.set(`workflowAiRuns/${RUN_ID}`, { ...run, status: 'running', createdAt: 1000 })
@@ -602,7 +588,15 @@ describe('a step whose assistant dispatched VM work', () => {
 
         expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
+            assistantId: 'previous-assistant',
+            isAssistantEnabled: false,
+            currentReviewerId: HUMAN_REVIEWER,
+        })
+        expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
+            assistantId: 'previous-assistant',
+            isAssistantEnabled: false,
+        })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
