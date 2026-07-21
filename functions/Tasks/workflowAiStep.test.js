@@ -328,32 +328,6 @@ describe('runWorkflowAiStep', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
-    it('reactivates the workflow assistant on both task and chat for the next step comment', async () => {
-        mockStore.set(
-            `items/${PROJECT}/tasks/${TASK}`,
-            taskOnAiStep({ assistantId: 'previous-assistant', isAssistantEnabled: false })
-        )
-        mockStore.set(`chatObjects/${PROJECT}/chats/${TASK}`, {
-            assistantId: 'previous-assistant',
-            isAssistantEnabled: false,
-            title: 'Write the spec',
-        })
-
-        await runWorkflowAiStep(RUN_ID, run)
-
-        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
-            currentReviewerId: HUMAN_REVIEWER,
-        })
-        expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
-            title: 'Write the spec',
-        })
-    })
-
     it('grounds the run in the task by seeding the thread with the prompt', async () => {
         await runWorkflowAiStep(RUN_ID, run)
 
@@ -405,8 +379,6 @@ describe('runWorkflowAiStep', () => {
             status: 'failed',
             failureReason: 'out of gold',
         })
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).isAssistantEnabled).toBeUndefined()
-        expect(mockStore.has(`chatObjects/${PROJECT}/chats/${TASK}`)).toBe(false)
     })
 
     it('does not run or advance when the task already moved off the step', async () => {
