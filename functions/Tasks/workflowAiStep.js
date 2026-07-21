@@ -467,7 +467,16 @@ const filterUnsettledVmJobs = async correlationIds => {
         try {
             const doc = await admin.firestore().doc(`pendingWebhooks/${correlationId}`).get()
             if (!doc.exists) continue
-            if (!VM_TERMINAL_STATUSES.includes((doc.data() || {}).status)) unsettled.push(correlationId)
+
+            const job = doc.data() || {}
+            if (VM_TERMINAL_STATUSES.includes(job.status)) continue
+
+            unsettled.push({
+                correlationId,
+                status: job.status,
+                // Set while the VM agent is blocked on a question (see vmInteraction.js).
+                interactionExpiresAt: Number(job.interactionExpiresAt) || 0,
+            })
         } catch (error) {
             // Failing open advances the step rather than parking the task on a read error.
             console.warn('[workflowAiStep] Could not read VM job status', { correlationId, error: error.message })
@@ -478,12 +487,32 @@ const filterUnsettledVmJobs = async correlationIds => {
 }
 
 /**
+ * When to stop waiting on the VM jobs a step dispatched.
+ *
+ * Normally the step's own `awaitingUntil` governs: the VM's runtime plus its finalization window. But
+ * a VM agent can stop and ask the user a question (`awaiting_user`), and that interaction stays open
+ * for VM_INTERACTION_TTL_MS — 24 hours, far longer than the run budget. Giving up at the plain budget
+ * would abandon a step the user can still rescue by answering, so a live interaction pushes the
+ * deadline out to when the question expires, plus a full run budget for the job to finish afterwards.
+ *
+ * Still bounded: each extension needs a real, unexpired interaction, so a job that simply hangs is
+ * abandoned on the original schedule.
+ */
+const resolveAwaitingDeadline = (run, unsettledJobs) => {
+    const base = Number(run.awaitingUntil) || 0
+    const interactionExpiresAt = unsettledJobs.reduce((latest, job) => Math.max(latest, job.interactionExpiresAt), 0)
+
+    return interactionExpiresAt ? Math.max(base, interactionExpiresAt + AWAITING_VM_TIMEOUT_MS) : base
+}
+
+/**
  * Advances runs that were parked waiting on VM work, once that work settles.
  *
  * A failed or cancelled VM job still advances the task: it matches how a failed assistant run behaves
  * (the error is posted into the chat and the pipeline keeps moving) rather than parking the task
- * where nobody is looking. The same applies once awaitingUntil passes, which is the backstop for a
- * VM job whose status never reaches a terminal state.
+ * where nobody is looking. The same applies once the deadline passes, which is the backstop for a VM
+ * job whose status never reaches a terminal state — see resolveAwaitingDeadline for why a job blocked
+ * on a user question gets longer than the plain run budget.
  */
 const resolveAwaitingVmRuns = async ({ now = Date.now() } = {}) => {
     const snapshot = await admin
@@ -503,7 +532,7 @@ const resolveAwaitingVmRuns = async ({ now = Date.now() } = {}) => {
             // were started before the run parked, so any time-windowed lookup would miss them and
             // advance the step immediately — the exact behaviour this exists to prevent.
             const stillRunning = await filterUnsettledVmJobs(run.awaitingCorrelationIds)
-            const timedOut = now >= (Number(run.awaitingUntil) || 0)
+            const timedOut = now >= resolveAwaitingDeadline(run, stillRunning)
             if (stillRunning.length > 0 && !timedOut) continue
 
             const assignee = await admin.firestore().doc(`users/${run.assigneeUserId}`).get()

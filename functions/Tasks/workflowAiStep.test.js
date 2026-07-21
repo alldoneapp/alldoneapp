@@ -589,3 +589,75 @@ describe('a step whose assistant dispatched VM work', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
     })
 })
+
+describe('a VM job that stops to ask the user a question', () => {
+    const RUN_ID = 'run-vm-question'
+    const CORRELATION = 'vm-correlation-q'
+    const run = { projectId: PROJECT, taskId: TASK, stepId: AI_STEP, assistantId: ASSISTANT, assigneeUserId: ASSIGNEE }
+
+    // vmInteraction gives a question 24h to be answered, far beyond the plain VM run budget.
+    const INTERACTION_TTL_MS = 24 * 60 * 60 * 1000
+
+    const seedVmJob = (status, extra = {}) => {
+        mockStore.set(`pendingWebhooks/${CORRELATION}`, {
+            kind: 'vm_job',
+            projectId: PROJECT,
+            objectId: TASK,
+            createdAt: Date.now(),
+            status,
+            ...extra,
+        })
+    }
+
+    beforeEach(async () => {
+        seedAssignee()
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
+        mockStore.set(`workflowAiRuns/${RUN_ID}`, { ...run, status: 'running', createdAt: 1000 })
+        mockGeneratePreConfigTaskResult.mockImplementationOnce(async () => {
+            seedVmJob('initiated')
+            return { success: true }
+        })
+        await runWorkflowAiStep(RUN_ID, run)
+    })
+
+    it('keeps waiting past the plain VM budget while the question is still answerable', async () => {
+        seedVmJob('awaiting_user', { interactionExpiresAt: Date.now() + INTERACTION_TTL_MS })
+
+        // Well past awaitingUntil, which on its own would have abandoned the step.
+        const wellPastVmBudget = Date.now() + AWAITING_VM_TIMEOUT_MS + 60 * 1000
+        expect(await resolveAwaitingVmRuns({ now: wellPastVmBudget })).toBe(0)
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+    })
+
+    it('advances once the question expired and the job still has not settled', async () => {
+        const expiredAt = Date.now() - 1000
+        seedVmJob('awaiting_user', { interactionExpiresAt: expiredAt })
+
+        await resolveAwaitingVmRuns({ now: expiredAt + AWAITING_VM_TIMEOUT_MS + 1000 })
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).failureReason).toBe('vm_timeout')
+    })
+
+    it('advances as soon as an answered question lets the job finish', async () => {
+        seedVmJob('awaiting_user', { interactionExpiresAt: Date.now() + INTERACTION_TTL_MS })
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(0)
+
+        // The user answers, the VM resumes and completes.
+        seedVmJob('completed', { interactionExpiresAt: 0 })
+
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+    })
+
+    it('still abandons a job that simply hangs, with no interaction to justify waiting', async () => {
+        seedVmJob('initiated')
+
+        await resolveAwaitingVmRuns({ now: Date.now() + AWAITING_VM_TIMEOUT_MS + 1000 })
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).failureReason).toBe('vm_timeout')
+    })
+})
