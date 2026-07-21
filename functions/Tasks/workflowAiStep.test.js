@@ -102,10 +102,13 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
 const mockGeneratePreConfigTaskResult = jest.fn(async () => ({ success: true }))
 const mockEnsureChatExists = jest.fn(async () => {})
 
+const mockPostUserRequestComment = jest.fn(async () => 'trigger-comment-1')
+
 jest.mock('../Assistant/assistantPreConfigTaskTopic', () => ({
     generatePreConfigTaskResult: mockGeneratePreConfigTaskResult,
 }))
 jest.mock('../Assistant/assistantStatusHelper', () => ({ ensureChatExists: mockEnsureChatExists }))
+jest.mock('../Assistant/assistantHelper', () => ({ postUserRequestComment: mockPostUserRequestComment }))
 
 const mockCreateTaskMovedInWorkflowFeed = jest.fn(async () => {})
 
@@ -319,6 +322,36 @@ describe('runWorkflowAiStep', () => {
         expect(args[11]).toBe('tasks')
 
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+    })
+
+    it('grounds the run in the task by seeding the thread with the prompt', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+
+        // Posted as the workflow owner, so it reads as their request and the user can see what the
+        // step asked.
+        expect(mockPostUserRequestComment).toHaveBeenCalledWith({
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            creatorId: ASSIGNEE,
+            text: 'Summarize this task',
+        })
+
+        // The trigger message is what makes generatePreConfigTaskResult assemble the full task and
+        // thread context instead of running on the bare prompt.
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
+            triggerMessageId: 'trigger-comment-1',
+        })
+    })
+
+    it('still runs when the thread could not be seeded', async () => {
+        mockPostUserRequestComment.mockRejectedValueOnce(new Error('firestore unavailable'))
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({ triggerMessageId: null })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 

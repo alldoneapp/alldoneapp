@@ -4772,7 +4772,7 @@ async function ensureVmJobThread({
     // behave like a normal in-thread one.
     try {
         const promptText = buildVmJobTaskDescription({ objective, deliverable, originatingRequestText })
-        await postVmHostTaskRequestComment({
+        await postUserRequestComment({
             projectId: targetProjectId,
             objectType: 'tasks',
             objectId: resolvedTaskId,
@@ -4811,7 +4811,16 @@ function buildVmRequestImageMediaContext(imageUrls) {
  * mediaContext set for the read-side. Mirrors the comment/commentsData bookkeeping that the
  * status-comment writer does. Returns the comment id, or null when there is nothing to post.
  */
-async function postVmHostTaskRequestComment({ projectId, objectType, objectId, creatorId, text, imageUrls }) {
+/**
+ * Posts `text` into an object's thread as a real user-authored comment and returns its id.
+ *
+ * Used to seed a thread with the request that triggered a background assistant run — the VM host
+ * task, and workflow AI steps. Two things depend on it being a real comment rather than a prompt
+ * passed straight to the model: the user can read exactly what was asked, and the run can be given
+ * its id as a trigger message, which is what makes getOptimizedContextMessages ground it in the
+ * full task and thread context instead of the bare prompt.
+ */
+async function postUserRequestComment({ projectId, objectType, objectId, creatorId, text, imageUrls }) {
     const cleanText = typeof text === 'string' ? text.trim() : ''
     const images = normalizeCreateTaskImageUrls(imageUrls)
     if (!cleanText && !images.length) return null
@@ -12882,6 +12891,7 @@ module.exports = {
     mergeTaskDescriptionWithImages,
     extractImageUrlsFromMessageContent,
     injectCurrentMessageImagesIntoCreateTaskArgs,
+    postUserRequestComment,
     collectAssistantTextWithToolCalls,
     buildConversationAfterToolExecution,
     buildConversationAfterToolExecutions,

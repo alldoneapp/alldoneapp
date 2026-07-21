@@ -209,6 +209,40 @@ const postAssistantComment = async (projectId, taskId, assistantId, commentText)
 }
 
 /**
+ * Posts the step's prompt into the task thread as a comment from the workflow owner, and returns its
+ * id for use as the run's trigger message.
+ *
+ * This is what gives the run the same context an interactive prompt on the task gets.
+ * generatePreConfigTaskResult only takes its canonical path — task title, description, project, and
+ * prior chat history, assembled by getOptimizedContextMessages — when it is handed a trigger message
+ * that lives in the thread. Without one it falls back to base instructions plus the bare prompt, so
+ * a workflow step ran with no idea which task it was about. Posting a real comment also means the
+ * user reads exactly what the step asked, and leaves the exchange in the history for the next step.
+ * Same approach as the VM host task (see postUserRequestComment).
+ *
+ * Best effort: a thread that could not be seeded still runs, just without the richer context.
+ */
+const postWorkflowStepPrompt = async (projectId, taskId, assigneeUserId, prompt) => {
+    try {
+        const { postUserRequestComment } = require('../Assistant/assistantHelper')
+        return await postUserRequestComment({
+            projectId,
+            objectType: 'tasks',
+            objectId: taskId,
+            creatorId: assigneeUserId,
+            text: prompt,
+        })
+    } catch (error) {
+        console.warn('[workflowAiStep] Could not post the step prompt into the thread', {
+            projectId,
+            taskId,
+            error: error.message,
+        })
+        return null
+    }
+}
+
+/**
  * Resolves the prompt for an AI step. The pre-config task is read live so later edits to it take
  * effect; the snapshot stored on the step is the fallback for a deleted task.
  */
@@ -281,6 +315,8 @@ const runWorkflowAiStep = async (runId, run) => {
                 const { ensureChatExists } = require('../Assistant/assistantStatusHelper')
                 await ensureChatExists(projectId, 'tasks', taskId, assistantId, followerIds, isPublicFor)
 
+                const triggerMessageId = await postWorkflowStepPrompt(projectId, taskId, assigneeUserId, prompt)
+
                 const { generatePreConfigTaskResult } = require('../Assistant/assistantPreConfigTaskTopic')
                 await generatePreConfigTaskResult(
                     // The assignee owns the workflow, so the assignee pays the Gold.
@@ -296,7 +332,9 @@ const runWorkflowAiStep = async (runId, run) => {
                     null,
                     { name: task.extendedName || task.name },
                     null,
-                    'tasks'
+                    'tasks',
+                    // Grounds the run in the task it is about; see postWorkflowStepPrompt.
+                    { triggerMessageId }
                 )
             }
         } catch (error) {
