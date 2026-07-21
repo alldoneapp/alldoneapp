@@ -221,6 +221,25 @@ const postAssistantComment = async (projectId, taskId, assistantId, commentText)
 }
 
 /**
+ * Leaves the assistant that executed the workflow step listening in the task thread.
+ *
+ * Workflow prompts are executed directly, so unlike a normal chat submission they do not pass
+ * through the client path that persists the selected assistant and enables it on both documents.
+ * Keep the task and chat writes in one batch: the workflow comment modal reads the task flag while
+ * the regular chat reads the chat flag first. Updating only one of them produces different behavior
+ * depending on where the next reviewer posts their comment.
+ */
+const activateTaskChatAssistant = async (projectId, taskId, assistantId) => {
+    const batch = admin.firestore().batch()
+    const activation = { assistantId, isAssistantEnabled: true }
+
+    batch.set(admin.firestore().doc(`items/${projectId}/tasks/${taskId}`), activation, { merge: true })
+    batch.set(admin.firestore().doc(`chatObjects/${projectId}/chats/${taskId}`), activation, { merge: true })
+
+    await batch.commit()
+}
+
+/**
  * Posts the step's prompt into the task thread as a comment from the workflow owner, and returns its
  * id for use as the run's trigger message.
  *
@@ -350,6 +369,11 @@ const runWorkflowAiStep = async (runId, run) => {
                     // Grounds the run in the task it is about; see postWorkflowStepPrompt.
                     { triggerMessageId }
                 )
+
+                // The explicit workflow invocation above deliberately bypasses the normal comment
+                // trigger. Restore the same persistent listening state only after it has returned,
+                // so the step prompt cannot cause a second assistant reply or an activation loop.
+                await activateTaskChatAssistant(projectId, taskId, assistantId)
             }
         } catch (error) {
             console.error('[workflowAiStep] Assistant run failed', { runId, error: error.message })
