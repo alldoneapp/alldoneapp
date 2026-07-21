@@ -1,6 +1,7 @@
 const {
     getAssistantTemplateState,
     getTaskTemplateState,
+    inheritMissingAssistantTemplateFields,
     isTaskUnmodified,
     mergeTemplateState,
     buildBackfillConflicts,
@@ -70,6 +71,46 @@ describe('templateMerge', () => {
                 templateValue: 'new',
                 previousTemplateValueExists: false,
             }),
+        ])
+    })
+
+    test('treats a missing legacy heartbeat model as the previous template value', () => {
+        const previousTemplate = { heartbeatModel: 'terra' }
+        const currentTemplate = { heartbeatModel: 'luna' }
+        const { normalizedLocalState } = inheritMissingAssistantTemplateFields({}, previousTemplate)
+
+        expect(mergeTemplateState(previousTemplate, currentTemplate, normalizedLocalState)).toEqual({
+            patch: { heartbeatModel: 'luna' },
+            deleteFields: [],
+            conflicts: [],
+        })
+    })
+
+    test('preserves an explicit local heartbeat model as a genuine override', () => {
+        const previousTemplate = { heartbeatModel: 'terra' }
+        const currentTemplate = { heartbeatModel: 'luna' }
+        const { normalizedLocalState } = inheritMissingAssistantTemplateFields(
+            { heartbeatModel: 'sol' },
+            previousTemplate
+        )
+        const result = mergeTemplateState(previousTemplate, currentTemplate, normalizedLocalState)
+
+        expect(result.patch).toEqual({})
+        expect(result.conflicts).toEqual([
+            expect.objectContaining({ field: 'heartbeatModel', localValue: 'sol', templateValue: 'luna' }),
+        ])
+    })
+
+    test('backfill inherits a missing heartbeat model without suppressing other conflicts', () => {
+        const template = { heartbeatModel: 'terra', model: 'new' }
+        const { normalizedLocalState, inheritedPatch } = inheritMissingAssistantTemplateFields(
+            { model: 'local' },
+            template
+        )
+
+        expect(inheritedPatch).toEqual({ heartbeatModel: 'terra' })
+        expect(buildBackfillConflicts(template, normalizedLocalState)).toEqual([
+            expect.objectContaining({ field: 'model', localValue: 'local', templateValue: 'new' }),
         ])
     })
 })

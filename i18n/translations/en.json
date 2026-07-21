@@ -2441,5 +2441,11 @@
     "Template task deleted • local changes preserved": "Template task deleted • local changes preserved",
     "Template changed • local changes preserved": "Template changed • local changes preserved",
     "Chat Filters": "Chat Filters",
-    "Unread": "Unread"
+    "Unread": "Unread",
+    "Heartbeat model": "Heartbeat model",
+    "Choose the model used only for heartbeat executions.": "Choose the model used only for heartbeat executions.",
+    "Most capable": "Most capable",
+    "Balanced cost and capability": "Balanced cost and capability",
+    "Efficient for high-volume work": "Efficient for high-volume work",
+    "Choose which version to use for this setting.": "Choose which version to use for this setting."
 }

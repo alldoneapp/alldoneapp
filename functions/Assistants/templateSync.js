@@ -3,6 +3,7 @@ const { isEqual } = require('lodash')
 const {
     getAssistantTemplateState,
     getTaskTemplateState,
+    inheritMissingAssistantTemplateFields,
     isTaskUnmodified,
     mergeTemplateState,
     buildBackfillConflicts,
@@ -107,8 +108,11 @@ async function syncDerivedAssistant(doc, previousTemplateAssistant, currentTempl
     const timestamp = Date.now()
     const previousState = localAssistant.templateSyncSnapshot || getAssistantTemplateState(previousTemplateAssistant)
     const currentState = getAssistantTemplateState(currentTemplateAssistant)
-    const localState = getAssistantTemplateState(localAssistant)
-    const result = mergeTemplateState(previousState, currentState, localState)
+    const { normalizedLocalState } = inheritMissingAssistantTemplateFields(
+        getAssistantTemplateState(localAssistant),
+        previousState
+    )
+    const result = mergeTemplateState(previousState, currentState, normalizedLocalState)
     const affectedFields = getChangedTemplateFields(previousState, currentState)
     const conflicts = mergeStoredConflicts(localAssistant.templateSyncConflicts, result.conflicts, affectedFields)
     const changedFields = [...Object.keys(result.patch), ...result.deleteFields]
@@ -270,8 +274,13 @@ async function backfillDerivedAssistant(doc, templateAssistant) {
     const { projectId, assistantId } = getProjectAndAssistantId(doc)
     const timestamp = Date.now()
     const templateState = getAssistantTemplateState(templateAssistant)
-    const conflicts = buildBackfillConflicts(templateState, getAssistantTemplateState(localAssistant))
+    const { normalizedLocalState, inheritedPatch } = inheritMissingAssistantTemplateFields(
+        getAssistantTemplateState(localAssistant),
+        templateState
+    )
+    const conflicts = buildBackfillConflicts(templateState, normalizedLocalState)
     await doc.ref.update({
+        ...inheritedPatch,
         templateSyncSnapshot: templateState,
         templateSyncConflicts: conflicts,
         templateSyncStatus: conflicts.length ? 'needs_review' : 'synced',

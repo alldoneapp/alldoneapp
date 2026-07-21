@@ -39,6 +39,10 @@ const TASK_LOCAL_FIELDS = new Set([
     'activatedUserIds',
 ])
 
+// These settings did not exist on older derived assistants. Their absence is
+// therefore a legacy state, not a deliberate local override.
+const ASSISTANT_INHERITED_WHEN_MISSING_FIELDS = new Set(['heartbeatModel'])
+
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key)
 
 function copyTemplateFields(object, excludedFields) {
@@ -60,6 +64,18 @@ function getTaskTemplateState(task) {
         delete state.userTimezone
     }
     return state
+}
+
+function inheritMissingAssistantTemplateFields(localState, referenceTemplateState) {
+    const normalizedLocalState = { ...(localState || {}) }
+    const inheritedPatch = {}
+    ASSISTANT_INHERITED_WHEN_MISSING_FIELDS.forEach(field => {
+        if (!hasOwn(normalizedLocalState, field) && hasOwn(referenceTemplateState, field)) {
+            normalizedLocalState[field] = referenceTemplateState[field]
+            inheritedPatch[field] = referenceTemplateState[field]
+        }
+    })
+    return { normalizedLocalState, inheritedPatch }
 }
 
 function serializableValue(object, field) {
@@ -139,9 +155,11 @@ function buildBackfillConflicts(templateState, localState) {
 
 module.exports = {
     ASSISTANT_LOCAL_FIELDS,
+    ASSISTANT_INHERITED_WHEN_MISSING_FIELDS,
     TASK_LOCAL_FIELDS,
     getAssistantTemplateState,
     getTaskTemplateState,
+    inheritMissingAssistantTemplateFields,
     mergeTemplateState,
     isTaskUnmodified,
     buildBackfillConflicts,

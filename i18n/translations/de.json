@@ -1965,5 +1965,11 @@
     "Template task deleted • local changes preserved": "Vorlagenaufgabe gelöscht • lokale Änderungen beibehalten",
     "Template changed • local changes preserved": "Vorlage geändert • lokale Änderungen beibehalten",
     "Chat Filters": "Chatfilter",
-    "Unread": "Ungelesen"
+    "Unread": "Ungelesen",
+    "Heartbeat model": "Heartbeat-Modell",
+    "Choose the model used only for heartbeat executions.": "Wähle das Modell, das nur für Heartbeat-Ausführungen verwendet wird.",
+    "Most capable": "Am leistungsfähigsten",
+    "Balanced cost and capability": "Ausgewogenes Verhältnis von Kosten und Leistung",
+    "Efficient for high-volume work": "Effizient bei hohem Arbeitsvolumen",
+    "Choose which version to use for this setting.": "Wähle aus, welche Version für diese Einstellung verwendet werden soll."
 }

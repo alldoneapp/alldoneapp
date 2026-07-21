@@ -2389,5 +2389,11 @@
     "Template task deleted • local changes preserved": "Tarea de plantilla eliminada • cambios locales conservados",
     "Template changed • local changes preserved": "Plantilla modificada • cambios locales conservados",
     "Chat Filters": "Filtros de chat",
-    "Unread": "No leídos"
+    "Unread": "No leídos",
+    "Heartbeat model": "Modelo de heartbeat",
+    "Choose the model used only for heartbeat executions.": "Elige el modelo utilizado solo para las ejecuciones de heartbeat.",
+    "Most capable": "El más capaz",
+    "Balanced cost and capability": "Equilibrio entre coste y capacidad",
+    "Efficient for high-volume work": "Eficiente para cargas de trabajo de gran volumen",
+    "Choose which version to use for this setting.": "Elige qué versión utilizar para esta configuración."
 }
