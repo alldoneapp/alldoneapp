@@ -3345,12 +3345,18 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
 )
 
 // Runs the assistant for a task that landed on an AI workflow step, then moves the task on.
-// Enqueued by enqueueWorkflowAiRunIfNeeded from onUpdateTask. Matches askToBotSecondGen's ceiling
-// because it hosts a full assistant run.
+// Enqueued by enqueueWorkflowAiRunIfNeeded from onUpdateTask.
+//
+// 540s is the hard ceiling GCP puts on event-triggered functions ("The timeout for functions with
+// an event trigger cannot exceed 540 seconds") — askToBotSecondGen can ask for 3600s only because
+// it is onCall. Raising this past 540 does not slow the function down, it makes the deploy of this
+// one function fail while the rest of the deploy succeeds, so runs pile up in workflowAiRuns with
+// nothing consuming them. If an assistant run ever needs longer than 9 minutes, move this to
+// Cloud Tasks (onTaskDispatched, as runVmJob does) rather than raising the number.
 exports.runWorkflowAiStepSecondGen = onDocumentCreated(
     {
         document: 'workflowAiRuns/{runId}',
-        timeoutSeconds: 3600,
+        timeoutSeconds: 540,
         memory: '1GiB',
         region: 'europe-west1',
     },

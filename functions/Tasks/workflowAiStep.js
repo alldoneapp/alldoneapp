@@ -12,8 +12,10 @@ const { getNextWorkflowStepId, isAiWorkflowStep, buildAiStepPrompt } = require('
 const RUNS_COLLECTION = 'workflowAiRuns'
 
 // A run that never reports back leaves its task parked on the AI step. The sweeper force-advances
-// anything older than this, which is comfortably above the worker's own 3600s ceiling.
-const STALLED_RUN_MS = 65 * 60 * 1000
+// anything older than this, which is comfortably above the worker's own 540s ceiling (the GCP limit
+// for event-triggered functions, see runWorkflowAiStepSecondGen). onDocumentCreated does not retry,
+// so there is no second attempt to wait out.
+const STALLED_RUN_MS = 15 * 60 * 1000
 
 const RUN_STATUS_PENDING = 'pending'
 const RUN_STATUS_RUNNING = 'running'

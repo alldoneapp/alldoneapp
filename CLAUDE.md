@@ -76,6 +76,8 @@ Located in `functions/`. Uses Firebase Functions v2 syntax:
 
 **Important**: Cloud Functions cannot import non-cloud function modules directly. Keep function code self-contained or use shared helpers within `functions/`.
 
+**`timeoutSeconds` on an event-triggered function must be ≤ 540.** GCP caps event-triggered (Eventarc) functions — `onDocumentCreated/Updated/Deleted/Written`, `onObjectFinalized`, `onMessagePublished` — at **540 seconds**. `onCall` / `onRequest` / `onSchedule` may go to 3600, so copying a ceiling from an HTTP function (e.g. `askToBotSecondGen`'s 3600) onto a Firestore trigger is an easy mistake. **The failure is silent and partial**: `firebase deploy` reports overall success while that one function is rejected with `CreateFunction … "The timeout for functions with an event trigger cannot exceed 540 seconds."`, so the producer keeps writing trigger docs and nothing ever consumes them. This cost a full production outage of the AI workflow-step worker (`runWorkflowAiStepSecondGen`), which sat undeployed while `workflowAiRuns` docs piled up as `pending`. To find it: `gcloud logging read 'protoPayload.methodName:"CreateFunction" AND severity>=ERROR' --project=<projectId> --freshness=2d`. After a deploy that adds an event-triggered function, confirm it actually exists (`gcloud functions list --project=<projectId> | grep <name>`) rather than trusting the deploy summary. If the work genuinely needs more than 9 minutes, move it to Cloud Tasks (`onTaskDispatched`, as `runVmJob` does) instead of raising the number.
+
 ## Development Guidelines
 
 ### Localization
