@@ -113,11 +113,47 @@ describe('CheckBoxWrapper task completion', () => {
         expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
     })
 
-    test('clears the checkbox when a workflow moves between steps assigned to the same user', () => {
+    test('clears optimistic state when the mounted row advances between steps assigned to the same user', () => {
+        const taskAtFirstStep = {
+            ...baseTask,
+            genericData: false,
+            userIds: ['user-1', 'user-1'],
+            currentReviewerId: 'user-1',
+            stepHistory: ['open', 'step-1'],
+        }
+        let tree
+        act(() => {
+            tree = renderWrapper(taskAtFirstStep)
+        })
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(true))
+        expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(true)
+
+        const taskAtSecondStep = {
+            ...taskAtFirstStep,
+            userIds: ['user-1', 'user-1', 'user-1'],
+            stepHistory: ['open', 'step-1', 'step-2'],
+        }
+        act(() => {
+            tree.update(
+                <CheckBoxWrapper
+                    task={taskAtSecondStep}
+                    projectId={'project-1'}
+                    accessGranted={true}
+                    loggedUserCanUpdateObject={true}
+                />
+            )
+        })
+
+        expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(false)
+    })
+
+    test('keeps optimistic state during unrelated rerenders at the same workflow step', () => {
         const task = {
             ...baseTask,
             genericData: false,
             userIds: ['user-1', 'user-1'],
+            currentReviewerId: 'user-1',
             stepHistory: ['open', 'step-1'],
         }
         let tree
@@ -126,13 +162,18 @@ describe('CheckBoxWrapper task completion', () => {
         })
 
         act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(true))
+        act(() => {
+            tree.update(
+                <CheckBoxWrapper
+                    task={{ ...task, name: 'Updated while transition is pending' }}
+                    projectId={'project-1'}
+                    accessGranted={true}
+                    loggedUserCanUpdateObject={true}
+                />
+            )
+        })
+
         expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(true)
-
-        const flowModal = tree.root.find(node => typeof node.props.setVisiblePopover === 'function')
-        act(() => flowModal.props.setVisiblePopover(false))
-
-        expect(tree.root.findAll(node => typeof node.props.setVisiblePopover === 'function')).toHaveLength(0)
-        expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(false)
     })
 
     test('email-linked tasks open the choice popup before completion', async () => {

@@ -60,6 +60,7 @@ function CheckBoxWrapper(
     const timeoutsRef = useRef([])
     const emailCompletionSubmittingRef = useRef(false)
     const taskTransitionPendingRef = useRef(false)
+    const currentWorkflowStepId = task.stepHistory?.[task.stepHistory.length - 1]
 
     useEffect(() => {
         return () => {
@@ -72,7 +73,7 @@ function CheckBoxWrapper(
 
     useEffect(() => {
         safeSetChecked(task.done)
-    }, [task.done])
+    }, [task.done, currentWorkflowStepId])
 
     const safeSetIsOpen = value => {
         if (!isUnmountedRef.current) {
