@@ -35,7 +35,7 @@ import TaskTagsContainer from './TaskTagsContainer'
 import TaskPriorityTagButton from '../../TaskPriorityTagButton'
 import TaskVmStatusTag from '../../../Tags/InProgressVmTag'
 import { doTrailingTagsCrowdTaskTitle } from '../../TagsArea/taskTagSummaryHelper'
-import { isNextWorkflowStepAi } from '../../../WorkflowView/workflowStepHelper'
+import { shouldShowAiStepControl } from './taskAiStepControl'
 
 function TaskPresentation(
     {
@@ -129,15 +129,14 @@ function TaskPresentation(
         task.done === false &&
         !task.parentId
 
-    const showAiStepControl =
-        showWorkflowIndicator &&
-        !pending &&
-        !isObservedTask &&
-        !isSuggested &&
-        !task.genericData &&
-        !task.calendarData &&
-        !isInboxSummaryGmailTask(task) &&
-        isNextWorkflowStepAi(workflow, task)
+    const showAiStepControl = shouldShowAiStepControl({
+        workflow,
+        task,
+        showWorkflowIndicator,
+        pending,
+        isObservedTask,
+        isSuggested,
+    })
 
     useImperativeHandle(ref, () => ({
         onCheckboxPress: () => {
