@@ -19,7 +19,7 @@ const { resolveUserTimezoneOffset, getUserLocalDayBounds } = require('./contextT
 const { removeSingleChatNotification } = require('../Chats/chatsFirestoreCloud')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
-const ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS = 55 * 60 * 1000
+const { ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS: ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
 
 // Pre-load tiktoken at module load (performance optimization)
 console.log('🚀 [TIMING] Pre-loading tiktoken JSON at module load...')

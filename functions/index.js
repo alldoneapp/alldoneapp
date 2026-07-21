@@ -10,6 +10,12 @@ const firebaseConfig = require('./firebaseConfig.js')
 const { PLAN_STATUS_PREMIUM } = require('./Payment/premiumHelper')
 const { assertObjectAccess } = require('./shared/privacyAccess')
 const { VM_JOB_QUEUE_RATE_LIMITS, VM_JOB_WORKER_TIMEOUT_SECONDS } = require('./Assistant/vmJobConfig')
+// Every function below that hosts an assistant prompt run derives its timeout from these, so the
+// transport can never be shorter than the run it is asked to carry. See assistantRunLimits.test.js.
+const {
+    ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
+    HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
+} = require('./Assistant/assistantRunLimits')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -2166,7 +2172,7 @@ const { askToOpenAIBot } = require('./Assistant/assistantNormalTalk_optimized')
 
 exports.askToBotSecondGen = onCall(
     {
-        timeoutSeconds: 3600,
+        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB', // Increased for better performance
         minInstances: 1, // Keep 2 instances warm to avoid cold starts
         maxInstances: 100, // Allow scaling when needed
@@ -2780,7 +2786,7 @@ exports.generateBotWelcomeMessageToUserSecondGen = onCall(
 
 exports.generatePreConfigTaskResultSecondGen = onCall(
     {
-        timeoutSeconds: 3600,
+        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB', // Increased for better performance
         minInstances: 1, // Keep 1 instance warm
         maxInstances: 100,
@@ -3344,26 +3350,26 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
     }
 )
 
-// Runs the assistant for a task that landed on an AI workflow step, then moves the task on.
-// Enqueued by enqueueWorkflowAiRunIfNeeded from onUpdateTask.
+// Runs the assistant for tasks that landed on an AI workflow step, then moves each task on.
+// Queued by enqueueWorkflowAiRunIfNeeded from onUpdateTask into workflowAiRuns.
 //
-// 540s is the hard ceiling GCP puts on event-triggered functions ("The timeout for functions with
-// an event trigger cannot exceed 540 seconds") — askToBotSecondGen can ask for 3600s only because
-// it is onCall. Raising this past 540 does not slow the function down, it makes the deploy of this
-// one function fail while the rest of the deploy succeeds, so runs pile up in workflowAiRuns with
-// nothing consuming them. If an assistant run ever needs longer than 9 minutes, move this to
-// Cloud Tasks (onTaskDispatched, as runVmJob does) rather than raising the number.
-exports.runWorkflowAiStepSecondGen = onDocumentCreated(
+// A poller rather than an onDocumentCreated trigger on that collection: an assistant run is given a
+// 55-minute wall clock, and event-triggered functions are capped at 540s, so a trigger cannot host
+// one — a 3600s trigger is rejected outright at deploy time while the rest of the deploy succeeds,
+// which is exactly how these runs silently stopped executing in production. Scheduled execution is
+// how checkRecurringAssistantTasks already runs assistant work on the same budget. Every minute, so
+// a task waits at most ~60s for its step to start.
+exports.runWorkflowAiStepsSecondGen = onSchedule(
     {
-        document: 'workflowAiRuns/{runId}',
-        timeoutSeconds: 540,
+        schedule: '* * * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB',
         region: 'europe-west1',
     },
-    async event => {
-        const { runWorkflowAiStep } = require('./Tasks/workflowAiStep')
-        const { runId } = event.params
-        await runWorkflowAiStep(runId, event.data.data())
+    async () => {
+        const { dispatchPendingWorkflowAiRuns } = require('./Tasks/workflowAiStep')
+        await dispatchPendingWorkflowAiRuns()
     }
 )
 
@@ -4188,7 +4194,7 @@ exports.getLinkPreviewDataSecondGen = onRequest(
 exports.checkRecurringAssistantTasks = onSchedule(
     {
         schedule: '*/5 * * * *', // Run every 5 minutes
-        timeoutSeconds: 3600, // 60 minutes; recurring assistant runs have a 55-minute internal limit
+        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
         memory: '512MiB',
         region: 'europe-west1',
     },
@@ -4215,7 +4221,7 @@ exports.checkAssistantHeartbeats = onSchedule(
 exports.runAssistantHeartbeat = onTaskDispatched(
     {
         region: 'europe-west1',
-        timeoutSeconds: 1800,
+        timeoutSeconds: HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
         memory: '512MiB',
         retryConfig: { maxAttempts: 1 },
         rateLimits: { maxConcurrentDispatches: 5, maxDispatchesPerSecond: 2 },

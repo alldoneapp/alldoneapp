@@ -40,7 +40,7 @@ const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE =
     'Heartbeat paused because you\u2019re out of gold. Add gold to resume assistant heartbeats here https://my.alldone.app/settings/premium'
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_FIELD = 'heartbeatInsufficientGoldNoticeAt'
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_THROTTLE_MS = 24 * 60 * 60 * 1000
-const HEARTBEAT_TASK_MAX_RUN_WALL_CLOCK_MS = 25 * 60 * 1000
+const { HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS: HEARTBEAT_TASK_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
 
 /**
  * Fetch recent conversation history from a topic for context.

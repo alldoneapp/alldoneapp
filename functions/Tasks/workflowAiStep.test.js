@@ -19,17 +19,60 @@ const makeRef = path => ({
     },
 })
 
-const collectionQuery = () => {
+const matchesFilter = (value, { op, expected }) => {
+    if (op === '==') return value === expected
+    if (op === '<') return value < expected
+    if (op === 'in') return expected.includes(value)
+    return true
+}
+
+const collectionQuery = (collectionPath = '') => {
+    const filters = []
+    let orderField = null
+    let maxDocs = Infinity
+
     const query = {
-        where: jest.fn(() => query),
-        get: jest.fn(async () => ({ empty: true, size: 0, docs: [] })),
+        where: jest.fn((field, op, expected) => {
+            filters.push({ field, op, expected })
+            return query
+        }),
+        orderBy: jest.fn(field => {
+            orderField = field
+            return query
+        }),
+        limit: jest.fn(count => {
+            maxDocs = count
+            return query
+        }),
+        get: jest.fn(async () => {
+            let docs = [...mockStore.entries()]
+                .filter(([docPath]) => docPath.startsWith(`${collectionPath}/`))
+                .map(([docPath, data]) => ({
+                    id: docPath.slice(collectionPath.length + 1),
+                    ref: makeRef(docPath),
+                    data: () => data,
+                }))
+                .filter(doc => filters.every(filter => matchesFilter(doc.data()[filter.field], filter)))
+
+            if (orderField) docs.sort((a, b) => (a.data()[orderField] || 0) - (b.data()[orderField] || 0))
+            docs = docs.slice(0, maxDocs)
+
+            return { empty: docs.length === 0, size: docs.length, docs }
+        }),
     }
     return query
 }
 
 const mockDb = {
     doc: jest.fn(path => makeRef(path)),
-    collection: jest.fn(() => collectionQuery()),
+    collection: jest.fn(path => collectionQuery(path)),
+    // Transactions run inline: the tests exercise the claim's decision, not Firestore's contention.
+    runTransaction: jest.fn(async handler =>
+        handler({
+            get: async ref => ref.get(),
+            set: async (ref, data, options) => ref.set(data, options),
+        })
+    ),
     batch: () => {
         const writes = []
         return {
@@ -72,7 +115,14 @@ jest.mock('../BatchWrapper/batchWrapper', () => ({
     BatchWrapper: jest.fn(() => ({ commit: jest.fn(async () => {}) })),
 }))
 
-const { advanceTaskFromWorkflowStep, enqueueWorkflowAiRunIfNeeded, runWorkflowAiStep } = require('./workflowAiStep')
+const {
+    MAX_RUNS_PER_TICK,
+    advanceTaskFromWorkflowStep,
+    claimWorkflowAiRun,
+    dispatchPendingWorkflowAiRuns,
+    enqueueWorkflowAiRunIfNeeded,
+    runWorkflowAiStep,
+} = require('./workflowAiStep')
 
 const PROJECT = 'p1'
 const TASK = 't1'
@@ -327,5 +377,90 @@ describe('runWorkflowAiStep', () => {
             status: 'failed',
             failureReason: 'step_no_longer_ai',
         })
+    })
+})
+
+describe('dispatchPendingWorkflowAiRuns', () => {
+    const seedRun = (runId, overrides = {}) => {
+        mockStore.set(`workflowAiRuns/${runId}`, {
+            projectId: PROJECT,
+            taskId: TASK,
+            stepId: AI_STEP,
+            assistantId: ASSISTANT,
+            assigneeUserId: ASSIGNEE,
+            status: 'pending',
+            createdAt: 1000,
+            ...overrides,
+        })
+    }
+
+    beforeEach(() => {
+        seedAssignee()
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
+    })
+
+    it('runs a queued run and settles it', async () => {
+        seedRun('run1')
+
+        const dispatched = await dispatchPendingWorkflowAiRuns()
+
+        expect(dispatched).toBe(1)
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+        expect(mockStore.get('workflowAiRuns/run1').status).toBe('completed')
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+    })
+
+    it('leaves alone a run another tick is already working on', async () => {
+        // Ticks overlap: the schedule fires every minute and a run can last most of an hour.
+        seedRun('run1', { status: 'running', leaseOwner: 'other-tick' })
+
+        const dispatched = await dispatchPendingWorkflowAiRuns()
+
+        expect(dispatched).toBe(0)
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockStore.get('workflowAiRuns/run1').leaseOwner).toBe('other-tick')
+    })
+
+    it('takes no more than one tick of work, leaving the rest for the next tick', async () => {
+        for (let i = 0; i < MAX_RUNS_PER_TICK + 3; i++) seedRun(`run${i}`, { createdAt: 1000 + i })
+
+        const dispatched = await dispatchPendingWorkflowAiRuns()
+
+        expect(dispatched).toBe(MAX_RUNS_PER_TICK)
+        const stillPending = [...mockStore.entries()].filter(
+            ([path, data]) => path.startsWith('workflowAiRuns/') && data.status === 'pending'
+        )
+        expect(stillPending).toHaveLength(3)
+    })
+
+    it('claims the oldest runs first', async () => {
+        seedRun('newest', { createdAt: 3000 })
+        seedRun('oldest', { createdAt: 1000 })
+
+        await dispatchPendingWorkflowAiRuns()
+
+        expect(mockStore.get('workflowAiRuns/oldest').status).toBe('completed')
+    })
+
+    it('does nothing when there is no queued work', async () => {
+        expect(await dispatchPendingWorkflowAiRuns()).toBe(0)
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+    })
+})
+
+describe('claimWorkflowAiRun', () => {
+    const runRef = () => mockDb.doc('workflowAiRuns/run1')
+
+    it('takes the lease exactly once, so overlapping ticks cannot double-run a step', async () => {
+        mockStore.set('workflowAiRuns/run1', { status: 'pending', createdAt: 1000 })
+
+        expect(await claimWorkflowAiRun(runRef(), 'tick-a', 5000)).toMatchObject({ status: 'pending' })
+        expect(await claimWorkflowAiRun(runRef(), 'tick-b', 6000)).toBeNull()
+
+        expect(mockStore.get('workflowAiRuns/run1')).toMatchObject({ status: 'running', leaseOwner: 'tick-a' })
+    })
+
+    it('returns null for a run that no longer exists', async () => {
+        expect(await claimWorkflowAiRun(runRef(), 'tick-a', 5000)).toBeNull()
     })
 })

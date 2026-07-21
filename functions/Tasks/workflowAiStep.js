@@ -8,14 +8,23 @@ const {
     WORKSTREAM_ID_PREFIX,
 } = require('../Utils/HelperFunctionsCloud')
 const { getNextWorkflowStepId, isAiWorkflowStep, buildAiStepPrompt } = require('./workflowStepHelper')
+const { ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = require('../Assistant/assistantRunLimits')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
 
-// A run that never reports back leaves its task parked on the AI step. The sweeper force-advances
-// anything older than this, which is comfortably above the worker's own 540s ceiling (the GCP limit
-// for event-triggered functions, see runWorkflowAiStepSecondGen). onDocumentCreated does not retry,
-// so there is no second attempt to wait out.
-const STALLED_RUN_MS = 15 * 60 * 1000
+// A claimed run occupies its slot for a whole assistant wall clock plus the work either side of it,
+// so the lease has to outlast a healthy run or a second tick would start it again while it is still
+// going.
+const RUN_LEASE_MS = ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS + TRANSPORT_HEADROOM_MS
+
+// A run that never reports back leaves its task parked on the AI step. The sweeper is the crash
+// backstop, so it force-advances only past the point where a healthy run must already have settled.
+const STALLED_RUN_MS = RUN_LEASE_MS + TRANSPORT_HEADROOM_MS
+
+// Runs claimed in one tick execute concurrently, because the dispatcher's own timeout has to cover
+// the longest single run rather than their sum. That makes this equally the cap on how many
+// assistant runs a single tick can have in flight.
+const MAX_RUNS_PER_TICK = 5
 
 const RUN_STATUS_PENDING = 'pending'
 const RUN_STATUS_RUNNING = 'running'
@@ -236,8 +245,7 @@ const runWorkflowAiStep = async (runId, run) => {
     const runRef = admin.firestore().doc(`${RUNS_COLLECTION}/${runId}`)
     const taskRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
 
-    await runRef.set({ status: RUN_STATUS_RUNNING, startedAt: Date.now() }, { merge: true })
-
+    // claimWorkflowAiRun already flipped the doc to `running` and took the lease.
     const taskDoc = await taskRef.get()
     if (!taskDoc.exists) {
         await runRef.set({ status: RUN_STATUS_SKIPPED, reason: 'task_deleted', settledAt: Date.now() }, { merge: true })
@@ -329,6 +337,88 @@ const runWorkflowAiStep = async (runId, run) => {
 }
 
 /**
+ * Takes exclusive ownership of a queued run, returning its data, or null when someone else already
+ * has it.
+ *
+ * Ticks overlap by design: the schedule fires every minute and a run may last the better part of an
+ * hour, so several dispatchers are routinely alive at once and would otherwise all pick up the same
+ * oldest pending run. The transaction is what makes "pending" a one-shot claim.
+ */
+const claimWorkflowAiRun = async (runRef, leaseOwner, now = Date.now()) => {
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(runRef)
+        if (!snapshot.exists) return null
+
+        const run = snapshot.data() || {}
+        if (run.status !== RUN_STATUS_PENDING) return null
+
+        transaction.set(
+            runRef,
+            { status: RUN_STATUS_RUNNING, startedAt: now, leaseOwner, leaseExpiresAt: now + RUN_LEASE_MS },
+            { merge: true }
+        )
+        return run
+    })
+}
+
+/**
+ * Executes the queued AI runs, oldest first.
+ *
+ * This is a poller rather than a Firestore trigger because an assistant run is given a 55-minute
+ * wall clock (see assistantRunLimits) and event-triggered functions are capped at 540s, so a trigger
+ * physically cannot host one. Scheduled execution is how checkRecurringAssistantTasks already runs
+ * assistant work for the same budget.
+ */
+const dispatchPendingWorkflowAiRuns = async ({ now = Date.now(), leaseOwner = uuidv4() } = {}) => {
+    const snapshot = await admin
+        .firestore()
+        .collection(RUNS_COLLECTION)
+        .where('status', '==', RUN_STATUS_PENDING)
+        .orderBy('createdAt', 'asc')
+        .limit(MAX_RUNS_PER_TICK)
+        .get()
+
+    if (snapshot.empty) return 0
+
+    const claimed = []
+    for (const doc of snapshot.docs) {
+        try {
+            const run = await claimWorkflowAiRun(doc.ref, leaseOwner, now)
+            if (run) claimed.push({ runId: doc.id, run })
+        } catch (error) {
+            console.error('[workflowAiStep] Could not claim run', { runId: doc.id, error: error.message })
+        }
+    }
+
+    if (claimed.length === 0) return 0
+
+    await Promise.all(
+        claimed.map(({ runId, run }) =>
+            runWorkflowAiStep(runId, run).catch(async error => {
+                // runWorkflowAiStep settles its own doc for anything the assistant does; reaching here
+                // means the surrounding bookkeeping threw, which would strand the run at `running`
+                // until the sweeper noticed it an hour later.
+                console.error('[workflowAiStep] Run threw outside its own error handling', {
+                    runId,
+                    error: error.message,
+                })
+                await admin
+                    .firestore()
+                    .doc(`${RUNS_COLLECTION}/${runId}`)
+                    .set(
+                        { status: RUN_STATUS_FAILED, failureReason: error.message || 'run_failed', settledAt: now },
+                        { merge: true }
+                    )
+                    .catch(() => {})
+            })
+        )
+    )
+
+    console.log('[workflowAiStep] Dispatched runs', { count: claimed.length })
+    return claimed.length
+}
+
+/**
  * Backstop for a worker that died without settling its run, which would otherwise leave the task
  * parked on the AI step forever.
  */
@@ -369,9 +459,13 @@ const sweepStalledWorkflowAiRuns = async () => {
 }
 
 module.exports = {
+    MAX_RUNS_PER_TICK,
     RUNS_COLLECTION,
+    RUN_LEASE_MS,
     STALLED_RUN_MS,
     advanceTaskFromWorkflowStep,
+    claimWorkflowAiRun,
+    dispatchPendingWorkflowAiRuns,
     enqueueWorkflowAiRunIfNeeded,
     runWorkflowAiStep,
     sweepStalledWorkflowAiRuns,
