@@ -5,7 +5,13 @@
 
 const admin = require('firebase-admin')
 const { getNoteDelta } = require('../QuillHelper')
+const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { deltaToMarkdown } = require('./deltaToMarkdown')
+const { buildNoteUrl } = require('./noteLinkHelper')
+
+function resolveNoteContextUrl(projectId, noteId, url = null, baseUrl = getBaseUrl()) {
+    return url || buildNoteUrl(projectId, noteId, baseUrl)
+}
 
 /**
  * Extract note IDs from comment text
@@ -34,7 +40,7 @@ function extractMentionedNoteIds(commentText) {
                         // Extract projectId from URL if available
                         let projectId = null
                         if (url.url) {
-                            // URL format: https://app.alldone.app/projects/{projectId}/notes/{noteId}/editor
+                            // URL format: {app base URL}/projects/{projectId}/notes/{noteId}/editor
                             const urlMatch = url.url.match(/\/projects\/([^/]+)\/notes\/([^/]+)/)
                             if (urlMatch) {
                                 projectId = urlMatch[1]
@@ -224,7 +230,7 @@ async function fetchNoteContentAsMarkdown(projectId, noteId, userId, url = null)
             title: noteTitle,
             content: formattedContent,
             markdown: formattedContent,
-            url: url || `https://app.alldone.app/projects/${projectId}/notes/${noteId}/editor`,
+            url: resolveNoteContextUrl(projectId, noteId, url),
         }
     } catch (error) {
         console.error(`Error fetching note ${noteId}:`, error)
@@ -277,6 +283,7 @@ async function fetchMentionedNotesContext(commentText, userId, fallbackProjectId
 }
 
 module.exports = {
+    resolveNoteContextUrl,
     extractMentionedNoteIds,
     checkNoteAccess,
     fetchNoteContentAsMarkdown,

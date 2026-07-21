@@ -22,7 +22,7 @@ const mockFetchNoteContentAsMarkdown = jest.fn(async (projectId, noteId) => ({
     title: 'Launch notes',
     content: '## Note: Launch notes\n\nShip checklist and unresolved rollout risks.',
     markdown: '## Note: Launch notes\n\nShip checklist and unresolved rollout risks.',
-    url: `https://app.alldone.app/projects/${projectId}/notes/${noteId}/editor`,
+    url: `https://my.alldone.app/projects/${projectId}/notes/${noteId}/editor`,
 }))
 
 jest.mock('../shared/ProjectService', () => ({
@@ -4135,6 +4135,7 @@ describe('assistant thread compaction tool', () => {
         expect(mockFetchNoteContentAsMarkdown).toHaveBeenCalledWith('project-1', 'note-1', 'user-1')
         expect(flattened).toContain('The current chat is attached to this note.')
         expect(flattened).toContain('do not call get_note to retrieve this same note')
+        expect(flattened).toContain('https://my.alldone.app/projects/project-1/notes/note-1/editor')
         expect(flattened).toContain('## Note: Launch notes')
         expect(flattened).toContain('Ship checklist and unresolved rollout risks.')
     })
