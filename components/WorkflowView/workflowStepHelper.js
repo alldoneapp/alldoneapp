@@ -12,23 +12,6 @@ export const REVIEWER_TYPE_ASSISTANT = 'assistant'
 
 export const isAiWorkflowStep = step => !!step && step.reviewerType === REVIEWER_TYPE_ASSISTANT
 
-// Returns the step selected by the workflow's default forward action. Open tasks enter the first
-// step; tasks already in review advance from the last step recorded in their history.
-export const getNextWorkflowStep = (workflow, task) => {
-    if (!workflow || !task || task.done) return null
-
-    const stepIds = Object.keys(workflow).sort()
-    if (stepIds.length === 0) return null
-
-    const currentStepId = task.stepHistory?.[task.stepHistory.length - 1]
-    const currentStepIndex = stepIds.indexOf(currentStepId)
-    const nextStepId = currentStepIndex === -1 ? stepIds[0] : stepIds[currentStepIndex + 1]
-
-    return nextStepId ? workflow[nextStepId] : null
-}
-
-export const isNextWorkflowStepAi = (workflow, task) => isAiWorkflowStep(getNextWorkflowStep(workflow, task))
-
 // Cleared whenever a step stops pointing at a given assistant, so a step never keeps a prompt that
 // belongs to a different assistant (or to no assistant at all).
 export const emptyAiStepFields = () => ({
