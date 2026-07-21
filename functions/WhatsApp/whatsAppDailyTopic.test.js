@@ -103,4 +103,45 @@ describe('WhatsApp daily topic media history', () => {
             ],
         ])
     })
+
+    test('does not duplicate an image represented by mediaContext and its inline token', async () => {
+        const storageUrl = 'https://cdn.example.com/whatsapp-upload.jpg'
+        mockGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'message-1',
+                    ref: { set: jest.fn(async () => {}) },
+                    data: () => ({
+                        fromAssistant: false,
+                        created: Date.UTC(2026, 6, 21, 17, 8, 9),
+                        commentText:
+                            `O2TI5plHBf1QfdY${storageUrl}` +
+                            `O2TI5plHBf1QfdY${storageUrl}` +
+                            'O2TI5plHBf1QfdYFile.jpgO2TI5plHBf1QfdY0',
+                        imageCount: 1,
+                        mediaContext: [
+                            {
+                                kind: 'image',
+                                fileName: 'File.jpg',
+                                mimeType: 'image/jpeg',
+                                storageUrl,
+                                previewUrl: storageUrl,
+                            },
+                        ],
+                    }),
+                },
+            ],
+        })
+
+        const history = await getConversationHistory('project-1', 'chat-1', 10, 0)
+
+        expect(history).toHaveLength(1)
+        expect(history[0][0]).toBe('user')
+        expect(history[0][1].filter(part => part.type === 'image_url')).toEqual([
+            {
+                type: 'image_url',
+                image_url: { url: storageUrl },
+            },
+        ])
+    })
 })

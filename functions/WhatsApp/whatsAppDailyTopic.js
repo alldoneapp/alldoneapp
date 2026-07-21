@@ -426,7 +426,10 @@ function normalizeMediaContext(...mediaGroups) {
         }
         if (!entry.storageUrl) return
 
-        const entryKey = `${entry.kind}|${entry.storageUrl}|${entry.fileName}`
+        // The same upload can be represented by persisted media metadata and a
+        // legacy inline token. Those representations may use different display
+        // names, so the storage URL is the stable identity for deduplication.
+        const entryKey = entry.storageUrl
         if (seen.has(entryKey)) return
         seen.add(entryKey)
         normalized.push(entry)
