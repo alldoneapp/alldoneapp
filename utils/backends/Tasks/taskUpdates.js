@@ -37,7 +37,8 @@ import TasksHelper, {
     OPEN_STEP,
     getRecurrenceLabel,
 } from '../../../components/TaskListView/Utils/TasksHelper'
-import HelperFunctions, { chronoEntriesOrder } from '../../HelperFunctions'
+import HelperFunctions from '../../HelperFunctions'
+import { getStepWorkflowDirection } from './workflowDirection'
 import store from '.././../../redux/store'
 import {
     addPrivacyForFeedObject,
@@ -1100,7 +1101,7 @@ export async function createTaskMovedInWorkflowFeed(
     const isSubtask = taskFeedObject.parentId ? true : false
     let toStepDescription = ''
     let fromStepDescription = ''
-    let isForward = 'empty'
+    const isForward = getStepWorkflowDirection(targetStepId, task, workflow)
     let fromStepAvatarURL = ''
     let toStepAvatarURL = ''
     let fromStepUserId = ''
@@ -1108,13 +1109,11 @@ export async function createTaskMovedInWorkflowFeed(
 
     if (targetStepId === 'open') {
         toStepDescription = 'Open'
-        isForward = false
         const user = TasksHelper.getTaskOwner(task.userId, projectId)
         toStepAvatarURL = user.photoURL
         toStepUserId = user.uid
     } else if (targetStepId === 'done') {
         toStepDescription = 'Done'
-        isForward = true
     } else {
         const { description, reviewerUid } = workflow[targetStepId]
         const reviewerData = getUserPresentationData(reviewerUid)
@@ -1126,31 +1125,17 @@ export async function createTaskMovedInWorkflowFeed(
     const currentStepId = task.stepHistory[task.stepHistory.length - 1]
     if (currentStepId === OPEN_STEP) {
         fromStepDescription = 'Open'
-        isForward = true
         const user = TasksHelper.getTaskOwner(task.userId, projectId)
         fromStepAvatarURL = user.photoURL
         fromStepUserId = user.uid
     } else if (currentStepId === DONE_STEP) {
         fromStepDescription = 'Done'
-        isForward = false
     } else {
         const { description, reviewerUid } = workflow[currentStepId]
         const reviewerData = getUserPresentationData(reviewerUid)
         fromStepDescription = description
         fromStepAvatarURL = reviewerData.photoURL
         fromStepUserId = reviewerUid
-        const workflowEntries = Object.entries(workflow).sort(chronoEntriesOrder)
-        if (isForward === 'empty') {
-            for (let i = 0; workflowEntries.length; i++) {
-                if (workflowEntries[i][0] === targetStepId) {
-                    isForward = false
-                    break
-                } else if (workflowEntries[i][0] === currentStepId) {
-                    isForward = true
-                    break
-                }
-            }
-        }
     }
 
     const { feed, feedId } = generateFeedModel({

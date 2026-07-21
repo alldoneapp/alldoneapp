@@ -45,7 +45,7 @@ import {
 import { updateXpByCreateProject } from '../Levels'
 import store from '../../redux/store'
 
-import HelperFunctions, { chronoEntriesOrder } from '../HelperFunctions'
+import HelperFunctions from '../HelperFunctions'
 import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
 import { getTaskMergeRequest } from '../MergeStatus'
 import {
@@ -3054,37 +3054,7 @@ export async function getAttachments(commentId) {
         })
 }
 
-export function getStepWorkflowDirection(targetStepId, task, workflow) {
-    let isForward = 'empty'
-
-    if (targetStepId === 'open') {
-        isForward = false
-    } else if (targetStepId === 'done') {
-        isForward = true
-    }
-
-    const currentStepId = task.stepHistory[task.stepHistory.length - 1]
-    if (currentStepId === OPEN_STEP) {
-        isForward = true
-    } else if (currentStepId === DONE_STEP) {
-        isForward = false
-    } else {
-        const workflowEntries = Object.entries(workflow).sort(chronoEntriesOrder)
-        if (isForward === 'empty') {
-            for (let i = 0; workflowEntries.length; i++) {
-                if (workflowEntries[i][0] === targetStepId) {
-                    isForward = false
-                    break
-                } else if (workflowEntries[i][0] === currentStepId) {
-                    isForward = true
-                    break
-                }
-            }
-        }
-    }
-
-    return isForward
-}
+export { getStepWorkflowDirection } from './Tasks/workflowDirection'
 
 export async function unwatchObjectComments(projectId, objectType, objectId) {
     if (notesUnsubs[projectId] && notesUnsubs[projectId][objectType] && notesUnsubs[projectId][objectType][objectId]) {
