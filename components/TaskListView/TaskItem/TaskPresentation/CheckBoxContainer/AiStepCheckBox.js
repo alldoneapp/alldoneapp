@@ -1,6 +1,7 @@
 import React from 'react'
 import { StyleSheet, View } from 'react-native'
 
+import Icon from '../../../../Icon'
 import Spinner from '../../../../UIComponents/Spinner'
 import { colors } from '../../../../styles/global'
 
@@ -14,7 +15,7 @@ export default function AiStepCheckBox({ running }) {
         />
     ) : (
         <View style={localStyles.container}>
-            <View style={localStyles.playIcon} />
+            <Icon name="star" size={16} color={colors.UtilityViolet300} accessibilityLabel="AI" />
         </View>
     )
 }
@@ -25,19 +26,7 @@ const localStyles = StyleSheet.create({
         height: 24,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: colors.UtilityViolet300,
-    },
-    playIcon: {
-        width: 0,
-        height: 0,
-        marginLeft: 2,
-        borderTopWidth: 5,
-        borderBottomWidth: 5,
-        borderLeftWidth: 8,
-        borderTopColor: 'transparent',
-        borderBottomColor: 'transparent',
-        borderLeftColor: colors.UtilityViolet300,
+        borderRadius: 4,
+        backgroundColor: colors.UtilityViolet100,
     },
 })

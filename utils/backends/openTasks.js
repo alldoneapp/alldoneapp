@@ -36,6 +36,7 @@ import {
     filterOpenTasksSectionsByVmState,
 } from '../../components/TaskListView/PriorityFilters/taskPriorityFilterHelper'
 import { sortTasksByPriority } from '../TaskPriority'
+import { buildWorkflowTaskGroups } from './workflowTaskOrdering'
 
 export const TODAY_DATE = '0'
 
@@ -732,17 +733,7 @@ const generateOpenTasksArray = (storedTasks, dayDateFormated, amountOfTasksByDat
 
         const workflowTasks = []
         if (taskByType[WORKFLOW_TASK_INDEX]) {
-            const workflowTasksByStep = Object.entries(taskByType[WORKFLOW_TASK_INDEX])
-            for (let n = 0; n < workflowTasksByStep.length; n++) {
-                const stepId = workflowTasksByStep[n][0]
-                const goalsElements = workflowTasksByStep[n][1]
-                const goalsElementsArray = Object.entries(goalsElements)
-                workflowTasks.push([stepId, goalsElementsArray])
-            }
-            for (let n = 0; n < workflowTasks.length; n++) {
-                const stepElement = workflowTasks[n]
-                stepElement[0] = stepElement[1][0][1][0].userId
-            }
+            workflowTasks.push(...buildWorkflowTaskGroups(taskByType[WORKFLOW_TASK_INDEX]))
         }
 
         const observedTasks = []
