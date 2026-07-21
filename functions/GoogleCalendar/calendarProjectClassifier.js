@@ -181,8 +181,10 @@ function buildCalendarClassifierRequestParams({
     config,
     definitions,
     normalizedEvent,
+    enableCacheWrite = true,
 }) {
     const supportsExplicitCaching = selectedModel.startsWith('gpt-5.6')
+    const usesExplicitCacheBreakpoint = supportsExplicitCaching && enableCacheWrite
     const staticUserContent =
         `Prompt:\n${config.prompt}\n\n` +
         `Active projects:\n${JSON.stringify(definitions)}\n\n` +
@@ -206,7 +208,7 @@ function buildCalendarClassifierRequestParams({
             },
             {
                 role: 'user',
-                content: supportsExplicitCaching
+                content: usesExplicitCacheBreakpoint
                     ? [
                           {
                               type: 'text',
@@ -247,6 +249,9 @@ function buildCalendarClassifierRepairRequestParams({
         config,
         definitions,
         normalizedEvent,
+        // Repair calls are sparse, so writing their prefix to the explicit cache
+        // costs more than it saves. Keep explicit mode but omit the breakpoint.
+        enableCacheWrite: false,
     })
 
     requestParams.messages.push({
@@ -276,12 +281,19 @@ function buildUsage(completion) {
 
 async function runCalendarClassifierCompletion(openai, requestParams) {
     const completion = await openai.chat.completions.create(requestParams)
+    const hasExplicitCacheBreakpoint = requestParams.messages.some(message =>
+        Array.isArray(message.content) ? message.content.some(part => !!part?.prompt_cache_breakpoint) : false
+    )
     logOpenAiCacheUsage({
         usage: completion?.usage,
         route: 'calendar-project-classifier',
         model: requestParams.model,
         cacheKey: requestParams.prompt_cache_key,
-        cacheMode: requestParams.prompt_cache_options?.mode || 'automatic',
+        cacheMode: requestParams.prompt_cache_options
+            ? hasExplicitCacheBreakpoint
+                ? 'explicit'
+                : 'explicit-no-breakpoint'
+            : 'automatic',
     })
     const content = completion?.choices?.[0]?.message?.content || ''
     const parsed = extractJsonFromText(content)

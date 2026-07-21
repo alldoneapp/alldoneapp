@@ -15,6 +15,8 @@ import {
     MODEL_GPT5_1,
     MODEL_GPT5_5,
     MODEL_GPT5_6_SOL,
+    MODEL_GPT5_6_TERRA,
+    MODEL_GPT5_6_LUNA,
     MODEL_GPT5_2,
     MODEL_SONAR,
     MODEL_SONAR_PRO,
@@ -64,6 +66,8 @@ export default function ModelWrapper({ disabled, projectId, assistant }) {
         if (model === MODEL_GPT5_1) return 'GPT 5_1'
         if (model === MODEL_GPT5_5) return 'GPT 5_5'
         if (model === MODEL_GPT5_6_SOL) return 'GPT 5_6 Sol'
+        if (model === MODEL_GPT5_6_TERRA) return 'GPT 5_6 Terra'
+        if (model === MODEL_GPT5_6_LUNA) return 'GPT 5_6 Luna'
         if (model === MODEL_GPT5_2) return 'GPT 5_2'
         if (model === MODEL_SONAR) return 'Sonar'
         if (model === MODEL_SONAR_PRO) return 'Sonar Pro'

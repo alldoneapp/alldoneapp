@@ -226,16 +226,26 @@ function combineUsage(a, b) {
 
 async function runClassifierCompletion(
     openai,
-    { selectedModel, isReasoningModel, systemPrompt, staticUserContent, dynamicUserContent, cacheKey, cacheRoute }
+    {
+        selectedModel,
+        isReasoningModel,
+        systemPrompt,
+        staticUserContent,
+        dynamicUserContent,
+        cacheKey,
+        cacheRoute,
+        enableCacheWrite = true,
+    }
 ) {
     const supportsExplicitCaching = selectedModel.startsWith('gpt-5.6')
+    const usesExplicitCacheBreakpoint = supportsExplicitCaching && enableCacheWrite
     const requestParams = {
         model: selectedModel,
         messages: [
             { role: 'system', content: systemPrompt },
             {
                 role: 'user',
-                content: supportsExplicitCaching
+                content: usesExplicitCacheBreakpoint
                     ? [
                           {
                               type: 'text',
@@ -267,7 +277,11 @@ async function runClassifierCompletion(
         route: cacheRoute,
         model: selectedModel,
         cacheKey,
-        cacheMode: supportsExplicitCaching ? 'explicit' : 'automatic',
+        cacheMode: supportsExplicitCaching
+            ? usesExplicitCacheBreakpoint
+                ? 'explicit'
+                : 'explicit-no-breakpoint'
+            : 'automatic',
     })
     const content = completion?.choices?.[0]?.message?.content || ''
     return {
@@ -395,6 +409,9 @@ async function verifyClassificationConsistency(
             staticUserContent
         ),
         cacheRoute: 'gmail-classifier-audit',
+        // Audits are sparse and their user-specific prefixes are almost never reused.
+        // Explicit mode without a breakpoint avoids a charged one-off cache write.
+        enableCacheWrite: false,
     })
 
     const verified = coerceClassifierResult({ ...parsed }, labelDefinitions, confidenceThreshold)
@@ -488,7 +505,8 @@ async function classifyGmailMessage({ config, message }) {
         ? reasoningReferencesDifferentOption(
               firstResult.reasoning,
               firstResult.labelKey,
-              buildConsistencyOptionsFromLabels(labelDefinitions)
+              buildConsistencyOptionsFromLabels(labelDefinitions),
+              { requirePositiveRelationship: true }
           )
         : null
     const demotedRawLabelKey =

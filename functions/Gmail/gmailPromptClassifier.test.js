@@ -97,7 +97,7 @@ describe('gmailPromptClassifier', () => {
         const result = await classifyGmailMessage({
             config: {
                 prompt: 'Classify by active project.',
-                model: 'MODEL_GPT5_4_NANO',
+                model: 'MODEL_GPT5_6_SOL',
                 confidenceThreshold: 0.83,
                 labelDefinitions: [
                     {
@@ -137,6 +137,11 @@ describe('gmailPromptClassifier', () => {
         expect(firstRequest.prompt_cache_key).toBe('gmail-first-cache-key')
         expect(auditRequest.prompt_cache_key).toBe('gmail-audit-cache-key')
         expect(auditRequest.prompt_cache_options).toEqual({ mode: 'explicit', ttl: '30m' })
+        expect(Array.isArray(auditRequest.messages[1].content)).toBe(false)
+        expect(firstRequest.messages[1].content[0].prompt_cache_breakpoint).toEqual({ mode: 'explicit' })
+        expect(require('../Assistant/assistantHelper').logOpenAiCacheUsage).toHaveBeenCalledWith(
+            expect.objectContaining({ route: 'gmail-classifier-audit', cacheMode: 'explicit-no-breakpoint' })
+        )
         expect(result).toEqual(
             expect.objectContaining({
                 matched: true,
@@ -221,6 +226,41 @@ describe('gmailPromptClassifier', () => {
                 matched: false,
                 labelKey: null,
                 confidence: 0.9,
+            })
+        )
+        expect(result.consistencyCheck).toBeUndefined()
+    })
+
+    test('does not audit a bare different-label mention without a positive assignment relationship', async () => {
+        mockCreateCompletion.mockResolvedValueOnce(
+            mockCompletion({
+                matched: true,
+                labelKey: 'project_business',
+                confidence: 0.91,
+                reasoning:
+                    'The email mentions the Product roadmap in passing, while the operational request is handled by Business.',
+            })
+        )
+
+        const result = await classifyGmailMessage({
+            config: {
+                prompt: 'Classify by active project.',
+                model: 'MODEL_GPT5_4_NANO',
+                confidenceThreshold: 0.7,
+                labelDefinitions: [
+                    { key: 'project_product', gmailLabelName: 'Alldone Product' },
+                    { key: 'project_business', gmailLabelName: 'Alldone Business' },
+                ],
+            },
+            message: { subject: 'Operational request', direction: 'incoming' },
+        })
+
+        expect(mockCreateCompletion).toHaveBeenCalledTimes(1)
+        expect(result).toEqual(
+            expect.objectContaining({
+                matched: true,
+                labelKey: 'project_business',
+                confidence: 0.91,
             })
         )
         expect(result.consistencyCheck).toBeUndefined()

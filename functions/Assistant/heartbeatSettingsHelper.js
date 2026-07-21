@@ -8,6 +8,10 @@ const DEFAULT_AWAKE_START = 8 * 60 * 60 * 1000
 const DEFAULT_AWAKE_END = 22 * 60 * 60 * 1000
 const DEFAULT_PROMPT =
     'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.'
+const MODEL_GPT5_6_SOL = 'MODEL_GPT5_6_SOL'
+const MODEL_GPT5_6_TERRA = 'MODEL_GPT5_6_TERRA'
+const MODEL_GPT5_6_LUNA = 'MODEL_GPT5_6_LUNA'
+const HEARTBEAT_MODEL_OPTIONS = [MODEL_GPT5_6_SOL, MODEL_GPT5_6_TERRA, MODEL_GPT5_6_LUNA]
 
 const HEARTBEAT_OK_MARKER = 'HEARTBEAT_OK'
 
@@ -120,6 +124,14 @@ function getEffectiveHeartbeatPrompt(assistant = {}) {
     return DEFAULT_PROMPT
 }
 
+function getEffectiveHeartbeatModel(assistant = {}) {
+    if (HEARTBEAT_MODEL_OPTIONS.includes(assistant.heartbeatModel)) {
+        return assistant.heartbeatModel
+    }
+
+    return assistant.model || MODEL_GPT5_6_SOL
+}
+
 function getNormalizedHeartbeatSettings(assistant = {}, { projectId = null, userData = null } = {}) {
     const intervalMs = normalizeHeartbeatIntervalMs(assistant.heartbeatIntervalMs)
     const awakeStartMs = normalizeHeartbeatTimeMs(assistant.heartbeatAwakeStart, DEFAULT_AWAKE_START)
@@ -135,6 +147,7 @@ function getNormalizedHeartbeatSettings(assistant = {}, { projectId = null, user
         awakeEndMs,
         awakeEndTime: formatHeartbeatTimeMs(awakeEndMs),
         sendWhatsApp: getEffectiveHeartbeatSendWhatsApp(assistant, userData),
+        model: getEffectiveHeartbeatModel(assistant),
         prompt: getEffectiveHeartbeatPrompt(assistant),
     }
 }
@@ -152,6 +165,7 @@ function buildHeartbeatSettingsContextMessage(assistant = {}, { projectId = null
         `- Execution chance when the user replied that day: ${settings.chancePercent}%`,
         `- Execution chance when the user did not reply that day: ${settings.chanceNoReplyPercent}%`,
         `- WhatsApp notification: ${settings.sendWhatsApp ? 'enabled' : 'disabled'}`,
+        `- Heartbeat model: ${settings.model}`,
         `- heartbeatPromptHistory: ${heartbeatPromptHistoryLength} previous version(s) saved, up to 10 retained (rollback by passing the older prompt text back through update_heartbeat_settings).`,
         '- Current heartbeat prompt:',
         settings.prompt,
@@ -166,6 +180,10 @@ module.exports = {
     DEFAULT_AWAKE_START,
     DEFAULT_AWAKE_END,
     DEFAULT_PROMPT,
+    MODEL_GPT5_6_SOL,
+    MODEL_GPT5_6_TERRA,
+    MODEL_GPT5_6_LUNA,
+    HEARTBEAT_MODEL_OPTIONS,
     HEARTBEAT_OK_MARKER,
     isHeartbeatOkResponse,
     isHeartbeatOkPrefix,
@@ -179,6 +197,7 @@ module.exports = {
     getEffectiveHeartbeatChanceNoReplyPercent,
     getEffectiveHeartbeatSendWhatsApp,
     getEffectiveHeartbeatPrompt,
+    getEffectiveHeartbeatModel,
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
 }

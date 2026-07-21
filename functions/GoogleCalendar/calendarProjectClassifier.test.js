@@ -272,7 +272,7 @@ describe('calendarProjectClassifier', () => {
         const result = await classifyCalendarEventProject({
             config: {
                 prompt: 'Route events',
-                model: 'MODEL_GPT5_4_NANO',
+                model: 'MODEL_GPT5_6_SOL',
                 confidenceThreshold: 0.7,
             },
             event: { id: 'event-1', summary: 'Juno roadmap' },
@@ -285,6 +285,11 @@ describe('calendarProjectClassifier', () => {
         expect(create.mock.calls[1][0].messages[3].content).toContain('previous JSON had zero confidence')
         expect(create.mock.calls[1][0].prompt_cache_key).toBe('calendar-route-cache-key')
         expect(create.mock.calls[1][0].prompt_cache_options).toEqual({ mode: 'explicit', ttl: '30m' })
+        expect(Array.isArray(create.mock.calls[1][0].messages[1].content)).toBe(false)
+        expect(create.mock.calls[0][0].messages[1].content[0].prompt_cache_breakpoint).toEqual({ mode: 'explicit' })
+        expect(assistantHelper.logOpenAiCacheUsage).toHaveBeenCalledWith(
+            expect.objectContaining({ cacheMode: 'explicit-no-breakpoint' })
+        )
         expect(result).toEqual(
             expect.objectContaining({
                 matched: true,

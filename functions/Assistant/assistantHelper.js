@@ -65,6 +65,7 @@ const {
     parseHeartbeatTimeString,
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
+    HEARTBEAT_MODEL_OPTIONS,
     isHeartbeatOkPrefix,
     isHeartbeatOkResponse,
     DEFAULT_PROMPT,
@@ -99,6 +100,8 @@ const MODEL_SONAR_PRO = 'MODEL_SONAR_PRO'
 const MODEL_SONAR_REASONING = 'MODEL_SONAR_REASONING'
 const MODEL_SONAR_REASONING_PRO = 'MODEL_SONAR_REASONING_PRO'
 const MODEL_SONAR_DEEP_RESEARCH = 'MODEL_SONAR_DEEP_RESEARCH'
+const OPENAI_INPUT_TOKEN_ALERT_THRESHOLD = 180000
+const OPENAI_INPUT_TOKEN_TARGET_CEILING = 200000
 
 const TEMPERATURE_VERY_LOW = 'TEMPERATURE_VERY_LOW'
 const TEMPERATURE_LOW = 'TEMPERATURE_LOW'
@@ -1028,7 +1031,7 @@ const getMaxTokensForModel = modelKey => {
     if (modelKey === MODEL_GPT5_5) return 128000
     if (modelKey === MODEL_GPT5_6_SOL) return 1050000
     if (modelKey === MODEL_GPT5_6_TERRA) return 1050000
-    if (modelKey === MODEL_GPT5_6_LUNA) return 1050000
+    if (modelKey === MODEL_GPT5_6_LUNA) return 400000
     if (modelKey === MODEL_GPT5_4_MINI) return 128000
     if (modelKey === MODEL_GPT5_4_NANO) return 128000
     if (modelKey === MODEL_GPT5_2) return 128000
@@ -7023,6 +7026,15 @@ async function executeToolNatively(
             const patch = {}
             const updatedFields = []
 
+            if (hasOwn('model')) {
+                if (!HEARTBEAT_MODEL_OPTIONS.includes(toolArgs.model)) {
+                    throw new Error(`model must be one of: ${HEARTBEAT_MODEL_OPTIONS.join(', ')}.`)
+                }
+
+                patch.heartbeatModel = toolArgs.model
+                updatedFields.push('model')
+            }
+
             if (hasOwn('intervalMinutes')) {
                 const numericIntervalMinutes = Number(toolArgs.intervalMinutes)
                 if (!Number.isFinite(numericIntervalMinutes)) {
@@ -7096,7 +7108,7 @@ async function executeToolNatively(
 
             if (updatedFields.length === 0) {
                 throw new Error(
-                    'update_heartbeat_settings requires at least one of intervalMinutes, chancePercent, chanceNoReplyPercent, awakeStartTime, awakeEndTime, sendWhatsApp, or prompt.'
+                    'update_heartbeat_settings requires at least one of model, intervalMinutes, chancePercent, chanceNoReplyPercent, awakeStartTime, awakeEndTime, sendWhatsApp, or prompt.'
                 )
             }
 
@@ -12169,13 +12181,28 @@ function getOpenAiCacheUsage(usage = {}) {
 function logOpenAiCacheUsage({ usage, route = 'unknown', model = '', cacheKey = '', cacheMode = '' } = {}) {
     if (!usage) return null
     const cacheUsage = getOpenAiCacheUsage(usage)
+    const cacheKeyFingerprint = cacheKey
+        ? crypto.createHash('sha256').update(String(cacheKey)).digest('hex').slice(0, 12)
+        : ''
     console.log('📊 OPENAI CACHE: Request usage', {
         route,
         model,
         hasCacheKey: !!cacheKey,
+        cacheKeyFingerprint,
         cacheMode: cacheMode || 'automatic',
         ...cacheUsage,
     })
+    if (cacheUsage.inputTokens >= OPENAI_INPUT_TOKEN_ALERT_THRESHOLD) {
+        console.warn('🚨 OPENAI INPUT TOKEN ALERT: Request approaching 200K input tokens', {
+            route,
+            model,
+            inputTokens: cacheUsage.inputTokens,
+            cachedTokens: cacheUsage.cachedTokens,
+            uncachedInputTokens: cacheUsage.uncachedInputTokens,
+            alertThreshold: OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
+            targetCeiling: OPENAI_INPUT_TOKEN_TARGET_CEILING,
+        })
+    }
     return cacheUsage
 }
 
@@ -12845,6 +12872,8 @@ module.exports = {
     buildOpenAiPromptCacheKey,
     getOpenAiCacheUsage,
     logOpenAiCacheUsage,
+    OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
+    OPENAI_INPUT_TOKEN_TARGET_CEILING,
     modelSupportsToolSearch,
     modelSupportsExplicitPromptCaching,
     convertResponsesStream,

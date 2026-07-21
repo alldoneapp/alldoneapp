@@ -1349,6 +1349,7 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
                 ? globalAssistant.emailSignature
                 : DEFAULT_EMAIL_SIGNATURE,
         model: globalAssistant.model,
+        heartbeatModel: globalAssistant.heartbeatModel ?? globalAssistant.model,
         temperature: globalAssistant.temperature,
         allowedTools: Array.isArray(globalAssistant.allowedTools) ? globalAssistant.allowedTools : [],
         enabledSkillIds: Array.isArray(globalAssistant.enabledSkillIds) ? globalAssistant.enabledSkillIds : [],

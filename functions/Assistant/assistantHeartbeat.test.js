@@ -476,6 +476,10 @@ describe('scheduled assistant heartbeat worker', () => {
     }
 
     test('claims and executes an occurrence at most once', async () => {
+        admin.__mock.setDoc('assistants/project-1/items/assistant-1', {
+            ...admin.__mock.getDoc('assistants/project-1/items/assistant-1'),
+            heartbeatModel: 'MODEL_GPT5_6_TERRA',
+        })
         const { scheduleId, scheduleHash } = seedSchedule()
         const payload = {
             scheduleId,
@@ -492,6 +496,9 @@ describe('scheduled assistant heartbeat worker', () => {
         expect(first.outcome).toBe('executed')
         expect(second.outcome).toBe('already_processed')
         expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][8]).toEqual(
+            expect.objectContaining({ model: 'MODEL_GPT5_6_TERRA' })
+        )
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual(
             expect.objectContaining({ maxRunWallClockMs: 25 * 60 * 1000 })
         )

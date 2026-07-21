@@ -975,10 +975,16 @@ const toolSchemas = {
         function: {
             name: 'update_heartbeat_settings',
             description:
-                'Updates heartbeat settings for the current assistant only. Use this when the user asks to change the heartbeat interval, execution chance (separate values for days the user replied vs. days they did not reply), awake window, WhatsApp delivery, or heartbeat prompt. When editing the prompt, treat the current heartbeat prompt as the base text unless the user clearly asks for a full rewrite. Previous heartbeat prompts are versioned in heartbeatPromptHistory with the latest 10 retained for rollback.',
+                'Updates heartbeat settings for the current assistant only. Use this when the user asks to change the heartbeat model, interval, execution chance (separate values for days the user replied vs. days they did not reply), awake window, WhatsApp delivery, or heartbeat prompt. When editing the prompt, treat the current heartbeat prompt as the base text unless the user clearly asks for a full rewrite. Previous heartbeat prompts are versioned in heartbeatPromptHistory with the latest 10 retained for rollback.',
             parameters: {
                 type: 'object',
                 properties: {
+                    model: {
+                        type: 'string',
+                        enum: ['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'],
+                        description:
+                            'Optional: model used for heartbeat executions. Sol is the most capable, Terra balances capability and cost, and Luna is optimized for efficient high-volume work.',
+                    },
                     intervalMinutes: {
                         type: 'number',
                         description:
@@ -2116,7 +2122,7 @@ const toolSchemas = {
         function: {
             name: 'get_notes',
             description:
-                'Retrieve notes. Can fetch a single note by ID (returns full content) or list multiple notes filtered by date and project (returns full content for each). Use this when the user asks to show, list, review, or read their notes.',
+                'Retrieve notes. Can fetch a single note by ID (returns full content) or list multiple notes filtered by date and project (returns metadata and a short preview, not full content). Use list mode to identify a note, then fetch the selected note by ID when its full content is needed.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -2148,7 +2154,7 @@ const toolSchemas = {
                     limit: {
                         type: 'number',
                         description:
-                            'Optional: maximum number of notes to return when listing. Default is 50, maximum is 500.',
+                            'Optional: maximum number of notes to return when listing. Default is 20, maximum is 50.',
                     },
                 },
                 required: [],

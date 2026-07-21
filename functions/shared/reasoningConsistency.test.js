@@ -17,7 +17,7 @@ describe('reasoningConsistency', () => {
             { key: 'project_jtl', names: ['JTL Software – Project Juno', 'project_jtl'] },
         ]
 
-        test('flags a full mention of a different option', () => {
+        test('flags a positively assigned full mention of a different option', () => {
             expect(
                 reasoningReferencesDifferentOption(
                     'Clearly about JTL Software – Project Juno.',
@@ -25,6 +25,55 @@ describe('reasoningConsistency', () => {
                     labels
                 )
             ).toEqual({ otherKey: 'project_jtl', token: 'jtl' })
+        })
+
+        test('ignores a bare mention of a different option without an assignment relationship', () => {
+            const strictMode = { requirePositiveRelationship: true }
+            const options = [
+                ...labels,
+                { key: 'product', names: ['Product'] },
+                { key: 'business', names: ['Business'] },
+            ]
+
+            expect(
+                reasoningReferencesDifferentOption(
+                    'The email mentions the Product roadmap and was sent to the Business team.',
+                    'project_bechtle',
+                    options,
+                    strictMode
+                )
+            ).toBeNull()
+            expect(
+                reasoningReferencesDifferentOption(
+                    'The email is a newsletter that happens to mention Product.',
+                    'business',
+                    options,
+                    strictMode
+                )
+            ).toBeNull()
+        })
+
+        test('flags common positive assignment phrases', () => {
+            const options = [
+                { key: 'business', names: ['Business'] },
+                { key: 'product', names: ['Product'] },
+            ]
+
+            expect(
+                reasoningReferencesDifferentOption('This should be labeled as Product.', 'business', options, {
+                    requirePositiveRelationship: true,
+                })
+            ).toEqual({ otherKey: 'product', token: 'product' })
+            expect(
+                reasoningReferencesDifferentOption('Product is the correct label.', 'business', options, {
+                    requirePositiveRelationship: true,
+                })
+            ).toEqual({ otherKey: 'product', token: 'product' })
+            expect(
+                reasoningReferencesDifferentOption('This aligns best with Product.', 'business', options, {
+                    requirePositiveRelationship: true,
+                })
+            ).toEqual({ otherKey: 'product', token: 'product' })
         })
 
         test('flags a partial token mention of a different option', () => {

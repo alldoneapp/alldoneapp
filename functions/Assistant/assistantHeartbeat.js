@@ -19,6 +19,7 @@ const {
     getEffectiveHeartbeatChancePercent,
     getEffectiveHeartbeatChanceNoReplyPercent,
     getEffectiveHeartbeatSendWhatsApp,
+    getEffectiveHeartbeatModel,
 } = require('./heartbeatSettingsHelper')
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
@@ -633,7 +634,7 @@ async function checkAndExecuteHeartbeats() {
                     prompt,
                     'en',
                     {
-                        model: assistant.model,
+                        model: getEffectiveHeartbeatModel(assistant),
                         temperature: assistant.temperature,
                         instructions: assistant.instructions,
                     },
@@ -826,7 +827,7 @@ async function executeHeartbeatContent({ projectId, assistant, userId, userData 
         prompt,
         'en',
         {
-            model: assistant.model,
+            model: getEffectiveHeartbeatModel(assistant),
             temperature: assistant.temperature,
             instructions: assistant.instructions,
         },

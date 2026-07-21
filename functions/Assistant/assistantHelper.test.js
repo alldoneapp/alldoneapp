@@ -333,6 +333,8 @@ const {
     buildResponsesTools,
     buildOpenAiPromptCacheKey,
     getOpenAiCacheUsage,
+    logOpenAiCacheUsage,
+    OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
     convertResponsesStream,
     interactWithChatStream,
 } = require('./assistantHelper')
@@ -484,6 +486,54 @@ describe('Responses API compatibility helpers', () => {
                 prompt_tokens_details: { cached_tokens: 200, cache_write_tokens: 100 },
             })
         ).toEqual(expect.objectContaining({ inputTokens: 500, cachedTokens: 200, cacheWriteTokens: 100 }))
+    })
+
+    test('logs a stable non-sensitive cache-key fingerprint for per-key telemetry', () => {
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+
+        logOpenAiCacheUsage({
+            usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 50 } },
+            route: 'tasks',
+            model: 'gpt-5.6-sol',
+            cacheKey: 'sensitive-cache-key',
+            cacheMode: 'explicit',
+        })
+
+        expect(logSpy).toHaveBeenCalledWith(
+            '📊 OPENAI CACHE: Request usage',
+            expect.objectContaining({
+                hasCacheKey: true,
+                cacheKeyFingerprint: expect.stringMatching(/^[a-f0-9]{12}$/),
+                cacheMode: 'explicit',
+            })
+        )
+        expect(JSON.stringify(logSpy.mock.calls)).not.toContain('sensitive-cache-key')
+        logSpy.mockRestore()
+    })
+
+    test('emits a structured alert when input usage approaches 200K tokens', () => {
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+        logOpenAiCacheUsage({
+            usage: {
+                input_tokens: OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
+                input_tokens_details: { cached_tokens: 120000 },
+            },
+            route: 'heartbeat',
+            model: 'gpt-5.6-terra',
+        })
+
+        expect(warnSpy).toHaveBeenCalledWith(
+            '🚨 OPENAI INPUT TOKEN ALERT: Request approaching 200K input tokens',
+            expect.objectContaining({
+                route: 'heartbeat',
+                inputTokens: OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
+                targetCeiling: 200000,
+            })
+        )
+        logSpy.mockRestore()
+        warnSpy.mockRestore()
     })
 
     test('sends an explicit GPT-5.6 cache breakpoint without changing the source message content', async () => {
@@ -688,6 +738,8 @@ describe('assistant attachment handoff helpers', () => {
     test('defaults missing models to GPT-5.6 Sol with its full context window', () => {
         expect(normalizeModelKey()).toBe('MODEL_GPT5_6_SOL')
         expect(getMaxTokensForModel('MODEL_GPT5_6_SOL')).toBe(1050000)
+        expect(getMaxTokensForModel('MODEL_GPT5_6_TERRA')).toBe(1050000)
+        expect(getMaxTokensForModel('MODEL_GPT5_6_LUNA')).toBe(400000)
     })
 
     test('returns the canonical URL when creating a note', async () => {
@@ -1268,6 +1320,25 @@ describe('assistant attachment handoff helpers', () => {
         const toolResult = { success: true, taskId: '123' }
 
         expect(buildConversationSafeToolResult('create_task', toolResult)).toBe(toolResult)
+    })
+
+    test('globally caps oversized tool results before returning them to the model', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        const safeResult = buildConversationSafeToolResult('get_large_result', {
+            success: true,
+            rows: Array.from({ length: 100 }, (_, index) => ({
+                id: `row-${index}`,
+                content: 'x'.repeat(5000),
+            })),
+        })
+
+        expect(JSON.stringify(safeResult).length).toBeLessThanOrEqual(40000)
+        expect(safeResult).toEqual(expect.objectContaining({ contextTruncated: true }))
+        expect(warnSpy).toHaveBeenCalledWith(
+            '🚨 OPENAI TOOL RESULT CEILING: Truncated oversized result',
+            expect.objectContaining({ toolName: 'get_large_result', maxCharacters: 40000 })
+        )
+        warnSpy.mockRestore()
     })
 
     test('exposes only privacy-safe availability fields to the conversation', () => {
@@ -3348,6 +3419,7 @@ describe('assistant heartbeat settings tool', () => {
         const result = await executeToolNatively(
             'update_heartbeat_settings',
             {
+                model: 'MODEL_GPT5_6_TERRA',
                 intervalMinutes: 17,
                 chancePercent: 120,
                 awakeStartTime: '09:15',
@@ -3362,6 +3434,7 @@ describe('assistant heartbeat settings tool', () => {
         )
 
         expect(mockTransactionUpdate).toHaveBeenCalledWith(expect.any(Object), {
+            heartbeatModel: 'MODEL_GPT5_6_TERRA',
             heartbeatIntervalMs: 15 * 60 * 1000,
             heartbeatChancePercent: 100,
             heartbeatAwakeStart: (9 * 60 + 15) * 60 * 1000,
@@ -3385,6 +3458,7 @@ describe('assistant heartbeat settings tool', () => {
             success: true,
             assistantId: 'assistant-1',
             updatedFields: [
+                'model',
                 'intervalMinutes',
                 'chancePercent',
                 'awakeStartTime',
@@ -3401,6 +3475,7 @@ describe('assistant heartbeat settings tool', () => {
             awakeStartTime: '09:15',
             awakeEndTime: '18:45',
             sendWhatsApp: false,
+            model: 'MODEL_GPT5_6_TERRA',
             prompt: 'New prompt for heartbeat',
         })
     })

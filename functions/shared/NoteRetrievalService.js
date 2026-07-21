@@ -6,8 +6,9 @@ const { ProjectService } = require('./ProjectService')
 const { TaskRetrievalService } = require('./TaskRetrievalService')
 
 const FEED_PUBLIC_FOR_ALL = 0
-const DEFAULT_NOTE_LIMIT = 50
-const MAX_NOTE_LIMIT = 500
+const DEFAULT_NOTE_LIMIT = 20
+const MAX_NOTE_LIMIT = 50
+const NOTE_PREVIEW_MAX_LENGTH = 300
 
 class NoteRetrievalService {
     constructor(options = {}) {
@@ -216,15 +217,23 @@ class NoteRetrievalService {
     }
 
     mapNote(note, project, content) {
+        const normalizedContent = String(content || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+        const preview =
+            normalizedContent.length > NOTE_PREVIEW_MAX_LENGTH
+                ? `${normalizedContent.slice(0, NOTE_PREVIEW_MAX_LENGTH).trimEnd()}…`
+                : normalizedContent
+
         return {
             id: note.noteId,
             projectId: project.id,
             projectName: project.name || project.id,
             title: note.extendedTitle || note.title || 'Untitled Note',
-            content,
+            preview,
             createdAt: note.created || note.createdDate || null,
             lastEditedAt: Number(note.lastEditionDate) || 0,
-            wordCount: content ? content.split(/\s+/).filter(Boolean).length : 0,
+            wordCount: normalizedContent ? normalizedContent.split(/\s+/).filter(Boolean).length : 0,
         }
     }
 
@@ -312,4 +321,5 @@ module.exports = {
     NoteRetrievalService,
     DEFAULT_NOTE_LIMIT,
     MAX_NOTE_LIMIT,
+    NOTE_PREVIEW_MAX_LENGTH,
 }

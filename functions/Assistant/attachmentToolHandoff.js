@@ -1,4 +1,8 @@
 const REDACTED_FILE_BASE64_PLACEHOLDER = '[omitted from conversation; preserved for the next external tool call]'
+const MAX_TOOL_RESULT_CONTEXT_CHARS = 40000
+const GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH = 2000
+const GLOBAL_TOOL_RESULT_MAX_ARRAY_ITEMS = 20
+const GLOBAL_TOOL_RESULT_MAX_OBJECT_KEYS = 50
 
 function isObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -106,20 +110,114 @@ function buildConversationSafeSearchResult(toolResult) {
     }
 }
 
-function buildConversationSafeToolResult(toolName, toolResult) {
-    if (toolName === 'find_calendar_availability') {
-        return buildConversationSafeCalendarAvailabilityResult(toolResult)
+function truncateToolResultForGlobalCeiling(value, depth = 0) {
+    if (typeof value === 'string') {
+        if (value.length <= GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH) return value
+        return `${value.slice(0, GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH)}… [truncated ${
+            value.length - GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH
+        } chars]`
     }
-    if (toolName === 'search') {
-        return buildConversationSafeSearchResult(toolResult)
+    if (Array.isArray(value)) {
+        if (depth >= 7) return [`[${value.length} item(s) omitted at maximum depth]`]
+        const items = value
+            .slice(0, GLOBAL_TOOL_RESULT_MAX_ARRAY_ITEMS)
+            .map(item => truncateToolResultForGlobalCeiling(item, depth + 1))
+        if (value.length > items.length) {
+            items.push(`[${value.length - items.length} additional item(s) omitted]`)
+        }
+        return items
     }
-    if (!isSuccessfulAttachmentToolResult(toolName, toolResult)) return toolResult
+    if (isObject(value)) {
+        if (depth >= 9) return { contextOmittedAtMaximumDepth: true }
+        const entries = Object.entries(value)
+        const out = {}
+        entries.slice(0, GLOBAL_TOOL_RESULT_MAX_OBJECT_KEYS).forEach(([key, item]) => {
+            out[key] = truncateToolResultForGlobalCeiling(item, depth + 1)
+        })
+        if (entries.length > GLOBAL_TOOL_RESULT_MAX_OBJECT_KEYS) {
+            out.contextOmittedObjectKeys = entries.length - GLOBAL_TOOL_RESULT_MAX_OBJECT_KEYS
+        }
+        return out
+    }
+    return value
+}
 
-    return {
-        ...toolResult,
-        fileBase64: REDACTED_FILE_BASE64_PLACEHOLDER,
-        fileBase64Length: toolResult.fileBase64.length,
+function enforceToolResultContextCeiling(toolName, toolResult) {
+    let serialized
+    try {
+        serialized = JSON.stringify(toolResult)
+    } catch (error) {
+        serialized = String(toolResult)
     }
+    const originalCharacterCount = typeof serialized === 'string' ? serialized.length : 0
+    if (originalCharacterCount <= MAX_TOOL_RESULT_CONTEXT_CHARS) return toolResult
+
+    console.warn('🚨 OPENAI TOOL RESULT CEILING: Truncated oversized result', {
+        toolName,
+        originalCharacterCount,
+        maxCharacters: MAX_TOOL_RESULT_CONTEXT_CHARS,
+    })
+
+    const compactResult = truncateToolResultForGlobalCeiling(toolResult)
+    const compactWithMetadata = isObject(compactResult)
+        ? {
+              ...compactResult,
+              contextTruncated: true,
+              originalCharacterCount,
+              maxContextCharacters: MAX_TOOL_RESULT_CONTEXT_CHARS,
+          }
+        : {
+              result: compactResult,
+              contextTruncated: true,
+              originalCharacterCount,
+              maxContextCharacters: MAX_TOOL_RESULT_CONTEXT_CHARS,
+          }
+
+    let compactSerialized
+    try {
+        compactSerialized = JSON.stringify(compactWithMetadata)
+    } catch (error) {
+        compactSerialized = ''
+    }
+    if (compactSerialized.length <= MAX_TOOL_RESULT_CONTEXT_CHARS) return compactWithMetadata
+
+    const fallback = {
+        contextTruncated: true,
+        toolName,
+        originalCharacterCount,
+        maxContextCharacters: MAX_TOOL_RESULT_CONTEXT_CHARS,
+        message:
+            'The tool result exceeded the conversation context ceiling. Narrow the query or fetch one record by ID.',
+        serializedPreview: '',
+    }
+    const fixedLength = JSON.stringify(fallback).length
+    fallback.serializedPreview = serialized.slice(0, Math.max(0, MAX_TOOL_RESULT_CONTEXT_CHARS - fixedLength - 32))
+    let fallbackLength = JSON.stringify(fallback).length
+    while (fallbackLength > MAX_TOOL_RESULT_CONTEXT_CHARS && fallback.serializedPreview.length > 0) {
+        fallback.serializedPreview = fallback.serializedPreview.slice(
+            0,
+            Math.max(0, fallback.serializedPreview.length - (fallbackLength - MAX_TOOL_RESULT_CONTEXT_CHARS) - 16)
+        )
+        fallbackLength = JSON.stringify(fallback).length
+    }
+    return fallback
+}
+
+function buildConversationSafeToolResult(toolName, toolResult) {
+    let safeToolResult = toolResult
+    if (toolName === 'find_calendar_availability') {
+        safeToolResult = buildConversationSafeCalendarAvailabilityResult(toolResult)
+    } else if (toolName === 'search') {
+        safeToolResult = buildConversationSafeSearchResult(toolResult)
+    } else if (isSuccessfulAttachmentToolResult(toolName, toolResult)) {
+        safeToolResult = {
+            ...toolResult,
+            fileBase64: REDACTED_FILE_BASE64_PLACEHOLDER,
+            fileBase64Length: toolResult.fileBase64.length,
+        }
+    }
+
+    return enforceToolResultContextCeiling(toolName, safeToolResult)
 }
 
 function buildPendingAttachmentPayload(toolName, toolResult) {
@@ -318,6 +416,7 @@ function injectPendingAttachmentIntoDraftToolArgs(toolArgs, pendingAttachmentPay
 }
 
 module.exports = {
+    MAX_TOOL_RESULT_CONTEXT_CHARS,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     buildConversationSafeToolArgs,

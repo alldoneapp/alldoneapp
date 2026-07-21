@@ -31,6 +31,7 @@ import Button from '../../UIControls/Button'
 import { translate } from '../../../i18n/TranslationService'
 import HeartbeatAwakeTimeProperty from './Heartbeat/HeartbeatAwakeTimeProperty'
 import HeartbeatIntervalProperty from './Heartbeat/HeartbeatIntervalProperty'
+import HeartbeatModelProperty from './Heartbeat/HeartbeatModelProperty'
 import HeartbeatChanceProperty from './Heartbeat/HeartbeatChanceProperty'
 import HeartbeatWhatsAppProperty from './Heartbeat/HeartbeatWhatsAppProperty'
 import HeartbeatPromptProperty from './Heartbeat/HeartbeatPromptProperty'
@@ -190,6 +191,11 @@ export default function AssistantCustomizations({
                         assistant={assistant}
                     />
                     <HeartbeatIntervalProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        assistant={assistant}
+                    />
+                    <HeartbeatModelProperty
                         disabled={!canEditAssitant}
                         projectId={projectId}
                         assistant={assistant}

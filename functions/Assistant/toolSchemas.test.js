@@ -200,12 +200,25 @@ describe('User memory assistant tool schemas', () => {
 
     test('documents heartbeat settings update fields', () => {
         expect(toolSchemas.update_heartbeat_settings.function.parameters.required).toEqual([])
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.model.enum).toEqual([
+            'MODEL_GPT5_6_SOL',
+            'MODEL_GPT5_6_TERRA',
+            'MODEL_GPT5_6_LUNA',
+        ])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.intervalMinutes.type).toBe('number')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.chancePercent.type).toBe('number')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeStartTime.type).toBe('string')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeEndTime.type).toBe('string')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.sendWhatsApp.type).toBe('boolean')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.prompt.type).toBe('string')
+    })
+
+    test('documents compact note list limits and single-note full-content retrieval', () => {
+        const getNotes = toolSchemas.get_notes.function
+
+        expect(getNotes.description).toContain('metadata and a short preview')
+        expect(getNotes.description).toContain('fetch the selected note by ID')
+        expect(getNotes.parameters.properties.limit.description).toContain('Default is 20, maximum is 50')
     })
 
     test('documents project description update fields', () => {

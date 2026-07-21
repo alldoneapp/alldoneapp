@@ -3,6 +3,7 @@ const {
     normalizeHeartbeatIntervalMs,
     normalizeHeartbeatChancePercent,
     parseHeartbeatTimeString,
+    getEffectiveHeartbeatModel,
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
 } = require('./heartbeatSettingsHelper')
@@ -43,8 +44,19 @@ describe('heartbeatSettingsHelper', () => {
             chancePercent: 10,
             chanceNoReplyPercent: 10,
             sendWhatsApp: true,
+            model: 'MODEL_GPT5_6_SOL',
             prompt: DEFAULT_PROMPT,
         })
+    })
+
+    test('uses an explicit heartbeat model and otherwise inherits the assistant model', () => {
+        expect(
+            getEffectiveHeartbeatModel({
+                model: 'MODEL_GPT5_6_SOL',
+                heartbeatModel: 'MODEL_GPT5_6_TERRA',
+            })
+        ).toBe('MODEL_GPT5_6_TERRA')
+        expect(getEffectiveHeartbeatModel({ model: 'MODEL_GPT5_5' })).toBe('MODEL_GPT5_5')
     })
 
     test('builds context text including the current heartbeat prompt', () => {
@@ -56,6 +68,7 @@ describe('heartbeatSettingsHelper', () => {
                 heartbeatAwakeStart: 9 * 60 * 60 * 1000,
                 heartbeatAwakeEnd: 18 * 60 * 60 * 1000,
                 heartbeatSendWhatsApp: false,
+                heartbeatModel: 'MODEL_GPT5_6_LUNA',
                 heartbeatPrompt: 'Check progress and remind about the focus task.',
             },
             { projectId: 'project-1', userData: { defaultProjectId: 'project-1' } }
@@ -67,6 +80,7 @@ describe('heartbeatSettingsHelper', () => {
         expect(contextMessage).toContain('Execution chance when the user replied that day: 45%')
         expect(contextMessage).toContain('Execution chance when the user did not reply that day: 15%')
         expect(contextMessage).toContain('WhatsApp notification: disabled')
+        expect(contextMessage).toContain('Heartbeat model: MODEL_GPT5_6_LUNA')
         expect(contextMessage).toContain('Check progress and remind about the focus task.')
     })
 })
