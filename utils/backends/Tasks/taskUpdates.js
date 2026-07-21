@@ -39,6 +39,7 @@ import TasksHelper, {
 } from '../../../components/TaskListView/Utils/TasksHelper'
 import HelperFunctions from '../../HelperFunctions'
 import { getStepWorkflowDirection } from './workflowDirection'
+import { getWorkflowStepPresentation } from './workflowStepPresentation'
 import store from '.././../../redux/store'
 import {
     addPrivacyForFeedObject,
@@ -1115,7 +1116,7 @@ export async function createTaskMovedInWorkflowFeed(
     } else if (targetStepId === 'done') {
         toStepDescription = 'Done'
     } else {
-        const { description, reviewerUid } = workflow[targetStepId]
+        const { description, reviewerUid } = getWorkflowStepPresentation(workflow, targetStepId)
         const reviewerData = getUserPresentationData(reviewerUid)
         toStepDescription = description
         toStepAvatarURL = reviewerData.photoURL
@@ -1131,7 +1132,7 @@ export async function createTaskMovedInWorkflowFeed(
     } else if (currentStepId === DONE_STEP) {
         fromStepDescription = 'Done'
     } else {
-        const { description, reviewerUid } = workflow[currentStepId]
+        const { description, reviewerUid } = getWorkflowStepPresentation(workflow, currentStepId)
         const reviewerData = getUserPresentationData(reviewerUid)
         fromStepDescription = description
         fromStepAvatarURL = reviewerData.photoURL
@@ -1212,7 +1213,8 @@ export async function createTaskReviewerEstimationChangedFeed(
     )
 
     const taskAssignee = TasksHelper.getTaskOwner(task.userId, projectId)
-    const stepDescription = taskAssignee.workflow[projectId][stepId].description
+    const assigneeWorkflow = taskAssignee && taskAssignee.workflow ? taskAssignee.workflow[projectId] : null
+    const { description: stepDescription } = getWorkflowStepPresentation(assigneeWorkflow, stepId)
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_TASK_REVIEWER_ESTIMATION_CHANGED,
         lastChangeDate: currentMilliseconds,
