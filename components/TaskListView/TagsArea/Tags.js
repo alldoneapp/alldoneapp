@@ -35,6 +35,7 @@ import { checkIfInMyDay, checkIfInMyDayOpenTab } from '../../MyDayView/MyDayTask
 import AlertTag from '../../Tags/AlertTag'
 import TranscribeTag from '../../Tags/TranscribeTag'
 import MergeStatusTag from '../../Tags/MergeStatusTag'
+import { getWorkflowStepReviewerPhotoURL } from './workflowReviewerPhoto'
 
 export default function Tags({
     task,
@@ -116,12 +117,7 @@ export default function Tags({
             currentReviewerEstimation = estimations[currentStepId] || 0
 
             if (isPending) {
-                const reviewerUid =
-                    taskOwner.workflow && taskOwner.workflow[projectId] && taskOwner.workflow[projectId][currentStepId]
-                        ? taskOwner.workflow[projectId][currentStepId].reviewerUid
-                        : ''
-                const reviewer = TasksHelper.getUser(reviewerUid)
-                reviwerPhotoURL = reviewer.photoURL
+                reviwerPhotoURL = getWorkflowStepReviewerPhotoURL(taskOwner, projectId, currentStepId)
             }
         }
         if (isObservedTask) observerEstimation = estimationsByObserverIds[currentUserId] || 0

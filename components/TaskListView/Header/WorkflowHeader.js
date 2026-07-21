@@ -35,6 +35,9 @@ export default function WorkflowHeader({
     const projectWorkflow = assignee.workflow[projectId]
     const currentStep = projectWorkflow[currentStepId]
 
+    // A step reviewer can be an assistant, which has no task board to navigate to.
+    const canNavigateToReviewerBoard = !!reviewer
+
     const assigneeName = assignee.displayName
     const description = currentStep.description
     const workflowText = `${workflowDirectionText} ${HelperFunctions.getFirstName(assigneeName)} • ${description}`
@@ -65,7 +68,11 @@ export default function WorkflowHeader({
                 <WorkflowStepsAvatars projectId={projectId} currentStepId={currentStepId} assignee={assignee} />
                 <Line width={4} />
                 <Icon style={{ marginLeft: -2 }} name="square-checked-gray" color={colors.Text03} size={20} />
-                <TouchableOpacity style={{ marginLeft: 8 }} onPress={navigateToReviewerBoard}>
+                <TouchableOpacity
+                    style={{ marginLeft: 8 }}
+                    onPress={navigateToReviewerBoard}
+                    disabled={!canNavigateToReviewerBoard}
+                >
                     <Text style={[styles.caption1, { color: colors.Text03 }]}>{workflowText}</Text>
                 </TouchableOpacity>
                 <FillLine style={{ marginLeft: 8 }} />
