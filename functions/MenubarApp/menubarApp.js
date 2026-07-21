@@ -1037,6 +1037,10 @@ async function handleMenubarPushNote(req, res) {
             }
         }
 
+        // Set by the Mac app when its "follow-up prompt after sync" option is on:
+        // the note needs an assistant-enabled chat to receive that prompt.
+        const enableAssistantChat = req.body?.enableAssistantChat === true
+
         const assistantActor = await getMenubarAssistantActor(db, userData)
         const feedUser = assistantActor.feedUser
 
@@ -1066,6 +1070,22 @@ async function handleMenubarPushNote(req, res) {
             failPush()
             res.status(500).json({ success: false, error: 'Failed to create note' })
             return
+        }
+
+        if (enableAssistantChat) {
+            // Best-effort: a missing chat only costs the follow-up prompt, and
+            // the note itself is already safely persisted.
+            try {
+                await enableNoteAssistantChat(db, {
+                    projectId: resolution.projectId,
+                    noteId: noteResult.noteId,
+                    title,
+                    userId,
+                    assistantId: assistantActor.assistantId,
+                })
+            } catch (chatError) {
+                console.warn('menubarPushNote: enabling the note assistant chat failed', chatError)
+            }
         }
 
         const responseResolution = { source: resolution.source, reasoning: resolution.reasoning }
@@ -1305,6 +1325,53 @@ async function getOrCreateMacAppDailyTopic(db, userId, projectId, assistantId, u
     ])
 
     return { chatId, isNew: true }
+}
+
+// A note has no chat object of its own — note chat state normally lives on the
+// note document, and chatObjects entries are only written once something
+// comments (see TaskCommentService for the task equivalent). The Mac app's
+// follow-up prompt needs a real chat to post into, because
+// resolveMenubarConversationTarget refuses a target whose chat is missing, and
+// the assistant only answers when isAssistantEnabled is set. Create both here,
+// mirroring the shape TaskCommentService writes for tasks.
+async function enableNoteAssistantChat(db, { projectId, noteId, title, userId, assistantId }) {
+    // Declared locally rather than pulled from HelperFunctionsCloud, the same way
+    // menubarAccountSummary and menubarLastComment do — this path needs one
+    // constant, not that module's Cloud Functions dependencies.
+    const FEED_PUBLIC_FOR_ALL = 0
+    const now = Date.now()
+
+    await db.doc(`chatObjects/${projectId}/chats/${noteId}`).set(
+        {
+            id: noteId,
+            projectId,
+            title: title || 'Note',
+            type: 'notes',
+            creatorId: userId,
+            created: now,
+            lastEditionDate: now,
+            lastEditorId: userId,
+            isPublicFor: [FEED_PUBLIC_FOR_ALL],
+            hasStar: '#ffffff',
+            stickyData: { days: 0, stickyEndDate: 0 },
+            usersFollowing: [userId],
+            followerIds: [userId],
+            members: [userId],
+            assistantId: assistantId || null,
+            isAssistantEnabled: true,
+            commentsData: { amount: 0, lastComment: '', lastCommentOwnerId: '', lastCommentType: '' },
+        },
+        { merge: true }
+    )
+
+    await Promise.all([
+        // The note document is what the web UI reads for its assistant toggle.
+        db.doc(`noteItems/${projectId}/notes/${noteId}`).set({ isAssistantEnabled: true }, { merge: true }),
+        db.doc(`usersFollowing/${projectId}/entries/${userId}`).set({ notes: { [noteId]: true } }, { merge: true }),
+        db
+            .doc(`followers/${projectId}/notes/${noteId}`)
+            .set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+    ])
 }
 
 function toMillis(value) {
@@ -2167,6 +2234,7 @@ module.exports = {
         normalizeMenubarConversationTarget,
         normalizeAssistantThreadMessage,
         resolveMenubarConversationTarget,
+        enableNoteAssistantChat,
         resolveMenubarAssistantThread,
         toMillis,
     },
