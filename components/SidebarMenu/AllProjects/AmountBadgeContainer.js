@@ -7,6 +7,7 @@ import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import useCollapsibleSidebar from '../Collapsible/UseCollapsibleSidebar'
 import AmountBadge from '../ProjectFolding/Common/AmountBadge'
+import getAllProjectsOpenTasksAmount from '../../../utils/Tasks/getAllProjectsOpenTasksAmount'
 
 export default function AmountBadgeContainer() {
     const themeName = useSelector(state => state.loggedUser.themeName)
@@ -18,16 +19,7 @@ export default function AmountBadgeContainer() {
 
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.AllProjects')
 
-    let projects = 0
-    for (let projectId in sidebarNumbers) {
-        if (
-            sidebarNumbers[projectId][loggedUserId] &&
-            !templateProjectIds.includes(projectId) &&
-            !archivedProjectIds.includes(projectId)
-        ) {
-            projects += sidebarNumbers[projectId][loggedUserId]
-        }
-    }
+    const projects = getAllProjectsOpenTasksAmount(sidebarNumbers, loggedUserId, archivedProjectIds, templateProjectIds)
 
     return (
         <View style={expanded ? localStyles.tasksAmountContainer : localStyles.tasksAmountCollapsed}>

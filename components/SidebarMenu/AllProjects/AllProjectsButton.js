@@ -25,6 +25,7 @@ import AmountBadgeContainer from './AmountBadgeContainer'
 import ItemShortcut from '../Items/Common/ItemShortcut'
 import { isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
 import AmountBadge from '../ProjectFolding/Common/AmountBadge'
+import getAllProjectsOpenTasksAmount from '../../../utils/Tasks/getAllProjectsOpenTasksAmount'
 
 export default function AllProjectsButton() {
     const dispatch = useDispatch()
@@ -56,16 +57,12 @@ export default function AllProjectsButton() {
 
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.AllProjects')
 
-    let allProjectsTasksAmount = 0
-    for (let projectId in sidebarNumbers) {
-        if (
-            sidebarNumbers[projectId]?.[loggedUserId] &&
-            !templateProjectIds.includes(projectId) &&
-            !archivedProjectIds.includes(projectId)
-        ) {
-            allProjectsTasksAmount += sidebarNumbers[projectId][loggedUserId]
-        }
-    }
+    const allProjectsTasksAmount = getAllProjectsOpenTasksAmount(
+        sidebarNumbers,
+        loggedUserId,
+        archivedProjectIds,
+        templateProjectIds
+    )
 
     useEffect(() => {
         if (checkIfSelectedAllProjects(shortcutSelectedProjectIndex)) onPress()

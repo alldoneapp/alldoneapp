@@ -7,6 +7,7 @@ import {
     checkIfSelectedAllProjects,
     checkIfSelectedProject,
 } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
+import getAllProjectsOpenTasksAmount from '../../../../utils/Tasks/getAllProjectsOpenTasksAmount'
 
 export default function TasksAmount({ projectId, projectSelected, selected, lowSelected }) {
     const { expanded } = useCollapsibleSidebar()
@@ -21,17 +22,7 @@ export default function TasksAmount({ projectId, projectSelected, selected, lowS
         if (projectId && projectSelected && checkIfSelectedProject(selectedProjectIndex)) {
             return 0
         } else if (checkIfSelectedAllProjects(selectedProjectIndex)) {
-            let taskAmountAllProjects = 0
-            for (let pId in sidebarNumbers) {
-                if (
-                    sidebarNumbers[pId][loggedUserId] &&
-                    !templateProjectIds.includes(pId) &&
-                    !archivedProjectIds.includes(pId)
-                ) {
-                    taskAmountAllProjects += sidebarNumbers[pId][loggedUserId]
-                }
-            }
-            return taskAmountAllProjects
+            return getAllProjectsOpenTasksAmount(sidebarNumbers, loggedUserId, archivedProjectIds, templateProjectIds)
         } else if (projectId && sidebarNumbers[projectId]?.[loggedUserId]) {
             return sidebarNumbers[projectId][loggedUserId]
         }
