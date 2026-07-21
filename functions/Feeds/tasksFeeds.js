@@ -21,6 +21,7 @@ const {
     FEED_TASK_HIGHLIGHTED_CHANGED,
     FEED_TASK_RECURRENCE_CHANGED,
     FEED_TASK_ASSIGNEE_ESTIMATION_CHANGED,
+    FEED_TASK_MOVED_IN_WORKFLOW,
     FEED_TASK_REVIEWER_ESTIMATION_CHANGED,
     FEED_TASK_SOMEDAY_SELECTED,
     FEED_TASK_UPDATED,
@@ -609,6 +610,62 @@ async function createTaskReviewerEstimationChangedFeed(
     )
 }
 
+/**
+ * Activity entry for a task moved forward through the workflow by the server (an AI step finishing).
+ *
+ * The client equivalent is createTaskMovedInWorkflowFeed in utils/backends/Tasks/taskUpdates.js. It
+ * also handles backward moves; this one is forward-only because that is the only direction the
+ * server moves a task in.
+ */
+async function createTaskMovedInWorkflowFeed(
+    projectId,
+    task,
+    taskId,
+    fromStep,
+    toStep,
+    batch,
+    feedUser,
+    needGenerateNotification
+) {
+    const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
+    const taskFeedObject = await loadFeedObject(projectId, taskId, 'tasks', currentMilliseconds, batch)
+    if (!taskFeedObject) return
+
+    const { feed, feedId } = generateFeedModel({
+        feedType: FEED_TASK_MOVED_IN_WORKFLOW,
+        lastChangeDate: currentMilliseconds,
+        entryText: '',
+        feedUser,
+        objectId: taskId,
+        isPublicFor: taskFeedObject.isPublicFor,
+    })
+
+    feed.fromStepUserId = fromStep.userId || ''
+    feed.toStepUserId = toStep.userId || ''
+    feed.fromStepDescription = fromStep.description
+    feed.toStepDescription = toStep.description
+    feed.isForward = true
+    if (task.parentId) feed.isSubtask = true
+
+    taskFeedObject.isDone = toStep.isDone === true
+    taskFeedObject.inWorkflow = !taskFeedObject.isDone
+    taskFeedObject.parentId = null
+
+    await proccessFeed(
+        projectId,
+        currentDateFormated,
+        [],
+        taskId,
+        'tasks',
+        taskFeedObject,
+        feedId,
+        feed,
+        feedUser,
+        batch,
+        needGenerateNotification
+    )
+}
+
 async function createTaskUpdatedFeed(
     projectId,
     task,
@@ -720,6 +777,7 @@ module.exports = {
     createTaskHighlightedChangedFeed,
     createTaskRecurrenceChangedFeed,
     createTaskAssigneeEstimationChangedFeed,
+    createTaskMovedInWorkflowFeed,
     createTaskReviewerEstimationChangedFeed,
     createTaskSomedaySelectedFeed,
     createTaskUpdatedFeed,

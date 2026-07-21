@@ -9,6 +9,7 @@ export default function WorkflowUserItem({ user, selected, closePopover, active 
             uid: user.uid,
             photoURL: user.photoURL,
             displayName: user.displayName,
+            isAssistant: user.isAssistant === true,
         }
         closePopover(step)
     }

@@ -3344,6 +3344,38 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
     }
 )
 
+// Runs the assistant for a task that landed on an AI workflow step, then moves the task on.
+// Enqueued by enqueueWorkflowAiRunIfNeeded from onUpdateTask. Matches askToBotSecondGen's ceiling
+// because it hosts a full assistant run.
+exports.runWorkflowAiStepSecondGen = onDocumentCreated(
+    {
+        document: 'workflowAiRuns/{runId}',
+        timeoutSeconds: 3600,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { runWorkflowAiStep } = require('./Tasks/workflowAiStep')
+        const { runId } = event.params
+        await runWorkflowAiStep(runId, event.data.data())
+    }
+)
+
+// Backstop: a worker that dies without settling would leave its task parked on the AI step.
+exports.sweepStalledWorkflowAiRunsSecondGen = onSchedule(
+    {
+        schedule: '*/10 * * * *',
+        timeZone: 'UTC',
+        region: 'europe-west1',
+        timeoutSeconds: 300,
+        memory: '256MiB',
+    },
+    async () => {
+        const { sweepStalledWorkflowAiRuns } = require('./Tasks/workflowAiStep')
+        await sweepStalledWorkflowAiRuns()
+    }
+)
+
 //ASSISTANTS
 
 exports.onCreateAssistantSecondGen = onDocumentCreated(

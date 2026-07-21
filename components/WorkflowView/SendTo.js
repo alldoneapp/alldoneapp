@@ -11,6 +11,7 @@ import Hotkeys from 'react-hot-keys'
 import { execShortcutFn } from '../../utils/HelperFunctions'
 import { translate } from '../../i18n/TranslationService'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
+import { emptyAiStepFields, REVIEWER_TYPE_ASSISTANT } from './workflowStepHelper'
 
 const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue }) => {
     const [visiblePopover, setVisiblePopover] = useState(false)
@@ -54,9 +55,22 @@ const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue }) =
         setTimeout(() => {
             setVisiblePopover(false)
             if (selectedUser) {
+                // Re-picking the same assistant keeps its configured prompt; anything else (a human,
+                // or a different assistant) drops it, so a step never carries another
+                // assistant's prompt.
+                const keepsAiConfig = selectedUser.isAssistant && sendTo.reviewerUid === selectedUser.uid
+                const aiFields = keepsAiConfig
+                    ? {}
+                    : {
+                          ...emptyAiStepFields(),
+                          reviewerType: selectedUser.isAssistant ? REVIEWER_TYPE_ASSISTANT : null,
+                      }
+
                 dispatch([
                     hideFloatPopup(),
                     setWorkflowStep({
+                        ...sendTo,
+                        ...aiFields,
                         reviewerUid: selectedUser.uid,
                     }),
                 ])

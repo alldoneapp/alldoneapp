@@ -17,10 +17,30 @@ export default function SelectUserModal({ projectIndex, closePopover }) {
 
     const project = useSelector(state => state.loggedUserProjects[projectIndex])
     const usersInProject = useSelector(state => state.projectUsers[project.id])
+    const globalAssistants = useSelector(state => state.globalAssistants)
+    const projectAssistants = useSelector(state => state.projectAssistants[project.id] || [])
     const workflowStep = useSelector(state => state.workflowStep)
     const [hoverUserId, setHoverUserId] = useState(workflowStep.reviewerUid)
 
-    const currProjectUsers = sortBy(usersInProject, [item => item.displayName.toLowerCase()])
+    const projectUsers = sortBy(usersInProject, [item => item.displayName.toLowerCase()])
+
+    // Assistants can review a step too: picking one turns the step into an AI step that runs a
+    // prompt on the task and then moves it on by itself. Same sourcing as ChangeAssistantModal.
+    const globalAssistantsInProject = globalAssistants.filter(assistant =>
+        project?.globalAssistantIds?.includes(assistant.uid)
+    )
+    const assistants = sortBy(
+        [...globalAssistantsInProject, ...projectAssistants],
+        [item => (item.displayName || '').toLowerCase()]
+    ).map(assistant => ({
+        uid: assistant.uid,
+        displayName: assistant.displayName,
+        photoURL: assistant.photoURL50 || assistant.photoURL,
+        isAssistant: true,
+    }))
+
+    // Single flat list so keyboard traversal wraps across users and assistants alike.
+    const currProjectUsers = [...projectUsers, ...assistants]
     const viewRef = React.createRef()
 
     const getNextUserId = () => {
@@ -39,10 +59,14 @@ export default function SelectUserModal({ projectIndex, closePopover }) {
         }
 
         const index = findIndex(currProjectUsers, ['uid', hoverUserId])
+        if (index === -1) return
+
+        const selected = currProjectUsers[index]
         const step = {
-            uid: currProjectUsers[index].uid,
-            photoURL: currProjectUsers[index].photoURL,
-            displayName: currProjectUsers[index].displayName,
+            uid: selected.uid,
+            photoURL: selected.photoURL,
+            displayName: selected.displayName,
+            isAssistant: selected.isAssistant === true,
         }
         closePopover(step)
     }
@@ -108,15 +132,22 @@ export default function SelectUserModal({ projectIndex, closePopover }) {
 
                     <View style={localStyles.userListContainer}>
                         {currProjectUsers.map((el, index) => {
+                            const isFirstAssistant = el.isAssistant && index === projectUsers.length
                             return (
-                                <WorkflowUserItem
-                                    key={index}
-                                    user={el}
-                                    selected={el.uid === workflowStep.reviewerUid}
-                                    projectId={project.id}
-                                    closePopover={closePopover}
-                                    active={el.uid === hoverUserId}
-                                />
+                                <React.Fragment key={el.uid}>
+                                    {isFirstAssistant && (
+                                        <Text style={[styles.body2, localStyles.groupHeading]}>
+                                            {translate('Assistants')}
+                                        </Text>
+                                    )}
+                                    <WorkflowUserItem
+                                        user={el}
+                                        selected={el.uid === workflowStep.reviewerUid}
+                                        projectId={project.id}
+                                        closePopover={closePopover}
+                                        active={el.uid === hoverUserId}
+                                    />
+                                </React.Fragment>
                             )
                         })}
                     </View>
@@ -145,6 +176,12 @@ const localStyles = StyleSheet.create({
         marginTop: 20,
         paddingHorizontal: 8,
         paddingBottom: 8,
+    },
+    groupHeading: {
+        color: colors.Text03,
+        marginTop: 8,
+        marginBottom: 4,
+        paddingHorizontal: 8,
     },
     closeSubContainer: {
         width: 24,

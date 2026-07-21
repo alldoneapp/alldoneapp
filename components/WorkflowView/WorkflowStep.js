@@ -8,12 +8,13 @@ import { useSelector } from 'react-redux'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { translate } from '../../i18n/TranslationService'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
+import { isAiWorkflowStep } from './workflowStepHelper'
 
 const WorkflowStep = ({ step, stepNumber, updatingStep }) => {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const addedByData = getUserPresentationData(step.addedById)
     const reviewerData = getUserPresentationData(step.reviewerUid)
-    const info = isMiddleScreen
+    const addedInfo = isMiddleScreen
         ? translate('User added on Date', {
               user: addedByData.shortName,
               date: moment(step.date).format(getDateFormat()),
@@ -23,6 +24,9 @@ const WorkflowStep = ({ step, stepNumber, updatingStep }) => {
               date: moment(step.date).format(getDateFormat()),
           })
 
+    // For an AI step, what it runs matters more than who added it, so it leads the caption.
+    const info = isAiWorkflowStep(step) && step.aiActionName ? `${step.aiActionName} • ${addedInfo}` : addedInfo
+
     return (
         <View style={localStyles.container}>
             <View style={localStyles.stepNumberContainer}>
@@ -31,7 +35,9 @@ const WorkflowStep = ({ step, stepNumber, updatingStep }) => {
 
             <View style={localStyles.description}>
                 <Text style={[styles.body1, { color: colors.Text01 }]}>{step.description}</Text>
-                <Text style={[styles.caption2, { color: colors.Text03 }]}>{info}</Text>
+                <Text style={[styles.caption2, { color: colors.Text03 }]} numberOfLines={1}>
+                    {info}
+                </Text>
             </View>
 
             <View style={localStyles.sendToContainer}>

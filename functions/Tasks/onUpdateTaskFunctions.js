@@ -14,6 +14,7 @@ const { createTaskSomedaySelectedFeed } = require('../Feeds/tasksFeeds')
 const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
 const { earnGold } = require('../Gold/goldHelper')
 const { captureTaskPriorityTaskUpdateFeedback } = require('../Assistant/taskPriorityLearning')
+const { enqueueWorkflowAiRunIfNeeded } = require('./workflowAiStep')
 
 const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
 
@@ -336,6 +337,11 @@ const onUpdateTask = async (taskId, projectId, change) => {
     promises.push(syncLinkedNoteTitle(projectId, oldTask, newTask))
     promises.push(awardGoldForTaskProgress(projectId, taskId, oldTask, newTask))
     promises.push(captureTaskPriorityFeedbackSafely(projectId, taskId, oldTask, newTask))
+    promises.push(
+        enqueueWorkflowAiRunIfNeeded(projectId, taskId, oldTask, newTask).catch(error =>
+            console.error('[workflowAiStep] Enqueue check failed', { taskId, error: error.message })
+        )
+    )
 
     // Handle recurring task creation when task is completed
     // Skip assistant tasks - they have their own recurring logic in assistantRecurringTasks.js

@@ -15,6 +15,8 @@ import { FEED_USER_WORKFLOW_CHANGED } from '../Feeds/Utils/FeedsConstants'
 import { translate } from '../../i18n/TranslationService'
 import { createWorkflowStepFeed, createWorkflowStepFeedChangeTitle } from '../../utils/backends/Users/userUpdates'
 import { addUserWorkflowStep, modifyUserWorkflowStep } from '../../utils/backends/Users/usersFirestore'
+import AiStepAction from './AiStepAction/AiStepAction'
+import { aiStepFieldsChanged, isAiWorkflowStep } from './workflowStepHelper'
 
 /*user,
 step,
@@ -88,14 +90,27 @@ class EditStep extends Component {
         }
     }
 
+    // An AI step with no prompt would run nothing and hand the task straight on, so saving one is
+    // blocked. Clearing the description means "delete", which stays allowed either way.
+    isAiStepIncomplete = () => {
+        const { formType } = this.props
+        const { workflowStep, description } = this.state
+        const isDeleting = formType === 'edit' && description.length === 0
+
+        return !isDeleting && isAiWorkflowStep(workflowStep) && !(workflowStep.aiPrompt || '').trim()
+    }
+
     enterKeyAction = () => {
         const { onCancelAction, formType, step } = this.props
         const { workflowStep, description, showFloatPopup } = this.state
         const validNew = formType === 'new' && description.length > 0
         const validEdit =
-            formType === 'edit' && (workflowStep.reviewerUid !== step.reviewerUid || description !== step.description)
+            formType === 'edit' &&
+            (workflowStep.reviewerUid !== step.reviewerUid ||
+                description !== step.description ||
+                aiStepFieldsChanged(workflowStep, step))
 
-        if (showFloatPopup <= 0 && (validNew || validEdit)) {
+        if (showFloatPopup <= 0 && !this.isAiStepIncomplete() && (validNew || validEdit)) {
             this.modifyWorkflowStep()
             // onCancelAction()
             Keyboard.dismiss()
@@ -148,7 +163,9 @@ class EditStep extends Component {
                               date: Date.now(),
                           }
                         : {
-                              reviewerUid: step.reviewerUid,
+                              // Reviewer picker was never opened: keep the step's existing reviewer
+                              // and AI action rather than dropping them.
+                              ...step,
                               description: description,
                               addedById: loggedUser.uid,
                               date: Date.now(),
@@ -208,7 +225,11 @@ class EditStep extends Component {
         const buttonItemStyle = { marginRight: smallScreen ? 8 : 4 }
         const disabled1 = formType === 'new' && description.length === 0
         const disabled2 =
-            formType === 'edit' && workflowStep.reviewerUid === step.reviewerUid && description === step.description
+            formType === 'edit' &&
+            workflowStep.reviewerUid === step.reviewerUid &&
+            description === step.description &&
+            !aiStepFieldsChanged(workflowStep, step)
+        const disabled3 = this.isAiStepIncomplete()
 
         return (
             <View
@@ -258,6 +279,13 @@ class EditStep extends Component {
                                 projectIndex={projectIndex}
                                 onChangeValue={this.focusInput}
                             />
+
+                            {isAiWorkflowStep(workflowStep) && (
+                                <AiStepAction
+                                    projectId={this.state.loggedUserProjects[projectIndex].id}
+                                    onChangeValue={this.focusInput}
+                                />
+                            )}
 
                             {formType === 'edit' && (
                                 <Hotkeys
@@ -316,7 +344,7 @@ class EditStep extends Component {
                                     : null
                             }
                             onPress={this.modifyWorkflowStep}
-                            disabled={disabled1 || disabled2}
+                            disabled={disabled1 || disabled2 || disabled3}
                             accessible={false}
                             shortcutText={'Enter'}
                         />

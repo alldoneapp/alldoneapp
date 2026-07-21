@@ -1,0 +1,331 @@
+const mockStore = new Map()
+
+const makeRef = path => ({
+    __path: path,
+    get: async () => ({
+        exists: mockStore.has(path),
+        data: () => mockStore.get(path),
+    }),
+    set: async (data, options) => {
+        mockStore.set(path, options && options.merge ? { ...(mockStore.get(path) || {}), ...data } : data)
+    },
+    create: async data => {
+        if (mockStore.has(path)) {
+            const error = new Error('Document already exists')
+            error.code = 6
+            throw error
+        }
+        mockStore.set(path, data)
+    },
+})
+
+const collectionQuery = () => {
+    const query = {
+        where: jest.fn(() => query),
+        get: jest.fn(async () => ({ empty: true, size: 0, docs: [] })),
+    }
+    return query
+}
+
+const mockDb = {
+    doc: jest.fn(path => makeRef(path)),
+    collection: jest.fn(() => collectionQuery()),
+    batch: () => {
+        const writes = []
+        return {
+            set: (ref, data, options) => writes.push({ ref, data, options }),
+            commit: async () => {
+                for (const { ref, data, options } of writes) await ref.set(data, options)
+            },
+        }
+    },
+}
+
+jest.mock('firebase-admin', () => ({
+    firestore: Object.assign(
+        jest.fn(() => mockDb),
+        { Timestamp: { now: jest.fn(() => 'ts') } }
+    ),
+}))
+
+jest.mock('../Utils/HelperFunctionsCloud', () => ({
+    OPEN_STEP: -1,
+    DONE_STEP: -2,
+    FEED_PUBLIC_FOR_ALL: 0,
+    STAYWARD_COMMENT: 2,
+    WORKSTREAM_ID_PREFIX: 'ws@',
+}))
+
+const mockGeneratePreConfigTaskResult = jest.fn(async () => ({ success: true }))
+const mockEnsureChatExists = jest.fn(async () => {})
+
+jest.mock('../Assistant/assistantPreConfigTaskTopic', () => ({
+    generatePreConfigTaskResult: mockGeneratePreConfigTaskResult,
+}))
+jest.mock('../Assistant/assistantStatusHelper', () => ({ ensureChatExists: mockEnsureChatExists }))
+
+const mockCreateTaskMovedInWorkflowFeed = jest.fn(async () => {})
+
+jest.mock('../Feeds/tasksFeeds', () => ({ createTaskMovedInWorkflowFeed: mockCreateTaskMovedInWorkflowFeed }))
+jest.mock('../GlobalState/globalState', () => ({ loadFeedsGlobalState: jest.fn() }))
+jest.mock('../BatchWrapper/batchWrapper', () => ({
+    BatchWrapper: jest.fn(() => ({ commit: jest.fn(async () => {}) })),
+}))
+
+const { advanceTaskFromWorkflowStep, enqueueWorkflowAiRunIfNeeded, runWorkflowAiStep } = require('./workflowAiStep')
+
+const PROJECT = 'p1'
+const TASK = 't1'
+const ASSIGNEE = 'u1'
+const ASSISTANT = 'a1'
+const HUMAN_REVIEWER = 'u2'
+
+// Steps are keyed by push ids and ordered by their lexical sort.
+const AI_STEP = '-AAA'
+const NEXT_STEP = '-BBB'
+
+const aiStep = () => ({
+    description: 'Draft review',
+    reviewerUid: ASSISTANT,
+    reviewerType: 'assistant',
+    aiPreConfigTaskId: null,
+    aiPrompt: 'Summarize this task',
+    aiVariableValues: {},
+})
+
+const humanStep = () => ({ description: 'Final approval', reviewerUid: HUMAN_REVIEWER })
+
+const seedAssignee = (workflow = { [AI_STEP]: aiStep(), [NEXT_STEP]: humanStep() }) => {
+    mockStore.set(`users/${ASSIGNEE}`, { uid: ASSIGNEE, language: 'en', workflow: { [PROJECT]: workflow } })
+}
+
+const taskOnAiStep = (overrides = {}) => ({
+    id: TASK,
+    userId: ASSIGNEE,
+    userIds: [ASSIGNEE, ASSISTANT],
+    stepHistory: [-1, AI_STEP],
+    isPublicFor: [0],
+    extendedName: 'Write the spec',
+    ...overrides,
+})
+
+beforeEach(() => {
+    mockStore.clear()
+    jest.clearAllMocks()
+})
+
+describe('enqueueWorkflowAiRunIfNeeded', () => {
+    const oldTask = { userId: ASSIGNEE, userIds: [ASSIGNEE], stepHistory: [-1] }
+
+    it('enqueues a run when a task lands on an AI step', async () => {
+        seedAssignee()
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
+
+        expect(runId).toBe(`${PROJECT}__${TASK}__${AI_STEP}__1000`)
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
+            projectId: PROJECT,
+            taskId: TASK,
+            stepId: AI_STEP,
+            assistantId: ASSISTANT,
+            assigneeUserId: ASSIGNEE,
+            status: 'pending',
+        })
+    })
+
+    it('is idempotent, so a redelivered task update does not pay for the run twice', async () => {
+        seedAssignee()
+        const newTask = taskOnAiStep({ completed: 1000 })
+
+        const first = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, newTask)
+        const second = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, newTask)
+
+        expect(first).not.toBeNull()
+        expect(second).toBeNull()
+    })
+
+    it('stays idempotent when the move left no completed stamp', async () => {
+        seedAssignee()
+        const newTask = taskOnAiStep()
+        delete newTask.completed
+
+        const first = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, newTask)
+        const second = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, newTask)
+
+        expect(first).toBe(`${PROJECT}__${TASK}__${AI_STEP}__s2`)
+        expect(second).toBeNull()
+    })
+
+    it('skips subtasks, which mirror their parent stepHistory', async () => {
+        seedAssignee()
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(
+            PROJECT,
+            'sub1',
+            oldTask,
+            taskOnAiStep({ parentId: TASK, completed: 1000 })
+        )
+
+        expect(runId).toBeNull()
+    })
+
+    it('skips when the step is reviewed by a human', async () => {
+        seedAssignee({ [AI_STEP]: humanStep(), [NEXT_STEP]: humanStep() })
+
+        expect(await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep())).toBeNull()
+    })
+
+    it('skips when the current step did not change', async () => {
+        seedAssignee()
+        const task = taskOnAiStep()
+
+        expect(await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, task, task)).toBeNull()
+    })
+
+    it('skips workstream-assigned tasks, which have no personal workflow', async () => {
+        seedAssignee()
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ userId: 'ws@default' }))
+
+        expect(runId).toBeNull()
+    })
+})
+
+describe('advanceTaskFromWorkflowStep', () => {
+    it('hands the task to the next step reviewer', async () => {
+        const workflow = { [AI_STEP]: aiStep(), [NEXT_STEP]: humanStep() }
+
+        const next = await advanceTaskFromWorkflowStep(PROJECT, TASK, taskOnAiStep(), AI_STEP, workflow)
+
+        expect(next).toBe(NEXT_STEP)
+        const saved = mockStore.get(`items/${PROJECT}/tasks/${TASK}`)
+        expect(saved.currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(saved.stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
+        expect(saved.userIds).toEqual([ASSIGNEE, ASSISTANT, HUMAN_REVIEWER])
+        expect(saved.done).toBe(false)
+    })
+
+    it('completes the task when the AI step is the last one', async () => {
+        const workflow = { [AI_STEP]: aiStep() }
+
+        const next = await advanceTaskFromWorkflowStep(PROJECT, TASK, taskOnAiStep(), AI_STEP, workflow)
+
+        expect(next).toBe(-2)
+        const saved = mockStore.get(`items/${PROJECT}/tasks/${TASK}`)
+        expect(saved.currentReviewerId).toBe(-2)
+        expect(saved.done).toBe(true)
+        expect(saved.inDone).toBe(true)
+        expect(saved.userIds).toEqual([ASSIGNEE])
+    })
+
+    it('propagates completion to subtasks', async () => {
+        const workflow = { [AI_STEP]: aiStep() }
+
+        await advanceTaskFromWorkflowStep(PROJECT, TASK, taskOnAiStep({ subtaskIds: ['sub1'] }), AI_STEP, workflow)
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/sub1`)).toMatchObject({ parentDone: true, inDone: true })
+    })
+
+    it('records the move in the activity feed, attributed to the assistant', async () => {
+        const workflow = { [AI_STEP]: aiStep(), [NEXT_STEP]: humanStep() }
+
+        await advanceTaskFromWorkflowStep(PROJECT, TASK, taskOnAiStep(), AI_STEP, workflow)
+
+        const [, , , fromStep, toStep, , feedUser] = mockCreateTaskMovedInWorkflowFeed.mock.calls[0]
+        expect(fromStep).toEqual({ description: 'Draft review', userId: ASSISTANT })
+        expect(toStep).toEqual({ description: 'Final approval', userId: HUMAN_REVIEWER })
+        expect(feedUser).toEqual({ uid: ASSISTANT })
+    })
+
+    it('leaves the task alone when the step is gone from the workflow', async () => {
+        const next = await advanceTaskFromWorkflowStep(PROJECT, TASK, taskOnAiStep(), AI_STEP, {
+            [NEXT_STEP]: humanStep(),
+        })
+
+        expect(next).toBeNull()
+        expect(mockStore.has(`items/${PROJECT}/tasks/${TASK}`)).toBe(false)
+    })
+})
+
+describe('runWorkflowAiStep', () => {
+    const run = { projectId: PROJECT, taskId: TASK, stepId: AI_STEP, assistantId: ASSISTANT, assigneeUserId: ASSIGNEE }
+    const RUN_ID = 'run1'
+
+    beforeEach(() => {
+        seedAssignee()
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
+    })
+
+    it('runs the assistant against the task and moves it on', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockEnsureChatExists).toHaveBeenCalledWith(PROJECT, 'tasks', TASK, ASSISTANT, expect.any(Array), [0])
+
+        const args = mockGeneratePreConfigTaskResult.mock.calls[0]
+        expect(args[0]).toBe(ASSIGNEE) // the assignee owns the workflow, so the assignee pays
+        expect(args[2]).toBe(TASK)
+        expect(args[5]).toBe(ASSISTANT)
+        expect(args[6]).toBe('Summarize this task')
+        expect(args[11]).toBe('tasks')
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+    })
+
+    it('substitutes $variable values captured when the step was configured', async () => {
+        seedAssignee({
+            [AI_STEP]: { ...aiStep(), aiPrompt: 'Review for $AUDIENCE', aiVariableValues: { AUDIENCE: 'execs' } },
+            [NEXT_STEP]: humanStep(),
+        })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe('Review for execs')
+    })
+
+    it('still advances the task when the assistant run fails', async () => {
+        mockGeneratePreConfigTaskResult.mockRejectedValueOnce(new Error('out of gold'))
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: 'failed',
+            failureReason: 'out of gold',
+        })
+    })
+
+    it('does not run or advance when the task already moved off the step', async () => {
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep({ stepHistory: [-1, AI_STEP, NEXT_STEP] }))
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({ status: 'skipped', reason: 'task_moved' })
+    })
+
+    it('does not move the task back when it is moved away mid-run', async () => {
+        mockGeneratePreConfigTaskResult.mockImplementationOnce(async () => {
+            // A human (or the assistant's own update_task) moves the task while the run is in flight.
+            mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep({ stepHistory: [-1] }))
+            return { success: true }
+        })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1])
+    })
+
+    it('advances without running anything when the step is no longer an AI step', async () => {
+        seedAssignee({ [AI_STEP]: humanStep(), [NEXT_STEP]: humanStep() })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: 'failed',
+            failureReason: 'step_no_longer_ai',
+        })
+    })
+})

@@ -1,6 +1,21 @@
 {
     "indexes": [
         {
+            "__comment__": "Workflow AI steps - sweeper query for runs stalled in pending/running",
+            "collectionGroup": "workflowAiRuns",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "status",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
             "__comment__": "OKRs - Scheduled renewal of expired active OKRs",
             "collectionGroup": "projectOkrs",
             "queryScope": "COLLECTION_GROUP",

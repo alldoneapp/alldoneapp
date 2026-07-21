@@ -168,6 +168,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Server-managed queue of AI workflow step runs. Its ids are the idempotency key that stops a
+    // redelivered task update from paying for the same assistant run twice, so clients must never
+    // be able to read or forge one.
+    match /workflowAiRuns/{runId} {
+      allow read, write: if false;
+    }
+
     function isAdministrator() {
       return signedIn() && get(/databases/$(database)/documents/roles/administrator).data.userId == request.auth.uid;
     }
