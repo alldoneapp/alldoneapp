@@ -12,6 +12,7 @@ const MarkAsRead = ({ projectId, projectIds, userId, containerStyle }) => {
     const [error, setError] = useState(false)
     const idsToMark = projectIds || (projectId ? [projectId] : [])
     const disabled = loading || idsToMark.length === 0
+    const label = projectIds ? 'mark all as read' : 'mark as read'
 
     const markRead = async () => {
         if (disabled) return
@@ -40,7 +41,7 @@ const MarkAsRead = ({ projectId, projectIds, userId, containerStyle }) => {
 
     return (
         <TouchableOpacity
-            accessibilityLabel={translate(error ? 'Could not mark as read. Try again' : 'mark as read')}
+            accessibilityLabel={translate(error ? 'Could not mark as read. Try again' : label)}
             accessibilityRole="button"
             accessibilityState={{ busy: loading, disabled }}
             style={[
@@ -58,7 +59,7 @@ const MarkAsRead = ({ projectId, projectIds, userId, containerStyle }) => {
                 <Icon name="double-check" size={16} color={error ? colors.UtilityRed200 : colors.Text03} />
             )}
             <Text style={[localStyles.text, error && localStyles.errorText]} numberOfLines={1}>
-                {translate(error ? 'try again' : 'mark as read')}
+                {translate(error ? 'try again' : label)}
             </Text>
         </TouchableOpacity>
     )

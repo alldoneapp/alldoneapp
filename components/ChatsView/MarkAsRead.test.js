@@ -81,4 +81,18 @@ describe('MarkAsRead', () => {
 
         expect(tree.root.findByType(TouchableOpacity).props.disabled).toBe(true)
     })
+
+    it('labels the all-projects action as mark all as read', () => {
+        const tree = renderButton({ projectIds: ['project-1', 'project-2'] })
+
+        expect(tree.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe('mark all as read')
+        expect(tree.root.findAllByType(Text).some(item => item.props.children === 'mark all as read')).toBe(true)
+    })
+
+    it('keeps the single-project action labeled as mark as read', () => {
+        const tree = renderButton({ projectId: 'project-1' })
+
+        expect(tree.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe('mark as read')
+        expect(tree.root.findAllByType(Text).some(item => item.props.children === 'mark as read')).toBe(true)
+    })
 })
