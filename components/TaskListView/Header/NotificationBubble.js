@@ -71,5 +71,6 @@ const localStyles = StyleSheet.create({
     },
     text: {
         ...styles.body3,
+        color: '#FFFFFF',
     },
 })
