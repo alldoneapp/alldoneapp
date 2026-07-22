@@ -10,15 +10,17 @@ import DismissibleItem from '../UIComponents/DismissibleItem'
 import Backend from '../../utils/BackendBridge'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import URLsPeople, { URL_PEOPLE_DETAILS_WORKFLOW } from '../../URLSystem/People/URLsPeople'
-import { chronoKeysOrder } from '../../utils/HelperFunctions'
+import { getWorkflowStepsIdsSorted } from '../../utils/HelperFunctions'
 import { useSelector, useStore } from 'react-redux'
 import { DV_TAB_USER_WORKFLOW } from '../../utils/TabNavigationConstants'
 import { translate } from '../../i18n/TranslationService'
+import { reorderUserWorkflowSteps } from '../../utils/backends/Users/usersFirestore'
 
 const WorkflowView = ({ user, projectIndex }) => {
     const [steps, setSteps] = useState([])
     const selectedTab = useSelector(state => state.selectedNavItem)
     const [updatingStep, setUpdatingStep] = useState(-1)
+    const [reordering, setReordering] = useState(false)
     const newItemRef = useRef(null)
     const dismissibleRefs = useRef([])
     const store = useStore()
@@ -26,7 +28,7 @@ const WorkflowView = ({ user, projectIndex }) => {
     const onNewStep = steps => {
         const projectId = store.getState().loggedUserProjects[projectIndex].id
         const projectSteps = steps ? { ...steps[projectId] } : {}
-        const stepIds = Object.keys(projectSteps).sort(chronoKeysOrder)
+        const stepIds = getWorkflowStepsIdsSorted(projectSteps)
         const newSteps = []
         for (let id of stepIds) {
             newSteps.push({
@@ -54,6 +56,31 @@ const WorkflowView = ({ user, projectIndex }) => {
             const projectId = store.getState().loggedUserProjects[projectIndex].id
             const data = { projectId: projectId, userId: user.uid }
             URLsPeople.push(URL_PEOPLE_DETAILS_WORKFLOW, data, projectId, user.uid)
+        }
+    }
+
+    const moveStep = async (index, offset) => {
+        const targetIndex = index + offset
+        if (reordering || targetIndex < 0 || targetIndex >= steps.length) return
+
+        const previousSteps = steps
+        const reorderedSteps = [...steps]
+        ;[reorderedSteps[index], reorderedSteps[targetIndex]] = [reorderedSteps[targetIndex], reorderedSteps[index]]
+
+        setSteps(reorderedSteps)
+        setReordering(true)
+        try {
+            const projectId = store.getState().loggedUserProjects[projectIndex].id
+            await reorderUserWorkflowSteps(
+                projectId,
+                user.uid,
+                reorderedSteps.map(step => step.id)
+            )
+        } catch (error) {
+            setSteps(previousSteps)
+            console.error('Could not reorder workflow steps', error)
+        } finally {
+            setReordering(false)
         }
     }
 
@@ -109,6 +136,10 @@ const WorkflowView = ({ user, projectIndex }) => {
                                         stepNumber={index + 1}
                                         step={step}
                                         updatingStep={updatingStep === index}
+                                        canMoveUp={!reordering && index > 0}
+                                        canMoveDown={!reordering && index < steps.length - 1}
+                                        onMoveUp={() => moveStep(index, -1)}
+                                        onMoveDown={() => moveStep(index, 1)}
                                     />
                                 </TouchableOpacity>
                             }

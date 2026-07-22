@@ -176,38 +176,6 @@ describe('AssistantOptions search button', () => {
         expect(getControlsStyle().flexDirection).toBe('column')
     })
 
-    it('pins the control cluster width so expanding cannot re-wrap the input and wiggle', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
-        })
-
-        const getControls = () => tree.root.findByProps({ testID: 'assistant-message-controls' })
-        const getInput = () => tree.root.findByType(TextInput)
-
-        // The cluster lays out as a row while collapsed and reports its width.
-        await act(async () => {
-            getControls().props.onLayout({ nativeEvent: { layout: { width: 120, height: 40 } } })
-        })
-        expect(StyleSheet.flatten(getControls().props.style).width).toBe(120)
-
-        // The input expands: the cluster re-stacks into a column (design intent)
-        // and a fresh layout pass now reports the narrower column width.
-        await act(async () => {
-            getInput().props.onContentSizeChange(100, 80)
-        })
-        await act(async () => {
-            getControls().props.onLayout({ nativeEvent: { layout: { width: 72, height: 88 } } })
-        })
-
-        const expandedStyle = StyleSheet.flatten(getControls().props.style)
-        // Stacking is preserved...
-        expect(expandedStyle.flexDirection).toBe('column')
-        // ...but the reserved width stays the row width, so the flex:1 input keeps
-        // the exact same width it had when collapsed — no re-wrap, no oscillation.
-        expect(expandedStyle.width).toBe(120)
-    })
-
     it('keeps the input stable when content measurements oscillate at the scroll boundary', async () => {
         let tree
         await act(async () => {

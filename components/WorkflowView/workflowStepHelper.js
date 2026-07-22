@@ -8,6 +8,8 @@
 // NOTE: the server mirrors this logic in functions/Tasks/workflowStepHelper.js — Cloud Functions
 // cannot import from outside functions/. Keep the two in sync.
 
+import { getWorkflowStepsIdsSorted } from '../../utils/workflowOrder'
+
 export const REVIEWER_TYPE_ASSISTANT = 'assistant'
 
 export const isAiWorkflowStep = step => !!step && step.reviewerType === REVIEWER_TYPE_ASSISTANT
@@ -17,7 +19,7 @@ export const isAiWorkflowStep = step => !!step && step.reviewerType === REVIEWER
 export const getNextWorkflowStep = (workflow, task) => {
     if (!workflow || !task || task.done) return null
 
-    const stepIds = Object.keys(workflow).sort()
+    const stepIds = getWorkflowStepsIdsSorted(workflow)
     if (stepIds.length === 0) return null
 
     const currentStepId = task.stepHistory?.[task.stepHistory.length - 1]

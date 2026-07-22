@@ -9,9 +9,23 @@ const REVIEWER_TYPE_ASSISTANT = 'assistant'
 
 const isAiWorkflowStep = step => !!step && step.reviewerType === REVIEWER_TYPE_ASSISTANT
 
-// Steps are keyed by push ids, which sort chronologically, and that lexical order *is* the workflow
-// order — there is no explicit order field on a step.
-const getSortedWorkflowStepIds = (workflow = {}) => Object.keys(workflow).sort((a, b) => (a < b ? -1 : 1))
+// Legacy steps are ordered by their chronological push IDs. Once a workflow is reordered, each
+// step receives a sortIndex. Missing sortIndex values (including newly-added steps) remain last.
+const getSortedWorkflowStepIds = (workflow = {}) =>
+    Object.entries(workflow)
+        .sort((a, b) => {
+            const aHasSortIndex = Number.isFinite(a[1] && a[1].sortIndex)
+            const bHasSortIndex = Number.isFinite(b[1] && b[1].sortIndex)
+
+            if (aHasSortIndex || bHasSortIndex) {
+                if (!aHasSortIndex) return 1
+                if (!bHasSortIndex) return -1
+                if (a[1].sortIndex !== b[1].sortIndex) return a[1].sortIndex - b[1].sortIndex
+            }
+
+            return a[0] < b[0] ? -1 : 1
+        })
+        .map(([stepId]) => stepId)
 
 /**
  * The step a task moves to when it leaves `stepId`. Returns DONE_STEP when `stepId` is the last

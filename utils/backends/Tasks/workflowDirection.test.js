@@ -4,7 +4,7 @@ jest.mock('../../../components/TaskListView/Utils/TasksHelper', () => ({
 }))
 
 jest.mock('../../HelperFunctions', () => ({
-    chronoEntriesOrder: (a, b) => (a[0] < b[0] ? -1 : 1),
+    chronoEntriesOrder: jest.requireActual('../../workflowOrder').compareWorkflowEntries,
 }))
 
 import { DEFAULT_IS_FORWARD, getStepWorkflowDirection } from './workflowDirection'
@@ -44,6 +44,17 @@ describe('getStepWorkflowDirection', () => {
 
     it('reports a move to an earlier step as backward', () => {
         expect(getStepWorkflowDirection('step-1', taskOn('step-3'), workflow)).toBe(false)
+    })
+
+    it('uses the reordered workflow when determining direction', () => {
+        const reorderedWorkflow = {
+            'step-1': { ...workflow['step-1'], sortIndex: 2 },
+            'step-2': { ...workflow['step-2'], sortIndex: 1 },
+            'step-3': { ...workflow['step-3'], sortIndex: 0 },
+        }
+
+        expect(getStepWorkflowDirection('step-1', taskOn('step-3'), reorderedWorkflow)).toBe(true)
+        expect(getStepWorkflowDirection('step-3', taskOn('step-1'), reorderedWorkflow)).toBe(false)
     })
 
     it('falls back to the default direction when neither step is in the workflow', () => {

@@ -141,6 +141,8 @@
     "Project members": "Projekt Mitglieder",
     "Workstreams": "Workstreams",
     "Workflow": "Workflow",
+    "Move workflow step up": "Workflow-Schritt nach oben verschieben",
+    "Move workflow step down": "Workflow-Schritt nach unten verschieben",
     "Run AI step": "KI-Schritt ausführen",
     "Statistics": "Statistiken",
     "User": "Nutzer",

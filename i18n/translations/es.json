@@ -147,6 +147,8 @@
     "Project members": "Miembros del proyecto",
     "Workstreams": "Grupos de trabajo",
     "Workflow": "Flujo de trabajo",
+    "Move workflow step up": "Mover el paso del flujo de trabajo hacia arriba",
+    "Move workflow step down": "Mover el paso del flujo de trabajo hacia abajo",
     "Run AI step": "Ejecutar paso de IA",
     "Statistics": "Estadísticas",
     "User": "Usuario",

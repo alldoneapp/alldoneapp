@@ -7,7 +7,7 @@ import store from '../../../../../redux/store'
 import Backend from '../../../../../utils/BackendBridge'
 import { setAssignee } from '../../../../../redux/actions'
 import TasksHelper, { DONE_STEP, OPEN_STEP, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../Utils/TasksHelper'
-import { chronoKeysOrder, popoverToSafePosition } from '../../../../../utils/HelperFunctions'
+import { getWorkflowStepsIdsSorted, popoverToSafePosition } from '../../../../../utils/HelperFunctions'
 import { RECORD_SCREEN_MODAL_ID, RECORD_VIDEO_MODAL_ID } from '../../../../Feeds/CommentsTextInput/textInputHelper'
 import { MENTION_MODAL_ID } from '../../../../ModalsManager/modalsManager'
 import { WORKSTREAM_ID_PREFIX } from '../../../../Workstreams/WorkstreamHelper'
@@ -271,7 +271,7 @@ function CheckBoxWrapper(
                 : scheduleMoveTasksFromOpen(DONE_STEP)
         } else if (userIds.length === 1 && !isLongPress) {
             const workflow = getUserWorkflow(projectId, ownerIsWorkstream ? loggedUser.uid : userId)
-            const workflowStepsIds = workflow ? Object.keys(workflow).sort(chronoKeysOrder) : []
+            const workflowStepsIds = getWorkflowStepsIdsSorted(workflow)
             const stepToMoveId = workflowStepsIds[0] ? workflowStepsIds[0] : DONE_STEP
             shouldAskForRecurrenceDateBasis(stepToMoveId)
                 ? setRecurrenceDateBasisModalIsOpen(true)

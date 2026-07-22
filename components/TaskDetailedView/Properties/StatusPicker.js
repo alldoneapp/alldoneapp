@@ -5,12 +5,7 @@ import Icon from '../../Icon'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import StatusPickerStepItem from './StatusPickerStepItem'
 import TasksHelper, { DONE_STEP, NONE_STEP, OPEN_STEP } from '../../TaskListView/Utils/TasksHelper'
-import {
-    applyPopoverWidth,
-    chronoEntriesOrder,
-    chronoKeysOrder,
-    MODAL_MAX_HEIGHT_GAP,
-} from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, chronoEntriesOrder, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import Hotkeys from 'react-hot-keys'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
@@ -128,7 +123,7 @@ export default function StatusPicker({ projectId, workflow, task, hidePopover })
                                 selected = DONE_STEP
                             }}
                             stepNum={DONE_STEP}
-                            isNextStep={nextStepNum === Object.keys(steps).sort(chronoKeysOrder).length}
+                            isNextStep={nextStepNum === Object.keys(steps).length}
                             currentStepNum={selected}
                             selected={selected === DONE_STEP}
                             workflow={steps}

@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
 import UserTag from '../Tags/UserTag'
 import moment from 'moment'
@@ -9,8 +9,9 @@ import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal
 import { translate } from '../../i18n/TranslationService'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import { isAiWorkflowStep } from './workflowStepHelper'
+import Icon from '../Icon'
 
-const WorkflowStep = ({ step, stepNumber, updatingStep }) => {
+const WorkflowStep = ({ step, stepNumber, updatingStep, canMoveUp, canMoveDown, onMoveUp, onMoveDown }) => {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const addedByData = getUserPresentationData(step.addedById)
     const reviewerData = getUserPresentationData(step.reviewerUid)
@@ -58,6 +59,33 @@ const WorkflowStep = ({ step, stepNumber, updatingStep }) => {
                     )}
                 </View>
             </View>
+
+            {(onMoveUp || onMoveDown) && (
+                <View style={localStyles.orderButtons}>
+                    <TouchableOpacity
+                        accessibilityLabel={translate('Move workflow step up')}
+                        disabled={!canMoveUp}
+                        onPress={event => {
+                            event.stopPropagation?.()
+                            onMoveUp?.()
+                        }}
+                        style={localStyles.orderButton}
+                    >
+                        <Icon name="chevron-up" size={18} color={canMoveUp ? colors.Text02 : colors.Text04} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        accessibilityLabel={translate('Move workflow step down')}
+                        disabled={!canMoveDown}
+                        onPress={event => {
+                            event.stopPropagation?.()
+                            onMoveDown?.()
+                        }}
+                        style={localStyles.orderButton}
+                    >
+                        <Icon name="chevron-down" size={18} color={canMoveDown ? colors.Text02 : colors.Text04} />
+                    </TouchableOpacity>
+                </View>
+            )}
         </View>
     )
 }
@@ -96,5 +124,16 @@ const localStyles = StyleSheet.create({
         borderLeftWidth: 1,
         borderLeftColor: colors.Grey200,
         paddingLeft: 12,
+    },
+    orderButtons: {
+        marginLeft: 8,
+        height: 48,
+        justifyContent: 'space-between',
+    },
+    orderButton: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 })

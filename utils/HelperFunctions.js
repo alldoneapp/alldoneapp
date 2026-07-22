@@ -29,6 +29,7 @@ import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormat
 import { BACKWARD_COMMENT, FORDWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { DONE_STEP, OPEN_STEP } from '../components/TaskListView/Utils/TasksHelper'
 import { updateQuotaTraffic } from './backends/Premium/premiumFirestore'
+import { compareWorkflowEntries, getWorkflowStepsIdsSorted as getSortedWorkflowStepIds } from './workflowOrder'
 
 class HelperFunctions {
     static isValidEmail = email => {
@@ -104,11 +105,7 @@ export const chronoKeysOrderDesc = (a, b) => {
 }
 
 export const chronoEntriesOrder = (a, b) => {
-    if (a[0] < b[0]) {
-        return -1
-    } else {
-        return 1
-    }
+    return compareWorkflowEntries(a, b)
 }
 
 export const chronoEntriesOrderDesc = (a, b) => {
@@ -120,10 +117,7 @@ export const chronoEntriesOrderDesc = (a, b) => {
 }
 
 export const getWorkflowStepsIdsSorted = workflow => {
-    const stepsIds = Object.keys(workflow).sort((a, b) => {
-        return a < b ? -1 : 1
-    })
-    return stepsIds
+    return getSortedWorkflowStepIds(workflow)
 }
 
 export const getCommentDirectionWhenMoveTaskInTheWorklfow = (stepToMoveIndex, workflowStepsIds, stepHistory) => {

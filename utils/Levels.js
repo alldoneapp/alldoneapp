@@ -1,6 +1,6 @@
 import moment from 'moment'
 
-import { chronoKeysOrder } from './HelperFunctions'
+import { getWorkflowStepsIdsSorted } from './HelperFunctions'
 import { updateQuotaXp } from './backends/Premium/premiumFirestore'
 import { ESTIMATION_TYPE_POINTS, getEstimationRealValue } from './EstimationHelper'
 import { BatchWrapper } from '../functions/BatchWrapper/batchWrapper'
@@ -41,7 +41,7 @@ export async function updateXpByDoneTask(userId, estimation, firebase, db, proje
 }
 
 export async function updateXpByDoneForAllReviewers(estimations, workflow, firebase, db, projectId) {
-    const steps = Object.keys(workflow).sort(chronoKeysOrder)
+    const steps = getWorkflowStepsIdsSorted(workflow)
 
     for (let i = 0; i < steps.length; i++) {
         const reviewerUid = workflow[steps[i]].reviewerUid

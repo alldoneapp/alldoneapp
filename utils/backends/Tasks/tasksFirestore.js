@@ -102,7 +102,6 @@ import TasksHelper, {
     RECURRENCE_WEEKLY,
 } from '../../../components/TaskListView/Utils/TasksHelper'
 import {
-    chronoKeysOrder,
     getCommentDirectionWhenMoveTaskInTheWorklfow,
     getWorkflowStepId,
     getWorkflowStepsIdsSorted,
@@ -2696,7 +2695,7 @@ export async function moveTasksFromMiddleOfWorkflow(
         }
     } else {
         workflow = getUserWorkflow(projectId, userId)
-        const workflowStepsIds = Object.keys(workflow).sort(chronoKeysOrder)
+        const workflowStepsIds = getWorkflowStepsIdsSorted(workflow)
         const stepToMoveIndex = workflowStepsIds.indexOf(stepToMoveId)
         const currentStepId = stepHistory[stepHistory.length - 1]
         const currentStepIndex = workflowStepsIds.indexOf(currentStepId)
@@ -3067,7 +3066,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
         }
     } else {
         workflow = getUserWorkflow(projectId, task.userId)
-        const workflowStepsIds = Object.keys(workflow).sort(chronoKeysOrder)
+        const workflowStepsIds = getWorkflowStepsIdsSorted(workflow)
 
         const newUserIds = [task.userId]
         const newStepHistory = [OPEN_STEP]

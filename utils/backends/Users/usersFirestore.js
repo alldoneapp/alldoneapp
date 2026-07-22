@@ -71,6 +71,7 @@ import {
     uploadNewAssistant,
 } from '../Assistants/assistantsFirestore'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
+import { getWorkflowSortIndexUpdates } from '../../workflowOrder'
 
 //ACCESS FUNCTIONS
 
@@ -314,6 +315,10 @@ export async function addUserWorkflowStep(projectId, uid, newStepData) {
     addWorkflowStepFeedChain(projectId, reviewerUid, uid, description)
 
     return newStepId
+}
+
+export async function reorderUserWorkflowSteps(projectId, uid, orderedStepIds) {
+    await updateUserData(uid, getWorkflowSortIndexUpdates(projectId, orderedStepIds), null)
 }
 
 export async function modifyUserWorkflowStep(projectId, uid, stepId, newStepData, oldReviewerUid, externalBatch) {

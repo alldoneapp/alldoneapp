@@ -23,43 +23,6 @@ export const INITIAL_ASSISTANT_INPUT_LAYOUT = {
     scrollEnabled: false,
 }
 
-// Pin the send/voice control cluster to a stable width.
-//
-// The control cluster (voice + send buttons) is a sibling of the flex:1 message
-// input in the same row. When the input expands it deliberately re-stacks those
-// buttons from a row into a column, which makes the cluster *narrower*. Because
-// the input is flex:1, a narrower cluster makes the input WIDER, the browser
-// re-wraps the last line, the measured height drops back to one line, the field
-// collapses, the cluster returns to a (wider) row, the input gets NARROWER, the
-// text wraps again — and the field oscillates forever, "unable to decide" if it
-// wants to expand. This width<->height feedback loop is the real cause of the
-// wiggle; height-only hysteresis (see getAssistantInputLayout) cannot damp it
-// because the content width, and therefore the content height, genuinely
-// changes every cycle.
-//
-// The fix is to make the cluster's horizontal footprint invariant to the
-// expanded state: measure the cluster once while it is collapsed (row layout)
-// and keep that width when it stacks into a column. Only the collapsed
-// measurement is authoritative — a measurement taken while expanded would
-// capture the narrow column width and let the input widen again, re-arming the
-// loop. Sub-pixel jitter is ignored so a stable layout returns the same value
-// (no extra React state churn).
-export const getStableControlsWidth = (measuredWidth, isExpanded, previousWidth = null) => {
-    // While expanded the cluster is a column and reports its narrow width; never
-    // trust it. Hold whatever width we captured in the row layout.
-    if (isExpanded) return previousWidth
-    if (!Number.isFinite(measuredWidth) || measuredWidth <= 0) return previousWidth
-
-    // Compare the *raw* measurement (not the rounded one) against the pinned
-    // width. Rounding first would treat 120.2px as 121px and flip the pin
-    // 120<->121 on every sub-pixel layout jitter, re-arming exactly the kind of
-    // micro-wiggle this helper exists to kill. Only a change of a full pixel or
-    // more is a real resize worth adopting.
-    if (previousWidth != null && Math.abs(measuredWidth - previousWidth) < 1) return previousWidth
-
-    return Math.ceil(measuredWidth)
-}
-
 export const getAssistantInputLayout = (contentHeight, previousLayout = INITIAL_ASSISTANT_INPUT_LAYOUT) => {
     if (!Number.isFinite(contentHeight) || contentHeight < 0) return previousLayout
 

@@ -13,6 +13,7 @@ import { MENTION_MODAL_ID, removeModal, storeModal, WORKFLOW_MODAL_ID } from '..
 import MainModal from './MainModal'
 import { useSelector } from 'react-redux'
 import { setTaskAutoEstimation, stopObservingTask } from '../../../../utils/backends/Tasks/tasksFirestore'
+import { getWorkflowStepsIdsSorted } from '../../../../utils/HelperFunctions'
 
 export default function WorkflowObserverModal({
     projectId,
@@ -145,9 +146,7 @@ export default function WorkflowObserverModal({
     }, [])
 
     useEffect(() => {
-        const stepsIds = Object.keys(workflow).sort((a, b) => {
-            return a < b ? -1 : 1
-        })
+        const stepsIds = getWorkflowStepsIdsSorted(workflow)
 
         const currentStepIndex = stepsIds.indexOf(task.stepHistory[task.stepHistory.length - 1])
         const currentStep = currentStepIndex === -1 ? OPEN_STEP : currentStepIndex
