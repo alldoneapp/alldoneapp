@@ -24,7 +24,7 @@ jest.mock('../../../Utils/TasksHelper', () => ({
     TASK_ASSIGNEE_ASSISTANT_TYPE: 'assistant',
 }))
 jest.mock('../../../../../utils/HelperFunctions', () => ({
-    chronoKeysOrder: jest.fn(),
+    getWorkflowStepsIdsSorted: require('../../../../../utils/workflowOrder').getWorkflowStepsIdsSorted,
     popoverToSafePosition: jest.fn(),
 }))
 jest.mock('../../../../Feeds/CommentsTextInput/textInputHelper', () => ({
@@ -60,6 +60,7 @@ jest.mock('../../../../../i18n/TranslationService', () => ({ translate: text => 
 
 import { moveTasksFromOpen } from '../../../../../utils/backends/Tasks/tasksFirestore'
 import { performEmailLineAction } from '../../../../../utils/backends/EmailLine/emailLineBackend'
+import { getUserWorkflow } from '../../../../ContactsView/Utils/ContactsHelper'
 import CheckBoxWrapper from './CheckBoxWrapper'
 
 const baseTask = {
@@ -88,6 +89,7 @@ describe('CheckBoxWrapper task completion', () => {
         moveTasksFromOpen.mockClear()
         performEmailLineAction.mockClear()
         performEmailLineAction.mockResolvedValue(undefined)
+        getUserWorkflow.mockReset()
         global.alert = jest.fn()
         consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     })
@@ -111,6 +113,52 @@ describe('CheckBoxWrapper task completion', () => {
             await Promise.resolve()
         })
         expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
+    })
+
+    test.each([
+        ['absent', undefined],
+        ['null', null],
+    ])('completes directly when workflow data is %s', async (_description, workflow) => {
+        getUserWorkflow.mockReturnValue(workflow)
+        const task = { ...baseTask, genericData: false }
+        const tree = renderWrapper(task)
+
+        expect(() => {
+            act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+        }).not.toThrow()
+
+        await act(async () => {
+            jest.runAllTimers()
+            await Promise.resolve()
+        })
+        expect(moveTasksFromOpen).toHaveBeenCalledWith(
+            'project-1',
+            task,
+            'done',
+            null,
+            null,
+            task.estimations,
+            'checkbox-1',
+            undefined
+        )
+    })
+
+    test('uses the first explicitly ordered step when workflow order is incomplete', async () => {
+        getUserWorkflow.mockReturnValue({
+            'legacy-step': null,
+            'ordered-step': { sortIndex: 0 },
+            'unordered-step': {},
+        })
+        const task = { ...baseTask, genericData: false }
+        const tree = renderWrapper(task)
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+
+        await act(async () => {
+            jest.runAllTimers()
+            await Promise.resolve()
+        })
+        expect(moveTasksFromOpen.mock.calls[0][2]).toBe('ordered-step')
     })
 
     test('clears optimistic state when the mounted row advances between steps assigned to the same user', () => {

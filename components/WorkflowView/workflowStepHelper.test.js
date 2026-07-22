@@ -52,6 +52,10 @@ describe('next workflow step presentation', () => {
         ).toEqual(['2026-01', '2026-02', '2026-03'])
     })
 
+    test.each([undefined, null])('treats %p workflow data as having no steps', workflowData => {
+        expect(getWorkflowStepsIdsSorted(workflowData)).toEqual([])
+    })
+
     test('builds one atomic user update for the complete reordered workflow', () => {
         expect(getWorkflowSortIndexUpdates('project-1', ['step-2', 'step-1'])).toEqual({
             'workflow.project-1.step-2.sortIndex': 0,

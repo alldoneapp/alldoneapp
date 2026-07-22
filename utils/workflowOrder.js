@@ -16,10 +16,15 @@ export const compareWorkflowEntries = (a, b) => {
     return a[0] < b[0] ? -1 : 1
 }
 
-export const getWorkflowStepsIdsSorted = (workflow = {}) =>
-    Object.entries(workflow)
+export const getWorkflowStepsIdsSorted = workflow => {
+    // A user without a project workflow is represented as null by getUserWorkflow.
+    // Only normalize that legitimate absence; unexpected non-null values should still fail normally.
+    if (workflow == null) return []
+
+    return Object.entries(workflow)
         .sort(compareWorkflowEntries)
         .map(([stepId]) => stepId)
+}
 
 export const getWorkflowSortIndexUpdates = (projectId, orderedStepIds) =>
     orderedStepIds.reduce((updates, stepId, sortIndex) => {
