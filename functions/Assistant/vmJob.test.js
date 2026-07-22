@@ -397,6 +397,27 @@ describe('startVmJob', () => {
         )
     })
 
+    test.each([
+        ['fable', 'claude-fable-5'],
+        ['claude-fable-5', 'claude-fable-5'],
+    ])('accepts Claude model %s and persists it as %s', async (agentModel, expectedModel) => {
+        await startVmJob({
+            objective: 'Research this',
+            taskType: 'research',
+            agent: 'claude',
+            agentModel,
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+            assistantId: 'assistant-1',
+            requestUserId: 'user-1',
+        })
+
+        expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({ agentModel: expectedModel })
+        )
+    })
+
     test('clamps legacy Codex minimal effort requests to low', async () => {
         await startVmJob({
             objective: 'Reply briefly',

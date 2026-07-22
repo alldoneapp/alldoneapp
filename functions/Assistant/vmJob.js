@@ -97,8 +97,9 @@ function normalizeAgentModel(agent, agentModel) {
         return { error: 'agentModel contains invalid characters.' }
     }
     if (agent === 'claude') {
-        return isClaudeModelId(trimmed)
-            ? { value: trimmed }
+        const model = trimmed === 'fable' ? 'claude-fable-5' : trimmed
+        return isClaudeModelId(model)
+            ? { value: model }
             : { error: 'agentModel must be a Claude model id when agent="claude".' }
     }
     if (agent === 'codex') {
