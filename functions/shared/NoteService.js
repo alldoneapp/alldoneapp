@@ -32,6 +32,13 @@ const MAX_PATCH_DELETE_CHARS = 50000
 const MAX_PATCH_DELETE_RATIO = 0.9
 const MAX_PATCH_DELETE_RATIO_MIN_CONTENT = 1000
 
+function seedCurrentNoteFeedObject(batch, note, noteId, currentMilliseconds, generateNoteObjectModel) {
+    batch.feedObjects = {
+        ...batch.feedObjects,
+        [noteId]: generateNoteObjectModel(currentMilliseconds, note || { id: noteId }, noteId),
+    }
+}
+
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
     if (!NoteModelBuilder) {
@@ -463,15 +470,12 @@ class NoteService {
                 [noteId]: this.getNoteUpdateFeedFollowers(note, creator),
             }
 
-            const lastStateRef = this.options.database.doc(`feedsObjectsLastStates/${projectId}/notes/${noteId}`)
-            const lastStateSnap = await lastStateRef.get()
-            if (!lastStateSnap.exists) {
-                const { currentMilliseconds } = generateCurrentDateObject()
-                feedsBatch.feedObjects = {
-                    ...feedsBatch.feedObjects,
-                    [noteId]: generateNoteObjectModel(currentMilliseconds, note || { id: noteId }, noteId),
-                }
-            }
+            // The feed entry is a historical action, while the feed object is the
+            // current header shown above those actions. Always seed the header from
+            // the note that was just persisted. Reusing feedsObjectsLastStates here
+            // kept its old name forever when this service renamed an existing note.
+            const { currentMilliseconds } = generateCurrentDateObject()
+            seedCurrentNoteFeedObject(feedsBatch, note, noteId, currentMilliseconds, generateNoteObjectModel)
 
             await notesFeeds.createNoteUpdatedFeed(projectId, noteId, feedsBatch, creator, true)
 
@@ -2041,5 +2045,6 @@ class NoteService {
 // CommonJS export - works with Node.js and can be converted by bundlers
 module.exports = {
     NoteService,
+    seedCurrentNoteFeedObject,
     default: NoteService,
 }

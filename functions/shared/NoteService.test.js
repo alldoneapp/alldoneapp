@@ -8,7 +8,7 @@ if (!global.crypto) {
 
 const Y = require('yjs')
 
-const { NoteService } = require('./NoteService')
+const { NoteService, seedCurrentNoteFeedObject } = require('./NoteService')
 
 const createService = options =>
     new NoteService({
@@ -433,6 +433,36 @@ describe('NoteService patch storage updates', () => {
 })
 
 describe('NoteService feed persistence', () => {
+    test('refreshes the feed object name from a renamed note while keeping the update action', () => {
+        const historicalAction = { entryText: 'changed note title • From Old note name to New note name' }
+        const batch = {
+            feedObjects: { 'note-1': { type: 'note', name: 'Old note name' } },
+            historicalActions: [historicalAction],
+        }
+        const generateNoteObjectModel = jest.fn((lastChangeDate, note, noteId) => ({
+            type: 'note',
+            lastChangeDate,
+            noteId,
+            name: note.extendedTitle || note.title,
+        }))
+
+        seedCurrentNoteFeedObject(
+            batch,
+            { title: 'new note name', extendedTitle: 'New note name' },
+            'note-1',
+            123,
+            generateNoteObjectModel
+        )
+
+        expect(batch.feedObjects['note-1']).toEqual({
+            type: 'note',
+            lastChangeDate: 123,
+            noteId: 'note-1',
+            name: 'New note name',
+        })
+        expect(batch.historicalActions).toEqual([historicalAction])
+    })
+
     test('loads project users before creating note feeds so notifications have recipients', async () => {
         const createNoteCreatedFeed = jest.fn(async () => {})
         const createNoteFollowedFeed = jest.fn(async () => {})
