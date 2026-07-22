@@ -366,15 +366,6 @@ describe('VM interactive agent bridge', () => {
             )
         }
     })
-
-    test('adds disk-backed runtime storage only when a repo checkout needs an extra writable root', () => {
-        expect(__private__.buildVmAdditionalWritableRoots({ enabled: true })).toEqual([
-            '/home/user/git-metadata',
-            '/home/user/.cache/alldone-vm',
-        ])
-        expect(__private__.buildVmAdditionalWritableRoots({ enabled: false })).toEqual([])
-        expect(__private__.buildVmAdditionalWritableRoots(null)).toEqual([])
-    })
 })
 
 describe('VM agent CLI bootstrap and proxy configuration', () => {
@@ -565,33 +556,9 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(sandbox.commands.run).toHaveBeenCalledWith(
             expect.any(String),
             expect.objectContaining({
-                envs: {
-                    NPM_CONFIG_CACHE: '/home/user/.cache/alldone-vm/npm',
-                    TMPDIR: '/home/user/.cache/alldone-vm/tmp',
-                },
+                envs: { NPM_CONFIG_CACHE: '/tmp/alldone-npm-cache' },
             })
         )
-    })
-
-    test('reports Node ENOSPC exit status 228 as exhausted VM temporary storage', () => {
-        const error = new Error('exit status 228')
-        error.exitCode = 228
-
-        expect(__private__.buildStageError('Claude bootstrap', error).message).toBe(
-            'Claude bootstrap failed. The VM ran out of temporary storage (ENOSPC).'
-        )
-    })
-
-    test('prepares disk-backed runtime directories and migrates the legacy tmpfs npm cache', async () => {
-        const sandbox = { commands: { run: jest.fn(async () => ({})) } }
-        const setupCommand = __private__.buildVmRuntimeSetupCommand()
-
-        await __private__.prepareVmRuntimeDirectories(sandbox)
-
-        expect(sandbox.commands.run).toHaveBeenCalledWith(expect.any(String), { timeoutMs: 5 * 60 * 1000 })
-        expect(setupCommand).toContain("mv '/tmp/alldone-npm-cache' '/home/user/.cache/alldone-vm/npm'")
-        expect(setupCommand).toContain("ln -s '/home/user/.cache/alldone-vm/npm' '/tmp/alldone-npm-cache'")
-        expect(setupCommand).toContain("mkdir -p '/home/user/.cache/alldone-vm'")
     })
 
     test('preserves a structured Claude error on a non-zero exit and redacts secrets', () => {

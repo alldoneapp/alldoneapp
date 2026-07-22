@@ -60,15 +60,12 @@ const VM_SESSION_LEASE_MS = 2 * 60 * 1000
 const CODEX_AUTH_DIR = '/home/user/.codex'
 const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`
 const AGENT_CLI_NPM_PREFIX = '/home/user/.local'
-// Keep runner and agent scratch data on the sandbox's disk-backed home filesystem.
-// E2B mounts /tmp as a 1 GB tmpfs; browser/tool downloads can fill it even while the
-// main filesystem has ample capacity, causing Node's ENOSPC (-28) to surface as exit
-// status 228. The environment is inherited by agent shell commands as well.
-const VM_RUNTIME_ROOT = '/home/user/.cache/alldone-vm'
-const VM_NPM_CACHE_DIR = `${VM_RUNTIME_ROOT}/npm`
-const VM_TMP_DIR = `${VM_RUNTIME_ROOT}/tmp`
-const LEGACY_VM_NPM_CACHE_DIR = '/tmp/alldone-npm-cache'
-const VM_DISK_FULL_EXIT_STATUS = 228
+// E2B's managed images may ship /home/user/.npm from an immutable/root-owned
+// layer, while Codex's nested workspace sandbox only guarantees writes below the
+// checkout and /tmp. Use a per-sandbox temp cache that works in both layers. This
+// environment is inherited by the agent, so repository-level npm install/ci
+// commands use the writable cache from their first attempt too.
+const VM_NPM_CACHE_DIR = '/tmp/alldone-npm-cache'
 const MAX_BOOTSTRAP_DIAGNOSTIC_CHARS = 16 * 1024
 const VM_AGENT_BRIDGE_DIR = '/home/user/.alldone/agent-bridge'
 const VM_AGENT_BRIDGE_INPUT_PATH = `${VM_AGENT_BRIDGE_DIR}/input.json`
@@ -470,37 +467,10 @@ function uniqueDefined(values) {
 
 function buildSandboxCommandEnv(...environments) {
     return Object.assign({}, ...environments.filter(environment => environment && typeof environment === 'object'), {
-        // Apply last so a template or credential environment cannot restore npm's
-        // read-only default cache or the size-limited /tmp tmpfs.
+        // Apply last so a template or credential environment cannot accidentally
+        // restore npm's read-only default cache.
         NPM_CONFIG_CACHE: VM_NPM_CACHE_DIR,
-        TMPDIR: VM_TMP_DIR,
     })
-}
-
-function buildVmRuntimeSetupCommand() {
-    return [
-        `mkdir -p ${shellQuoteArg(VM_RUNTIME_ROOT)} ${shellQuoteArg(VM_TMP_DIR)}`,
-        `if [ -d ${shellQuoteArg(LEGACY_VM_NPM_CACHE_DIR)} ] && [ ! -L ${shellQuoteArg(
-            LEGACY_VM_NPM_CACHE_DIR
-        )} ] && [ ! -e ${shellQuoteArg(VM_NPM_CACHE_DIR)} ]; then mv ${shellQuoteArg(
-            LEGACY_VM_NPM_CACHE_DIR
-        )} ${shellQuoteArg(VM_NPM_CACHE_DIR)}; fi`,
-        `mkdir -p ${shellQuoteArg(VM_NPM_CACHE_DIR)}`,
-        `if [ ! -e ${shellQuoteArg(LEGACY_VM_NPM_CACHE_DIR)} ] && [ ! -L ${shellQuoteArg(
-            LEGACY_VM_NPM_CACHE_DIR
-        )} ]; then ln -s ${shellQuoteArg(VM_NPM_CACHE_DIR)} ${shellQuoteArg(LEGACY_VM_NPM_CACHE_DIR)}; fi`,
-        `chmod 700 ${shellQuoteArg(VM_RUNTIME_ROOT)} ${shellQuoteArg(VM_NPM_CACHE_DIR)} ${shellQuoteArg(VM_TMP_DIR)}`,
-    ].join('\n')
-}
-
-async function prepareVmRuntimeDirectories(sandbox) {
-    await sandbox.commands.run(`bash -lc ${shellQuoteArg(buildVmRuntimeSetupCommand())}`, {
-        timeoutMs: 5 * 60 * 1000,
-    })
-}
-
-function buildVmAdditionalWritableRoots(gitContext) {
-    return gitContext && gitContext.enabled ? [GIT_METADATA_ROOT, VM_RUNTIME_ROOT] : []
 }
 
 function getVmParentObjectPath(projectId, objectType, objectId) {
@@ -1610,14 +1580,6 @@ function buildStageError(stage, error, stdout = '', stderr = '') {
     const diagnostics = [cleanStdout ? `stdout: ${cleanStdout}` : '', stderr ? `stderr: ${stderr}` : '']
         .filter(Boolean)
         .join('\n')
-    const exitCode = error?.exitCode ?? error?.code
-    const rawDetail = [diagnostics, error?.message].filter(Boolean).join('\n')
-    if (
-        Number(exitCode) === VM_DISK_FULL_EXIT_STATUS ||
-        /\bENOSPC\b|no space left on device|exit status 228\b/i.test(rawDetail)
-    ) {
-        return new Error(`${stage} failed. The VM ran out of temporary storage (ENOSPC).`)
-    }
     const detail = sanitizeVmErrorText(diagnostics || error?.message || '')
     return new Error(`${stage} failed.${detail ? ` ${detail}` : ''}`)
 }
@@ -2802,8 +2764,6 @@ async function runAgentInSandbox(
 
     try {
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
-        await prepareVmRuntimeDirectories(sandbox)
-        await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
         const executionMode = vmJob.executionMode || 'automatic'
         const usesAgentBridge = VM_INTERACTIVE_EXECUTION_MODES.includes(executionMode)
         if (usesAgentBridge && !isInteractiveVmExecutionEnabled(process.env, vmJob.requestUserId)) {
@@ -2975,7 +2935,6 @@ async function runAgentInSandbox(
             mode: agentCredentials.mode,
         })
         const agentEnv = config.sandboxEnv(agentCredentials)
-        const additionalWritableRoots = buildVmAdditionalWritableRoots(gitContext)
         const runEnvs = buildSandboxCommandEnv(
             agentEnv,
             gitContext && gitContext.enabled ? buildGitEnv(gitContext) : null,
@@ -2990,7 +2949,7 @@ async function runAgentInSandbox(
                 prompt,
                 runDetails,
                 agentCredentials,
-                additionalWritableRoots,
+                additionalWritableRoots: gitContext && gitContext.enabled ? [GIT_METADATA_ROOT] : [],
             })
             await sandbox.files.write(VM_AGENT_BRIDGE_INPUT_PATH, JSON.stringify(bridgeInput))
             agentCommand = `node ${shellQuoteArg(bridgePath)} ${shellQuoteArg(
@@ -3002,7 +2961,7 @@ async function runAgentInSandbox(
                 agentReasoningEffort: runDetails.effort,
                 proxyBaseUrl: agentCredentials.baseUrl,
                 subscriptionUsed: !!subscriptionAuth,
-                additionalWritableRoots,
+                additionalWritableRoots: gitContext && gitContext.enabled ? [GIT_METADATA_ROOT] : [],
             })
         }
         const command = `export PATH=${AGENT_CLI_NPM_PREFIX}/bin:$PATH && mkdir -p /home/user/output && cd ${workdir} && ${agentCommand}`
@@ -4052,9 +4011,6 @@ module.exports = {
         buildVmAgentBridgeInput,
         renderVmInteractionStatus,
         buildSandboxCommandEnv,
-        buildVmRuntimeSetupCommand,
-        prepareVmRuntimeDirectories,
-        buildVmAdditionalWritableRoots,
         buildClaudeInstallGuard,
         buildCodexInstallGuard,
         sanitizeVmErrorText,
