@@ -376,12 +376,13 @@ describe('runWorkflowAiStep', () => {
         })
     })
 
-    it('skips the workflow prompt while a VM job for the task is active', async () => {
+    it('waits when sent back to the AI step while a separate chat-triggered VM is active', async () => {
         mockStore.set('pendingWebhooks/existing-vm-run', {
             kind: 'vm_job',
             projectId: PROJECT,
             objectType: 'tasks',
             objectId: TASK,
+            assistantId: 'different-chat-assistant',
             status: 'running',
             createdAt: Date.now() - 1000,
         })
@@ -390,6 +391,37 @@ describe('runWorkflowAiStep', () => {
 
         expect(mockPostUserRequestComment).not.toHaveBeenCalled()
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: RUN_STATUS_AWAITING_VM,
+            awaitingCorrelationIds: ['existing-vm-run'],
+            awaitingSkipReason: 'task_ai_run_already_active',
+        })
+    })
+
+    it('resumes and advances only after the separate chat-triggered VM finishes', async () => {
+        mockStore.set(`workflowAiRuns/${RUN_ID}`, { ...run, status: 'running', createdAt: 1000 })
+        mockStore.set('pendingWebhooks/existing-vm-run', {
+            kind: 'vm_job',
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            assistantId: 'different-chat-assistant',
+            status: 'running',
+            createdAt: Date.now() - 1000,
+        })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(0)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+
+        mockStore.set('pendingWebhooks/existing-vm-run', {
+            ...mockStore.get('pendingWebhooks/existing-vm-run'),
+            status: 'completed',
+        })
+
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
             status: 'skipped',
