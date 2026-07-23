@@ -53,6 +53,7 @@ describe('CommentPopupWorkflowControls', () => {
         expect(buttons.props.selectedCustomStep).toBe(false)
         expect(buttons.props.disabled).toBe(false)
         expect(buttons.props.shortcutsEnabled).toBe(false)
+        expect(buttons.props.compact).toBe(true)
     })
 
     it('uses the standard workflow move action in both directions', async () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import v4 from 'uuid/v4'
 
 import store from '../../../../redux/store'
@@ -9,6 +9,7 @@ import { moveTasksFromMiddleOfWorkflow, moveTasksFromOpen } from '../../../../ut
 import { DONE_STEP, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
 import MainButtons from '../../../WorkflowModal/MainButtons'
 import { WORKFLOW_BACKWARD } from '../../../WorkflowModal/workflowDirections'
+import { colors } from '../../../styles/global'
 
 export const getCommentPopupWorkflowTargets = (task, workflow) => {
     const stepIds = getWorkflowStepsIdsSorted(workflow)
@@ -85,14 +86,25 @@ export default function CommentPopupWorkflowControls({ projectId, task, workflow
     }
 
     return (
-        <View testID="comment-popup-workflow-controls">
+        <View testID="comment-popup-workflow-controls" style={localStyles.container}>
             <MainButtons
                 onDonePress={moveTask}
                 selectedCustomStep={false}
                 currentStep={targets.currentStep}
                 disabled={disabled || submitting}
                 shortcutsEnabled={false}
+                compact
             />
         </View>
     )
 }
+
+const localStyles = StyleSheet.create({
+    container: {
+        backgroundColor: colors.Secondary400,
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        width: '100%',
+    },
+})

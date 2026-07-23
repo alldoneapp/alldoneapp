@@ -12,6 +12,7 @@ export default function ForwardButton({
     currentStep,
     disabled,
     shortcutsEnabled = true,
+    buttonStyle,
 }) {
     const text = translate(
         currentStep === OPEN_STEP ? 'Go to next step' : selectedCustomStep ? 'Send to custom step' : 'Send forward'
@@ -29,6 +30,7 @@ export default function ForwardButton({
             onPress={handleOnPress}
             shortcutText={shortcutsEnabled ? 'Enter' : undefined}
             shortcutStyle={{ backgroundColor: colors.Secondary200 }}
+            buttonStyle={buttonStyle}
         />
     )
 }
