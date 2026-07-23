@@ -303,7 +303,7 @@ describe('WhatsApp call sideband configuration', () => {
         await new Promise(resolve => setImmediate(resolve))
         expect(addBaseInstructions).toHaveBeenCalled()
         expect(getOpenTasksContextMessage).toHaveBeenCalledWith('user-1', null)
-        expect(getConversationHistory).toHaveBeenCalledWith('project-1', 'chat-1', 50, null, 1700000000000)
+        expect(getConversationHistory).toHaveBeenCalledWith('project-1', 'chat-1', 20, null, 1700000000000)
         const enrichedSessionUpdate = socket.send.mock.calls
             .map(([payload]) => JSON.parse(payload))
             .reverse()
