@@ -53,6 +53,7 @@ import { PROJECT_TYPE_SHARED } from '../SettingsView/ProjectsSettings/ProjectsSe
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
+import TaskChatWorkflowControls from './TaskChatWorkflowControls'
 
 const TaskDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
@@ -325,15 +326,18 @@ const TaskDetailedView = ({ navigation }) => {
                                     />
                                 )}
                                 {selectedTab === DV_TAB_TASK_CHAT && (
-                                    <ChatBoard
-                                        chat={{ id: task.id, type: 'tasks' }}
-                                        projectId={projectId}
-                                        chatTitle={task.name}
-                                        assistantId={assistantId}
-                                        setAssistantId={setAssistantId}
-                                        objectType={'tasks'}
-                                        parentObject={task}
-                                    />
+                                    <>
+                                        <TaskChatWorkflowControls projectId={projectId} task={task} />
+                                        <ChatBoard
+                                            chat={{ id: task.id, type: 'tasks' }}
+                                            projectId={projectId}
+                                            chatTitle={task.name}
+                                            assistantId={assistantId}
+                                            setAssistantId={setAssistantId}
+                                            objectType={'tasks'}
+                                            parentObject={task}
+                                        />
+                                    </>
                                 )}
                                 {selectedTab === DV_TAB_TASK_UPDATES && (
                                     <RootViewFeedsTask projectId={projectId} taskId={task.id} task={task} />

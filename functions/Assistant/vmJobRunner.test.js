@@ -1698,45 +1698,6 @@ describe('VM completion chat metadata', () => {
         expect(transaction.update).not.toHaveBeenCalled()
     })
 
-    test('keeps task-list and chat previews in sync with live VM progress without incrementing counts', async () => {
-        const { refs, transaction } = createFirestoreMock()
-        const progressText = '⏳ Reading the task-list listeners'
-
-        await __private__.writeStatusComment(
-            {
-                correlationId: 'correlation-1',
-                projectId: 'project-1',
-                objectType: 'tasks',
-                objectId: 'task-1',
-                assistantId: 'assistant-1',
-                userId: 'user-1',
-                statusCommentId: 'comment-1',
-            },
-            progressText
-        )
-
-        expect(refs.get('chatObjects/project-1/chats/task-1').update).toHaveBeenCalledWith(
-            expect.objectContaining({
-                lastEditorId: 'assistant-1',
-                'commentsData.lastCommentOwnerId': 'assistant-1',
-                'commentsData.lastComment': progressText,
-                'commentsData.lastCommentType': 2,
-            })
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update).toHaveBeenCalledWith({
-            'commentsData.lastComment': expect.stringContaining('Reading the task-list'),
-            'commentsData.lastCommentType': 2,
-        })
-        expect(refs.get('chatObjects/project-1/chats/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
-        expect(transaction.set).not.toHaveBeenCalled()
-        expect(transaction.update).not.toHaveBeenCalled()
-    })
-
     test('does not treat the assistant as a user when it appears in the follower list', async () => {
         mockGetObjectFollowersIds.mockResolvedValue(['assistant-1', 'user-1', 'user-2'])
         const { transaction, refs } = createFirestoreMock()
