@@ -791,6 +791,8 @@
     "Stop observing": "Aufhören zu beobachten",
     "Accept task?": "Akzeptiere die Aufgabe",
     "Congrats, you have done it!": "Du hast es geschafft!",
+    "Your step is complete": "Dein Schritt ist abgeschlossen",
+    "The Assistant step is ready to run": "Der Assistentenschritt kann jetzt ausgeführt werden",
     "Change task estimation": "Wähle die Aufgaben-Schätzung",
     "Change step estimation": "Wechsle die Schritt-Schätzung",
     "Change workflow step": "Wähle den Workflow Step",
