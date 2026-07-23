@@ -526,6 +526,58 @@ function buildVmChatLink(projectId, objectType, objectId) {
     return `${getBaseUrl()}/projects/${projectId}/${objectType === 'topics' ? 'chats' : objectType}/${objectId}/chat`
 }
 
+function getNonEmptyString(...values) {
+    return values.find(value => typeof value === 'string' && value.trim())?.trim() || ''
+}
+
+/**
+ * Restore the immutable thread routing context captured when the VM was dispatched.
+ *
+ * pendingWebhooks is a mutable status record and older records may not have all routing fields.
+ * vmJobs is the request snapshot, so it wins when available; the duplicated top-level fields keep
+ * jobs created before callbackContext was introduced compatible. If an assistant is absent from
+ * both records, leave it absent — guessing from the task's current/default assistant is exactly
+ * what can route a delayed callback to the wrong project assistant.
+ */
+function resolveVmCallbackContext(pendingWebhook = {}, vmJob = {}) {
+    const jobContext = vmJob.callbackContext || {}
+    const pendingContext = pendingWebhook.callbackContext || {}
+
+    const projectId = getNonEmptyString(
+        jobContext.projectId,
+        vmJob.projectId,
+        pendingContext.projectId,
+        pendingWebhook.projectId
+    )
+    const objectType =
+        getNonEmptyString(
+            jobContext.objectType,
+            vmJob.objectType,
+            pendingContext.objectType,
+            pendingWebhook.objectType
+        ) || 'tasks'
+    const objectId = getNonEmptyString(
+        jobContext.objectId,
+        vmJob.objectId,
+        pendingContext.objectId,
+        pendingWebhook.objectId
+    )
+    const assistantId = getNonEmptyString(
+        jobContext.assistantId,
+        vmJob.assistantId,
+        pendingContext.assistantId,
+        pendingWebhook.assistantId
+    )
+
+    return {
+        ...pendingWebhook,
+        ...(projectId ? { projectId } : {}),
+        objectType,
+        ...(objectId ? { objectId } : {}),
+        ...(assistantId ? { assistantId } : {}),
+    }
+}
+
 async function resolveVmCompletionFollowers(pendingWebhook) {
     const { projectId, objectType = 'tasks', objectId, assistantId, isPublicFor = [] } = pendingWebhook
     let followerIds = []
@@ -620,7 +672,12 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
                 [`commentsData.lastComment`]: parentLastComment,
                 [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
                 [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
-                ...(activateTaskAssistant && objectType === 'tasks' ? { isAssistantEnabled: true } : {}),
+                ...(activateTaskAssistant && objectType === 'tasks'
+                    ? {
+                          assistantId,
+                          isAssistantEnabled: true,
+                      }
+                    : {}),
             })
         }
 
@@ -977,7 +1034,10 @@ async function writeStatusComment(
     const runIsActive =
         runStatus === 'running' || runStatus === 'awaiting_user' || runStatus === VM_JOB_CANCEL_REQUESTED_STATUS
     const commentPayload = {
-        creatorId: assistantId,
+        // A legacy job may be missing assistant identity in both persisted records. An existing
+        // status comment already has its creator, so merge the result without replacing it. Never
+        // guess a default assistant merely to make the callback writable.
+        ...(assistantId ? { creatorId: assistantId } : {}),
         commentText: text,
         originalContent: text,
         commentType: 'STAYWARD_COMMENT',
@@ -1005,6 +1065,13 @@ async function writeStatusComment(
         // When it becomes the final answer, move it to completion time so chronological
         // chat views show: user request -> VM started confirmation -> VM result.
         commentPayload.created = Date.now()
+    }
+
+    if (!statusCommentId && !assistantId) {
+        console.warn('🖥️ VM JOB: Cannot create fallback status comment without originating assistant', {
+            correlationId: pendingWebhook.correlationId,
+        })
+        return
     }
 
     try {
@@ -3587,6 +3654,7 @@ async function runVmJobByCorrelationId(correlationId) {
     }
     let pendingWebhook = pendingDoc.data()
     const vmJob = jobDoc.data()
+    pendingWebhook = resolveVmCallbackContext(pendingWebhook, vmJob)
     // Thread session doc — used to hand off to queued follow-ups when this job settles.
     const threadSessionRef = db.doc(`vmSessions/${vmSessionDocId(vmJob)}`)
 
@@ -3782,7 +3850,10 @@ async function runVmJobByCorrelationId(correlationId) {
                 await throwIfVmJobCancelled(pendingRef, Number(error.runtimeGoldCharged) || 0)
                 const refreshedPendingSnapshot = await pendingRef.get().catch(() => null)
                 if (refreshedPendingSnapshot?.exists) {
-                    pendingWebhook = { ...pendingWebhook, ...(refreshedPendingSnapshot.data() || {}) }
+                    pendingWebhook = resolveVmCallbackContext(
+                        { ...pendingWebhook, ...(refreshedPendingSnapshot.data() || {}) },
+                        vmJob
+                    )
                 }
                 await pendingRef
                     .set(
@@ -4119,5 +4190,6 @@ module.exports = {
         buildVmFinalCommentText,
         applyVmCompletionMetadata,
         resolveVmCompletionFollowers,
+        resolveVmCallbackContext,
     },
 }

@@ -1521,9 +1521,84 @@ describe('VM completion chat metadata', () => {
         expect(transaction.update).toHaveBeenCalledWith(
             refs.get('items/project-1/tasks/task-1'),
             expect.objectContaining({
+                assistantId: 'assistant-1',
                 isAssistantEnabled: true,
             })
         )
+    })
+
+    test('restores callback routing from the immutable VM job snapshot', () => {
+        expect(
+            __private__.resolveVmCallbackContext(
+                {
+                    projectId: 'changed-project',
+                    objectType: 'tasks',
+                    objectId: 'changed-task',
+                    assistantId: 'default-assistant',
+                },
+                {
+                    callbackContext: {
+                        projectId: 'origin-project',
+                        objectType: 'tasks',
+                        objectId: 'origin-task',
+                        assistantId: 'origin-assistant',
+                    },
+                }
+            )
+        ).toMatchObject({
+            projectId: 'origin-project',
+            objectType: 'tasks',
+            objectId: 'origin-task',
+            assistantId: 'origin-assistant',
+        })
+    })
+
+    test('recovers legacy callback routing from VM job top-level fields without guessing missing assistants', () => {
+        expect(
+            __private__.resolveVmCallbackContext(
+                { correlationId: 'legacy-correlation' },
+                {
+                    projectId: 'legacy-project',
+                    objectId: 'legacy-task',
+                    assistantId: 'legacy-assistant',
+                }
+            )
+        ).toMatchObject({
+            projectId: 'legacy-project',
+            objectType: 'tasks',
+            objectId: 'legacy-task',
+            assistantId: 'legacy-assistant',
+        })
+
+        expect(
+            __private__.resolveVmCallbackContext(
+                { correlationId: 'incomplete-correlation' },
+                { projectId: 'legacy-project', objectId: 'legacy-task' }
+            )
+        ).not.toHaveProperty('assistantId')
+    })
+
+    test('finalizes an existing legacy status comment without guessing a missing assistant', async () => {
+        const { refs, transaction } = createFirestoreMock()
+
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'incomplete-correlation',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                userId: 'user-1',
+                statusCommentId: 'comment-1',
+            },
+            'Finished legacy VM result',
+            { isFinal: true, output: 'Finished legacy VM result' }
+        )
+
+        expect(
+            refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set
+        ).toHaveBeenCalledWith(expect.not.objectContaining({ creatorId: expect.anything() }), { merge: true })
+        expect(transaction.set).not.toHaveBeenCalled()
+        expect(transaction.update).not.toHaveBeenCalled()
     })
 
     test('does not double-apply metadata when the VM finalizer is retried', async () => {

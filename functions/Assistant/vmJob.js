@@ -316,6 +316,14 @@ async function startVmJob({
 
     const correlationId = crypto.randomUUID()
     const userIdsToNotify = [requestUserId]
+    // Frozen routing context for the asynchronous callback. The task/chat can change while the VM
+    // runs, so the worker must not re-resolve the assistant from their eventual state.
+    const callbackContext = {
+        projectId,
+        objectType,
+        objectId,
+        assistantId,
+    }
 
     // Decide launch-vs-queue atomically. If this thread's VM is already running (or has jobs
     // waiting), queue this one so it runs on the SAME sandbox when the current job finishes, instead
@@ -403,6 +411,7 @@ async function startVmJob({
         objectId,
         objectType,
         assistantId,
+        callbackContext,
         userIdsToNotify,
         isPublicFor,
         statusCommentId,
@@ -473,6 +482,7 @@ async function startVmJob({
             objectType,
             objectId,
             assistantId,
+            callbackContext,
             requestUserId,
             createdAt: Date.now(),
         })
