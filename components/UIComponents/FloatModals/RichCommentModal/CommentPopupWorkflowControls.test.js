@@ -66,12 +66,30 @@ describe('CommentPopupWorkflowControls', () => {
         expect(tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })).toBeTruthy()
     })
 
-    it('offers every workflow destination except the current step', () => {
+    it('offers every workflow step and identifies the current step', () => {
         expect(getCommentPopupSelectableSteps(task, workflow)).toEqual([
-            { id: -1, label: 'Open' },
-            { id: 'step2', label: 'Second review' },
-            { id: -2, label: 'Done' },
+            { id: -1, label: 'Open', current: false },
+            { id: 'step1', label: 'First review', current: true },
+            { id: 'step2', label: 'Second review', current: false },
+            { id: -2, label: 'Done', current: false },
         ])
+    })
+
+    it('shows the current workflow step before and after opening the selector', async () => {
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls projectId="project-1" task={task} workflow={workflow} />
+        )
+        const selector = tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })
+
+        expect(selector.props.accessibilityLabel).toBe('Select workflow step: First review')
+        expect(selector.findByType('Text').props.children).toBe('Current workflow step: First review')
+
+        await act(async () => Promise.resolve())
+        act(() => selector.props.onPress())
+
+        const currentStep = tree.root.findByProps({ testID: 'comment-popup-current-workflow-step' })
+        expect(currentStep.props.accessibilityState).toEqual({ selected: true, disabled: true })
+        expect(currentStep.findAllByType('Text').map(text => text.props.children)).toEqual(['First review', 'Current'])
     })
 
     it('moves directly to a selected non-adjacent workflow step', async () => {

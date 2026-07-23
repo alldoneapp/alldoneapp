@@ -38,7 +38,7 @@ export const getCommentPopupSelectableSteps = (task, workflow) => {
         { id: OPEN_STEP, label: translate('Open') },
         ...targets.stepIds.map(id => ({ id, label: workflow[id].description })),
         { id: DONE_STEP, label: translate('Done') },
-    ].filter(step => step.id !== targets.currentStepId)
+    ].map(step => ({ ...step, current: step.id === targets.currentStepId }))
 }
 
 export default function CommentPopupWorkflowControls({
@@ -63,6 +63,8 @@ export default function CommentPopupWorkflowControls({
     }, [currentStepId, task?.done])
 
     if (!targets) return null
+
+    const currentStepLabel = workflow[targets.currentStepId]?.description
 
     const moveTaskToStep = async (stepToMoveId, source) => {
         if (disabled || submittingRef.current) return
@@ -129,12 +131,12 @@ export default function CommentPopupWorkflowControls({
                 onPress={() => setSelectorOpen(open => !open)}
                 disabled={controlsDisabled}
                 accessibilityRole="button"
-                accessibilityLabel={translate('Select workflow step')}
+                accessibilityLabel={`${translate('Select workflow step')}: ${currentStepLabel}`}
                 accessibilityState={{ expanded: selectorOpen, disabled: controlsDisabled }}
             >
                 <Icon name="list" size={18} color={colors.Text03} />
                 <Text style={[styles.subtitle2, localStyles.selectorButtonText]} numberOfLines={1}>
-                    {translate('Select workflow step')}
+                    {`${translate('Current workflow step')}: ${currentStepLabel}`}
                 </Text>
                 <Icon name={selectorOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.Text03} />
             </TouchableOpacity>
@@ -148,15 +150,25 @@ export default function CommentPopupWorkflowControls({
                     {selectableSteps.map(step => (
                         <TouchableOpacity
                             key={step.id}
-                            style={localStyles.stepOption}
+                            testID={step.current ? 'comment-popup-current-workflow-step' : undefined}
+                            style={[localStyles.stepOption, step.current && localStyles.currentStepOption]}
                             onPress={() => moveTaskToStep(step.id, 'selector')}
-                            disabled={controlsDisabled}
+                            disabled={controlsDisabled || step.current}
                             accessibilityRole="button"
                             accessibilityLabel={`${translate('Select workflow step')}: ${step.label}`}
+                            accessibilityState={{ selected: step.current, disabled: controlsDisabled || step.current }}
                         >
                             <Text style={[styles.subtitle1, localStyles.stepOptionText]} numberOfLines={2}>
                                 {step.label}
                             </Text>
+                            {step.current && (
+                                <View style={localStyles.currentStepIndicator}>
+                                    <Icon name="check" size={14} color={colors.Primary100} />
+                                    <Text style={[styles.caption2, localStyles.currentStepText]}>
+                                        {translate('Current')}
+                                    </Text>
+                                </View>
+                            )}
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
@@ -206,8 +218,10 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 8,
     },
     stepOption: {
+        alignItems: 'center',
         borderBottomColor: colors.Secondary200,
         borderBottomWidth: 1,
+        flexDirection: 'row',
         justifyContent: 'center',
         minHeight: 40,
         paddingHorizontal: 8,
@@ -215,5 +229,18 @@ const localStyles = StyleSheet.create({
     },
     stepOptionText: {
         color: 'white',
+        flex: 1,
+    },
+    currentStepOption: {
+        backgroundColor: colors.Secondary200,
+    },
+    currentStepIndicator: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        marginLeft: 8,
+    },
+    currentStepText: {
+        color: colors.Primary100,
+        marginLeft: 4,
     },
 })

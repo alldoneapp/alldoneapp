@@ -158,6 +158,7 @@
     "Empty inbox": "Bandeja de entrada vacía",
     "Empty inbox achievement description": "Cada cuadrado marca un día en el que vaciaste la bandeja de entrada.",
     "Current streak": "Racha actual",
+    "Current workflow step": "Paso actual",
     "Longest streak": "Racha más larga",
     "Total days": "Días totales",
     "Empty inbox reached on": "Bandeja de entrada vacía alcanzada el %{date}",

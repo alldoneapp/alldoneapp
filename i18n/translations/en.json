@@ -165,6 +165,7 @@
     "Empty inbox": "Empty inbox",
     "Empty inbox achievement description": "Each square marks a day when you reached empty inbox.",
     "Current streak": "Current streak",
+    "Current workflow step": "Current step",
     "Longest streak": "Longest streak",
     "Total days": "Total days",
     "Empty inbox reached on": "Empty inbox reached on %{date}",
