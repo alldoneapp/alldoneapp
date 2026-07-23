@@ -1,7 +1,10 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
-import CommentPopupWorkflowControls, { getCommentPopupWorkflowTargets } from './CommentPopupWorkflowControls'
+import CommentPopupWorkflowControls, {
+    getCommentPopupSelectableSteps,
+    getCommentPopupWorkflowTargets,
+} from './CommentPopupWorkflowControls'
 import { moveTasksFromMiddleOfWorkflow, moveTasksFromOpen } from '../../../../utils/backends/Tasks/tasksFirestore'
 
 jest.mock('uuid/v4', () => () => 'popup-workflow-action')
@@ -18,6 +21,8 @@ jest.mock('../../../../utils/backends/Tasks/tasksFirestore', () => ({
     moveTasksFromOpen: jest.fn().mockResolvedValue(undefined),
 }))
 jest.mock('../../../WorkflowModal/MainButtons', () => 'MainButtons')
+jest.mock('../../../Icon', () => 'Icon')
+jest.mock('../../../../i18n/TranslationService', () => ({ translate: text => text }))
 jest.mock('../../../WorkflowModal/workflowDirections', () => ({
     WORKFLOW_BACKWARD: 'BACKWARD',
     WORKFLOW_FORWARD: 'FORWARD',
@@ -41,7 +46,11 @@ const task = {
 }
 
 describe('CommentPopupWorkflowControls', () => {
-    beforeEach(() => jest.clearAllMocks())
+    beforeEach(() => {
+        jest.clearAllMocks()
+        moveTasksFromMiddleOfWorkflow.mockResolvedValue(undefined)
+        moveTasksFromOpen.mockResolvedValue(undefined)
+    })
 
     it('shows the established forward/back controls for a task on a workflow step', () => {
         const tree = renderer.create(
@@ -54,6 +63,74 @@ describe('CommentPopupWorkflowControls', () => {
         expect(buttons.props.disabled).toBe(false)
         expect(buttons.props.shortcutsEnabled).toBe(false)
         expect(buttons.props.compact).toBe(true)
+        expect(tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })).toBeTruthy()
+    })
+
+    it('offers every workflow destination except the current step', () => {
+        expect(getCommentPopupSelectableSteps(task, workflow)).toEqual([
+            { id: -1, label: 'Open' },
+            { id: 'step2', label: 'Second review' },
+            { id: -2, label: 'Done' },
+        ])
+    })
+
+    it('moves directly to a selected non-adjacent workflow step', async () => {
+        const workflowWithThirdStep = {
+            ...workflow,
+            step3: { description: 'Final review' },
+        }
+        const taskOnThirdStep = { ...task, stepHistory: [-1, 'step1', 'step2', 'step3'] }
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls
+                projectId="project-1"
+                task={taskOnThirdStep}
+                workflow={workflowWithThirdStep}
+            />
+        )
+
+        await act(async () => Promise.resolve())
+        act(() => tree.root.findByProps({ testID: 'comment-popup-workflow-selector' }).props.onPress())
+        const firstReview = tree.root.findByProps({ accessibilityLabel: 'Select workflow step: First review' })
+        await act(async () => firstReview.props.onPress())
+
+        expect(moveTasksFromMiddleOfWorkflow).toHaveBeenCalledWith(
+            'project-1',
+            taskOnThirdStep,
+            'step1',
+            null,
+            null,
+            task.estimations,
+            'popup-workflow-action'
+        )
+    })
+
+    it('uses the same double-click protection for direct selections', async () => {
+        let finishMove
+        moveTasksFromMiddleOfWorkflow.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    finishMove = resolve
+                })
+        )
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls projectId="project-1" task={task} workflow={workflow} />
+        )
+        await act(async () => Promise.resolve())
+        act(() => tree.root.findByProps({ testID: 'comment-popup-workflow-selector' }).props.onPress())
+        const done = tree.root.findByProps({ accessibilityLabel: 'Select workflow step: Done' })
+
+        let firstMove
+        act(() => {
+            firstMove = done.props.onPress()
+            done.props.onPress()
+        })
+
+        expect(moveTasksFromMiddleOfWorkflow).toHaveBeenCalledTimes(1)
+
+        await act(async () => {
+            finishMove()
+            await firstMove
+        })
     })
 
     it('uses the standard workflow move action in both directions', async () => {

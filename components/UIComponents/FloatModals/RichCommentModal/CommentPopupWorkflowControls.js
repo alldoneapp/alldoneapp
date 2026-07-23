@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import v4 from 'uuid/v4'
 
 import store from '../../../../redux/store'
@@ -9,7 +9,9 @@ import { moveTasksFromMiddleOfWorkflow, moveTasksFromOpen } from '../../../../ut
 import { DONE_STEP, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
 import MainButtons from '../../../WorkflowModal/MainButtons'
 import { WORKFLOW_BACKWARD } from '../../../WorkflowModal/workflowDirections'
-import { colors } from '../../../styles/global'
+import Icon from '../../../Icon'
+import styles, { colors } from '../../../styles/global'
+import { translate } from '../../../../i18n/TranslationService'
 
 export const getCommentPopupWorkflowTargets = (task, workflow) => {
     const stepIds = getWorkflowStepsIdsSorted(workflow)
@@ -21,32 +23,47 @@ export const getCommentPopupWorkflowTargets = (task, workflow) => {
 
     return {
         currentStep,
+        currentStepId,
+        stepIds,
         backwardStepId: currentStep > 0 ? stepIds[currentStep - 1] : OPEN_STEP,
         forwardStepId: currentStep + 1 < stepIds.length ? stepIds[currentStep + 1] : DONE_STEP,
     }
 }
 
+export const getCommentPopupSelectableSteps = (task, workflow) => {
+    const targets = getCommentPopupWorkflowTargets(task, workflow)
+    if (!targets) return []
+
+    return [
+        { id: OPEN_STEP, label: translate('Open') },
+        ...targets.stepIds.map(id => ({ id, label: workflow[id].description })),
+        { id: DONE_STEP, label: translate('Done') },
+    ].filter(step => step.id !== targets.currentStepId)
+}
+
 export default function CommentPopupWorkflowControls({ projectId, task, workflow, disabled }) {
     const [submitting, setSubmitting] = useState(false)
+    const [selectorOpen, setSelectorOpen] = useState(false)
     const submittingRef = useRef(false)
     const checkBoxIdRef = useRef(v4())
     const targets = getCommentPopupWorkflowTargets(task, workflow)
+    const selectableSteps = getCommentPopupSelectableSteps(task, workflow)
     const currentStepId = task?.stepHistory?.[task.stepHistory.length - 1]
 
     useEffect(() => {
         submittingRef.current = false
         setSubmitting(false)
+        setSelectorOpen(false)
     }, [currentStepId, task?.done])
 
     if (!targets) return null
 
-    const moveTask = async direction => {
+    const moveTaskToStep = async (stepToMoveId, source) => {
         if (disabled || submittingRef.current) return
 
         submittingRef.current = true
         setSubmitting(true)
-
-        const stepToMoveId = direction === WORKFLOW_BACKWARD ? targets.backwardStepId : targets.forwardStepId
+        setSelectorOpen(false)
 
         store.dispatch(startLoadingData())
         if (stepToMoveId === DONE_STEP) store.dispatch(showTaskCompletionAnimation())
@@ -77,7 +94,8 @@ export default function CommentPopupWorkflowControls({ projectId, task, workflow
             console.error('[CommentPopupWorkflowControls] Could not move task', {
                 projectId,
                 taskId: task.id,
-                direction,
+                source,
+                stepToMoveId,
                 error,
             })
             submittingRef.current = false
@@ -85,13 +103,56 @@ export default function CommentPopupWorkflowControls({ projectId, task, workflow
         }
     }
 
+    const moveTask = direction =>
+        moveTaskToStep(direction === WORKFLOW_BACKWARD ? targets.backwardStepId : targets.forwardStepId, direction)
+
+    const controlsDisabled = disabled || submitting
+
     return (
         <View testID="comment-popup-workflow-controls" style={localStyles.container}>
+            <TouchableOpacity
+                testID="comment-popup-workflow-selector"
+                style={[localStyles.selectorButton, controlsDisabled && localStyles.disabled]}
+                onPress={() => setSelectorOpen(open => !open)}
+                disabled={controlsDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={translate('Select workflow step')}
+                accessibilityState={{ expanded: selectorOpen, disabled: controlsDisabled }}
+            >
+                <Icon name="list" size={18} color={colors.Text03} />
+                <Text style={[styles.subtitle2, localStyles.selectorButtonText]} numberOfLines={1}>
+                    {translate('Select workflow step')}
+                </Text>
+                <Icon name={selectorOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.Text03} />
+            </TouchableOpacity>
+            {selectorOpen && (
+                <ScrollView
+                    testID="comment-popup-workflow-step-list"
+                    style={localStyles.stepList}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                >
+                    {selectableSteps.map(step => (
+                        <TouchableOpacity
+                            key={step.id}
+                            style={localStyles.stepOption}
+                            onPress={() => moveTaskToStep(step.id, 'selector')}
+                            disabled={controlsDisabled}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${translate('Select workflow step')}: ${step.label}`}
+                        >
+                            <Text style={[styles.subtitle1, localStyles.stepOptionText]} numberOfLines={2}>
+                                {step.label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            )}
             <MainButtons
                 onDonePress={moveTask}
                 selectedCustomStep={false}
                 currentStep={targets.currentStep}
-                disabled={disabled || submitting}
+                disabled={controlsDisabled}
                 shortcutsEnabled={false}
                 compact
             />
@@ -102,9 +163,44 @@ export default function CommentPopupWorkflowControls({ projectId, task, workflow
 const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
-        flexDirection: 'row',
         paddingHorizontal: 16,
         paddingTop: 8,
         width: '100%',
+    },
+    selectorButton: {
+        alignItems: 'center',
+        backgroundColor: colors.Secondary250,
+        borderRadius: 4,
+        flexDirection: 'row',
+        height: 36,
+        marginBottom: 8,
+        paddingHorizontal: 10,
+        width: '100%',
+    },
+    selectorButtonText: {
+        color: 'white',
+        flex: 1,
+        marginHorizontal: 8,
+    },
+    disabled: {
+        opacity: 0.5,
+    },
+    stepList: {
+        backgroundColor: colors.Secondary250,
+        borderRadius: 4,
+        marginBottom: 8,
+        maxHeight: 168,
+        paddingHorizontal: 8,
+    },
+    stepOption: {
+        borderBottomColor: colors.Secondary200,
+        borderBottomWidth: 1,
+        justifyContent: 'center',
+        minHeight: 40,
+        paddingHorizontal: 8,
+        paddingVertical: 8,
+    },
+    stepOptionText: {
+        color: 'white',
     },
 })
