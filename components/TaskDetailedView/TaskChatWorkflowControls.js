@@ -9,6 +9,7 @@ import CommentPopupWorkflowControls from '../UIComponents/FloatModals/RichCommen
 
 export default function TaskChatWorkflowControls({ projectId, task }) {
     const loggedUser = useSelector(state => state.loggedUser)
+    const narrow = !!useSelector(state => state.smallScreenNavigation)
     const workflow = useGetTaskWorkflow(projectId, task)
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(
         loggedUser.isAnonymous,
@@ -27,6 +28,7 @@ export default function TaskChatWorkflowControls({ projectId, task }) {
             workflow={workflow}
             disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
             appearance="chat"
+            narrow={narrow}
         />
     )
 }

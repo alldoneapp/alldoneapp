@@ -16,7 +16,7 @@ import useOnHover from '../../../../hooks/UseOnHover'
 
 const CHAT_APPEARANCE = 'chat'
 
-function WorkflowStepOption({ step, controlsDisabled, moveTaskToStep, chatAppearance }) {
+function WorkflowStepOption({ step, controlsDisabled, moveTaskToStep, chatAppearance, narrow }) {
     const { hover, onHover, offHover } = useOnHover()
     const optionDisabled = controlsDisabled || step.current
 
@@ -35,12 +35,12 @@ function WorkflowStepOption({ step, controlsDisabled, moveTaskToStep, chatAppear
             onMouseLeave={offHover}
             disabled={optionDisabled}
             accessibilityRole="button"
-            accessibilityLabel={`${translate('Select workflow step')}: ${step.label}`}
+            accessibilityLabel={translate('Select workflow step with name', { step: step.label })}
             accessibilityState={{ selected: step.current, disabled: optionDisabled }}
         >
             <Text
                 style={[styles.subtitle1, localStyles.stepOptionText, chatAppearance && localStyles.chatStepOptionText]}
-                numberOfLines={2}
+                numberOfLines={narrow ? 3 : 2}
             >
                 {step.label}
             </Text>
@@ -89,6 +89,7 @@ export default function CommentPopupWorkflowControls({
     disabled,
     onDirectionalTransitionSuccess,
     appearance,
+    narrow = false,
 }) {
     const [submitting, setSubmitting] = useState(false)
     const [selectorOpen, setSelectorOpen] = useState(false)
@@ -178,6 +179,7 @@ export default function CommentPopupWorkflowControls({
                     localStyles.selectorButton,
                     chatAppearance && localStyles.chatSelectorButton,
                     chatAppearance && selectorHovered && !controlsDisabled && localStyles.chatSelectorButtonHover,
+                    narrow && localStyles.narrowSelectorButton,
                     controlsDisabled && localStyles.disabled,
                 ]}
                 onPress={() => setSelectorOpen(open => !open)}
@@ -185,7 +187,7 @@ export default function CommentPopupWorkflowControls({
                 onMouseLeave={offSelectorHover}
                 disabled={controlsDisabled}
                 accessibilityRole="button"
-                accessibilityLabel={`${translate('Select workflow step')}: ${currentStepLabel}`}
+                accessibilityLabel={translate('Select workflow step with name', { step: currentStepLabel })}
                 accessibilityState={{ expanded: selectorOpen, disabled: controlsDisabled }}
             >
                 {submitting ? (
@@ -203,9 +205,9 @@ export default function CommentPopupWorkflowControls({
                         localStyles.selectorButtonText,
                         chatAppearance && localStyles.chatSelectorButtonText,
                     ]}
-                    numberOfLines={1}
+                    numberOfLines={narrow ? 2 : 1}
                 >
-                    {`${translate('Current workflow step')}: ${currentStepLabel}`}
+                    {translate('Current workflow step with name', { step: currentStepLabel })}
                 </Text>
                 <Icon
                     name={selectorOpen ? 'chevron-up' : 'chevron-down'}
@@ -227,6 +229,7 @@ export default function CommentPopupWorkflowControls({
                             controlsDisabled={controlsDisabled}
                             moveTaskToStep={moveTaskToStep}
                             chatAppearance={chatAppearance}
+                            narrow={narrow}
                         />
                     ))}
                 </ScrollView>
@@ -238,6 +241,7 @@ export default function CommentPopupWorkflowControls({
                 disabled={controlsDisabled}
                 shortcutsEnabled={false}
                 compact
+                narrow={narrow}
             />
         </View>
     )
@@ -278,12 +282,18 @@ const localStyles = StyleSheet.create({
         color: 'white',
         flex: 1,
         marginHorizontal: 8,
+        minWidth: 0,
     },
     chatSelectorButtonText: {
         color: colors.Text02,
     },
     disabled: {
         opacity: 0.5,
+    },
+    narrowSelectorButton: {
+        height: 'auto',
+        minHeight: 44,
+        paddingVertical: 6,
     },
     stepList: {
         backgroundColor: colors.Secondary250,
@@ -316,6 +326,7 @@ const localStyles = StyleSheet.create({
     stepOptionText: {
         color: 'white',
         flex: 1,
+        minWidth: 0,
     },
     chatStepOptionText: {
         color: colors.Text02,

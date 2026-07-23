@@ -44,7 +44,7 @@ const workflow = {
 describe('TaskChatWorkflowControls', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        useSelector.mockImplementation(selector => selector({ loggedUser }))
+        useSelector.mockImplementation(selector => selector({ loggedUser, smallScreenNavigation: false }))
         useGetTaskWorkflow.mockReturnValue(workflow)
         SharedHelper.checkIfUserHasAccessToProject.mockReturnValue(true)
         ProjectHelper.checkIfLoggedUserIsNormalUserInGuide.mockReturnValue(false)
@@ -62,7 +62,16 @@ describe('TaskChatWorkflowControls', () => {
             workflow,
             disabled: false,
             appearance: 'chat',
+            narrow: false,
         })
+    })
+
+    it('uses the narrow workflow control layout on mobile', () => {
+        useSelector.mockImplementation(selector => selector({ loggedUser, smallScreenNavigation: true }))
+
+        const tree = renderer.create(<TaskChatWorkflowControls projectId="project-1" task={task} />)
+
+        expect(tree.root.findByType('CommentPopupWorkflowControls').props.narrow).toBe(true)
     })
 
     it.each([
@@ -79,6 +88,7 @@ describe('TaskChatWorkflowControls', () => {
                     ...loggedUser,
                     uid: 'member-1',
                 },
+                smallScreenNavigation: false,
             })
         )
 

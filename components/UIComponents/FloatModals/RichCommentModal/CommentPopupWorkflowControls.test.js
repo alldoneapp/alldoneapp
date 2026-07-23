@@ -24,7 +24,15 @@ jest.mock('../../../../utils/backends/Tasks/tasksFirestore', () => ({
 }))
 jest.mock('../../../WorkflowModal/MainButtons', () => 'MainButtons')
 jest.mock('../../../Icon', () => 'Icon')
-jest.mock('../../../../i18n/TranslationService', () => ({ translate: text => text }))
+jest.mock('../../../../i18n/TranslationService', () => ({
+    translate: (text, interpolations = {}) =>
+        Object.entries(interpolations).reduce(
+            (translated, [key, value]) => translated.replace(`%{${key}}`, value),
+            text
+                .replace('Select workflow step with name', 'Select workflow step: %{step}')
+                .replace('Current workflow step with name', 'Current workflow step: %{step}')
+        ),
+}))
 jest.mock('../../../WorkflowModal/workflowDirections', () => ({
     WORKFLOW_BACKWARD: 'BACKWARD',
     WORKFLOW_FORWARD: 'FORWARD',
@@ -65,7 +73,42 @@ describe('CommentPopupWorkflowControls', () => {
         expect(buttons.props.disabled).toBe(false)
         expect(buttons.props.shortcutsEnabled).toBe(false)
         expect(buttons.props.compact).toBe(true)
+        expect(buttons.props.narrow).toBe(false)
         expect(tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })).toBeTruthy()
+    })
+
+    it('keeps long step names usable in a narrow mobile layout', async () => {
+        const longStepName = 'Legal, compliance and executive stakeholder approval before publication'
+        const longWorkflow = {
+            [longStepName]: { description: longStepName },
+            step2: workflow.step2,
+        }
+        const longTask = { ...task, stepHistory: [-1, longStepName] }
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls
+                projectId="project-1"
+                task={longTask}
+                workflow={longWorkflow}
+                appearance="chat"
+                narrow
+            />
+        )
+        const selector = tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })
+
+        expect(selector.props.accessibilityLabel).toBe(`Select workflow step: ${longStepName}`)
+        expect(selector.findByType('Text').props.numberOfLines).toBe(2)
+        expect(StyleSheet.flatten(selector.props.style)).toMatchObject({
+            height: 'auto',
+            minHeight: 44,
+        })
+        expect(tree.root.findByType('MainButtons').props.narrow).toBe(true)
+
+        await act(async () => Promise.resolve())
+        act(() => selector.props.onPress())
+
+        const currentStep = tree.root.findByProps({ testID: 'comment-popup-current-workflow-step' })
+        expect(currentStep.findAllByType('Text')[0].props.numberOfLines).toBe(3)
+        expect(currentStep.props.accessibilityLabel).toBe(`Select workflow step: ${longStepName}`)
     })
 
     it('uses the full chat color system and hover state for the chat appearance', async () => {

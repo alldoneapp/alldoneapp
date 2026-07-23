@@ -41,4 +41,29 @@ describe('MainButtons layout', () => {
             flex: 1,
         })
     })
+
+    it('stacks compact actions at full width on narrow screens', () => {
+        const tree = renderer.create(
+            <MainButtons narrow compact currentStep={0} selectedCustomStep={false} onDonePress={jest.fn()} />
+        )
+        const container = tree.root.findByProps({ testID: 'workflow-main-buttons' })
+        const backwardButton = tree.root.findByType('BackwardButton')
+        const forwardButton = tree.root.findByType('ForwardButton')
+
+        expect(StyleSheet.flatten(container.props.style)).toMatchObject({
+            flex: 0,
+            flexDirection: 'column',
+            width: '100%',
+        })
+        expect(StyleSheet.flatten(backwardButton.props.buttonStyle)).toMatchObject({
+            flex: 0,
+            marginBottom: 8,
+            marginRight: 0,
+            width: '100%',
+        })
+        expect(StyleSheet.flatten(forwardButton.props.buttonStyle)).toMatchObject({
+            flex: 0,
+            width: '100%',
+        })
+    })
 })

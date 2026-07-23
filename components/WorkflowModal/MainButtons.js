@@ -13,16 +13,27 @@ export default function MainButtons({
     disabled,
     shortcutsEnabled = true,
     compact = false,
+    narrow = false,
 }) {
     return (
-        <View testID="workflow-main-buttons" style={[localStyles.container, compact && localStyles.compactContainer]}>
+        <View
+            testID="workflow-main-buttons"
+            style={[
+                localStyles.container,
+                compact && localStyles.compactContainer,
+                narrow && localStyles.narrowContainer,
+            ]}
+        >
             {currentStep !== OPEN_STEP && !selectedCustomStep && (
                 <BackwardButton
                     onPress={onDonePress}
                     direction={WORKFLOW_BACKWARD}
                     disabled={disabled}
                     shortcutsEnabled={shortcutsEnabled}
-                    buttonStyle={compact && localStyles.compactBackwardButton}
+                    buttonStyle={[
+                        compact && localStyles.compactBackwardButton,
+                        narrow && localStyles.narrowBackwardButton,
+                    ]}
                 />
             )}
             <ForwardButton
@@ -32,7 +43,7 @@ export default function MainButtons({
                 currentStep={currentStep}
                 disabled={disabled}
                 shortcutsEnabled={shortcutsEnabled}
-                buttonStyle={compact && localStyles.compactButton}
+                buttonStyle={[compact && localStyles.compactButton, narrow && localStyles.narrowButton]}
             />
         </View>
     )
@@ -65,5 +76,20 @@ const localStyles = StyleSheet.create({
         marginRight: 8,
         paddingLeft: 8,
         paddingRight: 8,
+    },
+    narrowContainer: {
+        flex: 0,
+        flexDirection: 'column',
+        width: '100%',
+    },
+    narrowButton: {
+        flex: 0,
+        width: '100%',
+    },
+    narrowBackwardButton: {
+        flex: 0,
+        marginBottom: 8,
+        marginRight: 0,
+        width: '100%',
     },
 })
