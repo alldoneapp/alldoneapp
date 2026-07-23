@@ -11,11 +11,9 @@ const {
     COMPLETION_MAX_TOKENS,
     ENCODE_MESSAGE_GAP,
     getMessageTextForTokenCounting,
-    getAssistantThreadStateDocRef,
 } = require('./assistantHelper')
 const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 const { extractImageUrlsFromMessageContent } = require('./createTaskImageHelper')
-const { maybeCompactAssistantThread } = require('./rollingThreadCompaction')
 
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
@@ -39,67 +37,6 @@ console.log(`✅ [TIMING] Tiktoken encoder initialized: ${Date.now() - encoderIn
 
 function getEncoder() {
     return encoder // Always return pre-initialized encoder
-}
-
-async function generateRollingThreadSummary(prompt, model, toolRuntimeContext) {
-    const stream = await interactWithChatStream(prompt, model, 'TEMPERATURE_LOW', [], {
-        ...toolRuntimeContext,
-        sourceChannel: 'automatic_thread_compaction',
-        promptCacheScope: 'automatic_thread_compaction',
-        disableToolSearch: true,
-    })
-    let summary = ''
-    for await (const chunk of stream) {
-        if (chunk?.content) summary += chunk.content
-    }
-    return summary.trim()
-}
-
-async function runAutomaticThreadCompaction({
-    projectId,
-    objectType,
-    objectId,
-    assistantId,
-    triggeringMessageId,
-    model,
-    hardOnly,
-    toolRuntimeContext,
-}) {
-    const db = admin.firestore()
-    const stateRef = getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assistantId)
-    if (!stateRef) return { compacted: false, hard: false, reason: 'invalid_thread' }
-
-    const retryDeadline = Date.now() + 30 * 1000
-    let result
-    do {
-        result = await maybeCompactAssistantThread({
-            db,
-            stateRef,
-            projectId,
-            objectType,
-            objectId,
-            triggeringMessageId,
-            hardOnly,
-            summarize: prompt => generateRollingThreadSummary(prompt, model, toolRuntimeContext),
-        })
-        if (!hardOnly || !['in_progress', 'stale'].includes(result.reason) || Date.now() >= retryDeadline) break
-        await new Promise(resolve => setTimeout(resolve, 1000))
-    } while (Date.now() < retryDeadline)
-
-    console.log('🧹 AUTOMATIC THREAD COMPACTION:', {
-        projectId,
-        objectType,
-        objectId,
-        assistantId,
-        triggeringMessageId,
-        hardOnly,
-        compacted: result.compacted,
-        hard: result.hard,
-        reason: result.reason,
-        compactedMessageCount: result.compactedMessageCount || 0,
-        retainedMessageCount: result.retainedMessageCount || 0,
-    })
-    return result
 }
 
 async function askToOpenAIBotOptimized(
@@ -169,35 +106,6 @@ async function askToOpenAIBotOptimized(
 
         // Extract user timezone
         const userTimezoneOffset = resolveUserTimezoneOffset(user)
-        const runtimeAssistantId = assistant.uid || assistantId
-        const baseToolRuntimeContext = {
-            projectId,
-            assistantId: runtimeAssistantId,
-            requestUserId: userId,
-            objectType,
-            objectId,
-            messageId,
-            userTimezoneOffset,
-            language,
-            maxRunWallClockMs: INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
-        }
-
-        // At 19 uncompacted messages this is a hard safety gate. A failed/stale compaction
-        // aborts the run so no message can fall beyond the current 20-message context window
-        // without first being represented in the cumulative summary.
-        const hardCompaction = await runAutomaticThreadCompaction({
-            projectId,
-            objectType,
-            objectId,
-            assistantId: runtimeAssistantId,
-            triggeringMessageId: messageId,
-            model,
-            hardOnly: true,
-            toolRuntimeContext: baseToolRuntimeContext,
-        })
-        if (hardCompaction.hard && !hardCompaction.compacted) {
-            throw new Error(`Hard thread compaction did not complete: ${hardCompaction.reason}`)
-        }
 
         // Step 2: Parallel fetch context messages and common data
         const step2Start = Date.now()
@@ -215,7 +123,7 @@ async function askToOpenAIBotOptimized(
                 allowedTools,
                 userTimezoneOffset,
                 userId,
-                runtimeAssistantId
+                assistant.uid || assistantId
             ),
             // Pre-fetch common data needed for storeBotAnswerStream
             getCommonDataOptimized(projectId, objectType, objectId),
@@ -253,9 +161,19 @@ async function askToOpenAIBotOptimized(
 
         // Step 4: Create stream (now uses cached clients internally)
         const step4Start = Date.now()
-        // Forwarded so tools (e.g. execute_task_in_vm) can reproduce the thread's
-        // date/time + language context without re-resolving it.
-        const toolRuntimeContext = baseToolRuntimeContext
+        const toolRuntimeContext = {
+            projectId,
+            assistantId: assistant.uid || assistantId,
+            requestUserId: userId,
+            objectType,
+            objectId,
+            messageId,
+            // Forwarded so tools (e.g. execute_task_in_vm) can reproduce the thread's
+            // date/time + language context without re-resolving it.
+            userTimezoneOffset,
+            language,
+            maxRunWallClockMs: INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
+        }
         const stream = await interactWithChatStream(
             contextMessages,
             model,
@@ -331,33 +249,6 @@ async function askToOpenAIBotOptimized(
                 currentGold: user.gold,
                 elapsed: `${Date.now() - functionStartTime}ms`,
             })
-        }
-
-        // Cloud Functions do not guarantee work scheduled after the request returns. We start
-        // normal-threshold compaction only after the user-facing comment is fully stored, but
-        // still await it before returning from the function. The response is already visible;
-        // awaiting here makes the summary write reliable without requiring new queue plumbing.
-        if (aiCommentText) {
-            try {
-                await runAutomaticThreadCompaction({
-                    projectId,
-                    objectType,
-                    objectId,
-                    assistantId: runtimeAssistantId,
-                    triggeringMessageId: messageId,
-                    model,
-                    hardOnly: false,
-                    toolRuntimeContext,
-                })
-            } catch (error) {
-                console.error('🧹 AUTOMATIC THREAD COMPACTION: post-response compaction failed', {
-                    projectId,
-                    objectType,
-                    objectId,
-                    assistantId: runtimeAssistantId,
-                    error: error.message,
-                })
-            }
         }
 
         // Final summary

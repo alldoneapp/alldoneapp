@@ -184,7 +184,6 @@ const mockDocUpdate = jest.fn(async () => {})
 const mockDocDelete = jest.fn(async () => {})
 const mockTransactionGet = jest.fn(ref => ref.get())
 const mockTransactionUpdate = jest.fn(async () => {})
-const mockTransactionSet = jest.fn(async () => {})
 const mockCollectionGet = jest.fn()
 const mockBatchSet = jest.fn()
 const mockBatchUpdate = jest.fn()
@@ -206,7 +205,6 @@ jest.mock('firebase-admin', () => ({
             runTransaction: jest.fn(async callback =>
                 callback({
                     get: mockTransactionGet,
-                    set: mockTransactionSet,
                     update: mockTransactionUpdate,
                 })
             ),
@@ -3918,24 +3916,17 @@ describe('assistant thread compaction tool', () => {
             }
         )
 
-        expect(mockTransactionSet).toHaveBeenCalledWith(
-            expect.objectContaining({
-                path: 'assistantThreadState/project-1_topics_chat-1_assistant-1',
-            }),
-            {
-                summary: 'Finished Operations. Marketing is next.',
-                progressCompleted: 1,
-                progressTotal: 3,
-                currentProjectId: 'project-1',
-                currentProjectName: 'Operations',
-                nextProjectId: 'project-2',
-                nextProjectName: 'Marketing',
-                trimHistoryBeforeMs: 1710000000000,
-                trimHistoryBeforeMessageId: '',
-                compactionRevision: 1,
-                updatedAt: expect.any(Object),
-            }
-        )
+        expect(mockDocSet).toHaveBeenCalledWith({
+            summary: 'Finished Operations. Marketing is next.',
+            progressCompleted: 1,
+            progressTotal: 3,
+            currentProjectId: 'project-1',
+            currentProjectName: 'Operations',
+            nextProjectId: 'project-2',
+            nextProjectName: 'Marketing',
+            trimHistoryBeforeMs: 1710000000000,
+            updatedAt: expect.any(Object),
+        })
         expect(result).toMatchObject({
             success: true,
             projectId: 'project-1',
@@ -3951,8 +3942,6 @@ describe('assistant thread compaction tool', () => {
                 nextProjectId: 'project-2',
                 nextProjectName: 'Marketing',
                 trimHistoryBeforeMs: 1710000000000,
-                trimHistoryBeforeMessageId: '',
-                compactionRevision: 1,
             },
         })
         expect(result.compactedContextMessage).toContain('Compacted thread state for this ongoing workflow:')

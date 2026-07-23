@@ -549,7 +549,7 @@ async function resolveVmCompletionFollowers(pendingWebhook) {
     )
 }
 
-async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { activateTaskAssistant = false } = {}) {
+async function applyVmCompletionMetadata(pendingWebhook, commentId, text) {
     const { projectId, objectType = 'tasks', objectId, assistantId } = pendingWebhook
     if (!projectId || !objectId || !assistantId || !commentId) return { applied: false, reason: 'missing-context' }
 
@@ -620,7 +620,6 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
                 [`commentsData.lastComment`]: parentLastComment,
                 [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
                 [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
-                ...(activateTaskAssistant && objectType === 'tasks' ? { isAssistantEnabled: true } : {}),
             })
         }
 
@@ -1029,12 +1028,7 @@ async function writeStatusComment(
     const isSettled = isFinal || runStatus === 'failed' || runStatus === VM_JOB_CANCELLED_STATUS
     if (isSettled) {
         try {
-            await applyVmCompletionMetadata(pendingWebhook, commentId, text, {
-                // A successful task VM hands the thread back to its selected assistant.
-                // Failed and cancelled runs still settle the status/comment metadata above,
-                // but must not opt the user back into assistant replies.
-                activateTaskAssistant: objectType === 'tasks' && isFinal && runStatus === 'completed',
-            })
+            await applyVmCompletionMetadata(pendingWebhook, commentId, text)
         } catch (error) {
             console.warn('🖥️ VM JOB: Failed applying completion metadata', {
                 correlationId: pendingWebhook.correlationId,

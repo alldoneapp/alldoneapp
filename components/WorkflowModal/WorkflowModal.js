@@ -40,6 +40,7 @@ import RecurringTaskDateBasisModal, {
 import { getWorkflowCommentAssistantProps } from './workflowCommentAssistant'
 import { getWorkflowTargetStepIndex } from './workflowNavigation'
 import { WORKFLOW_FORWARD } from './workflowDirections'
+import { getWorkflowCompletionCopy } from './workflowCompletionCopy'
 
 export { WORKFLOW_BACKWARD, WORKFLOW_FORWARD } from './workflowDirections'
 
@@ -470,6 +471,7 @@ export default class WorkflowModal extends Component {
         const { task, pending, projectId, ownerIsWorkstream } = this.props
         const { nextStepDescription, nextStepPhotoURL } = this.getStepDataForTag(this.taskOwner)
         const ownerId = ownerIsWorkstream ? store.getState().loggedUser.uid : task.userId
+        const completionCopy = getWorkflowCompletionCopy(steps, task, pending)
 
         return this.state.inRecurrenceDateBasis ? (
             <RecurringTaskDateBasisModal
@@ -536,12 +538,12 @@ export default class WorkflowModal extends Component {
                 <View style={localStyles.innerContainer}>
                     <View style={localStyles.heading}>
                         <View style={localStyles.title}>
-                            <Text style={[styles.title7, { color: 'white' }]}>
-                                {translate(pending ? 'Accept task?' : 'Congrats, you have done it!')}
-                            </Text>
-                            <Text style={[styles.body2, { color: colors.Text03, width: 273 }]}>
-                                {translate('Select from the options below')}
-                            </Text>
+                            <Text style={[styles.title7, { color: 'white' }]}>{translate(completionCopy.title)}</Text>
+                            {completionCopy.subtitle && (
+                                <Text style={[styles.body2, { color: colors.Text03, width: 273 }]}>
+                                    {translate(completionCopy.subtitle)}
+                                </Text>
+                            )}
                         </View>
                         <CloseButton close={this.onPressClose} />
                     </View>
