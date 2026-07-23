@@ -30,7 +30,14 @@ const WATCHED_OBJECT_TYPES = {
     topics: watchChat,
 }
 
-export default function CommentPopupObjectHeader({ projectId, objectId, objectType, objectName, onOpen }) {
+export default function CommentPopupObjectHeader({
+    projectId,
+    objectId,
+    objectType,
+    objectName,
+    onOpen,
+    onWorkflowTransitionSuccess,
+}) {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const watcherKeyRef = useRef(`comment-popup-object-${v4()}`)
     const [object, setObject] = useState(null)
@@ -119,13 +126,23 @@ export default function CommentPopupObjectHeader({ projectId, objectId, objectTy
                     projectId,
                     projectIndex,
                     onOpen,
+                    onWorkflowTransitionSuccess,
                 })}
             </View>
         </div>
     )
 }
 
-const renderObject = ({ isMember, object, objectType, project, projectId, projectIndex, onOpen }) => {
+const renderObject = ({
+    isMember,
+    object,
+    objectType,
+    project,
+    projectId,
+    projectIndex,
+    onOpen,
+    onWorkflowTransitionSuccess,
+}) => {
     switch (objectType) {
         case 'tasks':
             return (
@@ -136,6 +153,7 @@ const renderObject = ({ isMember, object, objectType, project, projectId, projec
                     toggleSubTaskList={() => {}}
                     subtaskList={[]}
                     inCommentPopup
+                    onCommentPopupWorkflowTransitionSuccess={onWorkflowTransitionSuccess}
                 />
             )
         case 'goals':

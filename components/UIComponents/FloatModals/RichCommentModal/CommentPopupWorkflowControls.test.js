@@ -134,8 +134,14 @@ describe('CommentPopupWorkflowControls', () => {
     })
 
     it('uses the standard workflow move action in both directions', async () => {
+        const onDirectionalTransitionSuccess = jest.fn()
         const tree = renderer.create(
-            <CommentPopupWorkflowControls projectId="project-1" task={task} workflow={workflow} />
+            <CommentPopupWorkflowControls
+                projectId="project-1"
+                task={task}
+                workflow={workflow}
+                onDirectionalTransitionSuccess={onDirectionalTransitionSuccess}
+            />
         )
         const buttons = tree.root.findByType('MainButtons')
 
@@ -150,9 +156,15 @@ describe('CommentPopupWorkflowControls', () => {
             task.estimations,
             'popup-workflow-action'
         )
+        expect(onDirectionalTransitionSuccess).toHaveBeenCalledTimes(1)
 
         const backTree = renderer.create(
-            <CommentPopupWorkflowControls projectId="project-1" task={task} workflow={workflow} />
+            <CommentPopupWorkflowControls
+                projectId="project-1"
+                task={task}
+                workflow={workflow}
+                onDirectionalTransitionSuccess={onDirectionalTransitionSuccess}
+            />
         )
         await act(async () => backTree.root.findByType('MainButtons').props.onDonePress('BACKWARD'))
 
@@ -165,6 +177,51 @@ describe('CommentPopupWorkflowControls', () => {
             task.estimations,
             'popup-workflow-action'
         )
+        expect(onDirectionalTransitionSuccess).toHaveBeenCalledTimes(2)
+    })
+
+    it('keeps the popup open when a directional transition fails', async () => {
+        const error = new Error('transition failed')
+        const onDirectionalTransitionSuccess = jest.fn()
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+        moveTasksFromMiddleOfWorkflow.mockRejectedValueOnce(error)
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls
+                projectId="project-1"
+                task={task}
+                workflow={workflow}
+                onDirectionalTransitionSuccess={onDirectionalTransitionSuccess}
+            />
+        )
+
+        await act(async () => tree.root.findByType('MainButtons').props.onDonePress('FORWARD'))
+
+        expect(onDirectionalTransitionSuccess).not.toHaveBeenCalled()
+        expect(tree.root.findByType('MainButtons').props.disabled).toBe(false)
+        expect(consoleError).toHaveBeenCalledWith(
+            '[CommentPopupWorkflowControls] Could not move task',
+            expect.objectContaining({ error, source: 'FORWARD' })
+        )
+        consoleError.mockRestore()
+    })
+
+    it('does not close the popup after a successful direct step selection', async () => {
+        const onDirectionalTransitionSuccess = jest.fn()
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls
+                projectId="project-1"
+                task={task}
+                workflow={workflow}
+                onDirectionalTransitionSuccess={onDirectionalTransitionSuccess}
+            />
+        )
+
+        await act(async () => Promise.resolve())
+        act(() => tree.root.findByProps({ testID: 'comment-popup-workflow-selector' }).props.onPress())
+        const done = tree.root.findByProps({ accessibilityLabel: 'Select workflow step: Done' })
+        await act(async () => done.props.onPress())
+
+        expect(onDirectionalTransitionSuccess).not.toHaveBeenCalled()
     })
 
     it('blocks repeated clicks while the first transition is in flight', async () => {

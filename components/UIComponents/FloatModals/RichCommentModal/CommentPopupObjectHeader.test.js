@@ -60,7 +60,12 @@ const OPEN_PROP_BY_TYPE = {
     assistants: 'onAssistantClick',
 }
 
-const renderHeader = async (objectType, object = { id: 'object-1', uid: 'object-1' }, onOpen) => {
+const renderHeader = async (
+    objectType,
+    object = { id: 'object-1', uid: 'object-1' },
+    onOpen,
+    onWorkflowTransitionSuccess
+) => {
     getParentObjectData.mockResolvedValue({ object })
     let tree
     await act(async () => {
@@ -71,6 +76,7 @@ const renderHeader = async (objectType, object = { id: 'object-1', uid: 'object-
                 objectType={objectType}
                 objectName="Fallback title"
                 onOpen={onOpen}
+                onWorkflowTransitionSuccess={onWorkflowTransitionSuccess}
             />
         )
         await Promise.resolve()
@@ -110,6 +116,20 @@ describe('CommentPopupObjectHeader', () => {
         boundary.props.onClick(event)
 
         expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+    })
+
+    it('passes the popup close callback to task workflow controls', async () => {
+        const onWorkflowTransitionSuccess = jest.fn()
+        const tree = await renderHeader(
+            'tasks',
+            { id: 'object-1', uid: 'object-1' },
+            undefined,
+            onWorkflowTransitionSuccess
+        )
+
+        expect(tree.root.findByType('TaskPresentation').props.onCommentPopupWorkflowTransitionSuccess).toBe(
+            onWorkflowTransitionSuccess
+        )
     })
 
     it('uses the same dark popup background for non-task objects', async () => {

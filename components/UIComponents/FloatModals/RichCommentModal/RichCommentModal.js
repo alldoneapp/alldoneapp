@@ -453,6 +453,7 @@ export default function RichCommentModal({
                             objectId={objectId}
                             objectName={objectName}
                             onOpen={processShowMore}
+                            onWorkflowTransitionSuccess={closeModal}
                         />
 
                         {canArchiveLinkedEmails && linkedEmails.length > 0 && (

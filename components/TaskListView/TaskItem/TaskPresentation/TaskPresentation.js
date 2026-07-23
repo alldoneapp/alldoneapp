@@ -53,6 +53,7 @@ function TaskPresentation(
         inParentGoal,
         isPending,
         inCommentPopup,
+        onCommentPopupWorkflowTransitionSuccess,
     },
     ref
 ) {
@@ -436,6 +437,7 @@ function TaskPresentation(
                             task={task}
                             workflow={workflow}
                             disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
+                            onDirectionalTransitionSuccess={onCommentPopupWorkflowTransitionSuccess}
                         />
                     )}
                 </View>

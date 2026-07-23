@@ -41,7 +41,13 @@ export const getCommentPopupSelectableSteps = (task, workflow) => {
     ].filter(step => step.id !== targets.currentStepId)
 }
 
-export default function CommentPopupWorkflowControls({ projectId, task, workflow, disabled }) {
+export default function CommentPopupWorkflowControls({
+    projectId,
+    task,
+    workflow,
+    disabled,
+    onDirectionalTransitionSuccess,
+}) {
     const [submitting, setSubmitting] = useState(false)
     const [selectorOpen, setSelectorOpen] = useState(false)
     const submittingRef = useRef(false)
@@ -90,6 +96,7 @@ export default function CommentPopupWorkflowControls({ projectId, task, workflow
                     checkBoxIdRef.current
                 )
             }
+            return true
         } catch (error) {
             console.error('[CommentPopupWorkflowControls] Could not move task', {
                 projectId,
@@ -100,11 +107,17 @@ export default function CommentPopupWorkflowControls({ projectId, task, workflow
             })
             submittingRef.current = false
             setSubmitting(false)
+            return false
         }
     }
 
-    const moveTask = direction =>
-        moveTaskToStep(direction === WORKFLOW_BACKWARD ? targets.backwardStepId : targets.forwardStepId, direction)
+    const moveTask = async direction => {
+        const transitionSucceeded = await moveTaskToStep(
+            direction === WORKFLOW_BACKWARD ? targets.backwardStepId : targets.forwardStepId,
+            direction
+        )
+        if (transitionSucceeded) onDirectionalTransitionSuccess?.()
+    }
 
     const controlsDisabled = disabled || submitting
 
