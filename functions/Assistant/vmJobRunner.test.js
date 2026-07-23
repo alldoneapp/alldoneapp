@@ -1499,6 +1499,33 @@ describe('VM completion chat metadata', () => {
         )
     })
 
+    test('activates the selected assistant after a task VM completes successfully', async () => {
+        const { transaction, refs } = createFirestoreMock()
+
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+                statusCommentId: 'comment-1',
+            },
+            'Finished VM result',
+            { isFinal: true, output: 'Finished VM result' }
+        )
+
+        expect(transaction.update).toHaveBeenCalledWith(
+            refs.get('items/project-1/tasks/task-1'),
+            expect.objectContaining({
+                isAssistantEnabled: true,
+            })
+        )
+    })
+
     test('does not double-apply metadata when the VM finalizer is retried', async () => {
         const { transaction } = createFirestoreMock({
             commentData: { vmCompletionMetadataAppliedAt: 123 },
@@ -1568,6 +1595,68 @@ describe('VM completion chat metadata', () => {
             }),
             { merge: true }
         )
+        expect(transaction.update).toHaveBeenCalledWith(
+            refs.get('items/project-1/tasks/task-1'),
+            expect.not.objectContaining({
+                isAssistantEnabled: true,
+            })
+        )
+    })
+
+    test('does not activate the task assistant when a VM run is cancelled', async () => {
+        const { transaction, refs } = createFirestoreMock()
+
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+                statusCommentId: 'comment-1',
+            },
+            'VM task stopped.',
+            { assistantRunStatus: 'cancelled' }
+        )
+
+        expect(transaction.update).toHaveBeenCalledWith(
+            refs.get('items/project-1/tasks/task-1'),
+            expect.not.objectContaining({
+                isAssistantEnabled: true,
+            })
+        )
+    })
+
+    test('does not change assistant activation for a successful topic VM run', async () => {
+        const { transaction, refs } = createFirestoreMock()
+
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'topics',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+                statusCommentId: 'comment-1',
+            },
+            'Finished VM result',
+            { isFinal: true, output: 'Finished VM result' }
+        )
+
+        expect(transaction.set).toHaveBeenCalledWith(
+            refs.get('chatObjects/project-1/chats/task-1'),
+            expect.not.objectContaining({
+                isAssistantEnabled: true,
+            }),
+            { merge: true }
+        )
+        expect(transaction.update).not.toHaveBeenCalled()
     })
 
     test('keeps task-list and chat previews in sync with live VM progress without incrementing counts', async () => {

@@ -490,6 +490,11 @@ async function loadAssistantThreadState(db, projectId, objectType, objectId, ass
         nextProjectId: normalizeOptionalCompactThreadContextText(data.nextProjectId),
         nextProjectName: normalizeOptionalCompactThreadContextText(data.nextProjectName),
         trimHistoryBeforeMs: Number.isFinite(Number(data.trimHistoryBeforeMs)) ? Number(data.trimHistoryBeforeMs) : 0,
+        trimHistoryBeforeMessageId: normalizeOptionalCompactThreadContextText(data.trimHistoryBeforeMessageId),
+        compactionRevision:
+            Number.isInteger(Number(data.compactionRevision)) && Number(data.compactionRevision) >= 0
+                ? Number(data.compactionRevision)
+                : 0,
         updatedAt: data.updatedAt || null,
     }
 }
@@ -519,25 +524,32 @@ async function persistAssistantThreadState({
         throw new Error('progressCompleted cannot exceed progressTotal for compact_thread_context.')
     }
 
-    const trimHistoryBeforeMs = Date.now()
-    const compactedState = {
-        summary: normalizedSummary,
-        progressCompleted: normalizedProgressCompleted,
-        progressTotal: normalizedProgressTotal,
-        currentProjectId: normalizeOptionalCompactThreadContextText(currentProjectId),
-        currentProjectName: normalizeOptionalCompactThreadContextText(currentProjectName),
-        nextProjectId: normalizeOptionalCompactThreadContextText(nextProjectId),
-        nextProjectName: normalizeOptionalCompactThreadContextText(nextProjectName),
-        trimHistoryBeforeMs,
-        updatedAt: admin.firestore.Timestamp.now(),
-    }
-
     const stateRef = getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assistantId)
     if (!stateRef) {
         throw new Error('compact_thread_context requires a valid thread runtime context.')
     }
 
-    await stateRef.set(compactedState)
+    const trimHistoryBeforeMs = Date.now()
+    const compactedState = await db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(stateRef)
+        const currentState = snapshot?.exists ? snapshot.data() || {} : {}
+        const currentRevision = Number(currentState.compactionRevision)
+        const nextState = {
+            summary: normalizedSummary,
+            progressCompleted: normalizedProgressCompleted,
+            progressTotal: normalizedProgressTotal,
+            currentProjectId: normalizeOptionalCompactThreadContextText(currentProjectId),
+            currentProjectName: normalizeOptionalCompactThreadContextText(currentProjectName),
+            nextProjectId: normalizeOptionalCompactThreadContextText(nextProjectId),
+            nextProjectName: normalizeOptionalCompactThreadContextText(nextProjectName),
+            trimHistoryBeforeMs: Math.max(Number(currentState.trimHistoryBeforeMs) || 0, trimHistoryBeforeMs),
+            trimHistoryBeforeMessageId: '',
+            compactionRevision: Number.isInteger(currentRevision) && currentRevision >= 0 ? currentRevision + 1 : 1,
+            updatedAt: admin.firestore.Timestamp.now(),
+        }
+        transaction.set(stateRef, nextState)
+        return nextState
+    })
 
     return {
         success: true,
@@ -12547,7 +12559,7 @@ async function getOptimizedContextMessages(
         admin
             .firestore()
             .collection(`chatComments/${projectId}/${objectType}/${objectId}/comments`)
-            .orderBy('lastChangeDate', 'desc')
+            .orderBy('created', 'desc')
             .limit(THREAD_CONTEXT_MESSAGE_LIMIT)
             .get()
             .then(snapshot => snapshot.docs),
@@ -12620,11 +12632,15 @@ async function getOptimizedContextMessages(
             if (commentText) {
                 const role = fromAssistant ? 'assistant' : 'user'
                 const messageTimestamp = Number(messageData.created || messageData.lastChangeDate || 0)
-                if (
+                const trimHistoryBeforeMessageId = compactedThreadState?.trimHistoryBeforeMessageId || ''
+                const isBeforeCutoff =
                     trimHistoryBeforeMs &&
                     Number.isFinite(messageTimestamp) &&
-                    messageTimestamp < trimHistoryBeforeMs
-                ) {
+                    (messageTimestamp < trimHistoryBeforeMs ||
+                        (trimHistoryBeforeMessageId &&
+                            messageTimestamp === trimHistoryBeforeMs &&
+                            commentDocs[i].id.localeCompare(trimHistoryBeforeMessageId) <= 0))
+                if (isBeforeCutoff) {
                     continue
                 }
                 if (!fromAssistant) {
@@ -12940,6 +12956,7 @@ module.exports = {
     getToolResultFollowUpPrompt,
     getHeartbeatSettingsContextMessage,
     getAssistantThreadStateContextMessage,
+    getAssistantThreadStateDocRef,
     getProjectDescriptionContextMessage,
     getOpenTasksContextMessage,
     loadAssistantThreadState,

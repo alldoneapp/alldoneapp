@@ -276,6 +276,9 @@ describe('User memory assistant tool schemas', () => {
         ])
         expect(toolSchemas.compact_thread_context.function.description).toContain('long-running')
         expect(toolSchemas.compact_thread_context.function.parameters.properties.summary.type).toBe('string')
+        expect(toolSchemas.compact_thread_context.function.parameters.properties.summary.description).toContain(
+            'User intent and current objective'
+        )
         expect(toolSchemas.compact_thread_context.function.parameters.properties.progressCompleted.type).toBe('integer')
         expect(toolSchemas.compact_thread_context.function.parameters.properties.progressTotal.type).toBe('integer')
         expect(toolSchemas.compact_thread_context.function.parameters.properties.currentProjectId.type).toBe('string')
