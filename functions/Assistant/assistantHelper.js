@@ -12445,15 +12445,7 @@ function getRelevantTaskContextMetadata(task = {}) {
     }, {})
 }
 
-function buildCurrentObjectContextMessage({
-    projectId,
-    objectType,
-    objectId,
-    projectData,
-    objectData,
-    parentGoalData,
-    chatData,
-}) {
+function buildCurrentObjectContextMessage({ projectId, objectType, objectId, projectData, objectData, chatData }) {
     if (objectType !== 'tasks') {
         if (!chatData?.title) return ''
         const objectTypeLabel = objectType === 'topics' ? 'chat' : objectType.replace(/s$/, '')
@@ -12474,8 +12466,6 @@ function buildCurrentObjectContextMessage({
 
     if (name && name !== title) lines.push(`Task name: ${name}`)
     lines.push(`Task description: ${description || '(empty)'}`)
-    const parentGoalTitle = parentGoalData?.extendedName || parentGoalData?.name || ''
-    if (parentGoalTitle) lines.push(`Parent goal title: ${parentGoalTitle}`)
     if (Object.keys(metadata).length > 0) lines.push(`Relevant task metadata: ${JSON.stringify(metadata)}`)
 
     return lines.join('\n')
@@ -12489,23 +12479,9 @@ async function getCurrentObjectContextData(projectId, objectType, objectId) {
         admin.firestore().doc(`items/${projectId}/tasks/${objectId}`).get(),
     ])
 
-    const objectData = taskDoc.exists ? { id: taskDoc.id || objectId, ...(taskDoc.data() || {}) } : null
-    let parentGoalData = null
-
-    if (objectData?.parentGoalId) {
-        const parentGoalDoc = await admin.firestore().doc(`goals/${projectId}/items/${objectData.parentGoalId}`).get()
-        if (parentGoalDoc.exists) {
-            parentGoalData = {
-                id: parentGoalDoc.id || objectData.parentGoalId,
-                ...(parentGoalDoc.data() || {}),
-            }
-        }
-    }
-
     return {
         projectData: projectDoc.exists ? { id: projectDoc.id || projectId, ...(projectDoc.data() || {}) } : null,
-        objectData,
-        parentGoalData,
+        objectData: taskDoc.exists ? { id: taskDoc.id || objectId, ...(taskDoc.data() || {}) } : null,
     }
 }
 

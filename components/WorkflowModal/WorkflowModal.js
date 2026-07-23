@@ -39,9 +39,9 @@ import RecurringTaskDateBasisModal, {
 } from '../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
 import { getWorkflowCommentAssistantProps } from './workflowCommentAssistant'
 import { getWorkflowTargetStepIndex } from './workflowNavigation'
+import { WORKFLOW_FORWARD } from './workflowDirections'
 
-export const WORKFLOW_FORWARD = 'FORWARD'
-export const WORKFLOW_BACKWARD = 'BACKWARD'
+export { WORKFLOW_BACKWARD, WORKFLOW_FORWARD } from './workflowDirections'
 
 export default class WorkflowModal extends Component {
     constructor(props) {

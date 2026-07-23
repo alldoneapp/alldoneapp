@@ -5,22 +5,28 @@ import { colors } from '../styles/global'
 import Button from '../UIControls/Button'
 import { translate } from '../../i18n/TranslationService'
 
-export default function BackwardButton({ disabled, onPress, direction }) {
+export default function BackwardButton({ disabled, onPress, direction, shortcutsEnabled = true }) {
     const handleOnPress = () => {
         setTimeout(() => onPress(direction))
     }
 
-    return (
+    const button = (
+        <Button
+            title={translate('Send back')}
+            type={'secondary'}
+            disabled={disabled}
+            onPress={handleOnPress}
+            shortcutText={shortcutsEnabled ? 'X' : undefined}
+            shortcutStyle={{ backgroundColor: colors.Secondary200 }}
+            buttonStyle={{ marginRight: 8 }}
+        />
+    )
+
+    return shortcutsEnabled ? (
         <Hotkeys keyName={'alt+x'} onKeyDown={handleOnPress} filter={e => true}>
-            <Button
-                title={translate('Send back')}
-                type={'secondary'}
-                disabled={disabled}
-                onPress={handleOnPress}
-                shortcutText={'X'}
-                shortcutStyle={{ backgroundColor: colors.Secondary200 }}
-                buttonStyle={{ marginRight: 8 }}
-            />
+            {button}
         </Hotkeys>
+    ) : (
+        button
     )
 }

@@ -1,0 +1,2 @@
+export const WORKFLOW_FORWARD = 'FORWARD'
+export const WORKFLOW_BACKWARD = 'BACKWARD'

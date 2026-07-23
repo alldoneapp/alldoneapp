@@ -5,7 +5,14 @@ import Button from '../UIControls/Button'
 import { OPEN_STEP } from '../TaskListView/Utils/TasksHelper'
 import { translate } from '../../i18n/TranslationService'
 
-export default function ForwardButton({ onPress, direction, selectedCustomStep, currentStep, disabled }) {
+export default function ForwardButton({
+    onPress,
+    direction,
+    selectedCustomStep,
+    currentStep,
+    disabled,
+    shortcutsEnabled = true,
+}) {
     const text = translate(
         currentStep === OPEN_STEP ? 'Go to next step' : selectedCustomStep ? 'Send to custom step' : 'Send forward'
     )
@@ -20,7 +27,7 @@ export default function ForwardButton({ onPress, direction, selectedCustomStep, 
             type={'primary'}
             disabled={disabled}
             onPress={handleOnPress}
-            shortcutText={'Enter'}
+            shortcutText={shortcutsEnabled ? 'Enter' : undefined}
             shortcutStyle={{ backgroundColor: colors.Secondary200 }}
         />
     )

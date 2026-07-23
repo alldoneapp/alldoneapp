@@ -36,6 +36,7 @@ import TaskPriorityTagButton from '../../TaskPriorityTagButton'
 import TaskVmStatusTag from '../../../Tags/InProgressVmTag'
 import { doTrailingTagsCrowdTaskTitle } from '../../TagsArea/taskTagSummaryHelper'
 import { shouldShowAiStepControl } from './taskAiStepControl'
+import CommentPopupWorkflowControls from '../../../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls'
 
 function TaskPresentation(
     {
@@ -427,6 +428,14 @@ function TaskPresentation(
                             accessGranted={accessGranted}
                             projectId={projectId}
                             isLocked={isLocked}
+                        />
+                    )}
+                    {inCommentPopup && (
+                        <CommentPopupWorkflowControls
+                            projectId={projectId}
+                            task={task}
+                            workflow={workflow}
+                            disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
                         />
                     )}
                 </View>

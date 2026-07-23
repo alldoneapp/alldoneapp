@@ -2,6 +2,7 @@ const {
     ASSISTANT_RUN_LOCK_LEASE_MS,
     ASSISTANT_RUN_STUCK_THRESHOLD_MS,
     acquireAssistantRunLock,
+    acquireAssistantTaskRunLock,
     buildAssistantRunLockId,
     cancelAssistantRunLock,
     completeAssistantRunLock,
@@ -95,6 +96,60 @@ describe('assistant run idempotency', () => {
             assistantId: 'assistant-1',
             status: 'running',
             lockExpiresAt: 1000 + ASSISTANT_RUN_LOCK_LEASE_MS,
+        })
+        expect(db.docs.get('assistantTaskRunLocks/project-1__tasks__task-1')).toMatchObject({
+            ownerId: 'project-1__tasks__task-1__message-1',
+            kind: 'chat',
+            status: 'running',
+        })
+    })
+
+    test('prevents a workflow prompt from claiming a task while a comment run is active', async () => {
+        const db = createFakeDb()
+        await acquireAssistantRunLock(db, baseParams, () => 1000)
+
+        const workflowLock = await acquireAssistantTaskRunLock(
+            db,
+            {
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                ownerId: 'workflow-run-1',
+                kind: 'workflow',
+            },
+            () => 2000
+        )
+
+        expect(workflowLock.acquired).toBe(false)
+        expect(workflowLock.reason).toBe('already_running')
+        expect(workflowLock.existing).toMatchObject({
+            ownerId: 'project-1__tasks__task-1__message-1',
+            kind: 'chat',
+        })
+    })
+
+    test('releases the task-level activity lock when the comment run settles', async () => {
+        const db = createFakeDb()
+        const commentLock = await acquireAssistantRunLock(db, baseParams, () => 1000)
+
+        await completeAssistantRunLock(commentLock.lockRef, {}, () => 2000)
+        const workflowLock = await acquireAssistantTaskRunLock(
+            db,
+            {
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                ownerId: 'workflow-run-1',
+                kind: 'workflow',
+            },
+            () => 3000
+        )
+
+        expect(workflowLock.acquired).toBe(true)
+        expect(db.docs.get('assistantTaskRunLocks/project-1__tasks__task-1')).toMatchObject({
+            ownerId: 'workflow-run-1',
+            kind: 'workflow',
+            status: 'running',
         })
     })
 

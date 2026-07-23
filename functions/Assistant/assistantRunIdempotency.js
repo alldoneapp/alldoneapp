@@ -27,6 +27,103 @@ function buildAssistantRunLockId({ projectId, objectType, objectId, messageId })
     return [projectId, objectType || 'tasks', objectId, messageId].map(normalizeLockPart).join('__')
 }
 
+function buildAssistantTaskRunLockId({ projectId, objectType, objectId }) {
+    return [projectId, objectType || 'tasks', objectId].map(normalizeLockPart).join('__')
+}
+
+function isAssistantTaskRunLockActive(data, now) {
+    return !!data && data.status === ASSISTANT_RUN_STATUS_RUNNING && Number(data.lockExpiresAt || 0) > now
+}
+
+/**
+ * Reserves the authoritative per-object AI execution slot.
+ *
+ * Message locks prevent a retried request from running twice. This second, coarser lock lets workflow
+ * execution see that another prompt is already running on the task, even when it came from a
+ * different comment. Interactive runs only publish activity into this slot; they do not reject each
+ * other, preserving existing chat behaviour. Workflow runs use acquireAssistantTaskRunLock below,
+ * which atomically refuses to start while this slot is occupied.
+ */
+function setAssistantTaskRunLock(transaction, taskRunLockRef, ownerId, params, now) {
+    transaction.set(
+        taskRunLockRef,
+        {
+            projectId: params.projectId,
+            objectType: params.objectType || 'tasks',
+            objectId: params.objectId,
+            ownerId,
+            kind: params.kind || 'chat',
+            workflowStepId: params.workflowStepId || null,
+            status: ASSISTANT_RUN_STATUS_RUNNING,
+            startedAt: now,
+            updatedAt: now,
+            lockExpiresAt: now + ASSISTANT_RUN_LOCK_LEASE_MS,
+        },
+        { merge: true }
+    )
+}
+
+async function acquireAssistantTaskRunLock(db, params, nowFn = Date.now) {
+    const { projectId, objectType = 'tasks', objectId, ownerId, kind = 'workflow', workflowStepId } = params || {}
+    if (!projectId || !objectId || !ownerId) {
+        return { acquired: true, lockRef: null, lockId: null, skipped: false }
+    }
+
+    const now = nowFn()
+    const lockId = buildAssistantTaskRunLockId({ projectId, objectType, objectId })
+    const lockRef = db.doc(`assistantTaskRunLocks/${lockId}`)
+    let result = null
+
+    await db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(lockRef)
+        const existing = snapshot.exists ? snapshot.data() || {} : null
+
+        if (isAssistantTaskRunLockActive(existing, now) && existing.ownerId !== ownerId) {
+            result = { acquired: false, skipped: true, lockRef, lockId, existing, reason: 'already_running' }
+            return
+        }
+
+        setAssistantTaskRunLock(
+            transaction,
+            lockRef,
+            ownerId,
+            { projectId, objectType, objectId, kind, workflowStepId },
+            now
+        )
+        result = { acquired: true, skipped: false, lockRef, lockId }
+    })
+
+    return result || { acquired: true, skipped: false, lockRef, lockId }
+}
+
+async function releaseAssistantTaskRunLock(lockRef, ownerId, nowFn = Date.now) {
+    if (!lockRef || !ownerId) return
+
+    await lockRef.firestore
+        .runTransaction(async transaction => {
+            const snapshot = await transaction.get(lockRef)
+            if (!snapshot.exists) return
+
+            const data = snapshot.data() || {}
+            if (data.ownerId !== ownerId || data.status !== ASSISTANT_RUN_STATUS_RUNNING) return
+
+            const now = nowFn()
+            transaction.set(
+                lockRef,
+                {
+                    status: 'released',
+                    releasedAt: now,
+                    updatedAt: now,
+                    lockExpiresAt: 0,
+                },
+                { merge: true }
+            )
+        })
+        .catch(error => {
+            console.warn('Assistant run idempotency: failed releasing task run lock', { error: error.message })
+        })
+}
+
 function shouldSkipExistingRun(data, now) {
     if (!data) return false
     if (data.status === ASSISTANT_RUN_STATUS_COMPLETED) return true
@@ -44,6 +141,10 @@ async function acquireAssistantRunLock(db, params, nowFn = Date.now) {
     const now = nowFn()
     const lockId = buildAssistantRunLockId({ projectId, objectType, objectId, messageId })
     const lockRef = db.doc(`assistantRunLocks/${lockId}`)
+    const normalizedObjectType = objectType || 'tasks'
+    const taskRunLockId =
+        normalizedObjectType === 'tasks' ? buildAssistantTaskRunLockId({ projectId, objectType, objectId }) : null
+    const taskRunLockRef = taskRunLockId ? db.doc(`assistantTaskRunLocks/${taskRunLockId}`) : null
     let result = null
 
     await db.runTransaction(async transaction => {
@@ -71,6 +172,7 @@ async function acquireAssistantRunLock(db, params, nowFn = Date.now) {
                 messageId,
                 userId: userId || null,
                 assistantId: assistantId || null,
+                taskRunLockId,
                 status: ASSISTANT_RUN_STATUS_RUNNING,
                 createdAt: existing?.createdAt || now,
                 startedAt: now,
@@ -80,7 +182,16 @@ async function acquireAssistantRunLock(db, params, nowFn = Date.now) {
             },
             { merge: true }
         )
-        result = { acquired: true, skipped: false, lockRef, lockId }
+        if (taskRunLockRef) {
+            setAssistantTaskRunLock(
+                transaction,
+                taskRunLockRef,
+                lockId,
+                { projectId, objectType, objectId, kind: 'chat' },
+                now
+            )
+        }
+        result = { acquired: true, skipped: false, lockRef, lockId, taskRunLockRef }
     })
 
     return result || { acquired: true, skipped: false, lockRef, lockId }
@@ -102,6 +213,7 @@ async function completeAssistantRunLock(lockRef, extra = {}, nowFn = Date.now) {
         .catch(error => {
             console.warn('Assistant run idempotency: failed marking completed', { error: error.message })
         })
+    await releaseTaskRunLockForMessage(lockRef, nowFn)
 }
 
 async function failAssistantRunLock(lockRef, error, nowFn = Date.now) {
@@ -120,6 +232,7 @@ async function failAssistantRunLock(lockRef, error, nowFn = Date.now) {
         .catch(markError => {
             console.warn('Assistant run idempotency: failed marking failed', { error: markError.message })
         })
+    await releaseTaskRunLockForMessage(lockRef, nowFn)
 }
 
 async function requestCancelAssistantRunLock(lockRef, userId, nowFn = Date.now) {
@@ -185,6 +298,29 @@ async function cancelAssistantRunLock(lockRef, extra = {}, nowFn = Date.now) {
         .catch(error => {
             console.warn('Assistant run idempotency: failed marking cancelled', { error: error.message })
         })
+    await releaseTaskRunLockForMessage(lockRef, nowFn)
+}
+
+async function releaseTaskRunLockForMessage(lockRef, nowFn = Date.now) {
+    try {
+        const snapshot = await lockRef.get()
+        if (!snapshot.exists) return
+
+        const data = snapshot.data() || {}
+        if (!data.taskRunLockId) return
+        const ownerId =
+            lockRef.id ||
+            String(lockRef.path || '')
+                .split('/')
+                .pop()
+        await releaseAssistantTaskRunLock(
+            lockRef.firestore.doc(`assistantTaskRunLocks/${data.taskRunLockId}`),
+            ownerId,
+            nowFn
+        )
+    } catch (error) {
+        console.warn('Assistant run idempotency: failed finding task run lock', { error: error.message })
+    }
 }
 
 function isAssistantRunCancelledError(error) {
@@ -340,6 +476,8 @@ module.exports = {
     ASSISTANT_RUN_STATUS_FAILED,
     AssistantRunCancelledError,
     acquireAssistantRunLock,
+    acquireAssistantTaskRunLock,
+    buildAssistantTaskRunLockId,
     buildAssistantRunLockId,
     cancelAssistantRunLock,
     completeAssistantRunLock,
@@ -349,6 +487,7 @@ module.exports = {
     isAssistantRunCancelledError,
     recordAssistantRunComment,
     reconcileStuckAssistantRunLocks,
+    releaseAssistantTaskRunLock,
     requestCancelAssistantRunLock,
     shouldSkipExistingRun,
     throwIfAssistantRunCancelled,

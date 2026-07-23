@@ -353,15 +353,9 @@ describe('Current task context', () => {
                 extendedName: '#Must Fix task processor',
                 description: 'Show the assistant avatar and preserve the full task context.',
                 humanReadableId: 'ALL-97',
-                parentGoalId: 'goal-1',
                 priority: 'must_do',
                 recurrence: 'never',
                 taskMetadata: { source: 'predefined', execution: 'vm' },
-            },
-            parentGoalData: {
-                id: 'goal-1',
-                name: 'improve assistant context',
-                extendedName: 'Improve assistant context',
             },
         })
 
@@ -371,32 +365,9 @@ describe('Current task context', () => {
         expect(context).toContain('Task title: #Must Fix task processor')
         expect(context).toContain('Task name: Fix task processor')
         expect(context).toContain('Task description: Show the assistant avatar and preserve the full task context.')
-        expect(context).toContain('Parent goal title: Improve assistant context')
         expect(context).toContain('"humanReadableId":"ALL-97"')
-        expect(context).toContain('"parentGoalId":"goal-1"')
         expect(context).toContain('"priority":"must_do"')
         expect(context).toContain('"taskMetadata":{"source":"predefined","execution":"vm"}')
-    })
-
-    test('does not change context for a task without a parent goal', () => {
-        const context = buildCurrentObjectContextMessage({
-            projectId: 'project-1',
-            objectType: 'tasks',
-            objectId: 'task-1',
-            projectData: { name: 'Alldone Product' },
-            objectData: {
-                name: 'Independent task',
-                description: '',
-            },
-        })
-
-        expect(context).toBe(
-            'The current conversation is attached to the task below. When the user says "this task", they mean this exact task.\n' +
-                'Project: Alldone Product (ID: project-1)\n' +
-                'Task ID: task-1\n' +
-                'Task title: Independent task\n' +
-                'Task description: (empty)'
-        )
     })
 })
 
@@ -4190,19 +4161,7 @@ describe('assistant thread compaction tool', () => {
                         extendedName: 'Fix task processor',
                         description: 'Show the assistant avatar and preserve full context.',
                         humanReadableId: 'ALL-97',
-                        parentGoalId: 'goal-1',
                         taskMetadata: { source: 'predefined' },
-                    }),
-                })
-            }
-
-            if (path === 'goals/project-1/items/goal-1') {
-                return Promise.resolve({
-                    exists: true,
-                    id: 'goal-1',
-                    data: () => ({
-                        name: 'improve assistant context',
-                        extendedName: 'Improve assistant context',
                     }),
                 })
             }
@@ -4251,9 +4210,7 @@ describe('assistant thread compaction tool', () => {
         expect(flattened).toContain('Task ID: task-1')
         expect(flattened).toContain('Task title: Fix task processor')
         expect(flattened).toContain('Task description: Show the assistant avatar and preserve full context.')
-        expect(flattened).toContain('Parent goal title: Improve assistant context')
         expect(flattened).toContain('"humanReadableId":"ALL-97"')
-        expect(flattened).toContain('"parentGoalId":"goal-1"')
         expect(flattened).toContain('Execute this task in a VM')
 
         const vmContext = await buildVmThreadContext({
@@ -4275,7 +4232,6 @@ describe('assistant thread compaction tool', () => {
 
         expect(vmContext).toContain('Task title: Fix task processor')
         expect(vmContext).toContain('Task description: Show the assistant avatar and preserve full context.')
-        expect(vmContext).toContain('Parent goal title: Improve assistant context')
         expect(vmContext).toContain('Task ID: task-1')
     })
 

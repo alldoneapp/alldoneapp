@@ -4,13 +4,24 @@ import { StyleSheet, View } from 'react-native'
 import { OPEN_STEP } from '../TaskListView/Utils/TasksHelper'
 import ForwardButton from './ForwardButton'
 import BackwardButton from './BackwardButton'
-import { WORKFLOW_BACKWARD, WORKFLOW_FORWARD } from './WorkflowModal'
+import { WORKFLOW_BACKWARD, WORKFLOW_FORWARD } from './workflowDirections'
 
-export default function MainButtons({ selectedCustomStep, currentStep, onDonePress, disabled }) {
+export default function MainButtons({
+    selectedCustomStep,
+    currentStep,
+    onDonePress,
+    disabled,
+    shortcutsEnabled = true,
+}) {
     return (
         <View style={localStyles.container}>
             {currentStep !== OPEN_STEP && !selectedCustomStep && (
-                <BackwardButton onPress={onDonePress} direction={WORKFLOW_BACKWARD} disabled={disabled} />
+                <BackwardButton
+                    onPress={onDonePress}
+                    direction={WORKFLOW_BACKWARD}
+                    disabled={disabled}
+                    shortcutsEnabled={shortcutsEnabled}
+                />
             )}
             <ForwardButton
                 onPress={onDonePress}
@@ -18,6 +29,7 @@ export default function MainButtons({ selectedCustomStep, currentStep, onDonePre
                 selectedCustomStep={selectedCustomStep}
                 currentStep={currentStep}
                 disabled={disabled}
+                shortcutsEnabled={shortcutsEnabled}
             />
         </View>
     )

@@ -10,6 +10,7 @@ const {
 const { getNextWorkflowStepId, isAiWorkflowStep, buildAiStepPrompt } = require('./workflowStepHelper')
 const { ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = require('../Assistant/assistantRunLimits')
 const { TARGET_MAX_VM_RUNTIME_MS, VM_JOB_FINALIZATION_HEADROOM_MS } = require('../Assistant/vmJobConfig')
+const { acquireAssistantTaskRunLock, releaseAssistantTaskRunLock } = require('../Assistant/assistantRunIdempotency')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
 
@@ -32,6 +33,7 @@ const MAX_RUNS_PER_TICK = 5
 // parks here instead of settling, and the next tick advances the task once the VM job settles.
 const RUN_STATUS_AWAITING_VM = 'awaiting_vm'
 const VM_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
+const ACTIVE_ASSISTANT_RUN_STATUSES = ['running', 'cancel_requested']
 
 // How long to hold a step open for its VM work: the VM's own five-hour agent runtime plus the
 // finalization window its Cloud Run task gets for artifacts, Gold settlement and result posting.
@@ -310,95 +312,138 @@ const runWorkflowAiStep = async (runId, run) => {
     const workflow = getUserWorkflow(assignee.exists ? assignee.data() : null, projectId)
     const step = workflow[stepId]
 
-    let failureReason = null
+    const taskRunLock = await acquireAssistantTaskRunLock(admin.firestore(), {
+        projectId,
+        objectType: 'tasks',
+        objectId: taskId,
+        ownerId: runId,
+        kind: 'workflow',
+        workflowStepId: stepId,
+    })
 
-    if (!isAiWorkflowStep(step)) {
-        // The step was edited or deleted while the run was queued — nothing to run, just move on.
-        failureReason = 'step_no_longer_ai'
-    } else {
-        try {
-            const prompt = await resolveAiStepPrompt(projectId, step)
-            if (!prompt.trim()) {
-                failureReason = 'empty_prompt'
-            } else {
-                const isPublicFor = task.isPublicFor || [FEED_PUBLIC_FOR_ALL]
-                const followerIds = Array.from(new Set([assigneeUserId, ...(task.userIds || [])])).filter(
-                    id => id && !id.startsWith(WORKSTREAM_ID_PREFIX)
-                )
-
-                const { ensureChatExists } = require('../Assistant/assistantStatusHelper')
-                await ensureChatExists(projectId, 'tasks', taskId, assistantId, followerIds, isPublicFor)
-
-                const triggerMessageId = await postWorkflowStepPrompt(projectId, taskId, assigneeUserId, prompt)
-
-                const { generatePreConfigTaskResult } = require('../Assistant/assistantPreConfigTaskTopic')
-                await generatePreConfigTaskResult(
-                    // The assignee owns the workflow, so the assignee pays the Gold.
-                    assigneeUserId,
-                    projectId,
-                    taskId,
-                    followerIds,
-                    isPublicFor,
-                    assistantId,
-                    prompt,
-                    assignee.exists ? assignee.data().language || 'en' : 'en',
-                    // null lets the assistant's own model/temperature/instructions/tools apply.
-                    null,
-                    { name: task.extendedName || task.name },
-                    null,
-                    'tasks',
-                    // Grounds the run in the task it is about; see postWorkflowStepPrompt.
-                    { triggerMessageId }
-                )
-            }
-        } catch (error) {
-            console.error('[workflowAiStep] Assistant run failed', { runId, error: error.message })
-            failureReason = error.message || 'run_failed'
-            try {
-                await postAssistantComment(
-                    projectId,
-                    taskId,
-                    assistantId,
-                    `⚠️ This workflow step could not be completed: ${failureReason}`
-                )
-            } catch (commentError) {
-                console.error('[workflowAiStep] Could not post failure comment', { runId, error: commentError.message })
-            }
-        }
-    }
-
-    // The assistant answering is not the same as the step's work being finished. execute_task_in_vm
-    // returns as soon as the job is enqueued, so a step that dispatched one would otherwise hand the
-    // task to the next reviewer while the work it asked for is still running — for up to five hours.
-    if (!failureReason) {
-        const awaitingCorrelationIds = await findUnsettledVmJobs(projectId, taskId, runStartedAt)
-        if (awaitingCorrelationIds.length > 0) {
+    if (!taskRunLock.acquired) {
+        const activeKind = taskRunLock.existing && taskRunLock.existing.kind
+        const activeWorkflowStepId = taskRunLock.existing && taskRunLock.existing.workflowStepId
+        if (activeKind === 'workflow' && activeWorkflowStepId === stepId) {
+            // A second transition/update can enqueue a different run id for the same step. The run
+            // already holding the task slot owns advancing it; this duplicate must not move the task
+            // out from underneath that run.
             await runRef.set(
-                {
-                    status: RUN_STATUS_AWAITING_VM,
-                    awaitingCorrelationIds,
-                    awaitingSince: Date.now(),
-                    awaitingUntil: Date.now() + AWAITING_VM_TIMEOUT_MS,
-                },
+                { status: RUN_STATUS_SKIPPED, reason: 'workflow_run_already_active', settledAt: Date.now() },
                 { merge: true }
             )
-            console.log('[workflowAiStep] Holding the step until its VM work finishes', {
-                runId,
-                taskId,
-                awaitingCorrelationIds,
-            })
             return
         }
+
+        // A comment-triggered assistant run already owns the task. Treat the AI workflow step as
+        // satisfied and continue the workflow without posting or executing the step prompt.
+        await finalizeWorkflowAiRun(runId, run, workflow, null, 'task_ai_run_already_active')
+        return
     }
 
-    await finalizeWorkflowAiRun(runId, run, workflow, failureReason)
+    try {
+        // Covers jobs that outlive the interactive prompt which launched them, plus locks created
+        // by instances running the previous release during a rolling deployment.
+        if (await hasActiveAiTaskJob(projectId, taskId)) {
+            await finalizeWorkflowAiRun(runId, run, workflow, null, 'task_ai_run_already_active')
+            return
+        }
+
+        let failureReason = null
+
+        if (!isAiWorkflowStep(step)) {
+            // The step was edited or deleted while the run was queued — nothing to run, just move on.
+            failureReason = 'step_no_longer_ai'
+        } else {
+            try {
+                const prompt = await resolveAiStepPrompt(projectId, step)
+                if (!prompt.trim()) {
+                    failureReason = 'empty_prompt'
+                } else {
+                    const isPublicFor = task.isPublicFor || [FEED_PUBLIC_FOR_ALL]
+                    const followerIds = Array.from(new Set([assigneeUserId, ...(task.userIds || [])])).filter(
+                        id => id && !id.startsWith(WORKSTREAM_ID_PREFIX)
+                    )
+
+                    const { ensureChatExists } = require('../Assistant/assistantStatusHelper')
+                    await ensureChatExists(projectId, 'tasks', taskId, assistantId, followerIds, isPublicFor)
+
+                    const triggerMessageId = await postWorkflowStepPrompt(projectId, taskId, assigneeUserId, prompt)
+
+                    const { generatePreConfigTaskResult } = require('../Assistant/assistantPreConfigTaskTopic')
+                    await generatePreConfigTaskResult(
+                        // The assignee owns the workflow, so the assignee pays the Gold.
+                        assigneeUserId,
+                        projectId,
+                        taskId,
+                        followerIds,
+                        isPublicFor,
+                        assistantId,
+                        prompt,
+                        assignee.exists ? assignee.data().language || 'en' : 'en',
+                        // null lets the assistant's own model/temperature/instructions/tools apply.
+                        null,
+                        { name: task.extendedName || task.name },
+                        null,
+                        'tasks',
+                        // Grounds the run in the task it is about; see postWorkflowStepPrompt.
+                        { triggerMessageId }
+                    )
+                }
+            } catch (error) {
+                console.error('[workflowAiStep] Assistant run failed', { runId, error: error.message })
+                failureReason = error.message || 'run_failed'
+                try {
+                    await postAssistantComment(
+                        projectId,
+                        taskId,
+                        assistantId,
+                        `⚠️ This workflow step could not be completed: ${failureReason}`
+                    )
+                } catch (commentError) {
+                    console.error('[workflowAiStep] Could not post failure comment', {
+                        runId,
+                        error: commentError.message,
+                    })
+                }
+            }
+        }
+
+        // The assistant answering is not the same as the step's work being finished. execute_task_in_vm
+        // returns as soon as the job is enqueued, so a step that dispatched one would otherwise hand the
+        // task to the next reviewer while the work it asked for is still running — for up to five hours.
+        if (!failureReason) {
+            const awaitingCorrelationIds = await findUnsettledVmJobs(projectId, taskId, runStartedAt)
+            if (awaitingCorrelationIds.length > 0) {
+                await runRef.set(
+                    {
+                        status: RUN_STATUS_AWAITING_VM,
+                        awaitingCorrelationIds,
+                        awaitingSince: Date.now(),
+                        awaitingUntil: Date.now() + AWAITING_VM_TIMEOUT_MS,
+                    },
+                    { merge: true }
+                )
+                console.log('[workflowAiStep] Holding the step until its VM work finishes', {
+                    runId,
+                    taskId,
+                    awaitingCorrelationIds,
+                })
+                return
+            }
+        }
+
+        await finalizeWorkflowAiRun(runId, run, workflow, failureReason)
+    } finally {
+        await releaseAssistantTaskRunLock(taskRunLock.lockRef, runId)
+    }
 }
 
 /**
  * Moves the task off the step and settles the run. Split out of runWorkflowAiStep because a run that
  * dispatched VM work reaches this point later, from resolveAwaitingVmRuns.
  */
-const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason) => {
+const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipReason = null) => {
     const { projectId, taskId, stepId } = run
     const taskRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
 
@@ -418,12 +463,48 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason) => {
         .doc(`${RUNS_COLLECTION}/${runId}`)
         .set(
             {
-                status: failureReason ? RUN_STATUS_FAILED : RUN_STATUS_COMPLETED,
+                status: skipReason ? RUN_STATUS_SKIPPED : failureReason ? RUN_STATUS_FAILED : RUN_STATUS_COMPLETED,
+                ...(skipReason ? { reason: skipReason } : {}),
                 ...(failureReason ? { failureReason } : {}),
                 settledAt: Date.now(),
             },
             { merge: true }
         )
+}
+
+/**
+ * Returns whether another authoritative AI execution mechanism is still active on this task.
+ *
+ * The task-level lock handles new comment/workflow races atomically. These collection checks cover
+ * VM jobs (which can outlive the prompt that launched them) and interactive locks written by an
+ * older function instance during a rolling deployment.
+ */
+const hasActiveAiTaskJob = async (projectId, taskId, now = Date.now()) => {
+    const [assistantRuns, vmJobs] = await Promise.all([
+        admin.firestore().collection('assistantRunLocks').where('objectId', '==', taskId).get(),
+        admin.firestore().collection('pendingWebhooks').where('objectId', '==', taskId).get(),
+    ])
+
+    const activeAssistantRun = assistantRuns.docs.some(doc => {
+        const run = doc.data() || {}
+        return (
+            run.projectId === projectId &&
+            (run.objectType || 'tasks') === 'tasks' &&
+            ACTIVE_ASSISTANT_RUN_STATUSES.includes(run.status) &&
+            Number(run.lockExpiresAt || 0) > now
+        )
+    })
+    if (activeAssistantRun) return true
+
+    return vmJobs.docs.some(doc => {
+        const job = doc.data() || {}
+        return (
+            job.kind === 'vm_job' &&
+            job.projectId === projectId &&
+            (job.objectType || 'tasks') === 'tasks' &&
+            !VM_TERMINAL_STATUSES.includes(job.status)
+        )
+    })
 }
 
 /**
@@ -697,6 +778,7 @@ module.exports = {
     claimWorkflowAiRun,
     dispatchPendingWorkflowAiRuns,
     enqueueWorkflowAiRunIfNeeded,
+    hasActiveAiTaskJob,
     resolveAwaitingVmRuns,
     runWorkflowAiStep,
     sweepStalledWorkflowAiRuns,

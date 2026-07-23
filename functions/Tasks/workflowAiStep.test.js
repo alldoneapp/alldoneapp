@@ -2,6 +2,11 @@ const mockStore = new Map()
 
 const makeRef = path => ({
     __path: path,
+    path,
+    id: path.split('/').pop(),
+    get firestore() {
+        return mockDb
+    },
     get: async () => ({
         exists: mockStore.has(path),
         data: () => mockStore.get(path),
@@ -347,6 +352,71 @@ describe('runWorkflowAiStep', () => {
 
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+    })
+
+    it('skips the workflow prompt when a comment-triggered AI run already owns the task', async () => {
+        mockStore.set(`assistantTaskRunLocks/${PROJECT}__tasks__${TASK}`, {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            ownerId: 'comment-run-1',
+            kind: 'chat',
+            status: 'running',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockPostUserRequestComment).not.toHaveBeenCalled()
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: 'skipped',
+            reason: 'task_ai_run_already_active',
+        })
+    })
+
+    it('skips the workflow prompt while a VM job for the task is active', async () => {
+        mockStore.set('pendingWebhooks/existing-vm-run', {
+            kind: 'vm_job',
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'running',
+            createdAt: Date.now() - 1000,
+        })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockPostUserRequestComment).not.toHaveBeenCalled()
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: 'skipped',
+            reason: 'task_ai_run_already_active',
+        })
+    })
+
+    it('does not let a duplicate workflow run advance the task owned by the first run', async () => {
+        mockStore.set(`assistantTaskRunLocks/${PROJECT}__tasks__${TASK}`, {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            ownerId: 'other-workflow-run',
+            kind: 'workflow',
+            workflowStepId: AI_STEP,
+            status: 'running',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: 'skipped',
+            reason: 'workflow_run_already_active',
+        })
     })
 
     it('preserves the task thread assistant state after the workflow assistant runs', async () => {
