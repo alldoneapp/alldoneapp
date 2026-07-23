@@ -26,6 +26,7 @@ export default function TaskChatWorkflowControls({ projectId, task }) {
             task={task}
             workflow={workflow}
             disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
+            appearance="chat"
         />
     )
 }

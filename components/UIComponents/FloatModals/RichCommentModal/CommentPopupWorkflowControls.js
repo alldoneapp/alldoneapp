@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import v4 from 'uuid/v4'
 
 import store from '../../../../redux/store'
@@ -12,6 +12,47 @@ import { WORKFLOW_BACKWARD } from '../../../WorkflowModal/workflowDirections'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
+import useOnHover from '../../../../hooks/UseOnHover'
+
+const CHAT_APPEARANCE = 'chat'
+
+function WorkflowStepOption({ step, controlsDisabled, moveTaskToStep, chatAppearance }) {
+    const { hover, onHover, offHover } = useOnHover()
+    const optionDisabled = controlsDisabled || step.current
+
+    return (
+        <TouchableOpacity
+            testID={step.current ? 'comment-popup-current-workflow-step' : undefined}
+            style={[
+                localStyles.stepOption,
+                chatAppearance && localStyles.chatStepOption,
+                chatAppearance && hover && !optionDisabled && localStyles.chatStepOptionHover,
+                step.current && localStyles.currentStepOption,
+                step.current && chatAppearance && localStyles.chatCurrentStepOption,
+            ]}
+            onPress={() => moveTaskToStep(step.id, 'selector')}
+            onMouseEnter={onHover}
+            onMouseLeave={offHover}
+            disabled={optionDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={`${translate('Select workflow step')}: ${step.label}`}
+            accessibilityState={{ selected: step.current, disabled: optionDisabled }}
+        >
+            <Text
+                style={[styles.subtitle1, localStyles.stepOptionText, chatAppearance && localStyles.chatStepOptionText]}
+                numberOfLines={2}
+            >
+                {step.label}
+            </Text>
+            {step.current && (
+                <View style={localStyles.currentStepIndicator}>
+                    <Icon name="check" size={14} color={colors.Primary100} />
+                    <Text style={[styles.caption2, localStyles.currentStepText]}>{translate('Current')}</Text>
+                </View>
+            )}
+        </TouchableOpacity>
+    )
+}
 
 export const getCommentPopupWorkflowTargets = (task, workflow) => {
     const stepIds = getWorkflowStepsIdsSorted(workflow)
@@ -47,14 +88,17 @@ export default function CommentPopupWorkflowControls({
     workflow,
     disabled,
     onDirectionalTransitionSuccess,
+    appearance,
 }) {
     const [submitting, setSubmitting] = useState(false)
     const [selectorOpen, setSelectorOpen] = useState(false)
+    const { hover: selectorHovered, onHover: onSelectorHover, offHover: offSelectorHover } = useOnHover()
     const submittingRef = useRef(false)
     const checkBoxIdRef = useRef(v4())
     const targets = getCommentPopupWorkflowTargets(task, workflow)
     const selectableSteps = getCommentPopupSelectableSteps(task, workflow)
     const currentStepId = task?.stepHistory?.[task.stepHistory.length - 1]
+    const chatAppearance = appearance === CHAT_APPEARANCE
 
     useEffect(() => {
         submittingRef.current = false
@@ -124,52 +168,66 @@ export default function CommentPopupWorkflowControls({
     const controlsDisabled = disabled || submitting
 
     return (
-        <View testID="comment-popup-workflow-controls" style={localStyles.container}>
+        <View
+            testID="comment-popup-workflow-controls"
+            style={[localStyles.container, chatAppearance && localStyles.chatContainer]}
+        >
             <TouchableOpacity
                 testID="comment-popup-workflow-selector"
-                style={[localStyles.selectorButton, controlsDisabled && localStyles.disabled]}
+                style={[
+                    localStyles.selectorButton,
+                    chatAppearance && localStyles.chatSelectorButton,
+                    chatAppearance && selectorHovered && !controlsDisabled && localStyles.chatSelectorButtonHover,
+                    controlsDisabled && localStyles.disabled,
+                ]}
                 onPress={() => setSelectorOpen(open => !open)}
+                onMouseEnter={onSelectorHover}
+                onMouseLeave={offSelectorHover}
                 disabled={controlsDisabled}
                 accessibilityRole="button"
                 accessibilityLabel={`${translate('Select workflow step')}: ${currentStepLabel}`}
                 accessibilityState={{ expanded: selectorOpen, disabled: controlsDisabled }}
             >
-                <Icon name="list" size={18} color={colors.Text03} />
-                <Text style={[styles.subtitle2, localStyles.selectorButtonText]} numberOfLines={1}>
+                {submitting ? (
+                    <ActivityIndicator
+                        testID="workflow-transition-loading"
+                        size="small"
+                        color={chatAppearance ? colors.Primary100 : colors.Text03}
+                    />
+                ) : (
+                    <Icon name="list" size={18} color={chatAppearance ? colors.Text02 : colors.Text03} />
+                )}
+                <Text
+                    style={[
+                        styles.subtitle2,
+                        localStyles.selectorButtonText,
+                        chatAppearance && localStyles.chatSelectorButtonText,
+                    ]}
+                    numberOfLines={1}
+                >
                     {`${translate('Current workflow step')}: ${currentStepLabel}`}
                 </Text>
-                <Icon name={selectorOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.Text03} />
+                <Icon
+                    name={selectorOpen ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={chatAppearance ? colors.Text02 : colors.Text03}
+                />
             </TouchableOpacity>
             {selectorOpen && (
                 <ScrollView
                     testID="comment-popup-workflow-step-list"
-                    style={localStyles.stepList}
+                    style={[localStyles.stepList, chatAppearance && localStyles.chatStepList]}
                     nestedScrollEnabled
                     keyboardShouldPersistTaps="handled"
                 >
                     {selectableSteps.map(step => (
-                        <TouchableOpacity
+                        <WorkflowStepOption
                             key={step.id}
-                            testID={step.current ? 'comment-popup-current-workflow-step' : undefined}
-                            style={[localStyles.stepOption, step.current && localStyles.currentStepOption]}
-                            onPress={() => moveTaskToStep(step.id, 'selector')}
-                            disabled={controlsDisabled || step.current}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${translate('Select workflow step')}: ${step.label}`}
-                            accessibilityState={{ selected: step.current, disabled: controlsDisabled || step.current }}
-                        >
-                            <Text style={[styles.subtitle1, localStyles.stepOptionText]} numberOfLines={2}>
-                                {step.label}
-                            </Text>
-                            {step.current && (
-                                <View style={localStyles.currentStepIndicator}>
-                                    <Icon name="check" size={14} color={colors.Primary100} />
-                                    <Text style={[styles.caption2, localStyles.currentStepText]}>
-                                        {translate('Current')}
-                                    </Text>
-                                </View>
-                            )}
-                        </TouchableOpacity>
+                            step={step}
+                            controlsDisabled={controlsDisabled}
+                            moveTaskToStep={moveTaskToStep}
+                            chatAppearance={chatAppearance}
+                        />
                     ))}
                 </ScrollView>
             )}
@@ -192,6 +250,12 @@ const localStyles = StyleSheet.create({
         paddingTop: 8,
         width: '100%',
     },
+    chatContainer: {
+        backgroundColor: colors.Grey100,
+        borderBottomColor: colors.Gray300,
+        borderBottomWidth: 1,
+        paddingBottom: 8,
+    },
     selectorButton: {
         alignItems: 'center',
         backgroundColor: colors.Secondary250,
@@ -202,10 +266,21 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 10,
         width: '100%',
     },
+    chatSelectorButton: {
+        backgroundColor: 'transparent',
+        borderColor: colors.Gray300,
+        borderWidth: 1,
+    },
+    chatSelectorButtonHover: {
+        backgroundColor: colors.Grey200,
+    },
     selectorButtonText: {
         color: 'white',
         flex: 1,
         marginHorizontal: 8,
+    },
+    chatSelectorButtonText: {
+        color: colors.Text02,
     },
     disabled: {
         opacity: 0.5,
@@ -217,6 +292,11 @@ const localStyles = StyleSheet.create({
         maxHeight: 168,
         paddingHorizontal: 8,
     },
+    chatStepList: {
+        backgroundColor: colors.Grey100,
+        borderColor: colors.Gray300,
+        borderWidth: 1,
+    },
     stepOption: {
         alignItems: 'center',
         borderBottomColor: colors.Secondary200,
@@ -227,12 +307,24 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 8,
         paddingVertical: 8,
     },
+    chatStepOption: {
+        borderBottomColor: colors.Gray300,
+    },
+    chatStepOptionHover: {
+        backgroundColor: colors.Grey200,
+    },
     stepOptionText: {
         color: 'white',
         flex: 1,
     },
+    chatStepOptionText: {
+        color: colors.Text02,
+    },
     currentStepOption: {
         backgroundColor: colors.Secondary200,
+    },
+    chatCurrentStepOption: {
+        backgroundColor: colors.UtilityBlue100,
     },
     currentStepIndicator: {
         alignItems: 'center',

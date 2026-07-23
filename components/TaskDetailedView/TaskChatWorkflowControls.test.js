@@ -61,6 +61,7 @@ describe('TaskChatWorkflowControls', () => {
             task,
             workflow,
             disabled: false,
+            appearance: 'chat',
         })
     })
 

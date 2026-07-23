@@ -1,11 +1,13 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
+import { StyleSheet } from 'react-native'
 
 import CommentPopupWorkflowControls, {
     getCommentPopupSelectableSteps,
     getCommentPopupWorkflowTargets,
 } from './CommentPopupWorkflowControls'
 import { moveTasksFromMiddleOfWorkflow, moveTasksFromOpen } from '../../../../utils/backends/Tasks/tasksFirestore'
+import { colors } from '../../../styles/global'
 
 jest.mock('uuid/v4', () => () => 'popup-workflow-action')
 jest.mock('../../../../redux/store', () => ({ dispatch: jest.fn() }))
@@ -64,6 +66,54 @@ describe('CommentPopupWorkflowControls', () => {
         expect(buttons.props.shortcutsEnabled).toBe(false)
         expect(buttons.props.compact).toBe(true)
         expect(tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })).toBeTruthy()
+    })
+
+    it('uses the full chat color system and hover state for the chat appearance', async () => {
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls projectId="project-1" task={task} workflow={workflow} appearance="chat" />
+        )
+        await act(async () => Promise.resolve())
+        const container = tree.root.findByProps({ testID: 'comment-popup-workflow-controls' })
+        const selector = tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })
+
+        expect(StyleSheet.flatten(container.props.style)).toEqual(
+            expect.objectContaining({
+                backgroundColor: colors.Grey100,
+                borderBottomColor: colors.Gray300,
+            })
+        )
+        expect(StyleSheet.flatten(selector.props.style)).toEqual(
+            expect.objectContaining({
+                backgroundColor: 'transparent',
+                borderColor: colors.Gray300,
+            })
+        )
+
+        act(() => selector.props.onMouseEnter())
+
+        const hoveredSelector = tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })
+        expect(StyleSheet.flatten(hoveredSelector.props.style).backgroundColor).toBe(colors.Grey200)
+        expect(hoveredSelector.findAllByType('Icon').map(icon => icon.props.color)).toEqual([
+            colors.Text02,
+            colors.Text02,
+        ])
+        expect(hoveredSelector.findByType('Text').props.style).toEqual(
+            expect.arrayContaining([expect.objectContaining({ color: colors.Text02 })])
+        )
+    })
+
+    it('keeps the existing dark popup color system by default', () => {
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls projectId="project-1" task={task} workflow={workflow} />
+        )
+        const container = tree.root.findByProps({ testID: 'comment-popup-workflow-controls' })
+        const selector = tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })
+
+        expect(StyleSheet.flatten(container.props.style).backgroundColor).toBe(colors.Secondary400)
+        expect(StyleSheet.flatten(selector.props.style).backgroundColor).toBe(colors.Secondary250)
+        expect(selector.findByType('Text').props.style).toEqual(
+            expect.arrayContaining([expect.objectContaining({ color: 'white' })])
+        )
     })
 
     it('offers every workflow step and identifies the current step', () => {
@@ -148,6 +198,35 @@ describe('CommentPopupWorkflowControls', () => {
         await act(async () => {
             finishMove()
             await firstMove
+        })
+    })
+
+    it('uses the full chat loading color while a transition is pending', async () => {
+        let finishMove
+        moveTasksFromMiddleOfWorkflow.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    finishMove = resolve
+                })
+        )
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls projectId="project-1" task={task} workflow={workflow} appearance="chat" />
+        )
+        await act(async () => Promise.resolve())
+        const buttons = tree.root.findByType('MainButtons')
+
+        let pendingMove
+        act(() => {
+            pendingMove = buttons.props.onDonePress('FORWARD')
+        })
+        await act(async () => Promise.resolve())
+
+        expect(tree.root.findByProps({ testID: 'workflow-transition-loading' }).props.color).toBe(colors.Primary100)
+        expect(tree.root.findByType('MainButtons').props.disabled).toBe(true)
+
+        await act(async () => {
+            finishMove()
+            await pendingMove
         })
     })
 
