@@ -1064,7 +1064,7 @@ const toolSchemas = {
                     summary: {
                         type: 'string',
                         description:
-                            'A concise but durable cumulative Markdown summary using these sections: User intent and current objective; Important facts and context; Decisions made; Work completed; Open questions; Commitments and next steps; Referenced entities, files, links and code paths; User preferences and corrections. Merge prior still-relevant compacted context, preserve exact IDs, dates, names, URLs and numbers, and remove filler/repetition. This becomes the compacted working memory for the thread.',
+                            'A concise but durable summary of the work completed so far, including key results, constraints, and what should happen next. This becomes the compacted working memory for the thread.',
                     },
                     progressCompleted: {
                         type: 'integer',
