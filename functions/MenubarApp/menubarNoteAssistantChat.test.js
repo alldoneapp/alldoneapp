@@ -70,6 +70,24 @@ describe('note assistant chat created on push', () => {
         })
     })
 
+    test('keeps a private note chat visible only to its owner', async () => {
+        const db = makeDb({
+            'projects/project-1': { userIds: ['user-1', 'user-2'] },
+            'noteItems/project-1/notes/note-1': { title: 'Meeting at 3:45 PM' },
+        })
+
+        await enableNoteAssistantChat(db, { ...NOTE, isPublicFor: ['user-1'] })
+
+        expect(db.docs['chatObjects/project-1/chats/note-1'].isPublicFor).toEqual(['user-1'])
+        await expect(
+            resolveMenubarConversationTarget(db, 'user-2', {
+                projectId: 'project-1',
+                objectId: 'note-1',
+                objectType: 'notes',
+            })
+        ).resolves.toBeNull()
+    })
+
     test('types the chat as a note so a mismatched target is still refused', async () => {
         const db = makeDb({
             'projects/project-1': { userIds: ['user-1'] },

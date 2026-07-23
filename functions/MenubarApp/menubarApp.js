@@ -746,8 +746,19 @@ function normalizeNoteMove(rawMove) {
     return { noteId, sourceProjectId }
 }
 
+function resolveMenubarNotePrivacy(userId, rawIsPrivate) {
+    const isPrivate = rawIsPrivate === true
+    return {
+        isPrivate,
+        // Match alldone.app's native note privacy model: private notes are
+        // visible only to their owner; project-wide notes carry the public
+        // marker while retaining the owner in their access list.
+        isPublicFor: isPrivate ? [userId] : [0, userId],
+    }
+}
+
 // POST /api/menubar/notes  ->
-//   { token, title, content, attachments?, projectId?, projectName?, move?,
+//   { token, title, content, attachments?, projectId?, projectName?, move?, isPrivate?,
 //     meeting?: { externalId?, recurringKey?, title?, attendeeEmails? } }
 //   200 { success: true, noteId, projectId, projectName, url, resolution, deduplicated }
 async function handleMenubarPushNote(req, res) {
@@ -1040,6 +1051,7 @@ async function handleMenubarPushNote(req, res) {
         // Set by the Mac app when its "follow-up prompt after sync" option is on:
         // the note needs an assistant-enabled chat to receive that prompt.
         const enableAssistantChat = req.body?.enableAssistantChat === true
+        const privacy = resolveMenubarNotePrivacy(userId, req.body?.isPrivate)
 
         const assistantActor = await getMenubarAssistantActor(db, userData)
         const feedUser = assistantActor.feedUser
@@ -1059,7 +1071,8 @@ async function handleMenubarPushNote(req, res) {
                     userId,
                     projectId: resolution.projectId,
                     assistantId: assistantActor.assistantId,
-                    isPrivate: false,
+                    isPrivate: privacy.isPrivate,
+                    isPublicFor: privacy.isPublicFor,
                     feedUser,
                 },
                 { userId, projectId: resolution.projectId }
@@ -1082,6 +1095,7 @@ async function handleMenubarPushNote(req, res) {
                     title,
                     userId,
                     assistantId: assistantActor.assistantId,
+                    isPublicFor: privacy.isPublicFor,
                 })
             } catch (chatError) {
                 console.warn('menubarPushNote: enabling the note assistant chat failed', chatError)
@@ -1334,12 +1348,13 @@ async function getOrCreateMacAppDailyTopic(db, userId, projectId, assistantId, u
 // resolveMenubarConversationTarget refuses a target whose chat is missing, and
 // the assistant only answers when isAssistantEnabled is set. Create both here,
 // mirroring the shape TaskCommentService writes for tasks.
-async function enableNoteAssistantChat(db, { projectId, noteId, title, userId, assistantId }) {
+async function enableNoteAssistantChat(db, { projectId, noteId, title, userId, assistantId, isPublicFor }) {
     // Declared locally rather than pulled from HelperFunctionsCloud, the same way
     // menubarAccountSummary and menubarLastComment do — this path needs one
     // constant, not that module's Cloud Functions dependencies.
     const FEED_PUBLIC_FOR_ALL = 0
     const now = Date.now()
+    const chatVisibility = Array.isArray(isPublicFor) && isPublicFor.length ? isPublicFor : [FEED_PUBLIC_FOR_ALL]
 
     await db.doc(`chatObjects/${projectId}/chats/${noteId}`).set(
         {
@@ -1351,7 +1366,7 @@ async function enableNoteAssistantChat(db, { projectId, noteId, title, userId, a
             created: now,
             lastEditionDate: now,
             lastEditorId: userId,
-            isPublicFor: [FEED_PUBLIC_FOR_ALL],
+            isPublicFor: chatVisibility,
             hasStar: '#ffffff',
             stickyData: { days: 0, stickyEndDate: 0 },
             usersFollowing: [userId],
@@ -2224,6 +2239,7 @@ module.exports = {
         buildNotePushDocId,
         buildLegacyNotePushDocId,
         normalizeNoteMove,
+        resolveMenubarNotePrivacy,
         getMenubarAssistantActor,
         decodeNoteAttachments,
         rewriteMarkdownAttachmentUrls,

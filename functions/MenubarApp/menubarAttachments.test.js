@@ -6,6 +6,7 @@ const {
     buildNotePushDocId,
     buildLegacyNotePushDocId,
     normalizeNoteMove,
+    resolveMenubarNotePrivacy,
     getMenubarAssistantActor,
     decodeNoteAttachments,
     rewriteMarkdownAttachmentUrls,
@@ -36,6 +37,26 @@ describe('menubar note idempotency', () => {
             sourceProjectId: 'project-a',
         })
         expect(() => normalizeNoteMove({ noteId: '', sourceProjectId: 'project-a' })).toThrow('move noteId is invalid')
+    })
+})
+
+describe('menubar note privacy', () => {
+    test('maps private notes to owner-only visibility', () => {
+        expect(resolveMenubarNotePrivacy('user-1', true)).toEqual({
+            isPrivate: true,
+            isPublicFor: ['user-1'],
+        })
+    })
+
+    test('keeps omitted or false privacy project-wide', () => {
+        expect(resolveMenubarNotePrivacy('user-1', false)).toEqual({
+            isPrivate: false,
+            isPublicFor: [0, 'user-1'],
+        })
+        expect(resolveMenubarNotePrivacy('user-1')).toEqual({
+            isPrivate: false,
+            isPublicFor: [0, 'user-1'],
+        })
     })
 })
 
