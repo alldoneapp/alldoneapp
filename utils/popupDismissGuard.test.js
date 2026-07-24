@@ -1,4 +1,4 @@
-import { installRichCommentOutsideDismissGuard } from './popupDismissGuard'
+import { installRichCommentOutsideDismissGuard, protectModalDismissFromClickThrough } from './popupDismissGuard'
 
 describe('rich comment outside-dismiss guard', () => {
     let popup
@@ -88,5 +88,26 @@ describe('rich comment outside-dismiss guard', () => {
 
         popupContainer.remove()
         nestedContainer.remove()
+    })
+
+    it('consumes the trailing mobile-web events after a focus action reorders the list', () => {
+        const underlyingAction = jest.fn()
+        underlyingButton.addEventListener('mousedown', underlyingAction)
+        underlyingButton.addEventListener('mouseup', underlyingAction)
+        underlyingButton.addEventListener('click', underlyingAction)
+
+        protectModalDismissFromClickThrough({
+            nativeEvent: { type: 'touchend' },
+            stopPropagation: jest.fn(),
+        })
+
+        dispatch(underlyingButton, 'mousedown')
+        dispatch(underlyingButton, 'mouseup')
+        underlyingButton.click()
+
+        expect(underlyingAction).not.toHaveBeenCalled()
+
+        underlyingButton.click()
+        expect(underlyingAction).toHaveBeenCalledTimes(1)
     })
 })

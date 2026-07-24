@@ -25,6 +25,7 @@ import { Keyboard } from 'react-native'
 import Backend from '../../../utils/BackendBridge'
 import { objectIsPublicForLoggedUser } from '../../TaskListView/Utils/TasksHelper'
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
+import { prepareTaskFocusChange } from '../../../utils/taskFocusInteraction'
 
 export default function SecondaryButtonsArea({
     tmpTask,
@@ -77,9 +78,9 @@ export default function SecondaryButtonsArea({
         setToBacklogBeforeSave(isObserved)
     }
 
-    const focusTask = () => {
+    const focusTask = event => {
+        prepareTaskFocusChange(event, dismissEditMode)
         updateFocusedTask(loggedUserId, projectId, inFocusTaskId === tmpTask.id ? null : tmpTask, null, null)
-        dismissEditMode?.()
     }
 
     const focusButtonRef = React.useRef(null)
