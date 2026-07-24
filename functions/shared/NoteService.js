@@ -1608,6 +1608,89 @@ class NoteService {
     }
 
     /**
+     * Replace the entire content of an existing note in Firebase Storage.
+     * Loads the note's current Yjs document and edits it in place (delete-all
+     * + insert), so connected editors merge the change instead of forking the
+     * document the way a fresh Y.Doc would. Markdown is converted to Quill
+     * formatting exactly like note creation. Used by the menubar push's
+     * updateIfExists path (live call coach note refreshes and the final
+     * post-call overwrite).
+     * @param {string} projectId - Project ID containing the note
+     * @param {string} noteId - Note ID whose content is replaced
+     * @param {string} content - New full Markdown content
+     * @param {Object} [feedUser] - User object for metadata/feed generation
+     * @param {Object} [options] - Passed to the Markdown converter (editorId)
+     */
+    async replaceContentInStorage(projectId, noteId, content, feedUser = null, options = {}) {
+        let storage = this.options.storage
+        if (!storage && typeof require !== 'undefined') {
+            try {
+                const firebase = require('firebase-admin')
+                storage = firebase.storage()
+            } catch (error) {
+                return {
+                    success: false,
+                    error: 'STORAGE_UNAVAILABLE',
+                    message: `Storage is not available for replacing note content: ${error.message}`,
+                }
+            }
+        }
+        if (!storage) {
+            return {
+                success: false,
+                error: 'STORAGE_UNAVAILABLE',
+                message: 'Storage is not configured for replacing note content.',
+            }
+        }
+
+        const Y = typeof require !== 'undefined' ? require('yjs') : null
+        if (!Y) {
+            return {
+                success: false,
+                error: 'YJS_UNAVAILABLE',
+                message: 'Yjs is not available for replacing note content.',
+            }
+        }
+
+        const bucketName = await this.getBucketName()
+        const storageRef = storage.bucket(bucketName).file(`notesData/${projectId}/${noteId}`)
+        const doc = new Y.Doc()
+
+        const [fileExists] = await storageRef.exists()
+        if (fileExists) {
+            const [buffer] = await storageRef.download()
+            Y.applyUpdate(doc, new Uint8Array(buffer))
+        }
+
+        const ytext = doc.getText('quill')
+        if (ytext.length > 0) {
+            ytext.delete(0, ytext.length)
+        }
+        if (insertMarkdownToYjs) {
+            insertMarkdownToYjs(ytext, 0, content, options)
+        } else {
+            ytext.insert(0, content)
+        }
+
+        const encodedStateData = Y.encodeStateAsUpdate(doc)
+        await storageRef.save(Buffer.from(encodedStateData), {
+            metadata: {
+                contentType: 'application/octet-stream',
+            },
+        })
+
+        const fullContent = ytext.toString()
+        const preview = await this.updateContentMetadata(projectId, noteId, fullContent, feedUser, ['content replaced'])
+
+        return {
+            success: true,
+            changes: ['content replaced'],
+            content: fullContent,
+            preview,
+        }
+    }
+
+    /**
      * Add formatted content to the beginning of existing note in Firebase Storage
      * Replicates the exact behavior of the note toolbar's date button
      * @param {string} projectId - Project ID

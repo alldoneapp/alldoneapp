@@ -655,6 +655,93 @@ function isActivePush(pushData) {
     return pushData.status === 'pending' && pendingAge < NOTE_PUSH_PENDING_TIMEOUT_MS
 }
 
+// updateIfExists: replace the note a previous push created for this
+// externalId — title, content and attachments — keeping its identity, project
+// and chat. Used by the Mac app's live call coach: every mid-call press
+// refreshes the in-progress note, and the final post-call sync overwrites it
+// with the fully diarized transcript. Returns the response payload, or null
+// when the note no longer exists (deleted on alldone.app) so the caller falls
+// through to the normal create path.
+async function updateExistingMenubarNote(
+    db,
+    { pushData, userData, title, content, attachments, enableAssistantChat },
+    deps = {}
+) {
+    const projectId = pushData.projectId
+    const noteId = pushData.noteId
+    if (!projectId || !noteId) return null
+
+    const noteRef = db.doc(`noteItems/${projectId}/notes/${noteId}`)
+    const noteDoc = await noteRef.get()
+    if (!noteDoc.exists) return null
+
+    const assistantActor = deps.assistantActor || (await getMenubarAssistantActor(db, userData))
+    const feedUser = assistantActor.feedUser
+
+    let uploadedAttachments = []
+    let noteContent
+    try {
+        uploadedAttachments = await uploadNoteAttachments(attachments)
+        noteContent = rewriteMarkdownAttachmentUrls(content, uploadedAttachments)
+    } catch (uploadError) {
+        await cleanupUploadedNoteAttachments(uploadedAttachments)
+        throw uploadError
+    }
+
+    const noteService = deps.noteService || (await getNoteService())
+    const replaceResult = await noteService.replaceContentInStorage(projectId, noteId, noteContent, feedUser, {
+        editorId: feedUser.uid,
+    })
+    if (!replaceResult || !replaceResult.success) {
+        await cleanupUploadedNoteAttachments(uploadedAttachments)
+        throw new Error(replaceResult?.message || 'Replacing note content failed')
+    }
+
+    const currentTitle = (noteDoc.data() || {}).title || ''
+    const chatRef = db.doc(`chatObjects/${projectId}/chats/${noteId}`)
+    const chatDoc = await chatRef.get()
+
+    if (title && title !== currentTitle) {
+        await noteRef.set({ title, extendedTitle: title, lastEditionDate: Date.now() }, { merge: true })
+        // Keep an existing chat header in sync; never create a stub chat here.
+        if (chatDoc.exists) {
+            await chatRef
+                .set({ title }, { merge: true })
+                .catch(error => console.warn('menubarPushNote: chat title sync failed', error.message))
+        }
+    }
+
+    // The chat is created at most once per note — re-running the full enable
+    // would reset the existing chat's comment counters.
+    if (enableAssistantChat && !chatDoc.exists) {
+        try {
+            await enableNoteAssistantChat(db, {
+                projectId,
+                noteId,
+                title: title || currentTitle,
+                userId: pushData.userId,
+                assistantId: assistantActor.assistantId,
+                // The chat inherits the note's current visibility (private
+                // notes keep a private chat).
+                isPublicFor: (noteDoc.data() || {}).isPublicFor || null,
+            })
+        } catch (chatError) {
+            console.warn('menubarPushNote: enabling the note assistant chat on update failed', chatError)
+        }
+    }
+
+    return {
+        success: true,
+        deduplicated: true,
+        updated: true,
+        noteId,
+        projectId,
+        projectName: pushData.projectName || null,
+        url: `${getAppBaseUrl()}/projects/${projectId}/notes/${noteId}/editor`,
+        resolution: pushData.resolution || null,
+    }
+}
+
 async function getMenubarAssistantActor(db, userData) {
     // Always act as (and assign) the default assistant from the user's default project — matching
     // the in-app default — instead of the assistant configured on the project the note lands in.
@@ -759,8 +846,13 @@ function resolveMenubarNotePrivacy(userId, rawIsPrivate) {
 
 // POST /api/menubar/notes  ->
 //   { token, title, content, attachments?, projectId?, projectName?, move?, isPrivate?,
-//     meeting?: { externalId?, recurringKey?, title?, attendeeEmails? } }
-//   200 { success: true, noteId, projectId, projectName, url, resolution, deduplicated }
+//     updateIfExists?, meeting?: { externalId?, recurringKey?, title?, attendeeEmails? } }
+//   200 { success: true, noteId, projectId, projectName, url, resolution, deduplicated, updated? }
+//   updateIfExists: when meeting.externalId already maps to a note, replace its
+//   title/content/attachments in place (updated: true) instead of returning it
+//   untouched — the Mac app's live call coach refreshes its in-progress note
+//   this way, and the final post-call sync overwrites it with the full
+//   transcript.
 async function handleMenubarPushNote(req, res) {
     res.set('Cache-Control', 'no-store')
 
@@ -820,6 +912,9 @@ async function handleMenubarPushNote(req, res) {
 
         const meeting = req.body?.meeting && typeof req.body.meeting === 'object' ? req.body.meeting : {}
         const externalId = typeof meeting.externalId === 'string' ? meeting.externalId.trim() : ''
+        // updateIfExists turns an externalId match into an in-place note
+        // update (live call coach) instead of the dedup short-circuit.
+        const updateIfExists = req.body?.updateIfExists === true
 
         const db = admin.firestore()
 
@@ -990,8 +1085,31 @@ async function handleMenubarPushNote(req, res) {
             return
         }
 
-        // Repeated saves return the single existing note. Project changes use
+        // Repeated saves return the single existing note (or, with
+        // updateIfExists, replace its content in place). Project changes use
         // the explicit move path above and keep that note's identity.
+        // Returns true when the request was fully answered; false falls
+        // through to the create path (note deleted on alldone.app).
+        const respondForCompletedPush = async pushData => {
+            if (!updateIfExists) {
+                res.status(200).json(completedPushResponse(pushData))
+                return true
+            }
+            const updatedResponse = await updateExistingMenubarNote(db, {
+                pushData,
+                userData,
+                title,
+                content,
+                attachments,
+                enableAssistantChat: req.body?.enableAssistantChat === true,
+            })
+            if (updatedResponse) {
+                res.status(200).json(updatedResponse)
+                return true
+            }
+            return false
+        }
+
         let pushRef = null
         if (externalId) {
             pushRef = db
@@ -1001,8 +1119,7 @@ async function handleMenubarPushNote(req, res) {
             if (existingPush.exists) {
                 const pushData = existingPush.data() || {}
                 if (pushData.status === 'completed' && pushData.noteId) {
-                    res.status(200).json(completedPushResponse(pushData))
-                    return
+                    if (await respondForCompletedPush(pushData)) return
                 }
                 if (isActivePush(pushData)) {
                     res.status(409).json({ success: false, error: 'A push for this meeting is already in progress' })
@@ -1018,8 +1135,7 @@ async function handleMenubarPushNote(req, res) {
                 if (legacyPush.exists) {
                     const pushData = legacyPush.data() || {}
                     if (pushData.status === 'completed' && pushData.noteId) {
-                        res.status(200).json(completedPushResponse(pushData))
-                        return
+                        if (await respondForCompletedPush(pushData)) return
                     }
                     const sameProject = !pushData.projectId || pushData.projectId === resolution.projectId
                     if (sameProject && isActivePush(pushData)) {
@@ -2251,6 +2367,7 @@ module.exports = {
         normalizeAssistantThreadMessage,
         resolveMenubarConversationTarget,
         enableNoteAssistantChat,
+        updateExistingMenubarNote,
         resolveMenubarAssistantThread,
         toMillis,
     },
