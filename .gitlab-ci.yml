@@ -147,12 +147,24 @@ test:web:changed:
     script:
         # Functions have their own dependency tree and tests. Exclude them from
         # this root/web check when a commit happens to change both surfaces.
-        - git diff --name-only -z "origin/$CI_DEFAULT_BRANCH...HEAD" -- ':(exclude)functions/**' ':(exclude)cloudflare/**' ':(exclude)firebase_tool/**' ':(exclude)firestore-backups/**' ':(exclude)migration/**' | xargs -0 -r npm test -- --runInBand --findRelatedTests --passWithNoTests
+        # Jest's dependency graph treats shared data such as every translation
+        # JSON as related to most of the application. The selector keeps data
+        # and infrastructure out, while preferring a changed co-located test
+        # over traversing the source file's entire legacy dependency graph.
+        - node --check ci/selectTargetedJestFiles.js
+        - node ci/selectTargetedJestFiles.js "origin/$CI_DEFAULT_BRANCH" | xargs -0 -r npm test -- --setupFilesAfterEnv ./ci/jestSetup.js --runInBand --findRelatedTests --passWithNoTests
     rules:
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
           changes:
               compare_to: 'refs/heads/master'
               paths: *web-relevant-paths
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          changes:
+              compare_to: 'refs/heads/master'
+              paths:
+                  - .gitlab-ci.yml
+                  - ci/jestSetup.js
+                  - ci/selectTargetedJestFiles.js
 
 build_web_staging:
     stage: build_web
