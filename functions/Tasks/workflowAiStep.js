@@ -7,7 +7,7 @@ const {
     STAYWARD_COMMENT,
     WORKSTREAM_ID_PREFIX,
 } = require('../Utils/HelperFunctionsCloud')
-const { getNextWorkflowStepId, isAiWorkflowStep, buildAiStepPrompt } = require('./workflowStepHelper')
+const { buildWorkflowStepAdvanceUpdate, isAiWorkflowStep, buildAiStepPrompt } = require('./workflowStepHelper')
 const { ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = require('../Assistant/assistantRunLimits')
 const { TARGET_MAX_VM_RUNTIME_MS, VM_JOB_FINALIZATION_HEADROOM_MS } = require('../Assistant/vmJobConfig')
 const { acquireAssistantTaskRunLock, releaseAssistantTaskRunLock } = require('../Assistant/assistantRunIdempotency')
@@ -120,8 +120,8 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
  * onUpdateTaskFunctions already fires off the growth of userIds.
  */
 const advanceTaskFromWorkflowStep = async (projectId, taskId, task, fromStepId, workflow) => {
-    const nextStepId = getNextWorkflowStepId(workflow, fromStepId)
-    if (nextStepId === null) {
+    const transition = buildWorkflowStepAdvanceUpdate(task, fromStepId, workflow)
+    if (!transition) {
         console.warn('[workflowAiStep] Step vanished from the workflow, leaving task in place', {
             projectId,
             taskId,
@@ -130,30 +130,7 @@ const advanceTaskFromWorkflowStep = async (projectId, taskId, task, fromStepId, 
         return null
     }
 
-    const now = Date.now()
-    const userIds = Array.isArray(task.userIds) ? task.userIds : [task.userId]
-    const stepHistory = Array.isArray(task.stepHistory) ? task.stepHistory : []
-    const movingToDone = nextStepId === DONE_STEP
-
-    const updateData = movingToDone
-        ? {
-              userIds: [task.userId],
-              currentReviewerId: DONE_STEP,
-              completed: now,
-              done: true,
-              inDone: true,
-              sortIndex: now,
-          }
-        : {
-              userIds: [...userIds, workflow[nextStepId].reviewerUid],
-              currentReviewerId: workflow[nextStepId].reviewerUid,
-              stepHistory: [...stepHistory, nextStepId],
-              completed: now,
-              dueDate: now,
-              done: false,
-              inDone: false,
-              sortIndex: now,
-          }
+    const { nextStepId, movingToDone, updateData } = transition
 
     const batch = admin.firestore().batch()
     batch.set(admin.firestore().doc(`items/${projectId}/tasks/${taskId}`), updateData, { merge: true })
