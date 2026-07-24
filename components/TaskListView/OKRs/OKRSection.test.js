@@ -60,7 +60,6 @@ jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 
 jest.mock('../../../utils/backends/Users/usersFirestore', () => ({
     clearUserOKRsHiddenInAllProjectsToday: jest.fn(),
-    setUserOKRPrivacyMode: jest.fn(),
 }))
 
 const projectId = 'project-1'
@@ -107,14 +106,12 @@ describe('OKRSection', () => {
         expect(findUndoAllButtons(tree)).toHaveLength(1)
     })
 
-    it('keeps the selected-project OKR header visible when every OKR is done for today', () => {
+    it('does not render the selected-project OKR section when every OKR is done for today', () => {
         mockState = createState({ okrs: [hiddenOkr], hiddenTodayById: { [hiddenOkr.id]: '2026-05-25' } })
 
-        const tree = renderer.create(<OKRSection projectId={projectId} inAllProjects={false} />)
+        const tree = renderer.create(<OKRSection projectId={projectId} inAllProjects={false} />).toJSON()
 
-        expect(tree.root.findAllByType(Text).filter(node => node.props.children === hiddenOkr.label)).toHaveLength(0)
-        expect(tree.root.findByProps({ testID: 'okr-empty-item' })).toBeTruthy()
-        expect(findUndoAllButtons(tree)).toHaveLength(1)
+        expect(tree).toBeNull()
     })
 
     it('does not render the selected-project OKR section when the project has no OKRs', () => {
@@ -141,6 +138,16 @@ describe('OKRSection', () => {
         expect(tree.root.findAllByType(Text).filter(node => node.props.children === baseOkr.label)).toHaveLength(1)
         expect(tree.root.findAllByType(Text).filter(node => node.props.children === hiddenOkr.label)).toHaveLength(0)
         expect(findUndoAllButtons(tree)).toHaveLength(0)
+    })
+
+    it('does not render the Show all or Hide all action', () => {
+        const tree = renderer.create(<OKRSection projectId={projectId} inAllProjects={false} />)
+        const actionLabels = tree.root
+            .findAll(node => typeof node.props.accessibilityLabel === 'string')
+            .map(node => node.props.accessibilityLabel)
+
+        expect(actionLabels).not.toContain('Show all OKRs')
+        expect(actionLabels).not.toContain('Hide all OKRs')
     })
 
     it('clears only OKRs hidden for today when undoing all OKRs for today', () => {

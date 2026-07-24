@@ -14,7 +14,14 @@ import { DATE_TASK_INDEX, TODAY_DATE } from '../../../../../utils/backends/openT
 import { areEmailLineConnectionsHiddenToday } from '../../../../TaskListView/EmailLine/emailLineHelper'
 import { EMAIL_LINE_ENABLED } from '../../../../TaskListView/EmailLine/emailLineFeature'
 import { listEmailConnections } from '../../../../../utils/IntegrationProviders'
-import { clearUserEmailLineHiddenTodayForConnections } from '../../../../../utils/backends/Users/usersFirestore'
+import {
+    clearUserEmailLineHiddenTodayForConnections,
+    clearUserOKRsHiddenInAllProjectsToday,
+} from '../../../../../utils/backends/Users/usersFirestore'
+import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../../../../TaskListView/OKRs/okrHelper'
+import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
+import NavigationService from '../../../../../utils/NavigationService'
+import { DV_TAB_PROJECT_OKRS } from '../../../../../utils/TabNavigationConstants'
 
 export default function TaskHeaderMoreButton({
     projectIdOverride,
@@ -55,7 +62,11 @@ export default function TaskHeaderMoreButton({
     const openAutoPostponeTimeoutRef = useRef()
 
     const inSelectedProject = !!projectId
-    const showAddOKRItem = !!projectId && projectOKRs.length === 0
+    const todayKey = getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
+    const okrsHiddenTodayById = loggedUser.okrsHiddenInAllProjectsTodayByProjectAndOkr?.[projectId] || {}
+    const okrsHiddenToday = projectOKRs.filter(okr => okrsHiddenTodayById[okr.id] === todayKey)
+    const allProjectOKRsDoneToday = projectOKRs.length > 0 && okrsHiddenToday.length === projectOKRs.length
+    const showAddOKRItem = !!projectId && (projectOKRs.length === 0 || allProjectOKRsDoneToday)
     const showOrganizeItems = inSelectedProject && todayDateIndex >= 0
 
     // "Done for today" on the Email line hides it completely; this menu item is the
@@ -122,6 +133,20 @@ export default function TaskHeaderMoreButton({
         dismissModal()
     }
 
+    const openOKRsTab = () => {
+        ProjectHelper.processURLProjectDetailsTab(NavigationService, DV_TAB_PROJECT_OKRS, projectId)
+        dismissModal()
+    }
+
+    const undoAllOKRsForToday = () => {
+        clearUserOKRsHiddenInAllProjectsToday(
+            loggedUser.uid,
+            projectId,
+            okrsHiddenToday.map(okr => okr.id)
+        )
+        dismissModal()
+    }
+
     const onCloseMainModal = () => {
         clearOpenAddOKRTimeout()
         clearOpenAutoPostponeTimeout()
@@ -183,6 +208,32 @@ export default function TaskHeaderMoreButton({
                 />
             )
         })
+
+        if (allProjectOKRsDoneToday) {
+            list.push(shortcut => {
+                return (
+                    <ModalItem
+                        key={'gmbtn-okr-history'}
+                        icon={'external-link'}
+                        text={'History'}
+                        shortcut={shortcut}
+                        onPress={openOKRsTab}
+                    />
+                )
+            })
+
+            list.push(shortcut => {
+                return (
+                    <ModalItem
+                        key={'gmbtn-undo-okrs-today'}
+                        icon={'rotate-ccw'}
+                        text={'Undo all OKRs for today'}
+                        shortcut={shortcut}
+                        onPress={undoAllOKRsForToday}
+                    />
+                )
+            })
+        }
 
         if (showAddOKRItem) {
             list.push(shortcut => {
