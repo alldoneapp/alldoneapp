@@ -6,51 +6,6 @@ const VM_INTERACTION_STATUS_AWAITING = 'awaiting_user'
 const VM_INTERACTION_TTL_MS = 24 * 60 * 60 * 1000
 const VALID_VM_INTERACTION_KINDS = ['clarification', 'plan_review', 'tool_approval']
 const VALID_VM_INTERACTION_ACTIONS = ['submit', 'approve', 'revise', 'deny', 'cancel']
-const VM_INTERACTION_WORKFLOW_FIELD = 'vmInteractionWorkflowStep'
-
-function getVmInteractionTaskRef(db, pending) {
-    if (!pending.projectId || !pending.objectId || (pending.objectType || 'tasks') !== 'tasks') return null
-    return db.doc(`items/${pending.projectId}/tasks/${pending.objectId}`)
-}
-
-function getCurrentWorkflowStepId(task) {
-    const stepHistory = Array.isArray(task?.stepHistory) ? task.stepHistory : []
-    return stepHistory.length > 0 ? stepHistory[stepHistory.length - 1] : null
-}
-
-function createVmInteractionWorkflowStep(task, correlationId, requestId, reviewerId, triggeredAt) {
-    return {
-        correlationId,
-        requestId,
-        reviewerId,
-        previousReviewerId: task.currentReviewerId ?? null,
-        workflowStepId: getCurrentWorkflowStepId(task),
-        triggeredAt,
-    }
-}
-
-function isMatchingVmInteractionWorkflowStep(step, correlationId, requestId) {
-    return !!step && step.correlationId === correlationId && step.requestId === requestId
-}
-
-function clearVmInteractionWorkflowStep(transaction, taskRef, task, correlationId, requestId) {
-    if (!taskRef || !task) return
-    const step = task[VM_INTERACTION_WORKFLOW_FIELD]
-    if (!isMatchingVmInteractionWorkflowStep(step, correlationId, requestId)) return
-
-    // Only restore the reviewer while this temporary step still owns the task. A user may have
-    // moved the task manually while the VM was waiting; that newer workflow decision wins.
-    transaction.set(
-        taskRef,
-        {
-            ...(task.currentReviewerId === step.reviewerId
-                ? { currentReviewerId: step.previousReviewerId ?? null }
-                : {}),
-            [VM_INTERACTION_WORKFLOW_FIELD]: null,
-        },
-        { merge: true }
-    )
-}
 
 function getVmInteractionNotificationRef(db, pending, userId) {
     if (!pending.projectId || !pending.objectId || !pending.statusCommentId || !userId) return null
@@ -177,31 +132,6 @@ async function createVmInteractionRequest({
         if (['completed', 'failed', 'cancelled'].includes(pending.status)) {
             throw new Error('VM job has already settled.')
         }
-        const taskRef = getVmInteractionTaskRef(db, pending)
-        const taskSnapshot = taskRef ? await transaction.get(taskRef) : null
-        const task = taskSnapshot?.exists ? taskSnapshot.data() || {} : null
-        const existingWorkflowStep = task?.[VM_INTERACTION_WORKFLOW_FIELD]
-        let workflowStep = null
-
-        if (task) {
-            if (isMatchingVmInteractionWorkflowStep(existingWorkflowStep, correlationId, requestId)) {
-                workflowStep = existingWorkflowStep
-            } else if (!existingWorkflowStep && task.currentReviewerId !== userId) {
-                // Open task lists are keyed by currentReviewerId. Temporarily hand the current
-                // step to the requesting user so the existing task (and its red interaction
-                // comment) appears there, without growing stepHistory and invalidating a parked
-                // AI workflow run.
-                workflowStep = createVmInteractionWorkflowStep(task, correlationId, requestId, userId, createdAt)
-                transaction.set(
-                    taskRef,
-                    {
-                        currentReviewerId: userId,
-                        [VM_INTERACTION_WORKFLOW_FIELD]: workflowStep,
-                    },
-                    { merge: true }
-                )
-            }
-        }
 
         transaction.set(interactionRef, {
             correlationId,
@@ -230,7 +160,6 @@ async function createVmInteractionRequest({
                 expiresAt,
                 leaseOwner: null,
                 leaseExpiresAt: null,
-                interactionWorkflowStep: workflowStep,
             },
             { merge: true }
         )
@@ -277,19 +206,15 @@ async function answerVmInteractionRequest({
     const interactionRef = db.doc(`vmJobInteractions/${correlationId}/requests/${requestId}`)
     let result
     await db.runTransaction(async transaction => {
-        const pendingSnapshot = await transaction.get(pendingRef)
-        if (!pendingSnapshot.exists) throw new Error('VM interaction was not found.')
-        const pending = pendingSnapshot.data() || {}
-        const taskRef = getVmInteractionTaskRef(db, pending)
-        const [interactionSnapshot, sessionSnapshot, taskSnapshot] = await Promise.all([
+        const [pendingSnapshot, interactionSnapshot, sessionSnapshot] = await Promise.all([
+            transaction.get(pendingRef),
             transaction.get(interactionRef),
             transaction.get(sessionRef),
-            taskRef ? transaction.get(taskRef) : Promise.resolve(null),
         ])
-        if (!interactionSnapshot.exists) throw new Error('VM interaction was not found.')
+        if (!pendingSnapshot.exists || !interactionSnapshot.exists) throw new Error('VM interaction was not found.')
+        const pending = pendingSnapshot.data() || {}
         const interaction = interactionSnapshot.data() || {}
         const session = sessionSnapshot.exists ? sessionSnapshot.data() || {} : {}
-        const task = taskSnapshot?.exists ? taskSnapshot.data() || {} : null
         if (pending.userId !== userId || interaction.userId !== userId) {
             const error = new Error('Only the user who started the VM task can answer this interaction.')
             error.code = 'permission_denied'
@@ -340,7 +265,6 @@ async function answerVmInteractionRequest({
                 launchState: 'requested',
                 leaseOwner: null,
                 leaseExpiresAt: null,
-                interactionWorkflowStep: null,
             },
             { merge: true }
         )
@@ -362,7 +286,6 @@ async function answerVmInteractionRequest({
         // mark-as-read semantics.
         const notificationRef = getVmInteractionNotificationRef(db, pending, userId)
         if (notificationRef) transaction.delete(notificationRef)
-        clearVmInteractionWorkflowStep(transaction, taskRef, task, correlationId, requestId)
         result = {
             cancelling,
             executionAttemptId,
@@ -390,14 +313,12 @@ async function expireVmInteractions(db, now = Date.now()) {
             const sessionRef = db.doc(`vmSessions/${pending.projectId}__${pending.objectId}`)
             const interactionRef = db.doc(`vmJobInteractions/${doc.id}/requests/${pending.interactionRequestId}`)
             const expired = await db.runTransaction(async transaction => {
-                const latestSnapshot = await transaction.get(doc.ref)
-                const latest = latestSnapshot.exists ? latestSnapshot.data() || {} : {}
-                const taskRef = getVmInteractionTaskRef(db, latest)
-                const [interactionSnapshot, sessionSnapshot, taskSnapshot] = await Promise.all([
+                const [latestSnapshot, interactionSnapshot, sessionSnapshot] = await Promise.all([
+                    transaction.get(doc.ref),
                     transaction.get(interactionRef),
                     transaction.get(sessionRef),
-                    taskRef ? transaction.get(taskRef) : Promise.resolve(null),
                 ])
+                const latest = latestSnapshot.exists ? latestSnapshot.data() || {} : {}
                 if (
                     latest.status !== VM_INTERACTION_STATUS_AWAITING ||
                     latest.interactionRequestId !== pending.interactionRequestId ||
@@ -412,7 +333,6 @@ async function expireVmInteractions(db, now = Date.now()) {
                         failureReason: 'interaction_expired',
                         failedAt: now,
                         currentInteraction: null,
-                        interactionWorkflowStep: null,
                     },
                     { merge: true }
                 )
@@ -436,13 +356,6 @@ async function expireVmInteractions(db, now = Date.now()) {
                 }
                 const notificationRef = getVmInteractionNotificationRef(db, latest, latest.userId)
                 if (notificationRef) transaction.delete(notificationRef)
-                clearVmInteractionWorkflowStep(
-                    transaction,
-                    taskRef,
-                    taskSnapshot?.exists ? taskSnapshot.data() || {} : null,
-                    doc.id,
-                    pending.interactionRequestId
-                )
                 return true
             })
             if (!expired) continue
