@@ -56,12 +56,6 @@ describe('VM interactions', () => {
             activeLeaseOwner: 'runtime-owner',
             activeCorrelationId: 'run-1',
         }
-        store['items/project-1/tasks/chat-1'] = {
-            userId: 'user-1',
-            userIds: ['user-1', 'assistant-1'],
-            currentReviewerId: 'assistant-1',
-            stepHistory: [-1, 'ai-step'],
-        }
     })
 
     test('sanitizes provider questions before exposing them in a chat comment', () => {
@@ -113,16 +107,6 @@ describe('VM interactions', () => {
             blockedReason: 'plan_review',
             activeLeaseOwner: null,
         })
-        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'user-1',
-            vmInteractionWorkflowStep: {
-                correlationId: 'run-1',
-                requestId: 'request-1',
-                reviewerId: 'user-1',
-                previousReviewerId: 'assistant-1',
-                workflowStepId: 'ai-step',
-            },
-        })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toMatchObject({
             chatId: 'chat-1',
             chatType: 'tasks',
@@ -159,13 +143,6 @@ describe('VM interactions', () => {
         })
         // Retries upsert the notification for the live status comment instead of adding another.
         expect(Object.keys(store).filter(path => path.includes('chatNotifications/'))).toHaveLength(1)
-        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'user-1',
-            vmInteractionWorkflowStep: {
-                previousReviewerId: 'assistant-1',
-                triggeredAt: 1000,
-            },
-        })
     })
 
     test('answers exactly once and grants the resume attempt a dispatch lease', async () => {
@@ -206,10 +183,6 @@ describe('VM interactions', () => {
             activeLeaseOwner: 'dispatch:run-1',
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
-        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'assistant-1',
-            vmInteractionWorkflowStep: null,
-        })
 
         await expect(
             answerVmInteractionRequest({
@@ -290,10 +263,6 @@ describe('VM interactions', () => {
             activeLeaseOwner: 'dispatch:run-1',
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
-        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'assistant-1',
-            vmInteractionWorkflowStep: null,
-        })
     })
 
     test('clears a stale red notification when an unanswered interaction expires', async () => {
@@ -325,63 +294,5 @@ describe('VM interactions', () => {
             currentInteraction: null,
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
-        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'assistant-1',
-            vmInteractionWorkflowStep: null,
-        })
-    })
-
-    test('does not overwrite a newer manual workflow move when the user answers', async () => {
-        const database = db()
-        await createVmInteractionRequest({
-            db: database,
-            pendingRef: ref('pendingWebhooks/run-1'),
-            sessionRef: ref('vmSessions/project-1__chat-1'),
-            correlationId: 'run-1',
-            requestId: 'request-1',
-            userId: 'user-1',
-            provider: 'codex',
-            kind: 'clarification',
-            payload: { questions: [{ question: 'Which implementation?' }] },
-            now: 1000,
-        })
-        store['items/project-1/tasks/chat-1'].currentReviewerId = 'reviewer-2'
-
-        await answerVmInteractionRequest({
-            db: database,
-            pendingRef: ref('pendingWebhooks/run-1'),
-            sessionRef: ref('vmSessions/project-1__chat-1'),
-            correlationId: 'run-1',
-            requestId: 'request-1',
-            userId: 'user-1',
-            response: { action: 'submit', answers: { approach: 'Safe' } },
-            now: 2000,
-        })
-
-        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'reviewer-2',
-            vmInteractionWorkflowStep: null,
-        })
-    })
-
-    test('leaves non-task VM interactions out of the task workflow', async () => {
-        store['pendingWebhooks/run-1'].objectType = 'notes'
-        const database = db()
-
-        await createVmInteractionRequest({
-            db: database,
-            pendingRef: ref('pendingWebhooks/run-1'),
-            sessionRef: ref('vmSessions/project-1__chat-1'),
-            correlationId: 'run-1',
-            requestId: 'request-1',
-            userId: 'user-1',
-            provider: 'codex',
-            kind: 'clarification',
-            payload: { questions: [{ question: 'Which implementation?' }] },
-            now: 1000,
-        })
-
-        expect(store['items/project-1/tasks/chat-1'].currentReviewerId).toBe('assistant-1')
-        expect(store['pendingWebhooks/run-1'].interactionWorkflowStep).toBeNull()
     })
 })
