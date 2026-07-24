@@ -215,7 +215,7 @@ export default function TaskHeaderMoreButton({
                     <ModalItem
                         key={'gmbtn-okr-history'}
                         icon={'external-link'}
-                        text={'OKR History'}
+                        text={'History'}
                         shortcut={shortcut}
                         onPress={openOKRsTab}
                     />

@@ -99,7 +99,7 @@ describe('TaskHeaderMoreButton OKR actions', () => {
         })
         const labels = findItems(tree).map(node => node.props.text)
 
-        expect(labels).toEqual(expect.arrayContaining(['OKR History', 'Undo all OKRs for today', 'Add OKR']))
+        expect(labels).toEqual(expect.arrayContaining(['History', 'Undo all OKRs for today', 'Add OKR']))
         expect(labels).not.toContain('Show all')
     })
 
@@ -109,7 +109,7 @@ describe('TaskHeaderMoreButton OKR actions', () => {
         })
         const labels = findItems(tree).map(node => node.props.text)
 
-        expect(labels).not.toContain('OKR History')
+        expect(labels).not.toContain('History')
         expect(labels).not.toContain('Undo all OKRs for today')
         expect(labels).not.toContain('Add OKR')
         expect(labels).not.toContain('Show all')
@@ -132,7 +132,7 @@ describe('TaskHeaderMoreButton OKR actions', () => {
             'okr-1': '2026-07-24',
             'okr-2': '2026-07-24',
         })
-        const historyItem = findItems(tree).find(node => node.props.text === 'OKR History')
+        const historyItem = findItems(tree).find(node => node.props.text === 'History')
 
         historyItem.props.onPress()
 
