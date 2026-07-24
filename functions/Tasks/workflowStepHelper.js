@@ -40,42 +40,6 @@ const getNextWorkflowStepId = (workflow, stepId) => {
 }
 
 /**
- * Builds the task fields written by a normal forward workflow move.
- *
- * Keeping this pure lets VM interactions use the exact same transition semantics as completed AI
- * workflow steps while still committing the interaction and task move atomically.
- */
-const buildWorkflowStepAdvanceUpdate = (task, fromStepId, workflow, now = Date.now()) => {
-    const nextStepId = getNextWorkflowStepId(workflow, fromStepId)
-    if (nextStepId === null) return null
-
-    const movingToDone = nextStepId === DONE_STEP
-    const userIds = Array.isArray(task.userIds) ? task.userIds : [task.userId]
-    const stepHistory = Array.isArray(task.stepHistory) ? task.stepHistory : []
-    const updateData = movingToDone
-        ? {
-              userIds: [task.userId],
-              currentReviewerId: DONE_STEP,
-              completed: now,
-              done: true,
-              inDone: true,
-              sortIndex: now,
-          }
-        : {
-              userIds: [...userIds, workflow[nextStepId].reviewerUid],
-              currentReviewerId: workflow[nextStepId].reviewerUid,
-              stepHistory: [...stepHistory, nextStepId],
-              completed: now,
-              dueDate: now,
-              done: false,
-              inDone: false,
-              sortIndex: now,
-          }
-
-    return { nextStepId, movingToDone, updateData }
-}
-
-/**
  * Pre-config prompts use `$name` placeholders that a human normally fills in right before running.
  * A workflow run is unattended, so the values were captured when the step was configured.
  */
@@ -95,6 +59,5 @@ module.exports = {
     isAiWorkflowStep,
     getSortedWorkflowStepIds,
     getNextWorkflowStepId,
-    buildWorkflowStepAdvanceUpdate,
     buildAiStepPrompt,
 }
