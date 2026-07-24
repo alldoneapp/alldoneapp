@@ -354,7 +354,7 @@ describe('runWorkflowAiStep', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
-    it('skips the workflow prompt when a comment-triggered AI run already owns the task', async () => {
+    it('parks in the pre-VM window when a chat-triggered assistant run already owns the task', async () => {
         mockStore.set(`assistantTaskRunLocks/${PROJECT}__tasks__${TASK}`, {
             projectId: PROJECT,
             objectType: 'tasks',
@@ -364,11 +364,80 @@ describe('runWorkflowAiStep', () => {
             status: 'running',
             lockExpiresAt: Date.now() + 60_000,
         })
+        mockStore.set('assistantRunLocks/comment-run-1', {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'starting',
+            lockExpiresAt: Date.now() + 60_000,
+        })
 
         await runWorkflowAiStep(RUN_ID, run)
 
         expect(mockPostUserRequestComment).not.toHaveBeenCalled()
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: RUN_STATUS_AWAITING_VM,
+            awaitingAssistantRunIds: ['comment-run-1'],
+            awaitingCorrelationIds: [],
+            awaitingSkipReason: 'task_ai_run_already_active',
+        })
+    })
+
+    it('keeps waiting when a pre-VM chat run creates its VM, then advances after both settle', async () => {
+        mockStore.set(`workflowAiRuns/${RUN_ID}`, { ...run, status: 'running', createdAt: 1000 })
+        mockStore.set(`assistantTaskRunLocks/${PROJECT}__tasks__${TASK}`, {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            ownerId: 'comment-run-1',
+            kind: 'chat',
+            status: 'running',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+        mockStore.set('assistantRunLocks/comment-run-1', {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'queued',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        // No VM exists yet: the assistant execution itself keeps the step open.
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(0)
+
+        // execute_task_in_vm persists the VM before the chat run can report completion.
+        mockStore.set('pendingWebhooks/chat-vm-run', {
+            kind: 'vm_job',
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'pending',
+            createdAt: Date.now(),
+        })
+        mockStore.set('assistantRunLocks/comment-run-1', {
+            ...mockStore.get('assistantRunLocks/comment-run-1'),
+            status: 'completed',
+        })
+        mockStore.set(`assistantTaskRunLocks/${PROJECT}__tasks__${TASK}`, {
+            ...mockStore.get(`assistantTaskRunLocks/${PROJECT}__tasks__${TASK}`),
+            status: 'released',
+            lockExpiresAt: 0,
+        })
+
+        // The assistant lock has settled, but its VM has taken over as the blocker.
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(0)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+
+        mockStore.set('pendingWebhooks/chat-vm-run', {
+            ...mockStore.get('pendingWebhooks/chat-vm-run'),
+            status: 'completed',
+        })
+
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
             status: 'skipped',
@@ -427,6 +496,37 @@ describe('runWorkflowAiStep', () => {
             status: 'skipped',
             reason: 'task_ai_run_already_active',
         })
+    })
+
+    it('ignores unrelated and terminal assistant executions and VM jobs', async () => {
+        mockStore.set('assistantRunLocks/unrelated-run', {
+            projectId: 'another-project',
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'running',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+        mockStore.set('assistantRunLocks/terminal-run', {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'completed',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+        mockStore.set('pendingWebhooks/terminal-vm', {
+            kind: 'vm_job',
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'failed',
+            createdAt: Date.now(),
+        })
+
+        await runWorkflowAiStep(RUN_ID, run)
+
+        expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
     it('does not let a duplicate workflow run advance the task owned by the first run', async () => {

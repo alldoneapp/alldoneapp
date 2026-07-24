@@ -33,7 +33,10 @@ const MAX_RUNS_PER_TICK = 5
 // parks here instead of settling, and the next tick advances the task once the VM job settles.
 const RUN_STATUS_AWAITING_VM = 'awaiting_vm'
 const VM_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
-const ACTIVE_ASSISTANT_RUN_STATUSES = ['running', 'cancel_requested']
+// Chat execution is authoritative before execute_task_in_vm has created its pendingWebhooks record.
+// Include the admission states as well as the states currently written by assistantRunIdempotency so
+// this remains safe if chat dispatch starts persisting its queue explicitly.
+const ACTIVE_ASSISTANT_RUN_STATUSES = ['pending', 'queued', 'starting', 'running', 'cancel_requested']
 
 // How long to hold a step open for its VM work: the VM's own five-hour agent runtime plus the
 // finalization window its Cloud Run task gets for artifacts, Gold settlement and result posting.
@@ -333,32 +336,47 @@ const runWorkflowAiStep = async (runId, run) => {
             return
         }
 
-        // A comment-triggered run can already have dispatched VM work for this task. That work
-        // satisfies the AI step, but only after it actually finishes.
-        const activeVmCorrelationIds = await findUnsettledVmJobs(projectId, taskId)
-        if (activeVmCorrelationIds.length > 0) {
-            await parkWorkflowAiRunForVm(runRef, runId, taskId, activeVmCorrelationIds, 'task_ai_run_already_active')
-            return
-        }
-
-        // A non-VM comment-triggered assistant run already owns the task. Preserve the existing
-        // behaviour: treat the AI workflow step as satisfied without executing its prompt twice.
-        await finalizeWorkflowAiRun(runId, run, workflow, null, 'task_ai_run_already_active')
+        // The chat run owns this AI step even before execute_task_in_vm has created a VM record.
+        // Park on the assistant execution first; if it dispatches a VM, the resolver seamlessly
+        // switches to waiting on that job after the chat run itself settles.
+        await parkWorkflowAiRunForExecution(
+            runRef,
+            runId,
+            taskId,
+            {
+                assistantRunIds: [taskRunLock.existing && taskRunLock.existing.ownerId].filter(Boolean),
+            },
+            'task_ai_run_already_active'
+        )
         return
     }
 
     try {
-        // A VM launched from the task chat can outlive the prompt and its task lock. It still owns
-        // the work at this AI step, so park until it settles instead of immediately advancing.
-        const existingVmCorrelationIds = await findUnsettledVmJobs(projectId, taskId)
-        if (existingVmCorrelationIds.length > 0) {
-            await parkWorkflowAiRunForVm(runRef, runId, taskId, existingVmCorrelationIds, 'task_ai_run_already_active')
+        // Covers both halves of the lifecycle: the chat execution before VM creation and the VM
+        // after it has outlived the prompt/task lock. Message-level locks also cover older function
+        // instances during a rolling deployment.
+        const existingAssistantRunIds = await findActiveAssistantRuns(projectId, taskId)
+        if (existingAssistantRunIds.length > 0) {
+            await parkWorkflowAiRunForExecution(
+                runRef,
+                runId,
+                taskId,
+                {
+                    assistantRunIds: existingAssistantRunIds,
+                },
+                'task_ai_run_already_active'
+            )
             return
         }
-
-        // Covers interactive locks written by older instances during a rolling deployment.
-        if (await hasActiveAiTaskJob(projectId, taskId)) {
-            await finalizeWorkflowAiRun(runId, run, workflow, null, 'task_ai_run_already_active')
+        const existingVmCorrelationIds = await findUnsettledVmJobs(projectId, taskId)
+        if (existingVmCorrelationIds.length > 0) {
+            await parkWorkflowAiRunForExecution(
+                runRef,
+                runId,
+                taskId,
+                { vmCorrelationIds: existingVmCorrelationIds },
+                'task_ai_run_already_active'
+            )
             return
         }
 
@@ -426,9 +444,18 @@ const runWorkflowAiStep = async (runId, run) => {
         // returns as soon as the job is enqueued, so a step that dispatched one would otherwise hand the
         // task to the next reviewer while the work it asked for is still running — for up to five hours.
         if (!failureReason) {
+            const awaitingAssistantRunIds = await findActiveAssistantRuns(projectId, taskId)
+            if (awaitingAssistantRunIds.length > 0) {
+                await parkWorkflowAiRunForExecution(runRef, runId, taskId, {
+                    assistantRunIds: awaitingAssistantRunIds,
+                })
+                return
+            }
             const awaitingCorrelationIds = await findUnsettledVmJobs(projectId, taskId)
             if (awaitingCorrelationIds.length > 0) {
-                await parkWorkflowAiRunForVm(runRef, runId, taskId, awaitingCorrelationIds)
+                await parkWorkflowAiRunForExecution(runRef, runId, taskId, {
+                    vmCorrelationIds: awaitingCorrelationIds,
+                })
                 return
             }
         }
@@ -439,14 +466,22 @@ const runWorkflowAiStep = async (runId, run) => {
     }
 }
 
-const parkWorkflowAiRunForVm = async (runRef, runId, taskId, awaitingCorrelationIds, skipReason = null) => {
+const parkWorkflowAiRunForExecution = async (
+    runRef,
+    runId,
+    taskId,
+    { assistantRunIds = [], vmCorrelationIds = [] },
+    skipReason = null
+) => {
     const now = Date.now()
     await runRef.set(
         {
             status: RUN_STATUS_AWAITING_VM,
-            awaitingCorrelationIds,
-            // Re-query the task while parked. This includes queued follow-up VMs and jobs launched
-            // concurrently in the same task chat, rather than freezing the first snapshot.
+            awaitingAssistantRunIds: assistantRunIds,
+            awaitingCorrelationIds: vmCorrelationIds,
+            // Re-query the task while parked. This bridges the pre-VM window: the assistant run is
+            // visible first, then the VM record takes over without an empty poll advancing the step.
+            awaitingAnyTaskExecution: true,
             awaitingAnyTaskVm: true,
             ...(skipReason ? { awaitingSkipReason: skipReason } : {}),
             awaitingSince: now,
@@ -454,10 +489,11 @@ const parkWorkflowAiRunForVm = async (runRef, runId, taskId, awaitingCorrelation
         },
         { merge: true }
     )
-    console.log('[workflowAiStep] Holding the step until task VM work finishes', {
+    console.log('[workflowAiStep] Holding the step until task assistant work finishes', {
         runId,
         taskId,
-        awaitingCorrelationIds,
+        assistantRunIds,
+        vmCorrelationIds,
     })
 }
 
@@ -502,31 +538,41 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipRe
  * older function instance during a rolling deployment.
  */
 const hasActiveAiTaskJob = async (projectId, taskId, now = Date.now()) => {
-    const [assistantRuns, vmJobs] = await Promise.all([
-        admin.firestore().collection('assistantRunLocks').where('objectId', '==', taskId).get(),
-        admin.firestore().collection('pendingWebhooks').where('objectId', '==', taskId).get(),
-    ])
+    const assistantRunIds = await findActiveAssistantRuns(projectId, taskId, now)
+    if (assistantRunIds.length > 0) return true
+    return (await findUnsettledVmJobs(projectId, taskId)).length > 0
+}
 
-    const activeAssistantRun = assistantRuns.docs.some(doc => {
-        const run = doc.data() || {}
-        return (
-            run.projectId === projectId &&
-            (run.objectType || 'tasks') === 'tasks' &&
-            ACTIVE_ASSISTANT_RUN_STATUSES.includes(run.status) &&
-            Number(run.lockExpiresAt || 0) > now
-        )
-    })
-    if (activeAssistantRun) return true
+/**
+ * Non-terminal chat assistant executions associated with this task.
+ *
+ * These locks are created when askToBotSecondGen starts, before the assistant selects and executes
+ * execute_task_in_vm. That ordering is the important bridge between a chat request and its later VM
+ * record. Workflow-owned runs do not create message locks, so this cannot make a workflow wait on
+ * its own invocation.
+ */
+const findActiveAssistantRuns = async (projectId, taskId, now = Date.now()) => {
+    try {
+        const snapshot = await admin.firestore().collection('assistantRunLocks').where('objectId', '==', taskId).get()
 
-    return vmJobs.docs.some(doc => {
-        const job = doc.data() || {}
-        return (
-            job.kind === 'vm_job' &&
-            job.projectId === projectId &&
-            (job.objectType || 'tasks') === 'tasks' &&
-            !VM_TERMINAL_STATUSES.includes(job.status)
-        )
-    })
+        return snapshot.docs
+            .filter(doc => {
+                const run = doc.data() || {}
+                return (
+                    run.projectId === projectId &&
+                    (run.objectType || 'tasks') === 'tasks' &&
+                    ACTIVE_ASSISTANT_RUN_STATUSES.includes(run.status) &&
+                    Number(run.lockExpiresAt || 0) > now
+                )
+            })
+            .map(doc => doc.id)
+    } catch (error) {
+        console.warn('[workflowAiStep] Could not check for assistant runs, advancing', {
+            taskId,
+            error: error.message,
+        })
+        return []
+    }
 }
 
 /**
@@ -577,6 +623,8 @@ const filterUnsettledVmJobs = async correlationIds => {
             unsettled.push({
                 correlationId,
                 status: job.status,
+                createdAt: Number(job.createdAt) || 0,
+                expiresAt: Number(job.expiresAt) || 0,
                 // Set while the VM agent is blocked on a question (see vmInteraction.js).
                 interactionExpiresAt: Number(job.interactionExpiresAt) || 0,
             })
@@ -604,8 +652,18 @@ const filterUnsettledVmJobs = async correlationIds => {
 const resolveAwaitingDeadline = (run, unsettledJobs) => {
     const base = Number(run.awaitingUntil) || 0
     const interactionExpiresAt = unsettledJobs.reduce((latest, job) => Math.max(latest, job.interactionExpiresAt), 0)
+    const vmExpiresAt = unsettledJobs.reduce((latest, job) => Math.max(latest, job.expiresAt), 0)
+    const vmCreatedDeadline = unsettledJobs.reduce(
+        (latest, job) => Math.max(latest, job.createdAt ? job.createdAt + AWAITING_VM_TIMEOUT_MS : 0),
+        0
+    )
 
-    return interactionExpiresAt ? Math.max(base, interactionExpiresAt + AWAITING_VM_TIMEOUT_MS) : base
+    return Math.max(
+        base,
+        vmExpiresAt ? vmExpiresAt + VM_JOB_FINALIZATION_HEADROOM_MS : 0,
+        vmCreatedDeadline,
+        interactionExpiresAt ? interactionExpiresAt + AWAITING_VM_TIMEOUT_MS : 0
+    )
 }
 
 /**
@@ -631,24 +689,35 @@ const resolveAwaitingVmRuns = async ({ now = Date.now() } = {}) => {
     for (const doc of snapshot.docs) {
         const run = doc.data() || {}
         try {
-            // Re-query task-wide so pre-existing chat VMs, queued follow-up VMs, and VM jobs launched
-            // while this run is parked all keep the AI step open.
+            // Read the lifecycle phases in order, not in parallel. startVmJob persists its VM record
+            // before the chat run can mark its assistantRunLock terminal. Therefore an active first
+            // read can safely defer the VM read to the next tick, while a terminal first read
+            // guarantees any dispatched VM is already queryable. Parallel reads could straddle
+            // those writes in the opposite order and briefly see neither blocker.
+            const activeAssistantRunIds = run.awaitingAnyTaskExecution
+                ? await findActiveAssistantRuns(run.projectId, run.taskId, now)
+                : []
+            const assistantTimedOut = activeAssistantRunIds.length > 0 && now >= resolveAwaitingDeadline(run, [])
+            if (activeAssistantRunIds.length > 0 && !assistantTimedOut) continue
+
             const correlationIds = run.awaitingAnyTaskVm
                 ? await findUnsettledVmJobs(run.projectId, run.taskId)
                 : run.awaitingCorrelationIds
             const stillRunning = await filterUnsettledVmJobs(correlationIds)
             const timedOut = now >= resolveAwaitingDeadline(run, stillRunning)
-            if (stillRunning.length > 0 && !timedOut) continue
+            if ((activeAssistantRunIds.length > 0 || stillRunning.length > 0) && !timedOut) continue
 
             const assignee = await admin.firestore().doc(`users/${run.assigneeUserId}`).get()
             const workflow = getUserWorkflow(assignee.exists ? assignee.data() : null, run.projectId)
+            const timedOutWithActiveExecution =
+                timedOut && (activeAssistantRunIds.length > 0 || stillRunning.length > 0)
 
             await finalizeWorkflowAiRun(
                 doc.id,
                 run,
                 workflow,
-                timedOut && stillRunning.length > 0 ? 'vm_timeout' : null,
-                timedOut && stillRunning.length > 0 ? null : run.awaitingSkipReason || null
+                timedOutWithActiveExecution ? 'vm_timeout' : null,
+                timedOutWithActiveExecution ? null : run.awaitingSkipReason || null
             )
             resolved++
             console.log('[workflowAiStep] VM work finished, advancing the step', {
