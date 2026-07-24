@@ -1,5 +1,7 @@
 const store = {}
 
+jest.mock('../Utils/HelperFunctionsCloud', () => ({ DONE_STEP: -2 }))
+
 function ref(path) {
     return {
         path,
@@ -56,6 +58,21 @@ describe('VM interactions', () => {
             activeLeaseOwner: 'runtime-owner',
             activeCorrelationId: 'run-1',
         }
+        store['items/project-1/tasks/chat-1'] = {
+            userId: 'user-1',
+            userIds: ['user-1', 'assistant-1'],
+            currentReviewerId: 'assistant-1',
+            stepHistory: [-1, 'ai-step'],
+        }
+        store['users/user-1'] = {
+            workflow: {
+                'project-1': {
+                    'ai-step': { reviewerUid: 'assistant-1', reviewerType: 'assistant', sortIndex: 0 },
+                    'human-step': { reviewerUid: 'user-1', sortIndex: 1 },
+                    'later-step': { reviewerUid: 'reviewer-2', sortIndex: 2 },
+                },
+            },
+        }
     })
 
     test('sanitizes provider questions before exposing them in a chat comment', () => {
@@ -107,6 +124,13 @@ describe('VM interactions', () => {
             blockedReason: 'plan_review',
             activeLeaseOwner: null,
         })
+        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
+            dueDate: 1000,
+            done: false,
+            inDone: false,
+        })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toMatchObject({
             chatId: 'chat-1',
             chatType: 'tasks',
@@ -143,6 +167,11 @@ describe('VM interactions', () => {
         })
         // Retries upsert the notification for the live status comment instead of adding another.
         expect(Object.keys(store).filter(path => path.includes('chatNotifications/'))).toHaveLength(1)
+        // Retrying the same request must not advance the task through a second workflow step.
+        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
+        })
     })
 
     test('answers exactly once and grants the resume attempt a dispatch lease', async () => {
@@ -183,6 +212,10 @@ describe('VM interactions', () => {
             activeLeaseOwner: 'dispatch:run-1',
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
+        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
+        })
 
         await expect(
             answerVmInteractionRequest({
@@ -263,6 +296,10 @@ describe('VM interactions', () => {
             activeLeaseOwner: 'dispatch:run-1',
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
+        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
+        })
     })
 
     test('clears a stale red notification when an unanswered interaction expires', async () => {
@@ -294,5 +331,117 @@ describe('VM interactions', () => {
             currentInteraction: null,
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
+        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
+        })
+    })
+
+    test('keeps the normal workflow move when the user answers', async () => {
+        const database = db()
+        await createVmInteractionRequest({
+            db: database,
+            pendingRef: ref('pendingWebhooks/run-1'),
+            sessionRef: ref('vmSessions/project-1__chat-1'),
+            correlationId: 'run-1',
+            requestId: 'request-1',
+            userId: 'user-1',
+            provider: 'codex',
+            kind: 'clarification',
+            payload: { questions: [{ question: 'Which implementation?' }] },
+            now: 1000,
+        })
+
+        await answerVmInteractionRequest({
+            db: database,
+            pendingRef: ref('pendingWebhooks/run-1'),
+            sessionRef: ref('vmSessions/project-1__chat-1'),
+            correlationId: 'run-1',
+            requestId: 'request-1',
+            userId: 'user-1',
+            response: { action: 'submit', answers: { approach: 'Safe' } },
+            now: 2000,
+        })
+
+        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
+        })
+    })
+
+    test('moves subtasks with the task using the standard workflow fields', async () => {
+        store['items/project-1/tasks/chat-1'].subtaskIds = ['subtask-1']
+        store['items/project-1/tasks/subtask-1'] = {
+            userId: 'user-1',
+            currentReviewerId: 'assistant-1',
+            stepHistory: [-1, 'ai-step'],
+        }
+
+        await createVmInteractionRequest({
+            db: db(),
+            pendingRef: ref('pendingWebhooks/run-1'),
+            sessionRef: ref('vmSessions/project-1__chat-1'),
+            correlationId: 'run-1',
+            requestId: 'request-1',
+            userId: 'user-1',
+            provider: 'codex',
+            kind: 'clarification',
+            payload: { questions: [{ question: 'Which implementation?' }] },
+            now: 1000,
+        })
+
+        expect(store['items/project-1/tasks/subtask-1']).toMatchObject({
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
+            parentDone: false,
+            inDone: false,
+        })
+    })
+
+    test('uses the normal Done transition when the current step is the last one', async () => {
+        store['items/project-1/tasks/chat-1'].stepHistory = [-1, 'later-step']
+        store['items/project-1/tasks/chat-1'].currentReviewerId = 'reviewer-2'
+
+        await createVmInteractionRequest({
+            db: db(),
+            pendingRef: ref('pendingWebhooks/run-1'),
+            sessionRef: ref('vmSessions/project-1__chat-1'),
+            correlationId: 'run-1',
+            requestId: 'request-1',
+            userId: 'user-1',
+            provider: 'codex',
+            kind: 'clarification',
+            payload: { questions: [{ question: 'Which implementation?' }] },
+            now: 1000,
+        })
+
+        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
+            currentReviewerId: -2,
+            userIds: ['user-1'],
+            completed: 1000,
+            done: true,
+            inDone: true,
+        })
+    })
+
+    test('leaves non-task VM interactions out of the task workflow', async () => {
+        store['pendingWebhooks/run-1'].objectType = 'notes'
+        const database = db()
+
+        await createVmInteractionRequest({
+            db: database,
+            pendingRef: ref('pendingWebhooks/run-1'),
+            sessionRef: ref('vmSessions/project-1__chat-1'),
+            correlationId: 'run-1',
+            requestId: 'request-1',
+            userId: 'user-1',
+            provider: 'codex',
+            kind: 'clarification',
+            payload: { questions: [{ question: 'Which implementation?' }] },
+            now: 1000,
+        })
+
+        expect(store['items/project-1/tasks/chat-1'].currentReviewerId).toBe('assistant-1')
+        expect(store['items/project-1/tasks/chat-1'].stepHistory).toEqual([-1, 'ai-step'])
     })
 })
