@@ -1,11 +1,31 @@
 const crypto = require('crypto')
 
 const { VM_DISPATCH_LEASE_MS, dispatchLeaseOwner } = require('./vmThreadQueue')
+const { buildWorkflowStepAdvanceUpdate } = require('../Tasks/workflowStepHelper')
 
 const VM_INTERACTION_STATUS_AWAITING = 'awaiting_user'
 const VM_INTERACTION_TTL_MS = 24 * 60 * 60 * 1000
 const VALID_VM_INTERACTION_KINDS = ['clarification', 'plan_review', 'tool_approval']
 const VALID_VM_INTERACTION_ACTIONS = ['submit', 'approve', 'revise', 'deny', 'cancel']
+
+function getVmInteractionTaskRef(db, pending) {
+    if (!pending.projectId || !pending.objectId || (pending.objectType || 'tasks') !== 'tasks') return null
+    return db.doc(`items/${pending.projectId}/tasks/${pending.objectId}`)
+}
+
+function getCurrentWorkflowStepId(task) {
+    const stepHistory = Array.isArray(task?.stepHistory) ? task.stepHistory : []
+    return stepHistory.length > 0 ? stepHistory[stepHistory.length - 1] : null
+}
+
+function getVmInteractionWorkflowRef(db, pending, task) {
+    if (!pending.projectId || !task?.userId || task.userId.startsWith('ws@')) return null
+    return db.doc(`users/${task.userId}`)
+}
+
+function getProjectWorkflow(user, projectId) {
+    return user?.workflow?.[projectId] || {}
+}
 
 function getVmInteractionNotificationRef(db, pending, userId) {
     if (!pending.projectId || !pending.objectId || !pending.statusCommentId || !userId) return null
@@ -131,6 +151,38 @@ async function createVmInteractionRequest({
         if (pending.userId !== userId) throw new Error('VM interaction user does not own this job.')
         if (['completed', 'failed', 'cancelled'].includes(pending.status)) {
             throw new Error('VM job has already settled.')
+        }
+        const taskRef = getVmInteractionTaskRef(db, pending)
+        const taskSnapshot = taskRef ? await transaction.get(taskRef) : null
+        const task = taskSnapshot?.exists ? taskSnapshot.data() || {} : null
+        const workflowRef = getVmInteractionWorkflowRef(db, pending, task)
+        const [interactionSnapshot, workflowSnapshot] = await Promise.all([
+            transaction.get(interactionRef),
+            workflowRef ? transaction.get(workflowRef) : Promise.resolve(null),
+        ])
+
+        // A VM question completes the current workflow step in the same way as the normal forward
+        // action. The request ID is the idempotency boundary: a retry updates the same interaction
+        // but must not move the task through another step.
+        if (task && !interactionSnapshot.exists && workflowSnapshot?.exists) {
+            const fromStepId = getCurrentWorkflowStepId(task)
+            const workflow = getProjectWorkflow(workflowSnapshot.data() || {}, pending.projectId)
+            const transition = buildWorkflowStepAdvanceUpdate(task, fromStepId, workflow, createdAt)
+            if (transition) {
+                transaction.set(taskRef, transition.updateData, { merge: true })
+                const subtaskIds = Array.isArray(task.subtaskIds) ? task.subtaskIds : []
+                subtaskIds.forEach(subtaskId => {
+                    transaction.set(
+                        db.doc(`items/${pending.projectId}/tasks/${subtaskId}`),
+                        {
+                            ...transition.updateData,
+                            parentDone: transition.movingToDone,
+                            inDone: transition.movingToDone,
+                        },
+                        { merge: true }
+                    )
+                })
+            }
         }
 
         transaction.set(interactionRef, {
