@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { colors } from '../../../styles/global'
 import DueDateCalendarModal from '../DueDateCalendarModal/DueDateCalendarModal'
 import useWindowSize from '../../../../utils/useWindowSize'
@@ -15,7 +15,6 @@ import OptionsArea from './OptionsArea'
 import { translate } from '../../../../i18n/TranslationService'
 import { DEFAULT_WORKSTREAM_ID } from '../../../Workstreams/WorkstreamHelper'
 import { MILESTONE_TYPE_FIXED } from '../../../../utils/GoalMilestonesHelper'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function GoalMilestoneModal({
     projectId,
@@ -32,7 +31,7 @@ export default function GoalMilestoneModal({
     const [showCalendar, setShowCalendar] = useState(false)
     const [milestones, setMilestones] = useState([])
 
-    const tmpHeight = getSafeAreaModalMaxHeight(height)
+    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     const openCalendar = event => {
@@ -110,7 +109,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         padding: 16,
         paddingBottom: 8,

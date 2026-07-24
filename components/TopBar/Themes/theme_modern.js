@@ -4,7 +4,10 @@ const ThemeColors = {
     TopBar: {
         container: {
             backgroundColor: Colors.GraySidebar,
-            boxShadow: '0px 0px 6px rgba(4,20,47,0.24)',
+            shadowColor: 'rgba(4, 20, 47, 0.24)',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 1,
+            shadowRadius: 6,
             elevation: 3,
         },
 
@@ -127,12 +130,12 @@ const ThemeColors = {
         NotificationArea: {
             iconColor: Colors.Text03,
         },
-        homeIcon: Colors.Primary300,
+        homeIcon: Colors.Text03,
     },
 
     TopBarMobile: {
         settingsIcon: Colors.Text03,
-        homeIcon: Colors.Primary300,
+        homeIcon: Colors.Text03,
         container: {
             backgroundColor: Colors.GraySidebar,
         },

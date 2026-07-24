@@ -1,16 +1,19 @@
-import React from 'react'
+import React, { createRef } from 'react'
+import ReactQuill from 'react-quill'
+import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import CommentTagFormatContainer from '../tags/CommentTagFormatContainer'
 import store from '../../../../../redux/store'
-import { renderEmbedContent } from './embedReactRoot'
-import ReactEmbedBlot from './reactEmbedBlot'
 
-export default class CommentTagFormat extends ReactEmbedBlot {
+const Embed = ReactQuill.Quill.import('blots/embed')
+
+export default class CommentTagFormat extends Embed {
     static create(commentData) {
         const { text, editorId, projectId, parentObjectId, parentType, assistantId } = commentData
         const node = super.create(text)
+        const refs = CommentTagFormat.refs
         const id = v4()
 
         node.setAttribute('data-id', id)
@@ -23,9 +26,12 @@ export default class CommentTagFormat extends ReactEmbedBlot {
         node.setAttribute('assistantId', assistantId)
 
         CommentTagFormat.data = text
+        CommentTagFormat.refs = {
+            ...refs,
+            [id]: createRef(),
+        }
 
-        renderEmbedContent(
-            node,
+        ReactDOM.render(
             <Provider store={store}>
                 <CommentTagFormatContainer
                     projectId={projectId}
@@ -33,7 +39,8 @@ export default class CommentTagFormat extends ReactEmbedBlot {
                     parentType={parentType}
                     assistantId={assistantId}
                 />
-            </Provider>
+            </Provider>,
+            node
         )
 
         return node
@@ -52,8 +59,8 @@ export default class CommentTagFormat extends ReactEmbedBlot {
         return commentData
     }
 
-    constructor(scroll, domNode) {
-        super(scroll, domNode)
+    constructor(domNode) {
+        super(domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = CommentTagFormat.data
     }

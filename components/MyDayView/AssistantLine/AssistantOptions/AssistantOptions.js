@@ -1,67 +1,44 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
-import { Keyboard, StyleSheet, View, Text } from 'react-native'
-import { useSelector } from 'react-redux'
+import React, { useCallback, useEffect, useState, useRef } from 'react'
+import { Keyboard, StyleSheet, View, Text, TouchableOpacity } from 'react-native'
+import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { unwatch } from '../../../../utils/backends/firestore'
+import { stopLoadingData } from '../../../../redux/actions'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
-import { getAssistantLineData, getCollapsedQuickActionCount, getOptionsPresentationData } from './helper'
+import { getAssistantLineData, getOptionsPresentationData } from './helper'
 import OptionButtons from './OptionButtons/OptionButtons'
-import QuickActionsToggle from './QuickActionsToggle'
-import QuickActionsMeasurer from './QuickActionsMeasurer'
+import MoreOptionsWrapper from './MoreOptions/MoreOptionsWrapper'
 import AssistantAvatarButton from './AssistantAvatarButton'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
-import { createBotQuickTopic } from '../../../../utils/assistantHelper'
+import { createBotQuickTopic, generateUserIdsToNotifyForNewComments } from '../../../../utils/assistantHelper'
 import Button from '../../../UIControls/Button'
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
-// The canonical, dependency-free definition of the key — deliberately not the re-export from
-// `chatsComments`, which would drag the whole comments backend into this composer.
-import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../../utils/backends/Chats/chatNotificationPriority'
-import {
-    beginAssistantLineSend,
-    endAssistantLineSend,
-    failAssistantLineSend,
-    markAssistantLineSendCreated,
-} from '../assistantLinePendingSend'
+import Spinner from '../../../UIComponents/Spinner'
+import Icon from '../../../Icon'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
-import '../assistantInput.css'
 import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
-import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
-import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
-import RageModeButton from '../../../RageMode/RageModeButton'
-import { RAGE_LAUNCH_ANCHOR_ID } from '../../../RageMode/rageLaunchAnchor'
 import {
-    getAssistantControlsStacked,
-    getAssistantInputDisplayHeight,
+    ASSISTANT_INPUT_MAX_HEIGHT,
+    ASSISTANT_INPUT_MIN_HEIGHT,
     getAssistantInputLayout,
+    getStableControlsWidth,
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from '../assistantInputLayout'
-import { assistantComposerHasMedia, getAssistantComposerMaxHeight } from '../assistantComposerMedia'
-import { ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT, AssistantOptionButtonsSkeleton } from '../AssistantLineSkeleton'
-import { readAssistantTasksCache, writeAssistantTasksCache } from '../assistantLineCache'
-
-// The formats an attachment-capable input must declare. `CustomTextInput3.supportsAttachments`
-// keys on `attachment` / `customImageFormat` being present, and that predicate is what installs
-// `quill.appManagedFileUpload` — so without this list a drop is inserted by Quill's own uploader
-// as an unserializable base64 embed that vanishes on submit (AT-2441), and a paste does the same.
-const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageFormat', 'videoFormat']
-export const DEFERRED_QUICK_ACTION_REFRESH_MS = 1000
-const QUICK_ACTION_HORIZONTAL_MARGIN = 16
 
 export default function AssistantOptions({
-    headerControls = null,
+    amountOfButtonOptions,
+    onCollapse,
     projectOverride = null,
     assistantIdOverride = null,
-    showAllQuickActions = false,
-    preferAssistantIdOverride = false,
-    deferQuickActions = false,
 }) {
+    const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedProjectFromStore = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const selectedProject = projectOverride || selectedProjectFromStore
@@ -70,241 +47,120 @@ export default function AssistantOptions({
     const userId = useSelector(state => state.loggedUser.uid)
     const isMobile = useSelector(state => state.smallScreenNavigation)
     const gold = useSelector(state => state.loggedUser.gold)
+    const [tasks, setTasks] = useState(null)
     const [message, setMessage] = useState('')
+    const [isSending, setIsSending] = useState(false)
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
     const [inputLayout, setInputLayout] = useState(INITIAL_ASSISTANT_INPUT_LAYOUT)
-    const [controlsStacked, setControlsStacked] = useState(false)
+    const [controlsWidth, setControlsWidth] = useState(null)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
-    const [quickActionsExpanded, setQuickActionsExpanded] = useState(showAllQuickActions)
-    const [quickActionsWidth, setQuickActionsWidth] = useState(0)
-    const [searchButtonWidth, setSearchButtonWidth] = useState(0)
-    const [moreButtonWidth, setMoreButtonWidth] = useState(0)
-    const [quickActionWidths, setQuickActionWidths] = useState({})
-    // AT-2444: the live Quill instance and caret the drop zone inserts at. The zone stays disabled
-    // until `setEditor` has handed the editor over, so an early drop can never be half-applied.
-    const [editor, setEditor] = useState(null)
-    const [inputCursorIndex, setInputCursorIndex] = useState(0)
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
-
-    const storeMeasuredWidth = useCallback((setter, width) => {
-        const outerWidth = width + QUICK_ACTION_HORIZONTAL_MARGIN
-        setter(currentWidth => (currentWidth === outerWidth ? currentWidth : outerWidth))
-    }, [])
-
-    const storeOptionWidth = useCallback((optionId, width) => {
-        const outerWidth = width + QUICK_ACTION_HORIZONTAL_MARGIN
-        setQuickActionWidths(currentWidths =>
-            currentWidths[optionId] === outerWidth ? currentWidths : { ...currentWidths, [optionId]: outerWidth }
-        )
-    }, [])
+    // Read by the controls onLayout callback so it can tell whether a layout
+    // pass happened while the cluster was collapsed (row, authoritative) or
+    // expanded (column, narrow — ignore). Kept in a ref so the callback stays
+    // stable while always seeing the current expanded state.
+    const isInputExpandedRef = useRef(false)
 
     const assistantId = assistantIdOverride || defaultAssistantId
 
     const { assistant, assistantProject, assistantProjectId } = getAssistantLineData(
         selectedProject,
         assistantId,
-        defaultProjectId,
-        preferAssistantIdOverride
+        defaultProjectId
     )
-    const assistantTasksProjectId = assistant?.uid
-        ? isGlobalAssistant(assistant.uid)
-            ? GLOBAL_PROJECT_ID
-            : assistantProjectId
-        : null
-    const cachedTasks = useMemo(
-        () =>
-            readAssistantTasksCache({
-                userId,
-                projectId: assistantTasksProjectId,
-                assistantId: assistant?.uid,
-            }),
-        [assistant?.uid, assistantTasksProjectId, userId]
-    )
-    const [tasks, setTasks] = useState(cachedTasks)
     // The assistant can live in another project, but conversations started from
     // this line must inherit the project the user currently has selected.
     const conversationProject = selectedProjectFromStore || selectedProject || assistantProject
     const conversationProjectId = conversationProject?.id || assistantProjectId
 
     useEffect(() => {
-        setTasks(cachedTasks)
-
-        if (!assistantTasksProjectId || !assistant?.uid) return undefined
-
-        const watcherKey = v4()
-        let watcherStarted = false
-        let refreshTimer = null
-        const startWatcher = () => {
-            watcherStarted = true
-            watchAssistantTasks(assistantTasksProjectId, assistant.uid, watcherKey, liveTasks => {
-                setTasks(liveTasks)
-                writeAssistantTasksCache(
-                    {
-                        userId,
-                        projectId: assistantTasksProjectId,
-                        assistantId: assistant.uid,
-                    },
-                    liveTasks
-                )
-            })
-        }
-
-        if (deferQuickActions) {
-            refreshTimer = setTimeout(startWatcher, DEFERRED_QUICK_ACTION_REFRESH_MS)
-        } else {
-            startWatcher()
-        }
-
-        return () => {
-            if (refreshTimer) clearTimeout(refreshTimer)
-            if (watcherStarted) {
+        if (assistantProjectId && assistant && assistant.uid) {
+            const watcherKey = v4()
+            watchAssistantTasks(
+                isGlobalAssistant(assistant.uid) ? GLOBAL_PROJECT_ID : assistantProjectId,
+                assistant.uid,
+                watcherKey,
+                setTasks
+            )
+            return () => {
                 unwatch(watcherKey)
+                dispatch(stopLoadingData())
             }
+        } else {
+            setTasks(null)
         }
-    }, [assistant?.uid, assistantTasksProjectId, cachedTasks, deferQuickActions, userId])
+    }, [assistant?.uid, assistantProjectId])
 
-    useEffect(() => {
-        setQuickActionsExpanded(showAllQuickActions)
-    }, [assistant?.uid, assistantProjectId, showAllQuickActions])
+    const handleSendMessage = useCallback(async () => {
+        const trimmedMessage = message.trim()
+        if (!trimmedMessage || isSendingRef.current || !assistant || !assistant.uid) return
 
-    // Puts a submission back the way it was. Only reached when the send failed: the rich editor is
-    // uncontrolled, so `setMessage` alone would leave Quill empty while `canSend` claimed there was
-    // something to send.
-    const restoreComposer = useCallback(text => {
-        setMessage(text)
-        inputRef.current?.clearAndSetContent(text)
-    }, [])
+        if (gold <= 0) {
+            setShowRunOutOfGoldModal(true)
+            return
+        }
 
-    // `explicitText` is the push-to-talk path (AT-2405): a dictation that submits itself hands over
-    // the composer text it just wrote, because the `message` state behind it is still a queued
-    // setState at that point and reading it here would send the pre-dictation draft.
-    const handleSendMessage = useCallback(
-        async explicitText => {
-            const trimmedMessage = (typeof explicitText === 'string' ? explicitText : message).trim()
-            if (!trimmedMessage || isSendingRef.current || !assistant || !assistant.uid) return
+        inputRef.current?.blur()
+        Keyboard.dismiss()
+        isSendingRef.current = true
+        setIsSending(true)
+        try {
+            const topicData = await createBotQuickTopic(assistant, trimmedMessage, {
+                skipNavigation: true,
+                enableAssistant: true,
+                projectId: conversationProjectId,
+            })
 
-            if (gold <= 0) {
-                setShowRunOutOfGoldModal(true)
+            if (!topicData) {
+                isSendingRef.current = false
+                setIsSending(false)
                 return
             }
 
-            // AT-2504 — the composer empties FIRST and the send finishes in the background.
-            //
-            // It used to clear only after `updateNewAttachmentsData` AND `createBotQuickTopic` had
-            // both resolved, and the second of those is two round trips (the
-            // `createBotQuickTopicSecondGen` callable, then the `createObjectMessage` write). So
-            // the text the user had just pressed Enter on sat there, greyed out and un-editable,
-            // for the whole of it — the app looked like it had not registered the keystroke.
-            //
-            // Nothing below needs the editor's contents: `trimmedMessage` is already captured, and
-            // `updateNewAttachmentsData` re-uploads from the `blob:` URLs inside that STRING, which
-            // stay alive until the document is unloaded (nothing here revokes them). So clearing
-            // early cannot cost an attachment.
-            //
-            // `isSendingRef` stays, but now only spans this synchronous block: it is the guard
-            // against one keystroke being handled twice, not a lock on the composer. Sending a
-            // second message while the first is still being created is allowed and creates its own
-            // topic, exactly as two sends always did.
-            isSendingRef.current = true
-            let pendingSendId = null
-            try {
-                inputRef.current?.blur()
-                Keyboard.dismiss()
-                setMessage('')
-                setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
-                setInputCursorIndex(0)
-                inputRef.current?.clear()
+            setMessage('')
+            setInputLayout(INITIAL_ASSISTANT_INPUT_LAYOUT)
+            inputRef.current?.clear()
 
-                // Filed under the keys the real pointer will be written under, so the progress card
-                // appears in the same Last comment slot the answer will land in.
-                pendingSendId = beginAssistantLineSend({
-                    keys: [conversationProjectId, ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY],
-                    projectId: conversationProjectId,
-                    assistantId: assistant.uid,
-                    assistantName: assistant.displayName,
-                    text: trimmedMessage,
-                })
-            } finally {
-                isSendingRef.current = false
-            }
+            // Unblock the input now that the thread has been created
+            isSendingRef.current = false
+            setIsSending(false)
 
-            try {
-                // AT-2444: a dropped or pasted file is only a `blob:` object URL in the editor
-                // until here — this is the step that uploads it to Storage and rewrites the token
-                // to the real download URL, exactly as the chat composer does before
-                // `createObjectMessage`. It must run BEFORE the topic is created: the comment
-                // `createBotQuickTopic` writes is the one that gets its `mediaContext` extracted
-                // from this text, and that is how the assistant gets to see the image at all.
-                //
-                // Called unconditionally, like ChatInput: with no attachment tokens the helper
-                // takes no `await` at all, so its loading-spinner refcount opens and closes in the
-                // same tick and a plain text send is not delayed or made async by it.
-                const messageToSend = await updateNewAttachmentsData(conversationProjectId, trimmedMessage)
-
-                const topicData = await createBotQuickTopic(assistant, messageToSend, {
-                    skipNavigation: true,
-                    enableAssistant: true,
-                    projectId: conversationProjectId,
-                    // `createObjectMessage` starts the assistant callable after writing the user's
-                    // comment, then returns without waiting for the run. If that callable fails,
-                    // is cancelled, or completes without posting, the line and any open thread
-                    // must stop claiming the assistant is still working.
-                    onAssistantRunSettled: () => endAssistantLineSend(pendingSendId),
-                })
-
-                if (!topicData) {
-                    // `createBotQuickTopic` returns undefined only when it could not resolve a
-                    // project to write into — nothing was sent, so give the text back.
-                    failAssistantLineSend(pendingSendId)
-                    restoreComposer(trimmedMessage)
-                    return
+            // Continue executing the task in the background without blocking the input
+            if (topicData.projectId && !conversationProject?.isTemplate) {
+                try {
+                    const userIdsToNotify = generateUserIdsToNotifyForNewComments(
+                        topicData.projectId,
+                        topicData.isPublicFor,
+                        ''
+                    )
+                } catch (error) {
+                    console.error('❌ [AssistantOptions] Error triggering assistant reply:', error)
                 }
-
-                // The thread exists and carries the user's comment. What is left is the assistant's
-                // answer, and the Last comment slot says so until it arrives.
-                //
-                // AT-2523 — the title travels with the chat id because the Last comment card is now
-                // a door into this thread, and the popover it opens names the object it is
-                // commenting on. It is also what releases a tap the user made while the topic was
-                // still being created.
-                markAssistantLineSendCreated(pendingSendId, topicData.chatId, topicData.title)
-            } catch (error) {
-                console.error('❌ [AssistantOptions] Error sending assistant quick message:', error)
-                failAssistantLineSend(pendingSendId)
-                restoreComposer(trimmedMessage)
             }
-        },
-        [assistant, conversationProjectId, message, gold, restoreComposer]
-    )
+        } catch (error) {
+            console.error('❌ [AssistantOptions] Error sending assistant quick message:', error)
+            isSendingRef.current = false
+            setIsSending(false)
+        }
+    }, [assistant, conversationProject, conversationProjectId, message, gold])
 
-    // A composer holding an attachment is allowed to grow past the text cap so the image it is
-    // previewing is actually visible (AT-2444). Derived from the serialized text rather than from
-    // a separate attachment state, so it cannot drift from what will be submitted.
-    const composerHasMedia = assistantComposerHasMedia(message)
-    const composerMaxHeight = getAssistantComposerMaxHeight(composerHasMedia)
+    const updateInputHeight = useCallback(contentHeight => {
+        setInputLayout(previousLayout => getAssistantInputLayout(contentHeight, previousLayout))
+    }, [])
 
-    const updateInputHeight = useCallback(
-        contentHeight => {
-            setInputLayout(previousLayout => getAssistantInputLayout(contentHeight, previousLayout, composerMaxHeight))
-        },
-        [composerMaxHeight]
-    )
-
-    // Mobile keeps voice/send side by side. Desktop retains the expansion
-    // latch; release only on empty text so width changes cannot cause reflow loops.
-    useEffect(() => {
-        setControlsStacked(
-            wasStacked =>
-                !isMobile &&
-                getAssistantControlsStacked({
-                    inputHeight: inputLayout.height,
-                    hasText: message.length > 0,
-                    wasStacked,
-                })
+    // Capture the control cluster's natural width while it is collapsed (row
+    // layout) and keep it when the cluster stacks into a column on expand, so
+    // the flex:1 input never changes width with its own height. Without this,
+    // expanding narrows the cluster, widens the input, re-wraps the text and
+    // starts the height oscillation the user sees as a "wiggle".
+    const onControlsLayout = useCallback(event => {
+        const measuredWidth = event?.nativeEvent?.layout?.width
+        setControlsWidth(previousWidth =>
+            getStableControlsWidth(measuredWidth, isInputExpandedRef.current, previousWidth)
         )
-    }, [inputLayout.height, message, isMobile])
+    }, [])
 
     const updateMessage = useCallback(text => {
         setMessage(text)
@@ -342,126 +198,64 @@ export default function AssistantOptions({
         }
     }, [handleKeyDown, handleKeyUp])
 
-    if (!assistant || !assistant.uid || !assistantProject) {
+    if (!tasks || !assistant || !assistant.uid || !assistantProject) {
         return null
     }
 
-    const tasksLoaded = Array.isArray(tasks)
-    // AT-2538: measure the real rendered labels instead of guessing an average button width.
-    // The hidden measuring copies use the exact same button component and margins as the visible
-    // row, so font, translation, and viewport changes all feed into the collapsed count.
-    const collapsedOptions = tasksLoaded
-        ? getOptionsPresentationData(conversationProject, assistant.uid, tasks, Number.MAX_SAFE_INTEGER)
-              .optionsLikeButtons
-        : []
-    const collapsedVisibleCount = getCollapsedQuickActionCount({
-        containerWidth: quickActionsWidth,
-        searchWidth: searchButtonWidth,
-        moreWidth: moreButtonWidth,
-        optionWidths: collapsedOptions.map(option => quickActionWidths[option.id] || 0),
-    })
-    const hasAdditionalOptions = collapsedVisibleCount < collapsedOptions.length
-    const optionsLikeButtons = !tasksLoaded
-        ? []
-        : quickActionsExpanded
-          ? getOptionsPresentationData(conversationProject, assistant.uid, tasks, 0, true).optionsLikeButtons
-          : collapsedOptions.slice(0, collapsedVisibleCount)
+    const { optionsLikeButtons, optionsInModal, showSubmenu } = getOptionsPresentationData(
+        conversationProject,
+        assistant.uid,
+        tasks,
+        amountOfButtonOptions
+    )
 
     const hasQuickActions = true
-    // An image on its own is a complete message — the serialized embed token IS the text, so this
-    // is already non-empty for an attachment-only composer and needs no separate condition.
-    //
-    // AT-2504: there is no `&& !isSending` term any more. The composer empties synchronously on
-    // submit, so an in-flight send already leaves this false through `message`, and a SECOND
-    // message typed while the first is still being created is deliberately allowed — it gets its
-    // own topic, which is what two sends have always produced.
-    const canSend = message.trim().length > 0
-    const inputDisplayHeight = getAssistantInputDisplayHeight(inputLayout.height, controlsStacked, composerMaxHeight)
+    const canSend = message.trim().length > 0 && !isSending
+    const isInputExpanded = inputLayout.height > ASSISTANT_INPUT_MIN_HEIGHT
+    // Keep the ref in sync so the (stable) onControlsLayout callback can tell
+    // whether the measurement it receives came from the row or the column layout.
+    isInputExpandedRef.current = isInputExpanded
 
     const sendLabel = translate('Send')
     const sendButtonTitle = isMobile ? '' : sendLabel
     const sendButtonStyle = isMobile ? localStyles.sendButtonMobile : localStyles.sendButtonDesktop
+    const HeaderContainer = onCollapse ? TouchableOpacity : View
+    const headerContainerProps = onCollapse ? { onPress: onCollapse, activeOpacity: 0.8 } : {}
 
     return (
-        // AT-2444 — the whole assistant card is the drop target, not just the field. The composer
-        // is a 40px line inside a ~128px card, so an input-only target is easy to miss; dropping
-        // onto the avatar, the send button or the quick-action row all mean the same thing.
-        //
-        // The zone must stay a CAPTURE-phase claim (see AttachmentDropZone): Quill's own uploader
-        // listens on `quill.root`, a descendant of this node, so a bubble-phase handler here would
-        // run second and the file would land twice.
-        <AttachmentDropZone
-            testID="assistant-line-attachment-drop-zone"
-            style={localStyles.container}
-            editor={editor}
-            inputCursorIndex={inputCursorIndex}
-            projectId={conversationProjectId}
-            setInputCursorIndex={setInputCursorIndex}
-        >
-            <View style={localStyles.headerRow}>
-                {headerControls}
-                {/* Kept short on purpose (AT-2442): the header is a single centred line
-                    (numberOfLines={1}) that also carries the assistant's display name, so a
-                    longer greeting ellipsises on narrow phones. */}
-                <View style={[localStyles.headerTitle, headerControls && localStyles.headerTitleWithControls]}>
-                    <Text style={localStyles.headerText} numberOfLines={1}>
-                        {`${assistant.displayName}: ${translate('How can I help?')}`}
-                    </Text>
-                </View>
-                {/* Rage mode is Anna's: she is the one who flies out and shoots the page apart.
-                    Hidden without WebGL, under reduced motion, or after ?rageMode=off (rageModeFlag.js). */}
-                <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
-            </View>
-            <View testID="assistant-composer-row" style={localStyles.firstRow}>
-                {/* Rage mode's Anna takes off from this avatar and lands back on it. */}
-                <View
-                    style={[localStyles.avatarWrapper, isMobile && localStyles.avatarWrapperMobile]}
-                    nativeID={RAGE_LAUNCH_ANCHOR_ID}
-                >
-                    <AssistantAvatarButton
-                        projectIndex={assistantProject.index}
-                        assistant={assistant}
-                        size={isMobile ? 32 : 48}
-                    />
+        <View style={localStyles.container}>
+            <HeaderContainer style={localStyles.headerRow} {...headerContainerProps}>
+                <Text style={localStyles.headerText} numberOfLines={1}>
+                    {`${assistant.displayName}: ${translate('What can I do for you today?')}`}
+                </Text>
+                {!!onCollapse && (
+                    <View style={localStyles.collapseButton}>
+                        <Icon name={'chevron-up'} size={16} color={colors.Text03} />
+                    </View>
+                )}
+            </HeaderContainer>
+            <View style={localStyles.firstRow}>
+                <View style={localStyles.avatarWrapper}>
+                    <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={48} />
                 </View>
                 <CustomTextInput3
                     ref={inputRef}
-                    containerStyle={[localStyles.messageInput, isMobile && localStyles.messageInputMobile]}
-                    fixedHeight={inputDisplayHeight}
-                    maxHeight={composerMaxHeight}
+                    containerStyle={localStyles.messageInput}
+                    fixedHeight={inputLayout.height}
+                    maxHeight={ASSISTANT_INPUT_MAX_HEIGHT}
                     onChangeText={updateMessage}
-                    // Include the frame's padding and borders in the natural height.
-                    onContentSizeChange={(width, height) => updateInputHeight(height + 16)}
-                    placeholder={isMobile ? `${translate('New message')} …` : translate('Start a new chat')}
+                    onContentSizeChange={(width, height) => updateInputHeight(height)}
+                    placeholder={translate('Start a new chat')}
                     projectId={conversationProjectId}
                     styleTheme={TASK_THEME}
+                    disabledEdition={isSending}
                     setMentionsModalActive={setMentionsModalActive}
-                    // In object editors an assistant selection is a command to change that
-                    // object's assistant, so CustomTextInput3 inserts a profile link. Here it is
-                    // message content: preserve the selected assistant id in a real @-mention so
-                    // comment parsing and the assistant runtime can detect it (AT-2592).
-                    insertAssistantAsMention={true}
-                    // AT-2444: hands the live editor + caret to the drop zone above, and declares
-                    // the attachment formats. Declaring them is also what gives this composer
-                    // image PASTE, since CustomTextInput3 gates `appManagedFileUpload` on them.
-                    setEditor={setEditor}
-                    setInputCursorIndex={setInputCursorIndex}
-                    otherFormats={ASSISTANT_INPUT_ATTACHMENT_FORMATS}
                     keepBreakLines={true}
                     scrollEnabled={inputLayout.scrollEnabled}
                     showScrollIndicator={inputLayout.scrollEnabled}
                     autoExpand={true}
-                    // Dictating is a primary way to use this composer, so the mic is pinned on
-                    // instead of waiting for hover/focus — on touch there is no hover at all, so
-                    // it used to appear only after the field was already tapped (AT-2355).
-                    alwaysShowDictation={true}
-                    showAttachmentButton={true}
-                    // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
-                    // inserted and the message is sent. Enter's own guards still apply, since this
-                    // is the same send path the keydown listener uses.
-                    onDictationSubmit={text => text && handleSendMessage(text)}
                 />
-                <AppPopover
+                <Popover
                     content={<RunOutOfGoldAssistantModal closeModal={() => setShowRunOutOfGoldModal(false)} />}
                     align={'start'}
                     position={['top', 'bottom', 'left', 'right']}
@@ -471,9 +265,14 @@ export default function AssistantOptions({
                 >
                     <View
                         testID={'assistant-message-controls'}
+                        onLayout={onControlsLayout}
                         style={[
                             localStyles.sendButtonWrapper,
-                            controlsStacked && localStyles.sendButtonWrapperExpanded,
+                            isInputExpanded && localStyles.sendButtonWrapperExpanded,
+                            // Pin the cluster to its collapsed (row) width so the
+                            // switch to a column on expand can't shrink it, widen
+                            // the input, and re-trigger the wrap/height wiggle.
+                            controlsWidth != null && { width: controlsWidth },
                         ]}
                     >
                         <AssistantVoiceCallButton
@@ -481,64 +280,39 @@ export default function AssistantOptions({
                             assistant={assistant}
                             projectId={conversationProjectId}
                             skipNavigationOnThreadCreate
-                            buttonStyle={[
-                                localStyles.voiceButton,
-                                isMobile && localStyles.voiceButtonMobile,
-                                controlsStacked && localStyles.voiceButtonExpanded,
-                            ]}
+                            buttonStyle={[localStyles.voiceButton, isInputExpanded && localStyles.voiceButtonExpanded]}
                         />
                         <Button
-                            title={sendButtonTitle}
-                            icon={'send'}
+                            title={isSending ? null : sendButtonTitle}
+                            icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
                             onPress={handleSendMessage}
                             disabled={!canSend}
-                            buttonStyle={[sendButtonStyle, controlsStacked && localStyles.sendButtonStacked]}
+                            buttonStyle={sendButtonStyle}
                             titleStyle={localStyles.sendButtonTitle}
                             accessibilityLabel={sendLabel}
                             accessible={true}
                         />
                     </View>
-                </AppPopover>
+                </Popover>
             </View>
             {hasQuickActions && (
-                <View
-                    testID="assistant-quick-actions"
-                    style={[
-                        localStyles.quickActions,
-                        quickActionsExpanded ? localStyles.quickActionsExpanded : localStyles.quickActionsCollapsed,
-                    ]}
-                    onLayout={event => setQuickActionsWidth(event.nativeEvent.layout.width)}
-                >
-                    <AssistantTaskSearchButtonWrapper
-                        onLayout={event => storeMeasuredWidth(setSearchButtonWidth, event.nativeEvent.layout.width)}
+                <View style={localStyles.quickActions}>
+                    <AssistantTaskSearchButtonWrapper />
+                    <OptionButtons
+                        projectId={conversationProjectId}
+                        options={optionsLikeButtons}
+                        assistant={assistant}
                     />
-                    {tasksLoaded ? (
-                        <>
-                            <OptionButtons
-                                projectId={conversationProjectId}
-                                options={optionsLikeButtons}
-                                assistant={assistant}
-                            />
-                            {hasAdditionalOptions && (
-                                <QuickActionsToggle
-                                    expanded={quickActionsExpanded}
-                                    onPress={() => setQuickActionsExpanded(expanded => !expanded)}
-                                    onLayout={
-                                        quickActionsExpanded
-                                            ? undefined
-                                            : event =>
-                                                  storeMeasuredWidth(setMoreButtonWidth, event.nativeEvent.layout.width)
-                                    }
-                                />
-                            )}
-                            <QuickActionsMeasurer options={collapsedOptions} onOptionLayout={storeOptionWidth} />
-                        </>
-                    ) : (
-                        <AssistantOptionButtonsSkeleton />
+                    {showSubmenu && (
+                        <MoreOptionsWrapper
+                            projectId={conversationProjectId}
+                            options={optionsInModal}
+                            assistant={assistant}
+                        />
                     )}
                 </View>
             )}
-        </AttachmentDropZone>
+        </View>
     )
 }
 
@@ -552,31 +326,18 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 16,
     },
-    headerTitle: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginLeft: 22,
-        minWidth: 0,
-    },
     headerText: {
-        flexShrink: 1,
+        flex: 1,
         fontSize: 16,
         fontWeight: '600',
         color: colors.Text01,
         textAlign: 'center',
+        marginLeft: 22,
     },
-    headerTitleWithControls: {
-        marginLeft: 0,
-    },
-    rageButton: {
+    collapseButton: {
         marginLeft: 8,
-        width: 28,
-        height: 28,
-        flexShrink: 0,
-        alignItems: 'center',
-        justifyContent: 'center',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
     },
     firstRow: {
         flexDirection: 'row',
@@ -593,23 +354,12 @@ const localStyles = StyleSheet.create({
         backgroundColor: 'white',
         minHeight: 40,
         maxHeight: 120,
-        // 24px text + 2 × 7px padding + 2px border = the 40px control row.
-        paddingVertical: 7,
+        paddingVertical: 3,
         paddingHorizontal: 12,
         fontSize: 14,
         lineHeight: 22,
         color: colors.Text01,
         textAlignVertical: 'top',
-    },
-    messageInputMobile: {
-        paddingHorizontal: 8,
-        marginRight: 4,
-        minWidth: 0,
-    },
-    avatarWrapperMobile: {
-        width: 32,
-        height: 40,
-        marginRight: 4,
     },
     avatarWrapper: {
         width: 56,
@@ -626,20 +376,10 @@ const localStyles = StyleSheet.create({
     },
     sendButtonWrapperExpanded: {
         flexDirection: 'column',
-        // The cluster shrinks to the widest control (the send button), so the
-        // send button keeps its collapsed position at the right edge of the row
-        // and the voice button sits centred directly above it. The ~48px the
-        // row layout needed for the second button is handed back to the flex:1
-        // input, which is what "the input field should expand accordingly" means.
-        alignItems: 'center',
-        justifyContent: 'flex-end',
     },
     voiceButton: {
         marginLeft: 0,
         marginRight: 8,
-    },
-    voiceButtonMobile: {
-        marginRight: 4,
     },
     voiceButtonExpanded: {
         marginRight: 0,
@@ -657,27 +397,14 @@ const localStyles = StyleSheet.create({
         height: 40,
         minHeight: 40,
     },
-    sendButtonStacked: {
-        // Button's own buttonMaster sets alignSelf: 'flex-start', which would
-        // win over the wrapper's alignItems and pull the send button off the
-        // shared centre axis. Re-assert it here.
-        alignSelf: 'center',
-    },
     sendButtonTitle: {
         fontSize: 14,
     },
     quickActions: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexWrap: 'wrap',
         justifyContent: 'center',
         width: '100%',
-    },
-    quickActionsCollapsed: {
-        height: ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
-        overflow: 'hidden',
-    },
-    quickActionsExpanded: {
-        minHeight: ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
-        flexWrap: 'wrap',
     },
 })

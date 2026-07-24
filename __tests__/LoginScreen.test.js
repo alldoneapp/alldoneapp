@@ -1,22 +1,12 @@
 import React from 'react'
-import { Platform } from 'react-native'
-import LoginScreen from '../components/LoginScreen/LoginScreen'
+import LoginScreen from '../components/LoginScreen'
 import store from '../redux/store'
 import { Provider } from 'react-redux'
 
-// MyPlatform.osType only consults window.navigator off the mobile path,
-// and the react-native preset reports ios.
-Platform.OS = 'web'
-
 import renderer from 'react-test-renderer'
+import { setOnline } from '../redux/actions'
 
-// The notes helper calls getNotesCollaborationServerData while its module is
-// still evaluating, and the automocked binding is not populated yet through
-// the import cycle, so it has to be supplied explicitly.
-jest.mock('../utils/backends/firestore', () => ({
-    ...jest.createMockFromModule('../utils/backends/firestore'),
-    getNotesCollaborationServerData: () => ({ NOTES_COLLABORATION_SERVER: 'ws://localhost:1234' }),
-}))
+jest.mock('../utils/backends/firestore')
 
 jest.mock('../components/MyPlatform', () => {
     return {
@@ -43,8 +33,6 @@ jest.mock('../utils/BackendBridge', () => {
                 innerValues = x
             },
             mapUserData: () => {},
-            isMobileDevice: () => false,
-            isLocalDevHost: () => false,
         },
     }
 })
@@ -60,7 +48,24 @@ const initialState = {
     initialUrl: 'alldone.aleph.engineering/tasks',
 }
 
-describe('LoginScreen component', () => {})
+describe('LoginScreen component', () => {
+    store.dispatch(setOnline(true))
+    describe('method test', () => {
+        xit('after call componentDidMount should render correctly', () => {
+            const tree = renderer.create(<LoginScreen />)
+            const instance = tree.getInstance()
+            instance.componentDidMount()
+            expect(tree.toJSON()).toMatchSnapshot()
+        })
+
+        it('should navigate to App after projects load', async () => {
+            const tree = renderer.create(<LoginScreen navigation={{ navigate: () => {} }} />)
+            const instance = tree.getInstance()
+            instance.afterProjectsLoad()
+            expect(tree.toJSON()).toMatchSnapshot()
+        })
+    })
+})
 
 jest.mock('../redux/store', () => {
     let innerState = {
@@ -82,9 +87,6 @@ jest.mock('../redux/store', () => {
                     loggedIn: innerState.loggedIn,
                     loggedUser: innerState.user,
                     online: innerState.online,
-                    // The login effect now really runs under RNW and pushes a
-                    // browser URL, which reads the navigation history state.
-                    lastVisitedScreen: [],
                 }
             },
             dispatch: x => {
@@ -171,6 +173,22 @@ describe('LoginScreen component', () => {
                 )
                 .toJSON()
             expect(tree).toMatchSnapshot()
+        })
+    })
+
+    describe('method test', () => {
+        it('should update the state', () => {
+            const tree = renderer.create(<LoginScreen />)
+
+            const instance = tree.getInstance()
+
+            instance.updateState()
+        })
+
+        it('should unmount the without errors', () => {
+            const tree = renderer.create(<LoginScreen />)
+            tree.getInstance().state.unsubscribe = () => {}
+            tree.unmount()
         })
     })
 })

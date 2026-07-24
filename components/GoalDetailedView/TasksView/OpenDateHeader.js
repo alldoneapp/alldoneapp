@@ -12,7 +12,6 @@ import { generateDateHeaderText } from '../../../utils/EstimationHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import SharedHelper from '../../../utils/SharedHelper'
 import GoalTaskDateBarMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/GoalTaskDateBarMoreButton'
-import CalendarSyncButton from '../../UIComponents/CalendarSyncButton'
 
 export default function OpenDateHeader({
     dateFormated,
@@ -22,7 +21,6 @@ export default function OpenDateHeader({
     projectId,
     ownerId,
     dateIndex,
-    hasCalendarSection = false,
 }) {
     const loggedUser = useSelector(state => state.loggedUser)
 
@@ -77,11 +75,6 @@ export default function OpenDateHeader({
                         {text}
                     </Text>
                 </View>
-                {/* AT-2377: the Calendar section owns this control when it renders; this is the
-                    stand-in for a connected calendar with no events to show. */}
-                {dateIsToday && !hasCalendarSection && (
-                    <CalendarSyncButton projectId={projectId} containerStyle={localStyles.syncButton} />
-                )}
                 {accessGranted && loggedUserCanUpdateObject && (
                     <GoalTaskDateBarMoreButton projectId={projectId} dateIndex={dateIndex} />
                 )}
@@ -123,8 +116,5 @@ const localStyles = StyleSheet.create({
     },
     textBacklog: {
         paddingLeft: 0,
-    },
-    syncButton: {
-        marginLeft: 8,
     },
 })

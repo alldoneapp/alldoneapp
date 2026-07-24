@@ -1,0 +1,3866 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`MainTasksView component Function onLayoutChange snapshot test should render correctly 1`] = `
+<View
+  onLayout={[Function]}
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "flex": 1,
+      },
+      Object {
+        "paddingBottom": 0,
+      },
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "flexDirection": "row",
+          "height": 80,
+          "maxHeight": 80,
+          "minHeight": 80,
+          "paddingBottom": 8,
+          "paddingTop": 40,
+        },
+        Object {
+          "paddingHorizontal": 16,
+        },
+      ]
+    }
+  >
+    <Text
+      style={
+        Object {
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 24,
+          "lineHeight": 32,
+        }
+      }
+    >
+      Tasks
+    </Text>
+    <View
+      style={
+        Object {
+          "height": 28,
+          "justifyContent": "flex-end",
+          "marginLeft": 16,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 12,
+              "letterSpacing": 0.48,
+              "lineHeight": 20,
+            },
+            Object {
+              "color": "#4E5D78",
+            },
+          ]
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Array [
+        Object {
+          "position": "absolute",
+          "right": 56,
+          "top": 44,
+          "zIndex": 10,
+        },
+        Object {
+          "right": 16,
+        },
+      ]
+    }
+  >
+    <View
+      onLayout={[Function]}
+      style={
+        Object {
+          "alignSelf": "baseline",
+          "backgroundColor": "#E7ECEF",
+          "borderRadius": 14,
+          "flexDirection": "row",
+          "height": 26,
+          "overflow": "hidden",
+          "paddingBottom": 2,
+          "paddingLeft": 2,
+          "paddingRight": 2,
+          "paddingTop": 2,
+          "position": "relative",
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "backgroundColor": "#FAFBFB",
+            "borderRadius": 12,
+            "elevation": 3,
+            "height": 22,
+            "position": "absolute",
+            "shadowColor": "#8A94A6",
+            "shadowOffset": Object {
+              "height": 0,
+              "width": 0,
+            },
+            "shadowOpacity": 1,
+            "shadowRadius": 8,
+            "transform": Array [
+              Object {
+                "translateX": 0,
+              },
+            ],
+            "width": 0,
+          }
+        }
+      />
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "justifyContent": "center",
+          }
+        }
+      >
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#8A94A6",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.32,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Open
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#8A94A6",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.32,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Workflow
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#8A94A6",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.32,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Done
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`MainTasksView component Function onLayoutChange snapshot test should render correctly 2`] = `
+<View
+  onLayout={[Function]}
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "flex": 1,
+      },
+      Object {
+        "paddingBottom": 0,
+      },
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "flexDirection": "row",
+          "height": 80,
+          "maxHeight": 80,
+          "minHeight": 80,
+          "paddingBottom": 8,
+          "paddingTop": 40,
+        },
+        Object {
+          "paddingHorizontal": 56,
+        },
+      ]
+    }
+  >
+    <Text
+      style={
+        Object {
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 24,
+          "lineHeight": 32,
+        }
+      }
+    >
+      Tasks
+    </Text>
+    <View
+      style={
+        Object {
+          "height": 28,
+          "justifyContent": "flex-end",
+          "marginLeft": 16,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 12,
+              "letterSpacing": 0.48,
+              "lineHeight": 20,
+            },
+            Object {
+              "color": "#4E5D78",
+            },
+          ]
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Array [
+        Object {
+          "position": "absolute",
+          "right": 56,
+          "top": 44,
+          "zIndex": 10,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      onLayout={[Function]}
+      style={
+        Object {
+          "alignSelf": "baseline",
+          "backgroundColor": "#E7ECEF",
+          "borderRadius": 14,
+          "flexDirection": "row",
+          "height": 26,
+          "overflow": "hidden",
+          "paddingBottom": 2,
+          "paddingLeft": 2,
+          "paddingRight": 2,
+          "paddingTop": 2,
+          "position": "relative",
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "backgroundColor": "#FAFBFB",
+            "borderRadius": 12,
+            "elevation": 3,
+            "height": 22,
+            "position": "absolute",
+            "shadowColor": "#8A94A6",
+            "shadowOffset": Object {
+              "height": 0,
+              "width": 0,
+            },
+            "shadowOpacity": 1,
+            "shadowRadius": 8,
+            "transform": Array [
+              Object {
+                "translateX": 0,
+              },
+            ],
+            "width": 0,
+          }
+        }
+      />
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "justifyContent": "center",
+          }
+        }
+      >
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#007FFF",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.16,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Open
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#007FFF",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#8A94A6",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.32,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Done
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "flex": 1,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "marginTop": 32,
+        }
+      }
+    >
+      <svg
+        height={256}
+        svgid="eia1"
+        viewBox="0 0 933.711 933.711"
+        width={256}
+      >
+        <defs>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__t"
+          >
+            <stop
+              offset={0}
+              stopColor="#4da6ff"
+            />
+            <stop
+              offset={0.103}
+              stopColor="#98cbff"
+            />
+            <stop
+              offset={0.197}
+              stopColor="#a5d1ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#e5f1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__s"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8a65"
+            />
+            <stop
+              offset={0.559}
+              stopColor="#ffc9b8"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffc4b2"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__r"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8159"
+            />
+            <stop
+              offset={0.458}
+              stopColor="#ffbeaa"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffccbc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__p"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8e69"
+            />
+            <stop
+              offset={0.507}
+              stopColor="#ffab91"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffccbc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__q"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8a65"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffccbc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__o"
+          >
+            <stop
+              offset={0}
+              stopColor="#ffb8a2"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffccbc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__m"
+          >
+            <stop
+              offset={0}
+              stopColor="#ffa726"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffecce"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__l"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8a65"
+            />
+            <stop
+              offset={1}
+              stopColor="#fdb29c"
+              stopOpacity={0}
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__n"
+          >
+            <stop
+              offset={0}
+              stopColor="#ffccbc"
+            />
+            <stop
+              offset={1}
+              stopColor="#ff7043"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__k"
+          >
+            <stop
+              offset={0}
+              stopColor="#aed6ff"
+              stopOpacity={0.8}
+            />
+            <stop
+              offset={1}
+              stopColor="#0074eb"
+              stopOpacity={0}
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__j"
+          >
+            <stop
+              offset={0}
+              stopColor="#aed6ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#0074eb"
+              stopOpacity={0}
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__i"
+          >
+            <stop
+              offset={0}
+              stopColor="#0079f5"
+            />
+            <stop
+              offset={1}
+              stopColor="#59abff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__h"
+          >
+            <stop
+              offset={0}
+              stopColor="#0079f5"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__g"
+          >
+            <stop
+              offset={0}
+              stopColor="#51a7ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#4aa2fc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__c"
+          >
+            <stop
+              offset={0}
+              stopColor="#2b94ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#68b2ff"
+              stopOpacity={0}
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__e"
+          >
+            <stop
+              offset={0}
+              stopColor="#51a7ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__f"
+          >
+            <stop
+              offset={0}
+              stopColor="#59abff"
+            />
+            <stop
+              offset={1}
+              stopColor="#0074eb"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__d"
+          >
+            <stop
+              offset={0}
+              stopColor="#2b94ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__b"
+          >
+            <stop
+              offset={0}
+              stopColor="#3b9cff"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__a"
+          >
+            <stop
+              offset={0}
+              stopColor="#007fff"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__u"
+            x1={295.711}
+            x2={262.686}
+            xlinkHref="#c2456ymnx4rdf3bg5__n"
+            y1={221.966}
+            y2={176.745}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__x"
+            x1={290.146}
+            x2={285.904}
+            xlinkHref="#c2456ymnx4rdf3bg5__o"
+            y1={210.96}
+            y2={174.887}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__C"
+            x1={276.084}
+            x2={258.923}
+            xlinkHref="#c2456ymnx4rdf3bg5__p"
+            y1={206.482}
+            y2={192.052}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__A"
+            x1={281.073}
+            x2={255.13}
+            xlinkHref="#c2456ymnx4rdf3bg5__r"
+            y1={196.608}
+            y2={190.079}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__y"
+            x1={281.991}
+            x2={262.523}
+            xlinkHref="#c2456ymnx4rdf3bg5__s"
+            y1={191.689}
+            y2={179.386}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__v"
+            x1={282.217}
+            x2={281.387}
+            xlinkHref="#c2456ymnx4rdf3bg5__q"
+            y1={195.35}
+            y2={173.345}
+          />
+          <linearGradient
+            gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__B"
+            x1={23087.938}
+            x2={22289.729}
+            xlinkHref="#c2456ymnx4rdf3bg5__l"
+            y1={6905.986}
+            y2={6322.126}
+          />
+          <linearGradient
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__D"
+            x1={2384.577}
+            x2={3117.558}
+            xlinkHref="#c2456ymnx4rdf3bg5__t"
+            y1={1103.077}
+            y2={1400.304}
+          />
+          <linearGradient
+            gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__w"
+            x1={23087.938}
+            x2={22289.729}
+            xlinkHref="#c2456ymnx4rdf3bg5__l"
+            y1={6905.986}
+            y2={6322.126}
+          />
+          <linearGradient
+            gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__z"
+            x1={23087.938}
+            x2={22289.729}
+            xlinkHref="#c2456ymnx4rdf3bg5__l"
+            y1={6905.986}
+            y2={6322.126}
+          />
+        </defs>
+        <text
+          fontFamily="sans-serif"
+          fontSize={10.583}
+          fontWeight={400}
+          letterSpacing={0}
+          strokeWidth={0.265}
+          style={
+            Object {
+              "lineHeight": 1.25,
+            }
+          }
+          transform="translate(-488.26 -952.166)"
+          wordSpacing={0}
+          x={2111.255}
+          y={2144.856}
+        />
+        <g
+          strokeWidth={1.273}
+        >
+          <path
+            d="M2353.1 1891.85c-38.471-90.208-90.063-187.685-142.718-269.958-30.47-13.834-51.816-36.388-70.693-61.185-7.58-9.956-12.328-22.334-16.123-33.9-1.91-5.817-4.216-12.132-.713-18.354 2.388-4.216 5.286-8.008 8.154-11.824-2.713-4.03-4.953-15.872-3.794-20.157 1.62-5.986 10.57-10.896 15.37-14.57 0 0-.995-10.069 2.222-13.126 9.225-8.766 29.773-21.062 48.214-30.282.962-2.48 2.439-5.77 5.323-7.907 6.7-4.963 15.569-10.33 24.167-12.833 8.512-2.477 12.07-2.925 17.225 3.377l11.162 13.642 26.252 36.174 23.358 88.676 16.123 27.079c37.61 54.431 151.917 137.05 227.79 205.672 43.992 39.788 131.878 119.476 131.878 119.476z"
+            fill="url(#c2456ymnx4rdf3bg5__u)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M266.057 113.818L123.374 443.602l31.138 19.27L298.447 130.44c-1.23-14.049-19.128-22.829-32.39-16.622z"
+            fill="#3f9eff"
+          />
+          <path
+            d="M2230.87 1396.056c-2.263.02-4.903.692-8.36 1.698-8.599 2.503-17.468 7.87-24.169 12.833-2.883 2.137-4.36 5.427-5.322 7.907l20.404 1.686 26.31 60.511c20.837 3.279 31.423-2.684 39.352-22.39l-1.937-7.354-26.252-36.174-11.162-13.643c-3.061-3.741-5.559-5.103-8.865-5.074z"
+            fill="url(#c2456ymnx4rdf3bg5__v)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M6473.587 1733.065c-1.389-.731-4.462-2.235-5.417-4.003a409.401 409.401 0 00-4.873 3.555c-10.9 8.074-16.482 20.51-20.117 29.883l69.002 5.701 8.521-1.209 6.145 16.94 92.886 213.644c22.616 3.559 42.032 4.23 58.938 1.625l8.047-10.92c-12.271-2.912-25.714 1.876-32.422-20.312-25.693-84.986-46.382-147.749-95.508-217.774-15.088-21.507-49.428-13.505-85.202-17.13z"
+            fill="url(#c2456ymnx4rdf3bg5__w)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+          />
+          <path
+            d="M2246.602 1555.234c11.716 11.613 37.665 18.994 52.034 9.209 23.892-16.27 17.316-96.528 14.426-108.663-.924-3.881-4.95-11.687-7.153-15.85-4.86-9.183-7.309-14.386-11.088-24.06-4.53-4.972-13.357-10.245-19.936-11.257-6.443-.99-7.965 3.984-11.62 6.505-6.183 4.136-13.782 5.267-20.755 7.015-9.1 2.282-9.679 10.426-6.724 18.71 3.466 9.716 11.172 14.968 23.386 16.735 5.317.77 10.966-.02 16.078-1.535-3.995 4.97-6.334 11.109-7.016 18.417-11.91 3.444-19.66 10.698-28.648 18.709-19.938 25.325-8.571 50.615 7.016 66.065z"
+            fill="url(#c2456ymnx4rdf3bg5__x)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M2211.568 1413.757a17.57 17.57 0 00-1.616.1c-4.915.541-16.933 4.637-16.933 4.637-18.44 9.22-38.989 21.516-48.214 30.282-3.217 3.057-2.222 13.126-2.222 13.126l31.815-.943 54.372 38.44s15.469-2.706 16.809-11.107c1.155-9.157-1.905-19.62-4.677-28.648-3.329-10.838-6.45-19.953-12.35-31.352-3.054-5.9-7.012-10.033-11.584-13.155-1.642-1.121-3.664-1.401-5.4-1.38z"
+            fill="url(#c2456ymnx4rdf3bg5__y)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M6390.477 1851.46c-44.97 11.654-74.84 24.205-117.527 45.161-4.687 1.71-14.311 4.238-19.714-.834-2.289 14.497-.681 30.775-.681 30.775l26.966-.798c32.344-15.66 72.84-34.805 72.84-34.805l119.875 22.648 86.375 140.758 19.692 13.922s56.15-9.83 63.156-40.115c-18.234 17.448-39.94 18.337-49.899-2.422-26.735-55.73-53.901-119.435-97.226-163.241-23.609-23.872-81.96-16.724-103.857-11.05z"
+            fill="url(#c2456ymnx4rdf3bg5__z)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+          />
+          <path
+            d="M2190.327 1445.176c-5.765-.027-14.97.328-21.132 2.07-9.745 2.756-26.612 14.656-26.612 14.656-4.8 3.674-13.75 8.584-15.37 14.57-1.16 4.285 1.08 16.126 3.794 20.157l91.386 31.458c13.742-1.941 13.361-23.256 8.017-35.756-4.387-11.265-22.12-39.887-25.245-42.626-4.268-3.74-6.336-4.158-10.461-4.412a83.971 83.971 0 00-4.377-.117z"
+            fill="url(#c2456ymnx4rdf3bg5__A)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M34.121 649.89c.656 13.185 29.76 19.508 34.657 10.992l-.54-10.401-11.995-8.15-14.923-.173z"
+            fill="#1488ff"
+          />
+          <path
+            d="M123.77 533.874l-39.014-1.015-50.635 117.032c15.576-9.175 31.284.5 34.657 10.99z"
+            fill="#3f9eff"
+          />
+          <path
+            d="M6211.768 2031.275c-4.411 1.09-13.537-1.584-13.537-1.584 2.806 11.578 6.544 22.137 10.574 28.121l11.047 3.803 175.55-41.59 108.305 139.303 50.494 17.381c27.186-3.84 39.74-27.745 42.643-56.43-10.61 16.845-22.56 27.787-34.838 11.261-30.553-41.122-36.4-61.671-73.473-97.227-19.764-21.509-17.788-50.221-46.127-54.137-86.765-11.99-165.944 12.938-230.638 51.1z"
+            fill="url(#c2456ymnx4rdf3bg5__B)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+          />
+          <path
+            d="M2183.538 1479.934c-5.637.06-27.4 1.246-32.825 3.004-7.609 2.466-15.718 8.55-19.706 13.69-2.868 3.817-5.766 7.609-8.154 11.825-3.503 6.222-1.196 12.537.713 18.355 3.698 11.27 8.304 23.312 15.55 33.133-4.572-11.704 1.723-20.019 7.6-25.072 14.735.072 26.02-2.298 36.898-6.408 7.302 6.242 12.287 10.305 21.298 12.82l-4.493 10.377c13.59 6.904 31.687-9.294 25.88-21.647-8.982-19.101-19.146-29.605-31.988-45.94-2.078-2.642-5.356-4.009-9.87-4.134-.223-.01-.527-.01-.903 0z"
+            fill="url(#c2456ymnx4rdf3bg5__C)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M2267.433 1385.42c71.638-3.255 246.042 7.854 404.12 66.13 148.762 54.843 300.597 98.418 364.698 120.834 21.264 7.437 35.025-.75 41.145-28.549 26.346-119.67 59.566-232.054 120.373-346.252 4.624-8.685 1.337-18.964-9.276-20.668-44.565-7.155-195.526-40.553-360.757-94.815-158.732-52.126-332.278-68.944-404.86-57.174z"
+            fill="url(#c2456ymnx4rdf3bg5__D)"
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M102.544 525.658c-.897.069-3.128 8-6.355 8.6-3.255.369-6.943-6.104-7.978-5.739-.788.278 1.32 6.033-.344 8.207-3.253 4.25-15.311 4.84-15.311 4.84 11.571.057 20.433-1.804 28.976-5.032 5.735 4.902 9.65 8.093 16.727 10.068-8.777-3.88-10.67-6.762-13.279-11.84-1.086-2.115-1.11-9.205-2.436-9.104z"
+            fill="#ff7043"
+            opacity={0.462}
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+          />
+          <path
+            d="M350.817 224.695c-2.602-.205-5.75.774-8.846 2.797-16.737 10.938-60.059 32.005-74.386 39.546-2.56 1.347-4.369 3.29-5.258 5.42a8.408 8.408 0 00-.347 1.005c-.6 2.178-.259 4.476 1.103 6.493 5.598 8.295 10.706 16.187 16.083 25.475 6.751 11.67 12.608 22.918 18.068 33.401 2.161 4.15 8.432 5.722 13.842 3.326 12.609-5.584 23.792-12.798 35.864-21.376 9.485-6.686 19.134-13.76 29.13-20.552 2.51-1.704 4.423-4.139 5.54-6.693.174-.395.328-.792.462-1.192.853-2.558.862-5.162-.181-7.324a744.999 744.999 0 00-4.374-8.896 706.334 706.334 0 00-20.066 12.04c-.52.324-1.04.65-1.558.975-14.91 9.444-24.036 16.125-37.88 25.434a415.3 415.3 0 01-4.82 3.217l-2.546-4.864A620.111 620.111 0 00295.06 284.9c2.527-1.518 5.057-3.027 7.653-4.555l1.532-.896a882.704 882.704 0 015.299-3.063c.814 1.43 1.63 2.866 2.45 4.326-.01-.02.729 1.302.717 1.282 2.376 4.283 4.7 8.535 7.138 13.106a735.315 735.315 0 0114.89-9.48 669.91 669.91 0 011.55-.949c12.65-7.71 22.168-13.02 35.31-20.342-5.948-11.925-10.59-21.897-15.308-35.538-.863-2.496-2.87-3.89-5.474-4.096zm159.668 47.486c-6.422 14.863-11.822 27.073-17.504 41.897l-.485 1.269c-4.347 11.448-7.62 22.198-10.981 34.04-.895 3.192-2.14 7.815-3.035 11.006 4.678 1.095 9.344 2.205 14.015 3.335.927-3.388 1.913-7.113 3-11.038 3.335-11.881 6.618-22.701 10.968-34.198.161-.427.324-.852.486-1.275 5.842-15.295 11.114-27.217 17.445-42.004a1551.634 1551.634 0 00-13.909-3.032zm27.651 6.155c-6.214 14.644-11.57 26.819-17.375 42.07l-.487 1.281c-4.352 11.541-7.642 22.433-10.949 34.363-1.08 3.943-2.054 7.685-2.968 11.086l.461.115 1.648.413c3.958.994 7.908 2 11.86 3.02.902-3.424 1.866-7.188 2.937-11.154 3.28-11.99 6.576-22.957 10.928-34.54.162-.43.324-.86.487-1.287 5.77-15.212 11.208-27.626 17.296-42.108a1928.692 1928.692 0 00-13.838-3.26zm58.351 14.346c-4.403 10.814-8.479 20.3-12.745 31.016l-.186-.047c-.442-4.567-3.705-8.438-9.79-9.942-8.27-2.044-18.516 1.866-26.354 13.08-.275.393-.548.797-.818 1.21-2.407 3.705-4.544 8.165-6.241 13.435-2.629 8.161-3.295 15.773-2.408 21.862 1.347 9.185 6.357 14.93 13.412 16.883 6.422 1.777 12.85-.142 17.192-5.899l.281.077a566.672 566.672 0 00-1.517 9.07c4.066 1.152 8.12 2.311 12.178 3.482.554-2.886 1.42-7.181 2.504-11.765a251.775 251.775 0 011.816-7.14c2.683-9.904 5.544-19.098 8.966-28.336.163-.439.326-.876.49-1.311 5.729-15.304 11.219-27.814 16.988-42.127a6518.12 6518.12 0 00-13.768-3.548zm-135.642-26.127c-10.272 13.896-16.109 20.985-25.836 35.478-.263.392-.526.784-.787 1.178-7.198 10.87-12.4 20.328-18.732 31.682-2.014 3.647-4 7.221-5.903 10.437 4.772.99 9.522 1.982 14.29 2.987 1.818-3.21 3.725-6.802 5.664-10.468 2.039-3.818 3.939-7.406 6.078-11.333 6.533 1.369 13.036 2.755 19.552 4.17a504.398 504.398 0 00-.928 12.512 361.494 361.494 0 00-.496 11.564c4.913 1.09 9.811 2.191 14.717 3.314.059-3.616.17-7.474.382-11.605.646-12.068 1.721-23.959 3.314-35.54.06-.443.12-.884.182-1.324 1.777-12.985 3.955-27.61 6.186-39.764a1484.737 1484.737 0 00-17.683-3.288zm2.687 13.901l.285.054c-1.13 5.01-2.463 11.103-3.385 16.503a1169.68 1169.68 0 00-1.714 11.105c-.445 2.946-.859 5.94-1.245 8.997a2473.31 2473.31 0 00-15.581-3.234 291.555 291.555 0 015.01-8.165l.765-1.189a439.95 439.95 0 015.952-8.976c2.816-4.252 7.097-10.844 9.913-15.095zm172.262 48.879c-10.381-2.674-21.66 1.06-29.825 12.326-.289.398-.573.805-.853 1.222-2.475 3.697-4.622 8.162-6.278 13.438-2.732 8.7-3.172 16.62-1.92 22.983 1.976 10.02 8.351 16.434 16.817 18.96 7.415 2.214 15.852.941 22.839-7.758 4.066-5.022 7.568-12.296 10.608-22.092 1.52-4.902 2.565-9.472 3.07-13.584.057-.482.109-.958.152-1.429 1.146-12.716-3.765-21.272-14.61-24.066zm112.826 28.443c-10.462-2.517-21.405 3.2-29.018 13.805a46.2 46.2 0 00-.876 1.263c-2.778 4.163-5.044 9.008-6.624 14.382-2.517 8.557-2.865 16.495-1.47 23.04 2.193 10.266 8.753 17.182 18.447 19.16 6.437 1.313 12.674.854 17.338-1-.012-3.497.012-6.942.11-10.43.027-1.002.061-2.003.101-3.003-3.53.917-7.423 1.436-12.027.645-.33-.057-.664-.12-1.001-.19-.25-.052-.496-.11-.74-.174-6.832-1.768-12.066-8.262-9.252-20.153 10.089 2.44 20.16 4.758 30.17 6.897.769-1.886 1.586-4.503 2.385-7.14 1.323-4.371 2.363-8.33 3.057-11.926.091-.474.177-.942.256-1.403 2.313-13.49-1.326-21.48-10.856-23.773zm-50.726-12.41c-7.496-1.894-14.627 1.707-18.766 5.697l-.277-.072c.9-2.856 1.799-5.633 2.693-8.365l-11.86-3.045a8171.009 8171.009 0 00-6.97 18.807c-4.372 11.923-7.65 23.54-10.632 36.472-1.007 4.416-1.858 8.552-2.684 12.63a2354.38 2354.38 0 0013.73 3.965c.812-4.157 1.65-8.356 2.641-12.809 2.307-10.257 4.854-19.828 8.106-29.574.995-2.983 2.263-5.273 3.63-7 .346-.436.699-.836 1.056-1.203 3.179-3.265 6.734-3.947 9.084-3.332 3.285.859 4.567 3.377 4.533 6.92-.008.47-.034.959-.083 1.464-.237 2.423-.953 5.246-1.95 8.274-3.134 9.521-5.575 18.88-7.76 28.929-.965 4.484-1.782 8.748-2.574 12.995 4.569 1.247 9.143 2.468 13.711 3.651.77-4.31 1.564-8.613 2.502-13.11 2.282-10.83 4.88-20.768 8.311-30.909a98.24 98.24 0 001.876-6.14c.126-.473.245-.938.357-1.396 3.339-13.748-.425-20.764-8.674-22.849zm44.867 23.883c4.174 1.042 5.151 4.88 4.705 9.358-.047.47-.11.948-.187 1.43-.348 2.19-.981 4.501-1.72 6.614-6-1.449-12.019-2.933-18.058-4.447a30.603 30.603 0 013.365-6.267c.3-.427.613-.844.936-1.249 3.018-3.782 6.957-6.438 10.959-5.439zM630.827 340.99c3.547.93 5.016 4.175 5.132 8.577.01.473.008.96-.011 1.459-.155 4.113-1.266 9.185-2.765 14.007-1.706 5.49-3.846 10.561-6.232 14.238-2.4 3.699-5.056 6.009-7.889 6.282a5.885 5.885 0 01-2.203-.204 6.564 6.564 0 01-2.083-1.01c-2.397-1.738-3.726-5.125-4.022-9.49-.296-4.373.447-9.693 2.158-15.157 1.505-4.805 3.712-9.504 6.46-13.059.322-.414.651-.813.986-1.192 3.093-3.504 6.696-5.439 10.468-4.45zm-58.469-13.959c2.915.732 5.138 3.218 5.483 7.365.037.46.05.94.041 1.44-.044 2.114-.509 4.59-1.486 7.446a325.877 325.877 0 00-3.976 12.452c-3.257 10.926-9.249 13.371-13.473 12.238-3.273-.878-5.387-3.578-6.197-7.627-.81-4.046-.319-9.492 1.651-15.633 1.722-5.369 4.122-9.89 6.916-13.066.359-.404.723-.787 1.093-1.146 3.06-2.968 6.489-4.337 9.948-3.469z"
+            fill="#007fff"
+          />
+        </g>
+      </svg>
+      <View
+        style={
+          Array [
+            Object {
+              "alignItems": "flex-start",
+              "flexDirection": "row",
+              "marginHorizontal": 56,
+              "marginTop": 32,
+              "maxWidth": 700,
+            },
+            undefined,
+          ]
+        }
+      >
+        <View
+          style={
+            Object {
+              "marginRight": 9,
+            }
+          }
+        >
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 22,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Regular",
+                "fontSize": 16,
+                "letterSpacing": 0.32,
+                "lineHeight": 24,
+              },
+              Object {
+                "color": "#4E5D78",
+                "textAlign": "center",
+              },
+            ]
+          }
+        >
+          Congrats - you have reached empty inbox across all your projects.
+Please select a project to add a new task.
+        </Text>
+      </View>
+      <View
+        style={
+          Object {
+            "flex": 1,
+            "flexDirection": "row",
+            "flexWrap": "wrap",
+            "justifyContent": "center",
+            "marginTop": 24,
+            "maxWidth": 700,
+            "width": "100%",
+          }
+        }
+      />
+    </View>
+  </View>
+</View>
+`;
+
+exports[`MainTasksView component Function onLayoutChange snapshot test should render correctly 3`] = `
+<View
+  onLayout={[Function]}
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "flex": 1,
+      },
+      Object {
+        "paddingBottom": 0,
+      },
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "flexDirection": "row",
+          "height": 80,
+          "maxHeight": 80,
+          "minHeight": 80,
+          "paddingBottom": 8,
+          "paddingTop": 40,
+        },
+        Object {
+          "paddingHorizontal": 56,
+        },
+      ]
+    }
+  >
+    <Text
+      style={
+        Object {
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 24,
+          "lineHeight": 32,
+        }
+      }
+    >
+      Tasks
+    </Text>
+    <View
+      style={
+        Object {
+          "height": 28,
+          "justifyContent": "flex-end",
+          "marginLeft": 16,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 12,
+              "letterSpacing": 0.48,
+              "lineHeight": 20,
+            },
+            Object {
+              "color": "#4E5D78",
+            },
+          ]
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Array [
+        Object {
+          "position": "absolute",
+          "right": 56,
+          "top": 44,
+          "zIndex": 10,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      onLayout={[Function]}
+      style={
+        Object {
+          "alignSelf": "baseline",
+          "backgroundColor": "#E7ECEF",
+          "borderRadius": 14,
+          "flexDirection": "row",
+          "height": 26,
+          "overflow": "hidden",
+          "paddingBottom": 2,
+          "paddingLeft": 2,
+          "paddingRight": 2,
+          "paddingTop": 2,
+          "position": "relative",
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "backgroundColor": "#FAFBFB",
+            "borderRadius": 12,
+            "elevation": 3,
+            "height": 22,
+            "position": "absolute",
+            "shadowColor": "#8A94A6",
+            "shadowOffset": Object {
+              "height": 0,
+              "width": 0,
+            },
+            "shadowOpacity": 1,
+            "shadowRadius": 8,
+            "transform": Array [
+              Object {
+                "translateX": 0,
+              },
+            ],
+            "width": 0,
+          }
+        }
+      />
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "justifyContent": "center",
+          }
+        }
+      >
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#007FFF",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.16,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Open
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#007FFF",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#8A94A6",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.32,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Done
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "flex": 1,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "marginTop": 32,
+        }
+      }
+    >
+      <svg
+        height={256}
+        svgid="eia1"
+        viewBox="0 0 933.711 933.711"
+        width={256}
+      >
+        <defs>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__t"
+          >
+            <stop
+              offset={0}
+              stopColor="#4da6ff"
+            />
+            <stop
+              offset={0.103}
+              stopColor="#98cbff"
+            />
+            <stop
+              offset={0.197}
+              stopColor="#a5d1ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#e5f1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__s"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8a65"
+            />
+            <stop
+              offset={0.559}
+              stopColor="#ffc9b8"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffc4b2"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__r"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8159"
+            />
+            <stop
+              offset={0.458}
+              stopColor="#ffbeaa"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffccbc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__p"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8e69"
+            />
+            <stop
+              offset={0.507}
+              stopColor="#ffab91"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffccbc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__q"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8a65"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffccbc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__o"
+          >
+            <stop
+              offset={0}
+              stopColor="#ffb8a2"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffccbc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__m"
+          >
+            <stop
+              offset={0}
+              stopColor="#ffa726"
+            />
+            <stop
+              offset={1}
+              stopColor="#ffecce"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__l"
+          >
+            <stop
+              offset={0}
+              stopColor="#ff8a65"
+            />
+            <stop
+              offset={1}
+              stopColor="#fdb29c"
+              stopOpacity={0}
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__n"
+          >
+            <stop
+              offset={0}
+              stopColor="#ffccbc"
+            />
+            <stop
+              offset={1}
+              stopColor="#ff7043"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__k"
+          >
+            <stop
+              offset={0}
+              stopColor="#aed6ff"
+              stopOpacity={0.8}
+            />
+            <stop
+              offset={1}
+              stopColor="#0074eb"
+              stopOpacity={0}
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__j"
+          >
+            <stop
+              offset={0}
+              stopColor="#aed6ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#0074eb"
+              stopOpacity={0}
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__i"
+          >
+            <stop
+              offset={0}
+              stopColor="#0079f5"
+            />
+            <stop
+              offset={1}
+              stopColor="#59abff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__h"
+          >
+            <stop
+              offset={0}
+              stopColor="#0079f5"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__g"
+          >
+            <stop
+              offset={0}
+              stopColor="#51a7ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#4aa2fc"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__c"
+          >
+            <stop
+              offset={0}
+              stopColor="#2b94ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#68b2ff"
+              stopOpacity={0}
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__e"
+          >
+            <stop
+              offset={0}
+              stopColor="#51a7ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__f"
+          >
+            <stop
+              offset={0}
+              stopColor="#59abff"
+            />
+            <stop
+              offset={1}
+              stopColor="#0074eb"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__d"
+          >
+            <stop
+              offset={0}
+              stopColor="#2b94ff"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__b"
+          >
+            <stop
+              offset={0}
+              stopColor="#3b9cff"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            id="c2456ymnx4rdf3bg5__a"
+          >
+            <stop
+              offset={0}
+              stopColor="#007fff"
+            />
+            <stop
+              offset={1}
+              stopColor="#a4d1ff"
+            />
+          </linearGradient>
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__u"
+            x1={295.711}
+            x2={262.686}
+            xlinkHref="#c2456ymnx4rdf3bg5__n"
+            y1={221.966}
+            y2={176.745}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__x"
+            x1={290.146}
+            x2={285.904}
+            xlinkHref="#c2456ymnx4rdf3bg5__o"
+            y1={210.96}
+            y2={174.887}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__C"
+            x1={276.084}
+            x2={258.923}
+            xlinkHref="#c2456ymnx4rdf3bg5__p"
+            y1={206.482}
+            y2={192.052}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__A"
+            x1={281.073}
+            x2={255.13}
+            xlinkHref="#c2456ymnx4rdf3bg5__r"
+            y1={196.608}
+            y2={190.079}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__y"
+            x1={281.991}
+            x2={262.523}
+            xlinkHref="#c2456ymnx4rdf3bg5__s"
+            y1={191.689}
+            y2={179.386}
+          />
+          <linearGradient
+            gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__v"
+            x1={282.217}
+            x2={281.387}
+            xlinkHref="#c2456ymnx4rdf3bg5__q"
+            y1={195.35}
+            y2={173.345}
+          />
+          <linearGradient
+            gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__B"
+            x1={23087.938}
+            x2={22289.729}
+            xlinkHref="#c2456ymnx4rdf3bg5__l"
+            y1={6905.986}
+            y2={6322.126}
+          />
+          <linearGradient
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__D"
+            x1={2384.577}
+            x2={3117.558}
+            xlinkHref="#c2456ymnx4rdf3bg5__t"
+            y1={1103.077}
+            y2={1400.304}
+          />
+          <linearGradient
+            gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__w"
+            x1={23087.938}
+            x2={22289.729}
+            xlinkHref="#c2456ymnx4rdf3bg5__l"
+            y1={6905.986}
+            y2={6322.126}
+          />
+          <linearGradient
+            gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+            gradientUnits="userSpaceOnUse"
+            id="c2456ymnx4rdf3bg5__z"
+            x1={23087.938}
+            x2={22289.729}
+            xlinkHref="#c2456ymnx4rdf3bg5__l"
+            y1={6905.986}
+            y2={6322.126}
+          />
+        </defs>
+        <text
+          fontFamily="sans-serif"
+          fontSize={10.583}
+          fontWeight={400}
+          letterSpacing={0}
+          strokeWidth={0.265}
+          style={
+            Object {
+              "lineHeight": 1.25,
+            }
+          }
+          transform="translate(-488.26 -952.166)"
+          wordSpacing={0}
+          x={2111.255}
+          y={2144.856}
+        />
+        <g
+          strokeWidth={1.273}
+        >
+          <path
+            d="M2353.1 1891.85c-38.471-90.208-90.063-187.685-142.718-269.958-30.47-13.834-51.816-36.388-70.693-61.185-7.58-9.956-12.328-22.334-16.123-33.9-1.91-5.817-4.216-12.132-.713-18.354 2.388-4.216 5.286-8.008 8.154-11.824-2.713-4.03-4.953-15.872-3.794-20.157 1.62-5.986 10.57-10.896 15.37-14.57 0 0-.995-10.069 2.222-13.126 9.225-8.766 29.773-21.062 48.214-30.282.962-2.48 2.439-5.77 5.323-7.907 6.7-4.963 15.569-10.33 24.167-12.833 8.512-2.477 12.07-2.925 17.225 3.377l11.162 13.642 26.252 36.174 23.358 88.676 16.123 27.079c37.61 54.431 151.917 137.05 227.79 205.672 43.992 39.788 131.878 119.476 131.878 119.476z"
+            fill="url(#c2456ymnx4rdf3bg5__u)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M266.057 113.818L123.374 443.602l31.138 19.27L298.447 130.44c-1.23-14.049-19.128-22.829-32.39-16.622z"
+            fill="#3f9eff"
+          />
+          <path
+            d="M2230.87 1396.056c-2.263.02-4.903.692-8.36 1.698-8.599 2.503-17.468 7.87-24.169 12.833-2.883 2.137-4.36 5.427-5.322 7.907l20.404 1.686 26.31 60.511c20.837 3.279 31.423-2.684 39.352-22.39l-1.937-7.354-26.252-36.174-11.162-13.643c-3.061-3.741-5.559-5.103-8.865-5.074z"
+            fill="url(#c2456ymnx4rdf3bg5__v)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M6473.587 1733.065c-1.389-.731-4.462-2.235-5.417-4.003a409.401 409.401 0 00-4.873 3.555c-10.9 8.074-16.482 20.51-20.117 29.883l69.002 5.701 8.521-1.209 6.145 16.94 92.886 213.644c22.616 3.559 42.032 4.23 58.938 1.625l8.047-10.92c-12.271-2.912-25.714 1.876-32.422-20.312-25.693-84.986-46.382-147.749-95.508-217.774-15.088-21.507-49.428-13.505-85.202-17.13z"
+            fill="url(#c2456ymnx4rdf3bg5__w)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+          />
+          <path
+            d="M2246.602 1555.234c11.716 11.613 37.665 18.994 52.034 9.209 23.892-16.27 17.316-96.528 14.426-108.663-.924-3.881-4.95-11.687-7.153-15.85-4.86-9.183-7.309-14.386-11.088-24.06-4.53-4.972-13.357-10.245-19.936-11.257-6.443-.99-7.965 3.984-11.62 6.505-6.183 4.136-13.782 5.267-20.755 7.015-9.1 2.282-9.679 10.426-6.724 18.71 3.466 9.716 11.172 14.968 23.386 16.735 5.317.77 10.966-.02 16.078-1.535-3.995 4.97-6.334 11.109-7.016 18.417-11.91 3.444-19.66 10.698-28.648 18.709-19.938 25.325-8.571 50.615 7.016 66.065z"
+            fill="url(#c2456ymnx4rdf3bg5__x)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M2211.568 1413.757a17.57 17.57 0 00-1.616.1c-4.915.541-16.933 4.637-16.933 4.637-18.44 9.22-38.989 21.516-48.214 30.282-3.217 3.057-2.222 13.126-2.222 13.126l31.815-.943 54.372 38.44s15.469-2.706 16.809-11.107c1.155-9.157-1.905-19.62-4.677-28.648-3.329-10.838-6.45-19.953-12.35-31.352-3.054-5.9-7.012-10.033-11.584-13.155-1.642-1.121-3.664-1.401-5.4-1.38z"
+            fill="url(#c2456ymnx4rdf3bg5__y)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M6390.477 1851.46c-44.97 11.654-74.84 24.205-117.527 45.161-4.687 1.71-14.311 4.238-19.714-.834-2.289 14.497-.681 30.775-.681 30.775l26.966-.798c32.344-15.66 72.84-34.805 72.84-34.805l119.875 22.648 86.375 140.758 19.692 13.922s56.15-9.83 63.156-40.115c-18.234 17.448-39.94 18.337-49.899-2.422-26.735-55.73-53.901-119.435-97.226-163.241-23.609-23.872-81.96-16.724-103.857-11.05z"
+            fill="url(#c2456ymnx4rdf3bg5__z)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+          />
+          <path
+            d="M2190.327 1445.176c-5.765-.027-14.97.328-21.132 2.07-9.745 2.756-26.612 14.656-26.612 14.656-4.8 3.674-13.75 8.584-15.37 14.57-1.16 4.285 1.08 16.126 3.794 20.157l91.386 31.458c13.742-1.941 13.361-23.256 8.017-35.756-4.387-11.265-22.12-39.887-25.245-42.626-4.268-3.74-6.336-4.158-10.461-4.412a83.971 83.971 0 00-4.377-.117z"
+            fill="url(#c2456ymnx4rdf3bg5__A)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M34.121 649.89c.656 13.185 29.76 19.508 34.657 10.992l-.54-10.401-11.995-8.15-14.923-.173z"
+            fill="#1488ff"
+          />
+          <path
+            d="M123.77 533.874l-39.014-1.015-50.635 117.032c15.576-9.175 31.284.5 34.657 10.99z"
+            fill="#3f9eff"
+          />
+          <path
+            d="M6211.768 2031.275c-4.411 1.09-13.537-1.584-13.537-1.584 2.806 11.578 6.544 22.137 10.574 28.121l11.047 3.803 175.55-41.59 108.305 139.303 50.494 17.381c27.186-3.84 39.74-27.745 42.643-56.43-10.61 16.845-22.56 27.787-34.838 11.261-30.553-41.122-36.4-61.671-73.473-97.227-19.764-21.509-17.788-50.221-46.127-54.137-86.765-11.99-165.944 12.938-230.638 51.1z"
+            fill="url(#c2456ymnx4rdf3bg5__B)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+          />
+          <path
+            d="M2183.538 1479.934c-5.637.06-27.4 1.246-32.825 3.004-7.609 2.466-15.718 8.55-19.706 13.69-2.868 3.817-5.766 7.609-8.154 11.825-3.503 6.222-1.196 12.537.713 18.355 3.698 11.27 8.304 23.312 15.55 33.133-4.572-11.704 1.723-20.019 7.6-25.072 14.735.072 26.02-2.298 36.898-6.408 7.302 6.242 12.287 10.305 21.298 12.82l-4.493 10.377c13.59 6.904 31.687-9.294 25.88-21.647-8.982-19.101-19.146-29.605-31.988-45.94-2.078-2.642-5.356-4.009-9.87-4.134-.223-.01-.527-.01-.903 0z"
+            fill="url(#c2456ymnx4rdf3bg5__C)"
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M2267.433 1385.42c71.638-3.255 246.042 7.854 404.12 66.13 148.762 54.843 300.597 98.418 364.698 120.834 21.264 7.437 35.025-.75 41.145-28.549 26.346-119.67 59.566-232.054 120.373-346.252 4.624-8.685 1.337-18.964-9.276-20.668-44.565-7.155-195.526-40.553-360.757-94.815-158.732-52.126-332.278-68.944-404.86-57.174z"
+            fill="url(#c2456ymnx4rdf3bg5__D)"
+            transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+          />
+          <path
+            d="M102.544 525.658c-.897.069-3.128 8-6.355 8.6-3.255.369-6.943-6.104-7.978-5.739-.788.278 1.32 6.033-.344 8.207-3.253 4.25-15.311 4.84-15.311 4.84 11.571.057 20.433-1.804 28.976-5.032 5.735 4.902 9.65 8.093 16.727 10.068-8.777-3.88-10.67-6.762-13.279-11.84-1.086-2.115-1.11-9.205-2.436-9.104z"
+            fill="#ff7043"
+            opacity={0.462}
+            style={
+              Object {
+                "fontVariationSettings": "normal",
+              }
+            }
+          />
+          <path
+            d="M350.817 224.695c-2.602-.205-5.75.774-8.846 2.797-16.737 10.938-60.059 32.005-74.386 39.546-2.56 1.347-4.369 3.29-5.258 5.42a8.408 8.408 0 00-.347 1.005c-.6 2.178-.259 4.476 1.103 6.493 5.598 8.295 10.706 16.187 16.083 25.475 6.751 11.67 12.608 22.918 18.068 33.401 2.161 4.15 8.432 5.722 13.842 3.326 12.609-5.584 23.792-12.798 35.864-21.376 9.485-6.686 19.134-13.76 29.13-20.552 2.51-1.704 4.423-4.139 5.54-6.693.174-.395.328-.792.462-1.192.853-2.558.862-5.162-.181-7.324a744.999 744.999 0 00-4.374-8.896 706.334 706.334 0 00-20.066 12.04c-.52.324-1.04.65-1.558.975-14.91 9.444-24.036 16.125-37.88 25.434a415.3 415.3 0 01-4.82 3.217l-2.546-4.864A620.111 620.111 0 00295.06 284.9c2.527-1.518 5.057-3.027 7.653-4.555l1.532-.896a882.704 882.704 0 015.299-3.063c.814 1.43 1.63 2.866 2.45 4.326-.01-.02.729 1.302.717 1.282 2.376 4.283 4.7 8.535 7.138 13.106a735.315 735.315 0 0114.89-9.48 669.91 669.91 0 011.55-.949c12.65-7.71 22.168-13.02 35.31-20.342-5.948-11.925-10.59-21.897-15.308-35.538-.863-2.496-2.87-3.89-5.474-4.096zm159.668 47.486c-6.422 14.863-11.822 27.073-17.504 41.897l-.485 1.269c-4.347 11.448-7.62 22.198-10.981 34.04-.895 3.192-2.14 7.815-3.035 11.006 4.678 1.095 9.344 2.205 14.015 3.335.927-3.388 1.913-7.113 3-11.038 3.335-11.881 6.618-22.701 10.968-34.198.161-.427.324-.852.486-1.275 5.842-15.295 11.114-27.217 17.445-42.004a1551.634 1551.634 0 00-13.909-3.032zm27.651 6.155c-6.214 14.644-11.57 26.819-17.375 42.07l-.487 1.281c-4.352 11.541-7.642 22.433-10.949 34.363-1.08 3.943-2.054 7.685-2.968 11.086l.461.115 1.648.413c3.958.994 7.908 2 11.86 3.02.902-3.424 1.866-7.188 2.937-11.154 3.28-11.99 6.576-22.957 10.928-34.54.162-.43.324-.86.487-1.287 5.77-15.212 11.208-27.626 17.296-42.108a1928.692 1928.692 0 00-13.838-3.26zm58.351 14.346c-4.403 10.814-8.479 20.3-12.745 31.016l-.186-.047c-.442-4.567-3.705-8.438-9.79-9.942-8.27-2.044-18.516 1.866-26.354 13.08-.275.393-.548.797-.818 1.21-2.407 3.705-4.544 8.165-6.241 13.435-2.629 8.161-3.295 15.773-2.408 21.862 1.347 9.185 6.357 14.93 13.412 16.883 6.422 1.777 12.85-.142 17.192-5.899l.281.077a566.672 566.672 0 00-1.517 9.07c4.066 1.152 8.12 2.311 12.178 3.482.554-2.886 1.42-7.181 2.504-11.765a251.775 251.775 0 011.816-7.14c2.683-9.904 5.544-19.098 8.966-28.336.163-.439.326-.876.49-1.311 5.729-15.304 11.219-27.814 16.988-42.127a6518.12 6518.12 0 00-13.768-3.548zm-135.642-26.127c-10.272 13.896-16.109 20.985-25.836 35.478-.263.392-.526.784-.787 1.178-7.198 10.87-12.4 20.328-18.732 31.682-2.014 3.647-4 7.221-5.903 10.437 4.772.99 9.522 1.982 14.29 2.987 1.818-3.21 3.725-6.802 5.664-10.468 2.039-3.818 3.939-7.406 6.078-11.333 6.533 1.369 13.036 2.755 19.552 4.17a504.398 504.398 0 00-.928 12.512 361.494 361.494 0 00-.496 11.564c4.913 1.09 9.811 2.191 14.717 3.314.059-3.616.17-7.474.382-11.605.646-12.068 1.721-23.959 3.314-35.54.06-.443.12-.884.182-1.324 1.777-12.985 3.955-27.61 6.186-39.764a1484.737 1484.737 0 00-17.683-3.288zm2.687 13.901l.285.054c-1.13 5.01-2.463 11.103-3.385 16.503a1169.68 1169.68 0 00-1.714 11.105c-.445 2.946-.859 5.94-1.245 8.997a2473.31 2473.31 0 00-15.581-3.234 291.555 291.555 0 015.01-8.165l.765-1.189a439.95 439.95 0 015.952-8.976c2.816-4.252 7.097-10.844 9.913-15.095zm172.262 48.879c-10.381-2.674-21.66 1.06-29.825 12.326-.289.398-.573.805-.853 1.222-2.475 3.697-4.622 8.162-6.278 13.438-2.732 8.7-3.172 16.62-1.92 22.983 1.976 10.02 8.351 16.434 16.817 18.96 7.415 2.214 15.852.941 22.839-7.758 4.066-5.022 7.568-12.296 10.608-22.092 1.52-4.902 2.565-9.472 3.07-13.584.057-.482.109-.958.152-1.429 1.146-12.716-3.765-21.272-14.61-24.066zm112.826 28.443c-10.462-2.517-21.405 3.2-29.018 13.805a46.2 46.2 0 00-.876 1.263c-2.778 4.163-5.044 9.008-6.624 14.382-2.517 8.557-2.865 16.495-1.47 23.04 2.193 10.266 8.753 17.182 18.447 19.16 6.437 1.313 12.674.854 17.338-1-.012-3.497.012-6.942.11-10.43.027-1.002.061-2.003.101-3.003-3.53.917-7.423 1.436-12.027.645-.33-.057-.664-.12-1.001-.19-.25-.052-.496-.11-.74-.174-6.832-1.768-12.066-8.262-9.252-20.153 10.089 2.44 20.16 4.758 30.17 6.897.769-1.886 1.586-4.503 2.385-7.14 1.323-4.371 2.363-8.33 3.057-11.926.091-.474.177-.942.256-1.403 2.313-13.49-1.326-21.48-10.856-23.773zm-50.726-12.41c-7.496-1.894-14.627 1.707-18.766 5.697l-.277-.072c.9-2.856 1.799-5.633 2.693-8.365l-11.86-3.045a8171.009 8171.009 0 00-6.97 18.807c-4.372 11.923-7.65 23.54-10.632 36.472-1.007 4.416-1.858 8.552-2.684 12.63a2354.38 2354.38 0 0013.73 3.965c.812-4.157 1.65-8.356 2.641-12.809 2.307-10.257 4.854-19.828 8.106-29.574.995-2.983 2.263-5.273 3.63-7 .346-.436.699-.836 1.056-1.203 3.179-3.265 6.734-3.947 9.084-3.332 3.285.859 4.567 3.377 4.533 6.92-.008.47-.034.959-.083 1.464-.237 2.423-.953 5.246-1.95 8.274-3.134 9.521-5.575 18.88-7.76 28.929-.965 4.484-1.782 8.748-2.574 12.995 4.569 1.247 9.143 2.468 13.711 3.651.77-4.31 1.564-8.613 2.502-13.11 2.282-10.83 4.88-20.768 8.311-30.909a98.24 98.24 0 001.876-6.14c.126-.473.245-.938.357-1.396 3.339-13.748-.425-20.764-8.674-22.849zm44.867 23.883c4.174 1.042 5.151 4.88 4.705 9.358-.047.47-.11.948-.187 1.43-.348 2.19-.981 4.501-1.72 6.614-6-1.449-12.019-2.933-18.058-4.447a30.603 30.603 0 013.365-6.267c.3-.427.613-.844.936-1.249 3.018-3.782 6.957-6.438 10.959-5.439zM630.827 340.99c3.547.93 5.016 4.175 5.132 8.577.01.473.008.96-.011 1.459-.155 4.113-1.266 9.185-2.765 14.007-1.706 5.49-3.846 10.561-6.232 14.238-2.4 3.699-5.056 6.009-7.889 6.282a5.885 5.885 0 01-2.203-.204 6.564 6.564 0 01-2.083-1.01c-2.397-1.738-3.726-5.125-4.022-9.49-.296-4.373.447-9.693 2.158-15.157 1.505-4.805 3.712-9.504 6.46-13.059.322-.414.651-.813.986-1.192 3.093-3.504 6.696-5.439 10.468-4.45zm-58.469-13.959c2.915.732 5.138 3.218 5.483 7.365.037.46.05.94.041 1.44-.044 2.114-.509 4.59-1.486 7.446a325.877 325.877 0 00-3.976 12.452c-3.257 10.926-9.249 13.371-13.473 12.238-3.273-.878-5.387-3.578-6.197-7.627-.81-4.046-.319-9.492 1.651-15.633 1.722-5.369 4.122-9.89 6.916-13.066.359-.404.723-.787 1.093-1.146 3.06-2.968 6.489-4.337 9.948-3.469z"
+            fill="#007fff"
+          />
+        </g>
+      </svg>
+      <View
+        style={
+          Array [
+            Object {
+              "alignItems": "flex-start",
+              "flexDirection": "row",
+              "marginHorizontal": 56,
+              "marginTop": 32,
+              "maxWidth": 700,
+            },
+            undefined,
+          ]
+        }
+      >
+        <View
+          style={
+            Object {
+              "marginRight": 9,
+            }
+          }
+        >
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 22,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Regular",
+                "fontSize": 16,
+                "letterSpacing": 0.32,
+                "lineHeight": 24,
+              },
+              Object {
+                "color": "#4E5D78",
+                "textAlign": "center",
+              },
+            ]
+          }
+        >
+          Congrats - you have reached empty inbox across all your projects.
+Please select a project to add a new task.
+        </Text>
+      </View>
+      <View
+        style={
+          Object {
+            "flex": 1,
+            "flexDirection": "row",
+            "flexWrap": "wrap",
+            "justifyContent": "center",
+            "marginTop": 24,
+            "maxWidth": 700,
+            "width": "100%",
+          }
+        }
+      />
+    </View>
+  </View>
+</View>
+`;
+
+exports[`MainTasksView component MainTasksView snapshot test should render correctly 1`] = `
+<View
+  onLayout={[Function]}
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "flex": 1,
+      },
+      Object {
+        "paddingBottom": 0,
+      },
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "flexDirection": "row",
+          "height": 80,
+          "maxHeight": 80,
+          "minHeight": 80,
+          "paddingBottom": 8,
+          "paddingTop": 40,
+        },
+        Object {
+          "paddingHorizontal": 56,
+        },
+      ]
+    }
+  >
+    <Text
+      style={
+        Object {
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 24,
+          "lineHeight": 32,
+          "marginRight": 14,
+        }
+      }
+    >
+      Tasks
+    </Text>
+    <View
+      style={
+        Object {
+          "height": 28,
+          "justifyContent": "flex-end",
+          "marginLeft": 16,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 12,
+              "letterSpacing": 0.48,
+              "lineHeight": 20,
+            },
+            Object {
+              "color": "#4E5D78",
+            },
+          ]
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Array [
+        Object {
+          "position": "absolute",
+          "right": 56,
+          "top": 44,
+          "zIndex": 10,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      onLayout={[Function]}
+      style={
+        Object {
+          "alignSelf": "baseline",
+          "backgroundColor": "#E7ECEF",
+          "borderRadius": 14,
+          "flexDirection": "row",
+          "height": 26,
+          "overflow": "hidden",
+          "paddingBottom": 2,
+          "paddingLeft": 2,
+          "paddingRight": 2,
+          "paddingTop": 2,
+          "position": "relative",
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "backgroundColor": "#FAFBFB",
+            "borderRadius": 12,
+            "elevation": 3,
+            "height": 22,
+            "position": "absolute",
+            "shadowColor": "#8A94A6",
+            "shadowOffset": Object {
+              "height": 0,
+              "width": 0,
+            },
+            "shadowOpacity": 1,
+            "shadowRadius": 8,
+            "transform": Array [
+              Object {
+                "translateX": 0,
+              },
+            ],
+            "width": 0,
+          }
+        }
+      />
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "justifyContent": "center",
+          }
+        }
+      >
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#007FFF",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.16,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Open
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#007FFF",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#8A94A6",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.32,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Done
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "flex": 1,
+      }
+    }
+  >
+    <View>
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "marginTop": 32,
+          }
+        }
+      >
+        <svg
+          height={256}
+          svgid="eia1"
+          viewBox="0 0 933.711 933.711"
+          width={256}
+        >
+          <defs>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__t"
+            >
+              <stop
+                offset={0}
+                stopColor="#4da6ff"
+              />
+              <stop
+                offset={0.103}
+                stopColor="#98cbff"
+              />
+              <stop
+                offset={0.197}
+                stopColor="#a5d1ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#e5f1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__s"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8a65"
+              />
+              <stop
+                offset={0.559}
+                stopColor="#ffc9b8"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffc4b2"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__r"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8159"
+              />
+              <stop
+                offset={0.458}
+                stopColor="#ffbeaa"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffccbc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__p"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8e69"
+              />
+              <stop
+                offset={0.507}
+                stopColor="#ffab91"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffccbc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__q"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8a65"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffccbc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__o"
+            >
+              <stop
+                offset={0}
+                stopColor="#ffb8a2"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffccbc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__m"
+            >
+              <stop
+                offset={0}
+                stopColor="#ffa726"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffecce"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__l"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8a65"
+              />
+              <stop
+                offset={1}
+                stopColor="#fdb29c"
+                stopOpacity={0}
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__n"
+            >
+              <stop
+                offset={0}
+                stopColor="#ffccbc"
+              />
+              <stop
+                offset={1}
+                stopColor="#ff7043"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__k"
+            >
+              <stop
+                offset={0}
+                stopColor="#aed6ff"
+                stopOpacity={0.8}
+              />
+              <stop
+                offset={1}
+                stopColor="#0074eb"
+                stopOpacity={0}
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__j"
+            >
+              <stop
+                offset={0}
+                stopColor="#aed6ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#0074eb"
+                stopOpacity={0}
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__i"
+            >
+              <stop
+                offset={0}
+                stopColor="#0079f5"
+              />
+              <stop
+                offset={1}
+                stopColor="#59abff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__h"
+            >
+              <stop
+                offset={0}
+                stopColor="#0079f5"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__g"
+            >
+              <stop
+                offset={0}
+                stopColor="#51a7ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#4aa2fc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__c"
+            >
+              <stop
+                offset={0}
+                stopColor="#2b94ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#68b2ff"
+                stopOpacity={0}
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__e"
+            >
+              <stop
+                offset={0}
+                stopColor="#51a7ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__f"
+            >
+              <stop
+                offset={0}
+                stopColor="#59abff"
+              />
+              <stop
+                offset={1}
+                stopColor="#0074eb"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__d"
+            >
+              <stop
+                offset={0}
+                stopColor="#2b94ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__b"
+            >
+              <stop
+                offset={0}
+                stopColor="#3b9cff"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__a"
+            >
+              <stop
+                offset={0}
+                stopColor="#007fff"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__u"
+              x1={295.711}
+              x2={262.686}
+              xlinkHref="#c2456ymnx4rdf3bg5__n"
+              y1={221.966}
+              y2={176.745}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__x"
+              x1={290.146}
+              x2={285.904}
+              xlinkHref="#c2456ymnx4rdf3bg5__o"
+              y1={210.96}
+              y2={174.887}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__C"
+              x1={276.084}
+              x2={258.923}
+              xlinkHref="#c2456ymnx4rdf3bg5__p"
+              y1={206.482}
+              y2={192.052}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__A"
+              x1={281.073}
+              x2={255.13}
+              xlinkHref="#c2456ymnx4rdf3bg5__r"
+              y1={196.608}
+              y2={190.079}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__y"
+              x1={281.991}
+              x2={262.523}
+              xlinkHref="#c2456ymnx4rdf3bg5__s"
+              y1={191.689}
+              y2={179.386}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__v"
+              x1={282.217}
+              x2={281.387}
+              xlinkHref="#c2456ymnx4rdf3bg5__q"
+              y1={195.35}
+              y2={173.345}
+            />
+            <linearGradient
+              gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__B"
+              x1={23087.938}
+              x2={22289.729}
+              xlinkHref="#c2456ymnx4rdf3bg5__l"
+              y1={6905.986}
+              y2={6322.126}
+            />
+            <linearGradient
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__D"
+              x1={2384.577}
+              x2={3117.558}
+              xlinkHref="#c2456ymnx4rdf3bg5__t"
+              y1={1103.077}
+              y2={1400.304}
+            />
+            <linearGradient
+              gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__w"
+              x1={23087.938}
+              x2={22289.729}
+              xlinkHref="#c2456ymnx4rdf3bg5__l"
+              y1={6905.986}
+              y2={6322.126}
+            />
+            <linearGradient
+              gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__z"
+              x1={23087.938}
+              x2={22289.729}
+              xlinkHref="#c2456ymnx4rdf3bg5__l"
+              y1={6905.986}
+              y2={6322.126}
+            />
+          </defs>
+          <text
+            fontFamily="sans-serif"
+            fontSize={10.583}
+            fontWeight={400}
+            letterSpacing={0}
+            strokeWidth={0.265}
+            style={
+              Object {
+                "lineHeight": 1.25,
+              }
+            }
+            transform="translate(-488.26 -952.166)"
+            wordSpacing={0}
+            x={2111.255}
+            y={2144.856}
+          />
+          <g
+            strokeWidth={1.273}
+          >
+            <path
+              d="M2353.1 1891.85c-38.471-90.208-90.063-187.685-142.718-269.958-30.47-13.834-51.816-36.388-70.693-61.185-7.58-9.956-12.328-22.334-16.123-33.9-1.91-5.817-4.216-12.132-.713-18.354 2.388-4.216 5.286-8.008 8.154-11.824-2.713-4.03-4.953-15.872-3.794-20.157 1.62-5.986 10.57-10.896 15.37-14.57 0 0-.995-10.069 2.222-13.126 9.225-8.766 29.773-21.062 48.214-30.282.962-2.48 2.439-5.77 5.323-7.907 6.7-4.963 15.569-10.33 24.167-12.833 8.512-2.477 12.07-2.925 17.225 3.377l11.162 13.642 26.252 36.174 23.358 88.676 16.123 27.079c37.61 54.431 151.917 137.05 227.79 205.672 43.992 39.788 131.878 119.476 131.878 119.476z"
+              fill="url(#c2456ymnx4rdf3bg5__u)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M266.057 113.818L123.374 443.602l31.138 19.27L298.447 130.44c-1.23-14.049-19.128-22.829-32.39-16.622z"
+              fill="#3f9eff"
+            />
+            <path
+              d="M2230.87 1396.056c-2.263.02-4.903.692-8.36 1.698-8.599 2.503-17.468 7.87-24.169 12.833-2.883 2.137-4.36 5.427-5.322 7.907l20.404 1.686 26.31 60.511c20.837 3.279 31.423-2.684 39.352-22.39l-1.937-7.354-26.252-36.174-11.162-13.643c-3.061-3.741-5.559-5.103-8.865-5.074z"
+              fill="url(#c2456ymnx4rdf3bg5__v)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M6473.587 1733.065c-1.389-.731-4.462-2.235-5.417-4.003a409.401 409.401 0 00-4.873 3.555c-10.9 8.074-16.482 20.51-20.117 29.883l69.002 5.701 8.521-1.209 6.145 16.94 92.886 213.644c22.616 3.559 42.032 4.23 58.938 1.625l8.047-10.92c-12.271-2.912-25.714 1.876-32.422-20.312-25.693-84.986-46.382-147.749-95.508-217.774-15.088-21.507-49.428-13.505-85.202-17.13z"
+              fill="url(#c2456ymnx4rdf3bg5__w)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+            />
+            <path
+              d="M2246.602 1555.234c11.716 11.613 37.665 18.994 52.034 9.209 23.892-16.27 17.316-96.528 14.426-108.663-.924-3.881-4.95-11.687-7.153-15.85-4.86-9.183-7.309-14.386-11.088-24.06-4.53-4.972-13.357-10.245-19.936-11.257-6.443-.99-7.965 3.984-11.62 6.505-6.183 4.136-13.782 5.267-20.755 7.015-9.1 2.282-9.679 10.426-6.724 18.71 3.466 9.716 11.172 14.968 23.386 16.735 5.317.77 10.966-.02 16.078-1.535-3.995 4.97-6.334 11.109-7.016 18.417-11.91 3.444-19.66 10.698-28.648 18.709-19.938 25.325-8.571 50.615 7.016 66.065z"
+              fill="url(#c2456ymnx4rdf3bg5__x)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M2211.568 1413.757a17.57 17.57 0 00-1.616.1c-4.915.541-16.933 4.637-16.933 4.637-18.44 9.22-38.989 21.516-48.214 30.282-3.217 3.057-2.222 13.126-2.222 13.126l31.815-.943 54.372 38.44s15.469-2.706 16.809-11.107c1.155-9.157-1.905-19.62-4.677-28.648-3.329-10.838-6.45-19.953-12.35-31.352-3.054-5.9-7.012-10.033-11.584-13.155-1.642-1.121-3.664-1.401-5.4-1.38z"
+              fill="url(#c2456ymnx4rdf3bg5__y)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M6390.477 1851.46c-44.97 11.654-74.84 24.205-117.527 45.161-4.687 1.71-14.311 4.238-19.714-.834-2.289 14.497-.681 30.775-.681 30.775l26.966-.798c32.344-15.66 72.84-34.805 72.84-34.805l119.875 22.648 86.375 140.758 19.692 13.922s56.15-9.83 63.156-40.115c-18.234 17.448-39.94 18.337-49.899-2.422-26.735-55.73-53.901-119.435-97.226-163.241-23.609-23.872-81.96-16.724-103.857-11.05z"
+              fill="url(#c2456ymnx4rdf3bg5__z)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+            />
+            <path
+              d="M2190.327 1445.176c-5.765-.027-14.97.328-21.132 2.07-9.745 2.756-26.612 14.656-26.612 14.656-4.8 3.674-13.75 8.584-15.37 14.57-1.16 4.285 1.08 16.126 3.794 20.157l91.386 31.458c13.742-1.941 13.361-23.256 8.017-35.756-4.387-11.265-22.12-39.887-25.245-42.626-4.268-3.74-6.336-4.158-10.461-4.412a83.971 83.971 0 00-4.377-.117z"
+              fill="url(#c2456ymnx4rdf3bg5__A)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M34.121 649.89c.656 13.185 29.76 19.508 34.657 10.992l-.54-10.401-11.995-8.15-14.923-.173z"
+              fill="#1488ff"
+            />
+            <path
+              d="M123.77 533.874l-39.014-1.015-50.635 117.032c15.576-9.175 31.284.5 34.657 10.99z"
+              fill="#3f9eff"
+            />
+            <path
+              d="M6211.768 2031.275c-4.411 1.09-13.537-1.584-13.537-1.584 2.806 11.578 6.544 22.137 10.574 28.121l11.047 3.803 175.55-41.59 108.305 139.303 50.494 17.381c27.186-3.84 39.74-27.745 42.643-56.43-10.61 16.845-22.56 27.787-34.838 11.261-30.553-41.122-36.4-61.671-73.473-97.227-19.764-21.509-17.788-50.221-46.127-54.137-86.765-11.99-165.944 12.938-230.638 51.1z"
+              fill="url(#c2456ymnx4rdf3bg5__B)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+            />
+            <path
+              d="M2183.538 1479.934c-5.637.06-27.4 1.246-32.825 3.004-7.609 2.466-15.718 8.55-19.706 13.69-2.868 3.817-5.766 7.609-8.154 11.825-3.503 6.222-1.196 12.537.713 18.355 3.698 11.27 8.304 23.312 15.55 33.133-4.572-11.704 1.723-20.019 7.6-25.072 14.735.072 26.02-2.298 36.898-6.408 7.302 6.242 12.287 10.305 21.298 12.82l-4.493 10.377c13.59 6.904 31.687-9.294 25.88-21.647-8.982-19.101-19.146-29.605-31.988-45.94-2.078-2.642-5.356-4.009-9.87-4.134-.223-.01-.527-.01-.903 0z"
+              fill="url(#c2456ymnx4rdf3bg5__C)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M2267.433 1385.42c71.638-3.255 246.042 7.854 404.12 66.13 148.762 54.843 300.597 98.418 364.698 120.834 21.264 7.437 35.025-.75 41.145-28.549 26.346-119.67 59.566-232.054 120.373-346.252 4.624-8.685 1.337-18.964-9.276-20.668-44.565-7.155-195.526-40.553-360.757-94.815-158.732-52.126-332.278-68.944-404.86-57.174z"
+              fill="url(#c2456ymnx4rdf3bg5__D)"
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M102.544 525.658c-.897.069-3.128 8-6.355 8.6-3.255.369-6.943-6.104-7.978-5.739-.788.278 1.32 6.033-.344 8.207-3.253 4.25-15.311 4.84-15.311 4.84 11.571.057 20.433-1.804 28.976-5.032 5.735 4.902 9.65 8.093 16.727 10.068-8.777-3.88-10.67-6.762-13.279-11.84-1.086-2.115-1.11-9.205-2.436-9.104z"
+              fill="#ff7043"
+              opacity={0.462}
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+            />
+            <path
+              d="M350.817 224.695c-2.602-.205-5.75.774-8.846 2.797-16.737 10.938-60.059 32.005-74.386 39.546-2.56 1.347-4.369 3.29-5.258 5.42a8.408 8.408 0 00-.347 1.005c-.6 2.178-.259 4.476 1.103 6.493 5.598 8.295 10.706 16.187 16.083 25.475 6.751 11.67 12.608 22.918 18.068 33.401 2.161 4.15 8.432 5.722 13.842 3.326 12.609-5.584 23.792-12.798 35.864-21.376 9.485-6.686 19.134-13.76 29.13-20.552 2.51-1.704 4.423-4.139 5.54-6.693.174-.395.328-.792.462-1.192.853-2.558.862-5.162-.181-7.324a744.999 744.999 0 00-4.374-8.896 706.334 706.334 0 00-20.066 12.04c-.52.324-1.04.65-1.558.975-14.91 9.444-24.036 16.125-37.88 25.434a415.3 415.3 0 01-4.82 3.217l-2.546-4.864A620.111 620.111 0 00295.06 284.9c2.527-1.518 5.057-3.027 7.653-4.555l1.532-.896a882.704 882.704 0 015.299-3.063c.814 1.43 1.63 2.866 2.45 4.326-.01-.02.729 1.302.717 1.282 2.376 4.283 4.7 8.535 7.138 13.106a735.315 735.315 0 0114.89-9.48 669.91 669.91 0 011.55-.949c12.65-7.71 22.168-13.02 35.31-20.342-5.948-11.925-10.59-21.897-15.308-35.538-.863-2.496-2.87-3.89-5.474-4.096zm159.668 47.486c-6.422 14.863-11.822 27.073-17.504 41.897l-.485 1.269c-4.347 11.448-7.62 22.198-10.981 34.04-.895 3.192-2.14 7.815-3.035 11.006 4.678 1.095 9.344 2.205 14.015 3.335.927-3.388 1.913-7.113 3-11.038 3.335-11.881 6.618-22.701 10.968-34.198.161-.427.324-.852.486-1.275 5.842-15.295 11.114-27.217 17.445-42.004a1551.634 1551.634 0 00-13.909-3.032zm27.651 6.155c-6.214 14.644-11.57 26.819-17.375 42.07l-.487 1.281c-4.352 11.541-7.642 22.433-10.949 34.363-1.08 3.943-2.054 7.685-2.968 11.086l.461.115 1.648.413c3.958.994 7.908 2 11.86 3.02.902-3.424 1.866-7.188 2.937-11.154 3.28-11.99 6.576-22.957 10.928-34.54.162-.43.324-.86.487-1.287 5.77-15.212 11.208-27.626 17.296-42.108a1928.692 1928.692 0 00-13.838-3.26zm58.351 14.346c-4.403 10.814-8.479 20.3-12.745 31.016l-.186-.047c-.442-4.567-3.705-8.438-9.79-9.942-8.27-2.044-18.516 1.866-26.354 13.08-.275.393-.548.797-.818 1.21-2.407 3.705-4.544 8.165-6.241 13.435-2.629 8.161-3.295 15.773-2.408 21.862 1.347 9.185 6.357 14.93 13.412 16.883 6.422 1.777 12.85-.142 17.192-5.899l.281.077a566.672 566.672 0 00-1.517 9.07c4.066 1.152 8.12 2.311 12.178 3.482.554-2.886 1.42-7.181 2.504-11.765a251.775 251.775 0 011.816-7.14c2.683-9.904 5.544-19.098 8.966-28.336.163-.439.326-.876.49-1.311 5.729-15.304 11.219-27.814 16.988-42.127a6518.12 6518.12 0 00-13.768-3.548zm-135.642-26.127c-10.272 13.896-16.109 20.985-25.836 35.478-.263.392-.526.784-.787 1.178-7.198 10.87-12.4 20.328-18.732 31.682-2.014 3.647-4 7.221-5.903 10.437 4.772.99 9.522 1.982 14.29 2.987 1.818-3.21 3.725-6.802 5.664-10.468 2.039-3.818 3.939-7.406 6.078-11.333 6.533 1.369 13.036 2.755 19.552 4.17a504.398 504.398 0 00-.928 12.512 361.494 361.494 0 00-.496 11.564c4.913 1.09 9.811 2.191 14.717 3.314.059-3.616.17-7.474.382-11.605.646-12.068 1.721-23.959 3.314-35.54.06-.443.12-.884.182-1.324 1.777-12.985 3.955-27.61 6.186-39.764a1484.737 1484.737 0 00-17.683-3.288zm2.687 13.901l.285.054c-1.13 5.01-2.463 11.103-3.385 16.503a1169.68 1169.68 0 00-1.714 11.105c-.445 2.946-.859 5.94-1.245 8.997a2473.31 2473.31 0 00-15.581-3.234 291.555 291.555 0 015.01-8.165l.765-1.189a439.95 439.95 0 015.952-8.976c2.816-4.252 7.097-10.844 9.913-15.095zm172.262 48.879c-10.381-2.674-21.66 1.06-29.825 12.326-.289.398-.573.805-.853 1.222-2.475 3.697-4.622 8.162-6.278 13.438-2.732 8.7-3.172 16.62-1.92 22.983 1.976 10.02 8.351 16.434 16.817 18.96 7.415 2.214 15.852.941 22.839-7.758 4.066-5.022 7.568-12.296 10.608-22.092 1.52-4.902 2.565-9.472 3.07-13.584.057-.482.109-.958.152-1.429 1.146-12.716-3.765-21.272-14.61-24.066zm112.826 28.443c-10.462-2.517-21.405 3.2-29.018 13.805a46.2 46.2 0 00-.876 1.263c-2.778 4.163-5.044 9.008-6.624 14.382-2.517 8.557-2.865 16.495-1.47 23.04 2.193 10.266 8.753 17.182 18.447 19.16 6.437 1.313 12.674.854 17.338-1-.012-3.497.012-6.942.11-10.43.027-1.002.061-2.003.101-3.003-3.53.917-7.423 1.436-12.027.645-.33-.057-.664-.12-1.001-.19-.25-.052-.496-.11-.74-.174-6.832-1.768-12.066-8.262-9.252-20.153 10.089 2.44 20.16 4.758 30.17 6.897.769-1.886 1.586-4.503 2.385-7.14 1.323-4.371 2.363-8.33 3.057-11.926.091-.474.177-.942.256-1.403 2.313-13.49-1.326-21.48-10.856-23.773zm-50.726-12.41c-7.496-1.894-14.627 1.707-18.766 5.697l-.277-.072c.9-2.856 1.799-5.633 2.693-8.365l-11.86-3.045a8171.009 8171.009 0 00-6.97 18.807c-4.372 11.923-7.65 23.54-10.632 36.472-1.007 4.416-1.858 8.552-2.684 12.63a2354.38 2354.38 0 0013.73 3.965c.812-4.157 1.65-8.356 2.641-12.809 2.307-10.257 4.854-19.828 8.106-29.574.995-2.983 2.263-5.273 3.63-7 .346-.436.699-.836 1.056-1.203 3.179-3.265 6.734-3.947 9.084-3.332 3.285.859 4.567 3.377 4.533 6.92-.008.47-.034.959-.083 1.464-.237 2.423-.953 5.246-1.95 8.274-3.134 9.521-5.575 18.88-7.76 28.929-.965 4.484-1.782 8.748-2.574 12.995 4.569 1.247 9.143 2.468 13.711 3.651.77-4.31 1.564-8.613 2.502-13.11 2.282-10.83 4.88-20.768 8.311-30.909a98.24 98.24 0 001.876-6.14c.126-.473.245-.938.357-1.396 3.339-13.748-.425-20.764-8.674-22.849zm44.867 23.883c4.174 1.042 5.151 4.88 4.705 9.358-.047.47-.11.948-.187 1.43-.348 2.19-.981 4.501-1.72 6.614-6-1.449-12.019-2.933-18.058-4.447a30.603 30.603 0 013.365-6.267c.3-.427.613-.844.936-1.249 3.018-3.782 6.957-6.438 10.959-5.439zM630.827 340.99c3.547.93 5.016 4.175 5.132 8.577.01.473.008.96-.011 1.459-.155 4.113-1.266 9.185-2.765 14.007-1.706 5.49-3.846 10.561-6.232 14.238-2.4 3.699-5.056 6.009-7.889 6.282a5.885 5.885 0 01-2.203-.204 6.564 6.564 0 01-2.083-1.01c-2.397-1.738-3.726-5.125-4.022-9.49-.296-4.373.447-9.693 2.158-15.157 1.505-4.805 3.712-9.504 6.46-13.059.322-.414.651-.813.986-1.192 3.093-3.504 6.696-5.439 10.468-4.45zm-58.469-13.959c2.915.732 5.138 3.218 5.483 7.365.037.46.05.94.041 1.44-.044 2.114-.509 4.59-1.486 7.446a325.877 325.877 0 00-3.976 12.452c-3.257 10.926-9.249 13.371-13.473 12.238-3.273-.878-5.387-3.578-6.197-7.627-.81-4.046-.319-9.492 1.651-15.633 1.722-5.369 4.122-9.89 6.916-13.066.359-.404.723-.787 1.093-1.146 3.06-2.968 6.489-4.337 9.948-3.469z"
+              fill="#007fff"
+            />
+          </g>
+        </svg>
+        <View
+          style={
+            Array [
+              Object {
+                "alignItems": "flex-start",
+                "flexDirection": "row",
+                "marginHorizontal": 56,
+                "marginTop": 32,
+                "maxWidth": 700,
+              },
+              undefined,
+            ]
+          }
+        >
+          <View
+            style={
+              Object {
+                "marginRight": 9,
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "color": "#8A94A6",
+                  "fontFamily": "alldone",
+                  "fontSize": 22,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+          <Text
+            style={
+              Array [
+                Object {
+                  "color": "#04142F",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 16,
+                  "letterSpacing": 0.32,
+                  "lineHeight": 24,
+                },
+                Object {
+                  "color": "#4E5D78",
+                  "textAlign": "center",
+                },
+              ]
+            }
+          >
+            Congrats - you have reached empty inbox across all your projects.
+Please select a project to add a new task.
+          </Text>
+        </View>
+        <View
+          style={
+            Object {
+              "flex": 1,
+              "flexDirection": "row",
+              "flexWrap": "wrap",
+              "justifyContent": "center",
+              "marginTop": 24,
+              "maxWidth": 700,
+              "width": "100%",
+            }
+          }
+        />
+      </View>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`MainTasksView component MainTasksView snapshot test should render correctly when the platform is web 1`] = `
+<View
+  onLayout={[Function]}
+  style={
+    Array [
+      Object {
+        "backgroundColor": "white",
+        "flex": 1,
+      },
+      Object {
+        "paddingBottom": 0,
+      },
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "flexDirection": "row",
+          "height": 80,
+          "maxHeight": 80,
+          "minHeight": 80,
+          "paddingBottom": 8,
+          "paddingTop": 40,
+        },
+        Object {
+          "paddingHorizontal": 56,
+        },
+      ]
+    }
+  >
+    <Text
+      style={
+        Object {
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 24,
+          "lineHeight": 32,
+          "marginRight": 14,
+        }
+      }
+    >
+      Tasks
+    </Text>
+    <View
+      style={
+        Object {
+          "height": 28,
+          "justifyContent": "flex-end",
+          "marginLeft": 16,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 12,
+              "letterSpacing": 0.48,
+              "lineHeight": 20,
+            },
+            Object {
+              "color": "#4E5D78",
+            },
+          ]
+        }
+      >
+        
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Array [
+        Object {
+          "position": "absolute",
+          "right": 56,
+          "top": 44,
+          "zIndex": 10,
+        },
+        undefined,
+      ]
+    }
+  >
+    <View
+      onLayout={[Function]}
+      style={
+        Object {
+          "alignSelf": "baseline",
+          "backgroundColor": "#E7ECEF",
+          "borderRadius": 14,
+          "flexDirection": "row",
+          "height": 26,
+          "overflow": "hidden",
+          "paddingBottom": 2,
+          "paddingLeft": 2,
+          "paddingRight": 2,
+          "paddingTop": 2,
+          "position": "relative",
+        }
+      }
+    >
+      <View
+        style={
+          Object {
+            "backgroundColor": "#FAFBFB",
+            "borderRadius": 12,
+            "elevation": 3,
+            "height": 22,
+            "position": "absolute",
+            "shadowColor": "#8A94A6",
+            "shadowOffset": Object {
+              "height": 0,
+              "width": 0,
+            },
+            "shadowOpacity": 1,
+            "shadowRadius": 8,
+            "transform": Array [
+              Object {
+                "translateX": 0,
+              },
+            ],
+            "width": 0,
+          }
+        }
+      />
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "justifyContent": "center",
+          }
+        }
+      >
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#007FFF",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.16,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Open
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#007FFF",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "justifyContent": "center",
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "flexDirection": "row",
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "alignItems": "center",
+                  "color": "#8A94A6",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 14,
+                  "fontWeight": "400",
+                  "height": 22,
+                  "justifyContent": "center",
+                  "letterSpacing": 0.32,
+                  "lineHeight": 22,
+                  "paddingLeft": 12,
+                  "paddingRight": 4,
+                }
+              }
+            >
+              Done
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 12,
+                    "letterSpacing": 0.48,
+                    "lineHeight": 20,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                    "marginTop": 1,
+                    "paddingRight": 12,
+                  },
+                ]
+              }
+            >
+              0
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "flex": 1,
+      }
+    }
+  >
+    <View>
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "marginTop": 32,
+          }
+        }
+      >
+        <svg
+          height={256}
+          svgid="eia1"
+          viewBox="0 0 933.711 933.711"
+          width={256}
+        >
+          <defs>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__t"
+            >
+              <stop
+                offset={0}
+                stopColor="#4da6ff"
+              />
+              <stop
+                offset={0.103}
+                stopColor="#98cbff"
+              />
+              <stop
+                offset={0.197}
+                stopColor="#a5d1ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#e5f1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__s"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8a65"
+              />
+              <stop
+                offset={0.559}
+                stopColor="#ffc9b8"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffc4b2"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__r"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8159"
+              />
+              <stop
+                offset={0.458}
+                stopColor="#ffbeaa"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffccbc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__p"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8e69"
+              />
+              <stop
+                offset={0.507}
+                stopColor="#ffab91"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffccbc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__q"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8a65"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffccbc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__o"
+            >
+              <stop
+                offset={0}
+                stopColor="#ffb8a2"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffccbc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__m"
+            >
+              <stop
+                offset={0}
+                stopColor="#ffa726"
+              />
+              <stop
+                offset={1}
+                stopColor="#ffecce"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__l"
+            >
+              <stop
+                offset={0}
+                stopColor="#ff8a65"
+              />
+              <stop
+                offset={1}
+                stopColor="#fdb29c"
+                stopOpacity={0}
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__n"
+            >
+              <stop
+                offset={0}
+                stopColor="#ffccbc"
+              />
+              <stop
+                offset={1}
+                stopColor="#ff7043"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__k"
+            >
+              <stop
+                offset={0}
+                stopColor="#aed6ff"
+                stopOpacity={0.8}
+              />
+              <stop
+                offset={1}
+                stopColor="#0074eb"
+                stopOpacity={0}
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__j"
+            >
+              <stop
+                offset={0}
+                stopColor="#aed6ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#0074eb"
+                stopOpacity={0}
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__i"
+            >
+              <stop
+                offset={0}
+                stopColor="#0079f5"
+              />
+              <stop
+                offset={1}
+                stopColor="#59abff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__h"
+            >
+              <stop
+                offset={0}
+                stopColor="#0079f5"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__g"
+            >
+              <stop
+                offset={0}
+                stopColor="#51a7ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#4aa2fc"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__c"
+            >
+              <stop
+                offset={0}
+                stopColor="#2b94ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#68b2ff"
+                stopOpacity={0}
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__e"
+            >
+              <stop
+                offset={0}
+                stopColor="#51a7ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__f"
+            >
+              <stop
+                offset={0}
+                stopColor="#59abff"
+              />
+              <stop
+                offset={1}
+                stopColor="#0074eb"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__d"
+            >
+              <stop
+                offset={0}
+                stopColor="#2b94ff"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__b"
+            >
+              <stop
+                offset={0}
+                stopColor="#3b9cff"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              id="c2456ymnx4rdf3bg5__a"
+            >
+              <stop
+                offset={0}
+                stopColor="#007fff"
+              />
+              <stop
+                offset={1}
+                stopColor="#a4d1ff"
+              />
+            </linearGradient>
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__u"
+              x1={295.711}
+              x2={262.686}
+              xlinkHref="#c2456ymnx4rdf3bg5__n"
+              y1={221.966}
+              y2={176.745}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__x"
+              x1={290.146}
+              x2={285.904}
+              xlinkHref="#c2456ymnx4rdf3bg5__o"
+              y1={210.96}
+              y2={174.887}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__C"
+              x1={276.084}
+              x2={258.923}
+              xlinkHref="#c2456ymnx4rdf3bg5__p"
+              y1={206.482}
+              y2={192.052}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__A"
+              x1={281.073}
+              x2={255.13}
+              xlinkHref="#c2456ymnx4rdf3bg5__r"
+              y1={196.608}
+              y2={190.079}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__y"
+              x1={281.991}
+              x2={262.523}
+              xlinkHref="#c2456ymnx4rdf3bg5__s"
+              y1={191.689}
+              y2={179.386}
+            />
+            <linearGradient
+              gradientTransform="translate(1008.236 643.953) scale(4.38514)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__v"
+              x1={282.217}
+              x2={281.387}
+              xlinkHref="#c2456ymnx4rdf3bg5__q"
+              y1={195.35}
+              y2={173.345}
+            />
+            <linearGradient
+              gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__B"
+              x1={23087.938}
+              x2={22289.729}
+              xlinkHref="#c2456ymnx4rdf3bg5__l"
+              y1={6905.986}
+              y2={6322.126}
+            />
+            <linearGradient
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__D"
+              x1={2384.577}
+              x2={3117.558}
+              xlinkHref="#c2456ymnx4rdf3bg5__t"
+              y1={1103.077}
+              y2={1400.304}
+            />
+            <linearGradient
+              gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__w"
+              x1={23087.938}
+              x2={22289.729}
+              xlinkHref="#c2456ymnx4rdf3bg5__l"
+              y1={6905.986}
+              y2={6322.126}
+            />
+            <linearGradient
+              gradientTransform="matrix(.26458 0 0 .26458 357.072 283.306)"
+              gradientUnits="userSpaceOnUse"
+              id="c2456ymnx4rdf3bg5__z"
+              x1={23087.938}
+              x2={22289.729}
+              xlinkHref="#c2456ymnx4rdf3bg5__l"
+              y1={6905.986}
+              y2={6322.126}
+            />
+          </defs>
+          <text
+            fontFamily="sans-serif"
+            fontSize={10.583}
+            fontWeight={400}
+            letterSpacing={0}
+            strokeWidth={0.265}
+            style={
+              Object {
+                "lineHeight": 1.25,
+              }
+            }
+            transform="translate(-488.26 -952.166)"
+            wordSpacing={0}
+            x={2111.255}
+            y={2144.856}
+          />
+          <g
+            strokeWidth={1.273}
+          >
+            <path
+              d="M2353.1 1891.85c-38.471-90.208-90.063-187.685-142.718-269.958-30.47-13.834-51.816-36.388-70.693-61.185-7.58-9.956-12.328-22.334-16.123-33.9-1.91-5.817-4.216-12.132-.713-18.354 2.388-4.216 5.286-8.008 8.154-11.824-2.713-4.03-4.953-15.872-3.794-20.157 1.62-5.986 10.57-10.896 15.37-14.57 0 0-.995-10.069 2.222-13.126 9.225-8.766 29.773-21.062 48.214-30.282.962-2.48 2.439-5.77 5.323-7.907 6.7-4.963 15.569-10.33 24.167-12.833 8.512-2.477 12.07-2.925 17.225 3.377l11.162 13.642 26.252 36.174 23.358 88.676 16.123 27.079c37.61 54.431 151.917 137.05 227.79 205.672 43.992 39.788 131.878 119.476 131.878 119.476z"
+              fill="url(#c2456ymnx4rdf3bg5__u)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M266.057 113.818L123.374 443.602l31.138 19.27L298.447 130.44c-1.23-14.049-19.128-22.829-32.39-16.622z"
+              fill="#3f9eff"
+            />
+            <path
+              d="M2230.87 1396.056c-2.263.02-4.903.692-8.36 1.698-8.599 2.503-17.468 7.87-24.169 12.833-2.883 2.137-4.36 5.427-5.322 7.907l20.404 1.686 26.31 60.511c20.837 3.279 31.423-2.684 39.352-22.39l-1.937-7.354-26.252-36.174-11.162-13.643c-3.061-3.741-5.559-5.103-8.865-5.074z"
+              fill="url(#c2456ymnx4rdf3bg5__v)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M6473.587 1733.065c-1.389-.731-4.462-2.235-5.417-4.003a409.401 409.401 0 00-4.873 3.555c-10.9 8.074-16.482 20.51-20.117 29.883l69.002 5.701 8.521-1.209 6.145 16.94 92.886 213.644c22.616 3.559 42.032 4.23 58.938 1.625l8.047-10.92c-12.271-2.912-25.714 1.876-32.422-20.312-25.693-84.986-46.382-147.749-95.508-217.774-15.088-21.507-49.428-13.505-85.202-17.13z"
+              fill="url(#c2456ymnx4rdf3bg5__w)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+            />
+            <path
+              d="M2246.602 1555.234c11.716 11.613 37.665 18.994 52.034 9.209 23.892-16.27 17.316-96.528 14.426-108.663-.924-3.881-4.95-11.687-7.153-15.85-4.86-9.183-7.309-14.386-11.088-24.06-4.53-4.972-13.357-10.245-19.936-11.257-6.443-.99-7.965 3.984-11.62 6.505-6.183 4.136-13.782 5.267-20.755 7.015-9.1 2.282-9.679 10.426-6.724 18.71 3.466 9.716 11.172 14.968 23.386 16.735 5.317.77 10.966-.02 16.078-1.535-3.995 4.97-6.334 11.109-7.016 18.417-11.91 3.444-19.66 10.698-28.648 18.709-19.938 25.325-8.571 50.615 7.016 66.065z"
+              fill="url(#c2456ymnx4rdf3bg5__x)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M2211.568 1413.757a17.57 17.57 0 00-1.616.1c-4.915.541-16.933 4.637-16.933 4.637-18.44 9.22-38.989 21.516-48.214 30.282-3.217 3.057-2.222 13.126-2.222 13.126l31.815-.943 54.372 38.44s15.469-2.706 16.809-11.107c1.155-9.157-1.905-19.62-4.677-28.648-3.329-10.838-6.45-19.953-12.35-31.352-3.054-5.9-7.012-10.033-11.584-13.155-1.642-1.121-3.664-1.401-5.4-1.38z"
+              fill="url(#c2456ymnx4rdf3bg5__y)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M6390.477 1851.46c-44.97 11.654-74.84 24.205-117.527 45.161-4.687 1.71-14.311 4.238-19.714-.834-2.289 14.497-.681 30.775-.681 30.775l26.966-.798c32.344-15.66 72.84-34.805 72.84-34.805l119.875 22.648 86.375 140.758 19.692 13.922s56.15-9.83 63.156-40.115c-18.234 17.448-39.94 18.337-49.899-2.422-26.735-55.73-53.901-119.435-97.226-163.241-23.609-23.872-81.96-16.724-103.857-11.05z"
+              fill="url(#c2456ymnx4rdf3bg5__z)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+            />
+            <path
+              d="M2190.327 1445.176c-5.765-.027-14.97.328-21.132 2.07-9.745 2.756-26.612 14.656-26.612 14.656-4.8 3.674-13.75 8.584-15.37 14.57-1.16 4.285 1.08 16.126 3.794 20.157l91.386 31.458c13.742-1.941 13.361-23.256 8.017-35.756-4.387-11.265-22.12-39.887-25.245-42.626-4.268-3.74-6.336-4.158-10.461-4.412a83.971 83.971 0 00-4.377-.117z"
+              fill="url(#c2456ymnx4rdf3bg5__A)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M34.121 649.89c.656 13.185 29.76 19.508 34.657 10.992l-.54-10.401-11.995-8.15-14.923-.173z"
+              fill="#1488ff"
+            />
+            <path
+              d="M123.77 533.874l-39.014-1.015-50.635 117.032c15.576-9.175 31.284.5 34.657 10.99z"
+              fill="#3f9eff"
+            />
+            <path
+              d="M6211.768 2031.275c-4.411 1.09-13.537-1.584-13.537-1.584 2.806 11.578 6.544 22.137 10.574 28.121l11.047 3.803 175.55-41.59 108.305 139.303 50.494 17.381c27.186-3.84 39.74-27.745 42.643-56.43-10.61 16.845-22.56 27.787-34.838 11.261-30.553-41.122-36.4-61.671-73.473-97.227-19.764-21.509-17.788-50.221-46.127-54.137-86.765-11.99-165.944 12.938-230.638 51.1z"
+              fill="url(#c2456ymnx4rdf3bg5__B)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.20779 0 0 .20779 -1229.89 83.948)"
+            />
+            <path
+              d="M2183.538 1479.934c-5.637.06-27.4 1.246-32.825 3.004-7.609 2.466-15.718 8.55-19.706 13.69-2.868 3.817-5.766 7.609-8.154 11.825-3.503 6.222-1.196 12.537.713 18.355 3.698 11.27 8.304 23.312 15.55 33.133-4.572-11.704 1.723-20.019 7.6-25.072 14.735.072 26.02-2.298 36.898-6.408 7.302 6.242 12.287 10.305 21.298 12.82l-4.493 10.377c13.59 6.904 31.687-9.294 25.88-21.647-8.982-19.101-19.146-29.605-31.988-45.94-2.078-2.642-5.356-4.009-9.87-4.134-.223-.01-.527-.01-.903 0z"
+              fill="url(#c2456ymnx4rdf3bg5__C)"
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M2267.433 1385.42c71.638-3.255 246.042 7.854 404.12 66.13 148.762 54.843 300.597 98.418 364.698 120.834 21.264 7.437 35.025-.75 41.145-28.549 26.346-119.67 59.566-232.054 120.373-346.252 4.624-8.685 1.337-18.964-9.276-20.668-44.565-7.155-195.526-40.553-360.757-94.815-158.732-52.126-332.278-68.944-404.86-57.174z"
+              fill="url(#c2456ymnx4rdf3bg5__D)"
+              transform="matrix(.78534 0 0 .78534 -1613.34 -663.822)"
+            />
+            <path
+              d="M102.544 525.658c-.897.069-3.128 8-6.355 8.6-3.255.369-6.943-6.104-7.978-5.739-.788.278 1.32 6.033-.344 8.207-3.253 4.25-15.311 4.84-15.311 4.84 11.571.057 20.433-1.804 28.976-5.032 5.735 4.902 9.65 8.093 16.727 10.068-8.777-3.88-10.67-6.762-13.279-11.84-1.086-2.115-1.11-9.205-2.436-9.104z"
+              fill="#ff7043"
+              opacity={0.462}
+              style={
+                Object {
+                  "fontVariationSettings": "normal",
+                }
+              }
+            />
+            <path
+              d="M350.817 224.695c-2.602-.205-5.75.774-8.846 2.797-16.737 10.938-60.059 32.005-74.386 39.546-2.56 1.347-4.369 3.29-5.258 5.42a8.408 8.408 0 00-.347 1.005c-.6 2.178-.259 4.476 1.103 6.493 5.598 8.295 10.706 16.187 16.083 25.475 6.751 11.67 12.608 22.918 18.068 33.401 2.161 4.15 8.432 5.722 13.842 3.326 12.609-5.584 23.792-12.798 35.864-21.376 9.485-6.686 19.134-13.76 29.13-20.552 2.51-1.704 4.423-4.139 5.54-6.693.174-.395.328-.792.462-1.192.853-2.558.862-5.162-.181-7.324a744.999 744.999 0 00-4.374-8.896 706.334 706.334 0 00-20.066 12.04c-.52.324-1.04.65-1.558.975-14.91 9.444-24.036 16.125-37.88 25.434a415.3 415.3 0 01-4.82 3.217l-2.546-4.864A620.111 620.111 0 00295.06 284.9c2.527-1.518 5.057-3.027 7.653-4.555l1.532-.896a882.704 882.704 0 015.299-3.063c.814 1.43 1.63 2.866 2.45 4.326-.01-.02.729 1.302.717 1.282 2.376 4.283 4.7 8.535 7.138 13.106a735.315 735.315 0 0114.89-9.48 669.91 669.91 0 011.55-.949c12.65-7.71 22.168-13.02 35.31-20.342-5.948-11.925-10.59-21.897-15.308-35.538-.863-2.496-2.87-3.89-5.474-4.096zm159.668 47.486c-6.422 14.863-11.822 27.073-17.504 41.897l-.485 1.269c-4.347 11.448-7.62 22.198-10.981 34.04-.895 3.192-2.14 7.815-3.035 11.006 4.678 1.095 9.344 2.205 14.015 3.335.927-3.388 1.913-7.113 3-11.038 3.335-11.881 6.618-22.701 10.968-34.198.161-.427.324-.852.486-1.275 5.842-15.295 11.114-27.217 17.445-42.004a1551.634 1551.634 0 00-13.909-3.032zm27.651 6.155c-6.214 14.644-11.57 26.819-17.375 42.07l-.487 1.281c-4.352 11.541-7.642 22.433-10.949 34.363-1.08 3.943-2.054 7.685-2.968 11.086l.461.115 1.648.413c3.958.994 7.908 2 11.86 3.02.902-3.424 1.866-7.188 2.937-11.154 3.28-11.99 6.576-22.957 10.928-34.54.162-.43.324-.86.487-1.287 5.77-15.212 11.208-27.626 17.296-42.108a1928.692 1928.692 0 00-13.838-3.26zm58.351 14.346c-4.403 10.814-8.479 20.3-12.745 31.016l-.186-.047c-.442-4.567-3.705-8.438-9.79-9.942-8.27-2.044-18.516 1.866-26.354 13.08-.275.393-.548.797-.818 1.21-2.407 3.705-4.544 8.165-6.241 13.435-2.629 8.161-3.295 15.773-2.408 21.862 1.347 9.185 6.357 14.93 13.412 16.883 6.422 1.777 12.85-.142 17.192-5.899l.281.077a566.672 566.672 0 00-1.517 9.07c4.066 1.152 8.12 2.311 12.178 3.482.554-2.886 1.42-7.181 2.504-11.765a251.775 251.775 0 011.816-7.14c2.683-9.904 5.544-19.098 8.966-28.336.163-.439.326-.876.49-1.311 5.729-15.304 11.219-27.814 16.988-42.127a6518.12 6518.12 0 00-13.768-3.548zm-135.642-26.127c-10.272 13.896-16.109 20.985-25.836 35.478-.263.392-.526.784-.787 1.178-7.198 10.87-12.4 20.328-18.732 31.682-2.014 3.647-4 7.221-5.903 10.437 4.772.99 9.522 1.982 14.29 2.987 1.818-3.21 3.725-6.802 5.664-10.468 2.039-3.818 3.939-7.406 6.078-11.333 6.533 1.369 13.036 2.755 19.552 4.17a504.398 504.398 0 00-.928 12.512 361.494 361.494 0 00-.496 11.564c4.913 1.09 9.811 2.191 14.717 3.314.059-3.616.17-7.474.382-11.605.646-12.068 1.721-23.959 3.314-35.54.06-.443.12-.884.182-1.324 1.777-12.985 3.955-27.61 6.186-39.764a1484.737 1484.737 0 00-17.683-3.288zm2.687 13.901l.285.054c-1.13 5.01-2.463 11.103-3.385 16.503a1169.68 1169.68 0 00-1.714 11.105c-.445 2.946-.859 5.94-1.245 8.997a2473.31 2473.31 0 00-15.581-3.234 291.555 291.555 0 015.01-8.165l.765-1.189a439.95 439.95 0 015.952-8.976c2.816-4.252 7.097-10.844 9.913-15.095zm172.262 48.879c-10.381-2.674-21.66 1.06-29.825 12.326-.289.398-.573.805-.853 1.222-2.475 3.697-4.622 8.162-6.278 13.438-2.732 8.7-3.172 16.62-1.92 22.983 1.976 10.02 8.351 16.434 16.817 18.96 7.415 2.214 15.852.941 22.839-7.758 4.066-5.022 7.568-12.296 10.608-22.092 1.52-4.902 2.565-9.472 3.07-13.584.057-.482.109-.958.152-1.429 1.146-12.716-3.765-21.272-14.61-24.066zm112.826 28.443c-10.462-2.517-21.405 3.2-29.018 13.805a46.2 46.2 0 00-.876 1.263c-2.778 4.163-5.044 9.008-6.624 14.382-2.517 8.557-2.865 16.495-1.47 23.04 2.193 10.266 8.753 17.182 18.447 19.16 6.437 1.313 12.674.854 17.338-1-.012-3.497.012-6.942.11-10.43.027-1.002.061-2.003.101-3.003-3.53.917-7.423 1.436-12.027.645-.33-.057-.664-.12-1.001-.19-.25-.052-.496-.11-.74-.174-6.832-1.768-12.066-8.262-9.252-20.153 10.089 2.44 20.16 4.758 30.17 6.897.769-1.886 1.586-4.503 2.385-7.14 1.323-4.371 2.363-8.33 3.057-11.926.091-.474.177-.942.256-1.403 2.313-13.49-1.326-21.48-10.856-23.773zm-50.726-12.41c-7.496-1.894-14.627 1.707-18.766 5.697l-.277-.072c.9-2.856 1.799-5.633 2.693-8.365l-11.86-3.045a8171.009 8171.009 0 00-6.97 18.807c-4.372 11.923-7.65 23.54-10.632 36.472-1.007 4.416-1.858 8.552-2.684 12.63a2354.38 2354.38 0 0013.73 3.965c.812-4.157 1.65-8.356 2.641-12.809 2.307-10.257 4.854-19.828 8.106-29.574.995-2.983 2.263-5.273 3.63-7 .346-.436.699-.836 1.056-1.203 3.179-3.265 6.734-3.947 9.084-3.332 3.285.859 4.567 3.377 4.533 6.92-.008.47-.034.959-.083 1.464-.237 2.423-.953 5.246-1.95 8.274-3.134 9.521-5.575 18.88-7.76 28.929-.965 4.484-1.782 8.748-2.574 12.995 4.569 1.247 9.143 2.468 13.711 3.651.77-4.31 1.564-8.613 2.502-13.11 2.282-10.83 4.88-20.768 8.311-30.909a98.24 98.24 0 001.876-6.14c.126-.473.245-.938.357-1.396 3.339-13.748-.425-20.764-8.674-22.849zm44.867 23.883c4.174 1.042 5.151 4.88 4.705 9.358-.047.47-.11.948-.187 1.43-.348 2.19-.981 4.501-1.72 6.614-6-1.449-12.019-2.933-18.058-4.447a30.603 30.603 0 013.365-6.267c.3-.427.613-.844.936-1.249 3.018-3.782 6.957-6.438 10.959-5.439zM630.827 340.99c3.547.93 5.016 4.175 5.132 8.577.01.473.008.96-.011 1.459-.155 4.113-1.266 9.185-2.765 14.007-1.706 5.49-3.846 10.561-6.232 14.238-2.4 3.699-5.056 6.009-7.889 6.282a5.885 5.885 0 01-2.203-.204 6.564 6.564 0 01-2.083-1.01c-2.397-1.738-3.726-5.125-4.022-9.49-.296-4.373.447-9.693 2.158-15.157 1.505-4.805 3.712-9.504 6.46-13.059.322-.414.651-.813.986-1.192 3.093-3.504 6.696-5.439 10.468-4.45zm-58.469-13.959c2.915.732 5.138 3.218 5.483 7.365.037.46.05.94.041 1.44-.044 2.114-.509 4.59-1.486 7.446a325.877 325.877 0 00-3.976 12.452c-3.257 10.926-9.249 13.371-13.473 12.238-3.273-.878-5.387-3.578-6.197-7.627-.81-4.046-.319-9.492 1.651-15.633 1.722-5.369 4.122-9.89 6.916-13.066.359-.404.723-.787 1.093-1.146 3.06-2.968 6.489-4.337 9.948-3.469z"
+              fill="#007fff"
+            />
+          </g>
+        </svg>
+        <View
+          style={
+            Array [
+              Object {
+                "alignItems": "flex-start",
+                "flexDirection": "row",
+                "marginHorizontal": 56,
+                "marginTop": 32,
+                "maxWidth": 700,
+              },
+              undefined,
+            ]
+          }
+        >
+          <View
+            style={
+              Object {
+                "marginRight": 9,
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "color": "#8A94A6",
+                  "fontFamily": "alldone",
+                  "fontSize": 22,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+          <Text
+            style={
+              Array [
+                Object {
+                  "color": "#04142F",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 16,
+                  "letterSpacing": 0.32,
+                  "lineHeight": 24,
+                },
+                Object {
+                  "color": "#4E5D78",
+                  "textAlign": "center",
+                },
+              ]
+            }
+          >
+            Congrats - you have reached empty inbox across all your projects.
+Please select a project to add a new task.
+          </Text>
+        </View>
+        <View
+          style={
+            Object {
+              "flex": 1,
+              "flexDirection": "row",
+              "flexWrap": "wrap",
+              "justifyContent": "center",
+              "marginTop": 24,
+              "maxWidth": 700,
+              "width": "100%",
+            }
+          }
+        />
+      </View>
+    </View>
+  </View>
+</View>
+`;

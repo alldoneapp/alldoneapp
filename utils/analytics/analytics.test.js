@@ -12,7 +12,6 @@ import {
     __resetAnalyticsForTests,
     __setAnalyticsEnabledForTests,
     getAnalyticsConsent,
-    getAnalyticsPagePath,
     isAnalyticsEnabled,
     setAnalyticsConsent,
     setAnalyticsUser,
@@ -95,53 +94,6 @@ describe('analytics', () => {
         })
         expect(JSON.stringify(unknownRoutePageView)).not.toContain('private-object-id')
         expect(JSON.stringify(unknownRoutePageView)).not.toContain('person@example.com')
-    })
-
-    test('allows aggregate performance telemetry without object identifiers', () => {
-        setAnalyticsConsent(ANALYTICS_CONSENT_GRANTED)
-
-        expect(
-            trackEvent('performance_trace', {
-                trace_name: 'page_load',
-                phase: 'page_ready',
-                duration_ms: 321,
-                document_count: 42,
-                page_path: getAnalyticsPagePath('ROOT_TASKS'),
-                project_id: 'private-project-id',
-            })
-        ).toBe(true)
-
-        const eventCall = getDataLayerCalls().find(call => call[0] === 'event' && call[1] === 'performance_trace')
-        expect(eventCall[2]).toEqual({
-            trace_name: 'page_load',
-            phase: 'page_ready',
-            duration_ms: 321,
-            document_count: 42,
-            page_path: '/app/tasks',
-        })
-        expect(JSON.stringify(eventCall)).not.toContain('private-project-id')
-    })
-
-    test('allows slow-connection telemetry with aggregate timing only', () => {
-        setAnalyticsConsent(ANALYTICS_CONSENT_GRANTED)
-
-        expect(
-            trackEvent('connection_slow_detected', {
-                duration_ms: 5000,
-                browser_online: true,
-                source: 'write_ack',
-                object_id: 'private-task-id',
-            })
-        ).toBe(true)
-
-        const eventCall = getDataLayerCalls().find(
-            call => call[0] === 'event' && call[1] === 'connection_slow_detected'
-        )
-        expect(eventCall[2]).toEqual({
-            duration_ms: 5000,
-            browser_online: true,
-            source: 'write_ack',
-        })
     })
 
     test('denial disables analytics and prevents later events', () => {

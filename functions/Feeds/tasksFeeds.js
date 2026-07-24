@@ -259,8 +259,8 @@ async function createTaskDueDateChangedFeed(
         entryText += newInBacklog
             ? `${oldDueDateFormated} to Someday`
             : oldInBacklog
-              ? `Someday to ${newDueDateFormated}`
-              : `${oldDueDateFormated} to ${newDueDateFormated}`
+            ? `Someday to ${newDueDateFormated}`
+            : `${oldDueDateFormated} to ${newDueDateFormated}`
     }
 
     const { feed, feedId } = generateFeedModel({
@@ -346,8 +346,7 @@ async function createTaskParentGoalChangedFeed(
     turnedToTask,
     batch,
     feedUser,
-    needGenerateNotification,
-    options = {}
+    needGenerateNotification
 ) {
     const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
     const taskFeedObject = await loadFeedObject(projectId, taskId, 'tasks', currentMilliseconds, batch)
@@ -355,7 +354,7 @@ async function createTaskParentGoalChangedFeed(
 
     const isSubtask = taskFeedObject.parentId ? true : false
 
-    const { feed, feedId: generatedFeedId } = generateFeedModel({
+    const { feed, feedId } = generateFeedModel({
         feedType: FEED_TASK_PARENT_GOAL,
         lastChangeDate: currentMilliseconds,
         entryText: '',
@@ -363,7 +362,6 @@ async function createTaskParentGoalChangedFeed(
         objectId: taskId,
         isPublicFor: taskFeedObject.isPublicFor,
     })
-    const feedId = options.feedId || generatedFeedId
 
     feed.newParentGoalId = newParentGoalId
     feed.oldParentGoalId = oldParentGoalId
@@ -689,7 +687,7 @@ async function createTaskUpdatedFeed(
     }
 
     const isSubtask = taskFeedObject.parentId ? true : false
-    const { feed, feedId: generatedFeedId } = generateFeedModel({
+    const { feed, feedId } = generateFeedModel({
         feedType: contextOverrides.feedType || FEED_TASK_UPDATED,
         lastChangeDate: currentMilliseconds,
         entryText: entryText,
@@ -697,7 +695,6 @@ async function createTaskUpdatedFeed(
         objectId: taskId,
         isPublicFor: taskFeedObject.isPublicFor,
     })
-    const feedId = contextOverrides.feedId || generatedFeedId
 
     // Set parentName if available (similar to createTaskCreatedFeed)
     if (task && task.parentName) {
@@ -709,9 +706,6 @@ async function createTaskUpdatedFeed(
         taskFeedObject.priority = ['must_do', 'should_do', 'could_do', 'do_later'].includes(task.priority)
             ? task.priority
             : 'none'
-    }
-    if (typeof contextOverrides.isDone === 'boolean') {
-        taskFeedObject.isDone = contextOverrides.isDone
     }
 
     await proccessFeed(

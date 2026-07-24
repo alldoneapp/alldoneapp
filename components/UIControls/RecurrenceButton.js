@@ -1,18 +1,17 @@
 import React, { Component } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import store from '../../redux/store'
 import PropTypes from 'prop-types'
 import Button from './Button'
+import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import RecurrenceModal from '../UIComponents/FloatModals/RecurrenceModal'
 import { translate } from '../../i18n/TranslationService'
 import { getRecurrenceInfo } from '../TaskListView/Utils/TasksHelper'
-import { createFloatPopupLock } from '../../hooks/useFloatPopupLock'
 
 class RecurrenceButton extends Component {
     constructor(props) {
         super(props)
         const storeState = store.getState()
-        this.popupLock = createFloatPopupLock(store.dispatch)
 
         this.state = {
             visiblePopover: false,
@@ -22,7 +21,6 @@ class RecurrenceButton extends Component {
     }
 
     componentWillUnmount() {
-        this.popupLock.release()
         this.state.unsubscribe()
     }
 
@@ -36,7 +34,7 @@ class RecurrenceButton extends Component {
 
     hidePopover = recurrence => {
         this.setState({ visiblePopover: false })
-        this.popupLock.release()
+        store.dispatch(hideFloatPopup())
 
         if (this.props.onChangeValue !== undefined && recurrence) {
             this.props.onChangeValue(recurrence)
@@ -45,7 +43,7 @@ class RecurrenceButton extends Component {
 
     showPopover = () => {
         this.setState({ visiblePopover: true })
-        this.popupLock.acquire()
+        store.dispatch(showFloatPopup())
     }
 
     render() {
@@ -55,7 +53,7 @@ class RecurrenceButton extends Component {
         const recurrenceInfo = getRecurrenceInfo(task.recurrence)
 
         return (
-            <AppPopover
+            <Popover
                 content={<RecurrenceModal task={task} projectId={projectId} closePopover={this.hidePopover} />}
                 onClickOutside={this.hidePopover}
                 isOpen={visiblePopover}
@@ -77,7 +75,7 @@ class RecurrenceButton extends Component {
                     onPress={this.showPopover}
                     disabled={disabled}
                 />
-            </AppPopover>
+            </Popover>
         )
     }
 }

@@ -1,16 +1,16 @@
 import React, { useRef, useState } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Hotkeys from 'react-hot-keys'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
 import EstimationModal from '../UIComponents/FloatModals/EstimationModal/EstimationModal'
 import Button from './Button'
+import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import { execShortcutFn } from '../../utils/HelperFunctions'
 import { translate } from '../../i18n/TranslationService'
 import { ESTIMATION_0_MIN, getEstimationIconByValue } from '../../utils/EstimationHelper'
 import { setTaskAutoEstimation } from '../../utils/backends/Tasks/tasksFirestore'
 import { getTaskAutoEstimation, OPEN_STEP } from '../TaskListView/Utils/TasksHelper'
-import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function EstimationButton({
     task,
@@ -26,10 +26,10 @@ export default function EstimationButton({
     setTempAutoEstimation,
     isPending,
 }) {
+    const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const [visiblePopover, setVisiblePopover] = useState(false)
-    const popupLock = useFloatPopupLock()
 
     let buttonRef = useRef().current
 
@@ -38,13 +38,13 @@ export default function EstimationButton({
     const currentEstimation = isPending
         ? estimations[OPEN_STEP]
         : isObservedTask && !isToReviewTask
-          ? estimationsByObserverIds[currentUserId]
-          : estimations[currentStepId] || ESTIMATION_0_MIN
+        ? estimationsByObserverIds[currentUserId]
+        : estimations[currentStepId] || ESTIMATION_0_MIN
 
     const hidePopover = () => {
         setTimeout(async () => {
             setVisiblePopover(false)
-            popupLock.release()
+            dispatch(hideFloatPopup())
 
             if (onDismissPopup) onDismissPopup()
         })
@@ -53,7 +53,7 @@ export default function EstimationButton({
     const showPopover = () => {
         if (!visiblePopover) {
             setVisiblePopover(true)
-            popupLock.acquire()
+            dispatch(showFloatPopup())
         }
     }
 
@@ -68,7 +68,7 @@ export default function EstimationButton({
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <EstimationModal
                     projectId={projectId}
@@ -106,6 +106,6 @@ export default function EstimationButton({
                     shortcutText={shortcutText}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }

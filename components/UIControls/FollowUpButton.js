@@ -1,23 +1,19 @@
 import React, { Component } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import store from '../../redux/store'
 import Button from './Button'
-import { setLastSelectedDueDate } from '../../redux/actions'
+import { hideFloatPopup, setLastSelectedDueDate, showFloatPopup } from '../../redux/actions'
 import FollowUpDueDate from '../FollowUp/FollowUpDueDate'
 import CustomFollowUpDateModal from '../FollowUp/CustomFollowUpDateModal'
 import Hotkeys from 'react-hot-keys'
 import { execShortcutFn } from '../../utils/HelperFunctions'
 import { translate } from '../../i18n/TranslationService'
 import { BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
-import { createFloatPopupLock } from '../../hooks/useFloatPopupLock'
 
 class FollowUpButton extends Component {
     constructor(props) {
         super(props)
         const storeState = store.getState()
-        this._isUnmounted = false
-        this._timeouts = []
-        this.popupLock = createFloatPopupLock(store.dispatch)
         this.state = {
             inDueDate: true,
             inCalendar: false,
@@ -28,10 +24,6 @@ class FollowUpButton extends Component {
     }
 
     componentWillUnmount() {
-        this._isUnmounted = true
-        this._timeouts.forEach(timeout => clearTimeout(timeout))
-        this._timeouts = []
-        this.popupLock.release()
         this.state.unsubscribe()
     }
 
@@ -46,20 +38,18 @@ class FollowUpButton extends Component {
     hidePopover = () => {
         // This timeout is necessary to stop the propagation of the click
         // to close the Modal, and reach the dismiss event of the EditTask
-        const timeout = setTimeout(async () => {
-            if (this._isUnmounted) return
+        setTimeout(async () => {
             const { onDismissPopup } = this.props
             this.setState({ visiblePopover: false })
-            this.popupLock.release()
+            store.dispatch(hideFloatPopup())
             if (onDismissPopup) onDismissPopup()
         })
-        this._timeouts.push(timeout)
     }
 
     showPopover = () => {
         if (!this.state.visiblePopover) {
             this.setState({ visiblePopover: true })
-            this.popupLock.acquire()
+            store.dispatch(showFloatPopup())
         }
     }
 
@@ -98,7 +88,7 @@ class FollowUpButton extends Component {
         const { buttonText, disabled, style, inEditTask, dateText, shortcutText } = this.props
         const { visiblePopover, smallScreen, inDueDate, inCalendar } = this.state
         return (
-            <AppPopover
+            <Popover
                 content={
                     inDueDate ? (
                         <FollowUpDueDate
@@ -144,7 +134,7 @@ class FollowUpButton extends Component {
                         shortcutText={shortcutText}
                     />
                 </Hotkeys>
-            </AppPopover>
+            </Popover>
         )
     }
 }

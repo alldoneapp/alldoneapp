@@ -23,7 +23,6 @@ const { removePaidUsersFromSubscription, addedPaidUsersToSubscription } = requir
 const { removeTemporaryPendingStates, generateUsersStatusList } = require('./SubscriptionsHelper')
 const { addMonthlyGoldToUser } = require('../Gold/goldHelper')
 const { getUsersByIds } = require('../Users/usersFirestore')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const processPaymentStatus = async (paymentId, res) => {
     const { status, metadata, amount, details, mandateId } = await getPayment(paymentId)
@@ -114,8 +113,8 @@ const processPaymentPaidStatusWhenUpdateCreditCard = async (
     promises.push(revokeMandate(oldMandateId, customerId))
     promises.push(
         admin.firestore().doc(`subscriptions/${userPayingId}`).update({
-            previusStatus: FieldValue.delete(),
-            paymentLink: FieldValue.delete(),
+            previusStatus: admin.firestore.FieldValue.delete(),
+            paymentLink: admin.firestore.FieldValue.delete(),
             status: previusStatus,
             cardNumber,
             mandateId,
@@ -139,8 +138,8 @@ const processPaymentUnpaidStatusWhenUpdateCreditCard = async (
     promises.push(
         admin.firestore().doc(`subscriptions/${userPayingId}`).set(
             {
-                previusStatus: FieldValue.delete(),
-                paymentLink: FieldValue.delete(),
+                previusStatus: admin.firestore.FieldValue.delete(),
+                paymentLink: admin.firestore.FieldValue.delete(),
                 status: previusStatus,
             },
             { merge: true }
@@ -218,8 +217,8 @@ const processPaymentPaidStatusWhenCreateSubscription = async (
             status: SUBSCRIPTION_STATUS_ACTIVE,
             nextPaymentDate: mollieSubscription.nextPaymentDate,
             showSuccessfullyPayment: true,
-            paymentLink: FieldValue.delete(),
-            paymentId: FieldValue.delete(),
+            paymentLink: admin.firestore.FieldValue.delete(),
+            paymentId: admin.firestore.FieldValue.delete(),
             paidUsersIds: selectedUserIds,
             activePaidUsersIds: selectedUserIds,
             subscriptionIdInMollie: mollieSubscription.id,
@@ -252,9 +251,9 @@ const processPaymentUnpaidStatusWhenCreateSubscription = async (userPayingId, se
         admin.firestore().doc(`subscriptions/${userPayingId}`).set(
             {
                 selectedUserIds: [],
-                subscriptionIdInMollie: FieldValue.delete(),
-                paymentLink: FieldValue.delete(),
-                paymentId: FieldValue.delete(),
+                subscriptionIdInMollie: admin.firestore.FieldValue.delete(),
+                paymentLink: admin.firestore.FieldValue.delete(),
+                paymentId: admin.firestore.FieldValue.delete(),
                 status: SUBSCRIPTION_STATUS_INACTIVE,
             },
             { merge: true }
@@ -273,8 +272,14 @@ const processPaymentStatusWhenEditSubscription = async (
     subscription,
     res
 ) => {
-    const { selectedUserIds, companyData, subscriptionIdInMollie, paidUsersIds, activePaidUsersIds, nextPaymentDate } =
-        subscription
+    const {
+        selectedUserIds,
+        companyData,
+        subscriptionIdInMollie,
+        paidUsersIds,
+        activePaidUsersIds,
+        nextPaymentDate,
+    } = subscription
     if (status === 'paid') {
         await processPaymentPaidStatusWhenEditSubscription(
             userPayingId,
@@ -352,8 +357,8 @@ const processPaymentUnpaidStatusWhenEditSubscription = async (
         admin.firestore().doc(`subscriptions/${userPayingId}`).set(
             {
                 status: SUBSCRIPTION_STATUS_ACTIVE,
-                paymentLink: FieldValue.delete(),
-                paymentId: FieldValue.delete(),
+                paymentLink: admin.firestore.FieldValue.delete(),
+                paymentId: admin.firestore.FieldValue.delete(),
                 selectedUserIds: activePaidUsersIds,
             },
             { merge: true }
@@ -373,8 +378,14 @@ const processPaymentStatusWhenActivateSubscription = async (
     subscription,
     res
 ) => {
-    const { selectedUserIds, companyData, subscriptionIdInMollie, paidUsersIds, activePaidUsersIds, nextPaymentDate } =
-        subscription
+    const {
+        selectedUserIds,
+        companyData,
+        subscriptionIdInMollie,
+        paidUsersIds,
+        activePaidUsersIds,
+        nextPaymentDate,
+    } = subscription
     if (status === 'paid') {
         await processPaymentPaidStatusWhenActivateSubscription(
             userPayingId,
@@ -438,9 +449,9 @@ const processPaymentPaidStatusWhenActivateSubscription = async (
             .update({
                 status: SUBSCRIPTION_STATUS_ACTIVE,
                 showSuccessfullyPayment: true,
-                paymentLink: FieldValue.delete(),
-                paymentId: FieldValue.delete(),
-                paidUsersIds: FieldValue.arrayUnion(...newAddedUserIds),
+                paymentLink: admin.firestore.FieldValue.delete(),
+                paymentId: admin.firestore.FieldValue.delete(),
+                paidUsersIds: admin.firestore.FieldValue.arrayUnion(...newAddedUserIds),
                 activePaidUsersIds: selectedUserIds,
                 subscriptionIdInMollie: mollieSubscription.id,
             })
@@ -451,8 +462,8 @@ const processPaymentPaidStatusWhenActivateSubscription = async (
         if (userId !== userPayingId)
             promises.push(
                 admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).update({
-                    canceled: FieldValue.delete(),
-                    subscriptionEndDate: FieldValue.delete(),
+                    canceled: admin.firestore.FieldValue.delete(),
+                    subscriptionEndDate: admin.firestore.FieldValue.delete(),
                 })
             )
     })
@@ -485,8 +496,8 @@ const processPaymentUnpaidStatusWhenActivateSubscription = async (
                 activePaidUsersIds: [],
                 selectedUserIds: [],
                 status: SUBSCRIPTION_STATUS_CANCELED,
-                paymentLink: FieldValue.delete(),
-                paymentId: FieldValue.delete(),
+                paymentLink: admin.firestore.FieldValue.delete(),
+                paymentId: admin.firestore.FieldValue.delete(),
             },
             { merge: true }
         )
@@ -504,10 +515,10 @@ const updateSubscriptionWhenAddingNewUsers = (userPayingId, newAddedUserIds, pro
             .update({
                 status: SUBSCRIPTION_STATUS_ACTIVE,
                 showSuccessfullyPayment: true,
-                paymentLink: FieldValue.delete(),
-                paymentId: FieldValue.delete(),
-                paidUsersIds: FieldValue.arrayUnion(...newAddedUserIds),
-                activePaidUsersIds: FieldValue.arrayUnion(...newAddedUserIds),
+                paymentLink: admin.firestore.FieldValue.delete(),
+                paymentId: admin.firestore.FieldValue.delete(),
+                paidUsersIds: admin.firestore.FieldValue.arrayUnion(...newAddedUserIds),
+                activePaidUsersIds: admin.firestore.FieldValue.arrayUnion(...newAddedUserIds),
             })
     )
 }
@@ -520,7 +531,7 @@ const convertUserSubcriptionFromPendingToActive = (usersIds, userPayingId, promi
                     .firestore()
                     .doc(`subscriptionsPaidByOtherUser/${userId}`)
                     .update({
-                        pending: FieldValue.delete(),
+                        pending: admin.firestore.FieldValue.delete(),
                         firstPaymentDate: moment().format('DD.MM.YYYY').toString(),
                     })
             )

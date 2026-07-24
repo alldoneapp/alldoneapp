@@ -3,15 +3,14 @@
 const {
     buildOpenAiPromptCacheKey,
     getCachedEnvFunctions,
-    getModel,
+    getOpenAIClient,
     logOpenAiCacheUsage,
 } = require('../../Assistant/assistantHelper')
-const { resolveClassifierClient } = require('../../Assistant/classifierModelClient')
-const { resolveFeatureModelKey } = require('../../Assistant/featureModelPreferences')
 
-// The model comes from the caller (the user's Settings → Customizations preference); with none
-// given, the feature default from featureModelPreferences applies — no model is named here. The
-// MODEL_ key is what the Gold metering expects; the upstream id is derived per provider.
+// Model used to compose email replies. The MODEL_ key is what the Gold metering
+// (calculateGoldCostFromTokens) expects; the OpenAI id is what the API needs.
+const REPLY_MODEL_KEY = 'MODEL_GPT5_4_MINI'
+const REPLY_OPENAI_MODEL = 'gpt-5.4-mini'
 
 const REPLY_SYSTEM_PROMPT =
     'You draft concise, professional email replies on behalf of the user. Return ONLY the reply body text — no subject line, no quoted original message, no "Dear"/signature placeholders unless clearly warranted. Match the tone and language of the original message, keep it natural and human, and do not invent facts or commitments the user did not ask for.'
@@ -60,46 +59,37 @@ function buildUserContent({ context = {}, guidance, language, groundingContext =
     return parts.join('\n')
 }
 
-// Returns { body, totalTokens, modelKey }. The caller must bill against the returned modelKey —
-// it is the model that actually ran. Throws when the required provider key is unavailable.
-async function composeReply({ context, guidance, language, groundingContext, cacheScope = '', modelKey = null } = {}) {
-    if (!modelKey) modelKey = resolveFeatureModelKey('emailDraftReply', null)
+// Returns { body, totalTokens }. Throws when the OpenAI key is unavailable.
+async function composeReply({ context, guidance, language, groundingContext, cacheScope = '' } = {}) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
     if (!openAiKey) throw new Error('OpenAI key unavailable for reply composition')
-    const { client, model, isOpenRouter } = resolveClassifierClient(modelKey, {
-        openAiKey,
-        openRouterKey: envFunctions?.OPENROUTER_API_KEY,
-    })
-    const upstreamModel = isOpenRouter ? model : getModel(modelKey)
 
-    const request = {
-        model: upstreamModel,
+    const openai = getOpenAIClient(openAiKey)
+    const promptCacheKey = buildOpenAiPromptCacheKey('email-reply', REPLY_OPENAI_MODEL, cacheScope, REPLY_SYSTEM_PROMPT)
+    const completion = await openai.chat.completions.create({
+        model: REPLY_OPENAI_MODEL,
         messages: [
             { role: 'system', content: REPLY_SYSTEM_PROMPT },
             { role: 'user', content: buildUserContent({ context, guidance, language, groundingContext }) },
         ],
-    }
-    // prompt_cache_key is an OpenAI extension; other providers reject or ignore it.
-    const promptCacheKey = isOpenRouter
-        ? null
-        : buildOpenAiPromptCacheKey('email-reply', upstreamModel, cacheScope, REPLY_SYSTEM_PROMPT)
-    if (promptCacheKey) request.prompt_cache_key = promptCacheKey
-
-    const completion = await client.chat.completions.create(request)
+        prompt_cache_key: promptCacheKey,
+    })
     logOpenAiCacheUsage({
         usage: completion?.usage,
         route: 'email-reply-composer',
-        model: upstreamModel,
-        cacheKey: promptCacheKey || undefined,
+        model: REPLY_OPENAI_MODEL,
+        cacheKey: promptCacheKey,
     })
 
     const body = completion?.choices?.[0]?.message?.content?.trim() || ''
     const totalTokens = Number.isFinite(completion?.usage?.total_tokens) ? completion.usage.total_tokens : 0
-    return { body, totalTokens, modelKey }
+    return { body, totalTokens }
 }
 
 module.exports = {
     composeReply,
     buildUserContent,
+    REPLY_MODEL_KEY,
+    REPLY_OPENAI_MODEL,
 }

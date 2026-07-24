@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch } from 'react-redux'
 
 import OptionButton from '../OptionButtons/OptionButton'
@@ -8,7 +8,7 @@ import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
 import { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
 
-export default function AssistantTaskSearchButtonWrapper({ onLayout }) {
+export default function AssistantTaskSearchButtonWrapper() {
     const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
     const isUnmountedRef = useRef(false)
@@ -35,11 +35,8 @@ export default function AssistantTaskSearchButtonWrapper({ onLayout }) {
     }
 
     return (
-        <AppPopover
-            // The modal queries assistant tasks across every project. Keep it
-            // out of the closed popover tree instead of relying on every
-            // popover presenter to suppress closed content.
-            content={isOpen ? <AssistantTaskSearchModal closeModal={closeModal} /> : null}
+        <Popover
+            content={<AssistantTaskSearchModal closeModal={closeModal} />}
             align={'start'}
             position={['bottom', 'left', 'right', 'top']}
             onClickOutside={closeModal}
@@ -55,10 +52,8 @@ export default function AssistantTaskSearchButtonWrapper({ onLayout }) {
                 iconColor="#ffffff"
                 textStyle={localStyles.searchText}
                 onPress={openModal}
-                onLayout={onLayout}
-                testID="assistant-task-search-button"
             />
-        </AppPopover>
+        </Popover>
     )
 }
 

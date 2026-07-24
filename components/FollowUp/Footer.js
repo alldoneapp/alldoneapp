@@ -2,7 +2,7 @@ import React from 'react'
 import { View, StyleSheet } from 'react-native'
 import Button from '../UIControls/Button'
 
-const Footer = ({ text, onPress }) => (
+export default Footer = ({ text, onPress }) => (
     <View style={localStyles.doneButtonContainer}>
         <Button title={text} type={'primary'} onPress={onPress} />
     </View>
@@ -17,5 +17,3 @@ localStyles = StyleSheet.create({
         paddingTop: 16,
     },
 })
-
-export default Footer

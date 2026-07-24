@@ -16,7 +16,6 @@ import {
 } from '../../../components/TaskListView/OKRs/okrHelper'
 import { getChatMeta } from '../Chats/chatsFirestore'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
-import { scheduleTaskColdStartCachePersist } from '../../InitialLoad/taskColdStartCache'
 
 export const OKRS_COLLECTION = 'projectOkrs'
 
@@ -52,12 +51,9 @@ export function mapOKRData(okrId, okr) {
 
 export function watchProjectOKRs(projectId, ownerId, watcherKey) {
     if (!projectId || !ownerId) return
-    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
-    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`okrs/${projectId}/${OKRS_COLLECTION}`)
-        .where('readerIds', 'array-contains', accessReaderId)
         .where('ownerId', '==', ownerId)
         .where('status', '==', OKR_STATUS_ACTIVE)
         .onSnapshot(snapshot => {
@@ -72,10 +68,6 @@ export function watchProjectOKRs(projectId, ownerId, watcherKey) {
                 return a.created - b.created
             })
             store.dispatch(setOKRsInProjectInTasks(projectId, okrs))
-            // OKRs deliberately start after the foreground task wave. Persist when their own
-            // snapshot lands so the next cold start can paint them immediately even when no task
-            // update happens afterwards. The same late watcher remains authoritative.
-            scheduleTaskColdStartCachePersist(store.getState)
         })
 }
 
@@ -84,12 +76,9 @@ export function watchProjectOKRs(projectId, ownerId, watcherKey) {
 // by periodEnd to avoid needing a composite Firestore index.
 export async function fetchProjectOKRsHistory(projectId, ownerId) {
     if (!projectId || !ownerId) return []
-    const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
-    const accessReaderId = isAnonymous ? FEED_PUBLIC_FOR_ALL : loggedUserId
 
     const snapshot = await getDb()
         .collection(`okrs/${projectId}/${OKRS_COLLECTION}`)
-        .where('readerIds', 'array-contains', accessReaderId)
         .where('ownerId', '==', ownerId)
         .get()
 

@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import styles from '../../../styles/global'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
@@ -25,11 +25,9 @@ import Icon from '../../../Icon'
 import moment from 'moment'
 import DueDateCalendarModal from '../../FloatModals/DueDateCalendarModal/DueDateCalendarModal'
 import { getTimeFormat } from '../../FloatModals/DateFormatPickerModal'
-import AppPopover from '../../ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import RecurrenceModal from '../RecurrenceModal'
 import TimePickerModal from '../../FloatModals/TimePickerModal/TimePickerModal'
-import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW } from '../../../../utils/taskExecutionMode'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export const TASK_TYPE_PROMPT = 'prompt'
 export const TASK_TYPE_EXTERNAL_LINK = 'link'
@@ -50,6 +48,7 @@ const RecurrencePickerArea = memo(
                     <TouchableOpacity
                         style={localStyles.dateButton}
                         onPress={() => {
+                            console.log('Recurrence button - onPress called')
                             setRecurrence()
                         }}
                         disabled={disabled}
@@ -84,8 +83,6 @@ const MemoizedModalContent = memo(
         removeVariable,
         recurrence,
         setRecurrence,
-        executionMode,
-        setExecutionMode,
         projectId,
         promptProjectId,
         setPromptMentionsActive,
@@ -99,10 +96,9 @@ const MemoizedModalContent = memo(
         showAISettings,
         setShowAISettings,
         aiModel,
-        assistantModel,
         setAiModel,
-        aiReasoningEffort,
-        setAiReasoningEffort,
+        aiTemperature,
+        setAiTemperature,
         aiSystemMessage,
         setAiSystemMessage,
         link,
@@ -206,39 +202,6 @@ const MemoizedModalContent = memo(
                         />
                         <View style={localStyles.recurrenceContainer}>
                             <View style={{ marginRight: 8 }}>
-                                <Icon
-                                    name={
-                                        executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'git-branch' : 'fast-forward'
-                                    }
-                                    size={24}
-                                    color={colors.Text03}
-                                />
-                            </View>
-                            <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Task flow')}</Text>
-                            <View style={{ marginLeft: 'auto' }}>
-                                <TouchableOpacity
-                                    style={localStyles.dateButton}
-                                    onPress={() =>
-                                        setExecutionMode(
-                                            executionMode === TASK_EXECUTION_MODE_WORKFLOW
-                                                ? TASK_EXECUTION_MODE_DIRECT
-                                                : TASK_EXECUTION_MODE_WORKFLOW
-                                        )
-                                    }
-                                    disabled={disabled}
-                                >
-                                    <Text style={[styles.subtitle2, { color: colors.Text02 }]}>
-                                        {translate(
-                                            executionMode === TASK_EXECUTION_MODE_WORKFLOW
-                                                ? 'Use workflow'
-                                                : 'Bypass workflow'
-                                        )}
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                        <View style={localStyles.recurrenceContainer}>
-                            <View style={{ marginRight: 8 }}>
                                 <Icon name="message-circle" size={24} color={colors.Text03} />
                             </View>
                             <Text style={[styles.subtitle2, { color: colors.Text03 }]}>
@@ -270,7 +233,7 @@ const MemoizedModalContent = memo(
                                         {translate('Start date')}
                                     </Text>
                                     <View style={{ marginLeft: 'auto' }}>
-                                        <AppPopover
+                                        <Popover
                                             isOpen={showDatePicker}
                                             positions={['bottom', 'left', 'right', 'top']}
                                             padding={4}
@@ -282,6 +245,13 @@ const MemoizedModalContent = memo(
                                                         initialDate={startDate}
                                                         closePopover={() => {
                                                             setShowDatePicker(false)
+                                                        }}
+                                                        updateDate={date => {
+                                                            const newDate = moment(date)
+                                                                .hour(moment(startDate).hour())
+                                                                .minute(moment(startDate).minute())
+                                                                .valueOf()
+                                                            setStartDate(newDate)
                                                         }}
                                                         saveDueDateBeforeSaveTask={(date, isObservedTabActive) => {
                                                             const newDate = moment(date)
@@ -304,7 +274,7 @@ const MemoizedModalContent = memo(
                                                     {moment(startDate).format('DD.MM.YYYY')}
                                                 </Text>
                                             </TouchableOpacity>
-                                        </AppPopover>
+                                        </Popover>
                                     </View>
                                 </View>
                                 <View style={localStyles.recurrenceContainer}>
@@ -315,7 +285,7 @@ const MemoizedModalContent = memo(
                                         {translate('Start time')}
                                     </Text>
                                     <View style={{ marginLeft: 'auto' }}>
-                                        <AppPopover
+                                        <Popover
                                             isOpen={showTimePicker}
                                             positions={['bottom', 'left', 'right', 'top']}
                                             padding={4}
@@ -342,7 +312,7 @@ const MemoizedModalContent = memo(
                                                     {moment(startDate).format(timeFormat)}
                                                 </Text>
                                             </TouchableOpacity>
-                                        </AppPopover>
+                                        </Popover>
                                     </View>
                                 </View>
                             </>
@@ -377,10 +347,9 @@ const MemoizedModalContent = memo(
                                 <AISettingsArea
                                     disabled={disabled}
                                     aiModel={aiModel}
-                                    assistantModel={assistantModel}
                                     setAiModel={setAiModel}
-                                    aiReasoningEffort={aiReasoningEffort}
-                                    setAiReasoningEffort={setAiReasoningEffort}
+                                    aiTemperature={aiTemperature}
+                                    setAiTemperature={setAiTemperature}
                                     aiSystemMessage={aiSystemMessage}
                                     setAiSystemMessage={setAiSystemMessage}
                                     isMiddleScreen={isMiddleScreen}
@@ -440,7 +409,6 @@ const MemoizedModalContent = memo(
             prevProps.taskType === nextProps.taskType &&
             prevProps.prompt === nextProps.prompt &&
             prevProps.recurrence === nextProps.recurrence &&
-            prevProps.executionMode === nextProps.executionMode &&
             prevProps.promptProjectId === nextProps.promptProjectId &&
             prevProps.disabled === nextProps.disabled &&
             prevProps.showDatePicker === nextProps.showDatePicker &&
@@ -448,8 +416,7 @@ const MemoizedModalContent = memo(
             prevProps.showAISettings === nextProps.showAISettings &&
             prevProps.startDate === nextProps.startDate &&
             prevProps.aiModel === nextProps.aiModel &&
-            prevProps.assistantModel === nextProps.assistantModel &&
-            prevProps.aiReasoningEffort === nextProps.aiReasoningEffort &&
+            prevProps.aiTemperature === nextProps.aiTemperature &&
             prevProps.aiSystemMessage === nextProps.aiSystemMessage &&
             prevProps.link === nextProps.link &&
             prevProps.sendWhatsApp === nextProps.sendWhatsApp &&
@@ -467,7 +434,7 @@ const MemoizedModalContent = memo(
 )
 
 export default function TaskModal({
-    closeModal,
+    closeModal: originalCloseModal,
     adding,
     name,
     setName,
@@ -488,8 +455,8 @@ export default function TaskModal({
     setTaskType,
     aiModel,
     setAiModel,
-    aiReasoningEffort,
-    setAiReasoningEffort,
+    aiTemperature,
+    setAiTemperature,
     aiSystemMessage,
     setAiSystemMessage,
     projectId,
@@ -497,8 +464,6 @@ export default function TaskModal({
     assistantId,
     recurrence = RECURRENCE_NEVER,
     setRecurrence,
-    executionMode = TASK_EXECUTION_MODE_WORKFLOW,
-    setExecutionMode,
     startDate,
     setStartDate,
     sendWhatsApp = false,
@@ -522,8 +487,32 @@ export default function TaskModal({
     const [promptMentionsActive, setPromptMentionsActive] = useState(false)
     const timeFormat = getTimeFormat()
 
+    console.log('TaskModal render:', {
+        adding,
+        projectId,
+        assistantId,
+        currentAssistant,
+        aiModel,
+        aiTemperature,
+        aiSystemMessage,
+        assistantInstructions: currentAssistant?.instructions,
+        startDateType: typeof startDate,
+        startDate,
+    })
+
+    console.log('TaskModal render - current startDate:', {
+        startDate,
+        startDateType: typeof startDate,
+        formattedDate: moment(startDate).format('DD.MM.YYYY HH:mm'),
+        showDatePicker,
+    })
+
     useEffect(() => {
         if (adding && currentAssistant && !aiSystemMessage) {
+            console.log('Setting system message from assistant:', {
+                current: aiSystemMessage,
+                new: currentAssistant.instructions,
+            })
             setAiSystemMessage(currentAssistant.instructions)
         }
     }, [currentAssistant, adding, aiSystemMessage])
@@ -569,6 +558,16 @@ export default function TaskModal({
         (taskType === TASK_TYPE_IFRAME && !checkIfIsValidLink()) ||
         (taskType === TASK_TYPE_WEBHOOK && !checkIfIsValidWebhookUrl())
 
+    // Debug logging for webhook validation
+    if (taskType === TASK_TYPE_WEBHOOK) {
+        console.log('Webhook validation:', {
+            name: name,
+            webhookUrl: webhookUrl,
+            isValidUrl: checkIfIsValidWebhookUrl(),
+            disableButton: disableButton,
+        })
+    }
+
     const onPressKey = event => {
         if (disabled || event.defaultPrevented || promptMentionsActive) return
         if (event.key === 'Enter') {
@@ -610,6 +609,7 @@ export default function TaskModal({
     // Memoize callback functions
     const memoizedSetName = useCallback(
         value => {
+            console.log('TaskModal - setName called with:', value)
             setName(value)
         },
         [setName]
@@ -617,6 +617,7 @@ export default function TaskModal({
 
     const memoizedSetTaskType = useCallback(
         value => {
+            console.log('TaskModal - setTaskType called with:', value)
             setTaskType(value)
         },
         [setTaskType]
@@ -624,6 +625,7 @@ export default function TaskModal({
 
     const memoizedSetPrompt = useCallback(
         value => {
+            console.log('TaskModal - setPrompt called with:', value)
             setPrompt(value)
         },
         [setPrompt]
@@ -631,29 +633,35 @@ export default function TaskModal({
 
     const memoizedSetRecurrence = useCallback(
         value => {
+            console.log('TaskModal - setRecurrence called with:', value)
             setRecurrence(value)
         },
         [setRecurrence]
     )
 
     const memoizedSetStartDate = useCallback(value => {
+        console.log('TaskModal - setStartDate called with:', value)
         setStartDate(value)
     }, [])
 
     const memoizedSetShowDatePicker = useCallback(value => {
+        console.log('TaskModal - setShowDatePicker called with:', value)
         setShowDatePicker(value)
     }, [])
 
     const memoizedSetShowTimePicker = useCallback(value => {
+        console.log('TaskModal - setShowTimePicker called with:', value)
         setShowTimePicker(value)
     }, [])
 
     const memoizedSetShowAISettings = useCallback(value => {
+        console.log('TaskModal - setShowAISettings called with:', value)
         setShowAISettings(value)
     }, [])
 
     const memoizedHandleStartTimeChange = useCallback(
         time => {
+            console.log('TaskModal - handleStartTimeChange called with:', time)
             const newDate = moment(startDate).hour(moment(time).hour()).minute(moment(time).minute()).valueOf()
             setStartDate(newDate)
             setShowTimePicker(false)
@@ -661,11 +669,18 @@ export default function TaskModal({
         [startDate, setStartDate, setShowTimePicker]
     )
 
+    const closeModal = (...args) => {
+        console.log('closeModal called with args:', args)
+        console.trace('closeModal stack trace:')
+        originalCloseModal(...args)
+    }
+
     const handleRecurrenceClick = () => {
         setShowRecurrenceModal(true)
     }
 
     const handleRecurrenceSelect = newRecurrence => {
+        console.log('handleRecurrenceSelect called with:', newRecurrence)
         setShowRecurrenceModal(false)
         setRecurrence(newRecurrence)
 
@@ -678,12 +693,14 @@ export default function TaskModal({
     }
 
     const handleStartDateChange = date => {
+        console.log('handleStartDateChange called with:', date)
         const newDate = moment(date).hour(moment(startDate).hour()).minute(moment(startDate).minute()).valueOf()
         setStartDate(newDate)
         setShowDatePicker(false)
     }
 
     const handleStartTimeChange = time => {
+        console.log('handleStartTimeChange called with:', time)
         const newDate = moment(startDate).hour(moment(time).hour()).minute(moment(time).minute()).valueOf()
         setStartDate(newDate)
         setShowTimePicker(false)
@@ -728,15 +745,10 @@ export default function TaskModal({
                     task={{ id: 'temp', recurrence }}
                     projectId={projectId}
                     closePopover={handleRecurrenceSelect}
-                    allowOneOffSchedule={true}
                 />
             ) : (
                 <View
-                    style={[
-                        localStyles.container,
-                        applyPopoverWidth(),
-                        { maxHeight: getSafeAreaModalMaxHeight(height) },
-                    ]}
+                    style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}
                 >
                     <MemoizedModalContent
                         disabled={disabled}
@@ -756,8 +768,6 @@ export default function TaskModal({
                         removeVariable={removeVariable}
                         recurrence={recurrence}
                         setRecurrence={handleRecurrenceClick}
-                        executionMode={executionMode}
-                        setExecutionMode={setExecutionMode}
                         projectId={projectId}
                         promptProjectId={promptProjectId}
                         setPromptMentionsActive={setPromptMentionsActive}
@@ -771,10 +781,9 @@ export default function TaskModal({
                         showAISettings={showAISettings}
                         setShowAISettings={memoizedSetShowAISettings}
                         aiModel={aiModel}
-                        assistantModel={currentAssistant?.model}
                         setAiModel={setAiModel}
-                        aiReasoningEffort={aiReasoningEffort}
-                        setAiReasoningEffort={setAiReasoningEffort}
+                        aiTemperature={aiTemperature}
+                        setAiTemperature={setAiTemperature}
                         aiSystemMessage={aiSystemMessage}
                         setAiSystemMessage={setAiSystemMessage}
                         link={link}
@@ -810,7 +819,10 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

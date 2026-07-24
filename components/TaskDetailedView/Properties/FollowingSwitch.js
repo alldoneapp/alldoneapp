@@ -56,18 +56,14 @@ export default class FollowingSwitch extends Component {
                     Animated.timing(this.state.marginLeft, {
                         toValue: 1,
                         duration: 125,
-                        // marginLeft/colors are not native-driver props.
-                        useNativeDriver: false,
                     }),
                     Animated.timing(this.state.backgroundColorAnim, {
                         toValue: 0,
                         duration: 125,
-                        useNativeDriver: false,
                     }),
                     Animated.timing(this.state.textColorAnim, {
                         toValue: 0,
                         duration: 125,
-                        useNativeDriver: false,
                     }),
                 ],
                 { stopTogether: false }
@@ -78,18 +74,14 @@ export default class FollowingSwitch extends Component {
                     Animated.timing(this.state.marginLeft, {
                         toValue: 19,
                         duration: 125,
-                        // marginLeft/colors are not native-driver props.
-                        useNativeDriver: false,
                     }),
                     Animated.timing(this.state.backgroundColorAnim, {
                         toValue: 1,
                         duration: 125,
-                        useNativeDriver: false,
                     }),
                     Animated.timing(this.state.textColorAnim, {
                         toValue: 1,
                         duration: 125,
-                        useNativeDriver: false,
                     }),
                 ],
                 { stopTogether: false }

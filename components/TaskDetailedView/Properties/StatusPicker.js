@@ -5,12 +5,11 @@ import Icon from '../../Icon'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import StatusPickerStepItem from './StatusPickerStepItem'
 import TasksHelper, { DONE_STEP, NONE_STEP, OPEN_STEP } from '../../TaskListView/Utils/TasksHelper'
-import { applyPopoverWidth, chronoEntriesOrder } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, chronoEntriesOrder, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import Hotkeys from 'react-hot-keys'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export default function StatusPicker({ projectId, workflow, task, hidePopover }) {
     const [width, height] = useWindowSize()
@@ -22,9 +21,7 @@ export default function StatusPicker({ projectId, workflow, task, hidePopover })
 
     const [hoverStep, setHoverStep] = useState(selected)
     const sortedSteps = Object.entries(steps).sort(chronoEntriesOrder)
-    const indexes = TasksHelper.generateWorkflowStepIndexes(sortedSteps.length).filter(
-        index => !task.workflowTask || index !== OPEN_STEP
-    )
+    const indexes = TasksHelper.generateWorkflowStepIndexes(sortedSteps.length)
 
     const getNextStepIndex = () => {
         const index = indexes.indexOf(hoverStep)
@@ -70,7 +67,7 @@ export default function StatusPicker({ projectId, workflow, task, hidePopover })
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.innerContainer2} showsVerticalScrollIndicator={false}>
                 <View style={localStyles.innerContainer}>
                     <Hotkeys keyName={'up,down,enter'} onKeyDown={onKeyPress} filter={e => true}>
@@ -85,23 +82,21 @@ export default function StatusPicker({ projectId, workflow, task, hidePopover })
                     </Hotkeys>
 
                     <View style={localStyles.contentContainer}>
-                        {!task.workflowTask && (
-                            <StatusPickerStepItem
-                                ref={ref => (itemRefs[OPEN_STEP] = ref)}
-                                open
-                                task={task}
-                                projectId={projectId}
-                                currentStepNum={selected}
-                                workflow={steps}
-                                stepNum={OPEN_STEP}
-                                onPress={() => {
-                                    selected = OPEN_STEP
-                                }}
-                                selected={selected === OPEN_STEP}
-                                hidePopover={hidePopover}
-                                active={hoverStep === OPEN_STEP}
-                            />
-                        )}
+                        <StatusPickerStepItem
+                            ref={ref => (itemRefs[OPEN_STEP] = ref)}
+                            open
+                            task={task}
+                            projectId={projectId}
+                            currentStepNum={selected}
+                            workflow={steps}
+                            stepNum={OPEN_STEP}
+                            onPress={() => {
+                                selected = OPEN_STEP
+                            }}
+                            selected={selected === OPEN_STEP}
+                            hidePopover={hidePopover}
+                            active={hoverStep === OPEN_STEP}
+                        />
                         {sortedSteps.map((step, index) => (
                             <StatusPickerStepItem
                                 ref={ref => (itemRefs[index] = ref)}
@@ -154,7 +149,10 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'column',
         width: 305,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     innerContainer: {

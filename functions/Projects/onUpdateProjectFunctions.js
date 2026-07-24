@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const firebase_tools = require('firebase-tools')
 const { difference } = require('lodash')
 
 const { generateProjectWarnings } = require('../Payment/QuotaWarnings')
@@ -9,12 +10,12 @@ const { removeObjectFromBacklinks } = require('../Backlinks/backlinksHelper')
 const { deleteNote, getNoteByParentId } = require('../Notes/notesFirestoreCloud')
 const { getGlobalAssistants } = require('../Firestore/assistantsFirestore')
 const { deleteChat } = require('../Chats/chatsFirestoreCloud')
+const { startProjectIndexationInAlgolia } = require('../AlgoliaGlobalSearchHelper')
 const { setProjectAssistant } = require('./projectsFirestore')
 const {
     safelySyncHeartbeatSchedules,
     syncHeartbeatSchedulesForProject,
 } = require('../Assistant/assistantHeartbeatSchedule')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const deleteTasksFromAssistantsInProject = async (projectId, assistantIds) => {
     const promises = []
@@ -31,7 +32,7 @@ const addSomeGlobalAssistantToTemplateGuides = async (guideIds, globalAssistantI
             admin
                 .firestore()
                 .doc(`projects/${guideId}`)
-                .update({ globalAssistantIds: FieldValue.arrayUnion(...globalAssistantIds) })
+                .update({ globalAssistantIds: admin.firestore.FieldValue.arrayUnion(...globalAssistantIds) })
         )
     })
     await Promise.all(promises)
@@ -44,7 +45,7 @@ const removeSomeGlobalAssistantFromTemplateGuides = async (guideIds, globalAssis
             admin
                 .firestore()
                 .doc(`projects/${guideId}`)
-                .update({ globalAssistantIds: FieldValue.arrayRemove(...globalAssistantIds) })
+                .update({ globalAssistantIds: admin.firestore.FieldValue.arrayRemove(...globalAssistantIds) })
         )
     })
     await Promise.all(promises)
@@ -103,6 +104,7 @@ const updateProjectAssistantToTemplateGuides = async (guideIds, assistantId, isG
 
 const onUpdateProject = async (projectId, oldProject, newProject) => {
     const startTime = Date.now()
+    console.log(`[onUpdateProject] Function triggered for projectId: ${projectId}`)
 
     // Track which fields changed (ALL fields to diagnose phantom updates)
     const allChangedFields = []
@@ -126,6 +128,7 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
         'assistantId',
         'active',
         'isTemplate',
+        'activeFullSearch',
         'monthlyXp',
         'monthlyTraffic',
         'parentTemplateId',
@@ -147,14 +150,13 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
     if (allChangedFields.length > 0) {
         console.log(`[onUpdateProject] ALL changed fields: ${allChangedFields.join(', ')}`)
     }
-    // Early return if no relevant fields changed. This is the common case for a project write, so
-    // neither the return nor the (empty) field list is logged; the "ALL changed fields" line above
-    // still fires when something really changed, which is what diagnoses phantom updates.
+    console.log(`[onUpdateProject] Relevant changed fields:`, JSON.stringify(changedFields))
+
+    // Early return if no relevant fields changed
     if (changedFields.length === 0) {
+        console.log(`[onUpdateProject] No relevant fields changed, skipping execution for projectId: ${projectId}`)
         return
     }
-
-    console.log(`[onUpdateProject] Relevant changed fields:`, JSON.stringify(changedFields))
 
     const promises = []
     const executionReasons = []
@@ -186,7 +188,7 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
     if (removedUserId) {
         console.log(`[onUpdateProject] User removed from project: ${removedUserId}`)
         executionReasons.push(`user_removed:${removedUserId}`)
-        promises.push(removeUserDataFromProject(projectId, removedUserId, admin, admin))
+        promises.push(removeUserDataFromProject(projectId, removedUserId, admin, firebase_tools, process, admin))
     }
 
     const removedGlobalAssistantIds = difference(oldProject.globalAssistantIds, newProject.globalAssistantIds)
@@ -233,9 +235,11 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
     //     }
     // }
 
-    // The reactivation reindex is gone since Phase 4 of the Typesense migration: every
-    // record is indexed regardless of project state, so a reactivated project has nothing
-    // to catch up on (and its algoliaIndexation trigger flow no longer exists).
+    if (!newProject.activeFullSearch && !oldProject.active && newProject.active && !newProject.parentTemplateId) {
+        console.log(`[onUpdateProject] Project activated, starting Algolia indexation`)
+        executionReasons.push('algolia_indexation_start')
+        promises.push(startProjectIndexationInAlgolia([newProject], null))
+    }
 
     console.log(`[onUpdateProject] Execution reasons: ${executionReasons.join(', ')}`)
     console.log(`[onUpdateProject] Executing ${promises.length} operations for projectId: ${projectId}`)

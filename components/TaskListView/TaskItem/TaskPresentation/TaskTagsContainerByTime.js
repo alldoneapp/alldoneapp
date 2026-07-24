@@ -30,7 +30,6 @@ export default function TaskTagsContainerByTime({
     blockOpen,
     leadingVmStatusTag,
     leadingPriorityTag,
-    trailingRoutingTag,
     inCommentPopup,
 }) {
     const [showSummarizeTag, setShowSummarizeTag] = useState(false)
@@ -83,24 +82,13 @@ export default function TaskTagsContainerByTime({
                         {task && task.time && !task.calendarData && (
                             <TimeTagWrapper projectId={projectId} task={task} />
                         )}
-                        {/* A calendar task keeps its calendar tag once done so it stays recognizable as a
-                            calendar event. Its completedTime is derived from the event slot itself
-                            (getTaskCompletedTime), so the completed time tag would only duplicate it. */}
-                        {task && task.calendarData && (
+                        {task && task.calendarData && !task.completedTime && (
                             <CalendarTag calendarData={task.calendarData} containerStyle={{ marginRight: 8 }} />
                         )}
-                        {!inOpenSection && task && task.completedTime && !task.calendarData && (
-                            <CompletedTimeTag task={task} />
-                        )}
+                        {!inOpenSection && task && task.completedTime && <CompletedTimeTag task={task} />}
                         {leadingPriorityTag}
                     </View>
                     <View onLayout={onLayoutInRightArea} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {/* AT-2453 — same move as the regular row: the routing badge belongs with the
-                            trailing tags on the right, not in the leading area beside the time and
-                            priority chips. It stays outside `TaskItemTags` so the summary chip cannot
-                            hide it, and inside the measured right area so `showSummarizeTag` still
-                            accounts for its width. */}
-                        {trailingRoutingTag}
                         <TaskItemTags
                             task={task}
                             projectId={projectId}

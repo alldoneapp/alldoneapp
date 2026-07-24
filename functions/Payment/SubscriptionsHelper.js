@@ -4,7 +4,6 @@ const moment = require('moment')
 
 const { PLAN_STATUS_PREMIUM } = require('./premiumHelper')
 const { SUBSCRIPTION_STATUS_PENDING } = require('./Mollie')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const createUserSubscription = async (
     userPayingId,
@@ -65,7 +64,7 @@ const removeTemporaryPendingStates = (userPayingId, activePaidUsersIds, promises
         if (userId !== userPayingId)
             promises.push(
                 admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).update({
-                    pending: FieldValue.delete(),
+                    pending: admin.firestore.FieldValue.delete(),
                 })
             )
     }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -34,7 +34,7 @@ export default function HeartbeatIntervalProperty({ disabled, projectId, assista
                 <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
                     {formatHeartbeatInterval(currentInterval)}
                 </Text>
-                <AppPopover
+                <Popover
                     content={
                         <View style={localStyles.popover}>
                             <View style={localStyles.header}>
@@ -82,7 +82,7 @@ export default function HeartbeatIntervalProperty({ disabled, projectId, assista
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} disabled={disabled} />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )
@@ -111,7 +111,10 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         padding: 16,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     header: {

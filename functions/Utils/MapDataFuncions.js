@@ -18,7 +18,6 @@ const {
     generateNegativeSortIndex,
 } = require('./HelperFunctionsCloud')
 const { getContactEmails } = require('../shared/contactEmailHelper')
-const { resolveTaskSortIndex } = require('../shared/calendarTaskSortIndex')
 const {
     normalizeGoalMilestonesConfig,
     normalizeGoalScheduleMode,
@@ -39,8 +38,8 @@ function mapContactData(contactId, contact) {
         extendedDescription: contact.extendedDescription
             ? contact.extendedDescription
             : contact.description
-              ? contact.description
-              : '',
+            ? contact.description
+            : '',
         hasStar: contact.hasStar ? contact.hasStar : '#FFFFFF',
         isPrivate: contact.isPrivate ? contact.isPrivate : false,
         isPublicFor: contact.isPublicFor ? contact.isPublicFor : [FEED_PUBLIC_FOR_ALL, contact.recorderUserId],
@@ -92,7 +91,6 @@ function mapGoalData(goalId, goal) {
         assistantId: goal.assistantId ? goal.assistantId : '',
         commentsData: goal.commentsData ? goal.commentsData : '',
         scheduleMode: normalizeGoalScheduleMode(goal.scheduleMode),
-        focusAreaId: typeof goal.focusAreaId === 'string' ? goal.focusAreaId : null,
     }
 }
 
@@ -158,14 +156,6 @@ function mapTaskData(taskId, task) {
     const extendedName = task.extendedName ? task.extendedName : task.name ? task.name : ''
     const hasStar = !task.hasStar ? '#FFFFFF' : task.hasStar === true ? '#C7E3FF' : task.hasStar
 
-    const created = task.created ? task.created : Date.now()
-
-    // AT-2259 - calendar tasks written before the fix stored the EVENT START in sortIndex, which
-    // pinned them to the top of their group. Normalize on read so no backfill is needed.
-    const sortIndex = task.sortIndex
-        ? resolveTaskSortIndex(task.sortIndex, task.calendarData, created)
-        : generateNegativeSortIndex()
-
     return {
         id: task.id ? task.id : taskId,
         done: task.done ? task.done : false,
@@ -181,7 +171,7 @@ function mapTaskData(taskId, task) {
         estimationsByObserverIds: task.estimationsByObserverIds ? task.estimationsByObserverIds : {},
         stepHistory: task.stepHistory ? task.stepHistory : [],
         hasStar: hasStar,
-        created,
+        created: task.created ? task.created : Date.now(),
         creatorId: task.creatorId ? task.creatorId : '',
         dueDate: task.dueDate ? task.dueDate : Date.now(),
         completed: task.completed ? task.completed : null,
@@ -198,7 +188,7 @@ function mapTaskData(taskId, task) {
         estimations: task.estimations ? task.estimations : { [OPEN_STEP]: ESTIMATION_0_MIN },
         comments: task.comments ? task.comments : [],
         genericData: task.genericData ? task.genericData : null,
-        sortIndex,
+        sortIndex: task.sortIndex ? task.sortIndex : generateNegativeSortIndex(),
         linkedParentNotesIds: task.linkedParentNotesIds ? task.linkedParentNotesIds : [],
         linkedParentTasksIds: task.linkedParentTasksIds ? task.linkedParentTasksIds : [],
         linkedParentContactsIds: task.linkedParentContactsIds ? task.linkedParentContactsIds : [],
@@ -210,7 +200,6 @@ function mapTaskData(taskId, task) {
         suggestedBy: task.suggestedBy ? task.suggestedBy : null,
         parentGoalId: task.parentGoalId ? task.parentGoalId : null,
         parentGoalIsPublicFor: task.parentGoalIsPublicFor ? task.parentGoalIsPublicFor : null,
-        goalSuggestion: task.goalSuggestion ? task.goalSuggestion : null,
         noteId: task.noteId ? task.noteId : null,
         containerNotesIds: task.containerNotesIds ? task.containerNotesIds : [],
         calendarData: task.calendarData ? task.calendarData : null,
@@ -223,8 +212,6 @@ function mapTaskData(taskId, task) {
         lockKey: task.lockKey ? task.lockKey : '',
         assigneeType: task.assigneeType ? task.assigneeType : TASK_ASSIGNEE_USER_TYPE,
         assistantId: task.assistantId ? task.assistantId : '',
-        workflowTask: task.workflowTask === true,
-        workflowPayerUserId: task.workflowPayerUserId || null,
         commentsData: task.commentsData ? task.commentsData : null,
         autoEstimation: task.autoEstimation === false || task.autoEstimation === true ? task.autoEstimation : null,
         completedTime: task.completedTime ? task.completedTime : null,
@@ -264,7 +251,6 @@ function mapProjectData(projectId, project, customData) {
         usersData: project.usersData ? project.usersData : {},
         workstreamIds: project.workstreamIds ? project.workstreamIds : [],
         globalAssistantIds: project.globalAssistantIds ? project.globalAssistantIds : [],
-        taskGoalRoutingMode: project.taskGoalRoutingMode ? project.taskGoalRoutingMode : 'automatic',
         lastLoggedUserDate: project.lastLoggedUserDate
             ? project.lastLoggedUserDate
             : moment().subtract(1, 'year').valueOf(),
@@ -272,7 +258,6 @@ function mapProjectData(projectId, project, customData) {
         lastActionDate: project.lastActionDate ? project.lastActionDate : Date.now(),
         autoEstimation: project.autoEstimation === false ? false : true,
         goalMilestonesConfig: normalizeGoalMilestonesConfig(project.goalMilestonesConfig),
-        focusAreas: project.focusAreas || {},
         sortIndexByUser: project.sortIndexByUser ? project.sortIndexByUser : {},
         ...customData,
     }

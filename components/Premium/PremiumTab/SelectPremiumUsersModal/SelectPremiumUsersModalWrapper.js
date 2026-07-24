@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet } from 'react-native'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
@@ -32,7 +32,7 @@ export default function SelectPremiumUsersModalWrapper({
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <SelectPremiumUsersModal
                     closeModal={closeModal}
@@ -57,7 +57,7 @@ export default function SelectPremiumUsersModalWrapper({
                 buttonStyle={localStyles.button}
                 onPress={openModal}
             />
-        </AppPopover>
+        </Popover>
     )
 }
 

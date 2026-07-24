@@ -9,6 +9,7 @@ import {
     setNavigationRoute,
     setSkillInDv,
     setShowAccessDeniedPopup,
+    stopLoadingData,
     storeCurrentUser,
     navigateToAllProjectsTasks,
 } from '../../redux/actions'
@@ -44,9 +45,9 @@ export default function SkillDetailedView({ navigation }) {
 
             NavigationService.navigate('Root')
             if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
+                dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
             } else {
-                const actionsToDispatch = [resetFloatPopup(), navigateToAllProjectsTasks()]
+                const actionsToDispatch = [resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()]
                 if (showAccessDeniedModal) actionsToDispatch.push(setShowAccessDeniedPopup(true))
                 dispatch(actionsToDispatch)
             }

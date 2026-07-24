@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import CustomTextInput3 from '../../../../Feeds/CommentsTextInput/CustomTextInput3'
@@ -19,48 +19,12 @@ import {
     normalizeCalendarProjectRoutingConfig,
     sanitizeCalendarProjectRoutingConfigForSave,
 } from './CalendarProjectRoutingSettings.helpers'
-import { SELECTABLE_ASSISTANT_MODELS } from '../../../../../functions/Assistant/selectableAssistantModels'
-import AssistantModelGoldRate from '../../../../UIComponents/AssistantModelGoldRate'
 
 function stopEnterPropagation(event) {
     const key = event?.nativeEvent?.key || event?.key
     if (key === 'Enter') {
         event?.stopPropagation?.()
     }
-}
-
-/**
- * Mirrors the Gmail labeling picker (`GmailLabelingSettings.js`) deliberately: both classify text
- * against a user-written prompt, both bill Gold per run, and both draw from the same
- * `SELECTABLE_ASSISTANT_MODELS` list — so the choice should look and behave identically.
- *
- * Calendar routing previously had no picker at all and silently persisted a model key outside the
- * selectable set, which the server then resolved to something else entirely. Rendering from the
- * shared list is what keeps the shown, stored and invoked model the same thing.
- */
-function ModelSelector({ value, disabled, onChange }) {
-    return (
-        <View style={localStyles.modelOptions}>
-            {SELECTABLE_ASSISTANT_MODELS.map(option => {
-                const active = value === option.model
-                return (
-                    <TouchableOpacity
-                        key={option.model}
-                        style={[localStyles.modelOption, active && localStyles.modelOptionActive]}
-                        onPress={() => onChange(option.model)}
-                        disabled={disabled}
-                        activeOpacity={0.8}
-                    >
-                        <Text style={[localStyles.modelOptionName, active && localStyles.modelOptionNameActive]}>
-                            {option.name}
-                        </Text>
-                        <Text style={localStyles.modelOptionDescription}>{translate(option.descriptionKey)}</Text>
-                        <AssistantModelGoldRate tokensPerGold={option.tokensPerGold} />
-                    </TouchableOpacity>
-                )
-            })}
-        </View>
-    )
 }
 
 function ProjectContextPreview({ projectDefinitions }) {
@@ -309,63 +273,6 @@ export default function CalendarProjectRoutingSettings({
                             key={`calendar-routing-prompt-${promptResetVersion}-${projectId}-${connectedEmail}`}
                         />
                     </View>
-                    <View style={localStyles.section}>
-                        <Text style={localStyles.inputLabel}>{translate('Calendar routing model')}</Text>
-                        <Text style={localStyles.helperText}>
-                            {translate('Choose the model used to route calendar events to projects.')}
-                        </Text>
-                        <ModelSelector
-                            value={config.model}
-                            disabled={!canManage}
-                            onChange={model => updateConfig({ model })}
-                        />
-                    </View>
-                    <View style={localStyles.section}>
-                        <Text style={localStyles.inputLabel}>
-                            {translate('Learned rules from your calendar moves')}
-                        </Text>
-                        <CustomTextInput3
-                            containerStyle={[localStyles.input, localStyles.learnedRulesInput]}
-                            initialTextExtended={config.learnedRules}
-                            placeholder={translate('CalendarLearnedRulesPlaceholder')}
-                            placeholderTextColor={colors.Text03}
-                            multiline={true}
-                            onChangeText={learnedRules => updateConfig({ learnedRules })}
-                            styleTheme={NEW_TOPIC_MODAL_THEME}
-                            disabledTabKey={true}
-                            disabledTags={true}
-                            disabledEdition={!canManage}
-                            externalTextStyle={localStyles.multilineInputText}
-                            keepBreakLines={true}
-                            allowPlainEnterBreakLines={true}
-                            onKeyPress={stopEnterPropagation}
-                            key={`calendar-routing-learned-rules-${projectId}-${connectedEmail}`}
-                        />
-                        <Text style={localStyles.helperText}>{translate('CalendarLearnedRulesDescription')}</Text>
-                    </View>
-                    <View style={localStyles.section}>
-                        <Text style={localStyles.inputLabel}>
-                            {translate('Learned Goal rules from your calendar changes')}
-                        </Text>
-                        <CustomTextInput3
-                            containerStyle={[localStyles.input, localStyles.learnedRulesInput]}
-                            initialTextExtended={config.learnedGoalRules}
-                            placeholder={translate('CalendarLearnedGoalRulesPlaceholder')}
-                            placeholderTextColor={colors.Text03}
-                            multiline={true}
-                            onChangeText={learnedGoalRules => updateConfig({ learnedGoalRules })}
-                            styleTheme={NEW_TOPIC_MODAL_THEME}
-                            disabledTabKey={true}
-                            disabledTags={true}
-                            disabledEdition={!canManage}
-                            externalTextStyle={localStyles.multilineInputText}
-                            keepBreakLines={true}
-                            allowPlainEnterBreakLines={true}
-                            onKeyPress={stopEnterPropagation}
-                            key={`calendar-goal-routing-learned-rules-${projectId}-${connectedEmail}`}
-                        />
-                        <Text style={localStyles.helperText}>{translate('CalendarLearnedGoalRulesDescription')}</Text>
-                    </View>
                     <ProjectContextPreview projectDefinitions={projectDefinitions} />
                 </>
             ) : null}
@@ -435,10 +342,6 @@ const localStyles = StyleSheet.create({
     textArea: {
         minHeight: 156,
     },
-    learnedRulesInput: {
-        minHeight: 120,
-        padding: 8,
-    },
     multilineInput: {
         padding: 8,
     },
@@ -494,39 +397,5 @@ const localStyles = StyleSheet.create({
     },
     buttonRow: {
         alignItems: 'flex-end',
-    },
-    modelOptions: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        marginTop: 4,
-        marginBottom: 10,
-    },
-    modelOption: {
-        flexGrow: 1,
-        flexBasis: 150,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.16)',
-        borderRadius: 6,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        marginRight: 8,
-        marginTop: 8,
-        backgroundColor: 'rgba(255,255,255,0.02)',
-    },
-    modelOptionActive: {
-        borderColor: colors.Primary300,
-        backgroundColor: 'rgba(66, 153, 225, 0.18)',
-    },
-    modelOptionName: {
-        ...styles.subtitle2,
-        color: '#ffffff',
-    },
-    modelOptionNameActive: {
-        color: colors.Primary300,
-    },
-    modelOptionDescription: {
-        ...styles.caption1,
-        color: colors.Text03,
-        marginTop: 4,
     },
 })

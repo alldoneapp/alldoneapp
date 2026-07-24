@@ -1,29 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
-import EditorToolbarButton from './EditorToolbarButton'
-import NoteRecordingButtons, { formatNoteRecordingElapsed } from './NoteRecordingButtons'
-import { keepScreenAwake } from '../../../../utils/screenWakeLock'
-import useMeetingRecorder from '../../../../hooks/useMeetingRecorder'
-import { isMeetingCaptureSupported } from '../../../../utils/meetingCapture'
-import MeetingMicrophoneStatus from './MeetingMicrophoneStatus'
-import {
-    canAutoStartNoteTranscription,
-    isNoteMicrophoneVisible,
-    isNoteTranscriptionVisible,
-} from './noteRecordingControls'
-import { TOOLBAR_STAGE_FULL, TOOLBAR_STAGE_LINK, useNotesToolbarOverflow } from './notesToolbarOverflow'
-import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
-import Quill from 'quill'
+import { firebase } from '@firebase/app'
+import { Quill } from 'react-quill'
 import moment from 'moment'
 import v4 from 'uuid/v4'
 import { getDateFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import styles, { colors } from '../../../styles/global'
 import QuillCursors from 'quill-cursors'
-import './noteAttachmentDrop'
-import './markdownTableEditing'
-import '../../../Feeds/CommentsTextInput/quill2Setup'
+// import { ImageDrop } from 'quill-image-drop-module'
+import DragAndDropModule from 'quill-drag-and-drop-module'
 import EditorsGroup from './EditorsGroup/EditorsGroup'
 import { useSelector } from 'react-redux'
+// import 'quill-paste-smart'
 import Hashtag from '../../../Feeds/CommentsTextInput/autoformat/formats/hashtag'
 import CommentTagFormat from '../../../Feeds/CommentsTextInput/autoformat/formats/commentTagFormat'
 import Attachment from '../../../Feeds/CommentsTextInput/autoformat/formats/attachment'
@@ -34,7 +22,6 @@ import Email from '../../../Feeds/CommentsTextInput/autoformat/formats/email'
 import Karma from '../../../Feeds/CommentsTextInput/autoformat/formats/karma'
 import VideoFormat from '../../../Feeds/CommentsTextInput/autoformat/formats/videoFormat'
 import TaskTagFormat from '../../../Feeds/CommentsTextInput/autoformat/formats/taskTagFormat'
-import ArtifactEmbed from '../../../Feeds/CommentsTextInput/autoformat/formats/artifactEmbed'
 import Autoformat, { AutoformatHelperAttribute } from '../../../Feeds/CommentsTextInput/autoformat/modules/autoformat'
 import MarkdownTableFormat from './MarkdownTableFormat'
 import domServer from 'react-dom/server'
@@ -47,7 +34,6 @@ import { shortcutNotePreviewMount, shortcutNotePreviewUnmount } from '../../../.
 import NotesAttachmentsSelectorModal from '../../../UIComponents/FloatModals/NotesAttachmentsSelectorModal'
 import {
     ATTACHMENTS_SELECTOR_MODAL_ID,
-    getEditorId,
     getPlaceholderData,
     insertAttachmentInsideEditor,
     LOADING_MODE,
@@ -496,18 +482,15 @@ const addAttachmentTag = (text, uri) => {
     updateNewAttachmentsDataInNotes(editor, id, text, uri, 'user')
 }
 
-/**
- * The overflow menu for the actions at the end of the bar (AT-2427).
- *
- * `collapsed` says whether the bar folded these actions away and therefore whether this button is
- * on screen at all; `showLink` says whether Link came with them. Both used to be one internal
- * `isMobile` breakpoint read straight from redux — see `notesToolbarOverflow.js` for why the
- * decision is now measured by the bar and pushed down instead.
- */
-const TextMorePopup = ({ projectId, disabled, collapsed, showLink }) => {
+const TextMorePopup = ({ projectId, disabled }) => {
+    const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
+    const tablet = useSelector(state => state.isMiddleScreenNoteDV)
+    const mobile = useSelector(state => state.smallScreenNavigation)
+    const mobileCollapsed = useSelector(state => state.smallScreenNavSidebarCollapsed)
     const [open, _setOpen] = useState(false)
     const openRef = useRef(open)
     const buttonRef = useRef()
+    const isMobile = sidebarExpanded ? tablet : mobile || mobileCollapsed
 
     const setOpen = value => {
         openRef.current = value
@@ -536,7 +519,7 @@ const TextMorePopup = ({ projectId, disabled, collapsed, showLink }) => {
 
     const pointerEvents = disabled ? 'none' : 'auto'
     return (
-        <div style={{ display: 'inline-block', position: 'relative' }} className={collapsed ? '' : 'ql-hide'}>
+        <div style={{ display: 'inline-block', position: 'relative' }} className={isMobile ? '' : 'ql-hide'}>
             <TouchableOpacity
                 ref={buttonRef}
                 accessibilityLabel={'ql-formats-mobile-btn'}
@@ -546,7 +529,7 @@ const TextMorePopup = ({ projectId, disabled, collapsed, showLink }) => {
                 <MoreVertical />
             </TouchableOpacity>
 
-            {collapsed && (
+            {isMobile && (
                 <NotesAttachmentsSelectorModal projectId={projectId} addAttachmentTag={addAttachmentTag} space={0} />
             )}
 
@@ -555,9 +538,7 @@ const TextMorePopup = ({ projectId, disabled, collapsed, showLink }) => {
                 className={`ql-custom-popup ${openRef.current ? '' : 'ql-hide'}`}
                 style={{ width: 180, paddingLeft: 14 }}
             >
-                {/* Link is the last control the bar gives up, so most of the time it is still out
-                    there and listing it here as well would just be a duplicate. */}
-                <div className={`ql-custom-popup-item ${showLink ? '' : 'ql-hide'}`}>
+                <div className={'ql-custom-popup-item'}>
                     <TouchableOpacity
                         onPress={() => {
                             setOpen(false)
@@ -646,7 +627,7 @@ Font.whitelist = ['arial', 'comic-sans', 'courier-new', 'georgia', 'helvetica', 
 Quill.register(Font, true)
 Quill.register('modules/cursors', QuillCursors)
 // Quill.register('modules/imageDrop', ImageDrop)
-// `modules/noteAttachmentDrop` registers itself on import (see noteAttachmentDrop.js).
+Quill.register('modules/dragAndDrop', DragAndDropModule, true)
 Quill.register({
     'modules/autoformat': Autoformat,
     'formats/hashtag': Hashtag,
@@ -658,7 +639,6 @@ Quill.register({
     'formats/customImageFormat': CustomImageFormat,
     'formats/videoFormat': VideoFormat,
     'formats/taskTagFormat': TaskTagFormat,
-    'formats/artifactEmbed': ArtifactEmbed,
     'formats/markdownTable': MarkdownTableFormat,
     'formats/autoformat-helper': AutoformatHelperAttribute,
     'formats/karma': Karma,
@@ -677,23 +657,16 @@ LinkFormat.sanitize = function customSanitizeLinkInput(linkValueInput) {
     return builtInFunc.call(this, val) // retain the built-in logic
 }
 
+const image_content_type_pattern = DragAndDropModule.image_content_type_pattern
+const getFileDataUrl = DragAndDropModule.utils.getFileDataUrl
+
 const convertContentToText = (projectId, deltaContent) => {
     let textExtended = ''
 
     for (let i = 0; i < deltaContent.ops.length; i++) {
         const op = deltaContent.ops[i]
         const { insert } = op
-        const {
-            mention,
-            hashtag,
-            email,
-            url,
-            attachment,
-            customImageFormat,
-            videoFormat,
-            taskTagFormat,
-            artifactEmbed,
-        } = insert
+        const { mention, hashtag, email, url, attachment, customImageFormat, videoFormat, taskTagFormat } = insert
 
         let beforeSpace = ''
         if (i > 0) {
@@ -736,8 +709,6 @@ const convertContentToText = (projectId, deltaContent) => {
             textExtended += beforeSpace + email.text + afterSpace
         } else if (url) {
             textExtended += beforeSpace + url.url + afterSpace
-        } else if (artifactEmbed) {
-            textExtended += beforeSpace + artifactEmbed.url + afterSpace
         } else if (taskTagFormat) {
             const { taskId } = taskTagFormat
             const url = `${window.location.origin}${getDvMainTabLink(projectId, taskId, 'tasks')}`
@@ -758,7 +729,6 @@ const generateLinkToChat = (objectType, objectId, projectId) => {
 let openSideChatFromToolbar = null
 
 export const modules = {
-    editorMeta: true,
     toolbar: {
         container: '#toolbar',
 
@@ -879,17 +849,85 @@ export const modules = {
             },
         },
     },
-    // AT-2365: multi-file drag & drop. Replaces `quill-drag-and-drop-module`, whose
-    // per-file `onDrop` ran in parallel behind an unused base64 read and therefore
-    // ordered the inserts by file size instead of by drop order. See noteAttachmentDrop.js.
-    noteAttachmentDrop: {
-        getProjectId: editor => quillTextInputProjectIds[getEditorId(editor)],
+    dragAndDrop: {
+        // draggables is an array containing the types of files that are allowed
+        // to be dragged onto the editor, and the type of html element & name of
+        // html attribute that will be added to the editor from this file
+        draggables: [
+            {
+                // string regex pattern used to match a dropped file's `type`
+                content_type_pattern: image_content_type_pattern,
+
+                // the type of html element that will be added when a file matching
+                // this draggable is dropped on the editor
+                tag: 'img',
+
+                // the attribute of the created html element that will be set based on
+                // the file's data & result of onDrop (see below)
+                attr: 'src',
+            },
+            {
+                content_type_pattern: '^video/',
+                tag: 'video',
+                attr: 'src',
+            },
+            {
+                content_type_pattern: '^text/',
+                tag: 'div',
+                attr: 'src',
+            },
+            {
+                content_type_pattern: '^audio/',
+                tag: 'div',
+                attr: 'src',
+            },
+            {
+                content_type_pattern: '^application/',
+                tag: 'div',
+                attr: 'src',
+            },
+        ],
+
+        // onDrop will be called any time a file with a type matching a
+        // content_type_pattern defined in draggables is dropped on the editor
+        // params:
+        //    file - the File object that was dropped
+        onDrop(file) {
+            return getFileDataUrl(file)
+                .then(base64_content => {
+                    // do something with the base64 content
+                    // e.g. save file to server, resize image, add a watermark, etc.
+
+                    const id = v4()
+                    const uri = URL.createObjectURL(file)
+                    const editor = exportRef.getEditor()
+                    const index = (editor.getSelection() || {}).index || editor.getLength()
+
+                    insertAttachmentInsideEditor(index, editor, file.name.replaceAll(/\s/g, '_'), uri, id, LOADING_MODE)
+                    updateNewAttachmentsDataInNotes(editor, id, file.name.replaceAll(/\s/g, '_'), uri, 'user')
+                })
+                .then(response_from_do_something => {
+                    // whatever you return (or promise) from `onDrop` will be used as the
+                    // value of the `attr` attribute for the new html element,
+                    // with a couple of exceptions:
+                    //   returning `false` from `onDrop` =>
+                    //     this file will be ignored; no new element will be added to the
+                    //     editor
+                    //   returning `null` from `onDrop` =>
+                    //     the file's data url (i.e. base64 representation) will be used
+                    //     it's the same as if you'd done:
+                    //       `onDrop: DragAndDropModule.utils.getFileDataUrl`
+                    //     This is the default behavior (i.e., it's what will happen if
+                    //     you don't define `onDrop`)
+                    return false
+                })
+                .catch(err => {
+                    console.log(err)
+                    // return false to tell Quill to ignore this dropped file
+                    return false
+                })
+        },
     },
-    markdownTableEditing: { translate },
-    // Quill 2's built-in uploader listens for `drop` on the same node and inserts png/jpeg
-    // a SECOND time as a base64 `image` embed, so every dropped screenshot was duplicated.
-    // Disabled here only: paste keeps going through the clipboard module untouched.
-    uploader: false,
     // imageDrop: true,
     history: {
         maxStack: 100,
@@ -919,6 +957,7 @@ export const formats = [
     'blockquote',
     'background',
     'list',
+    'bullet',
     'indent',
     'link',
     'image',
@@ -933,7 +972,6 @@ export const formats = [
     'customImageFormat',
     'videoFormat',
     'taskTagFormat',
-    'artifactEmbed',
     'markdownTable',
 ]
 
@@ -957,9 +995,6 @@ export const EditorToolbar = ({
     getEditor,
     autoStartTranscription,
     onOpenSideChat,
-    noteId,
-    persistMeetingChunk,
-    getMeetingInsertionTarget,
 }) => {
     const usersInProject = useSelector(state => state.projectUsers[project.id])
     const loggedUser = useSelector(state => state.loggedUser)
@@ -969,35 +1004,6 @@ export const EditorToolbar = ({
     const shortcutCtrl = useSelector(state => state.showNoteCtrlShortcuts)
     const shortcutAlt = useSelector(state => state.showNoteAltShortcuts)
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile || mobileCollapsed
-
-    const meetingSupported = isMeetingCaptureSupported()
-    const microphoneVisible = isNoteMicrophoneVisible({ accessGranted, microphoneSupported: meetingSupported })
-    const transcriptionVisible = isNoteTranscriptionVisible({ accessGranted })
-
-    // AT-2427: the bar folds its trailing actions away when it runs out of room, measured rather
-    // than guessed from a window breakpoint. `isMobile` stays as a FLOOR so phone widths keep
-    // exactly the layout they have always had (Link in the menu) with no dependency on a
-    // measurement landing first; above it the bar decides for itself.
-    const { toolbarRef, collapseActions, collapseLink } = useNotesToolbarOverflow({
-        minStage: isMobile ? TOOLBAR_STAGE_LINK : TOOLBAR_STAGE_FULL,
-        // Stated rather than left to the default: the fold is allowed to CASCADE, so a bar with
-        // no room left after giving up the trailing actions gives up Link as well instead of
-        // overflowing. Capping this at TOOLBAR_STAGE_ACTIONS would pin Link to the bar at every
-        // width — a deliberate product choice, so it belongs where the choice is made.
-        maxStage: TOOLBAR_STAGE_LINK,
-        // Anything that adds or removes a control invalidates the widths remembered for the
-        // stages, so the bar re-measures from fully expanded instead of staying folded on a
-        // width it no longer needs.
-        signature: [
-            accessGranted,
-            tablet,
-            mobile,
-            isMobile,
-            microphoneVisible,
-            transcriptionVisible,
-            uniqBy(editors, 'id').length,
-        ].join('|'),
-    })
 
     useEffect(() => {
         shortcutNotePreviewMount()
@@ -1018,50 +1024,15 @@ export const EditorToolbar = ({
 
     const barPointerEvents = readOnly || disabled ? 'none' : 'auto'
     const commentPointerEvents = connectionState === 'offline' || disabled ? 'none' : 'auto'
-    // Every control that lives after Link and folds into the "more" menu together (AT-2427).
-    const collapsibleActionClass = `ql-toolbar-item ql-formats-actions ${collapseActions ? 'ql-hide' : ''}`
 
     const [isRecording, setIsRecording] = useState(false)
-    const [screenStarting, setScreenStarting] = useState(false)
-    // Claim synchronously before either permission prompt; React state updates arrive later.
-    const recordingSourceRef = useRef(null)
-    const microphoneMeeting = useMeetingRecorder({
-        userId: loggedUser.uid,
-        noteId,
-        projectId: projectId || project?.id,
-        // Websocket "synced" flips false offline. Capture must keep buffering locally.
-        enabled: meetingSupported && accessGranted && !readOnly && !disabled,
-        persist: persistMeetingChunk,
-        getInsertionTarget: getMeetingInsertionTarget,
-    })
-    const microphoneActive = ['starting', 'recording', 'stopping'].includes(microphoneMeeting.phase)
-    const showMicrophoneStatus =
-        microphoneActive || microphoneMeeting.pending > 0 || microphoneMeeting.error || microphoneMeeting.captureError
-    const toggleMicrophone = async () => {
-        if (!microphoneVisible || readOnly || disabled || screenStarting || isRecording) return
-        if (microphoneMeeting.phase === 'recording') return microphoneMeeting.stop()
-        if (microphoneMeeting.phase !== 'idle' || recordingSourceRef.current) return
-        recordingSourceRef.current = 'microphone'
-        try {
-            await microphoneMeeting.start()
-        } finally {
-            if (recordingSourceRef.current === 'microphone') recordingSourceRef.current = null
-        }
-    }
     const mediaRecorderRef = useRef(null)
     const streamsRef = useRef([]) // Store all streams to stop them
     const audioContextRef = useRef(null)
     const intervalRef = useRef(null)
     const systemStreamRef = useRef(null) // Store system stream for screenshots
-    const releaseTranscriptionWakeLockRef = useRef(null)
-    const transcriptionSessionRef = useRef(0)
 
-    const stopRecording = (updateState = true) => {
-        if (recordingSourceRef.current === 'screen') recordingSourceRef.current = null
-        if (updateState) setScreenStarting(false)
-        transcriptionSessionRef.current += 1
-        releaseTranscriptionWakeLockRef.current?.()
-        releaseTranscriptionWakeLockRef.current = null
+    const stopRecording = () => {
         if (intervalRef.current) {
             clearTimeout(intervalRef.current)
             intervalRef.current = null
@@ -1089,23 +1060,14 @@ export const EditorToolbar = ({
             audioContextRef.current = null
         }
 
-        if (updateState) setIsRecording(false)
+        setIsRecording(false)
     }
 
-    useEffect(() => () => stopRecording(false), [])
-
     const toggleTranscription = async () => {
-        if (microphoneActive) return
         if (isRecording) {
             stopRecording()
             return
         }
-        if (!transcriptionVisible || readOnly || disabled || recordingSourceRef.current) return
-        recordingSourceRef.current = 'screen'
-        setScreenStarting(true)
-        const session = ++transcriptionSessionRef.current
-        let acquiredSystemStream
-        let acquiredMicStream
 
         try {
             // Insert Date + Transcription Header
@@ -1137,12 +1099,8 @@ export const EditorToolbar = ({
             })
 
             const micStreamPromise = navigator.mediaDevices
-                .getUserMedia({ audio: true })
-                .then(stream => {
-                    if (session !== transcriptionSessionRef.current) {
-                        stream.getTracks().forEach(track => track.stop())
-                    }
-                    return stream
+                .getUserMedia({
+                    audio: true,
                 })
                 .catch(err => {
                     console.warn('Could not get microphone access', err)
@@ -1150,17 +1108,9 @@ export const EditorToolbar = ({
                 })
 
             const [systemStream, micStream] = await Promise.all([systemStreamPromise, micStreamPromise])
-            acquiredSystemStream = systemStream
-            acquiredMicStream = micStream
-            if (session !== transcriptionSessionRef.current) {
-                systemStream.getTracks().forEach(track => track.stop())
-                micStream?.getTracks().forEach(track => track.stop())
-                return
-            }
 
             const audioTracks = systemStream.getAudioTracks()
             if (audioTracks.length === 0) {
-                stopRecording()
                 alert(translate('Please ensure you share audio when selecting the screen/tab.'))
                 systemStream.getTracks().forEach(track => track.stop())
                 if (micStream) micStream.getTracks().forEach(track => track.stop())
@@ -1201,7 +1151,7 @@ export const EditorToolbar = ({
             setIsRecording(true)
 
             const startNextChunk = () => {
-                if (session !== transcriptionSessionRef.current) return // Stopped or unmounted
+                if (!isRecording && !streamsRef.current.length) return // Stopped
 
                 const mixedStream = destination.stream
                 const mimeType = 'audio/webm' // Chrome defaults to this
@@ -1226,16 +1176,13 @@ export const EditorToolbar = ({
                         reader.onloadend = async () => {
                             const base64data = reader.result
                             try {
-                                // Routed through the offline-aware funnel
-                                // (AT-2340). Each chunk is an independent
-                                // request/response — not SDK streaming — so the
-                                // funnel applies cleanly, and offline the
-                                // recording stops instead of queueing chunks
-                                // against a ~70s timeout each.
-                                const result = await runHttpsCallableFunction('transcribeMeetingAudio', {
+                                const result = await firebase
+                                    .app()
+                                    .functions('europe-west1')
+                                    .httpsCallable('transcribeMeetingAudio')({
                                     audioChunk: base64data,
                                 })
-                                const text = result.text
+                                const text = result.data.text
                                 if (text && text.trim().length > 0) {
                                     const editor = exportRef.getEditor()
                                     const length = editor.getLength()
@@ -1244,15 +1191,7 @@ export const EditorToolbar = ({
                                 }
                             } catch (err) {
                                 console.error('Transcription error:', err)
-                                if (err.code === 'offline') {
-                                    // Transcription is server-side; there is
-                                    // nothing to queue. Stop rather than keep
-                                    // recording into a void (AT-2340).
-                                    stopRecording()
-                                } else if (
-                                    err.code === 'resource-exhausted' ||
-                                    err.message?.includes('Insufficient Gold')
-                                ) {
+                                if (err.code === 'resource-exhausted' || err.message?.includes('Insufficient Gold')) {
                                     store.dispatch(
                                         setShowLimitedFeatureModal({
                                             title: translate('Not enough Gold'),
@@ -1269,9 +1208,6 @@ export const EditorToolbar = ({
                 }
 
                 recorder.start()
-                if (!releaseTranscriptionWakeLockRef.current) {
-                    releaseTranscriptionWakeLockRef.current = keepScreenAwake()
-                }
                 // Stop and restart execution after 10 seconds to create effective chunks with headers
                 intervalRef.current = setTimeout(() => {
                     if (recorder.state !== 'inactive') {
@@ -1288,14 +1224,9 @@ export const EditorToolbar = ({
             startNextChunk()
         } catch (err) {
             console.error('Error starting transcription:', err)
-            stopRecording()
-            acquiredSystemStream?.getTracks().forEach(track => track.stop())
-            acquiredMicStream?.getTracks().forEach(track => track.stop())
             if (err.name !== 'NotAllowedError') {
                 alert(translate('Could not start recording: ') + err.message)
             }
-        } finally {
-            setScreenStarting(false)
         }
     }
 
@@ -1303,15 +1234,7 @@ export const EditorToolbar = ({
 
     useEffect(() => {
         // Only start when peersSynced is true (Yjs data has loaded)
-        // A shared link can carry the auto-start flag, so hiding the button is not enough: without
-        // this guard a not-logged-in visitor would still get a microphone/screen-capture prompt for
-        // a transcript that has nowhere to go (AT-2384).
-        if (
-            canAutoStartNoteTranscription({ accessGranted, autoStartTranscription }) &&
-            peersSynced &&
-            !hasAutoStartedRef.current &&
-            !isRecording
-        ) {
+        if (autoStartTranscription && peersSynced && !hasAutoStartedRef.current && !isRecording) {
             hasAutoStartedRef.current = true
 
             // Retry function to wait for editor to be ready
@@ -1332,7 +1255,7 @@ export const EditorToolbar = ({
             // Initial delay to let the component mount
             setTimeout(() => tryStartTranscription(), 500)
         }
-    }, [autoStartTranscription, peersSynced, accessGranted])
+    }, [autoStartTranscription, peersSynced])
 
     const takeScreenshot = async () => {
         const stream = systemStreamRef.current
@@ -1376,16 +1299,8 @@ export const EditorToolbar = ({
         <div
             id="toolbar-container"
             className={`ql-toolbar-container ${!mobile && mobileCollapsed ? 'ql-toolbar-container-collapsed' : ''}`}
-            style={{
-                height: showMicrophoneStatus ? 'auto' : (clicked ? 184 : 76) + (isRecording ? 32 : 0),
-                minHeight: (clicked ? 184 : 76) + (isRecording ? 32 : 0),
-                paddingBottom: showMicrophoneStatus ? 12 : 0,
-            }}
+            style={{ height: (clicked ? 184 : 76) + (isRecording ? 32 : 0) }}
         >
-            <MeetingMicrophoneStatus
-                recorder={microphoneMeeting}
-                elapsedLabel={formatNoteRecordingElapsed(microphoneMeeting.elapsed)}
-            />
             {isRecording && (
                 <div
                     style={{
@@ -1431,20 +1346,26 @@ export const EditorToolbar = ({
                     </TouchableOpacity>
                 </div>
             )}
-            <div style={{ marginTop: 8 }} id="toolbar" ref={toolbarRef}>
+            <div style={{ marginTop: 8 }} id="toolbar">
                 <div className="ql-formats2" style={{ paddingLeft: 8 }}>
                     <span className={'ql-toolbar-item'}>
                         {(shortcutAlt || shortcutCtrl) && (
                             <Shortcut text={'f11'} parentStyle={localStyles.shortcuts.screenMode} />
                         )}
-                        <EditorToolbarButton
+                        <button
                             onClick={() => setFullscreen(!isFullscreen)}
                             style={{ paddingLeft: 6, paddingRight: 6 }}
                         >
-                            <View style={{ width: 20 }}>
-                                <Icon name={isFullscreen ? 'minimize' : 'maximize'} size={20} color={colors.Text03} />
-                            </View>
-                        </EditorToolbarButton>
+                            <TouchableOpacity style={{ flexDirection: 'row', maxHeight: 20 }}>
+                                <View style={{ width: 20 }}>
+                                    <Icon
+                                        name={isFullscreen ? 'minimize' : 'maximize'}
+                                        size={20}
+                                        color={colors.Text03}
+                                    />
+                                </View>
+                            </TouchableOpacity>
+                        </button>
                     </span>
                 </div>
 
@@ -1503,95 +1424,107 @@ export const EditorToolbar = ({
                     {accessGranted && (
                         <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                             {shortcutAlt && <Shortcut text={'4'} parentStyle={localStyles.shortcuts.regular} />}
-                            <EditorToolbarButton
-                                onClick={renderTimestamp}
-                                style={{ marginLeft: tablet ? 0 : 8, paddingLeft: 6, paddingRight: 6 }}
-                            >
-                                <View style={{ width: 20 }}>
-                                    <Timestamp />
-                                </View>
-                                {!tablet && (
-                                    <Text style={[styles.caption1, localStyles.barIconText]}>{translate('Date')}</Text>
-                                )}
-                            </EditorToolbarButton>
+                            <button style={{ marginLeft: tablet ? 0 : 8, paddingLeft: 6, paddingRight: 6 }}>
+                                <TouchableOpacity
+                                    style={{ flexDirection: 'row', maxHeight: 20 }}
+                                    onPress={renderTimestamp}
+                                >
+                                    <View style={{ width: 20 }}>
+                                        <Timestamp />
+                                    </View>
+                                    {!tablet && (
+                                        <Text style={[styles.caption1, localStyles.barIconText]}>
+                                            {translate('Date')}
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
+                            </button>
                         </span>
                     )}
                     {accessGranted && (
                         <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                             {shortcutAlt && <Shortcut text={'T'} parentStyle={localStyles.shortcuts.regular} />}
-                            <EditorToolbarButton onClick={renderTask} style={{ paddingLeft: 6, paddingRight: 6 }}>
-                                <View style={{ width: 20 }}>
-                                    <Task />
-                                </View>
-                                {!tablet && (
-                                    <Text style={[styles.caption1, localStyles.barIconText]}>{translate('Task')}</Text>
-                                )}
-                            </EditorToolbarButton>
+                            <button onClick={renderTask} style={{ paddingLeft: 6, paddingRight: 6 }}>
+                                <TouchableOpacity style={{ flexDirection: 'row', maxHeight: 20 }}>
+                                    <View style={{ width: 20 }}>
+                                        <Task />
+                                    </View>
+                                    {!tablet && (
+                                        <Text style={[styles.caption1, localStyles.barIconText]}>
+                                            {translate('Task')}
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
+                            </button>
                         </span>
                     )}
                     <span className={'ql-toolbar-item'} style={{ pointerEvents: commentPointerEvents }}>
                         {shortcutAlt && <Shortcut text={'C'} parentStyle={localStyles.shortcuts.regular} />}
-                        <EditorToolbarButton className="ql-comment">
-                            <View style={{ width: 20 }}>
-                                <Comment />
-                            </View>
+                        <button className="ql-comment">
                             {!tablet && (
                                 <Text style={[styles.caption1, localStyles.barIconText]}>{translate('Comment')}</Text>
                             )}
-                        </EditorToolbarButton>
+                            <Comment />
+                        </button>
                     </span>
 
-                    <NoteRecordingButtons
-                        microphoneVisible={microphoneVisible}
-                        screenVisible={transcriptionVisible}
-                        recorder={microphoneMeeting}
-                        screenRecording={isRecording}
-                        screenStarting={screenStarting}
-                        disabled={readOnly || disabled}
-                        compact={tablet}
-                        onMicrophone={toggleMicrophone}
-                        onScreen={toggleTranscription}
-                    />
+                    <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
+                        <button onClick={toggleTranscription} style={{ paddingLeft: 6, paddingRight: 6 }}>
+                            <TouchableOpacity style={{ flexDirection: 'row', maxHeight: 20 }}>
+                                <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+                                    <Icon
+                                        name={isRecording ? 'mic-off' : 'mic'}
+                                        size={18}
+                                        color={isRecording ? colors.Red200 : colors.Text03}
+                                    />
+                                </View>
+                                {!tablet && (
+                                    <Text
+                                        style={[
+                                            styles.caption1,
+                                            localStyles.barIconText,
+                                            isRecording ? { color: colors.Red200 } : {},
+                                        ]}
+                                    >
+                                        {isRecording ? translate('Stop') : translate('Transcribe')}
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
+                        </button>
+                    </span>
                 </span>
 
                 {accessGranted && <div style={localStyles.separator} />}
-                {/* AT-2427: this group folds away from the right. The items are hidden
-                    INDIVIDUALLY, inside the one group they have always shared, so a bar with room
-                    for everything lays out byte-identically to before — regrouping them would
-                    have shifted the row by the group's own margins even when nothing collapses.
-                    `ql-hide` rather than unmounting, because Quill binds its toolbar handlers
-                    once, at editor construction: a button removed from the DOM and put back comes
-                    back inert. */}
                 {accessGranted && (
-                    <span className={'ql-formats2'} style={{ pointerEvents: barPointerEvents }}>
-                        {/* Link is the last one to go — everything after it folds a stage earlier. */}
-                        <span className={`ql-toolbar-item ql-formats-link ${collapseLink ? 'ql-hide' : ''}`}>
+                    <span
+                        className={`ql-formats2 ${isMobile ? 'ql-hide' : ''}`}
+                        style={{ pointerEvents: barPointerEvents }}
+                    >
+                        <span className={'ql-toolbar-item'}>
                             {shortcutCtrl && <Shortcut text={'K'} parentStyle={localStyles.shortcuts.regular} />}
                             <TouchableOpacity onPress={modules.toolbar.handlers.link}>
                                 <Icon name={'link'} size={20} color={colors.Text03} style={{ paddingHorizontal: 6 }} />
                             </TouchableOpacity>
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             {shortcutAlt && <Shortcut text={'U'} parentStyle={localStyles.shortcuts.regular} />}
                             <button className="ql-image" />
-                            {/* The picker must not live inside a `display: none` subtree, which is
-                                why it moves into the menu instead of being hidden with the button. */}
-                            {!collapseActions && (
+                            {!isMobile && (
                                 <NotesAttachmentsSelectorModal
                                     projectId={projectId}
                                     addAttachmentTag={addAttachmentTag}
                                 />
                             )}
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             {shortcutAlt && <Shortcut text={'5'} parentStyle={localStyles.shortcuts.regular} />}
                             <button className="ql-list" value="ordered" />
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             {shortcutAlt && <Shortcut text={'6'} parentStyle={localStyles.shortcuts.regular} />}
                             <button className="ql-list" value="bullet" />
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             {(shortcutAlt || shortcutCtrl) && (
                                 <Shortcut
                                     text={
@@ -1608,19 +1541,12 @@ export const EditorToolbar = ({
                             )}
                             <button className="ql-indent" value="-1" />
                         </span>
-                        <span className={collapsibleActionClass}>
+                        <span className={'ql-toolbar-item'}>
                             <button className="ql-indent" value="+1" />
                         </span>
                     </span>
                 )}
-                {accessGranted && (
-                    <TextMorePopup
-                        projectId={projectId}
-                        disabled={readOnly || disabled}
-                        collapsed={collapseActions}
-                        showLink={collapseLink}
-                    />
-                )}
+                {accessGranted && <TextMorePopup projectId={projectId} disabled={readOnly || disabled} />}
                 <div style={localStyles.separator} />
                 <span></span>
                 <span className="ql-formats-editors">

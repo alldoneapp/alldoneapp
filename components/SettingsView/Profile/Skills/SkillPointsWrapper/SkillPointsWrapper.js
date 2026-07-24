@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Backend from '../../../../../utils/BackendBridge'
@@ -56,7 +56,7 @@ export default function SkillPointsWrapper({
     }
 
     return (
-        <AppPopover
+        <Popover
             key={!isOpen}
             content={
                 <SkillPointsModal
@@ -90,6 +90,6 @@ export default function SkillPointsWrapper({
                     disabled={disabled}
                 />
             )}
-        </AppPopover>
+        </Popover>
     )
 }

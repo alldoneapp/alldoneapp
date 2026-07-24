@@ -6,7 +6,7 @@ import styles, { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
 import { useSelector } from 'react-redux'
 import AddFeedAttachButton from '../../Feeds/AddFeed/AddFeedAttachButton'
-import { hasPendingDescriptionAttachments, updateNewAttachmentsData } from '../../Feeds/Utils/HelperFunctions'
+import { updateNewAttachmentsData } from '../../Feeds/Utils/HelperFunctions'
 import Backend from '../../../utils/BackendBridge'
 import {
     FEED_TASK_OBJECT_TYPE,
@@ -16,99 +16,63 @@ import {
     FEED_ASSISTANT_OBJECT_TYPE,
 } from '../../Feeds/Utils/FeedsConstants'
 import { translate } from '../../../i18n/TranslationService'
+import { exitsOpenModals } from '../../ModalsManager/modalsManager'
 import { updateAssistantDescription } from '../../../utils/backends/Assistants/assistantsFirestore'
 import { setTaskDescription } from '../../../utils/backends/Tasks/tasksFirestore'
-import AttachmentDropZone from '../../Feeds/CommentsTextInput/AttachmentDropZone'
-import { getDescriptionDraft } from './descriptionAutosave'
-import { subscribePageHidden } from '../../../utils/appResume'
 
-export default function DescriptionField(props) {
-    const userId = useSelector(state => state.loggedUser?.uid)
-    const draftKey = JSON.stringify([userId, props.projectId, props.objectType, props.object.id || props.object.uid])
-    return <DescriptionEditor key={draftKey} {...props} draftKey={draftKey} />
-}
-
-function DescriptionEditor({ projectId, object, disabled, objectType, isCalendarTask, helperText, draftKey }) {
+export default function DescriptionField({ projectId, object, disabled, objectType, isCalendarTask, helperText }) {
+    const blockShortcuts = useSelector(state => state.blockShortcuts)
     const smallScreen = useSelector(state => state.smallScreen)
+    const [description, setDescription] = useState(object.description)
     const [inputCursorIndex, setInputCursorIndex] = useState(0)
     const [editor, setEditor] = useState(null)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const inputRef = useRef()
-    const objectRef = useRef(object)
-    const applyingRemote = useRef(false)
-    objectRef.current = object
 
-    const [draft] = useState(() =>
-        getDescriptionDraft(draftKey, {
-            initialText: object.description,
-            upload: (text, uploadedTokens) =>
-                updateNewAttachmentsData(projectId, text, { strict: true, uploadedTokens }),
-            save: (finalDescription, oldDescription) => {
-                const currentObject = { ...objectRef.current, description: oldDescription }
-                if (objectType === FEED_TASK_OBJECT_TYPE) {
-                    return setTaskDescription(
-                        projectId,
-                        currentObject.id,
-                        finalDescription,
-                        currentObject,
-                        oldDescription
-                    )
-                } else if (objectType === FEED_GOAL_OBJECT_TYPE) {
-                    return Backend.setGoalDescription(
-                        projectId,
-                        currentObject.id,
-                        finalDescription,
-                        currentObject,
-                        oldDescription
-                    )
-                } else if (objectType === FEED_PROJECT_OBJECT_TYPE) {
-                    return Backend.setProjectDescription(projectId, finalDescription, currentObject, oldDescription)
-                } else if (objectType === FEED_SKILL_OBJECT_TYPE) {
-                    return Backend.updateSkillDescription(projectId, currentObject, finalDescription)
-                } else if (objectType === FEED_ASSISTANT_OBJECT_TYPE) {
-                    return updateAssistantDescription(projectId, finalDescription, currentObject)
-                }
-                throw new Error('Unsupported description type')
-            },
+    const updateDescription = () => {
+        updateNewAttachmentsData(projectId, description).then(finalDescription => {
+            if (objectType === FEED_TASK_OBJECT_TYPE) {
+                setTaskDescription(projectId, object.id, finalDescription, object, object.description)
+            } else if (objectType === FEED_GOAL_OBJECT_TYPE) {
+                Backend.setGoalDescription(projectId, object.id, finalDescription, object, object.description)
+            } else if (objectType === FEED_PROJECT_OBJECT_TYPE) {
+                Backend.setProjectDescription(projectId, finalDescription, object, object.description)
+            } else if (objectType === FEED_SKILL_OBJECT_TYPE) {
+                Backend.updateSkillDescription(projectId, object, finalDescription)
+            } else if (objectType === FEED_ASSISTANT_OBJECT_TYPE) {
+                updateAssistantDescription(projectId, finalDescription, object)
+            }
         })
-    )
-    const [draftState, setDraftState] = useState(draft.snapshot)
-
-    useEffect(() => draft.subscribe(setDraftState), [draft])
-
-    useEffect(() => {
-        const remoteText = object.description || ''
-        if (remoteText === draft.snapshot().text || !draft.receiveRemote(remoteText)) return
-        applyingRemote.current = true
-        inputRef.current?.clearAndSetContent(remoteText)
-        applyingRemote.current = false
-    }, [object.description, draft])
-
-    const changeDescription = text => {
-        if (disabled || applyingRemote.current) return
-        draft.change(text, hasPendingDescriptionAttachments)
     }
 
     const addAttachmentTag = (text, uri) => {
-        if (!disabled) insertAttachmentInsideEditor(inputCursorIndex, editor, text, uri)
+        insertAttachmentInsideEditor(inputCursorIndex, editor, text, uri)
+    }
+
+    const onkeydown = e => {
+        if (
+            e.key === 'Enter' &&
+            !mentionsModalActive &&
+            !e.shiftKey &&
+            !exitsOpenModals() &&
+            inputRef.current.isFocused()
+        ) {
+            updateDescription()
+        }
     }
 
     useEffect(() => {
-        inputRef.current?.blur()
+        inputRef?.current?.blur()
         Keyboard.dismiss()
     }, [])
 
     useEffect(() => {
-        const unsubscribePageHidden = subscribePageHidden(draft.flush)
-        const onOnline = () => {
-            if (draft.pending) draft.flush()
+        if (blockShortcuts) {
+            return
         }
-        window.addEventListener('online', onOnline)
-        return () => {
-            unsubscribePageHidden()
-            window.removeEventListener('online', onOnline)
-        }
-    }, [draft])
+        document.addEventListener('keydown', onkeydown)
+        return () => document.removeEventListener('keydown', onkeydown)
+    })
 
     const getPlaceholder = () => {
         let type = ''
@@ -127,32 +91,19 @@ function DescriptionEditor({ projectId, object, disabled, objectType, isCalendar
     }
 
     return (
-        <View
-            style={localStyles.container}
-            onBlur={event => {
-                if (!event.currentTarget?.contains?.(event.relatedTarget)) draft.flush()
-            }}
-        >
+        <View style={localStyles.container}>
             <Text style={localStyles.header}>{translate('Description')}</Text>
-            <AttachmentDropZone
-                testID="task-description-attachment-drop-zone"
-                style={localStyles.inputContainer}
-                disabled={disabled}
-                editor={editor}
-                inputCursorIndex={inputCursorIndex}
-                projectId={projectId}
-                setInputCursorIndex={setInputCursorIndex}
-            >
+            <View style={localStyles.inputContainer}>
                 <CustomTextInput3
                     ref={inputRef}
                     placeholder={getPlaceholder()}
                     placeholderTextColor={colors.Text03}
-                    onChangeText={changeDescription}
+                    onChangeText={setDescription}
                     multiline={true}
                     externalTextStyle={localStyles.textInputText}
                     externalAlignment={{ paddingLeft: 0, paddingRight: 0 }}
                     setMentionsModalActive={setMentionsModalActive}
-                    initialTextExtended={draftState.text}
+                    initialTextExtended={description}
                     projectId={projectId}
                     styleTheme={TASK_THEME}
                     setInputCursorIndex={setInputCursorIndex}
@@ -162,9 +113,8 @@ function DescriptionEditor({ projectId, object, disabled, objectType, isCalendar
                     otherFormats={['image', 'attachment', 'customImageFormat', 'videoFormat']}
                     isCalendarTask={isCalendarTask}
                     keepBreakLines={true}
-                    allowPlainEnterBreakLines={!mentionsModalActive}
                 />
-            </AttachmentDropZone>
+            </View>
             {!!helperText && <Text style={localStyles.helperText}>{translate(helperText)}</Text>}
 
             {!disabled && (
@@ -178,21 +128,15 @@ function DescriptionEditor({ projectId, object, disabled, objectType, isCalendar
                             projectId={projectId}
                         />
                     </View>
-                    <View accessibilityLiveRegion="polite">
-                        {draftState.status === 'saving' && (
-                            <Text style={localStyles.helperText}>{translate('Saving')}</Text>
-                        )}
-                        {draftState.status === 'saved' && (
-                            <Text style={localStyles.helperText}>{translate('Description saved')}</Text>
-                        )}
-                        {draftState.status === 'error' && (
-                            <>
-                                <Text accessibilityRole="alert" style={localStyles.helperText}>
-                                    {translate('Description autosave failed')}
-                                </Text>
-                                <Button title={translate('Try again')} type={'ghost'} onPress={draft.flush} />
-                            </>
-                        )}
+                    <View>
+                        <Button
+                            title={smallScreen ? null : object.description !== description ? translate(`Save`) : 'Ok'}
+                            type={'primary'}
+                            icon={smallScreen ? (object.description !== description ? 'save' : 'x') : null}
+                            onPress={updateDescription}
+                            accessible={false}
+                            shortcutText={'Enter'}
+                        />
                     </View>
                 </View>
             )}

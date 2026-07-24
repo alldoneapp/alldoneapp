@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
@@ -23,7 +23,7 @@ export default function TaskPriorityWrapper({ projectId, task, disabled }) {
     }
 
     return (
-        <AppPopover
+        <Popover
             key={!isOpen}
             content={
                 <TaskPriorityModal
@@ -39,6 +39,6 @@ export default function TaskPriorityWrapper({ projectId, task, disabled }) {
             contentLocation={smallScreenNavigation ? null : undefined}
         >
             <TaskPriorityButton priority={task.priority} disabled={disabled} onPress={openModal} />
-        </AppPopover>
+        </Popover>
     )
 }

@@ -1,5 +1,4 @@
 const admin = require('firebase-admin')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const updateSkillEditionData = async (projectId, skillId, editorId) => {
     try {
@@ -22,7 +21,7 @@ const updateSkillLastCommentData = async (projectId, skillId, lastComment, lastC
                 transaction.update(ref, {
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: lastCommentType,
-                    [`commentsData.amount`]: FieldValue.increment(1),
+                    [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
                 })
         })
     } catch (e) {

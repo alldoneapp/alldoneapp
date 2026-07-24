@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import NotesHeader from './NotesHeader'
 import ProjectHelper, {
@@ -13,7 +13,7 @@ import URLsNotes, {
     URL_PROJECT_USER_NOTES_FOLLOWED,
 } from '../../URLSystem/Notes/URLsNotes'
 import { calcNotesAmount } from './NotesHelper'
-import { setNavigationRoute, resetNotesAmounts } from '../../redux/actions'
+import { resetLoadingData, setNavigationRoute, resetNotesAmounts } from '../../redux/actions'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 import moment from 'moment'
 import { DV_TAB_ROOT_NOTES } from '../../utils/TabNavigationConstants'
@@ -22,35 +22,6 @@ import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import { useDispatch, useSelector } from 'react-redux'
 import store from '../../redux/store'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
-import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssistantLine'
-import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
-import useNearViewportMount from '../../hooks/useNearViewportMount'
-import NotesListSkeleton from './NotesListSkeleton'
-
-export const DEFAULT_MAX_NOTES_TO_RENDER = 10
-export const FILTERED_MAX_NOTES_TO_RENDER = 50
-export const NOTES_PROJECT_REVEAL_ROOT_MARGIN = '0px'
-export const NOTES_PROJECT_GHOST_MIN_VISIBLE_MS = 200
-
-function DeferredProjectReveal({ projectId, revealed, loading, observe, onNearViewport, children }) {
-    const { placeholderRef, isNearViewport } = useNearViewportMount({
-        eager: revealed,
-        enabled: observe,
-        rootMargin: NOTES_PROJECT_REVEAL_ROOT_MARGIN,
-        trackVisibility: true,
-    })
-
-    useEffect(() => {
-        if (observe) onNearViewport(projectId, isNearViewport)
-    }, [isNearViewport, observe, onNearViewport, projectId])
-
-    return (
-        <View ref={placeholderRef} style={!revealed && localStyles.deferredProjectReveal}>
-            {(revealed || loading) && <View style={!revealed && localStyles.preloadedProject}>{children}</View>}
-            {!revealed && observe && <NotesListSkeleton rowCount={3} showProjectHeader />}
-        </View>
-    )
-}
 
 function NotesView() {
     const dispatch = useDispatch()
@@ -67,54 +38,17 @@ function NotesView() {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const currentUser = useSelector(state => state.currentUser)
-    const noteOwnerFilters = useSelector(state => state.noteOwnerFilters)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
-    const sortedProjectIds = useMemo(
-        () => sortedLoggedUserProjects.map(project => project.id),
-        [sortedLoggedUserProjects]
-    )
-    const projectMembershipKey = useMemo(() => [...sortedProjectIds].sort().join('\u001f'), [sortedProjectIds])
-    const projectRevealKey = `${notesActiveTab}:${selectedProjectIndex}:${projectMembershipKey}`
-    const [projectReadiness, setProjectReadiness] = useState({ key: projectRevealKey, projectIds: [] })
-    const readyProjectIds = projectReadiness.key === projectRevealKey ? projectReadiness.projectIds : []
-    const markProjectReady = useCallback(
-        projectId => {
-            setProjectReadiness(current => {
-                const projectIds = current.key === projectRevealKey ? current.projectIds : []
-                if (projectIds.includes(projectId)) return current
-                return { key: projectRevealKey, projectIds: [...projectIds, projectId] }
-            })
-        },
-        [projectRevealKey]
-    )
-    const { revealedProjectIds, primaryProjectId, nextProjectId, loadingProjectId, markProjectNearViewport } =
-        useRateLimitedProjectReveal({
-            projectIds: inAllProjects ? sortedProjectIds : [],
-            readyProjectIds,
-            resetKey: projectRevealKey,
-            requireNearViewport: inAllProjects,
-            minIntervalMs: inAllProjects ? NOTES_PROJECT_GHOST_MIN_VISIBLE_MS : undefined,
-        })
-    const revealedProjectIdsSet = useMemo(() => new Set(revealedProjectIds), [revealedProjectIds])
-    const visibleProjects = sortedLoggedUserProjects.filter(project => revealedProjectIdsSet.has(project.id))
-    const visibleProjectIndexes = useMemo(
-        () => new Map(visibleProjects.map((project, index) => [project.id, index])),
-        [visibleProjects]
-    )
-
-    // The owner filter runs client-side over the notes already loaded, so widen the fetch
-    // window while one is active. Without this, filtering a 10-note window by owner can show
-    // an almost-empty list even when that owner has plenty of notes further back (AT-2194).
-    const maxNotesToRender = noteOwnerFilters.length > 0 ? FILTERED_MAX_NOTES_TO_RENDER : DEFAULT_MAX_NOTES_TO_RENDER
 
     const projects = loggedUserProjects.filter(
         project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
     )
 
     useEffect(() => {
-        return () => dispatch(resetNotesAmounts())
+        dispatch([resetLoadingData()])
+        return () => dispatch([resetLoadingData(), resetNotesAmounts()])
     }, [])
 
     useEffect(() => {
@@ -156,14 +90,9 @@ function NotesView() {
         }
     }
 
-    const setLastEditNoteDate = useCallback((project, date) => {
-        const currentProject = sortedProjects.current[project.id]
-        if (!currentProject || currentProject.lastEditNoteDate === date) return
-
-        const rSortedProjects = {
-            ...sortedProjects.current,
-            [project.id]: { ...project, lastEditNoteDate: date },
-        }
+    const setLastEditNoteDate = (project, date) => {
+        const rSortedProjects = { ...sortedProjects.current }
+        rSortedProjects[project.id] = { ...project, lastEditNoteDate: date }
 
         const rSortedLoggedUserProjects = Object.values(rSortedProjects).sort(
             (a, b) => (a.lastEditNoteDate - b.lastEditNoteDate) * -1
@@ -174,7 +103,7 @@ function NotesView() {
         const normalProjects = rSortedLoggedUserProjects.filter(project => !project.parentTemplateId)
         const guides = rSortedLoggedUserProjects.filter(project => !!project.parentTemplateId)
         setSortedLoggedUserProjects([...normalProjects, ...guides])
-    }, [])
+    }
 
     return (
         <View
@@ -184,8 +113,7 @@ function NotesView() {
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
-            {inAllProjects && <AllProjectsLine showActions={false} bottomSpacing={8} />}
-            {inAllProjects && <AllProjectsAssistantLine />}
+            {inAllProjects && <AllProjectsLine showActions={false} />}
             {inAllProjects && <NotesHeader />}
 
             <HashtagFiltersView />
@@ -195,39 +123,20 @@ function NotesView() {
                     <NotesByProject
                         project={loggedUserProjects[selectedProjectIndex]}
                         filterBy={notesActiveTab}
-                        maxNotesToRender={maxNotesToRender}
-                        trackInitialLoad
+                        maxNotesToRender={10}
                         key={loggedUserProjects[selectedProjectIndex].id}
                     />
                 ) : notesAmounts.length === 0 || tNotesAmount == null || tNotesAmount > 0 ? (
-                    sortedLoggedUserProjects.map(project => {
-                        const revealed = revealedProjectIdsSet.has(project.id)
-                        const loading = project.id === loadingProjectId
-                        const observe = project.id === nextProjectId
-                        if (!revealed && !observe) return null
-
-                        return (
-                            <DeferredProjectReveal
-                                key={project.id}
-                                projectId={project.id}
-                                revealed={revealed}
-                                loading={loading}
-                                observe={observe}
-                                onNearViewport={markProjectNearViewport}
-                            >
-                                <NotesByProject
-                                    project={project}
-                                    filterBy={notesActiveTab}
-                                    firstProject={revealed && visibleProjectIndexes.get(project.id) === 0}
-                                    maxNotesToRender={3}
-                                    onInitialSnapshot={markProjectReady}
-                                    setLastEditNoteDate={setLastEditNoteDate}
-                                    showInitialSkeleton
-                                    trackInitialLoad={project.id === primaryProjectId}
-                                />
-                            </DeferredProjectReveal>
-                        )
-                    })
+                    sortedLoggedUserProjects.map((project, index) => (
+                        <NotesByProject
+                            key={project.id}
+                            project={project}
+                            filterBy={notesActiveTab}
+                            firstProject={index === 0}
+                            maxNotesToRender={3}
+                            setLastEditNoteDate={date => setLastEditNoteDate(project, date)}
+                        />
+                    ))
                 ) : (
                     <EmptyNotesAllProjects sortedActiveProjects={sortedLoggedUserProjects} />
                 )}
@@ -267,12 +176,6 @@ const localStyles = StyleSheet.create({
     },
     containerTablet: {
         marginHorizontal: 56,
-    },
-    deferredProjectReveal: {
-        marginBottom: 25,
-    },
-    preloadedProject: {
-        display: 'none',
     },
 })
 

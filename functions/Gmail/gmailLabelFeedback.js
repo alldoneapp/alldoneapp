@@ -6,7 +6,6 @@ const { getCachedEnvFunctions, getOpenAIClient, logOpenAiCacheUsage } = require(
 const { extractJsonFromText, isGpt5ReasoningModel, mapAssistantModelToOpenAIModel } = require('./gmailPromptClassifier')
 const { MAX_LEARNED_RULES_LENGTH, getGmailLabelingStateRef } = require('./gmailLabelingConfig')
 const { invalidateResolvedThreadIds } = require('../Email/emailLine/gmailResolvedThreadCache')
-const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 // Feedback is free — the cap only bounds abuse. Folding a user correction into the
 // learned-rules block is a low-frequency, quality-sensitive judgment task, so it runs on a
@@ -15,7 +14,7 @@ const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 // ("Feedback revision produced no rules text"), silently dropping the correction; a stronger
 // model both fixes that and produces better-generalized rules.
 const FEEDBACK_DAILY_CAP = 30
-const FEEDBACK_REVISION_MODEL = 'MODEL_GPT6_SOL'
+const FEEDBACK_REVISION_MODEL = 'MODEL_GPT5_6_SOL'
 
 const REVISION_SYSTEM_PROMPT =
     'You maintain a compact list of user feedback rules for an AI email labeling assistant. ' +
@@ -144,9 +143,9 @@ async function reviseLearnedRules({
     if (!isGpt5ReasoningModel(FEEDBACK_REVISION_MODEL)) {
         requestParams.temperature = 0.1
     }
-    if (/^gpt-(?:5\.6|6)(?:[.-])/.test(selectedModel)) {
+    if (selectedModel.startsWith('gpt-5.6')) {
         // Each revision changes the learned-rules prefix and is already persisted by input hash,
-        // so there is no reusable prefix worth paying the cache-write premium for.
+        // so there is no reusable prefix worth paying the GPT-5.6 cache-write premium for.
         requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
     }
 
@@ -292,12 +291,7 @@ async function submitEmailLabelFeedback({
         resolveEffectiveGmailLabelingConfig,
         applyGmailThreadLabelCorrection,
     } = require('./serverSideGmailLabelingSync')
-    const {
-        key: feedbackProjectId,
-        config,
-        ref: configRef,
-        auditEntry,
-    } = await resolveFeedbackLabelingContext({
+    const { key: feedbackProjectId, config, ref: configRef, auditEntry } = await resolveFeedbackLabelingContext({
         userId,
         userData,
         projectId,
@@ -314,11 +308,11 @@ async function submitEmailLabelFeedback({
         previousFollowUpType: auditEntry.followUpType || 'informational',
         correctFollowUpType: normalizedCorrectFollowUpType,
         userId,
-        at: Timestamp.now(),
+        at: admin.firestore.Timestamp.now(),
     }
 
     const auditRef = getGmailLabelingStateRef(userId, feedbackProjectId).collection('messages').doc(messageId)
-    await auditRef.set({ feedback: FieldValue.arrayUnion(feedbackEvent) }, { merge: true })
+    await auditRef.set({ feedback: admin.firestore.FieldValue.arrayUnion(feedbackEvent) }, { merge: true })
 
     const effectiveConfig = await resolveEffectiveGmailLabelingConfig(config, userData)
 
@@ -348,7 +342,7 @@ async function submitEmailLabelFeedback({
                 selectedGmailLabelName: relabel.targetGmailLabelName,
                 applied: relabel.applied,
                 archived: relabel.archived,
-                correctedByFeedbackAt: Timestamp.now(),
+                correctedByFeedbackAt: admin.firestore.Timestamp.now(),
             },
             { merge: true }
         )
@@ -380,7 +374,7 @@ async function submitEmailLabelFeedback({
         await auditRef.set(
             {
                 followUpType: normalizedCorrectFollowUpType,
-                correctedFollowUpTypeAt: Timestamp.now(),
+                correctedFollowUpTypeAt: admin.firestore.Timestamp.now(),
             },
             { merge: true }
         )
@@ -420,7 +414,7 @@ async function submitEmailLabelFeedback({
             correctFollowUpType: normalizedCorrectFollowUpType,
             note: feedbackEvent.note,
         })
-        await configRef.set({ learnedRules, updatedAt: Timestamp.now() }, { merge: true })
+        await configRef.set({ learnedRules, updatedAt: admin.firestore.Timestamp.now() }, { merge: true })
     } catch (error) {
         // Keep the existing rules and the successful re-label; the correction is still recorded in
         // the audit feedback array, so nothing is lost.

@@ -1,7 +1,6 @@
 import { findIndex } from 'lodash'
 import momentTz from 'moment-timezone'
 import moment from 'moment'
-import { getDefaultProfilePhotoURL } from '../../../utils/defaultProfilePhotos'
 
 import SearchHelper from '../../../utils/SearchHelper'
 import store from '../../../redux/store'
@@ -24,7 +23,6 @@ import {
     setContactsInProject,
     navigateToAllProjectsTasks,
     navigateToAllProjectsContacts,
-    setContactStatusFilter,
 } from '../../../redux/actions'
 import URLsPeople, {
     URL_ALL_PROJECTS_PEOPLE_ALL,
@@ -125,7 +123,7 @@ class ContactsHelper {
         URLsPeople.replace(tab === ALL_TAB ? URL_ALL_PROJECTS_PEOPLE_ALL : URL_ALL_PROJECTS_PEOPLE_FOLLOWED)
     }
 
-    static processURLProjectPeople = (navigation, projectId, userId, tab = FOLLOWED_TAB, contactStatus = null) => {
+    static processURLProjectPeople = (navigation, projectId, userId, tab = FOLLOWED_TAB) => {
         const user = TasksHelper.getUserInProject(projectId, userId) || getWorkstreamInProject(projectId, userId)
         const currentUser = user !== null ? user : store.getState().loggedUser
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
@@ -135,7 +133,6 @@ class ContactsHelper {
             storeCurrentUser(currentUser),
             setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS),
             updateContactsActiveTab(tab),
-            setContactStatusFilter(contactStatus),
         ])
 
         if (checkIfSelectedAllProjects(projectIndex)) {
@@ -146,8 +143,7 @@ class ContactsHelper {
                 tab === ALL_TAB ? URL_PROJECT_PEOPLE_ALL : URL_PROJECT_PEOPLE_FOLLOWED,
                 data,
                 projectId,
-                currentUser.uid,
-                contactStatus
+                currentUser.uid
             )
         }
         navigation.navigate('Root')
@@ -171,11 +167,7 @@ class ContactsHelper {
         const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
         const projectIndex = project ? project.index : ALL_PROJECTS_INDEX
         tab = !accessGranted && tab === DV_TAB_USER_BACKLINKS ? DV_TAB_USER_PROFILE : tab
-        // This route is reached with an id that is a user OR a contact — opening a person's note
-        // from search lands here either way — so "not a user" is an ordinary answer and is probed
-        // for cheaply. Escalation to the verified read happens below, only once the contact lookup
-        // has also come up empty (AT-2428).
-        let user = await Backend.getUserDataByUidOrEmail(userId, { absenceIsExpected: true })
+        const user = await Backend.getUserDataByUidOrEmail(userId)
         const backlinkSection = {
             index: tabConstant === URL_PEOPLE_DETAILS_BACKLINKS_TASKS || URL_CONTACT_DETAILS_BACKLINKS_TASKS ? 1 : 0,
             section:
@@ -191,12 +183,6 @@ class ContactsHelper {
                 tabConstant = tabConstant.replace('PEOPLE_', 'CONTACT_')
                 return ContactsHelper.processURLContactDetailsTab(navigation, tab, projectId, userId, tabConstant)
             }
-
-            // Neither a user nor a contact. The probe's cheap "missing" is not good enough to
-            // bounce someone to the people list on, so confirm it against the server: a real user
-            // whose realtime read was wrong is recovered here and opens normally, and a genuinely
-            // dangling id is reported by the verified read rather than swallowed.
-            user = await Backend.getUserDataByUidOrEmail(userId)
         }
 
         const inSelectedProject = checkIfSelectedProject(projectIndex)
@@ -356,19 +342,10 @@ class ContactsHelper {
         const inSelectedProject = checkIfSelectedProject(projectIndex)
         if (inSelectedProject && user != null) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
-            // Only a recorded contact carries a `recorderUserId`. Without the guard this read
-            // `/users/undefined` for every ordinary contact in a shared project — a guaranteed 404
-            // plus an ERROR log about a document that was never going to exist (AT-2428). The
-            // resulting value is deliberately left as `null`, exactly what the lookup returned
-            // before, so this only removes the doomed request and not a behaviour anyone relies on.
-            let selectedUser = loggedUser
-            if (projectType === PROJECT_TYPE_SHARED) {
-                selectedUser = loggedUser.isAnonymous
-                    ? SharedHelper.createAnonymousResourceUser(user.recorderUserId || project.creatorId)
-                    : user.recorderUserId
-                      ? await Backend.getUserDataByUidOrEmail(user.recorderUserId, { absenceIsExpected: true })
-                      : null
-            }
+            const selectedUser =
+                projectType === PROJECT_TYPE_SHARED
+                    ? await Backend.getUserDataByUidOrEmail(user.recorderUserId)
+                    : loggedUser
             const data = { projectId: projectId, userId: userId }
             URLsContacts.push(tabConstant !== undefined ? tabConstant : URL_CONTACT_DETAILS, data, projectId, userId)
             const navData = { contact: user, project }
@@ -560,17 +537,10 @@ class ContactsHelper {
             },
         }
 
-        // AT-2386: same read-modify-write hazard as `updateContactLastVisitedBoardDate` below -
-        // the slice is filled on demand, so skip the optimistic update rather than spreading
-        // `undefined` or writing to the key "-1". The Firestore write below still lands.
-        const usersInProject = projectUsers[projectId]
-        const index = Array.isArray(usersInProject) ? usersInProject.findIndex(item => item.uid === user.uid) : -1
-
-        if (index !== -1) {
-            const updatedUsers = [...usersInProject]
-            updatedUsers[index] = updatedUser
-            store.dispatch(setUsersInProject(projectId, updatedUsers))
-        }
+        const usersInProject = [...projectUsers[projectId]]
+        const index = usersInProject.findIndex(item => item.uid === user.uid)
+        usersInProject[index] = updatedUser
+        store.dispatch(setUsersInProject(projectId, usersInProject))
 
         updateUserLastVisitedBoardDate(projectId, user.uid, lastVisitBoardProperty)
     }
@@ -589,23 +559,10 @@ class ContactsHelper {
             },
         }
 
-        // AT-2386: this is a read-modify-write of the WHOLE per-project contact array, and that
-        // array is now filled on demand. Two failure modes to avoid, both silent: `[...undefined]`
-        // throws when the project has not been loaded, and writing a partial array back would
-        // clobber the real list with it. A missing contact is also `findIndex === -1`, which used
-        // to write to the key "-1". So the optimistic redux update is skipped whenever the local
-        // list cannot be updated faithfully - the Firestore write below is the source of truth and
-        // the live watcher brings the change back anyway.
-        const contactsInProject = projectContacts[projectId]
-        const index = Array.isArray(contactsInProject)
-            ? contactsInProject.findIndex(item => item.uid === contact.uid)
-            : -1
-
-        if (index !== -1) {
-            const updatedContacts = [...contactsInProject]
-            updatedContacts[index] = updatedContact
-            store.dispatch(setContactsInProject(projectId, updatedContacts))
-        }
+        const contactsInProject = [...projectContacts[projectId]]
+        const index = contactsInProject.findIndex(item => item.uid === contact.uid)
+        contactsInProject[index] = updatedContact
+        store.dispatch(setContactsInProject(projectId, contactsInProject))
 
         setContactLastVisitedBoardDate(projectId, contact.uid, lastVisitBoardProperty)
     }
@@ -627,11 +584,9 @@ export const getIfLoggedUserReachedEmptyInbox = dateTimestamp => {
     return !lastDateMoment.isBefore(date, 'day')
 }
 
-export const getUserWorkflow = (projectId, userId, task) => {
-    const user = task?.workflowTask
-        ? TasksHelper.getTaskOwner(userId, projectId)
-        : TasksHelper.getUserInProject(projectId, userId)
-    const workflow = user?.workflow?.[projectId] || null
+export const getUserWorkflow = (projectId, userId) => {
+    const user = TasksHelper.getUserInProject(projectId, userId)
+    const workflow = user && user.workflow && user.workflow[projectId] ? user.workflow[projectId] : null
     return workflow
 }
 
@@ -658,13 +613,6 @@ export const getUnknownUserData = () => {
     }
 }
 
-export const getAssistantPresentationData = assistant => ({
-    photoURL: assistant.photoURL50 || getUnknownUserData().photoURL,
-    displayName: assistant.displayName,
-    shortName: HelperFunctions.getFirstName(assistant.displayName),
-    isAssistant: true,
-})
-
 export const getUserPresentationData = userId => {
     if (userId) {
         const user = TasksHelper.getUser(userId)
@@ -678,7 +626,12 @@ export const getUserPresentationData = userId => {
         }
         const assistant = getAssistant(userId)
         if (assistant) {
-            return getAssistantPresentationData(assistant)
+            return {
+                photoURL: assistant.photoURL50 || getUnknownUserData().photoURL,
+                displayName: assistant.displayName,
+                shortName: HelperFunctions.getFirstName(assistant.displayName),
+                isAssistant: true,
+            }
         }
     }
     return getUnknownUserData()
@@ -735,19 +688,14 @@ export const getNewDefaultUser = (customData = {}) => {
     const dateNow = Date.now()
     // Critical identity fields must never be persisted as undefined/null. Because customData is
     // spread last (below) and Firestore runs with ignoreUndefinedProperties:true, an undefined
-    // displayName/email coming from the caller would overwrite the '' defaults here
+    // displayName/email/photoURL coming from the caller would both overwrite the '' defaults here
     // and then be dropped from the stored users/{uid} doc — surfacing later as the literal
     // "undefined" in the signup notification email. Strip nullish identity fields so the safe
-    // defaults below survive. Missing pictures use the bundled avatar at every size.
+    // defaults below survive, while preserving any real (incl. empty-string) value the caller set.
     const sanitizedCustomData = { ...customData }
     ;['displayName', 'email', 'photoURL'].forEach(field => {
         if (sanitizedCustomData[field] == null) delete sanitizedCustomData[field]
     })
-    const photoURL =
-        sanitizedCustomData.photoURL ||
-        sanitizedCustomData.photoURL300 ||
-        sanitizedCustomData.photoURL50 ||
-        getDefaultProfilePhotoURL()
     return {
         displayName: '',
         email: '',
@@ -816,14 +764,13 @@ export const getNewDefaultUser = (customData = {}) => {
         singUpUrl: '',
         noticeAboutTheBotBehavior: true,
         defaultProjectId: '',
-        // Project-scoped integration state is a map. Persisting null here made later atomic
-        // project-membership updates hit map validation with a non-map value.
-        apisConnected: {},
+        apisConnected: null,
         noteIdsByProject: {},
         unlockedKeysByGuides: {},
         inFocusTaskId: '',
         inFocusTaskProjectId: '',
         assistantId: '',
+        activeFullSearchDate: null,
         commentsData: {},
         firstLoginDateInDay: dateNow,
         activeTaskStartingDate: dateNow,
@@ -833,9 +780,6 @@ export const getNewDefaultUser = (customData = {}) => {
         showAllProjectsByTime: false,
         lastAssistantCommentData: {},
         ...sanitizedCustomData,
-        photoURL,
-        photoURL50: sanitizedCustomData.photoURL50 || photoURL,
-        photoURL300: sanitizedCustomData.photoURL300 || photoURL,
     }
 }
 

@@ -11,7 +11,6 @@ const {
     getUsersThatEarnedSomeGoldToday,
 } = require('../Users/usersFirestore')
 const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud')
-const { FieldValue } = require('firebase-admin/firestore')
 
 function logGoldAnalytics(userId, eventName, amount, source, context = {}) {
     return logEvent(userId, eventName, {
@@ -209,7 +208,7 @@ const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate, c
                     objectType: context.objectType || '',
                     status: 'skipped_no_daily_gold',
                     timestamp,
-                    createdAt: FieldValue.serverTimestamp(),
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 })
             }
             console.log('[gold][server] earnGold skipped because no daily gold remained', {
@@ -257,7 +256,7 @@ const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate, c
                 objectType: context.objectType || '',
                 status: 'processed',
                 timestamp,
-                createdAt: FieldValue.serverTimestamp(),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
             })
         }
 
@@ -275,7 +274,7 @@ const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate, c
         transaction.set(
             statisticsRef,
             {
-                gold: FieldValue.increment(goldToIncrease),
+                gold: admin.firestore.FieldValue.increment(goldToIncrease),
                 timestamp,
                 day: dayDate,
             },
@@ -348,14 +347,9 @@ const deductGold = async (userId, gold, context = {}) => {
         source,
         context,
         requireSufficientBalance: true,
-        // Forwarded exactly as `refundGold` already does. A spend site that can be replayed — a
-        // retried Cloud Function, an at-least-once redelivery — has no other way to be idempotent,
-        // and without it the only options are "charge twice" or "hand-roll a second claim store".
-        // Callers that pass nothing behave exactly as before: no key, no claim, no change.
-        idempotencyKey: context.idempotencyKey,
     })
 
-    if (result.success && !result.alreadyProcessed) {
+    if (result.success) {
         await logGoldAnalytics(userId, 'spend_gold', result.amount, source, context)
     }
 
@@ -372,10 +366,9 @@ const refundGold = async (userId, gold, context = {}) => {
         direction: 'refund',
         source,
         context,
-        idempotencyKey: context.idempotencyKey,
     })
 
-    if (result.success && !result.alreadyProcessed) {
+    if (result.success) {
         await logGoldAnalytics(userId, 'refund_gold', result.amount, source, context)
     }
 

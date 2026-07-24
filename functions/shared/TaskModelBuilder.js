@@ -16,23 +16,6 @@ const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsClou
 const TASK_PRIORITIES = new Set(['none', 'do_later', 'could_do', 'should_do', 'must_do'])
 
 /**
- * A task that belongs to a goal must carry that goal's `isPublicFor` as `parentGoalIsPublicFor`:
- * the open-task lists group a task under its goal only when this array says the reader may see
- * the goal (`processTaskChange` in utils/backends/openTasks.js), and a task with a `parentGoalId`
- * but no array is filed under "no goal" while still pointing at one. That is exactly what every
- * recurrence copy used to produce: `recurringTasksCloud` clones the completed task into these
- * params, so `parentGoalId` came through while this field was hardcoded to null - the new
- * occurrence silently dropped out of its goal group in every list, week after week. Pass the
- * caller's array through; a goal id with no usable array falls back to public-for-all, which is the
- * same default `mapGoalData` applies to a goal document that has no `isPublicFor` of its own.
- */
-function resolveParentGoalIsPublicFor(parentGoalId, parentGoalIsPublicFor) {
-    if (!parentGoalId) return null
-    if (Array.isArray(parentGoalIsPublicFor) && parentGoalIsPublicFor.length > 0) return parentGoalIsPublicFor
-    return [FEED_PUBLIC_FOR_ALL]
-}
-
-/**
  * Builds a complete task object with all required fields
  * @param {Object} params - Task creation parameters
  * @param {string} params.name - Task name (required)
@@ -68,8 +51,6 @@ function buildTaskObject({
     parentId = null,
     isSubtask = false,
     parentGoalId = null,
-    parentGoalIsPublicFor = null,
-    skipAutomaticGoalRouting = false,
     recurrence = 'never',
     recurrenceOriginalDueDate = null,
     recurrenceBaseDateOverride = null,
@@ -93,22 +74,6 @@ function buildTaskObject({
     autoFollowUpContactId = null,
     autoFollowUpStatusId = null,
     priority = 'none',
-    executionMode = 'workflow',
-    workflowTask = false,
-    workflowPayerUserId = null,
-    workflowAiPromptOverride = null,
-    assistantScheduleSource = null,
-    isAssistantEnabled = false,
-    aiModel = null,
-    aiTemperature = null,
-    aiReasoningEffort = null,
-    aiSystemMessage = null,
-    taskMetadata = null,
-    stepHistory = null,
-    currentReviewerId = null,
-    completed = null,
-    creatorId = null,
-    projectRouting = null,
 }) {
     // Validation
     if (!name || !name.trim()) {
@@ -150,12 +115,8 @@ function buildTaskObject({
         // User assignment
         userId: userId,
         userIds: finalUserIds,
-        currentReviewerId: currentReviewerId || userId,
+        currentReviewerId: userId,
         assigneeType: assigneeType,
-        executionMode: executionMode === 'direct' ? 'direct' : 'workflow',
-        workflowTask: workflowTask === true,
-        workflowPayerUserId,
-        workflowAiPromptOverride,
 
         // Observers and privacy
         observersIds: observersIds || [],
@@ -165,7 +126,7 @@ function buildTaskObject({
         isPublicFor: finalIsPublicFor,
 
         // Workflow and steps
-        stepHistory: stepHistory || [OPEN_STEP],
+        stepHistory: [OPEN_STEP],
         estimations: finalEstimations,
 
         // Dates and timing
@@ -174,13 +135,13 @@ function buildTaskObject({
         startTime: moment ? moment(now).format('HH:mm') : new Date(now).toTimeString().substring(0, 5),
         dueDate: finalDueDate,
         alertEnabled: false,
-        completed,
+        completed: null,
         completedTime: null,
         lastEditionDate: now,
         lastEditorId: userId,
 
         // Creation metadata
-        creatorId: creatorId || userId,
+        creatorId: userId,
         hasStar: hasStar,
         priority: TASK_PRIORITIES.has(priority) ? priority : 'none',
         sortIndex: now,
@@ -192,20 +153,7 @@ function buildTaskObject({
         subtaskNames: [],
         parentDone: false,
         parentGoalId: parentGoalId,
-        parentGoalIsPublicFor: resolveParentGoalIsPublicFor(parentGoalId, parentGoalIsPublicFor),
-        // An explicitly unlinked assistant-created task must not immediately be
-        // reattached by the onCreate goal router. Omission keeps legacy routing.
-        ...(skipAutomaticGoalRouting
-            ? {
-                  goalSuggestion: {
-                      status: 'superseded',
-                      source: 'assistant_parent_goal',
-                      projectId,
-                      resolvedAt: now,
-                      resolvedBy: creatorId || userId,
-                  },
-              }
-            : {}),
+        parentGoalIsPublicFor: null,
 
         // Linking and references
         linkedParentNotesIds: [],
@@ -241,13 +189,6 @@ function buildTaskObject({
 
         // AI and assistance
         assistantId: assistantId,
-        assistantScheduleSource,
-        isAssistantEnabled: isAssistantEnabled === true,
-        aiModel,
-        aiTemperature,
-        aiReasoningEffort,
-        aiSystemMessage,
-        taskMetadata,
         autoEstimation: autoEstimation,
         suggestedBy: suggestedBy,
 
@@ -261,7 +202,6 @@ function buildTaskObject({
 
         // Human readable ID (if generated)
         humanReadableId: humanReadableId,
-        ...(projectRouting ? { projectRouting } : {}),
         autoFollowUpManaged: autoFollowUpManaged,
         autoFollowUpType: autoFollowUpType,
         autoFollowUpContactId: autoFollowUpContactId,
@@ -319,7 +259,6 @@ function createTaskObject(params) {
 // CommonJS export - works with Node.js and can be converted by bundlers
 module.exports = {
     buildTaskObject,
-    resolveParentGoalIsPublicFor,
     validateTaskParams,
     createTaskObject,
     OPEN_STEP,

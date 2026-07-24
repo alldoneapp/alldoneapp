@@ -1,5 +1,4 @@
 const admin = require('firebase-admin')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const deleteNote = async (projectId, noteId, movingToOtherProjectId, admin) => {
     if (movingToOtherProjectId) await copyNoteToOtherProject(projectId, movingToOtherProjectId, noteId, admin)
@@ -18,8 +17,8 @@ const getNoteByParentId = async (projectId, parentId, admin) => {
 }
 
 const copyNoteToOtherProject = async (oldProjectId, newProjectId, noteId, admin) => {
-    const { getNotesBucketName } = require('../shared/notesStorageBucket')
-    const notesBucketName = getNotesBucketName()
+    const { defineString } = require('firebase-functions/params')
+    const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
 
     const notesBucket = admin.storage().bucket(notesBucketName)
     const noteContentFile = notesBucket.file(`notesData/${oldProjectId}/${noteId}`)
@@ -63,7 +62,7 @@ const updateNoteLastCommentData = async (projectId, noteId, lastComment, lastCom
                 transaction.update(ref, {
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: lastCommentType,
-                    [`commentsData.amount`]: FieldValue.increment(1),
+                    [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
                 })
         })
     } catch (e) {

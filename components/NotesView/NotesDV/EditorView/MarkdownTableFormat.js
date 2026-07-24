@@ -1,14 +1,7 @@
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 import v4 from 'uuid/v4'
-import { normalizeMarkdownTableCell } from '../../../../utils/markdownTableParser'
 
-// A table is block content, so the blot must be a BlockEmbed. The quill-1 era
-// version was an inline Embed (span) styled display:block — under quill 2 the
-// inline Embed's cursor-guard text nodes sit inside the contenteditable=false
-// span, which breaks caret placement on the lines around the table (clicking
-// above a pasted table could not put the cursor there). As a BlockEmbed the
-// table owns its line and quill handles caret navigation around it natively.
-const BlockEmbed = ReactQuill.Quill.import('blots/block/embed')
+const Embed = ReactQuill.Quill.import('blots/embed')
 
 const DEFAULT_TABLE_DATA = { rows: [], alignments: [] }
 
@@ -20,7 +13,7 @@ const parseInlineFormatting = text => {
 
     const findNextMatch = str => {
         const matches = []
-        const boldItalicMatch = /\*\*\*(.+?)\*\*\*/s.exec(str)
+        const boldItalicMatch = /\*\*\*(.+?)\*\*\*/.exec(str)
         if (boldItalicMatch) {
             matches.push({
                 index: boldItalicMatch.index,
@@ -32,7 +25,7 @@ const parseInlineFormatting = text => {
             })
         }
 
-        const boldMatch = /\*\*(.+?)\*\*/s.exec(str)
+        const boldMatch = /\*\*(.+?)\*\*/.exec(str)
         if (boldMatch && (!boldItalicMatch || boldMatch.index < boldItalicMatch.index)) {
             const beforeBold = str.substring(0, boldMatch.index)
             const afterBold = str.substring(boldMatch.index + boldMatch[0].length)
@@ -51,7 +44,7 @@ const parseInlineFormatting = text => {
         let italicSearchStart = 0
         while (italicSearchStart < str.length) {
             const searchStr = str.substring(italicSearchStart)
-            const italicMatch = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/s.exec(searchStr)
+            const italicMatch = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/.exec(searchStr)
             if (!italicMatch) break
 
             const actualIndex = italicSearchStart + italicMatch.index
@@ -71,7 +64,7 @@ const parseInlineFormatting = text => {
             italicSearchStart = actualIndex + 1
         }
 
-        const strikeMatch = /~~(.+?)~~/s.exec(str)
+        const strikeMatch = /~~(.+?)~~/.exec(str)
         if (strikeMatch) {
             matches.push({
                 index: strikeMatch.index,
@@ -132,11 +125,11 @@ const createCell = (tagName, text, alignment) => {
     if (alignment) {
         cell.style.textAlign = alignment
     }
-    appendFormattedText(cell, normalizeMarkdownTableCell(text))
+    appendFormattedText(cell, text)
     return cell
 }
 
-export default class MarkdownTableFormat extends BlockEmbed {
+export default class MarkdownTableFormat extends Embed {
     static create(tableData = DEFAULT_TABLE_DATA) {
         const node = super.create()
         const id = tableData.id || v4()
@@ -144,9 +137,7 @@ export default class MarkdownTableFormat extends BlockEmbed {
         const alignments = Array.isArray(tableData.alignments) ? tableData.alignments : []
 
         node.setAttribute('data-id', id)
-        // Legacy tables have no persisted id. Keep their value unchanged until the
-        // first edit; edited tables retain their identity across embed replacements.
-        node.setAttribute('data-markdown-table', JSON.stringify({ rows, alignments, ...(tableData.id ? { id } : {}) }))
+        node.setAttribute('data-markdown-table', JSON.stringify({ rows, alignments }))
         node.setAttribute('contenteditable', false)
 
         const scrollWrapper = document.createElement('div')
@@ -159,10 +150,7 @@ export default class MarkdownTableFormat extends BlockEmbed {
             const tableRow = document.createElement('tr')
             const cellTag = rowIndex === 0 ? 'th' : 'td'
             row.forEach((cellText, cellIndex) => {
-                const cell = createCell(cellTag, cellText, alignments[cellIndex])
-                cell.dataset.row = rowIndex
-                cell.dataset.column = cellIndex
-                tableRow.appendChild(cell)
+                tableRow.appendChild(createCell(cellTag, cellText, alignments[cellIndex]))
             })
             table.appendChild(tableRow)
         })
@@ -183,4 +171,4 @@ export default class MarkdownTableFormat extends BlockEmbed {
 
 MarkdownTableFormat.blotName = 'markdownTable'
 MarkdownTableFormat.className = 'ql-markdownTable'
-MarkdownTableFormat.tagName = 'div'
+MarkdownTableFormat.tagName = 'span'

@@ -11,8 +11,7 @@ const REGEX_ATTACHMENT = /^EbDsQTD14ahtSR5[\S]+EbDsQTD14ahtSR5[\S]+EbDsQTD14ahtS
 const REGEX_GENERIC = /^(&[\S]+)$/i
 const REGEX_HASHTAG = /(^|\s)(#[\S]+)$/i
 const REGEX_MENTION = /^(@[\S]+)$/i
-const REGEX_URL =
-    /^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^http:\/\/localhost:[0-9]+\/[^\s]{2,}$/i
+const REGEX_URL = /^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^http:\/\/localhost:[0-9]+\/[^\s]{2,}$/i
 
 const MENTION_SPACE_CODE_REGEX = /M2mVOSjAVPPKweL/gi
 
@@ -141,16 +140,6 @@ const mapGoalData = (goalId, algoliaObjectId, goal, projectId, canBeInactive) =>
         completionMilestoneDate: goal.completionMilestoneDate ? goal.completionMilestoneDate : BACKLOG_DATE_NUMERIC,
         isPublicFor: goal.isPublicFor ? goal.isPublicFor : [FEED_PUBLIC_FOR_ALL],
         ownerId: goal.ownerId ? goal.ownerId : ALL_USERS,
-        // Who created the goal (AT-2258). Deliberately NOT `ownerId`: that is the
-        // goal's assignee-scope and defaults to the `ALL_USERS` sentinel, which in
-        // practice is what virtually every goal carries (all 634 goals in the
-        // production index read `ownerId: "ALL_USERS"`), so filtering on it can
-        // never match a uid. The real creator lives on the goal doc as `creatorId`
-        // (written by `GoalsHelper.createGoal`). Empty string rather than
-        // `undefined` — an undefined value is dropped from the Algolia record
-        // entirely, which is indistinguishable from a record indexed before this
-        // change; an empty string is a real value that simply never equals a uid.
-        creatorId: goal.creatorId ? goal.creatorId : '',
         lockKey: goal.lockKey ? goal.lockKey : '',
         lastEditionDate: goal.lastEditionDate ? goal.lastEditionDate : Date.now(),
         canBeInactive,
@@ -200,11 +189,6 @@ const mapChatData = (chatId, algoliaObjectId, chat, projectId, customData) => {
         cleanName: parseTextForSearch(title, true),
         cleanLastComment: parseTextForSearch(lastComment, true),
         cleanComments,
-        // Creator of the topic, so global search can filter to "only objects I
-        // created" (AT-2258). Declared as `filterOnly(creatorId)` in
-        // `configAlgoliaIndex`. Records indexed before that change carry no
-        // `creatorId`, so they simply don't match the filter until reindexed.
-        creatorId: chat.creatorId ? chat.creatorId : '',
         lastEditionDate: chat.lastEditionDate ? chat.lastEditionDate : Date.now(),
         isPublicFor: chat.isPublicFor ? chat.isPublicFor : [FEED_PUBLIC_FOR_ALL],
         ...customData,
@@ -217,8 +201,8 @@ const mapContactData = (contactId, algoliaObjectId, contact, projectId) => {
     const extendedDescription = contact.extendedDescription
         ? contact.extendedDescription
         : contact.description
-          ? contact.description
-          : ''
+        ? contact.description
+        : ''
     return {
         objectID: algoliaObjectId,
         projectId: projectId,
@@ -261,8 +245,8 @@ const mapUserData = (userId, user) => {
     const extendedDescription = user.extendedDescription
         ? user.extendedDescription
         : user.description
-          ? user.description
-          : ''
+        ? user.description
+        : ''
     return {
         cleanDescription: '',
         uid: userId,

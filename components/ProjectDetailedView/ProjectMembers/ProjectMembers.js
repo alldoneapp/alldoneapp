@@ -1,8 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { size, sortBy } from 'lodash'
-import { useDispatch, useSelector } from 'react-redux'
-import v4 from 'uuid/v4'
+import { useSelector } from 'react-redux'
 
 import ProjectMembersHeader from './ProjectMembersHeader'
 import ProjectMemberItem from './ProjectMemberItem'
@@ -12,8 +11,6 @@ import EditMember from './EditMember'
 import AddMember from './AddMember'
 import URLsProjects, { URL_PROJECT_DETAILS_MEMBERS } from '../../../URLSystem/Projects/URLsProjects'
 import { DV_TAB_PROJECT_TEAM_MEMBERS } from '../../../utils/TabNavigationConstants'
-import { unwatch, watchProjectInvitations } from '../../../utils/backends/firestore'
-import { setInvitationsInProject } from '../../../redux/actions'
 
 const ProjectMembers = ({ project }) => {
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -21,18 +18,6 @@ const ProjectMembers = ({ project }) => {
     const invitationsInProject = useSelector(state => sortBy(state.projectInvitations[project.id], ['userEmail']))
 
     const newItemRef = useRef()
-    const dispatch = useDispatch()
-
-    // The only reader of a project's pending invitations, so the only place they are watched.
-    useEffect(() => {
-        const watcherKey = v4()
-        watchProjectInvitations(
-            project.id,
-            invitations => dispatch(setInvitationsInProject(project.id, invitations)),
-            watcherKey
-        )
-        return () => unwatch(watcherKey)
-    }, [project.id])
 
     useEffect(() => {
         writeBrowserURL()

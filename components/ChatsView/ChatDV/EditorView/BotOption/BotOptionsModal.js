@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch } from 'react-redux'
 
-import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
+import { MODAL_MAX_HEIGHT_GAP, applyPopoverWidth } from '../../../../../utils/HelperFunctions'
 import { colors } from '../../../../styles/global'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import { translate } from '../../../../../i18n/TranslationService'
@@ -14,18 +14,44 @@ import PreConfigTasksArea from './PreConfigTasksArea'
 import StopChatingOption from './StopChatingOption'
 import StartChatingOption from './StartChatingOption'
 import PreConfigTaskGeneratorModal from '../../../../UIComponents/FloatModals/PreConfigTaskGeneratorModal/PreConfigTaskGeneratorModal'
-import { resolveAssistantForProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
+import { getAssistantInProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
 import { setAssistantEnabled } from '../../../../../redux/actions'
 import SelectAssistantsOption from './SelectAssistantsOption'
 import AssistantModal from '../../../../UIComponents/FloatModals/ChangeAssistantModal/AssistantModal'
+import { setTaskAssistant } from '../../../../../utils/backends/Tasks/tasksFirestore'
+import { updateChatAssistant } from '../../../../../utils/backends/Chats/chatsFirestore'
+import { setNoteAssistant } from '../../../../../utils/backends/Notes/notesFirestore'
+import { setContactAssistant } from '../../../../../utils/backends/Contacts/contactsFirestore'
+import { setUserAssistant } from '../../../../../utils/backends/Users/usersFirestore'
+import { setSkillAssistant } from '../../../../../utils/backends/Skills/skillsFirestore'
+
+import { setGoalAssistant } from '../../../../../utils/backends/Goals/goalsFirestore'
 import { setSelectedNote, setTaskInDetailView } from '../../../../../redux/actions'
 import { setObjectAssistantEnabled } from '../../../../../utils/assistantHelper'
 import Backend from '../../../../../utils/BackendBridge'
-import { normalizeAssistantObjectType, setAssistantForObject } from './objectAssistantHelper'
-import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
-import SelectModelOption from './SelectModelOption'
-import ThreadAssistantModelModal from './ThreadAssistantModelModal'
-import { useThreadAssistantModel } from './threadAssistantModelState'
+
+const normalizeAssistantObjectType = objectType => {
+    switch (objectType) {
+        case 'task':
+            return 'tasks'
+        case 'chat':
+            return 'chats'
+        case 'topic':
+            return 'topics'
+        case 'note':
+            return 'notes'
+        case 'contact':
+            return 'contacts'
+        case 'user':
+            return 'users'
+        case 'skill':
+            return 'skills'
+        case 'goal':
+            return 'goals'
+        default:
+            return objectType
+    }
+}
 
 export default function BotOptionsModal({
     objectType,
@@ -43,15 +69,9 @@ export default function BotOptionsModal({
     const dispatch = useDispatch()
     const [selectedTask, setSelectedTask] = useState(null)
     const [showAssistants, setShowAssistants] = useState(false)
-    const [showModels, setShowModels] = useState(false)
     const [linkedNoteTitle, setLinkedNoteTitle] = useState(null)
     const [width, height] = useWindowSize()
     const normalizedObjectType = normalizeAssistantObjectType(objectType)
-    const {
-        model: threadModel,
-        isSupported: canPinThreadModel,
-        updateModel: updateThreadModel,
-    } = useThreadAssistantModel(projectId, objectId, normalizedObjectType)
 
     const linkedNoteId = parentObject?.noteId
     useEffect(() => {
@@ -72,7 +92,7 @@ export default function BotOptionsModal({
         }
     }, [projectId, linkedNoteId])
 
-    const assistant = resolveAssistantForProjectObject(projectId, assistantId)
+    const assistant = getAssistantInProjectObject(projectId, assistantId)
 
     const setAssistantEnabledForObject = isEnabled => {
         setObjectAssistantEnabled(projectId, objectId, normalizedObjectType, isEnabled)
@@ -102,7 +122,21 @@ export default function BotOptionsModal({
 
         setAssistantId?.(selectedAssistantId)
 
-        await setAssistantForObject(projectId, objectId, normalizedObjectType, selectedAssistantId, true)
+        if (normalizedObjectType === 'tasks') {
+            await setTaskAssistant(projectId, objectId, selectedAssistantId, true)
+        } else if (normalizedObjectType === 'chats' || normalizedObjectType === 'topics') {
+            await updateChatAssistant(projectId, objectId, selectedAssistantId)
+        } else if (normalizedObjectType === 'notes') {
+            await setNoteAssistant(projectId, objectId, selectedAssistantId, true)
+        } else if (normalizedObjectType === 'contacts') {
+            await setContactAssistant(projectId, objectId, selectedAssistantId, true)
+        } else if (normalizedObjectType === 'users') {
+            await setUserAssistant(projectId, objectId, selectedAssistantId, true)
+        } else if (normalizedObjectType === 'skills') {
+            await setSkillAssistant(projectId, objectId, selectedAssistantId, true)
+        } else if (normalizedObjectType === 'goals') {
+            await setGoalAssistant(projectId, objectId, selectedAssistantId, true)
+        }
 
         // Optimistic update for UI
         if (parentObject) {
@@ -151,7 +185,7 @@ export default function BotOptionsModal({
     }, [])
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             {showAssistants ? (
                 <AssistantModal
                     closeModal={() => {
@@ -160,15 +194,6 @@ export default function BotOptionsModal({
                     projectId={projectId}
                     updateAssistant={updateAssistant}
                     currentAssistantId={assistantId || assistant?.uid}
-                />
-            ) : showModels ? (
-                <ThreadAssistantModelModal
-                    closeModal={() => {
-                        setShowModels(false)
-                    }}
-                    selectedModel={threadModel}
-                    assistantModel={assistant?.model}
-                    updateModel={updateThreadModel}
                 />
             ) : selectedTask ? (
                 <PreConfigTaskGeneratorModal
@@ -185,7 +210,7 @@ export default function BotOptionsModal({
                         }
                         const aiSettings = {
                             model: selectedTask.aiModel,
-                            reasoningEffort: selectedTask.aiReasoningEffort,
+                            temperature: selectedTask.aiTemperature,
                             systemMessage: selectedTask.aiSystemMessage,
                         }
                         onSelectBotOption(prompt, selectedTask.name, aiSettings, {
@@ -226,16 +251,6 @@ export default function BotOptionsModal({
                             <Line style={{ marginVertical: 4 }} />
                         </>
                     )}
-                    {canPinThreadModel && (
-                        <>
-                            <SelectModelOption
-                                threadModel={threadModel}
-                                assistantModel={assistant?.model}
-                                onPress={() => setShowModels(true)}
-                            />
-                            <Line style={{ marginVertical: 4 }} />
-                        </>
-                    )}
                     <StartChatingOption
                         assistant={assistant}
                         closeModal={closeModal}
@@ -271,7 +286,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

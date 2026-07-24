@@ -1,17 +1,14 @@
 import moment from 'moment'
 import { getDb, mapTaskData } from './firestore'
-import { createCachedSnapshotGate } from './cachedSnapshotGate'
 
 import store from '../../redux/store'
+import { startLoadingData, stopLoadingData } from '../../redux/actions'
 import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
 import TasksHelper, { OPEN_STEP } from '../../components/TaskListView/Utils/TasksHelper'
 import { chronoEntriesOrder } from '../HelperFunctions'
 import { ESTIMATION_0_MIN, getEstimationRealValue } from '../EstimationHelper'
 
 let userTasksInWorkflow = {}
-
-export const taskBelongsInWorkflowBoard = (task, assistantOwner) =>
-    assistantOwner ? task?.workflowTask === true : true
 
 const processTaskChange = (
     projectId,
@@ -112,10 +109,12 @@ const processSubtaskChange = (subtasksByParentId, subtasksById, subtasksListToSo
 }
 
 export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
+    setTimeout(() => {
+        store.dispatch(startLoadingData())
+    })
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
     const loggedUserId = loggedUser.uid
-    const assistantOwner = !!currentUser.temperature
 
     unwatchTasksInWorkflow(projectId)
 
@@ -177,54 +176,50 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
     let cacheChanges = []
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
 
-    const query = getDb()
+    const unsub = getDb()
         .collection(`items/${projectId}/tasks`)
         .where('userId', '==', currentUserId)
         .where('inDone', '==', false)
         .where('currentReviewerId', '!=', currentUserId)
-        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
+            const changes = querySnapshot.docChanges()
+            if (querySnapshot.metadata.fromCache) {
+                cacheChanges = [...cacheChanges, ...changes]
+            } else {
+                const mergedChanges = [...cacheChanges, ...changes]
+                if (mergedChanges.length > 0) {
+                    const { tasks, subtasks } = processTaskChanges(
+                        projectId,
+                        mergedChanges,
+                        storedTasks,
+                        tasksById,
+                        estimationByDate,
+                        amountOfTasksByDate,
+                        subtasksById,
+                        subtasksByParentId
+                    )
 
-    const gate = createCachedSnapshotGate(() => handleWorkflowTasksSnapshot, { loadingSource: 'workflow_tasks' })
-    function handleWorkflowTasksSnapshot(querySnapshot) {
-        const changes = querySnapshot
-            .docChanges()
-            .filter(change => taskBelongsInWorkflowBoard(change.doc.data(), assistantOwner))
-        if (gate.shouldBuffer(querySnapshot)) {
-            cacheChanges = [...cacheChanges, ...changes]
-        } else {
-            const mergedChanges = [...cacheChanges, ...changes]
-            if (mergedChanges.length > 0) {
-                const { tasks, subtasks } = processTaskChanges(
-                    projectId,
-                    mergedChanges,
-                    storedTasks,
-                    tasksById,
-                    estimationByDate,
-                    amountOfTasksByDate,
-                    subtasksById,
-                    subtasksByParentId
-                )
+                    storedTasks = tasks
+                    subtasksByParentId = subtasks
 
-                storedTasks = tasks
-                subtasksByParentId = subtasks
+                    const tasksByDateAndStep = Object.entries(tasks).sort((a, b) => b[0] - a[0])
+                    for (let i = 0; i < tasksByDateAndStep.length; i++) {
+                        const element = tasksByDateAndStep[i]
+                        const date = element[0]
+                        const tasksByStep = Object.entries(element[1])
+                        tasksByStep.sort(chronoEntriesOrder)
+                        tasksByDateAndStep[i] = [date, tasksByStep]
+                    }
 
-                const tasksByDateAndStep = Object.entries(tasks).sort((a, b) => b[0] - a[0])
-                for (let i = 0; i < tasksByDateAndStep.length; i++) {
-                    const element = tasksByDateAndStep[i]
-                    const date = element[0]
-                    const tasksByStep = Object.entries(element[1])
-                    tasksByStep.sort(chronoEntriesOrder)
-                    tasksByDateAndStep[i] = [date, tasksByStep]
+                    taskCallback(tasksByDateAndStep, estimationByDate, amountOfTasksByDate)
+                    subtaskCallback(subtasks)
+
+                    cacheChanges = []
                 }
-
-                taskCallback(tasksByDateAndStep, estimationByDate, amountOfTasksByDate)
-                subtaskCallback(subtasks)
-
-                cacheChanges = []
+                store.dispatch(stopLoadingData())
             }
-        }
-    }
-    const unsub = gate.subscribe(query)
+        })
 
     userTasksInWorkflow[projectId] = { [currentUserId]: unsub }
 }

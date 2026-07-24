@@ -8,11 +8,9 @@ import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import TasksAmountContainers from './TasksAmountContainers/TasksAmountContainers'
 import WriteTasksUrl from './WriteTasksUrl'
 import TasksSections from './TasksSections'
-import useDeferredStartupWork from '../../hooks/useDeferredStartupWork'
 
 export default function MainTasksView() {
     const dispatch = useDispatch()
-    const deferredStartupWorkReady = useDeferredStartupWork()
 
     useEffect(() => {
         dispatch([setSelectedSidebarTab(DV_TAB_ROOT_TASKS), setNavigationRoute(DV_TAB_ROOT_TASKS)])
@@ -21,7 +19,7 @@ export default function MainTasksView() {
     return (
         <KeyboardAvoidingView behavior="padding" style={localStyles.container}>
             <WriteTasksUrl />
-            {deferredStartupWorkReady && <TasksAmountContainers />}
+            <TasksAmountContainers />
             <HashtagFiltersView handleSpaces={true} />
             <TasksSections />
         </KeyboardAvoidingView>

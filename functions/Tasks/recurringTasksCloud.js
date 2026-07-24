@@ -2,7 +2,6 @@ const admin = require('firebase-admin')
 const moment = require('moment')
 const { cloneDeep } = require('lodash')
 const { getTaskNameWithoutMeta } = require('../Utils/HelperFunctionsCloud')
-const { FieldValue } = require('firebase-admin/firestore')
 
 // Task recurrence constants
 const RECURRENCE_NEVER = 'never'
@@ -476,7 +475,6 @@ async function createSubtasksCopiesInCloudFunction(projectId, newParentTaskId, o
 
             const newSubtask = {
                 ...originalSubtask,
-                projectId,
                 priority: ['must_do', 'should_do', 'could_do', 'do_later', 'none'].includes(originalSubtask.priority)
                     ? originalSubtask.priority
                     : 'none',
@@ -546,7 +544,7 @@ async function updateOriginalTaskRecurrence(projectId, taskId, originalTask) {
             recurrence: RECURRENCE_NEVER,
             timesDoneInExpectedDay: 0,
             timesDone: 0,
-            recurrenceBaseDateOverride: FieldValue.delete(),
+            recurrenceBaseDateOverride: admin.firestore.FieldValue.delete(),
         })
 
         console.log('✅ Successfully updated original task recurrence settings')

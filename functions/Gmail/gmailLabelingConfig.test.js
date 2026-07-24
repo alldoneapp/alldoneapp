@@ -9,16 +9,10 @@ const {
 } = require('./gmailLabelingConfig')
 
 describe('gmailLabelingConfig', () => {
-    test('defaults Gmail labeling to GPT-5.6 Luna', () => {
+    test('defaults Gmail labeling to GPT-5.4 nano', () => {
         const config = normalizeConfigInput('project-1', {})
 
-        expect(config.model).toBe('MODEL_GPT6_LUNA')
-    })
-
-    test('accepts selectable Gmail labeling models and rejects retired ones', () => {
-        expect(normalizeConfigInput('project-1', { model: 'MODEL_GPT6_SOL' }).model).toBe('MODEL_GPT6_SOL')
-        expect(normalizeConfigInput('project-1', { model: 'MODEL_GPT5_6_TERRA' }).model).toBe('MODEL_GPT5_6_TERRA')
-        expect(normalizeConfigInput('project-1', { model: 'MODEL_GPT5_4_NANO' }).model).toBe('MODEL_GPT6_LUNA')
+        expect(config.model).toBe('MODEL_GPT5_4_NANO')
     })
 
     test('defaults Gmail labeling sync interval to 30 minutes', () => {

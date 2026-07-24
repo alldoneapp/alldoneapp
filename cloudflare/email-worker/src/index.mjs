@@ -24,22 +24,12 @@ export default {
     },
 }
 
-export function parseDateHeader(value) {
-    const normalized = String(value || '').trim()
-    if (!normalized) return null
-
-    const parsed = Date.parse(normalized)
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
-}
-
 export async function buildNormalizedPayload(message, env = {}) {
     const rawHeaders = objectFromHeaders(message.headers)
     // Use only the SMTP envelope sender for authorization. Header From can be spoofed independently.
     const parsedFrom = extractMailboxAddress(message.from || '')
     const parsedReplyTo = extractMailboxAddress(rawHeaders['reply-to'] || rawHeaders['Reply-To'] || '')
-    // The SMTP envelope includes BCC delivery targets; it must never masquerade as
-    // a visible To header, or Anna could expose a blind copy by replying to everyone.
-    const toEmails = extractMailboxAddresses(rawHeaders.to || rawHeaders.To || '')
+    const toEmails = extractMailboxAddresses(rawHeaders.to || rawHeaders.To || message.to || '')
     const ccEmails = extractMailboxAddresses(rawHeaders.cc || rawHeaders.Cc || '')
     const parsedEmail = await parseMimeMessage(message)
     const { textBody, htmlBody } = await readBodyParts(message, parsedEmail)
@@ -54,9 +44,6 @@ export async function buildNormalizedPayload(message, env = {}) {
         textBody,
         htmlBody,
         receivedAt: Date.now(),
-        // When the sender actually sent the mail, as opposed to when we received it. Kept as
-        // an explicit field so downstream consumers do not have to dig through rawHeaders.
-        sentAt: parseDateHeader(rawHeaders.date || rawHeaders.Date || ''),
         headers: rawHeaders,
         threadHeaders: {
             replyTo: parsedReplyTo,
@@ -124,10 +111,10 @@ async function readAttachments(message, parsedEmail = null) {
             content instanceof Uint8Array
                 ? content
                 : content instanceof ArrayBuffer
-                  ? new Uint8Array(content)
-                  : typeof Buffer !== 'undefined' && Buffer.isBuffer(content)
-                    ? new Uint8Array(content)
-                    : new Uint8Array()
+                ? new Uint8Array(content)
+                : typeof Buffer !== 'undefined' && Buffer.isBuffer(content)
+                ? new Uint8Array(content)
+                : new Uint8Array()
 
         attachments.push({
             fileName,

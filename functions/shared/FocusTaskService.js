@@ -20,14 +20,6 @@ const {
 } = require('../Utils/HelperFunctionsCloud')
 const { mapGoalData, mapMilestoneData } = require('../Utils/MapDataFuncions')
 const { ProjectService } = require('./ProjectService')
-const { isTaskOnUserPlate } = require('./focusTaskEligibility')
-const { resolveTaskSortIndex } = require('./calendarTaskSortIndex')
-const { compareTasksByCalendarPlacement } = require('./calendarTaskOrder')
-const {
-    compareCalendarFocusCandidacy,
-    getCalendarFocusCandidacy,
-    getCalendarFocusDueDateWindow,
-} = require('./calendarFocusWindow')
 
 const ALL_USERS = 'ALL_USERS'
 const NOT_PARENT_GOAL_INDEX = '0'
@@ -37,20 +29,9 @@ const NOT_PARENT_GOAL_INDEX = '0'
 // next focus when a higher-priority one exists.
 const TASK_PRIORITY_RANK = { none: 0, do_later: 1, could_do: 2, should_do: 3, must_do: 4 }
 const getTaskPriorityRank = priority => TASK_PRIORITY_RANK[priority] || 0
-// AT-2259 - these tasks come straight from `doc.data()`, so a calendar task written before the fix
-// still carries the event start in sortIndex. Left raw it would outrank everything and the next
-// focus would jump to a meeting that is nowhere near the top of the list the user is looking at.
-// (The deliberate imminent-meeting preference is a separate, explicit rule - see AT-2251.)
-const getComparableSortIndex = task => resolveTaskSortIndex(task.sortIndex, task.calendarData, task.created) || 0
-// AT-2351 - calendar placement is the strongest term, matching the rendered list where it is
-// applied last and therefore outranks priority. Without it the next focus could be a meeting the
-// user can see sitting at the bottom of the group.
 const compareTasksByPriorityThenSortIndex = (a, b) => {
-    const calendarDiff = compareTasksByCalendarPlacement(a, b)
-    if (calendarDiff !== 0) return calendarDiff
-
     const priorityDiff = getTaskPriorityRank(b.priority) - getTaskPriorityRank(a.priority)
-    return priorityDiff !== 0 ? priorityDiff : getComparableSortIndex(b) - getComparableSortIndex(a)
+    return priorityDiff !== 0 ? priorityDiff : (b.sortIndex || 0) - (a.sortIndex || 0)
 }
 
 class FocusTaskService {
@@ -113,22 +94,7 @@ class FocusTaskService {
         return !task?.parentGoalId
     }
 
-    /**
-     * AT-2251 — `excludeTaskId` means "not this one", NOT "surprise me".
-     *
-     * These two were the same flag until this ticket, and the conflation is what made the focus
-     * task the frontend optimistically shows differ from the one the backend finally writes. Every
-     * replacement path (a completed focus task, an auto-postponed one, a workflow step move) passes
-     * `excludeTaskId` purely to keep the task that just LEFT focus out of the candidate list — and
-     * silently inherited a `Math.random()` pick over the top 10 candidates that only the explicit
-     * "give me a different focus task" action ever wanted. The client picker is deterministic, so
-     * the two could only ever agree by luck.
-     *
-     * `spreadAcrossTopCandidates` now carries that intent explicitly and defaults to off, so the
-     * randomness survives exactly where it is a feature (getFocusTask's `forceNew`) and nowhere
-     * else.
-     */
-    pickPreferredTask(tasks, excludeTaskId = null, { spreadAcrossTopCandidates = false } = {}) {
+    pickPreferredTask(tasks, excludeTaskId = null) {
         if (!tasks || tasks.length === 0) return null
 
         const filteredTasks = excludeTaskId ? tasks.filter(task => task.id !== excludeTaskId) : tasks
@@ -139,7 +105,7 @@ class FocusTaskService {
         const topRank = Math.max(...filteredTasks.map(task => getTaskPriorityRank(task.priority)))
         const topTierTasks = filteredTasks.filter(task => getTaskPriorityRank(task.priority) === topRank)
 
-        if (spreadAcrossTopCandidates) {
+        if (excludeTaskId) {
             // Preserve the historical "spread" behaviour, but only within the top-priority tier.
             const candidates = topTierTasks.slice(0, 10)
             return candidates[Math.floor(Math.random() * candidates.length)]
@@ -148,7 +114,7 @@ class FocusTaskService {
         return topTierTasks[0]
     }
 
-    pickGeneralTask(tasks, excludeTaskId = null, pickOptions = {}) {
+    pickGeneralTask(tasks, excludeTaskId = null) {
         if (!tasks || tasks.length === 0) return null
 
         const generalTasks = tasks.filter(task => this.isGeneralTask(task))
@@ -157,7 +123,7 @@ class FocusTaskService {
         const nonWorkflowGeneralTasks = generalTasks.filter(task => task.userIds?.length === 1)
         const candidateTasks = nonWorkflowGeneralTasks.length > 0 ? nonWorkflowGeneralTasks : generalTasks
 
-        return this.pickPreferredTask(candidateTasks, excludeTaskId, pickOptions)
+        return this.pickPreferredTask(candidateTasks, excludeTaskId)
     }
 
     getGoalsOwnerId(project, assigneeId) {
@@ -356,7 +322,7 @@ class FocusTaskService {
         return validGroups.flatMap(([, groupTasks]) => groupTasks)
     }
 
-    async pickNextFocusTaskByDisplayOrder(projectId, userId, tasks, excludeTaskId = null, pickOptions = {}) {
+    async pickNextFocusTaskByDisplayOrder(projectId, userId, tasks, excludeTaskId = null) {
         if (!tasks || tasks.length === 0) return null
 
         const nonWorkflowTasks = tasks.filter(task => task.userIds?.length === 1)
@@ -374,7 +340,7 @@ class FocusTaskService {
             doneMilestones,
             goalsById
         )
-        const pickedNonWorkflow = this.pickPreferredTask(orderedNonWorkflow, excludeTaskId, pickOptions)
+        const pickedNonWorkflow = this.pickPreferredTask(orderedNonWorkflow, excludeTaskId)
         if (pickedNonWorkflow) return pickedNonWorkflow
 
         const orderedWorkflow = this.sortTasksByDisplayOrder(
@@ -386,7 +352,7 @@ class FocusTaskService {
             goalsById
         )
 
-        return this.pickPreferredTask(orderedWorkflow, excludeTaskId, pickOptions)
+        return this.pickPreferredTask(orderedWorkflow, excludeTaskId)
     }
 
     /**
@@ -431,18 +397,9 @@ class FocusTaskService {
 
             const taskData = taskDoc.data()
 
-            // Check if task is still open and actionable by the user.
-            // AT-2193: `userId !== userId` alone is not enough — a task the user still OWNS can
-            // have been handed on to the next workflow step's reviewer, at which point it is no
-            // longer theirs to work on and must stop being their focus task. This is also what
-            // self-heals focus state that was set before the rule existed.
-            if (
-                taskData.done ||
-                taskData.inDone ||
-                taskData.userId !== userId ||
-                !isTaskOnUserPlate(taskData, userId)
-            ) {
-                // Focus task is completed, unassigned, or parked in another reviewer's step
+            // Check if task is still open and assigned to user
+            if (taskData.done || taskData.inDone || taskData.userId !== userId) {
+                // Focus task is completed or no longer assigned to user
                 await this.options.database.doc(`users/${userId}`).update({
                     inFocusTaskId: '',
                     inFocusTaskProjectId: '',
@@ -478,19 +435,10 @@ class FocusTaskService {
      * @param {string} userId - User ID
      * @param {string} currentProjectId - Current project context (optional)
      * @param {string} previousTaskParentGoalId - Previous task's parent goal for prioritization (optional)
-     * @param {string} excludeTaskId - Task ID to keep OUT of the candidate list (optional). Typically the
-     *                                 task that just left focus. AT-2251: this no longer randomizes the
-     *                                 pick — pass `options.spreadAcrossTopCandidates` for that.
+     * @param {string} excludeTaskId - Task ID to exclude from selection (optional, used for "force new" feature).
+     *                                 When provided, selects randomly from top 10 candidates for variety.
      * @param {number} timezoneOffset - User's timezone offset in minutes (optional, defaults to UTC)
      * @param {string} previousTaskMilestoneId - Previous task's milestone ID for goal ordering (optional)
-     * @param {Object} [options]
-     * @param {boolean} [options.spreadAcrossTopCandidates] - Pick randomly among the top candidates of the
-     *        highest priority tier instead of deterministically taking the first. Only the explicit
-     *        "give me a different focus task" action (getFocusTask's `forceNew`) wants this: every other
-     *        caller is REPLACING a focus task and must agree with the client's deterministic pick.
-     * @param {string} [options.expectedCurrentFocusTaskId] - Only install the replacement while the user's
-     *        focus is still this task. Lets a slow trigger stand down instead of overwriting a swap
-     *        another writer (usually the client) already completed. See setNewFocusTask.
      * @returns {Object|null} New focus task or null if none found
      */
     async findAndSetNewFocusTask(
@@ -499,14 +447,8 @@ class FocusTaskService {
         previousTaskParentGoalId = null,
         excludeTaskId = null,
         timezoneOffset = null,
-        previousTaskMilestoneId = null,
-        options = {}
+        previousTaskMilestoneId = null
     ) {
-        const pickOptions = { spreadAcrossTopCandidates: !!options.spreadAcrossTopCandidates }
-        const setOptions =
-            options.expectedCurrentFocusTaskId !== undefined
-                ? { expectedPreviousFocusTaskId: options.expectedCurrentFocusTaskId }
-                : {}
         await this.ensureInitialized()
 
         if (!userId || typeof userId !== 'string') {
@@ -537,9 +479,7 @@ class FocusTaskService {
             // - Else prefer the user's top-sorted project (by sortIndexByUser desc)
             // - Fallbacks: user's default project, then first user project
             let searchProjectId
-            // Only one of the user's own projects is a starting point; a foreign id falls through
-            // to the same choice as no id at all.
-            if (currentProjectId && userProjectIds.includes(currentProjectId)) {
+            if (currentProjectId) {
                 searchProjectId = currentProjectId
             } else {
                 try {
@@ -566,8 +506,8 @@ class FocusTaskService {
                         method: topProjectId
                             ? 'top_sorted'
                             : userData.defaultProjectId
-                              ? 'default_project'
-                              : 'first_user_project',
+                            ? 'default_project'
+                            : 'first_user_project',
                         totalProjects: userProjectIds.length,
                     })
                 } catch (projectSortError) {
@@ -581,41 +521,34 @@ class FocusTaskService {
 
             // Apply user's timezone for accurate time-based task selection
             const currentTime = this.applyTimezone(this.options.moment(), timezoneOffset)
+            const fifteenMinutesFromNow = this.applyTimezone(this.options.moment(), timezoneOffset).add(15, 'minutes')
             const endOfToday = this.applyTimezone(this.options.moment(), timezoneOffset).endOf('day').valueOf()
 
             console.log('FocusTaskService: Time calculations with user timezone', {
                 userId,
                 timezoneOffset,
                 currentTime: currentTime.format('YYYY-MM-DD HH:mm:ss'),
+                fifteenMinutesFromNow: fifteenMinutesFromNow.format('YYYY-MM-DD HH:mm:ss'),
                 endOfToday: new Date(endOfToday).toISOString(),
             })
 
-            // Phase 1: Check for calendar tasks in their focus window across all user projects.
-            // Note: Calendar tasks are NOT randomized - the shared rule picks deterministically.
-            //
-            // AT-2496 - this used to pre-filter on `sortIndex >= now && sortIndex < now + 15min`,
-            // which selected nothing at all once AT-2259 stopped writing the event start into
-            // `sortIndex` (it is the sync-time arrival index now, always in the past). The window
-            // is `dueDate`-based instead: a calendar task's `dueDate` IS its event day, so the
-            // range is a cheap superset of the candidates, and it rides the existing
-            // `inDone | userId | dueDate` index. What actually decides is
-            // `getCalendarFocusCandidacy`; `done`/`isSubtask` are filtered in memory so the query
-            // needs no index this project would have to deploy by hand.
+            // Phase 1: Check for upcoming calendar tasks across all user projects
+            // Note: Calendar tasks are NOT randomized - we always select the earliest upcoming task
             let earliestUpcomingCalendarTask = null
             let earliestUpcomingCalendarTaskProject = null
-            let bestCalendarCandidacy = null
-            const nowMs = currentTime.valueOf()
-            const calendarDueDateWindow = getCalendarFocusDueDateWindow(nowMs)
+            let earliestStartTime = this.applyTimezone(this.options.moment(), timezoneOffset).add(16, 'minutes')
 
             for (const projectId of userProjectIds) {
                 try {
                     const calendarQuery = this.options.database
                         .collection(`items/${projectId}/tasks`)
                         .where('userId', '==', userId)
+                        .where('done', '==', false)
                         .where('inDone', '==', false)
-                        .where('dueDate', '>=', calendarDueDateWindow.from)
-                        .where('dueDate', '<=', calendarDueDateWindow.to)
-                        .orderBy('dueDate', 'asc')
+                        .where('isSubtask', '==', false)
+                        .where('sortIndex', '>=', currentTime.valueOf())
+                        .where('sortIndex', '<', fifteenMinutesFromNow.valueOf())
+                        .orderBy('sortIndex', 'asc')
 
                     const snapshot = await calendarQuery.get()
 
@@ -625,22 +558,21 @@ class FocusTaskService {
                         if (excludeTaskId && task.id === excludeTaskId) {
                             continue
                         }
-                        if (task.done || task.isSubtask) {
-                            continue
-                        }
-                        // AT-2193: never focus a task that has already moved on to another
-                        // reviewer's workflow step, even when the user still owns it.
-                        if (!isTaskOnUserPlate(task, userId)) {
-                            continue
-                        }
-
-                        const candidacy = getCalendarFocusCandidacy(task.calendarData, nowMs)
-                        if (!candidacy) continue
-
-                        if (compareCalendarFocusCandidacy(candidacy, bestCalendarCandidacy) < 0) {
-                            earliestUpcomingCalendarTask = task
-                            earliestUpcomingCalendarTaskProject = projectId
-                            bestCalendarCandidacy = candidacy
+                        if (task.calendarData && task.calendarData.start) {
+                            const taskStartTimeString = task.calendarData.start.dateTime || task.calendarData.start.date
+                            // Apply timezone to task start time for accurate comparison
+                            const taskStartTime = this.applyTimezone(
+                                this.options.moment(taskStartTimeString),
+                                timezoneOffset
+                            )
+                            if (
+                                taskStartTime.isBetween(currentTime, fifteenMinutesFromNow, undefined, '[)') &&
+                                taskStartTime.isBefore(earliestStartTime)
+                            ) {
+                                earliestUpcomingCalendarTask = task
+                                earliestUpcomingCalendarTaskProject = projectId
+                                earliestStartTime = taskStartTime
+                            }
                         }
                     }
                 } catch (error) {
@@ -649,14 +581,7 @@ class FocusTaskService {
             }
 
             if (earliestUpcomingCalendarTask) {
-                const installedCalendarTask = await this.setNewFocusTask(
-                    userId,
-                    earliestUpcomingCalendarTaskProject,
-                    earliestUpcomingCalendarTask,
-                    setOptions
-                )
-                // The write stood down because the focus task had already moved on (AT-2251).
-                if (installedCalendarTask === false) return null
+                await this.setNewFocusTask(userId, earliestUpcomingCalendarTaskProject, earliestUpcomingCalendarTask)
                 return {
                     id: earliestUpcomingCalendarTask.id,
                     projectId: earliestUpcomingCalendarTaskProject,
@@ -684,10 +609,7 @@ class FocusTaskService {
                         task =>
                             task.dueDate <= endOfToday &&
                             !task.calendarData &&
-                            (!excludeTaskId || task.id !== excludeTaskId) &&
-                            // AT-2193: the query above matches on ownership, which still includes
-                            // tasks this user has already handed on to the next workflow step.
-                            isTaskOnUserPlate(task, userId)
+                            (!excludeTaskId || task.id !== excludeTaskId)
                     )
 
                 const previousTaskWasGeneral =
@@ -702,7 +624,7 @@ class FocusTaskService {
                     previousFocusWasInSearchProject
 
                 if (shouldPrioritizeGeneralTasksInProject) {
-                    newFocusedTask = this.pickGeneralTask(allFetchedTasks, excludeTaskId, pickOptions)
+                    newFocusedTask = this.pickGeneralTask(allFetchedTasks, excludeTaskId)
                 }
 
                 // Prioritize tasks in same goal group as previous task
@@ -712,7 +634,7 @@ class FocusTaskService {
                     )
                     const nonWorkflowTasksInGroup = tasksInSameGroup.filter(task => task.userIds?.length === 1)
                     if (nonWorkflowTasksInGroup.length > 0) {
-                        newFocusedTask = this.pickPreferredTask(nonWorkflowTasksInGroup, excludeTaskId, pickOptions)
+                        newFocusedTask = this.pickPreferredTask(nonWorkflowTasksInGroup, excludeTaskId)
                     }
                     // If only workflow tasks remain in same goal, fall through to goal-order fallback
                     // which will find non-workflow tasks in other goals first
@@ -730,8 +652,7 @@ class FocusTaskService {
             }
 
             if (newFocusedTask) {
-                const installed = await this.setNewFocusTask(userId, searchProjectId, newFocusedTask, setOptions)
-                if (installed === false) return null
+                await this.setNewFocusTask(userId, searchProjectId, newFocusedTask)
                 return {
                     id: newFocusedTask.id,
                     projectId: searchProjectId,
@@ -805,9 +726,7 @@ class FocusTaskService {
                                     task =>
                                         task.dueDate <= endOfToday &&
                                         !task.calendarData &&
-                                        (!excludeTaskId || task.id !== excludeTaskId) &&
-                                        // AT-2193: same rule as the current project.
-                                        isTaskOnUserPlate(task, userId)
+                                        (!excludeTaskId || task.id !== excludeTaskId)
                                 )
 
                             if (tasksFromOtherProject.length > 0) {
@@ -815,21 +734,14 @@ class FocusTaskService {
                                     projectId,
                                     userId,
                                     tasksFromOtherProject,
-                                    excludeTaskId,
-                                    pickOptions
+                                    excludeTaskId
                                 )
 
                                 if (!selectedTask) {
                                     continue
                                 }
 
-                                const installedFromOtherProject = await this.setNewFocusTask(
-                                    userId,
-                                    projectId,
-                                    selectedTask,
-                                    setOptions
-                                )
-                                if (installedFromOtherProject === false) return null
+                                await this.setNewFocusTask(userId, projectId, selectedTask)
                                 return {
                                     id: selectedTask.id,
                                     projectId: projectId,
@@ -875,29 +787,6 @@ class FocusTaskService {
             const previousFocusProjectId = userData.inFocusTaskProjectId || ''
             const preserveDueDate = !!options.preserveDueDate
 
-            // AT-2251 — stand down instead of overwriting a swap somebody else already completed.
-            //
-            // The replacement paths are check-then-act: workflowFocusHandoff reads the user doc,
-            // confirms the focus is still the task that just left, and only then starts selecting —
-            // but selecting costs many round trips (projects, calendar queries per project, a
-            // 200-doc task query, goals + milestones), and the write at the end carried no
-            // precondition. The client runs its OWN handoff for the acting user in parallel and is
-            // usually faster, so the trigger routinely landed second and replaced the task the user
-            // was already looking at. Re-checking here collapses the window to this read plus the
-            // commit, and makes the trigger what it was always meant to be: the authority for focus
-            // holders the client cannot write for (other users, assistants, offline clients), and a
-            // no-op for the one it can.
-            const expectedPreviousFocusTaskId = options.expectedPreviousFocusTaskId
-            if (expectedPreviousFocusTaskId !== undefined && previousFocusTaskId !== expectedPreviousFocusTaskId) {
-                console.log('FocusTaskService: Skipping focus write, focus task already moved on', {
-                    userId,
-                    expectedPreviousFocusTaskId,
-                    currentFocusTaskId: previousFocusTaskId,
-                    wouldHaveSet: task.id,
-                })
-                return false
-            }
-
             let previousTaskRestore = null
             if (
                 previousFocusTaskId &&
@@ -910,14 +799,16 @@ class FocusTaskService {
                     )
                     const previousTaskSnap = await previousTaskRef.get()
                     if (previousTaskSnap.exists) {
-                        // AT-2351 - a task leaving focus rejoins the list with a plain arrival
-                        // index, calendar task or not. This used to restore a calendar task's raw
-                        // EVENT START, which is the pre-AT-2259 encoding: a future timestamp that
-                        // re-pinned the meeting to the top of its group, undoing on the server what
-                        // the client had already stopped doing. A meeting's place among the other
-                        // meetings now comes from `calendarData.start` at render time, so there is
-                        // nothing to restore it to.
-                        previousTaskRestore = { ref: previousTaskRef, sortIndex: generateSortIndex() }
+                        const previousTaskData = previousTaskSnap.data()
+                        let restoredSortIndex = generateSortIndex()
+                        const calendarStart = previousTaskData?.calendarData?.start
+                        if (calendarStart) {
+                            const startDateTime = calendarStart.dateTime || calendarStart.date
+                            if (startDateTime) {
+                                restoredSortIndex = this.options.moment(startDateTime).valueOf()
+                            }
+                        }
+                        previousTaskRestore = { ref: previousTaskRef, sortIndex: restoredSortIndex }
                     }
                 } catch (restoreError) {
                     console.warn(
@@ -957,7 +848,6 @@ class FocusTaskService {
             await batch.commit()
 
             console.log(`Set new focus task: ${task.name} (${task.id}) in project ${projectId} for user ${userId}`)
-            return true
         } catch (error) {
             console.error('Error setting new focus task:', error)
             throw new Error(`Failed to set new focus task: ${error.message}`)
@@ -998,10 +888,7 @@ class FocusTaskService {
                 }
             }
 
-            // AT-2351 - see the note in the set-focus path above: a plain arrival index for every
-            // task. Restoring a calendar task's raw event start here was the pre-AT-2259 encoding
-            // and re-pinned the meeting to the top of its group.
-            const restoreSortIndex = generateSortIndex()
+            let restoreSortIndex = generateSortIndex()
             let hasTaskSnapshot = false
             try {
                 const focusTaskRef = this.options.database.doc(
@@ -1010,6 +897,14 @@ class FocusTaskService {
                 const focusTaskSnap = await focusTaskRef.get()
                 if (focusTaskSnap.exists) {
                     hasTaskSnapshot = true
+                    const focusTaskData = focusTaskSnap.data()
+                    const calendarStart = focusTaskData?.calendarData?.start
+                    if (calendarStart) {
+                        const startDateTime = calendarStart.dateTime || calendarStart.date
+                        if (startDateTime) {
+                            restoreSortIndex = this.options.moment(startDateTime).valueOf()
+                        }
+                    }
                 }
             } catch (restoreError) {
                 console.warn(
@@ -1067,12 +962,12 @@ class FocusTaskService {
     }
 
     /**
-     * Get the user's current focus task.
+     * Get focus task for user - returns current focus task or finds/sets new one
      * @param {string} userId - User ID
      * @param {string} projectId - Current project context (optional)
      * @param {Object} options - Options object
      * @param {boolean} options.selectMinimalFields - Return minimal task fields only
-     * @param {boolean} options.forceNew - Explicitly find and set a new/different focus task
+     * @param {boolean} options.forceNew - Force finding a new/different focus task, skipping current one
      * @param {number} options.timezoneOffset - User's timezone offset in minutes (optional, defaults to UTC)
      * @returns {Object} Focus task result
      */
@@ -1107,17 +1002,13 @@ class FocusTaskService {
             }
 
             // Try to find alternative task
-            // AT-2251: this is the ONE caller that genuinely means "surprise me" — the user asked for
-            // a different focus task, so spreading across the top candidates is the feature. Every
-            // other caller replaces a focus task and must stay deterministic to agree with the client.
             const newTask = await this.findAndSetNewFocusTask(
                 userId,
                 projectId,
                 previousParentGoalId,
                 excludeTaskId,
                 timezoneOffset,
-                previousMilestoneId,
-                { spreadAcrossTopCandidates: true }
+                previousMilestoneId
             )
 
             // OPTION 1: If no alternative found, return current task with message
@@ -1168,18 +1059,19 @@ class FocusTaskService {
                     message: 'No suitable focus task found',
                 }
             }
+        } else if (!currentFocusTask) {
+            // Normal flow: No current focus task, find and set a new one
+            currentFocusTask = await this.findAndSetNewFocusTask(userId, projectId, null, null, timezoneOffset)
+            wasNewTaskSet = !!currentFocusTask
         }
 
-        // AT-2323: ordinary reads must stop here. Heartbeats call get_focus_task in the background;
-        // choosing a fallback when the user had no focus made whichever task arrived during that
-        // lookup become focused without any user action. Replacement after a real focus transition
-        // still uses findAndSetNewFocusTask directly, and an explicit request uses forceNew above.
         if (!currentFocusTask) {
             return {
                 success: true,
                 focusTask: null,
                 wasNewTaskSet: false,
-                message: 'No focus task is set.',
+                message:
+                    'No focus task available for today. Congrats - you have reached empty inbox across all your projects.',
             }
         }
 
@@ -1234,10 +1126,10 @@ class FocusTaskService {
                     environment: this.options.isCloudFunction
                         ? 'cloud-function'
                         : this.options.isReactNative
-                          ? 'react-native'
-                          : this.options.isWeb
-                            ? 'web'
-                            : 'unknown',
+                        ? 'react-native'
+                        : this.options.isWeb
+                        ? 'web'
+                        : 'unknown',
                 },
             }
         } catch (error) {

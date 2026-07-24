@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
-import firebase from 'firebase/compat/app'
+import { firebase } from '@firebase/app'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../styles/global'
@@ -29,11 +29,6 @@ export default function FeedUndoAction({ actionId }) {
         setBusy(true)
         try {
             await reverseUndoAction(actionId, isUndone ? 'redo' : 'undo')
-        } catch (error) {
-            // Offline this rejects immediately with code 'offline' instead of
-            // hanging; either way the button must not leave an unhandled
-            // rejection behind (AT-2340).
-            console.warn('Could not reverse the undo action', error)
         } finally {
             setBusy(false)
         }

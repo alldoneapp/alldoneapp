@@ -23,13 +23,6 @@ const admin = require('firebase-admin')
 const VM_DISPATCH_LEASE_MS = 5 * 60 * 1000
 const DISPATCH_LEASE_PREFIX = 'dispatch:'
 
-// Admission writes the session queue before the queued pendingWebhooks record, so a queued job
-// that is absent from both the session queue and its live active lease is not in a transient
-// creation window: it has been orphaned. Give the reconciler one full dispatch lease before it
-// settles/refunds the record anyway, as a conservative guard around older or partially-migrated
-// session documents.
-const VM_QUEUED_ORPHAN_GRACE_MS = VM_DISPATCH_LEASE_MS
-
 function vmThreadKey(projectId, objectId) {
     return `${projectId}__${objectId}`
 }
@@ -44,33 +37,6 @@ function dispatchLeaseOwner(correlationId) {
 
 function isDispatchLeaseOwner(leaseOwner) {
     return typeof leaseOwner === 'string' && leaseOwner.startsWith(DISPATCH_LEASE_PREFIX)
-}
-
-/**
- * Whether a queued job still belongs to the authoritative per-thread FIFO state.
- *
- * A job popped from `queue` remains referenced by `activeCorrelationId` only while its dispatch or
- * runtime lease is live. Without that lease it is another orphan shape: the drain crashed after
- * popping the job but before launch changed its pending record out of `queued`.
- */
-function isQueuedVmJobReferencedBySession(session, correlationId, now = Date.now()) {
-    if (!session || !correlationId) return false
-    const queue = Array.isArray(session.queue) ? session.queue : []
-    if (queue.includes(correlationId)) return true
-    if (session.blockedByCorrelationId === correlationId) return true
-
-    return (
-        session.activeCorrelationId === correlationId &&
-        !!session.activeLeaseOwner &&
-        Number(session.activeLeaseExpiresAt || 0) > now
-    )
-}
-
-function isOrphanedQueuedVmJob(job = {}, correlationId = '', session = null, now = Date.now()) {
-    if (job.kind !== 'vm_job' || job.status !== 'queued') return false
-    const queuedAt = Number(job.queuedAt || job.createdAt) || 0
-    if (!queuedAt || now - queuedAt < VM_QUEUED_ORPHAN_GRACE_MS) return false
-    return !isQueuedVmJobReferencedBySession(session, correlationId, now)
 }
 
 /**
@@ -140,31 +106,14 @@ async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
 }
 
 /**
- * Read the thread's session document, or null when there is none. Kept separate from the occupancy
- * peek so a dispatch can answer several questions (occupied? which agent was it running? — see
- * vmThreadAgentContinuity) from a single read.
- */
-async function readVmThreadSession(sessionRef) {
-    const snapshot = await sessionRef.get()
-    if (!snapshot.exists) return null
-    return snapshot.data() || {}
-}
-
-/**
  * Read-only peek: is the thread currently occupied (running or with jobs queued)? Used to decide
  * whether to skip the cross-thread concurrency cap for a same-thread follow-up. Best-effort — the
  * authoritative decision is the `admitVmJobToThread` transaction.
  */
 async function isVmThreadOccupied(sessionRef, correlationId = null, nowFn = Date.now) {
-    const session = await readVmThreadSession(sessionRef)
-    return isVmThreadSessionOccupied(session, correlationId, nowFn)
-}
-
-/**
- * The occupancy decision itself, over an already-read session document.
- */
-function isVmThreadSessionOccupied(session, correlationId = null, nowFn = Date.now) {
-    if (!session) return false
+    const snapshot = await sessionRef.get()
+    if (!snapshot.exists) return false
+    const session = snapshot.data() || {}
     const now = nowFn()
     const activeLeaseOwner = session.activeLeaseOwner || null
     const activeCorrelationId = session.activeCorrelationId || null
@@ -360,55 +309,15 @@ async function drainStalledVmThreadQueues(nowFn = Date.now) {
     return result
 }
 
-/**
- * Reconcile queued job records whose session queue was lost by an earlier sandbox/session failure.
- * The settlement helper re-checks the pending job + session together in a transaction before it
- * changes status or refunds Gold, so this read-side sweep can safely race a normal queue drain.
- */
-async function reconcileOrphanedQueuedVmJobs(nowFn = Date.now) {
-    const db = admin.firestore()
-    const now = nowFn()
-    const snapshot = await db.collection('pendingWebhooks').where('status', '==', 'queued').limit(100).get()
-    const result = { checked: 0, reconciled: 0, errors: 0 }
-
-    for (const doc of snapshot.docs) {
-        const job = doc.data() || {}
-        if (job.kind !== 'vm_job' || !job.projectId || !job.objectId) continue
-        result.checked += 1
-
-        try {
-            const sessionSnapshot = await vmThreadSessionRef(job.projectId, job.objectId).get()
-            const session = sessionSnapshot.exists ? sessionSnapshot.data() || {} : null
-            if (!isOrphanedQueuedVmJob(job, job.correlationId || doc.id, session, now)) continue
-
-            const { settleOrphanedQueuedVmJob } = require('./vmJob')
-            if (await settleOrphanedQueuedVmJob(job.correlationId || doc.id, now)) result.reconciled += 1
-        } catch (error) {
-            result.errors += 1
-            console.warn('🖥️ VM JOB: orphaned queued-job reconciliation failed', {
-                correlationId: job.correlationId || doc.id,
-                error: error.message,
-            })
-        }
-    }
-
-    return result
-}
-
 module.exports = {
     VM_DISPATCH_LEASE_MS,
-    VM_QUEUED_ORPHAN_GRACE_MS,
     DISPATCH_LEASE_PREFIX,
     vmThreadKey,
     vmThreadSessionRef,
     dispatchLeaseOwner,
     isDispatchLeaseOwner,
-    isQueuedVmJobReferencedBySession,
-    isOrphanedQueuedVmJob,
     admitVmJobToThread,
-    readVmThreadSession,
     isVmThreadOccupied,
-    isVmThreadSessionOccupied,
     advanceVmThreadQueue,
     removeQueuedVmJobFromThread,
     requeueVmJobToThreadFront,
@@ -416,5 +325,4 @@ module.exports = {
     unblockVmThreadInteraction,
     releaseVmThreadDispatchLease,
     drainStalledVmThreadQueues,
-    reconcileOrphanedQueuedVmJobs,
 }

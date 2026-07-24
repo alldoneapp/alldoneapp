@@ -1,12 +1,11 @@
 import React, { useEffect } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../../utils/HelperFunctions'
 import CustomScrollView from '../../../../UIControls/CustomScrollView'
 import styles, { colors } from '../../../../styles/global'
 import Icon from '../../../../Icon'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import { translate } from '../../../../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 
 export default function MoreButtonModal({
     children,
@@ -34,7 +33,7 @@ export default function MoreButtonModal({
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <View style={{ marginBottom: 20 }}>
                     <Text style={[styles.title7, { color: '#ffffff' }]}>{translate('More options')}</Text>
@@ -56,7 +55,10 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

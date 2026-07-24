@@ -1,6 +1,3 @@
-const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
-const { normalizeAssistantReasoningEffort } = require('./selectableAssistantReasoningEfforts')
-
 const HEARTBEAT_INTERVAL_STEP_MS = 5 * 60 * 1000
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000
 const MIN_HEARTBEAT_INTERVAL_MS = HEARTBEAT_INTERVAL_STEP_MS
@@ -11,10 +8,10 @@ const DEFAULT_AWAKE_START = 8 * 60 * 60 * 1000
 const DEFAULT_AWAKE_END = 22 * 60 * 60 * 1000
 const DEFAULT_PROMPT =
     'Check the done tasks today, comment on it and/or the chat history with one sentence and ask the user if he already did the focus task (remind him) or if there are any other ways you can help.'
-const MODEL_GPT6_SOL = 'MODEL_GPT6_SOL'
+const MODEL_GPT5_6_SOL = 'MODEL_GPT5_6_SOL'
 const MODEL_GPT5_6_TERRA = 'MODEL_GPT5_6_TERRA'
-const MODEL_GPT6_LUNA = 'MODEL_GPT6_LUNA'
-const HEARTBEAT_MODEL_OPTIONS = SELECTABLE_ASSISTANT_MODELS.map(option => option.model)
+const MODEL_GPT5_6_LUNA = 'MODEL_GPT5_6_LUNA'
+const HEARTBEAT_MODEL_OPTIONS = [MODEL_GPT5_6_SOL, MODEL_GPT5_6_TERRA, MODEL_GPT5_6_LUNA]
 
 const HEARTBEAT_OK_MARKER = 'HEARTBEAT_OK'
 
@@ -128,26 +125,11 @@ function getEffectiveHeartbeatPrompt(assistant = {}) {
 }
 
 function getEffectiveHeartbeatModel(assistant = {}) {
-    if (assistant.heartbeatModel === 'MODEL_GPT5_6_SOL') return MODEL_GPT6_SOL
-    if (assistant.heartbeatModel === 'MODEL_GPT5_6_LUNA') return MODEL_GPT6_LUNA
     if (HEARTBEAT_MODEL_OPTIONS.includes(assistant.heartbeatModel)) {
         return assistant.heartbeatModel
     }
 
-    if (assistant.model === 'MODEL_GPT5_6_SOL') return MODEL_GPT6_SOL
-    if (assistant.model === 'MODEL_GPT5_6_LUNA') return MODEL_GPT6_LUNA
-    return assistant.model || MODEL_GPT6_SOL
-}
-
-function getEffectiveHeartbeatReasoningEffort(assistant = {}) {
-    if (Object.prototype.hasOwnProperty.call(assistant, 'heartbeatReasoningEffort')) {
-        return normalizeAssistantReasoningEffort(
-            assistant.heartbeatReasoningEffort,
-            getEffectiveHeartbeatModel(assistant)
-        )
-    }
-
-    return normalizeAssistantReasoningEffort(assistant.reasoningEffort, getEffectiveHeartbeatModel(assistant))
+    return assistant.model || MODEL_GPT5_6_SOL
 }
 
 function getNormalizedHeartbeatSettings(assistant = {}, { projectId = null, userData = null } = {}) {
@@ -166,7 +148,6 @@ function getNormalizedHeartbeatSettings(assistant = {}, { projectId = null, user
         awakeEndTime: formatHeartbeatTimeMs(awakeEndMs),
         sendWhatsApp: getEffectiveHeartbeatSendWhatsApp(assistant, userData),
         model: getEffectiveHeartbeatModel(assistant),
-        reasoningEffort: getEffectiveHeartbeatReasoningEffort(assistant),
         prompt: getEffectiveHeartbeatPrompt(assistant),
     }
 }
@@ -181,12 +162,10 @@ function buildHeartbeatSettingsContextMessage(assistant = {}, { projectId = null
         'Current heartbeat settings for this assistant:',
         `- Awake time: ${settings.awakeStartTime} - ${settings.awakeEndTime} (user local time)`,
         `- Heartbeat interval: ${formatHeartbeatIntervalMinutes(settings.intervalMinutes)}`,
-        `- Execution chance after the user replies to the latest visible heartbeat that local day: ${settings.chancePercent}%`,
-        `- Execution chance until the user replies to the latest visible heartbeat that local day: ${settings.chanceNoReplyPercent}%`,
-        '- Reply state resets after every new visible heartbeat. A message sent before the latest heartbeat does not count; HEARTBEAT_OK does not reset reply state because it posts no message.',
+        `- Execution chance when the user replied that day: ${settings.chancePercent}%`,
+        `- Execution chance when the user did not reply that day: ${settings.chanceNoReplyPercent}%`,
         `- WhatsApp notification: ${settings.sendWhatsApp ? 'enabled' : 'disabled'}`,
         `- Heartbeat model: ${settings.model}`,
-        `- Heartbeat reasoning effort: ${settings.reasoningEffort || 'model default'}`,
         `- heartbeatPromptHistory: ${heartbeatPromptHistoryLength} previous version(s) saved, up to 10 retained (rollback by passing the older prompt text back through update_heartbeat_settings).`,
         '- Current heartbeat prompt:',
         settings.prompt,
@@ -201,9 +180,9 @@ module.exports = {
     DEFAULT_AWAKE_START,
     DEFAULT_AWAKE_END,
     DEFAULT_PROMPT,
-    MODEL_GPT6_SOL,
+    MODEL_GPT5_6_SOL,
     MODEL_GPT5_6_TERRA,
-    MODEL_GPT6_LUNA,
+    MODEL_GPT5_6_LUNA,
     HEARTBEAT_MODEL_OPTIONS,
     HEARTBEAT_OK_MARKER,
     isHeartbeatOkResponse,
@@ -219,7 +198,6 @@ module.exports = {
     getEffectiveHeartbeatSendWhatsApp,
     getEffectiveHeartbeatPrompt,
     getEffectiveHeartbeatModel,
-    getEffectiveHeartbeatReasoningEffort,
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
 }

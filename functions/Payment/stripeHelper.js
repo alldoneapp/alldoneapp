@@ -96,16 +96,13 @@ const checkPremiumStatus = async customerId => {
             limit: 100,
         })
 
-        // Stripe API 2025-03-31+ moved current_period_end to the subscription item
-        const getPeriodEnd = sub => sub.current_period_end ?? sub.items?.data[0]?.current_period_end
-
         functions.logger.info('Subscriptions retrieved', {
             customerId,
             subscriptionCount: subscriptions.data.length,
             subscriptions: subscriptions.data.map(sub => ({
                 id: sub.id,
                 status: sub.status,
-                currentPeriodEnd: getPeriodEnd(sub),
+                currentPeriodEnd: sub.current_period_end,
                 currentTime: Math.floor(Date.now() / 1000),
             })),
         })
@@ -113,7 +110,7 @@ const checkPremiumStatus = async customerId => {
         const activeSubscription = subscriptions.data.find(
             sub =>
                 (sub.status === 'active' || sub.status === 'trialing') &&
-                getPeriodEnd(sub) > Math.floor(Date.now() / 1000)
+                sub.current_period_end > Math.floor(Date.now() / 1000)
         )
 
         if (activeSubscription) {
@@ -121,7 +118,7 @@ const checkPremiumStatus = async customerId => {
                 customerId,
                 subscriptionId: activeSubscription.id,
                 status: activeSubscription.status,
-                currentPeriodEnd: getPeriodEnd(activeSubscription),
+                currentPeriodEnd: activeSubscription.current_period_end,
                 planInterval: activeSubscription.items.data[0]?.price?.recurring?.interval,
             })
 
@@ -129,7 +126,7 @@ const checkPremiumStatus = async customerId => {
                 status: PLAN_STATUS_PREMIUM,
                 subscription: activeSubscription,
                 customer: customerId,
-                currentPeriodEnd: getPeriodEnd(activeSubscription),
+                currentPeriodEnd: activeSubscription.current_period_end,
                 planInterval: activeSubscription.items.data[0]?.price?.recurring?.interval,
             }
         }

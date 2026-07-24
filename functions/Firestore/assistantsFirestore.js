@@ -2,7 +2,6 @@ const admin = require('firebase-admin')
 
 const { createAssistantUpdatesChain } = require('../Feeds/assistantsFeedsChains')
 const { logEvent } = require('../GAnalytics/GAnalytics')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const GLOBAL_PROJECT_ID = 'globalProject'
 
@@ -96,14 +95,9 @@ const updateAssistantData = async (appAdmin, projectId, assistantId, data) => {
 }
 
 const uploadNewAssistantTask = async (appAdmin, projectId, assistantId, assistantTask) => {
-    const assistantTaskCopy = { ...assistantTask }
-    const assistantTaskId = assistantTaskCopy.id
-    delete assistantTaskCopy.id
-    delete assistantTaskCopy.aiModel
-    await appAdmin
-        .firestore()
-        .doc(`assistantTasks/${projectId}/${assistantId}/${assistantTaskId}`)
-        .set(assistantTaskCopy)
+    const assistantTaskId = assistantTask.id
+    delete assistantTask.id
+    await appAdmin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${assistantTaskId}`).set(assistantTask)
 }
 
 const deleteAssistant = async (appAdmin, projectId, assistantId) => {
@@ -132,7 +126,7 @@ const updateAssistantLastCommentData = async (projectId, assistantId, lastCommen
                 transaction.update(ref, {
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: lastCommentType,
-                    [`commentsData.amount`]: FieldValue.increment(1),
+                    [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
                 })
         })
     } catch (e) {
@@ -166,7 +160,7 @@ async function addGlobalAssistantToAllProject(appAdmin, assistantId) {
             appAdmin
                 .firestore()
                 .doc(`projects/${doc.id}`)
-                .update({ globalAssistantIds: FieldValue.arrayUnion(assistantId) })
+                .update({ globalAssistantIds: appAdmin.firestore.FieldValue.arrayUnion(assistantId) })
         )
     })
     await Promise.all(promises)

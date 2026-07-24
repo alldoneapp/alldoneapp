@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const firebase_tools = require('firebase-tools')
 
 const { CHATS_OBJECTS_TYPE, deleteRecord } = require('../AlgoliaGlobalSearchHelper')
 const { removeObjectFollowData } = require('../Followers/followersFirestoreCloud')
@@ -33,7 +34,9 @@ const onDeleteChat = async (projectId, chat) => {
     const { type, id: chatId, noteId, movingToOtherProjectId } = chat
 
     const promises = []
-    promises.push(recursiveDeleteHelper(`chatComments/${projectId}/${type}/${chatId}`))
+    promises.push(
+        recursiveDeleteHelper(firebase_tools, process.env.GCLOUD_PROJECT, `chatComments/${projectId}/${type}/${chatId}`)
+    )
     promises.push(removeObjectFollowData(projectId, 'topics', chatId, admin))
     if (noteId) promises.push(deleteNote(projectId, noteId, movingToOtherProjectId || '', admin))
     if (chat.type === 'topics') {

@@ -42,7 +42,7 @@ const createPayment = async (customerId, amountToPay, urlOrigin, description, se
 }
 
 const revokeMandate = async (mandateId, customerId) => {
-    await mollieClient.customerMandates.revoke(mandateId, { customerId })
+    await mollieClient.customers_mandates.revoke(mandateId, { customerId })
 }
 
 const getPayment = async paymentId => {
@@ -70,23 +70,23 @@ const createMollieSubscription = async (customerId, usersToPayAmount, companyNam
         webhookUrl: MOLLIE_SEND_MONTHLY_INVOICE,
     }
     if (startDate) subscriptionData.startDate = startDate
-    const mollieSubscription = await mollieClient.customerSubscriptions.create(subscriptionData)
+    const mollieSubscription = await mollieClient.customers_subscriptions.create(subscriptionData)
     return mollieSubscription
 }
 
 const getMollieSubscription = async (subscriptionIdInMollie, customerId) => {
-    const mollieSubscription = await mollieClient.customerSubscriptions.get(subscriptionIdInMollie, {
+    const mollieSubscription = await mollieClient.customers_subscriptions.get(subscriptionIdInMollie, {
         customerId,
     })
     return mollieSubscription
 }
 
 const cancelMollieSubscription = async (subscriptionIdInMollie, customerId) => {
-    mollieClient.customerSubscriptions.cancel(subscriptionIdInMollie, { customerId })
+    mollieClient.customers_subscriptions.cancel(subscriptionIdInMollie, { customerId })
 }
 
 const updateMollieSubscriptionAmount = async (subscriptionIdInMollie, customerId, usersToPayAmount) => {
-    await mollieClient.customerSubscriptions.update(subscriptionIdInMollie, {
+    await mollieClient.customers_subscriptions.update(subscriptionIdInMollie, {
         customerId,
         amount: {
             currency: 'EUR',
@@ -97,7 +97,7 @@ const updateMollieSubscriptionAmount = async (subscriptionIdInMollie, customerId
 
 const updateMollieSubscription = async (subscriptionIdInMollie, customerId, dataToUpdate) => {
     const mollieClient = createMollieClient({ apiKey: MOLLIE_API_KEY })
-    await mollieClient.customerSubscriptions.update(subscriptionIdInMollie, {
+    await mollieClient.customers_subscriptions.update(subscriptionIdInMollie, {
         customerId,
         ...dataToUpdate,
     })

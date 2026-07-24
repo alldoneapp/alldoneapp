@@ -132,12 +132,8 @@ const {
     dispatchPendingWorkflowAiRuns,
     enqueueWorkflowAiRunIfNeeded,
     resolveAwaitingVmRuns,
-    resolveWorkflowRunsForAssistantRunUpdate,
-    resolveWorkflowRunsForSettledVmJob,
-    retryFailedWorkflowAiRun,
     runWorkflowAiStep,
 } = require('./workflowAiStep')
-const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('../Assistant/assistantRunLimits')
 
 const PROJECT = 'p1'
 const TASK = 't1'
@@ -198,166 +194,6 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         })
     })
 
-    it('does not suppress the prompt for an orphaned queued VM record', async () => {
-        seedAssignee()
-        mockStore.set('pendingWebhooks/orphaned-vm', {
-            kind: 'vm_job',
-            projectId: PROJECT,
-            objectType: 'tasks',
-            objectId: TASK,
-            status: 'queued',
-            createdAt: Date.now() - 60_000,
-        })
-
-        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({ status: 'pending' })
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).not.toHaveProperty('awaitingCorrelationIds')
-    })
-
-    it('still holds the prompt for a queued VM that remains in the thread FIFO', async () => {
-        seedAssignee()
-        mockStore.set('pendingWebhooks/queued-vm', {
-            kind: 'vm_job',
-            projectId: PROJECT,
-            objectType: 'tasks',
-            objectId: TASK,
-            status: 'queued',
-            createdAt: Date.now() - 60_000,
-        })
-        mockStore.set(`vmSessions/${PROJECT}__${TASK}`, {
-            queue: ['queued-vm'],
-            queueLength: 1,
-        })
-
-        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-            status: RUN_STATUS_AWAITING_VM,
-            awaitingCorrelationIds: ['queued-vm'],
-            awaitingSkipReason: 'task_ai_run_already_active',
-        })
-    })
-
-    it('copies the persisted popup comment into the run for this AI-step entry', async () => {
-        seedAssignee()
-        const newTask = taskOnAiStep({
-            completed: 1000,
-            workflowAiPromptOverride: {
-                stepId: AI_STEP,
-                prompt: 'Rewrite this as a concise memo',
-                triggerMessageId: 'popup-comment-1',
-            },
-        })
-
-        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, newTask)
-
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-            promptOverride: 'Rewrite this as a concise memo',
-            triggerMessageId: 'popup-comment-1',
-        })
-    })
-
-    it.each([
-        ['an empty comment', { stepId: AI_STEP, prompt: '   ', triggerMessageId: 'comment-1' }],
-        [
-            'a comment for another step',
-            { stepId: NEXT_STEP, prompt: 'Do something else', triggerMessageId: 'comment-2' },
-        ],
-    ])('keeps the configured prompt for %s', async (_label, workflowAiPromptOverride) => {
-        seedAssignee()
-
-        const runId = await enqueueWorkflowAiRunIfNeeded(
-            PROJECT,
-            TASK,
-            oldTask,
-            taskOnAiStep({ completed: 1000, workflowAiPromptOverride })
-        )
-
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).not.toHaveProperty('promptOverride')
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).not.toHaveProperty('triggerMessageId')
-    })
-
-    it('enqueues a creator-funded run from a project assistant workflow', async () => {
-        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
-            uid: ASSISTANT,
-            workflow: { [PROJECT]: { [AI_STEP]: aiStep(), [NEXT_STEP]: humanStep() } },
-        })
-        mockStore.set(`users/${ASSIGNEE}`, { uid: ASSIGNEE, language: 'en' })
-        const task = taskOnAiStep({
-            userId: ASSISTANT,
-            userIds: [ASSISTANT],
-            stepHistory: [AI_STEP],
-            currentReviewerId: ASSISTANT,
-            assigneeType: 'ASSISTANT',
-            workflowTask: true,
-            workflowPayerUserId: ASSIGNEE,
-            creatorId: ASSIGNEE,
-            completed: 1000,
-        })
-
-        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, {}, task)
-
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            assigneeUserId: ASSIGNEE,
-            workflowOwnerId: ASSISTANT,
-            workflowOwnerType: 'assistant',
-            payerUserId: ASSIGNEE,
-        })
-    })
-
-    it('queues a direct fallback when a project assistant has no configured workflow step', async () => {
-        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
-            uid: ASSISTANT,
-            workflow: {},
-        })
-        const task = taskOnAiStep({
-            userId: ASSISTANT,
-            userIds: [ASSISTANT],
-            stepHistory: [AI_STEP],
-            currentReviewerId: ASSISTANT,
-            assistantId: ASSISTANT,
-            assigneeType: 'ASSISTANT',
-            workflowTask: true,
-            workflowPayerUserId: ASSIGNEE,
-            creatorId: ASSIGNEE,
-            completed: 1000,
-            workflowAiPromptOverride: {
-                stepId: AI_STEP,
-                prompt: 'Create the product KPIs',
-            },
-        })
-
-        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, {}, task)
-
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            workflowOwnerId: ASSISTANT,
-            workflowOwnerType: 'assistant',
-            payerUserId: ASSIGNEE,
-            promptOverride: 'Create the product KPIs',
-            bypassWorkflow: true,
-            status: 'pending',
-        })
-    })
-
-    it('does not apply an assistant workflow to an ordinary assistant task', async () => {
-        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
-            uid: ASSISTANT,
-            workflow: { [PROJECT]: { [AI_STEP]: aiStep() } },
-        })
-        const task = taskOnAiStep({
-            userId: ASSISTANT,
-            assigneeType: 'ASSISTANT',
-            workflowTask: false,
-            completed: 1000,
-        })
-
-        await expect(enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, {}, task)).resolves.toBeNull()
-        expect(mockStore.has(`workflowAiRuns/${PROJECT}__${TASK}__${AI_STEP}__1000`)).toBe(false)
-    })
-
     it('enqueues a new run when a task is sent back from a later step to an AI step', async () => {
         seedAssignee()
         const oldTask = {
@@ -367,14 +203,7 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
             currentReviewerId: HUMAN_REVIEWER,
             completed: 1000,
         }
-        const sentBackTask = taskOnAiStep({
-            completed: 2000,
-            workflowAiPromptOverride: {
-                stepId: AI_STEP,
-                prompt: 'Use this backward-transition instruction',
-                triggerMessageId: 'backward-comment',
-            },
-        })
+        const sentBackTask = taskOnAiStep({ completed: 2000 })
 
         const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, sentBackTask)
 
@@ -382,8 +211,6 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
             stepId: AI_STEP,
             assistantId: ASSISTANT,
-            promptOverride: 'Use this backward-transition instruction',
-            triggerMessageId: 'backward-comment',
             status: 'pending',
         })
     })
@@ -443,166 +270,6 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ userId: 'ws@default' }))
 
         expect(runId).toBeNull()
-    })
-
-    // Whether the assistant is already working the task is decided here, when the task lands on the
-    // step, not a minute later in the dispatcher. A VM job stays live for hours so the dispatcher
-    // always still saw it; a normal assistant answer is usually over within that minute, and the
-    // step then posted its configured prompt straight after the answer the user had just read.
-    describe('when the task already has live AI work', () => {
-        const liveChatRun = (lockId = 'comment-run-1', overrides = {}) => {
-            mockStore.set(`assistantRunLocks/${lockId}`, {
-                projectId: PROJECT,
-                objectType: 'tasks',
-                objectId: TASK,
-                status: 'running',
-                lockExpiresAt: Date.now() + 60_000,
-                ...overrides,
-            })
-        }
-
-        const liveVmJob = (correlationId = 'live-vm-run', overrides = {}) => {
-            mockStore.set(`pendingWebhooks/${correlationId}`, {
-                kind: 'vm_job',
-                projectId: PROJECT,
-                objectType: 'tasks',
-                objectId: TASK,
-                status: 'running',
-                createdAt: Date.now() - 1000,
-                ...overrides,
-            })
-        }
-
-        beforeEach(() => {
-            seedAssignee()
-            mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
-        })
-
-        it('parks the run instead of queueing the configured prompt behind a normal assistant answer', async () => {
-            liveChatRun()
-
-            const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-            expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-                status: RUN_STATUS_AWAITING_VM,
-                awaitingAssistantRunIds: ['comment-run-1'],
-                awaitingCorrelationIds: [],
-                awaitingSkipReason: 'task_ai_run_already_active',
-            })
-            expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).workflowAiStatus).toMatchObject({
-                runId,
-                stepId: AI_STEP,
-                status: RUN_STATUS_AWAITING_VM,
-            })
-        })
-
-        it('keeps the parked run away from the dispatcher, so the configured prompt is never posted', async () => {
-            liveChatRun()
-            await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-            // The answer finishes inside the poller's one-minute gap — the window the bug lived in.
-            mockStore.set('assistantRunLocks/comment-run-1', {
-                ...mockStore.get('assistantRunLocks/comment-run-1'),
-                status: 'completed',
-            })
-
-            expect(await dispatchPendingWorkflowAiRuns({ now: Date.now() })).toBe(0)
-            expect(mockPostUserRequestComment).not.toHaveBeenCalled()
-            expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
-        })
-
-        it('advances the step when the live answer finishes, without ever using the configured prompt', async () => {
-            liveChatRun()
-            const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-            const lock = { projectId: PROJECT, objectType: 'tasks', objectId: TASK }
-            mockStore.set('assistantRunLocks/comment-run-1', { ...lock, status: 'completed', lockExpiresAt: 0 })
-            await resolveWorkflowRunsForAssistantRunUpdate(
-                { ...lock, status: 'running' },
-                { ...lock, status: 'completed' }
-            )
-
-            expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
-            expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
-            expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-                status: 'skipped',
-                reason: 'task_ai_run_already_active',
-            })
-        })
-
-        it('parks the run behind a live VM job too', async () => {
-            liveVmJob()
-
-            const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-            expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-                status: RUN_STATUS_AWAITING_VM,
-                awaitingCorrelationIds: ['live-vm-run'],
-                awaitingSkipReason: 'task_ai_run_already_active',
-            })
-        })
-
-        // Only live work blocks a step. Anything already settled is history, not a reason to drop
-        // the action the step was configured to perform.
-        it.each([
-            ['a finished assistant answer', () => liveChatRun('comment-run-1', { status: 'completed' })],
-            ['an expired assistant lock', () => liveChatRun('comment-run-1', { lockExpiresAt: Date.now() - 1 })],
-            ['an answer in another project', () => liveChatRun('comment-run-1', { projectId: 'other-project' })],
-            ['a terminal VM job', () => liveVmJob('live-vm-run', { status: 'completed' })],
-            ['an interrupted VM job', () => liveVmJob('live-vm-run', { status: 'interrupted' })],
-        ])('keeps the configured prompt when the task only has %s', async (_label, seedWork) => {
-            seedWork()
-
-            const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-            expect(mockStore.get(`workflowAiRuns/${runId}`).status).toBe('pending')
-            expect(await dispatchPendingWorkflowAiRuns({ now: Date.now() })).toBe(1)
-            expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe('Summarize this task')
-            expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
-        })
-
-        // An AI step advances the task from inside its own run, so its coarse task slot is still
-        // held when the next step is enqueued. Parking on that would stall every AI→AI workflow.
-        it('does not park behind the AI step that just handed the task over', async () => {
-            mockStore.set(`assistantTaskRunLocks/${PROJECT}__tasks__${TASK}`, {
-                projectId: PROJECT,
-                objectType: 'tasks',
-                objectId: TASK,
-                ownerId: 'previous-step-run',
-                kind: 'workflow',
-                workflowStepId: NEXT_STEP,
-                status: 'running',
-                lockExpiresAt: Date.now() + 60_000,
-            })
-
-            const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ completed: 1000 }))
-
-            expect(mockStore.get(`workflowAiRuns/${runId}`).status).toBe('pending')
-        })
-    })
-})
-
-describe('retryFailedWorkflowAiRun', () => {
-    it('queues a fresh run without moving the task off the assistant step', async () => {
-        seedAssignee()
-        mockStore.set(
-            `items/${PROJECT}/tasks/${TASK}`,
-            taskOnAiStep({ workflowAiStatus: { status: 'failed', runId: 'old-run', stepId: AI_STEP } })
-        )
-
-        const runId = await retryFailedWorkflowAiRun(PROJECT, TASK)
-
-        expect(runId).toContain(`${PROJECT}__${TASK}__${AI_STEP}__`)
-        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
-            projectId: PROJECT,
-            taskId: TASK,
-            stepId: AI_STEP,
-            status: 'pending',
-        })
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            stepHistory: [-1, AI_STEP],
-            workflowAiStatus: { status: 'pending', runId, stepId: AI_STEP },
-        })
     })
 })
 
@@ -684,93 +351,6 @@ describe('runWorkflowAiStep', () => {
         expect(args[11]).toBe('tasks')
 
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
-    })
-
-    it('replaces the configured prompt with the persisted popup comment without posting it twice', async () => {
-        const overrideRun = {
-            ...run,
-            promptOverride: 'Use $AUDIENCE and only the popup request',
-            triggerMessageId: 'popup-comment-1',
-        }
-
-        await runWorkflowAiStep(RUN_ID, overrideRun)
-
-        expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe('Use $AUDIENCE and only the popup request')
-        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
-            triggerMessageId: 'popup-comment-1',
-            maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
-            disableToolSearch: true,
-            onVmJobStarted: expect.any(Function),
-        })
-        expect(mockPostUserRequestComment).not.toHaveBeenCalled()
-    })
-
-    it('loads an assistant-owned workflow while charging the creating project member', async () => {
-        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
-            uid: ASSISTANT,
-            workflow: { [PROJECT]: { [AI_STEP]: aiStep(), [NEXT_STEP]: humanStep() } },
-        })
-        mockStore.set(`users/${ASSIGNEE}`, { uid: ASSIGNEE, language: 'de' })
-        mockStore.set(
-            `items/${PROJECT}/tasks/${TASK}`,
-            taskOnAiStep({
-                userId: ASSISTANT,
-                userIds: [ASSISTANT],
-                stepHistory: [AI_STEP],
-                workflowTask: true,
-                workflowPayerUserId: ASSIGNEE,
-            })
-        )
-
-        await runWorkflowAiStep(RUN_ID, {
-            ...run,
-            workflowOwnerId: ASSISTANT,
-            workflowOwnerType: 'assistant',
-            payerUserId: ASSIGNEE,
-        })
-
-        const args = mockGeneratePreConfigTaskResult.mock.calls[0]
-        expect(args[0]).toBe(ASSIGNEE)
-        expect(args[7]).toBe('de')
-        expect(mockPostUserRequestComment).toHaveBeenCalledWith(expect.objectContaining({ creatorId: ASSIGNEE }))
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
-    })
-
-    it('executes and completes an assistant task when its configured workflow is missing', async () => {
-        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, { uid: ASSISTANT, workflow: {} })
-        mockStore.set(`users/${ASSIGNEE}`, { uid: ASSIGNEE, language: 'en' })
-        mockStore.set(
-            `items/${PROJECT}/tasks/${TASK}`,
-            taskOnAiStep({
-                userId: ASSISTANT,
-                userIds: [ASSISTANT],
-                stepHistory: [AI_STEP],
-                currentReviewerId: ASSISTANT,
-                assistantId: ASSISTANT,
-                workflowTask: true,
-                executionMode: 'workflow',
-                workflowPayerUserId: ASSIGNEE,
-            })
-        )
-
-        await runWorkflowAiStep(RUN_ID, {
-            ...run,
-            workflowOwnerId: ASSISTANT,
-            workflowOwnerType: 'assistant',
-            payerUserId: ASSIGNEE,
-            promptOverride: 'Create the product KPIs',
-            bypassWorkflow: true,
-        })
-
-        expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe('Create the product KPIs')
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            currentReviewerId: -2,
-            done: true,
-            inDone: true,
-            executionMode: 'direct',
-            workflowTask: false,
-        })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
@@ -971,7 +551,7 @@ describe('runWorkflowAiStep', () => {
         })
     })
 
-    it('activates the workflow reviewer as the task thread assistant', async () => {
+    it('preserves the task thread assistant state after the workflow assistant runs', async () => {
         mockStore.set(
             `items/${PROJECT}/tasks/${TASK}`,
             taskOnAiStep({ assistantId: 'previous-assistant', isAssistantEnabled: false })
@@ -986,30 +566,18 @@ describe('runWorkflowAiStep', () => {
 
         expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
+            assistantId: 'previous-assistant',
+            isAssistantEnabled: false,
             currentReviewerId: HUMAN_REVIEWER,
         })
         expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
+            assistantId: 'previous-assistant',
+            isAssistantEnabled: false,
             title: 'Write the spec',
         })
     })
 
     it('grounds the run in the task by seeding the thread with the prompt', async () => {
-        mockPostUserRequestComment.mockImplementationOnce(async () => {
-            expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-                assistantId: ASSISTANT,
-                isAssistantEnabled: true,
-            })
-            expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
-                assistantId: ASSISTANT,
-                isAssistantEnabled: true,
-            })
-            return 'trigger-comment-1'
-        })
-
         await runWorkflowAiStep(RUN_ID, run)
 
         // Posted as the workflow owner, so it reads as their request and the user can see what the
@@ -1024,17 +592,8 @@ describe('runWorkflowAiStep', () => {
 
         // The trigger message is what makes generatePreConfigTaskResult assemble the full task and
         // thread context instead of running on the bare prompt.
-        // The wall clock is the scheduled one: this run executes inside runWorkflowAiStepsSecondGen,
-        // whose Cloud Scheduler attempt deadline would otherwise retry it into a second concurrent
-        // invocation.
-        // disableToolSearch: an AI step is unattended AND hands the task on when it finishes, so a
-        // model that fails to search for a tool it was told to use would report the tool as missing
-        // and still advance the task. Send every schema instead.
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
             triggerMessageId: 'trigger-comment-1',
-            maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
-            disableToolSearch: true,
-            onVmJobStarted: expect.any(Function),
         })
     })
 
@@ -1044,12 +603,7 @@ describe('runWorkflowAiStep', () => {
         await runWorkflowAiStep(RUN_ID, run)
 
         expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
-        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
-            triggerMessageId: null,
-            maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
-            disableToolSearch: true,
-            onVmJobStarted: expect.any(Function),
-        })
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({ triggerMessageId: null })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
@@ -1064,28 +618,18 @@ describe('runWorkflowAiStep', () => {
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe('Review for execs')
     })
 
-    it('keeps the task active when the assistant run fails', async () => {
+    it('still advances the task when the assistant run fails', async () => {
         mockGeneratePreConfigTaskResult.mockRejectedValueOnce(new Error('out of gold'))
 
         await runWorkflowAiStep(RUN_ID, run)
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
             status: 'failed',
             failureReason: 'out of gold',
         })
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
-            workflowAiStatus: {
-                status: 'failed',
-                failureReason: 'out of gold',
-            },
-        })
-        expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
-        })
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).isAssistantEnabled).toBeUndefined()
+        expect(mockStore.has(`chatObjects/${PROJECT}/chats/${TASK}`)).toBe(false)
     })
 
     it('does not run or advance when the task already moved off the step', async () => {
@@ -1109,13 +653,13 @@ describe('runWorkflowAiStep', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1])
     })
 
-    it('keeps the task active when the configured step is no longer an AI step', async () => {
+    it('advances without running anything when the step is no longer an AI step', async () => {
         seedAssignee({ [AI_STEP]: humanStep(), [NEXT_STEP]: humanStep() })
 
         await runWorkflowAiStep(RUN_ID, run)
 
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
             status: 'failed',
             failureReason: 'step_no_longer_ai',
@@ -1268,70 +812,33 @@ describe('a step whose assistant dispatched VM work', () => {
         expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
 
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
+            assistantId: 'previous-assistant',
+            isAssistantEnabled: false,
             currentReviewerId: HUMAN_REVIEWER,
         })
         expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
-            assistantId: ASSISTANT,
-            isAssistantEnabled: true,
+            assistantId: 'previous-assistant',
+            isAssistantEnabled: false,
         })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
-    it('advances immediately from the VM terminal event without waiting for a poll tick', async () => {
+    it('advances anyway when the VM job failed', async () => {
         await runWorkflowAiStep(RUN_ID, run)
-        seedVmJob('completed')
-
-        expect(
-            await resolveWorkflowRunsForSettledVmJob(mockStore.get(`pendingWebhooks/${CORRELATION}`), Date.now())
-        ).toBe(1)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
-    })
-
-    it('does not advance twice when a VM terminal event is redelivered', async () => {
-        await runWorkflowAiStep(RUN_ID, run)
-        seedVmJob('completed')
-        const settledJob = mockStore.get(`pendingWebhooks/${CORRELATION}`)
-
-        expect(await resolveWorkflowRunsForSettledVmJob(settledJob, Date.now())).toBe(1)
-        expect(await resolveWorkflowRunsForSettledVmJob(settledJob, Date.now())).toBe(0)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
-        expect(mockCreateTaskMovedInWorkflowFeed).toHaveBeenCalledTimes(1)
-    })
-
-    it('ignores non-terminal and unrelated settled jobs', async () => {
-        await runWorkflowAiStep(RUN_ID, run)
-        const initiated = mockStore.get(`pendingWebhooks/${CORRELATION}`)
-
-        expect(await resolveWorkflowRunsForSettledVmJob(initiated, Date.now())).toBe(0)
-        expect(
-            await resolveWorkflowRunsForSettledVmJob(
-                { ...initiated, status: 'completed', objectType: 'notes' },
-                Date.now()
-            )
-        ).toBe(0)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe(RUN_STATUS_AWAITING_VM)
-    })
-
-    it.each(['failed', 'interrupted'])('keeps the task active when the VM job settled as %s', async status => {
-        await runWorkflowAiStep(RUN_ID, run)
-        seedVmJob(status)
+        seedVmJob('failed')
 
         await resolveAwaitingVmRuns({ now: Date.now() })
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).workflowAiStatus.status).toBe('failed')
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
     })
 
-    it('times out without completing the task once the VM has had its full budget', async () => {
+    it('gives up and advances once the VM has had its full budget', async () => {
         await runWorkflowAiStep(RUN_ID, run)
 
         // Still 'initiated' well past the point a healthy VM job must have settled.
         await resolveAwaitingVmRuns({ now: Date.now() + AWAITING_VM_TIMEOUT_MS + 1000 })
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
             status: 'failed',
             failureReason: 'vm_timeout',
@@ -1346,187 +853,6 @@ describe('a step whose assistant dispatched VM work', () => {
 
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
-    })
-})
-
-describe('VM dispatch hands off before the assistant response finishes (AT-2777)', () => {
-    const RUN_ID = 'hung-prompt-run'
-    const CORRELATION = 'continued-merge-vm'
-    const run = {
-        projectId: PROJECT,
-        taskId: TASK,
-        stepId: AI_STEP,
-        assistantId: ASSISTANT,
-        assigneeUserId: ASSIGNEE,
-        status: 'running',
-        createdAt: Date.now(),
-    }
-    const job = {
-        kind: 'vm_job',
-        projectId: PROJECT,
-        objectType: 'tasks',
-        objectId: TASK,
-        correlationId: CORRELATION,
-        createdAt: Date.now(),
-    }
-
-    beforeEach(() => {
-        seedAssignee()
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
-        mockStore.set(`workflowAiRuns/${RUN_ID}`, { ...run })
-        mockGeneratePreConfigTaskResult.mockReset()
-    })
-
-    it.each(['completed', 'failed', 'cancelled', 'interrupted'])(
-        'settles a %s VM while the follow-up assistant response is still pending',
-        async status => {
-            let finishResponse
-            let handoffReady
-            const handoff = new Promise(resolve => {
-                handoffReady = resolve
-            })
-            mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-                mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status: 'initiated' })
-                await args[12].onVmJobStarted(job)
-                handoffReady()
-                return new Promise(resolve => {
-                    finishResponse = resolve
-                })
-            })
-            const prompt = runWorkflowAiStep(RUN_ID, run)
-            await handoff
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
-                status: 'awaiting_vm',
-                awaitingCorrelationIds: [CORRELATION],
-            })
-            mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status })
-
-            expect(await resolveWorkflowRunsForSettledVmJob({ ...job, status })).toBe(1)
-            const settled = status === 'completed' ? 'completed' : 'failed'
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe(settled)
-            expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual(
-                status === 'completed' ? [-1, AI_STEP, NEXT_STEP] : [-1, AI_STEP]
-            )
-
-            // A late response must never re-park a settled run or advance it twice.
-            finishResponse({ success: true })
-            await prompt
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe(settled)
-            expect(await resolveWorkflowRunsForSettledVmJob({ ...job, status })).toBe(0)
-        }
-    )
-
-    it.each(['initiated', 'awaiting_user', 'queued'])(
-        'keeps waiting on a %s interactive/continued VM even if the parent stream fails',
-        async status => {
-            mockStore.set(`vmSessions/${PROJECT}__${TASK}`, { queue: [CORRELATION] })
-            mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-                mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status })
-                await args[12].onVmJobStarted(job)
-                throw new Error('Follow-up stream disconnected')
-            })
-            await runWorkflowAiStep(RUN_ID, run)
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('awaiting_vm')
-            expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
-        }
-    )
-
-    it('rechecks an already finished VM when the terminal callback preceded the handoff', async () => {
-        mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-            mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status: 'completed' })
-            expect(await resolveWorkflowRunsForSettledVmJob({ ...job, status: 'completed' })).toBe(0)
-            await args[12].onVmJobStarted(job)
-            throw new Error('Late stream failure')
-        })
-        await runWorkflowAiStep(RUN_ID, run)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
-    })
-
-    it('lets the recovery poller settle the handoff when the terminal callback was lost', async () => {
-        mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-            mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status: 'initiated' })
-            await args[12].onVmJobStarted(job)
-            return { success: true }
-        })
-        await runWorkflowAiStep(RUN_ID, run)
-        mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status: 'completed' })
-        expect(await dispatchPendingWorkflowAiRuns()).toBe(0)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
-    })
-
-    it('preserves a manual workflow move made before handoff', async () => {
-        mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-            mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep({ stepHistory: [-1, NEXT_STEP] }))
-            await args[12].onVmJobStarted(job)
-            return { success: true }
-        })
-        await runWorkflowAiStep(RUN_ID, run)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).awaitingCorrelationIds).toBeUndefined()
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, NEXT_STEP])
-    })
-
-    it.each([{ projectId: 'other-project' }, { objectId: 'other-task' }, { objectType: 'topics' }])(
-        'does not transfer this step to a VM hosted elsewhere: %j',
-        async overrides => {
-            mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-                await args[12].onVmJobStarted({ ...job, ...overrides })
-                return { success: true }
-            })
-            await runWorkflowAiStep(RUN_ID, run)
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).awaitingCorrelationIds).toBeUndefined()
-        }
-    )
-})
-
-describe('the pre-VM assistant/VM completion ordering', () => {
-    const RUN_ID = 'run-pre-vm'
-    const CORRELATION = 'fast-vm'
-    const ASSISTANT_RUN_ID = 'chat-run'
-    const run = {
-        projectId: PROJECT,
-        taskId: TASK,
-        stepId: AI_STEP,
-        assistantId: ASSISTANT,
-        assigneeUserId: ASSIGNEE,
-        status: RUN_STATUS_AWAITING_VM,
-        awaitingAnyTaskExecution: true,
-        awaitingAnyTaskVm: true,
-        awaitingUntil: Date.now() + AWAITING_VM_TIMEOUT_MS,
-    }
-
-    beforeEach(() => {
-        seedAssignee()
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
-        mockStore.set(`workflowAiRuns/${RUN_ID}`, run)
-        mockStore.set(`pendingWebhooks/${CORRELATION}`, {
-            kind: 'vm_job',
-            projectId: PROJECT,
-            objectType: 'tasks',
-            objectId: TASK,
-            status: 'completed',
-        })
-        mockStore.set(`assistantRunLocks/${ASSISTANT_RUN_ID}`, {
-            projectId: PROJECT,
-            objectType: 'tasks',
-            objectId: TASK,
-            status: 'running',
-            lockExpiresAt: Date.now() + 60_000,
-        })
-    })
-
-    it('waits for the assistant lock when the VM settles first, then advances on the lock event', async () => {
-        expect(
-            await resolveWorkflowRunsForSettledVmJob(mockStore.get(`pendingWebhooks/${CORRELATION}`), Date.now())
-        ).toBe(0)
-
-        const assistantBefore = mockStore.get(`assistantRunLocks/${ASSISTANT_RUN_ID}`)
-        const assistantAfter = { ...assistantBefore, status: 'completed' }
-        mockStore.set(`assistantRunLocks/${ASSISTANT_RUN_ID}`, assistantAfter)
-
-        expect(await resolveWorkflowRunsForAssistantRunUpdate(assistantBefore, assistantAfter, Date.now())).toBe(1)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 })
 
@@ -1570,254 +896,34 @@ describe('a VM job that stops to ask the user a question', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
     })
 
-    it('leaves the task on its own step for the whole question, so the step can still complete', async () => {
-        seedVmJob('awaiting_user', { interactionExpiresAt: Date.now() + INTERACTION_TTL_MS })
-
-        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(0)
-
-        // vmInteraction only holds the reviewer; the step itself is untouched. Advancing here would
-        // consume the step (finalizeWorkflowAiRun only advances a task still on its own step) while
-        // the agent is blocked on the answer.
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({ stepHistory: [-1, AI_STEP] })
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).done).toBeUndefined()
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('awaiting_vm')
-    })
-
-    it('keeps the task active once the question expired and the job still has not settled', async () => {
+    it('advances once the question expired and the job still has not settled', async () => {
         const expiredAt = Date.now() - 1000
         seedVmJob('awaiting_user', { interactionExpiresAt: expiredAt })
 
         await resolveAwaitingVmRuns({ now: expiredAt + AWAITING_VM_TIMEOUT_MS + 1000 })
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).failureReason).toBe('vm_timeout')
     })
 
-    it('advances exactly one step once an answered question lets the job finish', async () => {
+    it('advances as soon as an answered question lets the job finish', async () => {
         seedVmJob('awaiting_user', { interactionExpiresAt: Date.now() + INTERACTION_TTL_MS })
         expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(0)
 
-        // The user answers, so vmInteraction gives the held step back to the assistant reviewer.
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
-            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
-            currentReviewerId: ASSISTANT,
-            vmInteractionWorkflowStep: null,
-        })
-        // The VM resumes and completes.
+        // The user answers, the VM resumes and completes.
         seedVmJob('completed', { interactionExpiresAt: 0 })
 
         expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            currentReviewerId: HUMAN_REVIEWER,
-            stepHistory: [-1, AI_STEP, NEXT_STEP],
-        })
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
-    it('does not advance again when the task was moved on independently while the VM ran', async () => {
-        mockStore.set(
-            `items/${PROJECT}/tasks/${TASK}`,
-            taskOnAiStep({
-                currentReviewerId: HUMAN_REVIEWER,
-                stepHistory: [-1, AI_STEP, NEXT_STEP],
-            })
-        )
-        seedVmJob('completed', { interactionExpiresAt: 0 })
-
-        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            currentReviewerId: HUMAN_REVIEWER,
-            stepHistory: [-1, AI_STEP, NEXT_STEP],
-        })
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
-    })
-
-    it('still fails a job that simply hangs, with no interaction to justify waiting', async () => {
+    it('still abandons a job that simply hangs, with no interaction to justify waiting', async () => {
         seedVmJob('initiated')
 
         await resolveAwaitingVmRuns({ now: Date.now() + AWAITING_VM_TIMEOUT_MS + 1000 })
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).failureReason).toBe('vm_timeout')
-    })
-})
-
-// The regression AT-2188 left behind. A run is bound to the VM job it parked on; when that job dies
-// the run settles `failed` and the task correctly stays on the step. Retrying by starting another VM
-// task in the thread produces a job that belongs to no run, so before this its success — Merge
-// Request and all — moved nothing. It only looked fine while a VM *question* still performed a
-// forward move of its own, which advanced the step whether or not the work had succeeded.
-describe('a step retried by a later VM job after its own run failed', () => {
-    const RUN_ID = 'run-vm-retry'
-    const CORRELATION = 'vm-crashed'
-    const RETRY_CORRELATION = 'vm-retry'
-    const run = { projectId: PROJECT, taskId: TASK, stepId: AI_STEP, assistantId: ASSISTANT, assigneeUserId: ASSIGNEE }
-
-    const seedJob = (correlationId, status, overrides = {}) => {
-        const job = {
-            kind: 'vm_job',
-            correlationId,
-            projectId: PROJECT,
-            objectId: TASK,
-            createdAt: Date.now(),
-            status,
-            ...overrides,
-        }
-        mockStore.set(`pendingWebhooks/${correlationId}`, job)
-        return job
-    }
-
-    // Everything up to and including the crash: the step ran, dispatched its VM, the VM died, and the
-    // run settled `failed` with the task still sitting on the assistant step.
-    const failTheStep = async () => {
-        mockGeneratePreConfigTaskResult.mockImplementationOnce(async () => {
-            seedJob(CORRELATION, 'initiated')
-            return { success: true }
-        })
-        await runWorkflowAiStep(RUN_ID, run)
-        seedJob(CORRELATION, 'failed')
-        await resolveAwaitingVmRuns({ now: Date.now() })
-    }
-
-    // The retry has to look like one: started after the step failed, on the same task.
-    const seedRetry = (status, overrides = {}) =>
-        seedJob(RETRY_CORRELATION, status, {
-            createdAt: (mockStore.get(`workflowAiRuns/${RUN_ID}`).settledAt || Date.now()) + 1000,
-            ...overrides,
-        })
-
-    beforeEach(async () => {
-        seedAssignee()
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
-        mockStore.set(`workflowAiRuns/${RUN_ID}`, { ...run, status: 'running', createdAt: 1000 })
-        await failTheStep()
-    })
-
-    it('leaves the task on the failed step until something finishes its work', () => {
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({ stepHistory: [-1, AI_STEP] })
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
-            status: 'failed',
-            failureReason: 'vm_failed',
-        })
-    })
-
-    it('advances exactly one step when the retry succeeds', async () => {
-        const retry = seedRetry('completed')
-
-        expect(await resolveWorkflowRunsForSettledVmJob(retry, Date.now())).toBe(1)
-
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            stepHistory: [-1, AI_STEP, NEXT_STEP],
-            currentReviewerId: HUMAN_REVIEWER,
-        })
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
-            status: 'completed',
-            recoveredByCorrelationId: RETRY_CORRELATION,
-        })
-        expect(mockCreateTaskMovedInWorkflowFeed).toHaveBeenCalledTimes(1)
-    })
-
-    it('advances after the retry stopped to ask a question and the answer let it finish', async () => {
-        // The question holds only the reviewer (see vmInteraction); the step itself never moves.
-        seedRetry('awaiting_user', { interactionExpiresAt: Date.now() + 24 * 60 * 60 * 1000 })
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
-            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
-            currentReviewerId: ASSIGNEE,
-            vmInteractionWorkflowStep: { correlationId: RETRY_CORRELATION, previousReviewerId: ASSISTANT },
-        })
-        expect(await resolveWorkflowRunsForSettledVmJob(mockStore.get(`pendingWebhooks/${RETRY_CORRELATION}`))).toBe(0)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
-
-        // Answered: the hold is released, the VM resumes, opens its Merge Request and completes.
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
-            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
-            currentReviewerId: ASSISTANT,
-            vmInteractionWorkflowStep: null,
-        })
-        const finished = seedRetry('completed', { interactionExpiresAt: 0 })
-
-        expect(await resolveWorkflowRunsForSettledVmJob(finished, Date.now())).toBe(1)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            stepHistory: [-1, AI_STEP, NEXT_STEP],
-            currentReviewerId: HUMAN_REVIEWER,
-        })
-    })
-
-    it('does not advance twice when the retry completion is redelivered', async () => {
-        const retry = seedRetry('completed')
-
-        expect(await resolveWorkflowRunsForSettledVmJob(retry, Date.now())).toBe(1)
-        expect(await resolveWorkflowRunsForSettledVmJob(retry, Date.now())).toBe(0)
-
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
-        expect(mockCreateTaskMovedInWorkflowFeed).toHaveBeenCalledTimes(1)
-    })
-
-    it('does not advance when the retry failed, was cancelled, or was interrupted too', async () => {
-        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('failed'), Date.now())).toBe(0)
-        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('cancelled'), Date.now())).toBe(0)
-        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('interrupted'), Date.now())).toBe(0)
-
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('failed')
-    })
-
-    it('ignores work that was already running when the step failed, which that settlement weighed', async () => {
-        const older = seedJob('vm-older', 'completed', {
-            createdAt: (mockStore.get(`workflowAiRuns/${RUN_ID}`).settledAt || Date.now()) - 1000,
-        })
-
-        expect(await resolveWorkflowRunsForSettledVmJob(older, Date.now())).toBe(0)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
-    })
-
-    it('leaves a task a human already moved on where they put it', async () => {
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
-            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
-            stepHistory: [-1, AI_STEP, NEXT_STEP],
-            currentReviewerId: HUMAN_REVIEWER,
-        })
-
-        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('completed'), Date.now())).toBe(0)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
-    })
-
-    it('never reopens a step that already completed, so a late VM job cannot double-advance it', async () => {
-        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('completed'), Date.now())).toBe(1)
-
-        const late = seedJob('vm-late', 'completed', { createdAt: Date.now() + 5000 })
-        expect(await resolveWorkflowRunsForSettledVmJob(late, Date.now())).toBe(0)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
-    })
-
-    it('leaves a step its own parked run still owns to that run, unrecovered', async () => {
-        // Rewind to a thread whose first job never crashed: the run is still parked, so the normal
-        // path owns the advance and the recovery must not reach the same step behind it.
-        mockStore.delete(`pendingWebhooks/${CORRELATION}`)
-        mockStore.set(`workflowAiRuns/${RUN_ID}`, {
-            ...run,
-            status: RUN_STATUS_AWAITING_VM,
-            createdAt: 1000,
-            awaitingAnyTaskVm: true,
-            awaitingCorrelationIds: [RETRY_CORRELATION],
-            awaitingSince: Date.now(),
-            awaitingUntil: Date.now() + AWAITING_VM_TIMEOUT_MS,
-        })
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
-            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
-            workflowAiStatus: { runId: RUN_ID, stepId: AI_STEP, status: RUN_STATUS_AWAITING_VM },
-        })
-
-        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('completed'), Date.now())).toBe(1)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).recoveredByCorrelationId).toBeUndefined()
-        expect(mockCreateTaskMovedInWorkflowFeed).toHaveBeenCalledTimes(1)
-    })
-
-    it('stays out of the way when the step is no longer an AI step', async () => {
-        seedAssignee({ [AI_STEP]: humanStep(), [NEXT_STEP]: humanStep() })
-
-        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('completed'), Date.now())).toBe(0)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
     })
 })

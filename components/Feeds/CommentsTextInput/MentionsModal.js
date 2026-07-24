@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { multiSearchTypesense, searchTypesenseCollection } from '../../../utils/typesenseSearch'
-import { formatTypesenseValue } from '../../GlobalSearchAlgolia/typesenseSearchFilters'
+import algoliasearch from 'algoliasearch'
 
 import { colors } from '../../styles/global'
 import {
@@ -26,16 +25,11 @@ import {
     WORKFLOW_MODAL_ID,
 } from '../../ModalsManager/modalsManager'
 import CustomScrollView from '../../UIControls/CustomScrollView'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
-import { computeSafeAreaModalMaxHeightBelow, getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
-import { getSafeAreaInsets } from '../../../utils/safeAreaInsets'
-import { getWorkspaceInsets } from '../../../utils/workspaceViewport'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import Backend from '../../../utils/BackendBridge'
 import MentionsContactsGrouped from './MentionsModal/MentionsContactsGrouped'
-import { buildMentionProjectsScope, MENTION_CONTACTS_QUERY_BY, mergeMentionPages } from './MentionsModal/mentionSearch'
 import MentionsItemsGrouped from './MentionsModal/MentionsItemsGrouped'
 import MentionsItems from './MentionsModal/MentionsItems'
-import MentionProjectHeader from './MentionsModal/MentionProjectHeader'
 import Header from './MentionsModal/Header'
 import EmptyMatch from './MentionsModal/EmptyMatch'
 import useWindowSize from '../../../utils/useWindowSize'
@@ -61,24 +55,6 @@ import useTextChange from './useTextChange'
 import store from '../../../redux/store'
 import { getPreConfigTasksForProject } from '../../../utils/backends/Assistants/assistantsFirestore'
 
-// Tabs that suggest something the moment the picker opens, before anything is typed
-// (AT-2497). Every tab's `sort_by` already falls back to a recency field, so the wildcard
-// query yields "the ones you touched last" rather than an arbitrary page.
-const MATCH_ALL_ON_OPEN_INDEXES = [
-    NOTES_INDEX_NAME_PREFIX,
-    TASKS_INDEX_NAME_PREFIX,
-    GOALS_INDEX_NAME_PREFIX,
-    CONTACTS_INDEX_NAME_PREFIX,
-    CHATS_INDEX_NAME_PREFIX,
-]
-
-// Not a collection — a marker for "the notes search, narrowed to the project being written
-// in", so the one filter builder keeps answering for both notes pages (AT-2497).
-const CURRENT_PROJECT_NOTES_SCOPE = 'current_project_notes'
-
-// One search per tab: contacts, tasks, notes, chats, goals.
-const SEARCHES_PER_PASS = 5
-
 export default function MentionsModal({
     mentionText,
     selectItemToMention,
@@ -88,7 +64,6 @@ export default function MentionsModal({
     inMentionsEditionTag,
     insertNormalMention,
     contentLocation,
-    viewport,
 }) {
     const [width, height] = useWindowSize()
     const dispatch = useDispatch()
@@ -109,23 +84,18 @@ export default function MentionsModal({
     const offsets = useRef({ top: 0, bottom: 0 })
     const newForm = useRef()
     const [showSpinner, setShowSpinner] = useState(true)
-    // How many of the per-tab searches the current `search()` pass still has outstanding.
-    // The spinner is a property of "a search is running", not of "a tab was clicked".
-    const searchesInFlight = useRef(0)
     const showNewForm = mentionModalStack[mentionModalStack.length - 1] === modalId.current
     const getInitValue = items => (items.length === 0 ? -1 : 0)
     const activeItemIndexRef = useRef(getInitValue(itemsRef.current))
     const [activeItemIndex, setActiveItemIndex] = useState(getInitValue(itemsRef.current))
-    const tmpHeight = viewport
-        ? computeSafeAreaModalMaxHeightBelow({
-              windowHeight: viewport.height,
-              topOffset: contentLocation ? contentLocation.top - viewport.top : 16,
-              insets: getWorkspaceInsets(getSafeAreaInsets(), viewport),
-          })
-        : getSafeAreaModalMaxHeightBelow(height, contentLocation?.top || 0)
+    const tmpHeight = height - (contentLocation?.top || 0) - MODAL_MAX_HEIGHT_GAP
     const maxHeight = tmpHeight < 548 ? tmpHeight : 548
+    const [algoliaClient, setAlgoliaClient] = useState(() => {
+        const { ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY } = Backend.getAlgoliaSearchOnlyKeys()
+        const client = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_SEARCH_ONLY_API_KEY)
+        return client
+    })
     const loggedUser = useSelector(state => state.loggedUser)
-    const currentProject = useSelector(state => state.loggedUserProjectsMap?.[projectId])
 
     const onKeyDown = event => {
         const { key } = event
@@ -273,127 +243,37 @@ export default function MentionsModal({
             itemsRef.current = itemsByTab[tab]
             setActiveItemIndex(-1)
             keepFocus()
-            // Only re-arm the spinner if a search is genuinely still running. It used to be
-            // set unconditionally and was cleared only by a completing search, so switching
-            // to a tab that had already finished and come back empty replaced the "no
-            // results" copy with a spinner that never stopped (AT-2497).
-            setShowSpinner(searchesInFlight.current > 0)
+            setShowSpinner(true)
         }
-    }
-
-    // Typesense port of the inline Algolia filters below (same scopes, Typesense syntax).
-    // isPublicFor is a string[] in Typesense, so the numeric public sentinel is quoted.
-    const getTypesenseMentionFilter = (indexPrefix, isGuide) => {
-        const publicScope = `isPublicFor:=[${formatTypesenseValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseValue(
-            loggedUser.uid
-        )}]`
-        const projectScope = `projectId:=${formatTypesenseValue(projectId)}`
-
-        if (indexPrefix === TASKS_INDEX_NAME_PREFIX) {
-            return isGuide
-                ? `${projectScope} && userId:=${formatTypesenseValue(loggedUser.uid)} && ${publicScope}`
-                : `${projectScope} && ${publicScope}`
-        }
-        if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
-            // Search notes across all projects the user has access to. "Has access to" is
-            // the active-projects map the hits are filtered against below — asking the
-            // engine for the same set stops archived/guide/template records consuming the
-            // page and being discarded on arrival (AT-2393).
-            const visibleProjectsScope = buildMentionProjectsScope(Object.keys(store.getState().loggedUserProjectsMap))
-            return visibleProjectsScope ? `${visibleProjectsScope} && ${publicScope}` : publicScope
-        }
-        if (indexPrefix === CURRENT_PROJECT_NOTES_SCOPE) {
-            // The same notes search narrowed to the project being written in (AT-2497), so
-            // the shared page can never leave it unrepresented. Same privacy scope — this
-            // narrows reach, it never widens it.
-            return `${projectScope} && ${publicScope}`
-        }
-        if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
-            return isGuide
-                ? `${projectScope} && ownerId:=${formatTypesenseValue(loggedUser.uid)} && ${publicScope}`
-                : `${projectScope} && ${publicScope}`
-        }
-        if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
-            // Search contacts across all projects the user has access to, scoped to the
-            // same active-projects map the hits are filtered against below. GLOBAL_PROJECT_ID
-            // is allowed through because global assistants live there and stay mentionable.
-            const visibleProjectsScope = buildMentionProjectsScope(
-                Object.keys(store.getState().loggedUserProjectsMap),
-                [GLOBAL_PROJECT_ID]
-            )
-            return visibleProjectsScope ? `${visibleProjectsScope} && ${publicScope}` : publicScope
-        }
-        if (indexPrefix === CHATS_INDEX_NAME_PREFIX) {
-            return `${projectScope} && ${publicScope}`
-        }
-        return ''
-    }
-
-    // Offline (or any search outage) the contacts tab degrades to the project
-    // members already in redux — the common @-mention target — filtered by the
-    // typed text; the other tabs degrade to empty (OFFLINE_SUPPORT_PLAN.md
-    // Stage 7). Also the reason getMentions must never throw: updateResults has
-    // no catch, so a rejection used to leave the spinner hanging forever.
-    const getLocalContactsFallback = () => {
-        const { projectUsers } = store.getState()
-        const users = projectUsers[projectId] || []
-        const lowerSearch = (mentionText || '').toLowerCase()
-        return users
-            .filter(user => !lowerSearch || (user.displayName || '').toLowerCase().includes(lowerSearch))
-            .map(user => ({ ...user, projectId }))
-    }
-
-    // Notes are fetched as TWO pages in one round trip: the project being written in, then
-    // everything the user can see. See mergeMentionPages (AT-2497) for why — a single shared
-    // page routinely contains nothing from the current project at all.
-    const getNoteMentions = async isGuide => {
-        const common = {
-            collection: NOTES_INDEX_NAME_PREFIX,
-            query: mentionText,
-            // Read from the same list as every other tab, so "which tabs suggest on open"
-            // stays declared in exactly one place.
-            matchAllWhenEmpty: MATCH_ALL_ON_OPEN_INDEXES.includes(NOTES_INDEX_NAME_PREFIX),
-        }
-        const [currentProjectPage, visibleProjectsPage] = await multiSearchTypesense([
-            { ...common, filterBy: getTypesenseMentionFilter(CURRENT_PROJECT_NOTES_SCOPE, isGuide) },
-            { ...common, filterBy: getTypesenseMentionFilter(NOTES_INDEX_NAME_PREFIX, isGuide) },
-        ])
-        return mergeMentionPages(currentProjectPage.hits, visibleProjectsPage.hits)
     }
 
     const getMentions = async indexPrefix => {
         const { parentTemplateId, userIds } = ProjectHelper.getProjectById(projectId)
 
         const isGuide = !!parentTemplateId
+        const algoliaIndex = algoliaClient.initIndex(indexPrefix)
 
-        let results
-        try {
-            results =
-                indexPrefix === NOTES_INDEX_NAME_PREFIX
-                    ? { hits: await getNoteMentions(isGuide) }
-                    : await searchTypesenseCollection(
-                          indexPrefix,
-                          mentionText,
-                          getTypesenseMentionFilter(indexPrefix, isGuide),
-                          {
-                              // An @-mention is a name picker, not global search: it must not
-                              // match the contact's free-text description (AT-2393 — see
-                              // mentionSearch.js).
-                              ...(indexPrefix === CONTACTS_INDEX_NAME_PREFIX
-                                  ? { queryBy: MENTION_CONTACTS_QUERY_BY }
-                                  : {}),
-                              // A picker that has just opened has nothing typed yet, so ask
-                              // for the documented match-all wildcard and let the collection's
-                              // `sort_by` order it by recency (AT-2497 — see
-                              // TYPESENSE_MATCH_ALL_QUERY for why the wildcard rather than a
-                              // blank query, which is NOT the same guarantee).
-                              matchAllWhenEmpty: MATCH_ALL_ON_OPEN_INDEXES.includes(indexPrefix),
-                          }
-                      )
-        } catch (error) {
-            console.log('Mentions search unavailable:', error.message)
-            return indexPrefix === CONTACTS_INDEX_NAME_PREFIX ? getLocalContactsFallback() : []
+        let filters = ''
+
+        if (indexPrefix === TASKS_INDEX_NAME_PREFIX) {
+            filters = isGuide
+                ? `projectId:${projectId} AND userId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
+                : `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
+        } else if (indexPrefix === NOTES_INDEX_NAME_PREFIX) {
+            // Search notes across all projects the user has access to
+            filters = `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
+        } else if (indexPrefix === GOALS_INDEX_NAME_PREFIX) {
+            filters = isGuide
+                ? `projectId:${projectId} AND ownerId:${loggedUser.uid} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
+                : `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
+        } else if (indexPrefix === CONTACTS_INDEX_NAME_PREFIX) {
+            // Search contacts across all projects the user has access to
+            filters = `(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
+        } else if (indexPrefix === CHATS_INDEX_NAME_PREFIX) {
+            filters = `projectId:${projectId} AND (isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${loggedUser.uid})`
         }
+
+        const results = await algoliaIndex.search(mentionText, { filters: filters })
 
         let items = results.hits
 
@@ -439,11 +319,6 @@ export default function MentionsModal({
         return items
     }
 
-    const finishSearch = () => {
-        searchesInFlight.current = Math.max(0, searchesInFlight.current - 1)
-        setShowSpinner(false)
-    }
-
     const updateResults = async (algoliaIndexNamePrefix, searchTab) => {
         const items = await getMentions(algoliaIndexNamePrefix)
 
@@ -456,7 +331,7 @@ export default function MentionsModal({
             activeItemIndexRef.current = getInitValue(items)
         }
 
-        finishSearch()
+        setShowSpinner(false)
     }
 
     const updateTasksWithPreConfigTasks = async () => {
@@ -489,12 +364,10 @@ export default function MentionsModal({
             activeItemIndexRef.current = getInitValue(mergedItems)
         }
 
-        finishSearch()
+        setShowSpinner(false)
     }
 
     const search = () => {
-        searchesInFlight.current = SEARCHES_PER_PASS
-        setShowSpinner(true)
         updateResults(CONTACTS_INDEX_NAME_PREFIX, MENTION_MODAL_CONTACTS_TAB)
         updateTasksWithPreConfigTasks()
         updateResults(NOTES_INDEX_NAME_PREFIX, MENTION_MODAL_NOTES_TAB)
@@ -530,11 +403,7 @@ export default function MentionsModal({
     return (
         <View
             onLayout={onLayoutContainer}
-            style={[
-                localStyles.container,
-                viewport ? { width: Math.min(432, Math.max(0, viewport.width - 32)) } : applyPopoverWidth(),
-                { maxHeight: maxHeight },
-            ]}
+            style={[localStyles.container, applyPopoverWidth(), { maxHeight: maxHeight }]}
         >
             {!inMentionsEditionTag && (
                 <Header
@@ -559,12 +428,6 @@ export default function MentionsModal({
                 }}
                 indicatorStyle={{ right: -6 }}
             >
-                {currentProject && (
-                    <MentionProjectHeader
-                        project={currentProject}
-                        amount={itemsByTab[activeTab].filter(item => item.projectId === projectId).length}
-                    />
-                )}
                 {showNewForm && (
                     <NewObjectsInMentions
                         key={`${activeTab}_${modalId.current}`}
@@ -589,7 +452,6 @@ export default function MentionsModal({
                                 contacts={itemsByTab[activeTab]}
                                 activeUserIndex={activeItemIndex}
                                 usersComponentsRefs={itemsComponentsRefs}
-                                showCurrentProjectHeader={false}
                             />
                         ) : activeTab === MENTION_MODAL_NOTES_TAB ? (
                             <MentionsItemsGrouped
@@ -600,7 +462,6 @@ export default function MentionsModal({
                                 activeItemIndex={activeItemIndex}
                                 itemsComponentsRefs={itemsComponentsRefs}
                                 activeTab={activeTab}
-                                showCurrentProjectHeader={false}
                             />
                         ) : (
                             <MentionsItems
@@ -629,7 +490,10 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         paddingHorizontal: 8,
         paddingTop: 8,

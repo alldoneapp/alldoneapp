@@ -3,6 +3,8 @@ import StatusPicker from '../../../components/TaskDetailedView/Properties/Status
 
 import renderer from 'react-test-renderer'
 
+jest.mock('firebase', () => ({ firestore: {} }));
+
 describe('StatusPicker component', () => {
     describe('StatusPicker snapshot test', () => {
         it('should render correctly', () => {

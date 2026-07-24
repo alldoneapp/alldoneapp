@@ -1,39 +1,57 @@
-// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+// Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Indicator component Indicator snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-marginTop-138ynw3"
-  dir={null}
->
-  <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-1pexk7n"
-    dir={null}
+<View>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "white",
+        "flexDirection": "row",
+        "justifyContent": "center",
+        "marginTop": 36,
+      }
+    }
   >
-    <div
-      className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1enofrn r-lineHeight-1f529hi"
-      dir="auto"
+    <Text
+      style={
+        Array [
+          Object {
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+          },
+          Object {
+            "color": "#8A94A6",
+          },
+        ]
+      }
     >
       TASK
-    </div>
-    <div
-      className="css-view-g5y9jx r-marginLeft-1jkjb"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
-        style={
-          {
-            "color": "rgba(138,148,166,1.00)",
-            "fontFamily": "alldone",
-            "fontSize": "14px",
-            "opacity": 1,
-          }
+    </Text>
+    <View
+      style={
+        Object {
+          "marginLeft": 14,
         }
-      >
-        
-      </div>
-    </div>
-  </div>
-</div>
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 20,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
 `;

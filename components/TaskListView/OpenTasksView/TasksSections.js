@@ -1,5 +1,5 @@
 import React from 'react'
-import { DragDropContext } from '@hello-pangea/dnd'
+import { DragDropContext } from 'react-beautiful-dnd'
 import { useSelector } from 'react-redux'
 
 import MentionSection from './MentionSection'
@@ -28,7 +28,6 @@ export default function TasksSections({
     isActiveOrganizeMode,
     pressedShowMoreMainSection,
     setPressedShowMoreMainSection,
-    assistantProfileMode = false,
 }) {
     const mentionTasksAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][MENTION_TASK_INDEX].length
@@ -74,7 +73,7 @@ export default function TasksSections({
                 setPressedShowMoreMainSection={setPressedShowMoreMainSection}
             />
 
-            {!assistantProfileMode && mentionTasksAmount > 0 && (
+            {mentionTasksAmount > 0 && (
                 <MentionSection
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -83,7 +82,7 @@ export default function TasksSections({
                 />
             )}
 
-            {!assistantProfileMode && suggestedTasksSectionsAmount > 0 && (
+            {suggestedTasksSectionsAmount > 0 && (
                 <SuggestedSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -101,7 +100,7 @@ export default function TasksSections({
                 />
             )}
 
-            {!assistantProfileMode && calendarTasksAmount > 0 && (
+            {calendarTasksAmount > 0 && (
                 <CalendarSectionContainer
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -110,7 +109,7 @@ export default function TasksSections({
                 />
             )}
 
-            {!assistantProfileMode && observedTasksSectionsAmount > 0 && (
+            {observedTasksSectionsAmount > 0 && (
                 <ObservedFromSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -120,7 +119,7 @@ export default function TasksSections({
                 />
             )}
 
-            {!assistantProfileMode && streamAndUserTasksSectionsAmount > 0 && (
+            {streamAndUserTasksSectionsAmount > 0 && (
                 <StreamAndUserTasksSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}

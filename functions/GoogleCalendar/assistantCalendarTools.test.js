@@ -9,19 +9,16 @@ jest.mock('googleapis', () => ({
 }))
 
 jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
-    getAuthorizedOAuth2Client: jest.fn(),
+    getAccessToken: jest.fn(),
+    getOAuth2Client: jest.fn(),
 }))
 
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
-const moment = require('moment-timezone')
-const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
-const { buildConnectionId, listCalendarConnections } = require('../Integrations/providerConnections')
+const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 
 const firestoreState = {
     users: {},
-    bookingSettings: {},
-    bookingSettingsErrors: {},
 }
 
 const calendarClients = {}
@@ -44,23 +41,16 @@ function buildFirestore() {
                 })),
             }
         }),
-        // AT-2278: the meeting settings doc that carries minFreeHoursPerDay.
-        doc: jest.fn(path => {
-            const match = /^users\/([^/]+)\/bookingSettings\/default$/.exec(path)
-            if (!match) throw new Error(`Unexpected doc path: ${path}`)
-            const error = firestoreState.bookingSettingsErrors[match[1]]
-            if (error) return { get: jest.fn().mockRejectedValue(error) }
-            const data = firestoreState.bookingSettings[match[1]]
-            return {
-                get: jest.fn().mockResolvedValue({ exists: !!data, data: () => data }),
-            }
-        }),
     }
 }
 
-// The handler now returns a ready, fully-credentialed client instead of a bare token.
-function createOAuthClient(projectId) {
-    return { __projectId: projectId, setCredentials: jest.fn(), on: jest.fn() }
+function createOAuthClient() {
+    return {
+        __projectId: null,
+        setCredentials(credentials) {
+            this.__projectId = String(credentials.access_token || '').replace(/^token-/, '')
+        },
+    }
 }
 
 describe('assistantCalendarTools', () => {
@@ -68,18 +58,12 @@ describe('assistantCalendarTools', () => {
 
     beforeEach(() => {
         firestoreState.users = {}
-        firestoreState.bookingSettings = {}
-        firestoreState.bookingSettingsErrors = {}
         Object.keys(calendarClients).forEach(key => delete calendarClients[key])
         jest.clearAllMocks()
 
         admin.firestore.mockImplementation(() => buildFirestore())
-        getAuthorizedOAuth2Client.mockImplementation((userId, projectId) => {
-            const connection = listCalendarConnections(firestoreState.users[userId] || {}).find(
-                item => item.connectionId === projectId
-            )
-            return Promise.resolve(createOAuthClient(connection?.defaultProjectId || projectId))
-        })
+        getAccessToken.mockImplementation((userId, projectId) => Promise.resolve(`token-${projectId}`))
+        getOAuth2Client.mockImplementation(() => createOAuthClient())
         google.calendar.mockImplementation(({ auth }) => {
             const client = calendarClients[auth.__projectId]
             if (!client) throw new Error(`Missing mocked calendar client for project ${auth.__projectId}`)
@@ -91,10 +75,6 @@ describe('assistantCalendarTools', () => {
 
     function setUser(userId, data) {
         firestoreState.users[userId] = data
-    }
-
-    function setBookingSettings(userId, data) {
-        firestoreState.bookingSettings[userId] = data
     }
 
     function setCalendarClient(projectId, overrides = {}) {
@@ -128,48 +108,8 @@ describe('assistantCalendarTools', () => {
         const accounts = await assistantCalendarTools.__private__.getConnectedCalendarAccounts('user-1')
 
         expect(accounts).toEqual([
-            {
-                projectId: buildConnectionId('calendar', 'google', 'me@example.com'),
-                connectionProjectId: 'p1',
-                calendarEmail: 'me@example.com',
-                calendarDefault: false,
-            },
-            {
-                projectId: buildConnectionId('calendar', 'google', 'other@example.com'),
-                connectionProjectId: 'p3',
-                calendarEmail: 'other@example.com',
-                calendarDefault: false,
-            },
-        ])
-    })
-
-    test('uses the global default Calendar account even when legacy project flags disagree', async () => {
-        const connectionId = buildConnectionId('calendar', 'google', 'default@example.com')
-        setUser('user-1', {
-            calendarConnections: {
-                [connectionId]: {
-                    provider: 'google',
-                    emailAddress: 'default@example.com',
-                    defaultProjectId: 'integration-home-project',
-                    isDefaultAccount: true,
-                },
-            },
-            apisConnected: {
-                'integration-home-project': {
-                    calendar: true,
-                    calendarEmail: 'default@example.com',
-                    calendarDefault: false,
-                },
-            },
-        })
-
-        await expect(assistantCalendarTools.__private__.getConnectedCalendarAccounts('user-1')).resolves.toEqual([
-            {
-                projectId: connectionId,
-                connectionProjectId: 'integration-home-project',
-                calendarEmail: 'default@example.com',
-                calendarDefault: true,
-            },
+            { projectId: 'p1', calendarEmail: 'me@example.com', calendarDefault: false },
+            { projectId: 'p3', calendarEmail: 'other@example.com', calendarDefault: false },
         ])
     })
 
@@ -225,7 +165,7 @@ describe('assistantCalendarTools', () => {
         expect(result.success).toBe(true)
         expect(result.searchedAccounts).toHaveLength(2)
         expect(result.results[0]).toMatchObject({
-            projectId: buildConnectionId('calendar', 'google', 'one@example.com'),
+            projectId: 'p1',
             calendarEmail: 'one@example.com',
             calendarId: 'primary',
             eventId: 'evt-1',
@@ -349,268 +289,6 @@ describe('assistantCalendarTools', () => {
             { start: '2026-03-10T11:00:00+01:00', end: '2026-03-10T11:30:00+01:00' },
             { start: '2026-03-10T11:30:00+01:00', end: '2026-03-10T12:00:00+01:00' },
         ])
-    })
-
-    describe('minimum free calendar time per day (AT-2278)', () => {
-        const CALENDAR_USER = {
-            timezone: 'Europe/Berlin',
-            projectIds: ['p1'],
-            apisConnected: {
-                p1: { calendar: true, calendarEmail: 'one@example.com' },
-            },
-        }
-
-        function busyEvent(startIso, endIso) {
-            return { status: 'confirmed', start: { dateTime: startIso }, end: { dateTime: endIso } }
-        }
-
-        test('skips a day that would drop below the default 4 free hours and keeps the next one', async () => {
-            setUser('user-1', CALENDAR_USER)
-            const client = setCalendarClient('p1')
-            // 5h booked inside a 09:00-17:00 window leaves 3h free — a 30min meeting would
-            // leave 2.5h, below the 4h default. The following day is empty.
-            client.events.list.mockResolvedValue({
-                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T14:00:00+01:00')] },
-            })
-
-            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
-                userId: 'user-1',
-                timeMin: '2026-03-10T09:00:00+01:00',
-                timeMax: '2026-03-11T17:00:00+01:00',
-                durationMinutes: 30,
-                maxOptions: 2,
-            })
-
-            expect(result.success).toBe(true)
-            expect(result.minFreeHours).toEqual({
-                perDay: 4,
-                source: 'settings',
-                applied: true,
-                skippedDays: ['2026-03-10'],
-            })
-            expect(result.options).toEqual([
-                { start: '2026-03-11T09:00:00+01:00', end: '2026-03-11T09:30:00+01:00' },
-                { start: '2026-03-11T09:30:00+01:00', end: '2026-03-11T10:00:00+01:00' },
-            ])
-            expect(result.message).toContain('1 day was skipped')
-        })
-
-        test('counts meetings outside the searched window but inside the same working day', async () => {
-            setUser('user-1', CALENDAR_USER)
-            const client = setCalendarClient('p1')
-            client.events.list.mockResolvedValue({
-                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T14:00:00+01:00')] },
-            })
-
-            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
-                userId: 'user-1',
-                // The morning load sits entirely outside this window; the day is still full.
-                timeMin: '2026-03-10T15:00:00+01:00',
-                timeMax: '2026-03-10T17:00:00+01:00',
-                durationMinutes: 30,
-                maxOptions: 2,
-            })
-
-            expect(client.events.list).toHaveBeenCalledWith(
-                expect.objectContaining({ timeMin: '2026-03-09T23:00:00.000Z' })
-            )
-            // Soft fallback: no day in the range qualifies, so the options are offered anyway
-            // and flagged as cutting into the protected free time.
-            expect(result.minFreeHours).toMatchObject({ perDay: 4, applied: false, skippedDays: ['2026-03-10'] })
-            expect(result.options).toEqual([
-                { start: '2026-03-10T15:00:00+01:00', end: '2026-03-10T15:30:00+01:00' },
-                { start: '2026-03-10T15:30:00+01:00', end: '2026-03-10T16:00:00+01:00' },
-            ])
-            expect(result.message).toContain('cut into that protected time')
-        })
-
-        test('uses the saved per-user setting instead of the default', async () => {
-            setUser('user-1', CALENDAR_USER)
-            setBookingSettings('user-1', { minFreeHoursPerDay: 6 })
-            const client = setCalendarClient('p1')
-            // 2h booked leaves 6h free: fine under the 4h default, too little under 6h.
-            client.events.list.mockResolvedValue({
-                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T11:00:00+01:00')] },
-            })
-
-            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
-                userId: 'user-1',
-                timeMin: '2026-03-10T09:00:00+01:00',
-                timeMax: '2026-03-11T17:00:00+01:00',
-                durationMinutes: 30,
-                maxOptions: 1,
-            })
-
-            expect(result.minFreeHours).toMatchObject({
-                perDay: 6,
-                source: 'settings',
-                applied: true,
-                skippedDays: ['2026-03-10'],
-            })
-            expect(result.options).toEqual([{ start: '2026-03-11T09:00:00+01:00', end: '2026-03-11T09:30:00+01:00' }])
-        })
-
-        test('an explicit request value overrides the setting, and 0 disables the rule', async () => {
-            setUser('user-1', CALENDAR_USER)
-            setBookingSettings('user-1', { minFreeHoursPerDay: 6 })
-            const client = setCalendarClient('p1')
-            client.events.list.mockResolvedValue({
-                data: { items: [busyEvent('2026-03-10T09:00:00+01:00', '2026-03-10T14:00:00+01:00')] },
-            })
-
-            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
-                userId: 'user-1',
-                timeMin: '2026-03-10T09:00:00+01:00',
-                timeMax: '2026-03-10T17:00:00+01:00',
-                durationMinutes: 30,
-                maxOptions: 1,
-                minFreeHoursPerDay: 0,
-            })
-
-            expect(result.minFreeHours).toEqual({
-                perDay: 0,
-                source: 'request',
-                applied: true,
-                skippedDays: [],
-            })
-            expect(result.options).toEqual([{ start: '2026-03-10T14:00:00+01:00', end: '2026-03-10T14:30:00+01:00' }])
-        })
-    })
-
-    describe('public meeting-link policy for emailed options', () => {
-        const NOW = moment.tz('2026-08-12T14:00:00', 'Europe/Berlin').valueOf()
-        const CALENDAR_USER = {
-            timezone: 'Europe/Berlin',
-            projectIds: ['p1'],
-            apisConnected: {
-                p1: { calendar: true, calendarEmail: 'one@example.com' },
-            },
-        }
-
-        beforeEach(() => {
-            jest.useFakeTimers()
-            jest.setSystemTime(NOW)
-            setUser('user-1', CALENDAR_USER)
-        })
-
-        afterEach(() => {
-            jest.useRealTimers()
-        })
-
-        test('clamps an emailed search to tomorrow and applies the saved availability settings', async () => {
-            setBookingSettings('user-1', {
-                timeZone: 'Europe/Berlin',
-                workingHoursStart: '10:00',
-                workingHoursEnd: '16:00',
-                includeWeekends: true,
-                allowSameDayBooking: false,
-                bufferBeforeMinutes: 15,
-                bufferAfterMinutes: 20,
-                minFreeHoursPerDay: 0,
-            })
-            setCalendarClient('p1')
-
-            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
-                userId: 'user-1',
-                timeMin: '2026-08-12T09:00:00+02:00',
-                timeMax: '2026-08-13T17:00:00+02:00',
-                maxOptions: 2,
-                respectPublicMeetingLinkSettings: true,
-            })
-
-            expect(result.success).toBe(true)
-            expect(result.requestedRange.start).toBe('2026-08-13T00:00:00+02:00')
-            expect(result.workingHours).toEqual({
-                start: '10:00',
-                end: '16:00',
-                includeWeekends: true,
-                bufferBeforeMinutes: 15,
-                bufferAfterMinutes: 20,
-            })
-            expect(result.minFreeHours).toMatchObject({ perDay: 0, source: 'settings' })
-            expect(result.options).toEqual([
-                { start: '2026-08-13T10:00:00+02:00', end: '2026-08-13T10:30:00+02:00' },
-                { start: '2026-08-13T10:30:00+02:00', end: '2026-08-13T11:00:00+02:00' },
-            ])
-        })
-
-        test('returns no emailed options for today when same-day meetings are disabled', async () => {
-            setBookingSettings('user-1', {
-                timeZone: 'Europe/Berlin',
-                allowSameDayBooking: false,
-            })
-            const client = setCalendarClient('p1')
-
-            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
-                userId: 'user-1',
-                timeMin: '2026-08-12T14:00:00+02:00',
-                timeMax: '2026-08-12T17:00:00+02:00',
-                respectPublicMeetingLinkSettings: true,
-            })
-
-            expect(result).toMatchObject({
-                success: true,
-                options: [],
-            })
-            expect(result.message).toContain('do not allow same-day meetings')
-            expect(client.events.list).not.toHaveBeenCalled()
-        })
-
-        test('keeps today available when the current request explicitly overrides the saved setting', async () => {
-            setBookingSettings('user-1', {
-                timeZone: 'Europe/Berlin',
-                allowSameDayBooking: false,
-                minFreeHoursPerDay: 0,
-            })
-            setCalendarClient('p1')
-
-            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
-                userId: 'user-1',
-                timeMin: '2026-08-12T14:00:00+02:00',
-                timeMax: '2026-08-12T17:00:00+02:00',
-                maxOptions: 1,
-                allowSameDayBooking: true,
-                respectPublicMeetingLinkSettings: true,
-            })
-
-            expect(result.options).toEqual([{ start: '2026-08-12T14:00:00+02:00', end: '2026-08-12T14:30:00+02:00' }])
-        })
-
-        test('does not invent a same-day policy when no public meeting settings were saved', async () => {
-            setCalendarClient('p1')
-
-            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
-                userId: 'user-1',
-                timeMin: '2026-08-12T14:00:00+02:00',
-                timeMax: '2026-08-12T17:00:00+02:00',
-                maxOptions: 1,
-                minFreeHoursPerDay: 0,
-                respectPublicMeetingLinkSettings: true,
-            })
-
-            expect(result.options).toEqual([{ start: '2026-08-12T14:00:00+02:00', end: '2026-08-12T14:30:00+02:00' }])
-        })
-
-        test('fails closed when emailed availability settings cannot be read', async () => {
-            const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
-            firestoreState.bookingSettingsErrors['user-1'] = new Error('firestore unavailable')
-            const client = setCalendarClient('p1')
-
-            const result = await assistantCalendarTools.findCalendarAvailabilityForAssistantRequest({
-                userId: 'user-1',
-                timeMin: '2026-08-12T14:00:00+02:00',
-                timeMax: '2026-08-13T17:00:00+02:00',
-                respectPublicMeetingLinkSettings: true,
-            })
-
-            expect(result).toMatchObject({
-                success: false,
-                options: [],
-                message: 'Meeting availability settings could not be checked right now. Please try again later.',
-            })
-            expect(client.events.list).not.toHaveBeenCalled()
-            warnSpy.mockRestore()
-        })
     })
 
     test('fails closed when any connected calendar cannot be checked', async () => {
@@ -773,14 +451,7 @@ describe('assistantCalendarTools', () => {
                 summary: 'Local Time Event',
                 start: { dateTime: '2026-03-11T09:00:00', timeZone: 'Europe/Berlin' },
                 end: { dateTime: '2026-03-11T10:00:00', timeZone: 'Europe/Berlin' },
-                conferenceData: {
-                    createRequest: {
-                        requestId: expect.any(String),
-                        conferenceSolutionKey: { type: 'hangoutsMeet' },
-                    },
-                },
             },
-            conferenceDataVersion: 1,
         })
     })
 
@@ -920,235 +591,9 @@ describe('assistantCalendarTools', () => {
         })
 
         expect(result.success).toBe(true)
-        expect(result.projectId).toBe(buildConnectionId('calendar', 'google', 'two@example.com'))
+        expect(result.projectId).toBe('p2')
         expect(defaultClient.events.insert).toHaveBeenCalled()
         expect(calendarClients.p1.events.insert).not.toHaveBeenCalled()
-    })
-
-    test('treats explicit primary as the saved default account when multiple are connected', async () => {
-        setUser('user-1', {
-            projectIds: ['p1', 'p2'],
-            apisConnected: {
-                p1: { calendar: true, calendarEmail: 'one@example.com', calendarDefault: false },
-                p2: { calendar: true, calendarEmail: 'two@example.com', calendarDefault: true },
-            },
-        })
-
-        const nonDefaultClient = setCalendarClient('p1')
-        const defaultClient = setCalendarClient('p2')
-        defaultClient.events.insert.mockResolvedValue({
-            data: {
-                id: 'evt-explicit-primary',
-                summary: 'Default Event',
-                start: { dateTime: '2026-03-11T09:00:00+01:00' },
-                end: { dateTime: '2026-03-11T10:00:00+01:00' },
-            },
-        })
-
-        const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
-            userId: 'user-1',
-            summary: 'Default Event',
-            start: '2026-03-11T09:00:00+01:00',
-            end: '2026-03-11T10:00:00+01:00',
-            calendarId: 'primary',
-        })
-
-        expect(result.success).toBe(true)
-        expect(result.projectId).toBe(buildConnectionId('calendar', 'google', 'two@example.com'))
-        expect(defaultClient.events.insert).toHaveBeenCalledWith(expect.objectContaining({ calendarId: 'primary' }))
-        expect(nonDefaultClient.calendars.get).not.toHaveBeenCalled()
-        expect(nonDefaultClient.events.insert).not.toHaveBeenCalled()
-    })
-
-    test('keeps explicit primary ambiguous when multiple accounts have no saved default', async () => {
-        setUser('user-1', {
-            projectIds: ['p1', 'p2'],
-            apisConnected: {
-                p1: { calendar: true, calendarEmail: 'one@example.com', calendarDefault: false },
-                p2: { calendar: true, calendarEmail: 'two@example.com', calendarDefault: false },
-            },
-        })
-
-        const firstClient = setCalendarClient('p1')
-        const secondClient = setCalendarClient('p2')
-        const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
-            userId: 'user-1',
-            summary: 'Ambiguous',
-            start: '2026-03-11T09:00:00+01:00',
-            end: '2026-03-11T10:00:00+01:00',
-            calendarId: 'primary',
-        })
-
-        expect(result.success).toBe(false)
-        expect(result.code).toBe('calendar_account_ambiguous')
-        expect(firstClient.calendars.get).not.toHaveBeenCalled()
-        expect(secondClient.calendars.get).not.toHaveBeenCalled()
-    })
-
-    // AT-2198: every meeting Anna books must come with a join link already attached.
-    describe('automatic Google Meet conferencing', () => {
-        function connectSingleAccount() {
-            setUser('user-1', {
-                projectIds: ['p1'],
-                apisConnected: { p1: { calendar: true, calendarEmail: 'one@example.com' } },
-            })
-            return setCalendarClient('p1')
-        }
-
-        const TIMED_EVENT = {
-            userId: 'user-1',
-            summary: 'Meeting with Karsten',
-            start: '2026-03-11T09:00:00+01:00',
-            end: '2026-03-11T10:00:00+01:00',
-        }
-
-        function meetEventResponse(overrides = {}) {
-            return {
-                data: {
-                    id: 'evt-meet',
-                    summary: 'Meeting with Karsten',
-                    start: { dateTime: '2026-03-11T09:00:00+01:00' },
-                    end: { dateTime: '2026-03-11T10:00:00+01:00' },
-                    hangoutLink: 'https://meet.google.com/abc-defg-hij',
-                    conferenceData: {
-                        createRequest: { status: { statusCode: 'success' } },
-                        entryPoints: [{ entryPointType: 'video', uri: 'https://meet.google.com/abc-defg-hij' }],
-                    },
-                    ...overrides,
-                },
-            }
-        }
-
-        test('requests a Meet conference and returns the join URL', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(meetEventResponse())
-
-            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            expect(result.success).toBe(true)
-            expect(result.joinUrl).toBe('https://meet.google.com/abc-defg-hij')
-            expect(result.joinProvider).toBe('google_meet')
-            expect(result.provider).toBe('google')
-
-            const insertArgs = client.events.insert.mock.calls[0][0]
-            // Without conferenceDataVersion:1 Google silently ignores conferenceData.
-            expect(insertArgs.conferenceDataVersion).toBe(1)
-            expect(insertArgs.requestBody.conferenceData.createRequest.conferenceSolutionKey).toEqual({
-                type: 'hangoutsMeet',
-            })
-            expect(insertArgs.requestBody.conferenceData.createRequest.requestId).toEqual(expect.any(String))
-        })
-
-        test('uses a unique conference requestId per event', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(meetEventResponse())
-
-            await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-            await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            const [first, second] = client.events.insert.mock.calls.map(
-                call => call[0].requestBody.conferenceData.createRequest.requestId
-            )
-            expect(first).not.toBe(second)
-        })
-
-        test('exposes the Meet link on the normalized event so downstream readers see it', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(meetEventResponse())
-
-            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            expect(result.event.hangoutLink).toBe('https://meet.google.com/abc-defg-hij')
-            expect(result.event.conferenceData).toBeTruthy()
-        })
-
-        // A Workspace policy can disable Meet. The booking must still succeed.
-        test('falls back to a plain event when Google rejects conferencing', async () => {
-            const client = connectSingleAccount()
-            const rejection = Object.assign(new Error('Invalid conference type value.'), { code: 403 })
-            client.events.insert.mockRejectedValueOnce(rejection).mockResolvedValueOnce({
-                data: {
-                    id: 'evt-plain',
-                    summary: 'Meeting with Karsten',
-                    start: { dateTime: '2026-03-11T09:00:00+01:00' },
-                    end: { dateTime: '2026-03-11T10:00:00+01:00' },
-                },
-            })
-
-            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            expect(result.success).toBe(true)
-            expect(result.joinUrl).toBe('')
-            expect(result.event.eventId).toBe('evt-plain')
-            expect(client.events.insert).toHaveBeenCalledTimes(2)
-            // The retry must not carry conferencing fields.
-            const retryArgs = client.events.insert.mock.calls[1][0]
-            expect(retryArgs.requestBody.conferenceData).toBeUndefined()
-            expect(retryArgs.conferenceDataVersion).toBeUndefined()
-        })
-
-        // A 5xx may have created the event server-side; retrying could double-book.
-        test('does not retry a transient failure', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockRejectedValue(Object.assign(new Error('Backend Error'), { code: 500 }))
-
-            await expect(assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)).rejects.toThrow(
-                'Backend Error'
-            )
-            expect(client.events.insert).toHaveBeenCalledTimes(1)
-        })
-
-        test('succeeds without a link when Google reports a failed conference', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(
-                meetEventResponse({
-                    hangoutLink: undefined,
-                    conferenceData: { createRequest: { status: { statusCode: 'failure' } } },
-                })
-            )
-
-            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            expect(result.success).toBe(true)
-            expect(result.joinUrl).toBe('')
-            expect(client.events.insert).toHaveBeenCalledTimes(1)
-        })
-
-        // Holidays and vacations are not meetings.
-        test('does not add conferencing to all-day events', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue({
-                data: {
-                    id: 'evt-allday',
-                    summary: 'Vacation',
-                    start: { date: '2026-03-12' },
-                    end: { date: '2026-03-13' },
-                },
-            })
-
-            await assistantCalendarTools.createCalendarEventForAssistantRequest({
-                userId: 'user-1',
-                summary: 'Vacation',
-                start: { date: '2026-03-12' },
-                end: { date: '2026-03-13' },
-            })
-
-            const insertArgs = client.events.insert.mock.calls[0][0]
-            expect(insertArgs.requestBody.conferenceData).toBeUndefined()
-            expect(insertArgs.conferenceDataVersion).toBeUndefined()
-        })
-
-        test('honours the internal addConferencing opt-out', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(meetEventResponse())
-
-            await assistantCalendarTools.createCalendarEventForAssistantRequest({
-                ...TIMED_EVENT,
-                addConferencing: false,
-            })
-
-            expect(client.events.insert.mock.calls[0][0].requestBody.conferenceData).toBeUndefined()
-        })
     })
 
     test('returns reconnect guidance when no calendar account is connected', async () => {
@@ -1164,113 +609,5 @@ describe('assistantCalendarTools', () => {
 
         expect(result.success).toBe(false)
         expect(result.message).toMatch(/Please connect Calendar first/)
-    })
-
-    describe('recurring event writes', () => {
-        function connectedCalendar() {
-            setUser('user-1', {
-                projectIds: ['p1'],
-                preferredTimezone: 'Europe/Berlin',
-                apisConnected: { p1: { calendar: true, calendarEmail: 'one@example.com' } },
-            })
-            return setCalendarClient('p1')
-        }
-
-        test('creates a weekly series and exposes its recurrence', async () => {
-            const client = connectedCalendar()
-            client.events.insert.mockResolvedValue({
-                data: { id: 'master', recurrence: ['RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE'] },
-            })
-            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
-                userId: 'user-1',
-                summary: 'Standup',
-                start: '2026-10-05T09:00:00',
-                end: '2026-10-05T09:30:00',
-                recurrence: { frequency: 'weekly', daysOfWeek: ['monday', 'wednesday'] },
-            })
-            expect(result.success).toBe(true)
-            expect(result.event.recurrence).toEqual(['RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE'])
-            expect(client.events.insert.mock.calls[0][0].requestBody.recurrence).toEqual(result.event.recurrence)
-        })
-
-        test('rejects invalid recurrence before inserting', async () => {
-            const client = connectedCalendar()
-            await expect(
-                assistantCalendarTools.createCalendarEventForAssistantRequest({
-                    userId: 'user-1',
-                    summary: 'Standup',
-                    start: '2026-10-05T09:00:00',
-                    end: '2026-10-05T09:30:00',
-                    recurrence: { frequency: 'weekly', daysOfWeek: ['tuesday'] },
-                })
-            ).rejects.toThrow('first event weekday')
-            expect(client.events.insert).not.toHaveBeenCalled()
-        })
-
-        test('requires scope for a recurring instance and targets the right ID', async () => {
-            const client = connectedCalendar()
-            client.events.get.mockResolvedValue({
-                data: {
-                    id: 'instance',
-                    recurringEventId: 'master',
-                    start: { dateTime: '2026-10-05T09:00:00', timeZone: 'Europe/Berlin' },
-                },
-            })
-            client.events.patch.mockResolvedValue({ data: { id: 'master' } })
-            const args = { userId: 'user-1', eventId: 'instance', summary: 'New title' }
-            const ambiguous = await assistantCalendarTools.updateCalendarEventForAssistantRequest(args)
-            expect(ambiguous.code).toBe('calendar_recurrence_scope_required')
-            expect(client.events.patch).not.toHaveBeenCalled()
-            await assistantCalendarTools.updateCalendarEventForAssistantRequest({ ...args, scope: 'series' })
-            expect(client.events.patch.mock.calls[0][0].eventId).toBe('master')
-            await assistantCalendarTools.updateCalendarEventForAssistantRequest({ ...args, scope: 'occurrence' })
-            expect(client.events.patch.mock.calls[1][0].eventId).toBe('instance')
-        })
-
-        test('updates the master recurrence using the master start date', async () => {
-            const client = connectedCalendar()
-            client.events.get.mockImplementation(({ eventId }) =>
-                Promise.resolve({
-                    data:
-                        eventId === 'master'
-                            ? {
-                                  id: 'master',
-                                  recurrence: ['RRULE:FREQ=WEEKLY'],
-                                  start: { dateTime: '2026-10-05T09:00:00', timeZone: 'Europe/Berlin' },
-                              }
-                            : {
-                                  id: 'instance',
-                                  recurringEventId: 'master',
-                                  start: { dateTime: '2026-10-07T09:00:00', timeZone: 'Europe/Berlin' },
-                              },
-                })
-            )
-            client.events.patch.mockResolvedValue({ data: { id: 'master' } })
-            await assistantCalendarTools.updateCalendarEventForAssistantRequest({
-                userId: 'user-1',
-                eventId: 'instance',
-                scope: 'series',
-                recurrence: { frequency: 'weekly', daysOfWeek: ['monday', 'wednesday'], count: 4 },
-            })
-            expect(client.events.patch).toHaveBeenCalledWith({
-                calendarId: 'primary',
-                eventId: 'master',
-                requestBody: { recurrence: ['RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE;COUNT=4'] },
-            })
-        })
-
-        test('deletes one occurrence or the entire series only with scope', async () => {
-            const client = connectedCalendar()
-            client.events.get.mockResolvedValue({ data: { id: 'instance', recurringEventId: 'master' } })
-            client.events.delete.mockResolvedValue({})
-            const args = { userId: 'user-1', eventId: 'instance' }
-            expect((await assistantCalendarTools.deleteCalendarEventForAssistantRequest(args)).code).toBe(
-                'calendar_recurrence_scope_required'
-            )
-            expect(client.events.delete).not.toHaveBeenCalled()
-            await assistantCalendarTools.deleteCalendarEventForAssistantRequest({ ...args, scope: 'occurrence' })
-            await assistantCalendarTools.deleteCalendarEventForAssistantRequest({ ...args, scope: 'series' })
-            expect(client.events.delete.mock.calls.map(call => call[0].eventId)).toEqual(['instance', 'master'])
-        })
     })
 })

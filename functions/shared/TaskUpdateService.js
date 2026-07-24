@@ -146,8 +146,7 @@ class TaskUpdateService {
         }
 
         // Step 3: Proceed with auto-selected or single match
-        const { task: currentTask } = searchResult.selectedMatch
-        let { projectId, projectName } = searchResult.selectedMatch
+        const { task: currentTask, projectId, projectName } = searchResult.selectedMatch
 
         console.log('🔄 TaskUpdateService: Task found, proceeding with update', {
             taskId: currentTask.id,
@@ -166,12 +165,8 @@ class TaskUpdateService {
             projectName,
             normalizedUpdateFields,
             userId,
-            feedUser,
-            options
+            feedUser
         )
-
-        projectId = updateResult.project?.id || projectId
-        projectName = updateResult.project?.name || projectName
 
         if (normalizedUpdateFields.comment) {
             try {
@@ -182,8 +177,6 @@ class TaskUpdateService {
                     feedUser,
                     fromAssistant: !!options.commentFromAssistant,
                     silent: !!options.silentComment,
-                    requestUserId: options.commentRequestUserId,
-                    suppressAssistantReply: options.suppressAssistantReply,
                 })
                 updateResult.message = updateResult.changes?.length
                     ? `${updateResult.message}; comment added`
@@ -394,23 +387,18 @@ class TaskUpdateService {
                     taskProjectName,
                     updateFields,
                     userId,
-                    feedUser,
-                    options
+                    feedUser
                 )
-                const finalProjectId = updateResult.project?.id || taskProjectId
-                const finalProjectName = updateResult.project?.name || taskProjectName
                 let commentResult = null
                 if (updateFields.comment) {
                     try {
                         commentResult = await this.addTaskComment({
-                            projectId: finalProjectId,
+                            projectId: taskProjectId,
                             task: updateResult.task || task,
                             comment: updateFields.comment,
                             feedUser,
                             fromAssistant: !!options.commentFromAssistant,
                             silent: !!options.silentComment,
-                            requestUserId: options.commentRequestUserId,
-                            suppressAssistantReply: options.suppressAssistantReply,
                         })
                     } catch (commentError) {
                         if (!updateResult.changes || updateResult.changes.length === 0) {
@@ -423,8 +411,8 @@ class TaskUpdateService {
                 await this.recordPriorityDecisionIfNeeded({
                     userId,
                     currentTask: task,
-                    projectId: finalProjectId,
-                    projectName: finalProjectName,
+                    projectId: taskProjectId,
+                    projectName: taskProjectName,
                     updateFields,
                     options,
                     commentResult,
@@ -434,8 +422,8 @@ class TaskUpdateService {
                 updated.push({
                     id: task.id,
                     name: task.name,
-                    projectId: finalProjectId,
-                    projectName: finalProjectName,
+                    projectId: taskProjectId,
+                    projectName: taskProjectName,
                     changes: updateResult.changes,
                     commentResult,
                 })
@@ -500,16 +488,7 @@ class TaskUpdateService {
         return normalizedFields
     }
 
-    async addTaskComment({
-        projectId,
-        task,
-        comment,
-        feedUser,
-        fromAssistant,
-        silent,
-        requestUserId,
-        suppressAssistantReply,
-    }) {
+    async addTaskComment({ projectId, task, comment, feedUser, fromAssistant, silent }) {
         if (!this.taskCommentService) {
             const { TaskCommentService } = require('./TaskCommentService')
             this.taskCommentService = new TaskCommentService({ database: this.options.database })
@@ -523,8 +502,6 @@ class TaskUpdateService {
             actor: feedUser,
             fromAssistant,
             silent,
-            requestUserId,
-            suppressAssistantReply,
         })
     }
 
@@ -567,8 +544,8 @@ class TaskUpdateService {
                         ? 'failed'
                         : 'written'
                     : updateFields.comment
-                      ? 'not_written'
-                      : 'not_required',
+                    ? 'not_written'
+                    : 'not_required',
             })
         } catch (error) {
             console.warn('TaskUpdateService: failed to record task priority decision', {
@@ -583,24 +560,10 @@ class TaskUpdateService {
     /**
      * Perform the actual task update
      */
-    async performTaskUpdate(currentTask, projectId, projectName, updateFields, userId, feedUser, options = {}) {
+    async performTaskUpdate(currentTask, projectId, projectName, updateFields, userId, feedUser) {
         console.log('🔄 TaskUpdateService: Executing task update via TaskService')
-        let committedGoalProjectId = null
 
         try {
-            // Reject inaccessible goals before estimation or any other side-effecting update.
-            if (updateFields.parentGoalId !== undefined) {
-                const { prepareTaskParentGoalUpdate } = require('./taskParentGoal')
-                await prepareTaskParentGoalUpdate(
-                    this.options.database,
-                    userId,
-                    projectId,
-                    currentTask,
-                    updateFields.parentGoalId,
-                    updateFields.parentId,
-                    updateFields.parentGoalProjectId
-                )
-            }
             // Get user's timezone for date parsing (normalize across possible fields)
             const userDoc = await this.options.database.collection('users').doc(userId).get()
             const userData = userDoc.data()
@@ -623,7 +586,7 @@ class TaskUpdateService {
             })
 
             // Handle estimation update if provided
-            if (updateFields.estimation !== undefined && updateFields.parentGoalId === undefined) {
+            if (updateFields.estimation !== undefined) {
                 await this.performEstimationUpdate(projectId, currentTask.id, currentTask, updateFields.estimation)
             }
 
@@ -655,13 +618,9 @@ class TaskUpdateService {
                 console.log('🔄 TaskUpdateService: Converted dueDate', {
                     from: updateFields.dueDate,
                     to: processedDueDate,
+                    asDate: new Date(processedDueDate).toISOString(),
                 })
             }
-
-            // Model-authored JSON (assistant tool calls, MCP) can put anything under
-            // dueDate; refuse garbage here instead of persisting it to Firestore.
-            const { validateDueDateForPersistence } = require('./dueDateValidation')
-            processedDueDate = validateDueDateForPersistence(processedDueDate, updateFields.dueDate)
 
             const result = await this.taskService.updateAndPersistTask({
                 taskId: currentTask.id,
@@ -671,39 +630,15 @@ class TaskUpdateService {
                 description: updateFields.description,
                 dueDate: processedDueDate,
                 recurrence: updateFields.recurrence,
-                executionMode: updateFields.executionMode,
                 priority: updateFields.priority,
                 completed: updateFields.completed,
                 userId: updateFields.userId || updateFields.targetUserId,
                 parentId: updateFields.parentId,
-                parentGoalId: updateFields.parentGoalId,
-                parentGoalProjectId: updateFields.parentGoalProjectId,
                 feedUser: feedUser,
                 focus: updateFields.focus,
                 focusUserId: userId,
                 initiatorId: userId,
             })
-
-            if (updateFields.parentGoalId !== undefined && result.persisted)
-                committedGoalProjectId = result.projectId || projectId
-
-            // Follow-up effects must address the durable destination after a goal move.
-            const changedProject = result.projectId && result.projectId !== projectId
-            projectId = result.projectId || projectId
-            currentTask = result.updatedTask || currentTask
-            if (changedProject) {
-                const projectDoc = await this.options.database.doc(`projects/${projectId}`).get()
-                if (projectDoc.exists) projectName = projectDoc.data().name || projectName
-            }
-            if (updateFields.estimation !== undefined && updateFields.parentGoalId !== undefined) {
-                try {
-                    await this.performEstimationUpdate(projectId, currentTask.id, currentTask, updateFields.estimation)
-                } catch (error) {
-                    throw new Error(
-                        `Parent goal change committed in project ${projectId}, but estimation update failed: ${error.message}`
-                    )
-                }
-            }
 
             // Add estimation to changes if it was updated
             const changes = result.changes || []
@@ -735,13 +670,9 @@ class TaskUpdateService {
                 if (finalDueDate) {
                     // Import server-side alert updater
                     const { setTaskAlertCloud } = require('./AlertService')
-                    const { resolveReminderChannelsFromSource } = require('../Tasks/reminderChannels')
 
                     // Convert UTC timestamp to moment with user's timezone for setTaskAlert
                     const alertMoment = this.options.moment(finalDueDate).utcOffset(timezoneOffset)
-
-                    // A reminder asked for inside WhatsApp is delivered back over WhatsApp (AT-2211)
-                    const alertChannels = resolveReminderChannelsFromSource(options.sourceChannel)
 
                     console.log('🔄 TaskUpdateService: Calling setTaskAlert', {
                         taskId: currentTask.id,
@@ -749,23 +680,13 @@ class TaskUpdateService {
                         alertEnabled: updateFields.alertEnabled,
                         alertTime: alertMoment.format('YYYY-MM-DD HH:mm:ss'),
                         dueDate: finalDueDate,
-                        alertChannels,
                     })
 
                     // Update alert server-side (Cloud)
-                    await setTaskAlertCloud(
-                        projectId,
-                        currentTask.id,
-                        updateFields.alertEnabled,
-                        alertMoment,
-                        {
-                            ...currentTask,
-                            dueDate: finalDueDate,
-                        },
-                        // Only stamp channels when the reminder actually came from a routed
-                        // channel; otherwise leave any existing routing untouched.
-                        alertChannels.length > 0 ? { alertChannels } : {}
-                    )
+                    await setTaskAlertCloud(projectId, currentTask.id, updateFields.alertEnabled, alertMoment, {
+                        ...currentTask,
+                        dueDate: finalDueDate,
+                    })
 
                     console.log('🔄 TaskUpdateService: Alert updated successfully')
                 }
@@ -792,9 +713,7 @@ class TaskUpdateService {
                 error: error.message,
                 stack: error.stack,
             })
-            throw new Error(
-                `Failed to update task: ${committedGoalProjectId ? `Parent goal change committed in project ${committedGoalProjectId}; a follow-up failed: ` : ''}${error.message}`
-            )
+            throw new Error(`Failed to update task: ${error.message}`)
         }
     }
 

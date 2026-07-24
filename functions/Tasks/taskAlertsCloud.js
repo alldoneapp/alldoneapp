@@ -4,13 +4,6 @@ const { createTaskUpdatedFeed } = require('../Feeds/tasksFeeds')
 const { FEED_TASK_ALERT_CHANGED } = require('../Feeds/FeedsConstants')
 const { loadFeedsGlobalState } = require('../GlobalState/globalState')
 const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud')
-const { shouldSendWhatsAppReminder, ALERT_NOTIFICATION_TYPE } = require('./reminderChannels')
-const { mapWithConcurrency } = require('../Utils/mapWithConcurrency')
-
-// Firestore reads issued at once while building the active-project set and scanning it. The
-// poller runs every five minutes and used to await these one by one (~24s of billed wall clock
-// per run for 60 projects); the reads are independent, so a handful in flight is safe.
-const PROJECT_QUERY_CONCURRENCY = 10
 
 // Robust environment URL resolver (aligns with TwilioWhatsAppService)
 function getBaseUrl() {
@@ -87,7 +80,7 @@ async function getActiveUsersMap() {
 async function getActiveProjectsForUsers(activeUsersMap) {
     const activeProjects = new Set()
 
-    await mapWithConcurrency(activeUsersMap.keys(), PROJECT_QUERY_CONCURRENCY, async userId => {
+    for (const [userId] of activeUsersMap.entries()) {
         try {
             const userProjectsSnapshot = await admin
                 .firestore()
@@ -122,7 +115,7 @@ async function getActiveProjectsForUsers(activeUsersMap) {
             })
             // Continue with other users even if one fails
         }
-    })
+    }
 
     console.log('📊 Active projects identified:', {
         activeUsers: activeUsersMap.size,
@@ -185,7 +178,7 @@ async function checkAndTriggerTaskAlerts() {
 
         console.log(`🔍 Checking tasks in ${activeProjects.size} active projects...`)
 
-        await mapWithConcurrency(activeProjects, PROJECT_QUERY_CONCURRENCY, async projectId => {
+        for (const projectId of activeProjects) {
             try {
                 const tasksSnapshot = await db
                     .collection(`items/${projectId}/tasks`)
@@ -227,7 +220,7 @@ async function checkAndTriggerTaskAlerts() {
                 })
                 // Continue with other projects even if one fails
             }
-        })
+        }
 
         console.log('📊 Task collection phase completed:', {
             activeProjects: activeProjects.size,
@@ -338,7 +331,7 @@ async function checkAndTriggerTaskAlerts() {
                                     userIds: [user.uid],
                                     body,
                                     link: taskLink,
-                                    type: ALERT_NOTIFICATION_TYPE,
+                                    type: 'Alert Notification',
                                     messageTimestamp: nowTs,
                                     projectId,
                                     chatId: taskId,
@@ -357,10 +350,8 @@ async function checkAndTriggerTaskAlerts() {
                                 })
                             }
 
-                            // WhatsApp (independent dispatch via queue).
-                            // Sent when the user opted in globally OR when the reminder was
-                            // explicitly requested on WhatsApp (AT-2211).
-                            if (shouldSendWhatsAppReminder(user, task)) {
+                            // WhatsApp (independent dispatch via queue)
+                            if (user.receiveWhatsApp && user.phone) {
                                 await db.collection('whatsAppNotifications').add({
                                     userId: user.uid,
                                     userPhone: user.phone,

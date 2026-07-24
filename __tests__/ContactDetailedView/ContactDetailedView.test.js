@@ -24,8 +24,13 @@ describe('ContactDetailedView component', () => {
     it('should render correctly', () => {
         const projects = [{ name: 'My Project', userIds: [], usersData: [] }]
         const projectsContacts = [[]]
-        store.dispatch(setProjectsContacts(projectsContacts), storeLoggedUserProjects(projects))
-        const tree = renderer.create(<ContactDetailedView navigation={navigation} />).toJSON()
+        store.dispatch(
+            setProjectsContacts(projectsContacts),
+            storeLoggedUserProjects(projects)
+        )
+        const tree = renderer.create(
+            <ContactDetailedView navigation={navigation} />
+        ).toJSON()
         expect(tree).toMatchSnapshot()
     })
 })

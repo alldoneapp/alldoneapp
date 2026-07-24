@@ -1,9 +1,10 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { View, StyleSheet } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import NotesEditorView from './NotesEditorView'
+import ConnectionStateModal from '../../../UIComponents/FloatModals/ConnectionStateModal'
 import {
     setActiveNoteId,
     setActiveNoteIsReadOnly,
@@ -11,7 +12,6 @@ import {
     removeNoteInnerTasks,
 } from '../../../../redux/actions'
 import Backend from '../../../../utils/BackendBridge'
-import { subscribeSharedNoteData } from '../../../../utils/Notes/sharedNoteSubscriptions'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import SharedHelper from '../../../../utils/SharedHelper'
 
@@ -30,14 +30,9 @@ export default function NoteEditorContainer({
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const loggedUser = useSelector(state => state.loggedUser)
-    const mobile = useSelector(state => state.smallScreenNavigation)
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const [editorKey, setEditorKey] = useState(v4())
     const dispatch = useDispatch()
-    // App-wide connectivity signal (OFFLINE_SUPPORT_PLAN.md Stage 1) — fed by
-    // utils/connectionState.js. '' until the first transition, then 'offline' or
-    // 'online' (the latter only as a recovery from 'offline'). The toast itself
-    // renders globally in GlobalModalsContainerApp (ConnectionStateToast).
-    const connectionState = useSelector(state => state.connectionState)
+    const [connectionState, setConnectionState] = useState('')
     let visibilityStateRef = useRef('visible')
 
     // Only members can edit the note body. Anonymous viewers and logged-in non-members get a
@@ -55,57 +50,49 @@ export default function NoteEditorContainer({
     const autoStartTranscription =
         autoStartTranscriptionProp ?? (navigation ? navigation.getParam('autoStartTranscription') : false)
 
+    const closeConnectionStateModal = () => {
+        setConnectionState('')
+    }
+
     useEffect(() => {
-        // Offline no longer forces read-only (OFFLINE_SUPPORT_PLAN.md Stage 6):
-        // y-indexeddb makes offline edits durable and CRDT merge-on-reconnect safe.
-        const isReadOnly = !loggedUserCanUpdateObject
+        const isReadOnly = connectionState === 'offline' || !loggedUserCanUpdateObject
         dispatch(setActiveNoteIsReadOnly(isReadOnly))
         return () => {
             dispatch(setActiveNoteIsReadOnly(false))
         }
-    }, [loggedUserCanUpdateObject])
+    }, [connectionState, loggedUserCanUpdateObject])
 
     const updateInnerTasks = tasks => {
         dispatch(setNoteInnerTasks(note.id, tasks))
     }
 
     useEffect(() => {
-        const release = subscribeSharedNoteData(
-            `tasks/${loggedUserId}/${project.id}/${note.id}`,
-            callback => {
-                const watcherKey = v4()
-                Backend.watchNoteInnerTasks(project.id, note.id, watcherKey, callback)
-                return watcherKey
-            },
-            watcherKey => Backend.unwatch(watcherKey),
-            updateInnerTasks
-        )
+        const watcherKey = v4()
+        Backend.watchNoteInnerTasks(project.id, note.id, watcherKey, updateInnerTasks)
         return () => {
-            if (release()) dispatch(removeNoteInnerTasks(note.id))
+            Backend.unwatch(watcherKey)
+            dispatch(removeNoteInnerTasks(note.id))
         }
-    }, [project.id, note.id, loggedUserId])
+    }, [])
 
     useEffect(() => {
         dispatch(setActiveNoteId(note.id))
         return () => {
             dispatch(setActiveNoteId(''))
         }
-    }, [note.id])
+    }, [])
 
     return (
-        <View
-            style={localstyles.container}
-            dataSet={{ noteEditor: true, noteEditorLayout: mobile ? 'mobile' : isMiddleScreen ? 'tablet' : 'desktop' }}
-        >
+        <View style={localstyles.container}>
             {visibilityStateRef.current !== 'hidden' && (
                 <NotesEditorView
-                    key={`${project.id}/${note.id}`}
+                    key={editorKey}
                     project={project}
                     note={note}
                     isFullscreen={isFullscreen}
                     setFullscreen={setFullscreen}
                     followState={followState}
-                    readOnly={!loggedUserCanUpdateObject}
+                    readOnly={connectionState === 'offline' || !loggedUserCanUpdateObject}
                     connectionState={connectionState}
                     objectType={objectType}
                     objectId={objectId}
@@ -113,6 +100,9 @@ export default function NoteEditorContainer({
                     autoStartTranscription={autoStartTranscription}
                     onOpenSideChat={onOpenSideChat}
                 />
+            )}
+            {(connectionState === 'online' || connectionState === 'offline') && (
+                <ConnectionStateModal connectionState={connectionState} closeModal={closeConnectionStateModal} />
             )}
         </View>
     )

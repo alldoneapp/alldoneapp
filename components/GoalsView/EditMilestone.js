@@ -123,16 +123,8 @@ export default function EditMilestone({ milestone, onCancelAction, projectId }) 
             ...tmpMilestone,
             extendedName: cleanMilestoneTag(tmpMilestone.extendedName),
         }
-        try {
-            await Backend.updateMilestoneDoneState(projectId, updatedMilestone)
-            onCancelAction()
-        } catch (error) {
-            console.error('[Milestone transition] Could not update milestone state', {
-                projectId,
-                milestoneId: updatedMilestone.id,
-                error,
-            })
-        }
+        Backend.updateMilestoneDoneState(projectId, updatedMilestone)
+        onCancelAction()
     }
 
     const onKeyDown = event => {
@@ -238,7 +230,10 @@ const localStyles = StyleSheet.create({
         borderStyle: 'solid',
         borderColor: colors.Grey200,
         borderRadius: 4,
-        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
+        shadowColor: 'rgba(0,0,0,0.08)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
         elevation: 3,
         marginLeft: -16,
         marginRight: -16,

@@ -3,7 +3,7 @@ import { Image, StyleSheet, View } from 'react-native'
 import SelectUserModal from './SelectUserModal'
 import { colors } from '../styles/global'
 import { hideFloatPopup, setWorkflowStep, showFloatPopup } from '../../redux/actions'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Icon from '../Icon'
 import { useDispatch, useSelector } from 'react-redux'
 import Button from '../UIControls/Button'
@@ -13,7 +13,7 @@ import { translate } from '../../i18n/TranslationService'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import { emptyAiStepFields, REVIEWER_TYPE_ASSISTANT } from './workflowStepHelper'
 
-const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue, disabled = false }) => {
+const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue }) => {
     const [visiblePopover, setVisiblePopover] = useState(false)
     const smallScreen = useSelector(state => state.smallScreen)
     const sendTo = useSelector(state => state.workflowStep)
@@ -39,7 +39,6 @@ const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue, dis
     }
 
     const showPopover = () => {
-        if (disabled) return
         setVisiblePopover(true)
         dispatch(showFloatPopup())
         assigneeBtnRef?.current?.blur()
@@ -84,7 +83,7 @@ const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue, dis
 
     return (
         <View style={buttonItemStyle}>
-            <AppPopover
+            <Popover
                 content={
                     <SelectUserModal currentUser={currentUser} projectIndex={projectIndex} closePopover={hidePopover} />
                 }
@@ -122,12 +121,11 @@ const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue, dis
                             }
                             title={getText()}
                             onPress={showPopover}
-                            disabled={disabled}
                             shortcutText={'A'}
                         />
                     </Hotkeys>
                 }
-            </AppPopover>
+            </Popover>
         </View>
     )
 }

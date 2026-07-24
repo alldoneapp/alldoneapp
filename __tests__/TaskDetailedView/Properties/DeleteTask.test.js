@@ -3,12 +3,12 @@ import DeleteTask from '../../../components/TaskDetailedView/Properties/DeleteTa
 
 import renderer from 'react-test-renderer'
 
+jest.mock('firebase', () => ({ firestore: {} }));
+
 describe('DeleteTask component', () => {
     describe('DeleteTask snapshot test', () => {
         it('should render correctly', () => {
-            const tree = renderer
-                .create(<DeleteTask projectId={'project-1'} task={{ id: 'task-1', parentId: null }} />)
-                .toJSON()
+            const tree = renderer.create(<DeleteTask />).toJSON()
             expect(tree).toMatchSnapshot()
         })
     })

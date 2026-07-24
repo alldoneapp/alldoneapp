@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 import { StyleSheet, View } from 'react-native'
 import DoneTasksByProject from './DoneTasksByProject'
 import AllProjectsEmptyInbox from '../OpenTasksView/AllProjectsEmptyInbox'
-import AllProjectsAssistantLine from '../../MyDayView/AssistantLine/AllProjectsAssistantLine'
+import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
 import AllProjectsLine from '../Header/AllProjectsLine/AllProjectsLine'
 
 export default function DoneTasksViewAllProjects() {
@@ -37,8 +37,8 @@ export default function DoneTasksViewAllProjects() {
                     mobile ? localStyles.containerForMobile : isMiddleScreen && localStyles.containerForTablet,
                 ]}
             >
-                <AllProjectsLine bottomSpacing={8} />
-                <AllProjectsAssistantLine />
+                <AllProjectsLine />
+                <AssistantLine useAssistantProjectContext={false} />
                 {sortedLoggedUserProjects.map(project => (
                     <DoneTasksByProject key={project.id} project={project} />
                 ))}

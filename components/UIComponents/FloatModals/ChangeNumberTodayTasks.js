@@ -10,11 +10,10 @@ import Hotkeys from 'react-hot-keys'
 import store from '../../../redux/store'
 import CustomTextInput3 from '../../Feeds/CommentsTextInput/CustomTextInput3'
 import { COMMENT_MODAL_THEME } from '../../Feeds/CommentsTextInput/textInputHelper'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import { withWindowSizeHook } from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 class ChangeNumberTodayTasks extends Component {
     constructor(props) {
@@ -26,8 +25,8 @@ class ChangeNumberTodayTasks extends Component {
                     ? this.props.currentValue
                     : ''
                 : this.props.currentValue > 0
-                  ? this.props.currentValue
-                  : '',
+                ? this.props.currentValue
+                : '',
         }
 
         this.inputText = React.createRef()
@@ -72,8 +71,14 @@ class ChangeNumberTodayTasks extends Component {
 
     render() {
         const { currentValue } = this.state
-        const { windowSize, customTitle, customSubtitle, hideUnlimitedButton, allowZeroValue, customPropertyName } =
-            this.props
+        const {
+            windowSize,
+            customTitle,
+            customSubtitle,
+            hideUnlimitedButton,
+            allowZeroValue,
+            customPropertyName,
+        } = this.props
         const { mobile } = store.getState()
 
         const title = customTitle || translate('Tasks visible in today group')
@@ -84,7 +89,7 @@ class ChangeNumberTodayTasks extends Component {
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
+                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
                 ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>
@@ -169,7 +174,11 @@ const localStyles = StyleSheet.create({
         paddingTop: 16,
         paddingBottom: 16,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        width: 305,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     line: {

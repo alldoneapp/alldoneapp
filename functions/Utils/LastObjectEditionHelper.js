@@ -6,7 +6,6 @@ const { updateTaskEditionData, resetTaskLastCommentData } = require('../Tasks/ta
 const { updateUserEditionData, resetUserLastCommentData } = require('../Users/usersFirestore')
 const { updateAssistantEditionData, resetAssistantLastCommentData } = require('../Firestore/assistantsFirestore')
 const { updateContactEditionData, resetContactLastCommentData } = require('../Firestore/contactsFirestore')
-const { updateArtifactEditionData, resetArtifactLastCommentData } = require('../Artifacts/artifactsFirestoreCloud')
 
 const updateEditonDataOfNoteParentObject = async (projectId, objectId, type, editorId) => {
     if (type === 'topics') {
@@ -42,8 +41,6 @@ const updateEditonDataOfChatParentObject = async (projectId, objectId, type, edi
         await updateGoalEditionData(projectId, objectId, editorId)
     } else if (type === 'notes') {
         await updateNoteEditionData(projectId, objectId, editorId)
-    } else if (type === 'artifacts') {
-        await updateArtifactEditionData(projectId, objectId, editorId)
     }
 }
 
@@ -63,8 +60,6 @@ const resetLastCommentDataOfChatParentObject = async (projectId, objectId, type)
         await resetGoalLastCommentData(projectId, objectId)
     } else if (type === 'notes') {
         await resetNoteLastCommentData(projectId, objectId)
-    } else if (type === 'artifacts') {
-        await resetArtifactLastCommentData(projectId, objectId)
     }
 }
 

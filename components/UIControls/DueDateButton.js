@@ -1,15 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import moment from 'moment'
 import Hotkeys from 'react-hot-keys'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
 import Button from './Button'
+import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import { execShortcutFn } from '../../utils/HelperFunctions'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { translate } from '../../i18n/TranslationService'
 import DueDateModal from '../UIComponents/FloatModals/DueDateModal/DueDateModal'
-import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function DueDateButton({
     onDismissPopup,
@@ -23,12 +23,12 @@ export default function DueDateButton({
     setToBacklogBeforeSaveTask,
     shortcutText,
 }) {
+    const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const [visiblePopover, setVisiblePopover] = useState(false)
     const isUnmountedRef = useRef(false)
     const timeoutsRef = useRef([])
-    const popupLock = useFloatPopupLock()
 
     useEffect(() => {
         return () => {
@@ -46,7 +46,7 @@ export default function DueDateButton({
 
     const hidePopover = () => {
         safeSetVisiblePopover(false)
-        popupLock.release()
+        dispatch(hideFloatPopup())
         if (onDismissPopup) onDismissPopup()
     }
 
@@ -62,7 +62,7 @@ export default function DueDateButton({
     const showPopover = () => {
         if (!visiblePopover) {
             safeSetVisiblePopover(true)
-            popupLock.acquire()
+            dispatch(showFloatPopup())
             document.activeElement.blur()
         }
     }
@@ -77,14 +77,14 @@ export default function DueDateButton({
         return inEditTask && smallScreen
             ? null
             : inBacklog
-              ? translate('Someday')
-              : dueDate.isSame(today, 'day')
-                ? translate('Today')
-                : dueDate.format(getDateFormat(false, true))
+            ? translate('Someday')
+            : dueDate.isSame(today, 'day')
+            ? translate('Today')
+            : dueDate.format(getDateFormat(false, true))
     }
 
     return visiblePopover ? (
-        <AppPopover
+        <Popover
             content={
                 <DueDateModal
                     task={task}
@@ -122,7 +122,7 @@ export default function DueDateButton({
                     shortcutText={shortcutText}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     ) : (
         <Hotkeys
             keyName={`alt+${shortcutText}`}

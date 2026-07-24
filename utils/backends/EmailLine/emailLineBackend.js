@@ -1,52 +1,7 @@
 import store from '../../../redux/store'
 import { setEmailLineSummary, setEmailLineLoading } from '../../../redux/actions'
 import { runHttpsCallableFunction } from '../firestore'
-import {
-    CONNECTION_SERVICE_EMAIL,
-    buildConnectionKeyPayload,
-    getConnection,
-    getConnectionsForProject,
-} from '../../IntegrationProviders'
-import { translate } from '../../../i18n/TranslationService'
-
-// Action/message callables still raise a typed `EMAIL_AUTH_EXPIRED` when the account's OAuth
-// token cannot be refreshed. Summary calls return `{ authExpired: true }` successfully so a
-// dead connection does not create a noisy HTTP 400 during normal screen mounts.
-export function isEmailAuthExpiredError(error) {
-    return String(error?.message || '').includes('EMAIL_AUTH_EXPIRED')
-}
-
-// Flags the connection's cached summary as expired so the Email line and the Integrations
-// screen immediately render their existing "Reconnect" state instead of silently failing.
-function markSummaryAuthExpired(projectId) {
-    const current = store.getState().emailLineSummaryByProject?.[projectId]
-    const summary = {
-        provider: '',
-        emailAddress: '',
-        labels: [],
-        needsReplyCount: 0,
-        needsReplyByMessageId: {},
-        inboxZero: false,
-        ...(current || {}),
-        connected: true,
-        authExpired: true,
-        scannedAt: Date.now(),
-    }
-    store.dispatch(setEmailLineSummary(projectId, summary))
-    return summary
-}
-
-// Turns the raw `EMAIL_AUTH_EXPIRED` code into something a person can act on. Callers alert
-// `error.message`, so without this the user was shown the bare error code (AT-2195).
-function toEmailAuthExpiredError(error) {
-    const friendly = new Error(
-        translate('Your email connection expired. Please reconnect it in Settings > Integrations.')
-    )
-    friendly.code = 'EMAIL_AUTH_EXPIRED'
-    friendly.authExpired = true
-    friendly.cause = error
-    return friendly
-}
+import { buildConnectionKeyPayload } from '../../IntegrationProviders'
 
 // All functions here take a `key`: an account-level connection id (email_google_…) or a
 // legacy projectId. Redux summaries are stored under whichever key was used.
@@ -56,29 +11,8 @@ function toEmailAuthExpiredError(error) {
 const summaryCooldownCache = new Map()
 const SUMMARY_COOLDOWN_MS = 60 * 1000 // 1 minute
 
-function getEmailConnectionForSummaryKey(loggedUser, key) {
-    if (typeof key === 'string' && key.startsWith('email_')) {
-        return getConnection(loggedUser, CONNECTION_SERVICE_EMAIL, key)
-    }
-    return getConnectionsForProject(loggedUser, CONNECTION_SERVICE_EMAIL, key)[0] || null
-}
-
-function getPersistedAuthInvalidSummary(key) {
-    const state = store.getState()
-    const connection = getEmailConnectionForSummaryKey(state.loggedUser || {}, key)
-    if (connection?.authInvalid !== true) return null
-
-    const current = state.emailLineSummaryByProject?.[key]
-    return current?.authExpired ? current : markSummaryAuthExpired(key)
-}
-
 export async function fetchEmailLineSummary(projectId, { force = false, includeNeedsReply = true } = {}) {
     if (!projectId) return null
-
-    // authInvalid is the persisted circuit breaker. Every caller funnels through this helper,
-    // including older project-level mounts, so none of them can keep polling a revoked account.
-    const authInvalidSummary = getPersistedAuthInvalidSummary(projectId)
-    if (authInvalidSummary) return authInvalidSummary
 
     const lastFetch = summaryCooldownCache.get(projectId)
     if (!force && lastFetch && Date.now() - lastFetch < SUMMARY_COOLDOWN_MS) {
@@ -96,8 +30,21 @@ export async function fetchEmailLineSummary(projectId, { force = false, includeN
         store.dispatch(setEmailLineSummary(projectId, summary))
         return summary
     } catch (error) {
-        if (isEmailAuthExpiredError(error)) {
-            return markSummaryAuthExpired(projectId)
+        const authExpired = String(error?.message || '').includes('EMAIL_AUTH_EXPIRED')
+        if (authExpired) {
+            const summary = {
+                provider: '',
+                emailAddress: '',
+                labels: [],
+                needsReplyCount: 0,
+                needsReplyByMessageId: {},
+                inboxZero: false,
+                connected: true,
+                authExpired: true,
+                scannedAt: Date.now(),
+            }
+            store.dispatch(setEmailLineSummary(projectId, summary))
+            return summary
         }
         // Leave the previous summary in place on transient errors; reset the
         // cooldown so the next attempt can retry sooner.
@@ -111,27 +58,6 @@ export async function fetchEmailLineSummary(projectId, { force = false, includeN
 
 export function invalidateEmailLineSummaryCooldown(projectId) {
     if (projectId) summaryCooldownCache.delete(projectId)
-}
-
-// The summary is normally the chip-count source of truth. Opening a chip performs a fresher,
-// label-scoped provider query though, so fold that query's authoritative total back into the
-// existing summary without replacing unrelated labels or background-update fields.
-export function reconcileEmailLineLabelCount(projectId, labelId, threadCount) {
-    if (!projectId || !labelId || !Number.isFinite(threadCount) || threadCount < 0) return false
-    const summary = store.getState().emailLineSummaryByProject?.[projectId]
-    if (!summary) return false
-    let matched = false
-    let changed = false
-    const labels = (summary.labels || []).map(label => {
-        if (label.labelId !== labelId) return label
-        matched = true
-        if (label.threadCount === threadCount) return label
-        changed = true
-        return { ...label, threadCount }
-    })
-    if (!matched || !changed) return false
-    store.dispatch(setEmailLineSummary(projectId, { ...summary, labels }))
-    return true
 }
 
 // In-memory cache of the last-loaded message sections per merged label group, keyed
@@ -254,9 +180,6 @@ export async function performEmailLineSweepInBackground(projectId, labelId, acti
         }
     } catch (error) {
         failed = true
-        // A sweep is fire-and-forget, so it cannot alert. Flagging the summary is what makes
-        // the reconnect state appear after a background sweep hit a dead connection.
-        if (isEmailAuthExpiredError(error)) markSummaryAuthExpired(projectId)
         if (__DEV__) console.warn('[EmailLine] Background sweep failed:', error?.message || error)
     }
     // Empty (or failed) sweep: put the chip back the way it was so the still-present
@@ -282,27 +205,6 @@ export async function performEmailLineSweepInBackground(projectId, labelId, acti
     return totalProcessed
 }
 
-// Reads the current mailbox state (exists / unread / inInbox) of specific messages. Read-only, so
-// unlike performEmailLineAction it never refreshes the summary — it is the lookup behind the
-// email-comment read sync (AT-2376), which runs in the background and must stay invisible.
-export async function fetchEmailLineMessageStates(projectId, messageIds = []) {
-    const ids = (messageIds || []).filter(Boolean)
-    if (!projectId || ids.length === 0) return []
-    try {
-        const result = await runHttpsCallableFunction('emailLineActionSecondGen', {
-            ...buildConnectionKeyPayload(projectId),
-            action: 'getMessageStates',
-            messageIds: ids,
-        })
-        return Array.isArray(result?.states) ? result.states : []
-    } catch (error) {
-        // A dead connection must light up the same reconnect state the other calls use, but this
-        // caller is a background sync: it reports nothing rather than alerting.
-        if (isEmailAuthExpiredError(error)) markSummaryAuthExpired(projectId)
-        throw error
-    }
-}
-
 // action ∈ { archive, markRead, archiveAll, markAllRead, draftReply, createTask }.
 // After a mutating action, force-refresh the summary so chip counts update; draftReply
 // and createTask don't change the inbox, so they skip the refresh.
@@ -311,28 +213,16 @@ export async function performEmailLineAction(
     { action, messageIds, labelId, labelName, guidance, sourceProjectId, sourceTaskId } = {}
 ) {
     if (!projectId || !action) return null
-    let result
-    try {
-        result = await runHttpsCallableFunction('emailLineActionSecondGen', {
-            ...buildConnectionKeyPayload(projectId),
-            action,
-            messageIds,
-            labelId,
-            labelName,
-            guidance,
-            sourceProjectId,
-            sourceTaskId,
-        })
-    } catch (error) {
-        // The server already tried a forced token refresh and a single retry, so this means
-        // the account genuinely needs a new consent. Light up the reconnect state and
-        // re-throw something the user can act on rather than the raw code.
-        if (isEmailAuthExpiredError(error)) {
-            markSummaryAuthExpired(projectId)
-            throw toEmailAuthExpiredError(error)
-        }
-        throw error
-    }
+    const result = await runHttpsCallableFunction('emailLineActionSecondGen', {
+        ...buildConnectionKeyPayload(projectId),
+        action,
+        messageIds,
+        labelId,
+        labelName,
+        guidance,
+        sourceProjectId,
+        sourceTaskId,
+    })
     if (action !== 'draftReply' && action !== 'createTask') {
         await fetchEmailLineSummary(projectId, { force: true })
     }

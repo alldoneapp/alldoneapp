@@ -1,4 +1,3 @@
-import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { cloneDeep } from 'lodash'
@@ -10,7 +9,6 @@ import { watchTasksInWorkflow, unwatchTasksInWorkflow } from '../../../utils/bac
 import { filterPendingTasks } from '../../HashtagFilters/FilterHelpers/FilterTasks'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
-import { useProjectAssistantLine } from '../../MyDayView/AssistantLine/useAssistantLineSwitch'
 
 export default function PendingTasksByProject({ project, inSelectedProject }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -21,10 +19,28 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     const [estimationByDate, setEstimationByDate] = useState({})
     const [amountOfTasksByDate, setAmountOfTasksByDate] = useState({})
 
-    // AT-2430: assistant resolution + switch options, shared with the open/done boards of the
-    // same project so all three tabs can never show a different assistant.
-    const { hasAssistantLine, assistantLineProps } = useProjectAssistantLine(project)
-    const showAssistantLine = !isAnonymous && inSelectedProject && hasAssistantLine
+    // Check if this project is using a different assistant than the default project
+    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
+    const defaultAssistant = useSelector(state => state.defaultAssistant)
+    const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
+    const isDefaultProject = project.id === defaultProjectId
+    const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
+    const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
+    const useSelectedProjectAssistantLine =
+        isDefaultProject || (!!project?.assistantId && project.assistantId !== defaultProjectAssistantId)
+    // Keep the selected project as the conversation context even when its assistant
+    // is inherited from the default project.
+    const assistantLineProject = project
+    const assistantLineAssistantId = useSelectedProjectAssistantLine
+        ? selectedProjectAssistantId
+        : defaultProjectAssistantId
+    const showAssistantSwitch =
+        !isDefaultProject &&
+        useSelectedProjectAssistantLine &&
+        !!defaultProject &&
+        !!defaultProjectAssistantId &&
+        !!selectedProjectAssistantId
+    const showAssistantLine = !isAnonymous && inSelectedProject && !!assistantLineProject && !!assistantLineAssistantId
 
     const updateTasks = (tasksByDateAndStep, estimationValue, amountOfTasksByDate) => {
         setTasksByDateAndStep(tasksByDateAndStep)
@@ -50,46 +66,55 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     }, [JSON.stringify(filtersArray), tasksByDateAndStep])
 
     return filteredTasksByDateAndStep.length > 0 || inSelectedProject ? (
-        <ProjectSection
-            projectId={project.id}
-            projectColor={project.color}
-            selected={inSelectedProject}
-            style={localStyles.container}
-        >
+        <View style={localStyles.container}>
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
                 showWorkflowTag={true}
                 showRootSectionNavigation={inSelectedProject}
             />
-            <ProjectSectionBody>
-                {showAssistantLine && (
-                    <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
-                        <AssistantLine {...assistantLineProps} />
+            {showAssistantLine && (
+                <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
+                    <AssistantLine
+                        showLastComment={true}
+                        useAssistantProjectContext={!useSelectedProjectAssistantLine}
+                        useGlobalLatestComment={!useSelectedProjectAssistantLine}
+                        projectOverride={assistantLineProject}
+                        assistantIdOverride={assistantLineAssistantId}
+                        assistantSwitchOptions={
+                            showAssistantSwitch
+                                ? {
+                                      projectOverride: defaultProject,
+                                      assistantIdOverride: defaultProjectAssistantId,
+                                      useAssistantProjectContext: true,
+                                      useGlobalLatestComment: true,
+                                  }
+                                : null
+                        }
+                    />
+                </View>
+            )}
+            {filteredTasksByDateAndStep.map((item, index) => {
+                const dateFormated = item[0]
+                const tasksByStep = item[1]
+                const firstDateSection = index === 0
+                const estimation = estimationByDate[dateFormated]
+                const amountTasks = amountOfTasksByDate[dateFormated]
+                return (
+                    <View key={dateFormated}>
+                        <PendingTasksByDate
+                            project={project}
+                            dateFormated={dateFormated}
+                            firstDateSection={firstDateSection}
+                            tasksByStep={tasksByStep}
+                            subtaskByTask={subtaskByTask}
+                            estimation={estimation}
+                            amountTasks={amountTasks}
+                        />
                     </View>
-                )}
-                {filteredTasksByDateAndStep.map((item, index) => {
-                    const dateFormated = item[0]
-                    const tasksByStep = item[1]
-                    const firstDateSection = index === 0
-                    const estimation = estimationByDate[dateFormated]
-                    const amountTasks = amountOfTasksByDate[dateFormated]
-                    return (
-                        <View key={dateFormated}>
-                            <PendingTasksByDate
-                                project={project}
-                                dateFormated={dateFormated}
-                                firstDateSection={firstDateSection}
-                                tasksByStep={tasksByStep}
-                                subtaskByTask={subtaskByTask}
-                                estimation={estimation}
-                                amountTasks={amountTasks}
-                            />
-                        </View>
-                    )
-                })}
-            </ProjectSectionBody>
-        </ProjectSection>
+                )
+            })}
+        </View>
     ) : null
 }
 

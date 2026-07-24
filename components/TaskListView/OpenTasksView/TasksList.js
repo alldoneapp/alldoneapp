@@ -1,24 +1,18 @@
-import React, { useRef } from 'react'
-import { View } from 'react-native'
+import React from 'react'
+import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import DroppableTaskList from '../../DragSystem/DroppableTaskList'
 import ParentTaskContainer from '../ParentTaskContainer'
 import {
+    CALENDAR_TASK_INDEX,
+    EMAIL_TASK_INDEX,
     MAIN_TASK_INDEX,
     MENTION_TASK_INDEX,
     OBSERVED_TASKS_INDEX,
     STREAM_AND_USER_TASKS_INDEX,
     SUGGESTED_TASK_INDEX,
-    DATE_TASK_INDEX,
-    TODAY_DATE,
 } from '../../../utils/backends/openTasks'
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
-import { useIsUserEditing } from '../../../utils/editingGuard'
-import { holdWhileEditing } from './focusSectionPin'
-import { holdTaskOrder } from './taskPlacementHold'
-import { taskPresentationLayout } from '../TaskItem/TaskPresentation/TaskPresentationLayout'
-import useProjectPostponePreview from '../../../hooks/useProjectPostponePreview'
-import { projectTaskPreview } from '../../../utils/backends/Tasks/optimisticProjectPostpone'
 
 export default function TasksList({
     projectId,
@@ -37,47 +31,16 @@ export default function TasksList({
     focusedTaskId,
 }) {
     const subtaskByTaskStore = useSelector(state => state.subtaskByTaskStore[instanceKey])
-    const dateFormatted = useSelector(
-        state => state.filteredOpenTasksStore?.[instanceKey]?.[dateIndex]?.[DATE_TASK_INDEX]
-    )
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
-    const postponeEntry = useProjectPostponePreview(projectId)
-    const displayedTasks =
-        !postponeEntry || isObservedTask || isToReviewTask || isSuggested
-            ? taskList
-            : taskList.flatMap(task => {
-                  const preview = projectTaskPreview(task, postponeEntry)
-                  // Keep a mixed family mounted: postponing a parent must not hide somebody else's
-                  // or a future subtask. ParentTaskContainer hides just the parent's own row there.
-                  const hasUnchangedChild = (subtaskByTask[task.id] || []).some(
-                      child => !projectTaskPreview(child, postponeEntry).hidden
-                  )
-                  return preview.hidden && !hasUnchangedChild ? [] : [preview.task]
-              })
+
     // Get the optimistic focus task ID for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
     const optimisticFocusTaskProjectId = useSelector(state => state.optimisticFocusTaskProjectId)
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
 
     // When optimistic state is active for this project, use it (even if null = no task focused yet)
-    const liveFocusTaskId =
+    const effectiveFocusTaskId =
         optimisticFocusActive && optimisticFocusTaskProjectId === projectId ? optimisticFocusTaskId : focusedTaskId
-
-    // AT-2249 - the focus task is boosted to the top of its list, and that boost reorders a keyed
-    // list: React moves the DOM nodes and blurs whatever is focused inside them. So while the user
-    // is busy, hold the boost exactly as it was in the last idle render. An applied boost stays
-    // applied (opening an editor never moves a task), and a focus change arriving from elsewhere is
-    // deferred to the next idle render instead of yanking the caret. See focusSectionPin.js.
-    const isUserEditing = useIsUserEditing()
-    const heldFocusTaskIdRef = useRef(undefined)
-    const effectiveFocusTaskId = holdWhileEditing(liveFocusTaskId || null, isUserEditing, heldFocusTaskIdRef)
-
-    // AT-2267 - the same guard, one level down. Assigning a goal in the background also regenerates
-    // `sortIndex`, and a background priority change re-sorts too, so the rendered order of an
-    // otherwise untouched list can change under an open editor. React reorders a keyed list by moving
-    // DOM nodes and moving a node blurs what is focused inside it, so hold the order the rows were
-    // last rendered in. See taskPlacementHold.js.
-    const heldTaskOrderRef = useRef(undefined)
 
     const priorityTaskListIndexes = [
         MAIN_TASK_INDEX,
@@ -85,21 +48,16 @@ export default function TasksList({
         SUGGESTED_TASK_INDEX,
         OBSERVED_TASKS_INDEX,
         STREAM_AND_USER_TASKS_INDEX,
+        EMAIL_TASK_INDEX,
     ]
-    const shouldSortByPriority = priorityTaskListIndexes.includes(taskListIndex)
-    const sortedTaskList = holdTaskOrder(
-        shouldSortByPriority
-            ? sortTasksByPriority(displayedTasks, isActiveOrganizeMode ? null : effectiveFocusTaskId)
-            : [...displayedTasks],
-        isUserEditing,
-        heldTaskOrderRef
-    )
+    const shouldSortByPriority =
+        priorityTaskListIndexes.includes(taskListIndex) && taskListIndex !== CALENDAR_TASK_INDEX
+    const sortedTaskList = shouldSortByPriority
+        ? sortTasksByPriority(taskList, isActiveOrganizeMode ? null : effectiveFocusTaskId)
+        : [...taskList]
 
-    const visibleTasks = sortedTaskList.filter(
-        (_, index) => amountToRender === undefined || amountToRender === null || amountToRender > index
-    )
     return (
-        <View style={[taskPresentationLayout.listContainer, containerStyle]}>
+        <View style={[localStyles.container, containerStyle]}>
             {isActiveOrganizeMode ? (
                 <DroppableTaskList
                     projectId={projectId}
@@ -112,23 +70,32 @@ export default function TasksList({
                     goalIndex={goalIndex}
                 />
             ) : (
-                visibleTasks.map(task => {
-                    const subtaskList = subtaskByTask[task.id] ? subtaskByTask[task.id] : []
-                    return (
-                        <ParentTaskContainer
-                            key={task.id}
-                            task={task}
-                            projectId={projectId}
-                            subtaskList={subtaskList ? subtaskList : []}
-                            isObservedTask={isObservedTask}
-                            isToReviewTask={isToReviewTask}
-                            isSuggested={isSuggested}
-                            inParentGoal={inParentGoal}
-                            inTodayOpenList={dateFormatted === TODAY_DATE}
-                        />
-                    )
+                sortedTaskList.map((task, index) => {
+                    if (amountToRender === undefined || amountToRender === null || amountToRender > index) {
+                        const subtaskList = subtaskByTask[task.id] ? subtaskByTask[task.id] : []
+                        return (
+                            <ParentTaskContainer
+                                key={task.id}
+                                task={task}
+                                projectId={projectId}
+                                subtaskList={subtaskList ? subtaskList : []}
+                                isObservedTask={isObservedTask}
+                                isToReviewTask={isToReviewTask}
+                                isSuggested={isSuggested}
+                                inParentGoal={inParentGoal}
+                            />
+                        )
+                    } else {
+                        return null
+                    }
                 })
             )}
         </View>
     )
 }
+
+const localStyles = StyleSheet.create({
+    container: {
+        paddingHorizontal: 8,
+    },
+})

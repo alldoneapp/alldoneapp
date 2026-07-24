@@ -9,7 +9,7 @@ import CustomScrollView from '../../UIControls/CustomScrollView'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
-import { applyPopoverWidthV2 } from '../../../utils/HelperFunctions'
+import { applyPopoverWidthV2, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import {
     autoPostponeMultipleTasks,
@@ -27,7 +27,6 @@ import {
 } from '../../../utils/TaskPriority'
 import { getTaskPriorityColors } from '../Utils/TaskPriorityPresentation'
 import { BACKLOG_DATE_NUMERIC } from '../Utils/TasksHelper'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 const PRIORITY_KEYS = [
     TASK_PRIORITY_MUST_DO,
@@ -262,7 +261,7 @@ export default function AutoPostponeTasksModal({ projectId, closePopover, initia
             style={[
                 localStyles.container,
                 applyPopoverWidthV2(isMiddleScreen, smallScreenNavigation, width),
-                { maxHeight: getSafeAreaModalMaxHeight(height) },
+                { maxHeight: height - MODAL_MAX_HEIGHT_GAP },
             ]}
         >
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
@@ -483,7 +482,10 @@ const localStyles = StyleSheet.create({
         zIndex: 9999,
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

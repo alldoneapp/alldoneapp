@@ -8,7 +8,7 @@ import store from '../../redux/store'
 import ActionButton from '../../components/FeedView/ActionButton'
 
 import renderer from 'react-test-renderer'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent } from 'react-native-testing-library';
 
 describe('ActionButton component', () => {
     it('should render correctly', () => {
@@ -36,21 +36,27 @@ describe('ActionButton component', () => {
     it('should invoke onPress correctly', () => {
         // Given
         const mockFn = jest.fn()
-        const { getByTestId } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} onPress={mockFn} />)
+        const { getByTestId } = render(
+            <ActionButton icon={{ icon: null }} text={{ text: null }} onPress={mockFn} />
+        );
+        const touchableOpacity = getByTestId('touchableOpacity')
         // When
-        fireEvent.click(getByTestId('touchableOpacity'))
+        fireEvent.press(touchableOpacity)
         // Then
-        expect(mockFn).toHaveBeenCalledTimes(1)
+        expect(mockFn).toBeCalledTimes(1)
     })
 
     it('should not invoke onPress', () => {
         // Given
         const mockFn = jest.fn()
-        const { getByTestId } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} />)
+        const { getByTestId } = render(
+            <ActionButton icon={{ icon: null }} text={{ text: null }}/>
+        );
+        const touchableOpacity = getByTestId('touchableOpacity')
         // When
-        fireEvent.click(getByTestId('touchableOpacity'))
+        fireEvent.press(touchableOpacity)
         // Then
-        expect(mockFn).toHaveBeenCalledTimes(0)
+        expect(mockFn).toBeCalledTimes(0)
     })
 
     it('should hide the Popover', () => {
@@ -61,7 +67,7 @@ describe('ActionButton component', () => {
         // When
         instance.hidePopover()
         // Then
-        setTimeout(() => {
+        setTimeout(()=> {
             expect(instance.state.visiblePopover).toEqual(false)
         }, 1000)
     })

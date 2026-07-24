@@ -4,40 +4,16 @@ This repository contains both the frontend and backend (Google Cloud Functions) 
 
 ## 1. Global Dependencies
 
-Use the repository-wide toolchain:
+Ensure you have the following dependencies installed with the specified versions:
 
-- **Node.js** v22 (selected through the root `.nvmrc`)
-- **npm** v10 (normally installed with Node.js)
-- **firebase-tools** v13.29.3 (`npm install -g firebase-tools@13.29.3`)
-
-Run `nvm use` at the repository root before installing dependencies. The legacy Expo CLI toolchain is retired. The Cloudflare email worker is the one exception: `cloudflare/email-worker/` uses its own `.nvmrc` to pin Node 20 for Wrangler.
-
-## Local development
-
-Run `nvm use`, then `npm run dev`. This starts the full Firebase emulator suite
-before starting the web server and keeps both running together. Open
-**https://localhost:19006**; the Emulator UI is at **http://127.0.0.1:4000**.
-Java 11+ and the root, `functions/`, and `web-bundler/` npm dependencies are required.
-
-Browser localhost automatically uses local Auth, Firestore, Functions, Storage
-(including note content), and Realtime Database. No `?emulator=true` is needed.
-The `alldonestaging` project ID is only the local emulator namespace; localhost
-does not fall back to staging when an emulator is unavailable. Hosted staging,
-production, and native mobile shells retain their configured Firebase backend.
-
-Local accounts and data are separate from staging. Google sign-in uses the Auth
-emulator's test account screen. Emulator data is saved under the gitignored
-`.firebase/local-data` directory on a graceful shutdown and restored on startup.
-Push notifications are unavailable locally. `firebase.local.json` contains the
-local service setup; deployment continues to use `firebase.json`.
-
-The web server proxies Auth's handler, iframe, sign-in, and token-refresh requests
-through the app origin to port 9099. Keep that proxy in place: redirect sign-in
-otherwise loses its result when browser storage is partitioned across origins.
-
-For separate terminals, use `npm run emulators` and `npm run dev:web`. Do not run
-`npm run dev` alongside an already running emulator suite, since it owns its own
-suite on the same ports. Stop the combined command with Ctrl+C to export local data.
+-   **Node.js** v14.21.3  
+    (We recommend using a Node version manager like `nvm`.)
+-   **npm** v6.14.18  
+    (Normally installed along with Node.js.)
+-   **expo-cli** v6.1.0  
+    (`npm install -g expo-cli@6.1.0`)
+-   **firebase-tools** v13.29.3  
+    (`npm install -g firebase-tools@13.29.3`)
 
 ## 2. CI/CD
 
@@ -72,14 +48,14 @@ You should create **two separate accounts**, one for staging and other for produ
 
 To run the app locally, add the following variables:
 
-- `ALGOLIA_APP_ID`
-- `ALGOLIA_SEARCH_ONLY_API_KEY`
+-   `ALGOLIA_APP_ID`
+-   `ALGOLIA_SEARCH_ONLY_API_KEY`
 
 Add these to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -87,10 +63,10 @@ Add these to:
 
 Add these variables to GitLab CI/CD:
 
-- `ALGOLIA_APP_ID_DEV`
-- `ALGOLIA_SEARCH_ONLY_API_KEY_DEV`
-- `ALGOLIA_APP_ID_PROD`
-- `ALGOLIA_SEARCH_ONLY_API_KEY_PROD`
+-   `ALGOLIA_APP_ID_DEV`
+-   `ALGOLIA_SEARCH_ONLY_API_KEY_DEV`
+-   `ALGOLIA_APP_ID_PROD`
+-   `ALGOLIA_SEARCH_ONLY_API_KEY_PROD`
 
 ---
 
@@ -98,15 +74,15 @@ Add these variables to GitLab CI/CD:
 
 To support functions, include the following in each environment:
 
-- `ALGOLIA_APP_ID`
-- `ALGOLIA_ADMIN_API_KEY`
+-   `ALGOLIA_APP_ID`
+-   `ALGOLIA_ADMIN_API_KEY`
 
 Add these to:
 
-- `.env`
-- `env_functions.json`
-- `env_functions_master.json`
-- `env_functions_dev.json`
+-   `.env`
+-   `env_functions.json`
+-   `env_functions_master.json`
+-   `env_functions_dev.json`
 
 > **Note:** The `.env` file must match the currently active environment.
 
@@ -120,9 +96,9 @@ The module owns consent, user identity, SPA page views, event normalization and 
 
 Cloud Functions use GA4 Measurement Protocol for confirmed server events. Production function configuration requires:
 
-- `ANALYTICS_ENABLED=true`
-- `GOOGLE_ANALYTICS_KEY=G-HR3PWMHKQQ`
-- `GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET=<secret for this web stream>`
+-   `ANALYTICS_ENABLED=true`
+-   `GOOGLE_ANALYTICS_KEY=G-HR3PWMHKQQ`
+-   `GOOGLE_ANALYTICS_MEASURE_PROTOCOL_API_SECRET=<secret for this web stream>`
 
 Set `ANALYTICS_ENABLED=false` and omit the key and secret in non-production function environments. Google Ads
 conversions are imported from GA4 key events; the app does not load a Google Tag Manager container or direct Ads tags.
@@ -139,22 +115,22 @@ You can manage your project at [Firebase Console](https://console.firebase.googl
 
 To run the app locally, add the following variables:
 
-- `GOOGLE_FIREBASE_WEB_CLIENT_ID`
-- `GOOGLE_FIREBASE_WEB_API_KEY`
-- `GOOGLE_FIREBASE_DEPLOY_TOKEN`
-- `GOOGLE_FIREBASE_WEB_APP_ID`
-- `GOOGLE_FIREBASE_WEB_AUTH_DOMAIN`
-- `GOOGLE_FIREBASE_WEB_DATABASE_URL`
-- `GOOGLE_FIREBASE_STORAGE_BUCKET`
-- `GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET`
-- `GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID`
-- `GOOGLE_FIREBASE_WEB_PROJECT_ID`
+-   `GOOGLE_FIREBASE_WEB_CLIENT_ID`
+-   `GOOGLE_FIREBASE_WEB_API_KEY`
+-   `GOOGLE_FIREBASE_DEPLOY_TOKEN`
+-   `GOOGLE_FIREBASE_WEB_APP_ID`
+-   `GOOGLE_FIREBASE_WEB_AUTH_DOMAIN`
+-   `GOOGLE_FIREBASE_WEB_DATABASE_URL`
+-   `GOOGLE_FIREBASE_STORAGE_BUCKET`
+-   `GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET`
+-   `GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID`
+-   `GOOGLE_FIREBASE_WEB_PROJECT_ID`
 
 Add these to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -162,25 +138,25 @@ Add these to:
 
 Add these variables to GitLab CI/CD:
 
-- `GOOGLE_FIREBASE_WEB_CLIENT_ID_DEV`
-- `GOOGLE_FIREBASE_WEB_CLIENT_ID_PROD`
-- `GOOGLE_FIREBASE_WEB_API_KEY_DEV`
-- `GOOGLE_FIREBASE_WEB_API_KEY_PROD`
-- `GOOGLE_FIREBASE_DEPLOY_TOKEN`
-- `GOOGLE_FIREBASE_WEB_APP_ID_DEV`
-- `GOOGLE_FIREBASE_WEB_APP_ID_PROD`
-- `GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV`
-- `GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD`
-- `GOOGLE_FIREBASE_WEB_DATABASE_URL_DEV`
-- `GOOGLE_FIREBASE_WEB_DATABASE_URL_PROD`
-- `GOOGLE_FIREBASE_STORAGE_BUCKET_DEV`
-- `GOOGLE_FIREBASE_STORAGE_BUCKET_PROD`
-- `GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_DEV`
-- `GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD`
-- `GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV`
-- `GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_PROD`
-- `GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV`
-- `GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD`
+-   `GOOGLE_FIREBASE_WEB_CLIENT_ID_DEV`
+-   `GOOGLE_FIREBASE_WEB_CLIENT_ID_PROD`
+-   `GOOGLE_FIREBASE_WEB_API_KEY_DEV`
+-   `GOOGLE_FIREBASE_WEB_API_KEY_PROD`
+-   `GOOGLE_FIREBASE_DEPLOY_TOKEN`
+-   `GOOGLE_FIREBASE_WEB_APP_ID_DEV`
+-   `GOOGLE_FIREBASE_WEB_APP_ID_PROD`
+-   `GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV`
+-   `GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD`
+-   `GOOGLE_FIREBASE_WEB_DATABASE_URL_DEV`
+-   `GOOGLE_FIREBASE_WEB_DATABASE_URL_PROD`
+-   `GOOGLE_FIREBASE_STORAGE_BUCKET_DEV`
+-   `GOOGLE_FIREBASE_STORAGE_BUCKET_PROD`
+-   `GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_DEV`
+-   `GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD`
+-   `GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV`
+-   `GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_PROD`
+-   `GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV`
+-   `GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD`
 
 ---
 
@@ -188,16 +164,16 @@ Add these variables to GitLab CI/CD:
 
 To support functions, include the following in each environment:
 
-- `GOOGLE_FIREBASE_WEB_CLIENT_ID`
-- `GOOGLE_FIREBASE_DEPLOY_TOKEN`
-- `GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET`
+-   `GOOGLE_FIREBASE_WEB_CLIENT_ID`
+-   `GOOGLE_FIREBASE_DEPLOY_TOKEN`
+-   `GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET`
 
 Add these to:
 
-- `.env`
-- `env_functions.json`
-- `env_functions_master.json`
-- `env_functions_dev.json`
+-   `.env`
+-   `env_functions.json`
+-   `env_functions_master.json`
+-   `env_functions_dev.json`
 
 ---
 
@@ -205,12 +181,12 @@ Add these to:
 
 In the `firebase-messaging-sw.js` file, include:
 
-- `apiKey`
-- `appId`
-- `authDomain`
-- `databaseURL`
-- `messagingSenderId`
-- `storageBucket`
+-   `apiKey`
+-   `appId`
+-   `authDomain`
+-   `databaseURL`
+-   `messagingSenderId`
+-   `storageBucket`
 
 ---
 
@@ -218,9 +194,9 @@ In the `firebase-messaging-sw.js` file, include:
 
 In the `google-services.json` file, include:
 
-- `client_id`
-- `firebase_url`
-- `project_number`
+-   `client_id`
+-   `firebase_url`
+-   `project_number`
 
 ---
 
@@ -236,14 +212,14 @@ You can learn more at [SendinBlue](https://www.sendinblue.com/).
 
 To run the app locally with SendinBlue, add the following variables:
 
-- `SIB_API_KEY`
-- `SIB_MARKETING_SERVICE_LIST`
+-   `SIB_API_KEY`
+-   `SIB_MARKETING_SERVICE_LIST`
 
 Add these to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -251,9 +227,9 @@ Add these to:
 
 For staging and production environments, add the following variables to GitLab CI/CD:
 
-- `SIB_API_KEY`
-- `SIB_MARKETING_SERVICE_LIST_DEV`
-- `SIB_MARKETING_SERVICE_LIST_PROD`
+-   `SIB_API_KEY`
+-   `SIB_MARKETING_SERVICE_LIST_DEV`
+-   `SIB_MARKETING_SERVICE_LIST_PROD`
 
 ---
 
@@ -261,14 +237,14 @@ For staging and production environments, add the following variables to GitLab C
 
 To support functions, include the following in each environment:
 
-- `SIB_API_KEY`
+-   `SIB_API_KEY`
 
 Add this to:
 
-- `.env`
-- `env_functions.json`
-- `env_functions_master.json`
-- `env_functions_dev.json`
+-   `.env`
+-   `env_functions.json`
+-   `env_functions_master.json`
+-   `env_functions_dev.json`
 
 ### Sentry
 
@@ -282,13 +258,13 @@ You can learn more at [Sentry](https://sentry.io/).
 
 To run the app locally with Sentry, add the following variable:
 
-- `SENTRY_DSN`
+-   `SENTRY_DSN`
 
 Add this to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -296,7 +272,7 @@ Add this to:
 
 For staging and production environments, add the following variable to GitLab CI/CD:
 
-- `SENTRY_DSN`
+-   `SENTRY_DSN`
 
 ---
 
@@ -312,14 +288,14 @@ You can learn more at [OpenAI](https://openai.com/).
 
 To support functions, include the following variable in each environment:
 
-- `OPEN_AI_KEY`
+-   `OPEN_AI_KEY`
 
 Add this to:
 
-- `.env`
-- `env_functions.json`
-- `env_functions_master.json`
-- `env_functions_dev.json`
+-   `.env`
+-   `env_functions.json`
+-   `env_functions_master.json`
+-   `env_functions_dev.json`
 
 ---
 
@@ -335,13 +311,13 @@ Learn more at [Perplexity](https://www.perplexity.ai/).
 
 To run the app locally with Perplexity, add the following variable:
 
-- `PERPLEXITY_API_KEY`
+-   `PERPLEXITY_API_KEY`
 
 Add this to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -349,7 +325,7 @@ Add this to:
 
 For staging and production environments, add the following variable to GitLab CI/CD:
 
-- `PERPLEXITY_API_KEY`
+-   `PERPLEXITY_API_KEY`
 
 ---
 
@@ -357,13 +333,13 @@ For staging and production environments, add the following variable to GitLab CI
 
 To support functions, include the following variable:
 
-- `PERPLEXITY_API_KEY`
+-   `PERPLEXITY_API_KEY`
 
 Add this to:
 
-- `env_functions.json`
-- `env_functions_master.json`
-- `env_functions_dev.json`
+-   `env_functions.json`
+-   `env_functions_master.json`
+-   `env_functions_dev.json`
 
 ---
 
@@ -379,8 +355,8 @@ We’ve made custom modifications to the Quill library to support our specific u
 
 After installing Quill, replace the default file with the modified version:
 
-- **Copy:** `replacement_node_modules/quill/dist/quill.js`
-- **Replace:** `node_modules/quill/dist/quill.js`
+-   **Copy:** `replacement_node_modules/quill/dist/quill.js`
+-   **Replace:** `node_modules/quill/dist/quill.js`
 
 ---
 
@@ -390,9 +366,9 @@ Quill supports real-time collaborative editing, allowing multiple users to edit 
 
 To enable collaboration, you can use one of the following public signaling servers:
 
-- `wss://signaling.yjs.dev`
-- `wss://y-webrtc-signaling-eu.herokuapp.com`
-- `wss://y-webrtc-signaling-us.herokuapp.com`
+-   `wss://signaling.yjs.dev`
+-   `wss://y-webrtc-signaling-eu.herokuapp.com`
+-   `wss://y-webrtc-signaling-us.herokuapp.com`
 
 > ⚠️ These public servers may become unavailable. For long-term use, we recommend hosting your own.
 
@@ -408,13 +384,13 @@ If using your own server, update the environment configurations accordingly.
 
 To support collaboration locally, add the following variable:
 
-- `NOTES_COLLABORATION_SERVER`
+-   `NOTES_COLLABORATION_SERVER`
 
 Add this to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -422,7 +398,7 @@ Add this to:
 
 For staging and production environments, add the following variable to **GitLab CI/CD**:
 
-- `NOTES_COLLABORATION_SERVER`
+-   `NOTES_COLLABORATION_SERVER`
 
 ### GitHub
 
@@ -438,14 +414,14 @@ You can learn more at [GitHub](https://github.com/).
 
 To run the app locally with GitHub integration, add the following variables:
 
-- `GITHUB_TOKEN`
-- `GITHUB_USER`
+-   `GITHUB_TOKEN`
+-   `GITHUB_USER`
 
 Add these to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -453,8 +429,8 @@ Add these to:
 
 For staging and production environments, add the following variables to GitLab CI/CD:
 
-- `GITHUB_TOKEN`
-- `GITHUB_USER`
+-   `GITHUB_TOKEN`
+-   `GITHUB_USER`
 
 ---
 
@@ -470,13 +446,13 @@ You can learn more at [Ipregistry](https://ipregistry.co/).
 
 To run the app locally, add the following variables:
 
-- `IP_REGISTRY_API_KEY`
+-   `IP_REGISTRY_API_KEY`
 
 Add these to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -484,7 +460,7 @@ Add these to:
 
 For staging and production environments, add the following variables to GitLab CI/CD:
 
-- `IP_REGISTRY_API_KEY`
+-   `IP_REGISTRY_API_KEY`
 
 ---
 
@@ -500,13 +476,13 @@ You can learn more at [Giphy](https://giphy.com/).
 
 To run the app locally, add the following variables:
 
-- `GIPHY_API_KEY`
+-   `GIPHY_API_KEY`
 
 Add these to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -514,8 +490,8 @@ Add these to:
 
 For staging and production environments, add the following variables to GitLab CI/CD:
 
-- `GIPHY_API_KEY_DEV`
-- `GIPHY_API_KEY_PROD`
+-   `GIPHY_API_KEY_DEV`
+-   `GIPHY_API_KEY_PROD`
 
 ---
 
@@ -538,16 +514,16 @@ If granted permission for commercial use, you can use the current premium paymen
 
 To enable Mollie in functions, add the following environment variable:
 
-- `MOLLIE_API_KEY`
-- `MOLLIE_WEBHOOK`
-- `MOLLIE_SEND_MONTHLY_INVOICE`
+-   `MOLLIE_API_KEY`
+-   `MOLLIE_WEBHOOK`
+-   `MOLLIE_SEND_MONTHLY_INVOICE`
 
 Add this to:
 
-- `.env`
-- `env_functions.json`
-- `env_functions_master.json`
-- `env_functions_dev.json`
+-   `.env`
+-   `env_functions.json`
+-   `env_functions_master.json`
+-   `env_functions_dev.json`
 
 ---
 
@@ -563,8 +539,8 @@ Replace the `PremiumTab` with a placeholder tab.
 
 You’ll find the component here:
 
-- `components/Premium/PremiumTab.js`
-- Referenced in: `SettingsView` component
+-   `components/Premium/PremiumTab.js`
+-   Referenced in: `SettingsView` component
 
 ---
 
@@ -572,8 +548,8 @@ You’ll find the component here:
 
 To make all users premium by default:
 
-- Locate the `getNewDefaultUser` function.
-- Update the `premium` entry:
+-   Locate the `getNewDefaultUser` function.
+-   Update the `premium` entry:
 
 ```js
 premium: { status: PLAN_STATUS_PREMIUM },
@@ -659,8 +635,8 @@ We use **Firestore** as the primary database. For the initial setup, you'll need
 
 ### 1. Create the Administrator Role
 
-- Create a document at the path: `roles/administrator`
-- Inside the document, add a field called `userId` with the ID of the admin user.
+-   Create a document at the path: `roles/administrator`
+-   Inside the document, add a field called `userId` with the ID of the admin user.
 
 > ⚠️ The first time you run **AllDone**, a user document will be automatically created under the `users` collection.  
 > You can find the ID of that user and manually set it in the `roles/administrator` document.
@@ -681,14 +657,14 @@ We have two main environments configured, production and staging.
 
 To run the app locally, add the following variables:
 
-- `CURRENT_ENVIORNMENT`
-- `HOSTING_URL`
+-   `CURRENT_ENVIORNMENT`
+-   `HOSTING_URL`
 
 Add these to:
 
-- `.env` (current environment)
-- `envs/env.develop`
-- `envs/env.master`
+-   `.env` (current environment)
+-   `envs/env.develop`
+-   `envs/env.master`
 
 ---
 
@@ -696,10 +672,10 @@ Add these to:
 
 Add these variables to GitLab CI/CD:
 
-- `CURRENT_ENVIORNMENT_DEV`
-- `CURRENT_ENVIORNMENT_PROD`
-- `HOSTING_URL_DEV`
-- `HOSTING_URL_PROD`
+-   `CURRENT_ENVIORNMENT_DEV`
+-   `CURRENT_ENVIORNMENT_PROD`
+-   `HOSTING_URL_DEV`
+-   `HOSTING_URL_PROD`
 
 ---
 
@@ -707,14 +683,14 @@ Add these variables to GitLab CI/CD:
 
 To support functions, include the following in each environment:
 
-- `CURRENT_ENVIORNMENT`
-- `HOSTING_URL`
+-   `CURRENT_ENVIORNMENT`
+-   `HOSTING_URL`
 
 Add these to:
 
-- `.env`
-- `.env.alldonestaging`
-- `.env.alldonealeph`
+-   `.env`
+-   `.env.alldonestaging`
+-   `.env.alldonealeph`
 
 > **Note:** The `.env` file must match the currently active environment.
 
@@ -722,9 +698,9 @@ Add these to:
 
 To configure the service accounts for different environments, create the following files in your project directory:
 
-- `serviceAccountKey.json`
-- `serv_account_key_develop.json`
-- `serv_account_key_master.json`
+-   `serviceAccountKey.json`
+-   `serv_account_key_develop.json`
+-   `serv_account_key_master.json`
 
 Each file should contain the following JSON structure:
 

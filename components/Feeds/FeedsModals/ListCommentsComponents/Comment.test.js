@@ -3,12 +3,10 @@
  */
 
 import React from 'react'
-import { StyleSheet, Text } from 'react-native'
+import { StyleSheet } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import Comment from './Comment'
-import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
-import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: value => value,
@@ -18,12 +16,10 @@ jest.mock('react-redux', () => ({
     useSelector: selector => selector({ smallScreenNavigation: false }),
 }))
 
-jest.mock('../../../ContactsView/Utils/useGetUserPresentationData', () =>
-    jest.fn(() => ({
-        photoURL: 'avatar.png',
-        displayName: 'Ada',
-    }))
-)
+jest.mock('../../../ContactsView/Utils/useGetUserPresentationData', () => () => ({
+    photoURL: 'avatar.png',
+    displayName: 'Ada',
+}))
 
 jest.mock('../../TextParser/CommentElementsParser', () => 'CommentElementsParser')
 jest.mock('../../../ChatsView/ChatDV/EditorView/quoteParserFunctions', () => ({
@@ -35,26 +31,16 @@ jest.mock('../../../ChatsView/ChatDV/EditorView/codeParserFunctions', () => ({
     divideCodeText: text => [{ type: 'text', text }],
 }))
 jest.mock('../../../ChatsView/ChatDV/EditorView/markdownParserFunctions', () => ({
-    ...jest.requireActual('../../../ChatsView/ChatDV/EditorView/markdownParserFunctions'),
     getMarkdownTableColumnWidths: jest.fn(),
+    parseMarkdownLines: text => [{ type: 'text', text }],
+    parseInlineFormatting: text => [{ text }],
 }))
 jest.mock('../../../ChatsView/Utils/ChatHelper', () => ({
     getTimestampInMilliseconds: value => value,
 }))
 jest.mock('../../../Icon', () => 'Icon')
 jest.mock('../../Utils/HelperFunctions', () => ({
-    parseFeedComment: text =>
-        text
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean)
-            .map(value =>
-                value === 'attachment-token'
-                    ? { type: 'attachment', text: value }
-                    : value.startsWith('https://')
-                      ? { type: 'url', link: value }
-                      : { type: 'text', text: value }
-            ),
+    parseFeedComment: text => [{ type: 'text', text }],
     TEXT_ELEMENT: 'text',
     HASH_ELEMENT: 'hash',
     URL_ELEMENT: 'url',
@@ -62,12 +48,7 @@ jest.mock('../../Utils/HelperFunctions', () => ({
     EMAIL_ELEMENT: 'email',
 }))
 jest.mock('../../../Tags/HashTag', () => 'HashTag')
-jest.mock('../../../Tags/LinkTag', () => {
-    const React = require('react')
-    const { Text } = require('react-native')
-
-    return props => React.createElement(Text, { ...props, testID: 'rendered-link' }, props.link.replace('https://', ''))
-})
+jest.mock('../../../Tags/LinkTag', () => 'LinkTag')
 jest.mock('../../../Tags/MentionTag', () => 'MentionTag')
 jest.mock('../../../Tags/EmailTag', () => 'EmailTag')
 jest.mock('../../../TaskListView/Utils/TasksHelper', () => ({
@@ -75,9 +56,6 @@ jest.mock('../../../TaskListView/Utils/TasksHelper', () => ({
 }))
 jest.mock('../../../Tags/GmailTag', () => 'GmailTag')
 jest.mock('../../../TaskListView/EmailLine/EmailTaskAction', () => 'EmailTaskAction')
-
-const getRenderedText = node =>
-    node.children.map(child => (typeof child === 'string' ? child : getRenderedText(child))).join('')
 
 describe('feed Comment', () => {
     const defaultProps = {
@@ -94,20 +72,6 @@ describe('feed Comment', () => {
         linkedEmailGmailData: {},
         canArchiveLinkedEmail: false,
     }
-
-    test.each(['carl.png', undefined])(
-        'uses the actual assistant avatar with a fallback in the popup (%s)',
-        photoURL => {
-            useGetUserPresentationData.mockReturnValueOnce({ displayName: 'Carl', isAssistant: true, photoURL })
-            const tree = renderer.create(
-                <Comment {...defaultProps} comment={{ ...defaultProps.comment, creatorId: 'carl' }} />
-            )
-            const header = tree.root.findByProps({ testID: 'feed-comment-header' })
-            const avatar = header.findByType(AssistantAvatar)
-            expect(avatar.props).toEqual(expect.objectContaining({ assistantId: 'carl', photoURL, size: 24 }))
-            expect(header.findAllByType(Text)[0].props.children).toBe('Carl')
-        }
-    )
 
     test('places a new email badge at the right of the comment header', () => {
         const tree = renderer.create(<Comment {...defaultProps} linkedEmailNew />)
@@ -127,89 +91,5 @@ describe('feed Comment', () => {
         const tree = renderer.create(<Comment {...defaultProps} linkedEmailNew={false} />)
 
         expect(tree.root.findAllByProps({ testID: 'email-new-badge' })).toHaveLength(0)
-    })
-
-    test('renders wrapped prose with real selectable spaces instead of word-level flex margins', () => {
-        const commentText =
-            'This is a long prose comment that can wrap across several visual lines while remaining one natural text selection.'
-        const tree = renderer.create(
-            <Comment
-                {...defaultProps}
-                comment={{
-                    ...defaultProps.comment,
-                    commentText,
-                }}
-            />
-        )
-        const inlineText = tree.root.findByProps({ testID: 'comment-inline-text' })
-
-        expect(inlineText.findAllByType('CommentElementsParser')).toHaveLength(0)
-        expect(getRenderedText(inlineText)).toBe(commentText)
-    })
-
-    test('keeps links inline with semantic whitespace on both sides', () => {
-        const tree = renderer.create(
-            <Comment
-                {...defaultProps}
-                comment={{
-                    ...defaultProps.comment,
-                    commentText: 'Read Britannica https://example.com and continue with the paragraph.',
-                }}
-            />
-        )
-        const inlineText = tree.root.findByProps({ testID: 'comment-inline-text' })
-        const link = inlineText.findByProps({ testID: 'rendered-link' })
-
-        expect(link.props.link).toBe('https://example.com')
-        expect(getRenderedText(inlineText)).toBe('Read Britannica example.com and continue with the paragraph.')
-    })
-
-    test('keeps attachment content on the rich element renderer', () => {
-        const tree = renderer.create(
-            <Comment
-                {...defaultProps}
-                comment={{
-                    ...defaultProps.comment,
-                    commentText: 'attachment-token',
-                }}
-            />
-        )
-
-        expect(tree.root.findAllByProps({ testID: 'comment-inline-text' })).toHaveLength(0)
-        expect(tree.root.findAllByType('CommentElementsParser')).toHaveLength(1)
-    })
-
-    test('adds top spacing only to headings that follow rendered content', () => {
-        const tree = renderer.create(
-            <Comment
-                {...defaultProps}
-                comment={{
-                    ...defaultProps.comment,
-                    commentText: '# Opening heading\nParagraph\n## After paragraph\n- List item\n### After list',
-                }}
-            />
-        )
-        const headings = tree.root.findAllByProps({ testID: 'markdown-heading' })
-
-        expect(headings).toHaveLength(3)
-        expect(StyleSheet.flatten(headings[0].props.style).marginTop).toBeUndefined()
-        expect(StyleSheet.flatten(headings[1].props.style).marginTop).toBe(16)
-        expect(StyleSheet.flatten(headings[2].props.style).marginTop).toBe(16)
-    })
-
-    test('can replace a live technical status with a custom progress presentation', () => {
-        const tree = renderer.create(
-            <Comment
-                {...defaultProps}
-                comment={{
-                    ...defaultProps.comment,
-                    commentText: 'Under the hood: internal_tool_name',
-                }}
-                contentOverride={<Text testID="friendly-progress">Friendly progress</Text>}
-            />
-        )
-
-        expect(tree.root.findByProps({ testID: 'friendly-progress' }).props.children).toBe('Friendly progress')
-        expect(tree.root.findAllByProps({ testID: 'comment-inline-text' })).toHaveLength(0)
     })
 })

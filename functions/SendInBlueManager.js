@@ -78,8 +78,16 @@ handlebars.registerHelper('richText', (text, size = RichText.SIZE_TITLE, options
 })
 
 const sendEmailInvitationToProject = async data => {
-    const { userEmail, inviterName, inviterPhotoURL, projectName, projectColor, answerURL, projectDetailsURL, date } =
-        data
+    const {
+        userEmail,
+        inviterName,
+        inviterPhotoURL,
+        projectName,
+        projectColor,
+        answerURL,
+        projectDetailsURL,
+        date,
+    } = data
 
     const replacements = {
         tmplProjectName: projectName,

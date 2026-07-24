@@ -4,16 +4,11 @@ import styles, { colors } from '../../styles/global'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import Badge from './Badge'
 
-export default function HeaderTab({ text, badgeValue, onPress, isActive, isNextShortcutTab, showShortcuts, mobile }) {
+export default function HeaderTab({ text, badgeValue, onPress, isActive, isNextShortcutTab, showShortcuts }) {
     return (
-        <View style={[localStyles.container, mobile && localStyles.mobileContainer]}>
+        <View style={localStyles.container}>
             <TouchableOpacity style={localStyles.container} onPress={onPress}>
-                <Text
-                    numberOfLines={1}
-                    style={[localStyles.text, mobile && localStyles.mobileText, isActive && localStyles.activeText]}
-                >
-                    {text}
-                </Text>
+                <Text style={[localStyles.text, isActive ? localStyles.activeText : null]}>{text}</Text>
                 <View style={[localStyles.firstLine, isActive ? localStyles.activeLine : null]} />
             </TouchableOpacity>
             <View style={[localStyles.lastLine, isActive ? localStyles.activeLine : null]} />
@@ -33,11 +28,6 @@ const localStyles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    // Six tabs share a phone-wide row (Artifacts made it six). Equal widths left ~50px each on a
-    // 320px phone, less than "Contacts" needs; sizing each tab by its label fits all six.
-    mobileContainer: {
-        flexBasis: 'auto',
-    },
     text: {
         ...styles.subtitle2,
         color: colors.Text03,
@@ -47,11 +37,6 @@ const localStyles = StyleSheet.create({
     },
     activeText: {
         color: '#ffffff',
-    },
-    mobileText: {
-        fontSize: 12,
-        lineHeight: 16,
-        letterSpacing: 0.5,
     },
     firstLine: {
         width: '100%',

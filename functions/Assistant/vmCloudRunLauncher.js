@@ -92,34 +92,6 @@ function executionHasAttemptId(execution, executionAttemptId) {
     )
 }
 
-function classifyVmCloudRunExecution(execution) {
-    if (!execution) return { terminal: false, outcome: 'unknown', message: '' }
-
-    const completed = (execution.conditions || []).find(condition => condition.type === 'Completed')
-    const state = completed?.state || ''
-    const terminal =
-        !!execution.completionTime ||
-        state === 'CONDITION_SUCCEEDED' ||
-        state === 'CONDITION_FAILED' ||
-        Number(execution.succeededCount) > 0 ||
-        Number(execution.failedCount) > 0 ||
-        Number(execution.cancelledCount) > 0
-
-    if (!terminal) return { terminal: false, outcome: 'running', message: completed?.message || '' }
-    if (state === 'CONDITION_SUCCEEDED' || Number(execution.succeededCount) > 0) {
-        return { terminal: true, outcome: 'succeeded', message: completed?.message || '' }
-    }
-    if (Number(execution.cancelledCount) > 0 || completed?.executionReason === 'CANCELLATION_REQUESTED') {
-        return { terminal: true, outcome: 'cancelled', message: completed?.message || '' }
-    }
-    return {
-        terminal: true,
-        outcome: 'failed',
-        message: completed?.message || '',
-        reason: completed?.executionReason || '',
-    }
-}
-
 function extractExecutionName(operation) {
     const candidates = [operation?.response?.name, operation?.metadata?.target, operation?.metadata?.name]
     return (
@@ -290,7 +262,6 @@ module.exports = {
         resolveCloudRunJob,
         executionHasCorrelationId,
         executionHasAttemptId,
-        classifyVmCloudRunExecution,
         extractExecutionName,
     },
 }

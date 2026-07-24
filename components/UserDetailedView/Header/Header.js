@@ -10,14 +10,14 @@ import { DV_TAB_USER_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 
 export default function Header({ contact, project, isFullscreen, setFullscreen }) {
-    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
+    const mobile = useSelector(state => state.isMiddleScreen)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const accessGranted = SharedHelper.accessGranted(null, project.id)
 
     return (
-        <View style={[localStyles.container, isFullscreen && !accessGranted && localStyles.sharedChatContainer]}>
-            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
-                {inlineBackButton && accessGranted && (
+        <View style={localStyles.container}>
+            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: 16 }]}>
+                {mobile && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton user={contact} projectIndex={project.index} />
                     </View>
@@ -35,7 +35,7 @@ export default function Header({ contact, project, isFullscreen, setFullscreen }
                     <TagList project={project} user={contact} />
                 </View>
             )}
-            {isFullscreen && selectedTab === DV_TAB_USER_CHAT && accessGranted && (
+            {isFullscreen && selectedTab === DV_TAB_USER_CHAT && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}
@@ -57,10 +57,6 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingBottom: 24,
         overflow: 'hidden',
-    },
-    sharedChatContainer: {
-        height: 'auto',
-        paddingBottom: 0,
     },
     upperHeader: {
         flexDirection: 'row',

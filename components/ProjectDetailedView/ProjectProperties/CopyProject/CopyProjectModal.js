@@ -47,12 +47,7 @@ const CopyProjectModal = ({ setIsOpen, project }) => {
 
     const onDone = () => {
         const options = Array.from(selectedOptions.keys())
-        // Fire-and-forget, so the rejection needs a home: since AT-2340 this
-        // rejects immediately when offline (project duplication is entirely
-        // server-side) instead of hanging on the callable SDK's timeout.
-        duplicateProject(project.id, options).catch(error =>
-            console.warn('The project could not be duplicated right now', error)
-        )
+        duplicateProject(project.id, options)
 
         dispatch(navigateToSettings({ selectedNavItem: DV_TAB_SETTINGS_PROJECTS }))
         NavigationService.navigate('SettingsView')
@@ -124,7 +119,10 @@ const localStyles = StyleSheet.create({
         width: 432,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         paddingVertical: 16,
     },

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import {
@@ -41,7 +41,7 @@ export default function SkillCompletionWrapper({ skill, projectId, disabled, inD
     }
 
     return (
-        <AppPopover
+        <Popover
             key={!isOpen}
             content={
                 <SkillCompletionModal
@@ -68,6 +68,6 @@ export default function SkillCompletionWrapper({ skill, projectId, disabled, inD
                     disabled={disabled}
                 />
             )}
-        </AppPopover>
+        </Popover>
     )
 }

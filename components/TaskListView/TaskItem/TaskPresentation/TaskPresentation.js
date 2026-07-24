@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Animated, StyleSheet, View } from 'react-native'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
@@ -8,7 +8,7 @@ import store from '../../../../redux/store'
 import NavigationService from '../../../../utils/NavigationService'
 import { setSelectedNavItem, setSwipeDueDatePopupData, showSwipeDueDatePopup } from '../../../../redux/actions'
 import MyPlatform from '../../../MyPlatform'
-import TasksHelper, { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../Utils/TasksHelper'
+import TasksHelper from '../../Utils/TasksHelper'
 import { dismissAllPopups } from '../../../../utils/HelperFunctions'
 import SharedHelper from '../../../../utils/SharedHelper'
 import GmailTag from '../../../Tags/GmailTag'
@@ -37,19 +37,6 @@ import TaskVmStatusTag from '../../../Tags/InProgressVmTag'
 import { doTrailingTagsCrowdTaskTitle } from '../../TagsArea/taskTagSummaryHelper'
 import { shouldShowAiStepControl } from './taskAiStepControl'
 import CommentPopupWorkflowControls from '../../../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls'
-import AssistantWorkflowRunTag from '../../../Tags/AssistantWorkflowRunTag'
-import { taskPresentationLayout } from './TaskPresentationLayout'
-import TaskFileDropZone from './TaskFileDropZone'
-import { canDropFilesOnTaskRow } from './taskFileDropHelper'
-import TaskRoutingTag from '../../../Tags/TaskRoutingTag'
-import TaskRoutingActivityOverlay from './TaskRoutingActivityOverlay'
-import useTaskRoutingActivity from './useTaskRoutingActivity'
-import useTaskCompletionMotion, { rowRemainsAfterCompletion } from './taskCompletionMotion'
-import { publishGoalTaskCompletion } from '../../OpenTasksView/goalCompletionSignal'
-import { publishProjectTaskCompletion } from '../../OpenTasksView/projectTaskCompletionSignal'
-import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
-import { useTaskHierarchy, useTaskHierarchyBackground } from '../../TaskHierarchy'
-import ProjectMoveIndicator from '../../../UIComponents/ProjectMoveIndicator'
 
 function TaskPresentation(
     {
@@ -70,8 +57,6 @@ function TaskPresentation(
     },
     ref
 ) {
-    const taskHierarchy = useTaskHierarchy()
-    const hierarchyBackgroundColor = useTaskHierarchyBackground()
     const dispatch = useDispatch()
     const showAllProjectsByTime = useSelector(state => state.loggedUser.showAllProjectsByTime)
     const route = useSelector(state => state.route)
@@ -96,10 +81,7 @@ function TaskPresentation(
     const [taskItemWidth, setTaskItemWidth] = useState(0)
     const [taskTagsWidth, setTaskTagsWidth] = useState(0)
     const [taskTitleIsMultiline, setTaskTitleIsMultiline] = useState(false)
-    // AT-2449 — not a plain `useState(false)` toggled by the two Swipeable
-    // callbacks: `_animateRow` can deliver them the wrong way round and leave the
-    // row permanently unopenable. See the hook.
-    const { blockOpen, ...swipeCloseGuard } = useSwipeCloseGuard()
+    const [blockOpen, setBlockOpen] = useState(false)
     const [tagsExpandedHeight, setTagsExpandedHeight] = useState(0)
     const [panColor, setPanColor] = useState(new Animated.Value(0))
     const itemSwipe = useRef()
@@ -128,53 +110,6 @@ function TaskPresentation(
     const hasStar = task.hasStar.toUpperCase() === '#FFFFFF' && inMyDayAndNotSubtask ? colors.Grey500 : task.hasStar
 
     const lastAddedTaskBackgroundColor = useLastAddedTaskColor(task.id, lastTaskAddedId, hasStar)
-
-    // AT-2381 — "the server is still deciding where this task belongs", and the one-shot
-    // confirmation when that decision actually changed the task. Null for the overwhelming
-    // majority of rows; the badge and the motion layer are mounted only when it is not, so a
-    // long list pays nothing for a feature that concerns a handful of freshly created tasks.
-    const { processing: routingProcessing, confirmation: routingConfirmation } = useTaskRoutingActivity(task, projectId)
-    const hasRoutingActivity = !!(routingProcessing || routingConfirmation)
-
-    /**
-     * AT-2404 — the checkbox burst, title progress sweep, green wash and exit this row plays when
-     * it is checked off. The state lives here because the effect is the whole row's, but it is
-     * TRIGGERED from `CheckBoxWrapper` below, which is handed `beginCompletionMotion` and told how
-     * long to hold its write.
-     *
-     * `retainRow` is the subtask guarantee, and it is resolved HERE — from the task, through the
-     * shared `rowRemainsAfterCompletion` rule — rather than at the checkbox, because
-     * `TaskPresentation` is the ONE row implementation behind every context that renders a task
-     * line: open lists, MyDay, Goal DV, pending, done, backlinks, drag mode, the inline subtask
-     * list under a row, the TDV Subtasks tab and the comment popup header. A rule expressed here
-     * cannot be forgotten by one of them. See the function for why a subtask is the case that
-     * matters.
-     */
-    const retainRow = rowRemainsAfterCompletion(task, { inCommentPopup })
-    /**
-     * AT-2507 / AT-2558 — tells the goal section and project card above this row that one of their
-     * tasks is being completed, so each can react if the one being ticked was its last for today.
-     *
-     * The hook calls this only for a genuine completion of a row that is leaving the list, so the
-     * The goal signal is harmless for a task without `parentGoalId`, while the project card still
-     * requires its own `lineWouldLeave` verdict before it exits. The completion signal therefore
-     * cannot remove a project with tasks, OKRs, or other visible content left.
-     */
-    const announceTaskCompletion = useCallback(() => {
-        publishGoalTaskCompletion({ projectId, goalId: task.parentGoalId, taskId: task.id })
-        publishProjectTaskCompletion({ projectId, taskId: task.id })
-    }, [projectId, task.parentGoalId, task.id])
-    const {
-        onRowLayout: onCompletionRowLayout,
-        rowStyle: completionRowStyle,
-        beginCompletionMotion,
-        cancelCompletionMotion,
-        completionProgress,
-        completionWash,
-        completionCelebration,
-        completionMotion,
-        isCompleting,
-    } = useTaskCompletionMotion({ retainRow, isDone: task.done, onCompletionStart: announceTaskCompletion })
 
     const inMyDayOpenTab = checkIfInMyDayOpenTab(
         selectedProjectIndex,
@@ -211,14 +146,8 @@ function TaskPresentation(
         },
     }))
 
-    // Swipeable calls renderLeftActions during its own render, so adopting its dragX node here
-    // synchronously would set state on this component while another one renders (React warns and
-    // the update is not batched with the current pass). dragX is stable per Swipeable instance,
-    // so deferring the swap by a microtask adopts it just as reliably, one render later.
     const renderLeftSwipe = (progress, dragX) => {
-        if (panColor !== dragX) {
-            Promise.resolve().then(() => setPanColor(dragX))
-        }
+        if (panColor != dragX) setPanColor(dragX)
         return <View style={{ width: 150 }} />
     }
 
@@ -277,13 +206,7 @@ function TaskPresentation(
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, userProjectIds, projectId, false)
     const anonymousGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, userProjectIds, projectId, true)
 
-    const restingBackgroundColor = inCommentPopup
-        ? colors.Secondary200
-        : task.isSubtask
-          ? colors.Grey200
-          : taskHierarchy
-            ? hierarchyBackgroundColor
-            : '#ffffff'
+    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : task.isSubtask ? colors.Grey200 : '#ffffff'
 
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
@@ -300,10 +223,10 @@ function TaskPresentation(
     const highlightColor = inCommentPopup
         ? backColor
         : lastTaskAddedId === task.id
-          ? lastAddedTaskBackgroundColor
-          : hasStar.toLowerCase() !== '#ffffff'
-            ? backColorHighlight
-            : backColor
+        ? lastAddedTaskBackgroundColor
+        : hasStar.toLowerCase() !== '#ffffff'
+        ? backColorHighlight
+        : backColor
 
     const showVerticalEllipsis = inMyDayAndNotSubtask
         ? TasksHelper.showWrappedTaskEllipsisInByTime(
@@ -321,18 +244,6 @@ function TaskPresentation(
 
     const isLocked = objectIsLockedForUser(projectId, unlockedKeysByGuides, task.lockKey, task.userId)
 
-    // AT-2363: dropping a file on the row appends it to the task description.
-    const fileDropAllowed = canDropFilesOnTaskRow({
-        accessGranted,
-        loggedUserCanUpdateObject,
-        isCalendarTask: !!task.calendarData,
-        isAssistantTask: task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE,
-        isLocked,
-        isActiveOrganizeMode,
-        isSuggested,
-        inCommentPopup,
-    })
-
     // Priority chip is now shown at the START of the task row (like a calendar task's time) instead
     // of in the trailing tags. Built once here so the regular view (in the title via leftCustomElement)
     // and the My Day by-time view (in the left time area) share the same clickable element + disabled
@@ -346,316 +257,220 @@ function TaskPresentation(
             style={{ marginRight: 8 }}
         />
     )
-    const leadingVmStatusTag = (
-        <>
-            <AssistantWorkflowRunTag projectId={projectId} task={task} />
-            <TaskVmStatusTag projectId={projectId} taskId={task.id} style={{ marginRight: 8 }} />
-        </>
-    )
-    // AT-2598 — keep the reminder in the same wrapping flow as the title. When this chip lived
-    // beside `TitleContainer`, the title received only the width left after the chip, so every
-    // wrapped line started after it. As a leading inline element, only the first line follows the
-    // chip and subsequent lines can use the full title width.
-    const leadingReminderTag =
-        !inMyDayAndNotSubtask && task?.alertEnabled ? (
-            task.calendarData ? (
-                <TranscribeTag task={task} projectId={projectId} containerStyle={{ marginRight: 8 }} />
-            ) : (
-                <AlertTag task={task} containerStyle={{ marginRight: 8 }} onPress={onLeftSwipe} />
-            )
-        ) : null
-
-    /**
-     * AT-2453 — the routing badge belongs to the TRAILING tag area, not to the leading slot in
-     * front of the title. It shipped next to the VM/workflow tags because it is the same KIND of
-     * thing (a transient status the row reports about background work), but it is the only one of
-     * them that fires on an ordinary freshly created task — so in practice it was pushing the
-     * title of every new task sideways for the seconds the classifier took, and then again for the
-     * four seconds the confirmation is up. The tag area is where a task already says which project
-     * and goal it belongs to (`ProjectTag`, `GoalTag`, `SuggestedGoalTag` in `TagsArea/Tags.js`),
-     * which makes it the honest home for "…and we are still working that out".
-     *
-     * Deliberately built as its own element rather than folded into `Tags.js`: the trailing tags
-     * collapse into a single `TaskSummarizeTags` chip on crowded rows and on mobile
-     * (`shouldSummarizeTaskTags`), and a status that is invisible exactly when the row is busy is
-     * no status at all. Both containers therefore render it as a SIBLING of `TaskItemTags`, first
-     * in the tag row, where the summary logic cannot reach it.
-     *
-     * `marginLeft` rather than `marginRight`: trailing tags space themselves from the left
-     * (`tagAlignment` in `TagsArea/Tags.js`), the leading slot spaced itself from the right.
-     */
-    const trailingRoutingTag = hasRoutingActivity ? (
-        <TaskRoutingTag
-            processing={routingProcessing}
-            confirmation={routingConfirmation}
-            projectName={ProjectHelper.getProjectNameById(projectId, '')}
-            style={{ marginLeft: 8 }}
-        />
-    ) : null
+    const leadingVmStatusTag = <TaskVmStatusTag projectId={projectId} taskId={task.id} style={{ marginRight: 8 }} />
 
     return (
-        <TaskFileDropZone disabled={!fileDropAllowed} projectId={projectId} task={task}>
-            {/* AT-2404 — the node that collapses on completion. It has to be the OUTERMOST row
-                element so the height that animates to 0 is the whole row (swipe areas, shortcuts
-                and all); collapsing anything inner would leave its wrapper holding the space open
-                and the list would not close the gap. `completionRowStyle` is undefined except
-                during those ~260ms, so an ordinary row is never pinned to a measured height. */}
-            <Animated.View
-                style={[isLocked && !inParentGoal && localStyles.blurry, completionRowStyle]}
-                onLayout={onCompletionRowLayout}
-                testID="task-completion-row"
-                dataSet={{ annaObjectType: 'task', annaObjectId: task.id, annaProjectId: projectId }}
+        <View style={isLocked && !inParentGoal && localStyles.blurry}>
+            <SwipeAreasContainer
+                leftText={'Properties'}
+                rightText={'Reminder'}
+                isActiveOrganizeMode={isActiveOrganizeMode}
+            />
+            <Swipeable
+                ref={itemSwipe}
+                rightThreshold={80}
+                leftThreshold={80}
+                enabled={!inCommentPopup && !activeEditMode && !isActiveOrganizeMode && !isLocked && anonymousGranted}
+                renderLeftActions={renderLeftSwipe}
+                renderRightActions={accessGranted && renderRightSwipe}
+                onSwipeableLeftWillOpen={onLeftSwipe}
+                onSwipeableRightWillOpen={loggedUserCanUpdateObject && accessGranted && onRightSwipe}
+                overshootLeft={false}
+                overshootRight={false}
+                friction={2}
+                containerStyle={{ overflow: 'visible' }}
+                failOffsetY={[-5, 5]}
+                onSwipeableWillClose={() => {
+                    setBlockOpen(true)
+                }}
+                onSwipeableClose={() => {
+                    setBlockOpen(false)
+                }}
             >
-                <SwipeAreasContainer
-                    leftText={'Properties'}
-                    rightText={'Reminder'}
-                    isActiveOrganizeMode={isActiveOrganizeMode}
-                />
-                <Swipeable
-                    useNativeAnimations={false}
-                    ref={itemSwipe}
-                    rightThreshold={80}
-                    leftThreshold={80}
-                    enabled={
-                        !inCommentPopup &&
-                        !activeEditMode &&
-                        !isActiveOrganizeMode &&
-                        !isLocked &&
-                        anonymousGranted &&
-                        // A row that is collapsing must not also be swipeable — the gesture would
-                        // fight the height animation and could open a reminder popup for a task
-                        // that is already on its way out.
-                        !isCompleting
-                    }
-                    renderLeftActions={renderLeftSwipe}
-                    renderRightActions={accessGranted && renderRightSwipe}
-                    onSwipeableLeftWillOpen={onLeftSwipe}
-                    onSwipeableRightWillOpen={loggedUserCanUpdateObject && accessGranted && onRightSwipe}
-                    overshootLeft={false}
-                    overshootRight={false}
-                    friction={2}
-                    containerStyle={{ overflow: 'visible' }}
-                    failOffsetY={[-5, 5]}
-                    {...swipeCloseGuard}
-                >
-                    <View style={taskPresentationLayout.container}>
-                        <View style={{ borderRadius: 4 }}>
-                            <Animated.View
+                <View style={localStyles.container}>
+                    <View style={{ borderRadius: 4 }}>
+                        <Animated.View
+                            style={[
+                                !isActiveOrganizeMode &&
+                                    inFocusTaskId === task.id && { borderColor: colors.Primary100, borderWidth: 2 },
+                                localStyles.taskRow,
+                                task.isSubtask ? subTaskStyles.taskRow : undefined,
+                                task.isSubtask ? { paddingLeft: 2 } : undefined,
+                                isActiveOrganizeMode &&
+                                    (task.isSubtask ? subTaskStyles.dragModeContainer : localStyles.dragModeContainer),
+                                { backgroundColor: highlightColor },
+                            ]}
+                            onLayout={onLayoutChange}
+                            nativeID={`task_body_${projectId}_${task.id}_${isObservedTask}`}
+                        >
+                            <View
+                                pointerEvents={isActiveOrganizeMode || isLocked ? 'none' : 'auto'}
                                 style={[
-                                    !isActiveOrganizeMode &&
-                                        inFocusTaskId === task.id && { borderColor: colors.Primary100, borderWidth: 2 },
-                                    taskPresentationLayout.taskRow,
-                                    task.isSubtask ? subTaskStyles.taskRow : undefined,
-                                    task.isSubtask ? { paddingLeft: 2 } : undefined,
-                                    isActiveOrganizeMode &&
-                                        (task.isSubtask
-                                            ? subTaskStyles.dragModeContainer
-                                            : localStyles.dragModeContainer),
-                                    { backgroundColor: highlightColor },
+                                    localStyles.checkBoxLabel,
+                                    !inMyDayAndNotSubtask && { paddingBottom: tagsExpandedHeight },
                                 ]}
-                                onLayout={onLayoutChange}
-                                nativeID={`task_body_${projectId}_${task.id}_${isObservedTask}`}
                             >
-                                <ProjectMoveIndicator object={task} />
-                                {/* AT-2381 — decoration only, and deliberately a sibling rather than
-                                    a wrapper: it fills the row absolutely with `pointerEvents="none"`,
-                                    so it can never change the row's height or swallow a tap. The task
-                                    stays completable, draggable and editable while it plays.
-                                    AT-2453 follow-up — gated on the CONFIRMATION alone, not on
-                                    `hasRoutingActivity`: the in-progress sweep is gone, so a row that
-                                    is merely being classified has no motion layer to mount, and does
-                                    not pay for the `matchMedia` listener `useReducedMotion` opens. */}
-                                {routingConfirmation && (
-                                    <TaskRoutingActivityOverlay confirmation={routingConfirmation} />
-                                )}
-                                {/* AT-2404 — the green wash, and the reason it SWEEPS rather than
-                                    fades: it scales on X from the same `Animated.Value` and the
-                                    same left origin as the title's progress bar, so its leading
-                                    edge is the bar's leading edge. One value, one gesture — the
-                                    colour arrives across the row exactly as fast as the bar fills,
-                                    which is what makes them read as a single event instead of two
-                                    animations that happen to overlap. Rendered only when the task
-                                    is genuinely completed, so a workflow step advance (which also
-                                    leaves this list) does not get the colour that means "done". */}
-                                {completionWash && (
-                                    <Animated.View
-                                        style={[
-                                            localStyles.completionTint,
-                                            {
-                                                opacity: completionWash.opacity.interpolate({
-                                                    inputRange: [0, 1],
-                                                    outputRange: [0, COMPLETION_TINT_PEAK_OPACITY],
-                                                }),
-                                                transform: [{ scaleX: completionWash.progress }],
-                                            },
-                                        ]}
-                                        pointerEvents="none"
-                                        testID="task-completion-tint"
+                                <CheckBoxWrapper
+                                    ref={checkBoxRef}
+                                    task={task}
+                                    projectId={projectId}
+                                    isObservedTask={isObservedTask}
+                                    isToReviewTask={isToReviewTask}
+                                    isSuggested={isSuggested}
+                                    isActiveOrganizeMode={isActiveOrganizeMode}
+                                    checkOnDrag={checkOnDrag}
+                                    loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                                    highlightColor={highlightColor}
+                                    accessGranted={accessGranted}
+                                    pending={pending}
+                                    showWorkflowIndicator={showWorkflowIndicator}
+                                    isNextStepAi={showAiStepControl}
+                                />
+                                {!inMyDayAndNotSubtask && isInboxSummaryGmailTask(task) && (
+                                    <GmailTag
+                                        gmailData={task.gmailData}
+                                        propStyles={{ marginTop: 8, marginLeft: 12 }}
                                     />
                                 )}
-                                <View
-                                    pointerEvents={isActiveOrganizeMode || isLocked ? 'none' : 'auto'}
-                                    style={[
-                                        taskPresentationLayout.leadingContent,
-                                        !inMyDayAndNotSubtask && { paddingBottom: tagsExpandedHeight },
-                                    ]}
-                                >
-                                    <CheckBoxWrapper
-                                        ref={checkBoxRef}
-                                        task={task}
-                                        projectId={projectId}
-                                        isObservedTask={isObservedTask}
-                                        isToReviewTask={isToReviewTask}
-                                        isSuggested={isSuggested}
-                                        isActiveOrganizeMode={isActiveOrganizeMode}
-                                        checkOnDrag={checkOnDrag}
-                                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
-                                        highlightColor={highlightColor}
-                                        accessGranted={accessGranted}
-                                        pending={pending}
-                                        showWorkflowIndicator={showWorkflowIndicator}
-                                        isNextStepAi={showAiStepControl}
-                                        beginCompletionMotion={beginCompletionMotion}
-                                        cancelCompletionMotion={cancelCompletionMotion}
-                                        completionCelebration={completionCelebration}
-                                        completionMotion={completionMotion}
-                                    />
-                                    {!inMyDayAndNotSubtask && isInboxSummaryGmailTask(task) && (
-                                        <GmailTag
-                                            gmailData={task.gmailData}
-                                            propStyles={{ marginTop: 8, marginLeft: 12 }}
-                                        />
-                                    )}
-                                    <TitleContainer
-                                        task={task}
-                                        projectId={projectId}
-                                        isObservedTask={isObservedTask}
-                                        toggleModal={toggleModal}
-                                        backColorHighlight={backColorHighlight}
-                                        backColor={backColor}
-                                        hasStar={hasStar}
-                                        inMyDayAndNotSubtask={inMyDayAndNotSubtask}
-                                        blockOpen={blockOpen}
-                                        tagsExpandedHeight={tagsExpandedHeight}
-                                        showVerticalEllipsisInByTime={inMyDayAndNotSubtask && showVerticalEllipsis}
-                                        leadingVmStatusTag={leadingVmStatusTag}
-                                        leadingPriorityTag={leadingPriorityTag}
-                                        leadingReminderTag={leadingReminderTag}
-                                        useCommentPopupTextColor={inCommentPopup}
-                                        setTaskTitleIsMultiline={setTaskTitleIsMultiline}
-                                        completionProgress={completionProgress}
-                                    />
-                                </View>
-                                {inMyDayAndNotSubtask && (
-                                    <TaskTagsContainerByTime
-                                        task={task}
-                                        projectId={projectId}
-                                        isObservedTask={isObservedTask}
-                                        isToReviewTask={isToReviewTask}
-                                        toggleSubTaskList={toggleSubTaskList}
-                                        subtaskList={subtaskList}
-                                        isSuggested={isSuggested}
-                                        isActiveOrganizeMode={isActiveOrganizeMode}
-                                        isPending={isPending}
-                                        isLocked={isLocked}
-                                        highlightColor={highlightColor}
-                                        anonymousGranted={anonymousGranted}
-                                        accessGranted={accessGranted}
-                                        taskTagsSection={taskTagsSection}
-                                        forceTagsMobile={forceTagsMobile}
-                                        setTagsExpandedHeight={setTagsExpandedHeight}
-                                        toggleModal={toggleModal}
-                                        blockOpen={blockOpen}
-                                        onAlertTagPress={onLeftSwipe}
-                                        leadingVmStatusTag={leadingVmStatusTag}
-                                        leadingPriorityTag={leadingPriorityTag}
-                                        trailingRoutingTag={trailingRoutingTag}
-                                        inCommentPopup={inCommentPopup}
-                                    />
+                                {!inMyDayAndNotSubtask && task?.alertEnabled && (
+                                    <>
+                                        {task.calendarData ? (
+                                            <TranscribeTag
+                                                task={task}
+                                                projectId={projectId}
+                                                containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
+                                            />
+                                        ) : (
+                                            <AlertTag
+                                                task={task}
+                                                containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
+                                                onPress={onLeftSwipe}
+                                            />
+                                        )}
+                                    </>
                                 )}
-                                {!inMyDayAndNotSubtask && (
-                                    <TaskTagsContainer
-                                        task={task}
-                                        projectId={projectId}
-                                        isObservedTask={isObservedTask}
-                                        isToReviewTask={isToReviewTask}
-                                        toggleSubTaskList={toggleSubTaskList}
-                                        subtaskList={subtaskList}
-                                        isSuggested={isSuggested}
-                                        isActiveOrganizeMode={isActiveOrganizeMode}
-                                        isPending={isPending}
-                                        isLocked={isLocked}
-                                        showVerticalEllipsis={showVerticalEllipsis}
-                                        highlightColor={highlightColor}
-                                        anonymousGranted={anonymousGranted}
-                                        accessGranted={accessGranted}
-                                        taskTagsSection={taskTagsSection}
-                                        forceTagsMobile={forceTagsMobile}
-                                        trailingTagsCrowdTitle={trailingTagsCrowdTitle}
-                                        setTagsExpandedHeight={setTagsExpandedHeight}
-                                        trailingRoutingTag={trailingRoutingTag}
-                                        inCommentPopup={inCommentPopup}
-                                    />
-                                )}
-                            </Animated.View>
-                            {!isActiveOrganizeMode && inMyDayOpenTab && isActiveTask && task.time && (
-                                <LineOfTime time={task.time} tagsExpandedHeight={tagsExpandedHeight} />
+                                <TitleContainer
+                                    task={task}
+                                    projectId={projectId}
+                                    isObservedTask={isObservedTask}
+                                    toggleModal={toggleModal}
+                                    backColorHighlight={backColorHighlight}
+                                    backColor={backColor}
+                                    hasStar={hasStar}
+                                    inMyDayAndNotSubtask={inMyDayAndNotSubtask}
+                                    blockOpen={blockOpen}
+                                    tagsExpandedHeight={tagsExpandedHeight}
+                                    showVerticalEllipsisInByTime={inMyDayAndNotSubtask && showVerticalEllipsis}
+                                    leadingVmStatusTag={leadingVmStatusTag}
+                                    leadingPriorityTag={leadingPriorityTag}
+                                    useCommentPopupTextColor={inCommentPopup}
+                                    setTaskTitleIsMultiline={setTaskTitleIsMultiline}
+                                />
+                            </View>
+                            {inMyDayAndNotSubtask && (
+                                <TaskTagsContainerByTime
+                                    task={task}
+                                    projectId={projectId}
+                                    isObservedTask={isObservedTask}
+                                    isToReviewTask={isToReviewTask}
+                                    toggleSubTaskList={toggleSubTaskList}
+                                    subtaskList={subtaskList}
+                                    isSuggested={isSuggested}
+                                    isActiveOrganizeMode={isActiveOrganizeMode}
+                                    isPending={isPending}
+                                    isLocked={isLocked}
+                                    highlightColor={highlightColor}
+                                    anonymousGranted={anonymousGranted}
+                                    accessGranted={accessGranted}
+                                    taskTagsSection={taskTagsSection}
+                                    forceTagsMobile={forceTagsMobile}
+                                    setTagsExpandedHeight={setTagsExpandedHeight}
+                                    toggleModal={toggleModal}
+                                    blockOpen={blockOpen}
+                                    onAlertTagPress={onLeftSwipe}
+                                    leadingVmStatusTag={leadingVmStatusTag}
+                                    leadingPriorityTag={leadingPriorityTag}
+                                    inCommentPopup={inCommentPopup}
+                                />
                             )}
-                        </View>
-                        {isActiveOrganizeMode && <SixDotsContainer />}
-                        {!inCommentPopup && (
-                            <ShortcutsArea
-                                task={task}
-                                isActiveOrganizeMode={isActiveOrganizeMode}
-                                accessGranted={accessGranted}
-                                projectId={projectId}
-                                isLocked={isLocked}
-                            />
-                        )}
-                        {inCommentPopup && (
-                            <CommentPopupWorkflowControls
-                                projectId={projectId}
-                                task={task}
-                                workflow={workflow}
-                                disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
-                                onDirectionalTransitionSuccess={onCommentPopupWorkflowTransitionSuccess}
-                                completionMotion={completionMotion}
-                            />
+                            {!inMyDayAndNotSubtask && (
+                                <TaskTagsContainer
+                                    task={task}
+                                    projectId={projectId}
+                                    isObservedTask={isObservedTask}
+                                    isToReviewTask={isToReviewTask}
+                                    toggleSubTaskList={toggleSubTaskList}
+                                    subtaskList={subtaskList}
+                                    isSuggested={isSuggested}
+                                    isActiveOrganizeMode={isActiveOrganizeMode}
+                                    isPending={isPending}
+                                    isLocked={isLocked}
+                                    showVerticalEllipsis={showVerticalEllipsis}
+                                    highlightColor={highlightColor}
+                                    anonymousGranted={anonymousGranted}
+                                    accessGranted={accessGranted}
+                                    taskTagsSection={taskTagsSection}
+                                    forceTagsMobile={forceTagsMobile}
+                                    trailingTagsCrowdTitle={trailingTagsCrowdTitle}
+                                    setTagsExpandedHeight={setTagsExpandedHeight}
+                                    inCommentPopup={inCommentPopup}
+                                />
+                            )}
+                        </Animated.View>
+                        {!isActiveOrganizeMode && inMyDayOpenTab && isActiveTask && task.time && (
+                            <LineOfTime time={task.time} tagsExpandedHeight={tagsExpandedHeight} />
                         )}
                     </View>
-                </Swipeable>
-            </Animated.View>
-        </TaskFileDropZone>
+                    {isActiveOrganizeMode && <SixDotsContainer />}
+                    {!inCommentPopup && (
+                        <ShortcutsArea
+                            task={task}
+                            isActiveOrganizeMode={isActiveOrganizeMode}
+                            accessGranted={accessGranted}
+                            projectId={projectId}
+                            isLocked={isLocked}
+                        />
+                    )}
+                    {inCommentPopup && (
+                        <CommentPopupWorkflowControls
+                            projectId={projectId}
+                            task={task}
+                            workflow={workflow}
+                            disabled={!loggedUserCanUpdateObject || !accessGranted || isLocked}
+                            onDirectionalTransitionSuccess={onCommentPopupWorkflowTransitionSuccess}
+                        />
+                    )}
+                </View>
+            </Swipeable>
+        </View>
     )
 }
 
-/**
- * The row wash stays deliberately quiet even though the rest of this sequence got louder. Adding a
- * task is occasional — `useLastAddedTaskColor` can afford a 600ms `UtilityBlue125` flash for it;
- * completing one happens constantly, including in bursts when a list is cleared, so a full-row
- * colour has to sit low in the attention order or it turns into strobing. The excitement was added
- * where it is bounded instead: inside the 24px checkbox, which cannot strobe a whole list.
- * `UtilityGreen125` at this alpha composites to roughly #DEF9EF over a white row.
- */
-const COMPLETION_TINT_PEAK_OPACITY = 0.55
-
 const localStyles = StyleSheet.create({
+    container: {
+        justifyContent: 'center',
+        marginLeft: -16,
+        marginRight: -16,
+    },
+    taskRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        paddingHorizontal: 8,
+        marginHorizontal: 8,
+        borderRadius: 4,
+    },
+    checkBoxLabel: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        flex: 1,
+    },
     dragModeContainer: {
         marginRight: 44,
     },
     blurry: {
         filter: 'blur(3px)',
         userSelect: 'none',
-    },
-    completionTint: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: colors.UtilityGreen125,
-        // Matches `taskPresentationLayout.taskRow` so the wash cannot square off the row's corners.
-        borderRadius: 4,
-        // Grows from the checkbox side. Passed through verbatim by react-native-web 0.21's
-        // `preprocess` (it becomes CSS `transform-origin`) — without it the wash would expand from
-        // the row's centre in both directions and the sweep would read backwards.
-        transformOrigin: 'left center',
     },
 })
 

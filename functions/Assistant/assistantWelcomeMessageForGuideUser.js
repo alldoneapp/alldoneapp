@@ -51,7 +51,6 @@ async function generateBotWelcomeMessageForGuideUser(
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
-        openAiReasoningEffort: assistant.reasoningEffort || null,
         objectType: 'topics',
         objectId,
     }

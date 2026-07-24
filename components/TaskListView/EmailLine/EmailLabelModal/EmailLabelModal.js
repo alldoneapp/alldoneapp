@@ -6,6 +6,7 @@ import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { withWindowSizeHook } from '../../../../utils/useWindowSize'
+import { MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { translate } from '../../../../i18n/TranslationService'
 import { getProviderLabel } from '../../../../utils/IntegrationProviders'
 import NavigationService from '../../../../utils/NavigationService'
@@ -19,20 +20,9 @@ import {
     listEmailLineMessages,
     performEmailLineAction,
     performEmailLineSweepInBackground,
-    reconcileEmailLineLabelCount,
 } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import { getEmailAccountWebUrl, getLabelWebUrl, openUrlInNewTab } from '../emailLineHelper'
-import { markChatCommentsAsReadByMessageIds } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import EmailRow from './EmailRow'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
-
-const collectRowMessageIds = row => [...new Set((row?.messageIds || [row?.messageId]).filter(Boolean))]
-
-const markAlldoneChatsReadForArchivedEmails = messageIds => {
-    markChatCommentsAsReadByMessageIds(messageIds).catch(error => {
-        if (__DEV__) console.warn('[EmailLine] Failed to mark Alldone chats as read:', error?.message || error)
-    })
-}
 
 const MODAL_MAX_WIDTH = 560
 // A merged label can span many project connections for the same Gmail account. Loading every
@@ -65,7 +55,6 @@ function EmailLabelModal({
     allGroups,
     labelOptionsByConnectionId,
     labelingDisabledByConnectionId,
-    onThreadCountReconciled,
     closePopover,
     windowSize,
 }) {
@@ -89,16 +78,12 @@ function EmailLabelModal({
     // the summary refresh on close (see handleRelabeled) rather than immediately, so relabeling the
     // last email of a label doesn't unmount its chip — and this popover with it — mid-feedback.
     const pendingSummaryRefreshRef = useRef(new Set())
-    // A zero update would remove the chip from its parent list and therefore unmount this
-    // anchored popover. Show zero on the still-mounted chip immediately, but commit it to Redux
-    // only when the popover closes.
-    const pendingZeroCountReconciliationsRef = useRef(new Map())
 
     const smallScreen = useSelector(state => state.smallScreen)
     const screenWidth = windowSize?.[0] || Dimensions.get('window').width
     const screenHeight = windowSize?.[1] || Dimensions.get('window').height
     const width = Math.min(screenWidth - 32, MODAL_MAX_WIDTH)
-    const maxHeight = getSafeAreaModalMaxHeight(screenHeight)
+    const maxHeight = screenHeight - MODAL_MAX_HEIGHT_GAP
 
     const entries = activeGroup?.entries || []
 
@@ -125,7 +110,6 @@ function EmailLabelModal({
                         ...entry,
                         messages: result?.messages || [],
                         nextPageToken: result?.nextPageToken || null,
-                        totalCount: Number.isFinite(result?.totalCount) ? result.totalCount : null,
                         // The call succeeded but the provider couldn't fetch every thread of
                         // the page, so this section's list is incomplete.
                         partialFailure: !!result?.partialFailure,
@@ -150,21 +134,6 @@ function EmailLabelModal({
             })
             if (activeGroupKeyRef.current !== loadingGroupKey) return
             setSections(results)
-            const exactResults = results.filter(section => !section.failed && Number.isFinite(section.totalCount))
-            exactResults.forEach(section => {
-                const reconciliationKey = sectionKey(section)
-                if (section.totalCount === 0) {
-                    pendingZeroCountReconciliationsRef.current.set(reconciliationKey, section)
-                } else {
-                    pendingZeroCountReconciliationsRef.current.delete(reconciliationKey)
-                    reconcileEmailLineLabelCount(section.connectionId, section.labelId, section.totalCount)
-                }
-            })
-            // Only replace the merged chip total when every account returned a count. A partial
-            // account failure must not turn the other accounts' successful subtotal into the total.
-            if (loadingGroupKey === group?.key && exactResults.length === results.length) {
-                onThreadCountReconciled?.(exactResults.reduce((total, section) => total + section.totalCount, 0))
-            }
             // Never cache a wholesale failure: its empty rows would be seeded on the next open
             // and render as the empty state, hiding the error we just detected.
             if (!results.every(section => section.failed)) cacheSections(results)
@@ -265,12 +234,7 @@ function EmailLabelModal({
     // chip counts and destination labels catch up without disrupting the open modal.
     useEffect(() => {
         const pending = pendingSummaryRefreshRef.current
-        const pendingZeroCounts = pendingZeroCountReconciliationsRef.current
         return () => {
-            pendingZeroCounts.forEach(section =>
-                reconcileEmailLineLabelCount(section.connectionId, section.labelId, section.totalCount)
-            )
-            pendingZeroCounts.clear()
             pending.forEach(connectionId => {
                 invalidateEmailLineSummaryCooldown(connectionId)
                 fetchEmailLineSummary(connectionId, { force: true }).catch(() => {})
@@ -282,22 +246,6 @@ function EmailLabelModal({
     const openAccount = section => {
         openUrlInNewTab(getEmailAccountWebUrl(section.provider, section.emailAddress))
     }
-
-    const renderAccountHeader = section => (
-        <View key={`account:${sectionKey(section)}`} style={localStyles.accountHeader}>
-            <Text style={[styles.caption2, localStyles.accountHeaderText]} numberOfLines={1}>
-                {[getProviderLabel(section.provider), section.emailAddress].filter(Boolean).join(' · ')}
-            </Text>
-            <TouchableOpacity
-                style={localStyles.accountOpenButton}
-                onPress={() => openAccount(section)}
-                accessibilityLabel={translate('Open email account')}
-            >
-                <Icon name="external-link" size={12} color={colors.Primary100} />
-                <Text style={[styles.caption2, localStyles.accountOpenButtonText]}>{translate('Open account')}</Text>
-            </TouchableOpacity>
-        </View>
-    )
 
     const openIntegrations = () => {
         closePopover()
@@ -369,9 +317,6 @@ function EmailLabelModal({
                 messageIds: [...messageIdsByConnection[connectionId]],
             })
                 .then(() => {
-                    if (action === 'archive') {
-                        markAlldoneChatsReadForArchivedEmails([...messageIdsByConnection[connectionId]])
-                    }
                     setSections(previous => {
                         const next = previous.map(section => {
                             if (section.connectionId !== connectionId) return section
@@ -420,19 +365,6 @@ function EmailLabelModal({
     // Sweeps close the modal immediately and continue in the background: counts are
     // optimistically zeroed and the chip shows a spinner until the summary refreshes.
     const runSweep = action => {
-        const messageIdsByConnection = {}
-        if (action === 'archiveAll') {
-            sections.forEach(section => {
-                if (!messageIdsByConnection[section.connectionId]) {
-                    messageIdsByConnection[section.connectionId] = new Set()
-                }
-                section.messages.forEach(row => {
-                    collectRowMessageIds(row).forEach(messageId =>
-                        messageIdsByConnection[section.connectionId].add(messageId)
-                    )
-                })
-            })
-        }
         closePopover()
         // Archive-all empties the label, so clear its cached rows now — reopening shows the
         // empty state instantly instead of flashing the about-to-be-archived list.
@@ -440,13 +372,7 @@ function EmailLabelModal({
             cacheSections(sections.map(section => ({ ...section, messages: [] })))
         }
         entries.forEach(entry => {
-            Promise.resolve(performEmailLineSweepInBackground(entry.connectionId, entry.labelId, action)).then(
-                processed => {
-                    if (action === 'archiveAll' && processed > 0) {
-                        markAlldoneChatsReadForArchivedEmails([...(messageIdsByConnection[entry.connectionId] || [])])
-                    }
-                }
-            )
+            performEmailLineSweepInBackground(entry.connectionId, entry.labelId, action)
         })
     }
 
@@ -612,12 +538,9 @@ function EmailLabelModal({
 
             <CustomScrollView style={localStyles.list} showsVerticalScrollIndicator={false}>
                 {showLoading ? (
-                    <>
-                        {entries.map(renderAccountHeader)}
-                        <View style={localStyles.centered}>
-                            <ActivityIndicator color={colors.Primary100} />
-                        </View>
-                    </>
+                    <View style={localStyles.centered}>
+                        <ActivityIndicator color={colors.Primary100} />
+                    </View>
                 ) : loadFailed ? (
                     // Every account's list call failed: an empty list here would read as "this label
                     // has no inbox mail", which is exactly the confusion this state exists to prevent.
@@ -643,7 +566,23 @@ function EmailLabelModal({
                 ) : (
                     sections.map(section => (
                         <View key={sectionKey(section)}>
-                            {renderAccountHeader(section)}
+                            <View style={localStyles.accountHeader}>
+                                <Text style={[styles.caption2, localStyles.accountHeaderText]} numberOfLines={1}>
+                                    {[getProviderLabel(section.provider), section.emailAddress]
+                                        .filter(Boolean)
+                                        .join(' · ')}
+                                </Text>
+                                <TouchableOpacity
+                                    style={localStyles.accountOpenButton}
+                                    onPress={() => openAccount(section)}
+                                    accessibilityLabel={translate('Open email account')}
+                                >
+                                    <Icon name="external-link" size={12} color={colors.Primary100} />
+                                    <Text style={[styles.caption2, localStyles.accountOpenButtonText]}>
+                                        {translate('Open account')}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
                             {section.messages.map(row => (
                                 <EmailRow
                                     key={selectionKey(section.connectionId, section.labelId, row.messageId)}
@@ -727,7 +666,10 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingTop: 12,
         paddingBottom: 8,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOpacity: 1,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 4 },
     },
     containerMobile: {
         paddingHorizontal: 12,

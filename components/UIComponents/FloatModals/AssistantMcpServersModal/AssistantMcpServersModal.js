@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Dimensions, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
 import { ASSISTANT_MCP_SERVERS_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
@@ -12,10 +13,10 @@ import Icon from '../../../Icon'
 import { connectAssistantMcpServer, disconnectAssistantMcpServer } from '../../../../utils/backends/firestore'
 import { updateAssistant } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { startMcpOAuthFlow } from '../../../../utils/Mcp/mcpOAuth'
-import useModalSizing from '../../../../hooks/useModalSizing'
 
 const MCP_SERVERS_TOOL_KEY = 'mcp_servers'
 const MODAL_HORIZONTAL_MARGIN = 32
+const MODAL_VERTICAL_MARGIN = 16
 const MAX_MODAL_WIDTH = 560
 
 const TRANSPORTS = [
@@ -53,12 +54,12 @@ function ChipSelector({ options, value, onChange, disabled }) {
 }
 
 export default function AssistantMcpServersModal({ projectId, assistant, closeModal }) {
-    const { isSheet, width: sheetWidth, maxHeight, windowWidth } = useModalSizing()
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const [windowDimensions, setWindowDimensions] = useState(Dimensions.get('window'))
 
-    const servers = useMemo(
-        () => (Array.isArray(assistant.mcpServers) ? assistant.mcpServers : []),
-        [assistant.mcpServers]
-    )
+    const servers = useMemo(() => (Array.isArray(assistant.mcpServers) ? assistant.mcpServers : []), [
+        assistant.mcpServers,
+    ])
 
     // New-server form state.
     const [label, setLabel] = useState('')
@@ -74,14 +75,22 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
 
-    const containerWidth = isSheet
-        ? sheetWidth
-        : Math.min(Math.max(windowWidth - MODAL_HORIZONTAL_MARGIN * 2, 0), MAX_MODAL_WIDTH)
-    const containerMaxHeight = maxHeight
+    const { width: windowWidth, height: windowHeight } = windowDimensions
+    const containerWidth = Math.min(
+        Math.max(windowWidth - MODAL_HORIZONTAL_MARGIN * 2, 0),
+        smallScreenNavigation ? windowWidth : MAX_MODAL_WIDTH
+    )
+    const containerMaxHeight = Math.max(windowHeight - MODAL_VERTICAL_MARGIN * 2, 0)
 
     useEffect(() => {
         storeModal(ASSISTANT_MCP_SERVERS_MODAL_ID)
         return () => removeModal(ASSISTANT_MCP_SERVERS_MODAL_ID)
+    }, [])
+
+    useEffect(() => {
+        const updateDimensions = ({ window }) => setWindowDimensions(window)
+        Dimensions.addEventListener('change', updateDimensions)
+        return () => Dimensions.removeEventListener('change', updateDimensions)
     }, [])
 
     const resetForm = () => {
@@ -374,7 +383,10 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         padding: 16,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     emptyText: {

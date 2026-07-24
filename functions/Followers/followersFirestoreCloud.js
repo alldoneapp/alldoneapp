@@ -1,4 +1,3 @@
-const { FieldValue } = require('firebase-admin/firestore')
 const removeObjectFollowData = async (projectId, objectType, objectId, admin) => {
     const followersData = (await admin.firestore().doc(`followers/${projectId}/${objectType}/${objectId}`).get()).data()
     const followerIds = followersData ? followersData.usersFollowing : []
@@ -11,7 +10,7 @@ const removeObjectFollowData = async (projectId, objectType, objectId, admin) =>
                 .firestore()
                 .doc(`usersFollowing/${projectId}/entries/${userId}`)
                 .update({
-                    [`${objectType}.${objectId}`]: FieldValue.delete(),
+                    [`${objectType}.${objectId}`]: admin.firestore.FieldValue.delete(),
                 })
         )
     })

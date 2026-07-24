@@ -5,7 +5,7 @@ import PropTypes from 'prop-types'
 import TasksMultiToggleSwitch from '../TasksMultiToggleSwitch'
 import MainSectionTabsHeader from './MainSectionTabsHeader'
 
-const UserTasksHeader = ({ showSectionToggle = true }) => {
+const UserTasksHeader = ({ showSectionToggle }) => {
     return (
         <View style={localStyles.container}>
             <MainSectionTabsHeader
@@ -19,6 +19,10 @@ const UserTasksHeader = ({ showSectionToggle = true }) => {
 UserTasksHeader.propTypes = {
     style: PropTypes.any,
     showSectionToggle: PropTypes.bool,
+}
+
+UserTasksHeader.defaultProps = {
+    showSectionToggle: true,
 }
 
 export function getFormattedName(fullName) {

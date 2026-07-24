@@ -14,7 +14,7 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 'FEED_PUBLIC_FOR_ALL',
 }))
 
-const { createProjectAutoArchivedFeed, createProjectDescriptionChangedFeed } = require('./projectsFeeds')
+const { createProjectDescriptionChangedFeed } = require('./projectsFeeds')
 
 describe('projectsFeeds', () => {
     beforeEach(() => {
@@ -91,40 +91,5 @@ describe('projectsFeeds', () => {
             description: 'New description',
             projectId: 'project-1',
         })
-    })
-
-    test('creates an automatic archive entry without resetting project activity', async () => {
-        const batch = { feedObjects: {} }
-        const project = { name: 'Operations', color: '#fff', userIds: ['user-1'] }
-        const feedUser = { uid: 'user-1' }
-        const existingFeedObject = {
-            type: 'project',
-            name: 'Operations',
-            isPublicFor: ['FEED_PUBLIC_FOR_ALL'],
-        }
-        mockLoadFeedObject.mockResolvedValue(existingFeedObject)
-
-        await createProjectAutoArchivedFeed('project-1', project, 30, batch, feedUser)
-
-        expect(mockGenerateFeedModel).toHaveBeenCalledWith(
-            expect.objectContaining({
-                entryText: 'automatically archived project after 30 days without activity',
-                objectId: 'project-1',
-            })
-        )
-        expect(mockProccessFeed).toHaveBeenCalledWith(
-            'project-1',
-            '14042026',
-            [],
-            'project-1',
-            'projects',
-            existingFeedObject,
-            'feed-1',
-            expect.any(Object),
-            feedUser,
-            batch,
-            false,
-            { project, disabledLastInteraction: true }
-        )
     })
 })

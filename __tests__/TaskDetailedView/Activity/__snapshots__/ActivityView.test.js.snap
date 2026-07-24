@@ -1,0 +1,18 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ActivityView should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "column",
+      "height": 200,
+      "justifyContent": "center",
+    }
+  }
+>
+  <Text>
+    ACTIVITY COMING SOON! ;)
+  </Text>
+</View>
+`;

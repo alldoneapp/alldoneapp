@@ -1,6 +1,10 @@
+import moment from 'moment'
+
 import { getWorkflowStepsIdsSorted } from './HelperFunctions'
+import { updateQuotaXp } from './backends/Premium/premiumFirestore'
 import { ESTIMATION_TYPE_POINTS, getEstimationRealValue } from './EstimationHelper'
-import { runHttpsCallableFunction } from './backends/firestore'
+import { BatchWrapper } from '../functions/BatchWrapper/batchWrapper'
+import { getUserData } from './backends/Users/usersFirestore'
 
 const XP_NEEDED_FOR_LEVEL_UP = 42000
 export const SKILL_POINTS_PER_LEVEL = 5
@@ -11,6 +15,15 @@ export function getXpNeededToReachLevel(level) {
 
 export function getTotalXpNeededToReachLevel(level) {
     return level <= 1 ? 0 : XP_NEEDED_FOR_LEVEL_UP * (level - 1)
+}
+
+function getUpdateLevel(currentLevel, newTotalXp) {
+    const nextLevel = currentLevel + 1
+    if (getTotalXpNeededToReachLevel(nextLevel) <= newTotalXp) {
+        return getUpdateLevel(nextLevel, newTotalXp)
+    } else {
+        return currentLevel
+    }
 }
 
 export function getRelativeLevelXp(currentLevel, currentXp) {
@@ -24,58 +37,39 @@ const getEarnedXpByDoneTask = estimationInPoints => {
 export async function updateXpByDoneTask(userId, estimation, firebase, db, projectId) {
     const estimationInPoints = getEstimationRealValue(null, estimation, ESTIMATION_TYPE_POINTS)
     const xpEarned = getEarnedXpByDoneTask(estimationInPoints)
-    return updateXp(userId, xpEarned, projectId, true)
+    updateXp(userId, firebase, db, xpEarned, projectId, true)
 }
 
-export async function updateXpByDoneForAllReviewers(
-    estimations,
-    workflow,
-    firebase,
-    db,
-    projectId,
-    eligibleReviewerIds = null
-) {
+export async function updateXpByDoneForAllReviewers(estimations, workflow, firebase, db, projectId) {
     const steps = getWorkflowStepsIdsSorted(workflow)
-    const eligibleReviewers = Array.isArray(eligibleReviewerIds) ? new Set(eligibleReviewerIds) : null
 
     for (let i = 0; i < steps.length; i++) {
-        const step = workflow[steps[i]]
-        const reviewerUid = step.reviewerUid
-        // Assistants and stale workflow reviewers are not user accounts that can receive XP.
-        // The server correctly rejects them, but older clients attempted the callable anyway and
-        // leaked the rejection into every otherwise-successful task completion.
-        if (
-            !reviewerUid ||
-            step.reviewerType === 'assistant' ||
-            (eligibleReviewers && !eligibleReviewers.has(reviewerUid))
-        ) {
-            continue
-        }
+        const reviewerUid = workflow[steps[i]].reviewerUid
         const estimation = estimations[steps[i]] ? estimations[steps[i]] : 0
         const estimationInPoints = getEstimationRealValue(null, estimation, ESTIMATION_TYPE_POINTS)
         const xpEarned = getEarnedXpByDoneTask(estimationInPoints)
-        await updateXp(reviewerUid, xpEarned, projectId, true)
+        updateXp(reviewerUid, firebase, db, xpEarned, projectId, true)
     }
 }
 
 export async function updateXpByCreateProject(userId, firebase, db, projectId) {
     const xpEarned = 200
-    return updateXp(userId, xpEarned, projectId, false)
+    updateXp(userId, firebase, db, xpEarned, projectId, false)
 }
 
 export async function updateXpByChangeGoalProgress(userId, firebase, db, projectId) {
     const xpEarned = 400
-    return updateXp(userId, xpEarned, projectId, true)
+    updateXp(userId, firebase, db, xpEarned, projectId, true)
 }
 
 export async function updateXpByEditingNote(userId, firebase, db, projectId) {
     const xpEarned = 50
-    return updateXp(userId, xpEarned, projectId, true)
+    updateXp(userId, firebase, db, xpEarned, projectId, true)
 }
 
 export async function updateXpByCommentInChat(userId, firebase, db, projectId) {
     const xpEarned = 1
-    return updateXp(userId, xpEarned, projectId, true)
+    updateXp(userId, firebase, db, xpEarned, projectId, true)
 }
 
 export const getEarnedSkillPoints = (level, newLevel) => {
@@ -95,11 +89,37 @@ export const getLevelUpUserUpdateData = (level, newLevel, totalXp, firebase, now
     }
 }
 
-async function updateXp(userId, xpEarned, projectId, increaseProjectQuota) {
-    return runHttpsCallableFunction('awardXpSecondGen', {
-        projectId,
-        userId,
-        xpEarned,
-        increaseProjectQuota,
-    })
+async function updateXp(userId, firebase, db, xpEarned, projectId, increaseProjectQuota) {
+    const user = await getUserData(userId, false)
+    const xp = user.xp ? user.xp : 0
+    const level = user.level ? user.level : 1
+
+    const totalXp = xp + xpEarned
+    const newLevel = getUpdateLevel(level, totalXp)
+
+    let data
+    if (newLevel !== level) {
+        data = getLevelUpUserUpdateData(level, newLevel, totalXp, firebase)
+    } else {
+        data = { xp: totalXp }
+    }
+
+    const batch = new BatchWrapper(db)
+
+    const usersRef = firebase.firestore().doc(`users/${userId}`)
+    batch.update(usersRef, data)
+
+    updateQuotaXp(projectId, userId, xpEarned, increaseProjectQuota)
+
+    const date = moment()
+    const slimDate = date.format('DDMMYYYY')
+    const dayDate = parseInt(date.format('YYYYMMDD'))
+
+    batch.set(
+        db.doc(`statistics/${projectId}/${userId}/${slimDate}`),
+        { xp: firebase.firestore.FieldValue.increment(xpEarned), day: dayDate },
+        { merge: true }
+    )
+
+    batch.commit()
 }

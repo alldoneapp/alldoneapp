@@ -1,97 +1,157 @@
-// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+// Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`PrivacyButton component PrivacyButton empty snapshot test should render correctly 1`] = `
-<button
-  className="css-view-g5y9jx"
-  dir={null}
-  role="button"
+<RNGestureHandlerButton
+  collapsable={false}
+  onGestureEvent={[Function]}
+  onGestureHandlerEvent={[Function]}
+  onGestureHandlerStateChange={[Function]}
+  onHandlerStateChange={[Function]}
+  rippleColor={0}
   style={
-    {
-      "overflowX": "hidden",
-      "overflowY": "hidden",
-    }
+    Array [
+      Object {
+        "overflow": "hidden",
+      },
+      undefined,
+    ]
   }
-  type="button"
 >
-  <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-99ywz4 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
-    dir={null}
+  <View
+    accessible={true}
     style={
-      {
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "#1A3289",
+        "borderRadius": 4,
+        "flexDirection": "row",
         "opacity": 1,
+        "paddingLeft": 16,
+        "paddingRight": 24,
       }
     }
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-eu3ka r-paddingInline-1ubuhtd r-width-1aockid"
-      dir={null}
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 40,
+        }
+      }
     >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <div
-          className="css-text-146c3p1"
-          dir="auto"
+      <View>
+        <Text
           style={
-            {
-              "color": "rgba(250,251,251,1.00)",
+            Object {
+              "color": "#FAFBFB",
               "fontFamily": "alldone",
-              "fontSize": "20px",
+              "fontSize": 20,
               "opacity": 1,
             }
           }
-        />
-      </div>
-    </div>
-  </div>
-</button>
+        >
+          
+        </Text>
+      </View>
+      <Text
+        style={
+          Array [
+            Object {
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "fontStyle": "normal",
+              "letterSpacing": 0.8,
+              "lineHeight": 14,
+            },
+            Object {
+              "color": "#FAFBFB",
+              "paddingLeft": 14,
+            },
+          ]
+        }
+      >
+        Public
+      </Text>
+    </View>
+  </View>
+</RNGestureHandlerButton>
 `;
 
 exports[`PrivacyButton component PrivacyButton empty snapshot test should render correctly when is web 1`] = `
-<button
-  className="css-view-g5y9jx"
-  dir={null}
-  role="button"
+<RNGestureHandlerButton
+  collapsable={false}
+  onGestureEvent={[Function]}
+  onGestureHandlerEvent={[Function]}
+  onGestureHandlerStateChange={[Function]}
+  onHandlerStateChange={[Function]}
+  rippleColor={0}
   style={
-    {
-      "overflowX": "hidden",
-      "overflowY": "hidden",
-    }
+    Array [
+      Object {
+        "overflow": "hidden",
+      },
+      undefined,
+    ]
   }
-  type="button"
 >
-  <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-99ywz4 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
-    dir={null}
+  <View
+    accessible={true}
     style={
-      {
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "#1A3289",
+        "borderRadius": 4,
+        "flexDirection": "row",
         "opacity": 1,
+        "paddingLeft": 16,
+        "paddingRight": 24,
       }
     }
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-eu3ka r-paddingInline-1ubuhtd r-width-1aockid"
-      dir={null}
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 40,
+        }
+      }
     >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <div
-          className="css-text-146c3p1"
-          dir="auto"
+      <View>
+        <Text
           style={
-            {
-              "color": "rgba(250,251,251,1.00)",
+            Object {
+              "color": "#FAFBFB",
               "fontFamily": "alldone",
-              "fontSize": "20px",
+              "fontSize": 20,
               "opacity": 1,
             }
           }
-        />
-      </div>
-    </div>
-  </div>
-</button>
+        >
+          
+        </Text>
+      </View>
+      <Text
+        style={
+          Array [
+            Object {
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "fontStyle": "normal",
+              "letterSpacing": 0.8,
+              "lineHeight": 14,
+            },
+            Object {
+              "color": "#FAFBFB",
+              "paddingLeft": 14,
+            },
+          ]
+        }
+      >
+        Public
+      </Text>
+    </View>
+  </View>
+</RNGestureHandlerButton>
 `;

@@ -3,13 +3,11 @@ import {
     DV_TAB_ASSISTANT_BACKLINKS,
     DV_TAB_ASSISTANT_CHAT,
     DV_TAB_ASSISTANT_CUSTOMIZATIONS,
-    DV_TAB_ASSISTANT_WORKFLOW,
     DV_TAB_ASSISTANT_NOTE,
     DV_TAB_ASSISTANT_UPDATES,
 } from '../../utils/TabNavigationConstants'
 import {
     URL_ASSISTANT_DETAILS_CUSTOMIZATIONS,
-    URL_ASSISTANT_DETAILS_WORKFLOW,
     URL_ASSISTANT_DETAILS,
     URL_ASSISTANT_DETAILS_BACKLINKS_NOTES,
     URL_ASSISTANT_DETAILS_BACKLINKS_TASKS,
@@ -25,9 +23,6 @@ class URLsAssistantsTrigger {
             [URL_ASSISTANT_DETAILS]: new RegExp('^/projects/(?<projectId>[\\w-]+)/assistants/(?<assistantId>[\\w-]+)$'),
             [URL_ASSISTANT_DETAILS_CUSTOMIZATIONS]: new RegExp(
                 '^/projects/(?<projectId>[\\w-]+)/assistants/(?<assistantId>[\\w-]+)/customizations$'
-            ),
-            [URL_ASSISTANT_DETAILS_WORKFLOW]: new RegExp(
-                '^/projects/(?<projectId>[\\w-]+)/assistants/(?<assistantId>[\\w-]+)/workflow$'
             ),
             [URL_ASSISTANT_DETAILS_BACKLINKS_TASKS]: new RegExp(
                 '^/projects/(?<projectId>[\\w-]+)/assistants/(?<assistantId>[\\w-]+)/backlinks/tasks$'
@@ -79,14 +74,6 @@ class URLsAssistantsTrigger {
                 return AssistantDetailedViewHelper(
                     navigation,
                     DV_TAB_ASSISTANT_CUSTOMIZATIONS,
-                    params.assistantId,
-                    params.projectId,
-                    null
-                )
-            case URL_ASSISTANT_DETAILS_WORKFLOW:
-                return AssistantDetailedViewHelper(
-                    navigation,
-                    DV_TAB_ASSISTANT_WORKFLOW,
                     params.assistantId,
                     params.projectId,
                     null

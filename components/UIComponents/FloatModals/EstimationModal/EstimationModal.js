@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { ESTIMATIONS_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import useWindowSize from '../../../../utils/useWindowSize'
@@ -18,7 +18,6 @@ import CustomEstimationModal from './CustomEstimationModal'
 import ModalHeader from '../ModalHeader'
 import EstimationModalOptions from './EstimationModalOptions'
 import AutoAdaptEstimation from './AutoAdaptEstimation'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function EstimationModal({
     projectId,
@@ -63,7 +62,7 @@ export default function EstimationModal({
             closeModal={closeCustomModal}
         />
     ) : (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView showsVerticalScrollIndicator={false}>
                 <View style={localStyles.subContainer}>
                     <ModalHeader
@@ -100,7 +99,10 @@ export default function EstimationModal({
 
 const localStyles = StyleSheet.create({
     container: {
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,

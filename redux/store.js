@@ -10,10 +10,8 @@ import ProjectHelper, {
     checkIfSelectedProject,
 } from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { FOLLOWED_TAB } from '../components/Feeds/Utils/FeedsConstants'
-import { getOptimisticGoalPostponeKey } from '../utils/backends/Goals/optimisticGoalPostpone'
 import {
     DV_TAB_ADMIN_PANEL_USER,
-    DV_TAB_ROOT_ARTIFACTS,
     DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_ROOT_GOALS,
@@ -47,37 +45,12 @@ import {
 import { addProjectDataToOpenTasksShowMoreData } from '../utils/backends/Tasks/openTasksShowMore/openTasksShowMore'
 import { getProjectChatLastNotification } from '../utils/backends/Chats/chatsComments'
 import { getRandomLoadingMessage } from '../utils/FunnyLoadingMessages'
-import { reduceLoadingData, START_LOADING_OPERATION, FINISH_LOADING_OPERATION } from './loadingData'
-import { SET_OKR_TODAY_OPERATION, reduceOkrTodayOperation, reconcileOkrTodayOperations } from './okrTodayVisibility'
-
-const SHOW_MORE_TIME_FIELDS = ['hasTomorrowTasks', 'hasFutureTasks', 'hasSomedayTasks']
-
-const recomputeProjectShowMoreFlags = projectData => {
-    if (!projectData) return
-    const categoryData = Object.entries(projectData)
-        .filter(([key, value]) => !SHOW_MORE_TIME_FIELDS.includes(key) && key !== WORKSTREAM_TASKS_MY_DAY_TYPE && value)
-        .map(([, value]) => value)
-    const workstreamData = Object.values(projectData[WORKSTREAM_TASKS_MY_DAY_TYPE] || {})
-    SHOW_MORE_TIME_FIELDS.forEach(field => {
-        projectData[field] = [...categoryData, ...workstreamData].some(value => !!value?.[field])
-    })
-}
-
-const recomputeGlobalShowMoreFlags = openTasksShowMoreData => {
-    const projectData = Object.entries(openTasksShowMoreData)
-        .filter(([key, value]) => !SHOW_MORE_TIME_FIELDS.includes(key) && value && typeof value === 'object')
-        .map(([, value]) => value)
-    SHOW_MORE_TIME_FIELDS.forEach(field => {
-        openTasksShowMoreData[field] = projectData.some(value => !!value[field])
-    })
-}
 
 export const initialState = {
     loggedIn: null,
     loadingStep: 0,
     loadingMessage: getRandomLoadingMessage(),
     loggedUser: {},
-    okrTodayOperations: {},
     currentUser: {},
     loggedUserProjects: [],
     loggedUserProjectsMap: {},
@@ -86,18 +59,12 @@ export const initialState = {
     projectContacts: {},
     projectAssistants: {},
     projectWorkstreams: {},
+    projectsMeetings: {},
     projectInvitations: {},
     projectChatNotifications: {},
     projectChatLastNotification: {},
     globalAssistants: [],
     defaultAssistant: {},
-    // AT-2430: which assistant the assistant line is talking to in a given project, when the
-    // user picked one with the line's switch control. `{ [projectId]: assistantId }`, session
-    // only and deliberately never persisted — it is a view preference, not a property of the
-    // project (`project.assistantId` is the project's SHARED assistant and changing it would
-    // change the assistant for every member). A stale entry cannot do harm: readers resolve it
-    // against the project's live option list and fall back when it no longer matches.
-    assistantLineSelection: {},
     selectedProjectIndex: ALL_PROJECTS_INDEX,
     selectedTypeOfProject: PROJECT_TYPE_ACTIVE,
     selectedNavItem: DV_TAB_ROOT_TASKS,
@@ -139,7 +106,6 @@ export const initialState = {
     },
     showFloatPopup: 0,
     shownFloatPopup: false,
-    taskEditorCount: 0,
     dismissibleActive: false,
     dismissibleComponent: null,
     dismissibleLimits: null,
@@ -153,7 +119,6 @@ export const initialState = {
     assignee: {},
     browserHistoryState: {},
     initialUrl: '/',
-    pendingWebShareTarget: null,
     processedInitialURL: false,
     // True while an anonymous visitor's shared-resource link is being resolved, so the login
     // screen shows a neutral spinner instead of the login UI until we forward them to the view.
@@ -176,8 +141,6 @@ export const initialState = {
     lastVisitedScreen: ['/projects/tasks/open'],
     taskTitleElementsWidths: [],
     isLoadingData: 0,
-    legacyLoadingDataCount: 0,
-    loadingDataOperations: {},
     showLoadingDataSpinner: false,
     registeredNewUser: false,
     alldoneVersion: { major: 0, minor: 0, patch: 0 },
@@ -199,13 +162,6 @@ export const initialState = {
     chatsActiveTab: FOLLOWED_TAB,
     chatsUnreadOnly: false,
     screenDimensions: {},
-    // '' until the first observed transition, then 'offline' | 'online' ('online' only
-    // ever set as a recovery from 'offline' — see utils/connectionState.js)
-    connectionState: '',
-    // 'live' | 'reconnecting' | 'stale' | 'offline' — what the app can PROVE about
-    // the server connection, as opposed to what the browser claims (PT-4660).
-    // Starts 'live': every uncertain path resolves to live, including boot.
-    connectionHealth: 'live',
     showNewDayNotification: false,
     showNewVersionMandtoryNotifcation: false,
     noteChangedNotification: false,
@@ -293,7 +249,6 @@ export const initialState = {
     taskPriorityFilters: [],
     taskVmStateFilters: [],
     taskVmStatesByTask: {},
-    noteOwnerFilters: [],
     goldEarnedData: { goldEarned: 0, checkBoxId: '' },
     showGoldChain: false,
     showGoldCoin: false,
@@ -316,13 +271,6 @@ export const initialState = {
     laterTasksExpandState: 0,
     somedayTasksExpanded: false,
     openTasksAmount: 0,
-    // AT-2445: `openTasksAmount` starts at 0 and is reset to 0 every time the count watchers are
-    // rebuilt, so "0" on its own cannot tell an empty inbox apart from an inbox that has not been
-    // counted yet. This flag is the missing half — see `setOpenTasksAmountLoaded`.
-    openTasksAmountLoaded: false,
-    // A same-day, complete-project cold-start proof that the previous Tasks board was empty.
-    // It is cleared as soon as the live aggregate queries take over.
-    taskColdStartEmptyToday: null,
     doneTasksAmount: null,
     earlierDoneTasksAmount: null,
     workflowTasksAmount: { amount: 0, loaded: false },
@@ -335,7 +283,6 @@ export const initialState = {
     filteredOpenTasksStore: {},
     subtaskByTaskStore: {},
     thereAreNotTasksInFirstDay: {},
-    taskListSingleLoading: {},
     initialLoadingEndOpenTasks: false,
     initialLoadingEndObservedTasks: false,
     openMilestonesByProjectInTasks: {},
@@ -370,11 +317,8 @@ export const initialState = {
     ],
     showNotificationAboutTheBotBehavior: false,
     assistantEnabled: false,
-    // `null` = the flag applies to whichever chat is currently open. `{ projectId, objectId }` =
-    // it was armed for that one chat only, and other Chat DVs must ignore it (AT-2084).
-    assistantEnabledScope: null,
     notEnabledAssistantWhenLoadComments: false,
-    triggerBotSpinner: null,
+    triggerBotSpinner: false,
     preConfigTaskExecuting: null,
     disableAutoFocusInChat: false,
     mainChatEditor: null,
@@ -389,6 +333,9 @@ export const initialState = {
     goalDoneTasksExpandedAmount: 0,
     recordVideoModalData: { visible: false, projectId: '' },
     screenRecordingModalData: { visible: false, projectId: '' },
+    chatGoogleMeetModalData: { visible: false, projectId: '', userId: '', userIds: [], title: '' },
+    googleMeetModalData: { visible: false, projectId: '', userId: '' },
+    googleMeetNotificationModalData: { visible: false, projectId: '', email: '', meeting: null },
     taskSuggestedCommentModalData: { visible: false, projectId: '', task: null, taskName: '' },
     activeChatData: { projectId: '', chatId: '', chatType: '' },
     quillTextInputProjectIdsByEditorId: {},
@@ -396,10 +343,7 @@ export const initialState = {
     optimisticFocusTaskId: null,
     optimisticFocusTaskProjectId: null,
     optimisticFocusGoalId: null,
-    optimisticFocusUserId: null,
     optimisticFocusActive: false,
-    // AT-2160: `${projectId}_${goalId}` -> { date, startedAt } while a goal postpone is in flight
-    optimisticGoalPostpones: {},
     myDayAllTodayTasks: {},
     myDaySelectedTasks: [],
     myDaySortingSelectedTasks: [],
@@ -417,6 +361,7 @@ export const initialState = {
     lastTaskAddedId: '',
     openTasksShowMoreData: { hasFutureTasks: false, hasSomedayTasks: false },
     navigationSource: null,
+    showTaskCompletionAnimation: false,
     triggerChatSubmit: null,
     triggerChatDraft: null,
     iframeModalData: { visible: false, url: '', name: '' },
@@ -496,9 +441,7 @@ const getDefaultAssistant = state => {
     const defaultProjectId = state?.loggedUser?.defaultProjectId
 
     if (!defaultProjectId) {
-        // Empty startup/logout state has no user yet; that is expected. Keep the warning for an
-        // actually loaded account whose membership data is inconsistent.
-        if (state?.loggedIn && state?.loggedUser?.uid) console.warn('No default project ID found')
+        console.warn('No default project ID found')
         return {}
     }
 
@@ -526,21 +469,19 @@ const getDefaultAssistant = state => {
         defaultAssistant = projectAssistants[0]
     }
 
-    if (__DEV__) {
-        console.log('Selected default assistant from project:', {
-            projectId: defaultProjectId,
-            projectAssistantId: defaultProject?.assistantId,
-            selectedAssistantId: defaultAssistant?.uid,
-            selectedAssistantName: defaultAssistant?.displayName,
-            isDefault: defaultAssistant?.isDefault,
-            isGlobal: globalAssistants.some(a => a.uid === defaultAssistant?.uid),
-            allProjectAssistants: projectAssistants.map(a => ({
-                uid: a.uid,
-                name: a.displayName,
-                isDefault: a.isDefault,
-            })),
-        })
-    }
+    console.log('Selected default assistant from project:', {
+        projectId: defaultProjectId,
+        projectAssistantId: defaultProject?.assistantId,
+        selectedAssistantId: defaultAssistant?.uid,
+        selectedAssistantName: defaultAssistant?.displayName,
+        isDefault: defaultAssistant?.isDefault,
+        isGlobal: globalAssistants.some(a => a.uid === defaultAssistant?.uid),
+        allProjectAssistants: projectAssistants.map(a => ({
+            uid: a.uid,
+            name: a.displayName,
+            isDefault: a.isDefault,
+        })),
+    })
 
     return defaultAssistant || {}
 }
@@ -586,9 +527,7 @@ export const theReducer = (state = initialState, action) => {
         case 'Set selected Note':
             return { ...state, selectedNote: action.selectedNote }
         case 'Log out':
-            // A failed signup can leave this flag armed. Carrying it into the next login skips the
-            // existing-user read and attempts to provision the account again.
-            return { ...state, loggedIn: false, registeredNewUser: false }
+            return { ...state, loggedIn: false }
         case 'Set Version':
             return { ...state, alldoneVersion: action.version }
         case 'Set new version':
@@ -626,16 +565,8 @@ export const theReducer = (state = initialState, action) => {
                 previousFocusProjectId !== (loggedUser.inFocusTaskProjectId || '')
             const myDayState = focusChanged ? getMyDayStateForLoggedUserFocusChange(state, loggedUser) : null
 
-            return {
-                ...state,
-                loggedUser,
-                currentUser,
-                okrTodayOperations: reconcileOkrTodayOperations(state.okrTodayOperations, loggedUser),
-                ...(myDayState || {}),
-            }
+            return { ...state, loggedUser, currentUser, ...(myDayState || {}) }
         }
-        case SET_OKR_TODAY_OPERATION:
-            return reduceOkrTodayOperation(state, action)
         case 'Store current user': {
             return { ...state, currentUser: action.currentUser }
         }
@@ -823,10 +754,6 @@ export const theReducer = (state = initialState, action) => {
         case 'Reset float popup': {
             return { ...state, showFloatPopup: 0, shownFloatPopup: false }
         }
-        case 'Start task editor':
-            return { ...state, taskEditorCount: (state.taskEditorCount || 0) + 1 }
-        case 'Finish task editor':
-            return { ...state, taskEditorCount: Math.max((state.taskEditorCount || 0) - 1, 0) }
         case 'Toggle dismissible active':
             return { ...state, dismissibleActive: action.dismissibleActive }
         case 'Set dismissible component':
@@ -874,10 +801,6 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, webBeingResponsive: action.webBeingResponsive }
         case 'Set initial url':
             return { ...state, initialUrl: action.url }
-        case 'Set pending web share target':
-            return { ...state, pendingWebShareTarget: action.payload }
-        case 'Clear pending web share target':
-            return { ...state, pendingWebShareTarget: null }
         case 'Set task in detail view':
             return { ...state, taskInDetailView: action.task }
         case 'Set navigation route':
@@ -917,28 +840,6 @@ export const theReducer = (state = initialState, action) => {
 
             return { ...state, projectAssistants, currentUser }
         }
-        // AT-2430. Writes the SAME state back by identity when nothing changed: the assistant
-        // line is mounted on every task board, so a redundant new map identity here would
-        // re-render every one of them for a no-op selection.
-        case 'Set assistant line assistant': {
-            const { projectId, assistantId } = action
-            if (!projectId) return state
-
-            const current = state.assistantLineSelection[projectId]
-
-            if (!assistantId) {
-                if (current === undefined) return state
-                const assistantLineSelection = { ...state.assistantLineSelection }
-                delete assistantLineSelection[projectId]
-                return { ...state, assistantLineSelection }
-            }
-
-            if (current === assistantId) return state
-            return {
-                ...state,
-                assistantLineSelection: { ...state.assistantLineSelection, [projectId]: assistantId },
-            }
-        }
         case 'Set workstreams in project': {
             const { projectId, workstreams } = action
 
@@ -946,6 +847,11 @@ export const theReducer = (state = initialState, action) => {
             const projectWorkstreams = { ...state.projectWorkstreams, [projectId]: workstreams }
 
             return { ...state, projectWorkstreams, currentUser }
+        }
+        case 'Set meetings in project': {
+            const { projectId, meetings } = action
+            const projectsMeetings = { ...state.projectsMeetings, [projectId]: meetings }
+            return { ...state, projectsMeetings }
         }
         case 'Set invitations in projects': {
             const { projectId, invitations } = action
@@ -1011,9 +917,6 @@ export const theReducer = (state = initialState, action) => {
                         projectChatNotifications[projectId][chatId].followedNotifications.push({
                             commentId: notification.commentId,
                             date: notification.date,
-                            chatType: notification.chatType,
-                            creatorId: notification.creatorId,
-                            creatorType: notification.creatorType,
                         })
                     }
                 } else {
@@ -1092,12 +995,20 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, lastVisitedScreen: action.lastVisitedScreen }
         case 'Set task title elements widths':
             return { ...state, taskTitleElementsWidths: action.taskTitleElementsWidths }
-        case START_LOADING_OPERATION:
-        case FINISH_LOADING_OPERATION:
-        case 'Start loading data':
-        case 'Stop loading data':
+        case 'Start loading data': {
+            const { processes } = action
+            const valueInc =
+                processes !== undefined && processes !== null && processes > 0
+                    ? state.isLoadingData + processes
+                    : state.isLoadingData + 1
+            return { ...state, isLoadingData: valueInc, showLoadingDataSpinner: valueInc > 0 }
+        }
+        case 'Stop loading data': {
+            const valueDec = state.isLoadingData > 0 ? state.isLoadingData - 1 : 0
+            return { ...state, isLoadingData: valueDec, showLoadingDataSpinner: valueDec > 0 }
+        }
         case 'Reset loading data':
-            return reduceLoadingData(state, action)
+            return { ...state, isLoadingData: 0, showLoadingDataSpinner: false }
         case 'Set registered new user':
             return { ...state, registeredNewUser: action.registeredNewUser }
         case 'Set global search results':
@@ -1146,10 +1057,6 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, contactsActiveTab: action.contactsActiveTab }
         case 'Set screen dimensions':
             return { ...state, screenDimensions: action.screenDimensions }
-        case 'Set connection state':
-            return { ...state, connectionState: action.connectionState }
-        case 'Set connection health':
-            return { ...state, connectionHealth: action.connectionHealth }
         case 'Set show new day notification':
             return { ...state, showNewDayNotification: action.show }
         case 'Show note changed notification':
@@ -1306,7 +1213,6 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: action.optimisticFocusTaskId,
                 optimisticFocusTaskProjectId: action.optimisticFocusTaskProjectId,
                 optimisticFocusGoalId: action.optimisticFocusGoalId,
-                optimisticFocusUserId: action.optimisticFocusUserId || null,
                 optimisticFocusActive: true,
             }
         }
@@ -1316,27 +1222,8 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: null,
                 optimisticFocusTaskProjectId: null,
                 optimisticFocusGoalId: null,
-                optimisticFocusUserId: null,
                 optimisticFocusActive: false,
             }
-        }
-        case 'Set optimistic goal postpone': {
-            // AT-2160: the goal leaves today's list right away; the server write follows.
-            const { projectId, goalId, date, startedAt } = action
-            return {
-                ...state,
-                optimisticGoalPostpones: {
-                    ...state.optimisticGoalPostpones,
-                    [getOptimisticGoalPostponeKey(projectId, goalId)]: { date, startedAt },
-                },
-            }
-        }
-        case 'Clear optimistic goal postpone': {
-            const key = getOptimisticGoalPostponeKey(action.projectId, action.goalId)
-            if (state.optimisticGoalPostpones[key] === undefined) return state
-            const optimisticGoalPostpones = { ...state.optimisticGoalPostpones }
-            delete optimisticGoalPostpones[key]
-            return { ...state, optimisticGoalPostpones }
         }
         case 'Set shared mode': {
             return { ...state, inSharedMode: true }
@@ -1666,21 +1553,6 @@ export const theReducer = (state = initialState, action) => {
             }
         }
 
-        case 'Clear note owner filters': {
-            if (state.noteOwnerFilters.length === 0) return state
-            return {
-                ...state,
-                noteOwnerFilters: [],
-            }
-        }
-
-        case 'Set note owner filters': {
-            return {
-                ...state,
-                noteOwnerFilters: action.ownerIds,
-            }
-        }
-
         case 'Update task VM state': {
             const currentVmState = (state.taskVmStatesByTask || {})[action.taskKey]
             if (currentVmState === action.vmState || (!currentVmState && !action.vmState)) return state
@@ -1811,16 +1683,6 @@ export const theReducer = (state = initialState, action) => {
             }
         }
 
-        case 'Set task list single loading': {
-            const wasLoading = !!state.taskListSingleLoading?.[action.instanceKey]
-            if (wasLoading === !!action.loading) return state
-            const taskListSingleLoading = { ...(state.taskListSingleLoading || {}) }
-            action.loading
-                ? (taskListSingleLoading[action.instanceKey] = true)
-                : delete taskListSingleLoading[action.instanceKey]
-            return { ...state, taskListSingleLoading }
-        }
-
         case 'Set someday tasks expanded': {
             return {
                 ...state,
@@ -1840,22 +1702,6 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 openTasksAmount: openTasksAmount ? openTasksAmount : 0,
-            }
-        }
-
-        case 'Set open tasks amount loaded': {
-            const { openTasksAmountLoaded } = action
-            if (state.openTasksAmountLoaded === openTasksAmountLoaded) return state
-            return {
-                ...state,
-                openTasksAmountLoaded,
-            }
-        }
-
-        case 'Set task cold start empty today': {
-            return {
-                ...state,
-                taskColdStartEmptyToday: action.emptyToday || null,
             }
         }
 
@@ -1918,6 +1764,27 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 screenRecordingModalData: action.screenRecordingModalData,
+            }
+        }
+
+        case 'Update chat google meet modal data': {
+            return {
+                ...state,
+                chatGoogleMeetModalData: action.chatGoogleMeetModalData,
+            }
+        }
+
+        case 'Update google meet modal data': {
+            return {
+                ...state,
+                googleMeetModalData: action.googleMeetModalData,
+            }
+        }
+
+        case 'Update google meet notification modal data': {
+            return {
+                ...state,
+                googleMeetNotificationModalData: action.googleMeetNotificationModalData,
             }
         }
 
@@ -2319,11 +2186,7 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set assistant enabled': {
-            return {
-                ...state,
-                assistantEnabled: action.assistantEnabled,
-                assistantEnabledScope: action.assistantEnabledScope ?? null,
-            }
+            return { ...state, assistantEnabled: action.assistantEnabled }
         }
 
         case 'Set not enabled assistant when load comments': {
@@ -2412,6 +2275,7 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { [project.id]: workstreams },
                 projectContacts: { [project.id]: contacts },
                 projectAssistants: { [project.id]: assistants },
+                projectsMeetings: { [project.id]: [] },
                 projectInvitations: { [project.id]: [] },
                 projectChatNotifications: { [project.id]: { totalUnfollowed: 0, totalFollowed: 0 } },
                 globalAssistants,
@@ -2432,11 +2296,13 @@ export const theReducer = (state = initialState, action) => {
                 projectAssistants,
             } = action
 
+            const projectsMeetings = {}
             const projectInvitations = {}
             const projectChatNotifications = {}
 
             let projectIdsForSetChatNotifications = []
             projects.forEach(project => {
+                projectsMeetings[project.id] = []
                 projectInvitations[project.id] = []
                 projectIdsForSetChatNotifications.push(project.id)
             })
@@ -2469,6 +2335,7 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams,
                 projectContacts,
                 projectAssistants,
+                projectsMeetings,
                 projectInvitations,
                 projectChatNotifications,
                 loggedIn: true,
@@ -2511,14 +2378,22 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set projects initial data': {
-            const { projectsArray, projectsMap, projectUsers, projectWorkstreams, projectContacts, projectAssistants } =
-                action
+            const {
+                projectsArray,
+                projectsMap,
+                projectUsers,
+                projectWorkstreams,
+                projectContacts,
+                projectAssistants,
+            } = action
 
+            const projectsMeetings = {}
             const projectInvitations = {}
             const projectChatNotifications = {}
 
             let projectIdsForSetChatNotifications = []
             projectsArray.forEach(project => {
+                projectsMeetings[project.id] = []
                 projectInvitations[project.id] = []
                 projectIdsForSetChatNotifications.push(project.id)
             })
@@ -2539,6 +2414,7 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams,
                 projectContacts,
                 projectAssistants,
+                projectsMeetings,
                 projectInvitations,
                 projectChatNotifications,
                 processedInitialURL: true,
@@ -2566,6 +2442,7 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { ...state.projectWorkstreams, [project.id]: workstreams },
                 projectContacts: { ...state.projectContacts, [project.id]: contacts },
                 projectAssistants: { ...state.projectAssistants, [project.id]: assistants },
+                projectsMeetings: { ...state.projectsMeetings, [project.id]: [] },
                 projectInvitations: { ...state.projectInvitations, [project.id]: [] },
                 projectChatNotifications: {
                     ...state.projectChatNotifications,
@@ -2602,6 +2479,7 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { ...state.projectWorkstreams, [project.id]: workstreams },
                 projectContacts: { ...state.projectContacts, [project.id]: contacts },
                 projectAssistants: { ...state.projectAssistants, [project.id]: assistants },
+                projectsMeetings: { ...state.projectsMeetings, [project.id]: [] },
                 projectInvitations: { ...state.projectInvitations, [project.id]: [] },
                 projectChatNotifications: {
                     ...state.projectChatNotifications,
@@ -2627,6 +2505,7 @@ export const theReducer = (state = initialState, action) => {
             const projectWorkstreams = { ...state.projectWorkstreams }
             const projectContacts = { ...state.projectContacts }
             const projectAssistants = { ...state.projectAssistants }
+            const projectsMeetings = { ...state.projectsMeetings }
             const projectInvitations = { ...state.projectInvitations }
             const projectChatNotifications = { ...state.projectChatNotifications }
             const projectChatLastNotification = { ...state.projectChatLastNotification }
@@ -2637,6 +2516,7 @@ export const theReducer = (state = initialState, action) => {
                 delete projectWorkstreams[projectId]
                 delete projectContacts[projectId]
                 delete projectAssistants[projectId]
+                delete projectsMeetings[projectId]
                 delete projectInvitations[projectId]
                 delete projectChatNotifications[projectId]
                 delete projectChatLastNotification[projectId]
@@ -2659,6 +2539,7 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams,
                 projectContacts,
                 projectAssistants,
+                projectsMeetings,
                 projectInvitations,
                 projectChatNotifications,
                 projectChatLastNotification,
@@ -2675,6 +2556,7 @@ export const theReducer = (state = initialState, action) => {
             const projectWorkstreams = { ...state.projectWorkstreams }
             const projectContacts = { ...state.projectContacts }
             const projectAssistants = { ...state.projectAssistants }
+            const projectsMeetings = { ...state.projectsMeetings }
             const projectInvitations = { ...state.projectInvitations }
             const projectChatNotifications = { ...state.projectChatNotifications }
             const projectChatLastNotification = { ...state.projectChatLastNotification }
@@ -2684,6 +2566,7 @@ export const theReducer = (state = initialState, action) => {
             delete projectWorkstreams[projectId]
             delete projectContacts[projectId]
             delete projectAssistants[projectId]
+            delete projectsMeetings[projectId]
             delete projectInvitations[projectId]
             delete projectChatNotifications[projectId]
             delete projectChatLastNotification[projectId]
@@ -2709,6 +2592,7 @@ export const theReducer = (state = initialState, action) => {
                     projectWorkstreams,
                     projectContacts,
                     projectAssistants,
+                    projectsMeetings,
                     projectInvitations,
                     projectChatNotifications,
                     projectChatLastNotification,
@@ -2730,6 +2614,7 @@ export const theReducer = (state = initialState, action) => {
                     projectWorkstreams,
                     projectContacts,
                     projectAssistants,
+                    projectsMeetings,
                     projectInvitations,
                     projectChatNotifications,
                     projectChatLastNotification,
@@ -2751,6 +2636,7 @@ export const theReducer = (state = initialState, action) => {
                 projectWorkstreams: { ...state.projectWorkstreams, [project.id]: workstreams },
                 projectContacts: { ...state.projectContacts, [project.id]: contacts },
                 projectAssistants: { ...state.projectAssistants, [project.id]: assistants },
+                projectsMeetings: { ...state.projectsMeetings, [project.id]: [] },
                 projectInvitations: { ...state.projectInvitations, [project.id]: [] },
                 projectChatNotifications: {
                     ...state.projectChatNotifications,
@@ -2762,30 +2648,6 @@ export const theReducer = (state = initialState, action) => {
                 selectedSidebarTab: DV_TAB_ROOT_TASKS,
                 taskViewToggleSection: 'Open',
                 taskViewToggleIndex: 0,
-            }
-        }
-
-        case 'Add project data': {
-            const { project, users, workstreams, contacts, assistants } = action
-
-            // Idempotent under races: the recovery path and a competing writer may both land here.
-            if (state.loggedUserProjectsMap[project.id]) return state
-
-            const addedProject = { ...project, index: state.loggedUserProjects.length }
-
-            return {
-                ...state,
-                loggedUserProjects: [...state.loggedUserProjects, addedProject],
-                loggedUserProjectsMap: { ...state.loggedUserProjectsMap, [addedProject.id]: addedProject },
-                projectUsers: { ...state.projectUsers, [addedProject.id]: users },
-                projectWorkstreams: { ...state.projectWorkstreams, [addedProject.id]: workstreams },
-                projectContacts: { ...state.projectContacts, [addedProject.id]: contacts },
-                projectAssistants: { ...state.projectAssistants, [addedProject.id]: assistants },
-                projectInvitations: { ...state.projectInvitations, [addedProject.id]: [] },
-                projectChatNotifications: {
-                    ...state.projectChatNotifications,
-                    [addedProject.id]: { totalUnfollowed: 0, totalFollowed: 0 },
-                },
             }
         }
 
@@ -2840,17 +2702,6 @@ export const theReducer = (state = initialState, action) => {
                 shortcutSelectedProjectIndex: null,
                 selectedSidebarTab: DV_TAB_ROOT_NOTES,
                 notesActiveTab: options.notesActiveTab || FOLLOWED_TAB,
-            }
-        }
-
-        case 'Navigate to all projects artifacts': {
-            return {
-                ...state,
-                currentUser: state.loggedUser,
-                selectedTypeOfProject: PROJECT_TYPE_ACTIVE,
-                selectedProjectIndex: ALL_PROJECTS_INDEX,
-                shortcutSelectedProjectIndex: null,
-                selectedSidebarTab: DV_TAB_ROOT_ARTIFACTS,
             }
         }
 
@@ -3334,8 +3185,6 @@ export const theReducer = (state = initialState, action) => {
             const openTasksShowMoreData = cloneDeep(state.openTasksShowMoreData)
             if (openTasksShowMoreData[projectId]?.[WORKSTREAM_TASKS_MY_DAY_TYPE][workstreamId]) {
                 delete openTasksShowMoreData[projectId][WORKSTREAM_TASKS_MY_DAY_TYPE][workstreamId]
-                recomputeProjectShowMoreFlags(openTasksShowMoreData[projectId])
-                recomputeGlobalShowMoreFlags(openTasksShowMoreData)
             }
 
             return { ...state, openTasksShowMoreData }
@@ -3346,7 +3195,6 @@ export const theReducer = (state = initialState, action) => {
 
             const openTasksShowMoreData = { ...state.openTasksShowMoreData }
             if (openTasksShowMoreData[projectId]) delete openTasksShowMoreData[projectId]
-            recomputeGlobalShowMoreFlags(openTasksShowMoreData)
 
             return { ...state, openTasksShowMoreData }
         }
@@ -3365,6 +3213,12 @@ export const theReducer = (state = initialState, action) => {
         case 'RESET_NAVIGATION_SOURCE':
             return { ...state, navigationSource: null }
 
+        case 'Show task completion animation':
+        case 'Set show task completion animation':
+            return {
+                ...state,
+                showTaskCompletionAnimation: action.showTaskCompletionAnimation,
+            }
         case 'Trigger chat submit':
             return {
                 ...state,

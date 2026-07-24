@@ -7,13 +7,8 @@ import renderer from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
 import OpenTasksByProject from '../../../components/TaskListView/OpenTasksView/OpenTasksByProject'
-import { watchAllGoals, watchAllMilestones } from '../../../utils/backends/openTasks'
-import { watchProjectOKRs } from '../../../utils/backends/OKRs/okrsFirestore'
-
-const mockUseProjectAssistantLine = jest.fn(() => ({ hasAssistantLine: false, assistantLineProps: {} }))
 
 jest.mock('react-redux', () => ({
-    connect: jest.fn(() => component => component),
     useDispatch: jest.fn(),
     useSelector: jest.fn(),
     shallowEqual: jest.fn(),
@@ -35,15 +30,6 @@ jest.mock(
     () => 'BottomShowMoreButtonContainer'
 )
 jest.mock('../../../components/MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
-jest.mock('../../../hooks/useProjectData', () => ({
-    __esModule: true,
-    default: () => {},
-    useProjectsData: () => {},
-}))
-jest.mock('../../../components/MyDayView/AssistantLine/useAssistantLineSwitch', () => ({
-    useProjectAssistantLine: project => mockUseProjectAssistantLine(project),
-}))
-jest.mock('../../../utils/InitialLoad/projectDataLoader', () => ({ PROJECT_DATA_ASSISTANTS: 'assistants' }))
 jest.mock('../../../components/TaskListView/OKRs/OKRSection', () => 'OKRSection')
 jest.mock('../../../components/TaskListView/Header/UpcomingMilestoneRow', () => 'UpcomingMilestoneRow')
 jest.mock('../../../components/TaskListView/PriorityFilters/TaskFiltersLine', () => 'TaskFiltersLine')
@@ -86,8 +72,6 @@ const createState = ({
     unfilteredHasTasks = !!visibleTaskDate,
     taskPriorityFilters = [],
     taskVmStateFilters = [],
-    openTasksReady = false,
-    observedTasksReady = false,
     okrs = [],
     totalFollowed = 0,
     totalUnfollowed = 0,
@@ -105,8 +89,6 @@ const createState = ({
         [projectId]: { id: projectId, index: 0 },
     },
     okrsByProjectInTasks: { [projectId]: okrs },
-    initialLoadingEndOpenTasks: { [instanceKey]: openTasksReady },
-    initialLoadingEndObservedTasks: { [instanceKey]: observedTasksReady },
     projectChatNotifications: {
         [projectId]: { totalFollowed, totalUnfollowed },
     },
@@ -119,17 +101,13 @@ const createState = ({
 
 const renderProject = state => {
     useSelector.mockImplementation(selector => selector(state))
-    let tree
-    renderer.act(() => {
-        tree = renderer.create(
-            <OpenTasksByProject
-                projectId={projectId}
-                sortedLoggedUserProjectIds={[projectId]}
-                setProjectsHaveTasksInFirstDay={jest.fn()}
-            />
-        )
-    })
-    return tree
+    return renderer.create(
+        <OpenTasksByProject
+            projectId={projectId}
+            sortedLoggedUserProjectIds={[projectId]}
+            setProjectsHaveTasksInFirstDay={jest.fn()}
+        />
+    )
 }
 
 describe('OpenTasksByProject visibility', () => {
@@ -223,32 +201,5 @@ describe('OpenTasksByProject visibility', () => {
 
         expect(tree.root.findAllByType('ProjectHeader')).toHaveLength(1)
         expect(tree.root.findAllByType('OKRSection')).toHaveLength(1)
-    })
-
-    it('keeps assistant and decoration watchers out of an All Projects task preload', () => {
-        renderProject(createState())
-
-        expect(mockUseProjectAssistantLine).toHaveBeenCalledWith(null)
-        expect(watchAllMilestones).not.toHaveBeenCalled()
-        expect(watchAllGoals).not.toHaveBeenCalled()
-        expect(watchProjectOKRs).not.toHaveBeenCalled()
-    })
-
-    it('starts decorations only after an All Projects task row is available', () => {
-        renderProject(createState({ visibleTaskDate: '20260716', openTasksReady: true }))
-
-        expect(mockUseProjectAssistantLine).toHaveBeenCalledWith(null)
-        expect(watchAllMilestones).toHaveBeenCalledTimes(1)
-        expect(watchAllGoals).toHaveBeenCalledTimes(1)
-        expect(watchProjectOKRs).toHaveBeenCalledTimes(1)
-    })
-
-    it('keeps selected-project assistant and decoration data immediate', () => {
-        renderProject(createState({ selectedProjectIndex: 0 }))
-
-        expect(mockUseProjectAssistantLine).toHaveBeenCalledWith(expect.objectContaining({ id: projectId }))
-        expect(watchAllMilestones).toHaveBeenCalledTimes(1)
-        expect(watchAllGoals).toHaveBeenCalledTimes(1)
-        expect(watchProjectOKRs).toHaveBeenCalledTimes(1)
     })
 })

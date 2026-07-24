@@ -8,8 +8,7 @@ module.exports = {
     jsxSingleQuote: false,
     trailingComma: 'es5',
     bracketSpacing: true,
-    // prettier 3 renamed jsxBracketSameLine (removed) to bracketSameLine.
-    bracketSameLine: false,
+    jsxBracketSameLine: false,
     arrowParens: 'avoid',
     proseWrap: 'preserve',
     endOfLine: 'lf',

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector, useDispatch } from 'react-redux'
 
 import GoalAssigneeCapacityModal from '../UIComponents/FloatModals/GoalAssigneeCapacityModal/GoalAssigneeCapacityModal'
@@ -36,7 +36,7 @@ export default function GoalAssigneeCapacityWrapper({
     }
 
     return isOpen ? (
-        <AppPopover
+        <Popover
             content={
                 <GoalAssigneeCapacityModal
                     capacitySelected={capacity}
@@ -59,7 +59,7 @@ export default function GoalAssigneeCapacityWrapper({
                 containerStyle={[{ marginLeft: 8, marginRight: 0 }, tagStyle]}
                 disabled={disabled}
             />
-        </AppPopover>
+        </Popover>
     ) : (
         <GoalAssigneeCapacityTag
             openModal={openModal}

@@ -1,40 +1,125 @@
-// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+// Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`DateHeader component DateHeader with text snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-paddingBottom-xd6kpl r-paddingTop-1ygmrgt"
-  dir={null}
+<View
+  style={
+    Array [
+      Object {
+        "paddingBottom": 8,
+        "paddingTop": 24,
+      },
+      undefined,
+      false,
+    ]
+  }
 >
-  <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1o3jrms r-borderRadius-z2wwpe r-flex-13awgt0 r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1wtj0ep"
-    dir={null}
-  >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
-      style={
-        {
-          "flex": 1,
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#FAFBFB",
+          "borderRadius": 4,
           "flexDirection": "row",
-          "justifyContent": "flex-start",
+          "height": 24,
+        },
+        false,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "backgroundColor": "#EBF5FF",
+          "borderRadius": 4,
+          "height": 24,
+          "position": "absolute",
+          "width": "0%",
         }
       }
-    >
-      <div
-        className="css-text-146c3p1 r-color-1gpwqf8 r-paddingLeft-1m04atk r-zIndex-184en5c"
-        dir="auto"
-        style={
-          {
+    />
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
             "fontFamily": "Roboto-Regular",
-            "fontSize": "11px",
-            "letterSpacing": "1.5px",
-            "lineHeight": "20px",
-          }
+            "fontSize": 11,
+            "letterSpacing": 1.5,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+            "paddingLeft": 12,
+            "zIndex": 1,
+          },
+        ]
+      }
+    >
+      TODAY • 
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`DateHeader component Function animateProgress snapshot test should execute and render correctly 1`] = `
+<View
+  style={
+    Array [
+      Object {
+        "paddingBottom": 8,
+        "paddingTop": 24,
+      },
+      undefined,
+      false,
+    ]
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#FAFBFB",
+          "borderRadius": 4,
+          "flexDirection": "row",
+          "height": 24,
+        },
+        false,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "backgroundColor": "#EBF5FF",
+          "borderRadius": 4,
+          "height": 24,
+          "position": "absolute",
+          "width": "0%",
         }
-      >
-        TODAY • 
-      </div>
-    </div>
-  </div>
-</div>
+      }
+    />
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 11,
+            "letterSpacing": 1.5,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+            "paddingLeft": 12,
+            "zIndex": 1,
+          },
+        ]
+      }
+    >
+      TODAY • 
+    </Text>
+  </View>
+</View>
 `;

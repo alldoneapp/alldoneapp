@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors, windowTagStyle } from '../styles/global'
@@ -62,7 +62,7 @@ const TaskEstimation = ({
     }, [])
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <EstimationModal
                     projectId={projectId}
@@ -104,7 +104,7 @@ const TaskEstimation = ({
                     )}
                 </View>
             </TouchableOpacity>
-        </AppPopover>
+        </Popover>
     )
 }
 

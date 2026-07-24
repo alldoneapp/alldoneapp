@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import Button from '../../UIControls/Button'
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
-import { IntegrationsPendingContent, useIsInsideIntegrationsLoadingRegion } from './IntegrationsLoadingRegion'
 import {
     connectVmSubscription,
     disconnectVmSubscription,
@@ -19,7 +18,6 @@ const PROVIDERS = {
     claude: {
         label: 'Claude',
         apiLabel: 'Anthropic',
-        supportsSubscription: true,
         apiKeyPlaceholder: 'Paste your Anthropic API key',
         placeholder: 'Paste the token printed by claude setup-token',
         steps: [
@@ -32,7 +30,6 @@ const PROVIDERS = {
     codex: {
         label: 'Codex',
         apiLabel: 'OpenAI',
-        supportsSubscription: true,
         apiKeyPlaceholder: 'Paste your OpenAI API key',
         placeholder: 'Paste the complete contents of ~/.codex/auth.json',
         steps: [
@@ -42,37 +39,7 @@ const PROVIDERS = {
             'Open ~/.codex/auth.json, copy the complete JSON, and paste it below.',
         ],
     },
-    // OpenRouter runs use the Codex harness but a different upstream, so they need their own key
-    // slot: an OpenAI key or ChatGPT plan cannot authenticate against OpenRouter. There is no
-    // OpenRouter subscription to connect, so this card offers only "my key" or "Alldone Gold".
-    openrouter: {
-        label: 'OpenRouter (Codex harness)',
-        apiLabel: 'OpenRouter',
-        supportsSubscription: false,
-        apiKeyPlaceholder: 'Paste your OpenRouter API key (sk-or-…)',
-        description:
-            'Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.',
-    },
 }
-
-/**
- * Chrome expects password inputs to belong to a form so its credential/autofill heuristics can
- * classify them correctly. React Native Web otherwise renders a standalone `<input
- * type="password">` and logs a DOM warning for every provider card. Native platforms do not
- * have an HTML form element, so they keep the exact previous fragment layout.
- */
-const CredentialForm = ({ children }) =>
-    Platform.OS === 'web'
-        ? React.createElement(
-              'form',
-              {
-                  autoComplete: 'off',
-                  onSubmit: event => event.preventDefault(),
-                  style: { margin: 0 },
-              },
-              children
-          )
-        : React.createElement(React.Fragment, null, children)
 
 export function ProviderAuthCard({ provider, connection, onChanged }) {
     const config = PROVIDERS[provider]
@@ -81,9 +48,7 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
     const [processing, setProcessing] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
-    const supportsSubscription = config.supportsSubscription !== false
-    const subscriptionConnected = supportsSubscription && !!connection?.connected
-    const subscriptionNeedsReconnect = subscriptionConnected && connection?.authInvalid === true
+    const subscriptionConnected = !!connection?.connected
     const apiKeyConnected = !!connection?.apiKey?.connected
     const activeMode = connection?.activeMode || (subscriptionConnected ? 'subscription' : 'api')
 
@@ -163,26 +128,17 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
     }
 
     return (
-        <View style={[localStyles.card, subscriptionNeedsReconnect && localStyles.cardNeedsReconnect]}>
+        <View style={localStyles.card}>
             <View style={localStyles.cardHeader}>
                 <View>
                     <Text style={[styles.subtitle1, localStyles.cardTitle]}>{config.label}</Text>
-                    <Text
-                        style={[
-                            styles.caption1,
-                            subscriptionNeedsReconnect && activeMode === 'subscription'
-                                ? localStyles.reconnectRequired
-                                : localStyles.connected,
-                        ]}
-                    >
+                    <Text style={[styles.caption1, localStyles.connected]}>
                         {translate(
-                            subscriptionNeedsReconnect && activeMode === 'subscription'
-                                ? 'Subscription login rejected — reconnect required'
-                                : activeMode === 'byok'
-                                  ? 'Using your personal API key'
-                                  : activeMode === 'subscription'
-                                    ? 'Using your subscription'
-                                    : 'Using Alldone API billing'
+                            activeMode === 'byok'
+                                ? 'Using your personal API key'
+                                : activeMode === 'subscription'
+                                ? 'Using your subscription'
+                                : 'Using Alldone API billing'
                         )}
                     </Text>
                 </View>
@@ -190,14 +146,9 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
 
             <Text style={[styles.body2, localStyles.explanation]}>
                 {translate(
-                    supportsSubscription
-                        ? 'Choose one route for this provider. BYOK bills model usage directly to your provider account; subscription auth uses your Claude or ChatGPT plan; Alldone API billing charges Gold for model tokens. The 20 Gold base charge and 10 Gold per started VM minute apply to every route.'
-                        : 'Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.'
+                    'Choose one route for this provider. BYOK bills model usage directly to your provider account; subscription auth uses your Claude or ChatGPT plan; Alldone API billing charges Gold for model tokens. The 20 Gold base charge and 10 Gold per started VM minute apply to every route.'
                 )}
             </Text>
-            {!!config.description && (
-                <Text style={[styles.caption1, localStyles.securityNote]}>{translate(config.description)}</Text>
-            )}
 
             <View style={localStyles.modeActions}>
                 <Button
@@ -207,15 +158,13 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
                     disabled={processing || !apiKeyConnected}
                     buttonStyle={localStyles.modeAction}
                 />
-                {supportsSubscription && (
-                    <Button
-                        title={translate('Subscription')}
-                        type={activeMode === 'subscription' ? 'primary' : 'ghost'}
-                        onPress={() => selectMode('subscription')}
-                        disabled={processing || !subscriptionConnected}
-                        buttonStyle={localStyles.modeAction}
-                    />
-                )}
+                <Button
+                    title={translate('Subscription')}
+                    type={activeMode === 'subscription' ? 'primary' : 'ghost'}
+                    onPress={() => selectMode('subscription')}
+                    disabled={processing || !subscriptionConnected}
+                    buttonStyle={localStyles.modeAction}
+                />
                 <Button
                     title={translate('Alldone Gold')}
                     type={activeMode === 'api' ? 'primary' : 'ghost'}
@@ -236,137 +185,97 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
                             : 'No API key saved'
                     )}
                 </Text>
-                <CredentialForm>
-                    <TextInput
-                        style={localStyles.input}
-                        value={apiKey}
-                        onChangeText={setApiKey}
-                        placeholder={translate(config.apiKeyPlaceholder)}
-                        placeholderTextColor={colors.Text03}
-                        autoCapitalize="none"
-                        autoComplete="off"
-                        autoCorrect={false}
-                        editable={!processing}
-                        secureTextEntry
+                <TextInput
+                    style={localStyles.input}
+                    value={apiKey}
+                    onChangeText={setApiKey}
+                    placeholder={translate(config.apiKeyPlaceholder)}
+                    placeholderTextColor={colors.Text03}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!processing}
+                    secureTextEntry
+                />
+                <Text style={[styles.caption1, localStyles.securityNote]}>
+                    {translate(
+                        'Your key is validated before saving, cannot be read back by the app, and stays behind Alldone’s server-side VM proxy. It is never added to chats, tasks, analytics, or the VM environment.'
+                    )}
+                </Text>
+                <View style={localStyles.actions}>
+                    <Button
+                        title={translate(apiKeyConnected ? 'Validate and replace key' : 'Validate and save key')}
+                        onPress={saveApiKey}
+                        processing={processing}
+                        processingTitle={translate('Validating')}
+                        buttonStyle={localStyles.primaryAction}
                     />
-                    <Text style={[styles.caption1, localStyles.securityNote]}>
-                        {translate(
-                            'Your key is validated before saving, cannot be read back by the app, and stays behind Alldone’s server-side VM proxy. It is never added to chats, tasks, analytics, or the VM environment.'
-                        )}
-                    </Text>
-                    <View style={localStyles.actions}>
-                        <Button
-                            title={translate(apiKeyConnected ? 'Validate and replace key' : 'Validate and save key')}
-                            onPress={saveApiKey}
-                            processing={processing}
-                            processingTitle={translate('Validating')}
-                            buttonStyle={localStyles.primaryAction}
-                        />
-                        {apiKeyConnected && (
-                            <>
-                                <Button
-                                    title={translate('Test saved key')}
-                                    type="ghost"
-                                    onPress={testApiKey}
-                                    disabled={processing}
-                                    buttonStyle={localStyles.secondaryAction}
-                                />
-                                <Button
-                                    title={translate('Remove key')}
-                                    type="ghost"
-                                    onPress={removeApiKey}
-                                    disabled={processing}
-                                />
-                            </>
-                        )}
-                    </View>
-                </CredentialForm>
+                    {apiKeyConnected && (
+                        <>
+                            <Button
+                                title={translate('Test saved key')}
+                                type="ghost"
+                                onPress={testApiKey}
+                                disabled={processing}
+                                buttonStyle={localStyles.secondaryAction}
+                            />
+                            <Button
+                                title={translate('Remove key')}
+                                type="ghost"
+                                onPress={removeApiKey}
+                                disabled={processing}
+                            />
+                        </>
+                    )}
+                </View>
             </View>
 
-            {supportsSubscription && (
-                <View style={localStyles.authSection}>
-                    <Text style={[styles.subtitle2, localStyles.authTitle]}>
-                        {translate('Subscription authentication')}
-                    </Text>
-                    <Text
-                        style={[
-                            styles.caption1,
-                            subscriptionNeedsReconnect
-                                ? localStyles.reconnectRequired
-                                : subscriptionConnected
-                                  ? localStyles.connected
-                                  : localStyles.notConnected,
-                        ]}
-                    >
-                        {translate(
-                            subscriptionNeedsReconnect
-                                ? 'Subscription login rejected — reconnect required'
-                                : subscriptionConnected
-                                  ? 'Subscription connected'
-                                  : 'Subscription not connected'
-                        )}
-                    </Text>
-                    {subscriptionNeedsReconnect && (
-                        <View
-                            style={localStyles.subscriptionAlert}
-                            testID="subscription-auth-alert"
-                            accessibilityRole="alert"
-                        >
-                            <Text style={[styles.subtitle2, localStyles.subscriptionAlertTitle]}>
-                                {translate('Reconnect required')}
-                            </Text>
-                            <Text style={[styles.body2, localStyles.subscriptionAlertBody]}>
-                                {translate(
-                                    'The saved %{provider} subscription login was rejected. Sign in again, paste the new credential below, and reconnect before starting another VM task.',
-                                    { provider: config.label }
-                                )}
-                            </Text>
-                        </View>
-                    )}
-                    <View style={localStyles.steps}>
-                        {config.steps.map((step, index) => (
-                            <Text key={step} style={[styles.body2, localStyles.step]}>
-                                {index + 1}. {translate(step)}
-                            </Text>
-                        ))}
-                    </View>
-
-                    <CredentialForm>
-                        <TextInput
-                            style={[localStyles.input, provider === 'codex' && localStyles.jsonInput]}
-                            value={credential}
-                            onChangeText={setCredential}
-                            placeholder={translate(config.placeholder)}
-                            placeholderTextColor={colors.Text03}
-                            autoCapitalize="none"
-                            autoComplete="off"
-                            autoCorrect={false}
-                            multiline={provider === 'codex'}
-                            editable={!processing}
-                            secureTextEntry={provider === 'claude'}
-                        />
-                        <View style={localStyles.actions}>
-                            <Button
-                                title={translate(
-                                    subscriptionConnected ? 'Reconnect subscription' : 'Connect subscription'
-                                )}
-                                onPress={connect}
-                                processing={processing}
-                                processingTitle={translate('Saving')}
-                                buttonStyle={localStyles.primaryAction}
-                            />
-                            {subscriptionConnected && (
-                                <Button
-                                    title={translate('Disconnect')}
-                                    type="ghost"
-                                    onPress={disconnect}
-                                    disabled={processing}
-                                />
-                            )}
-                        </View>
-                    </CredentialForm>
+            <View style={localStyles.authSection}>
+                <Text style={[styles.subtitle2, localStyles.authTitle]}>
+                    {translate('Subscription authentication')}
+                </Text>
+                <Text
+                    style={[styles.caption1, subscriptionConnected ? localStyles.connected : localStyles.notConnected]}
+                >
+                    {translate(subscriptionConnected ? 'Subscription connected' : 'Subscription not connected')}
+                </Text>
+                <View style={localStyles.steps}>
+                    {config.steps.map((step, index) => (
+                        <Text key={step} style={[styles.body2, localStyles.step]}>
+                            {index + 1}. {translate(step)}
+                        </Text>
+                    ))}
                 </View>
-            )}
+
+                <TextInput
+                    style={[localStyles.input, provider === 'codex' && localStyles.jsonInput]}
+                    value={credential}
+                    onChangeText={setCredential}
+                    placeholder={translate(config.placeholder)}
+                    placeholderTextColor={colors.Text03}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    multiline={provider === 'codex'}
+                    editable={!processing}
+                    secureTextEntry={provider === 'claude'}
+                />
+                <View style={localStyles.actions}>
+                    <Button
+                        title={translate(subscriptionConnected ? 'Replace credential' : 'Connect subscription')}
+                        onPress={connect}
+                        processing={processing}
+                        processingTitle={translate('Saving')}
+                        buttonStyle={localStyles.primaryAction}
+                    />
+                    {subscriptionConnected && (
+                        <Button
+                            title={translate('Disconnect')}
+                            type="ghost"
+                            onPress={disconnect}
+                            disabled={processing}
+                        />
+                    )}
+                </View>
+            </View>
 
             {!!error && <Text style={localStyles.error}>{error}</Text>}
             {!!success && <Text style={localStyles.success}>{success}</Text>}
@@ -374,15 +283,13 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
     )
 }
 
-export default function AgentSubscriptionsSection({ onStatusChanged }) {
+export default function AgentSubscriptionsSection() {
     const [status, setStatus] = useState(null)
     const [error, setError] = useState('')
 
     const loadStatus = async () => {
         try {
-            const nextStatus = await getVmSubscriptionStatus()
-            setStatus(nextStatus)
-            if (onStatusChanged) onStatusChanged(nextStatus)
+            setStatus(await getVmSubscriptionStatus())
             setError('')
         } catch (e) {
             setError(e?.message || translate('Could not load subscription connections.'))
@@ -393,25 +300,24 @@ export default function AgentSubscriptionsSection({ onStatusChanged }) {
         loadStatus()
     }, [])
 
-    const isPending = !status && !error
-    const insideLoadingRegion = useIsInsideIntegrationsLoadingRegion()
-
     return (
-        <IntegrationsPendingContent loadingKey="vmAgentSubscriptions" pending={isPending} style={localStyles.section}>
+        <View style={localStyles.section}>
             <Text style={[styles.title6, localStyles.sectionTitle]}>{translate('AI agent authentication')}</Text>
             <Text style={[styles.body2, localStyles.sectionDescription]}>
                 {translate(
-                    'Choose how Claude, Codex, and OpenRouter VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.'
+                    'Choose how Claude and Codex VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.'
                 )}
             </Text>
-            {/* Inside Settings > Integrations the region owns the single, bigger spinner. */}
-            {isPending && !insideLoadingRegion && <ActivityIndicator size="small" color={colors.Primary100} />}
-            {!!error && <Text style={localStyles.error}>{error}</Text>}
-            {/* Rendered while loading too (dimmed by the wrapper) so the cards do not pop in. */}
-            <ProviderAuthCard provider="claude" connection={status?.claude} onChanged={loadStatus} />
-            <ProviderAuthCard provider="codex" connection={status?.codex} onChanged={loadStatus} />
-            <ProviderAuthCard provider="openrouter" connection={status?.openrouter} onChanged={loadStatus} />
-        </IntegrationsPendingContent>
+            {!status && !error ? (
+                <ActivityIndicator size="small" color={colors.Primary100} />
+            ) : (
+                <>
+                    {!!error && <Text style={localStyles.error}>{error}</Text>}
+                    <ProviderAuthCard provider="claude" connection={status?.claude} onChanged={loadStatus} />
+                    <ProviderAuthCard provider="codex" connection={status?.codex} onChanged={loadStatus} />
+                </>
+            )}
+        </View>
     )
 }
 
@@ -435,9 +341,6 @@ const localStyles = StyleSheet.create({
         padding: 16,
         marginBottom: 12,
     },
-    cardNeedsReconnect: {
-        borderColor: colors.UtilityRed200,
-    },
     cardHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -452,10 +355,6 @@ const localStyles = StyleSheet.create({
     },
     notConnected: {
         color: colors.Text03,
-        marginTop: 2,
-    },
-    reconnectRequired: {
-        color: colors.UtilityRed200,
         marginTop: 2,
     },
     explanation: {
@@ -480,19 +379,6 @@ const localStyles = StyleSheet.create({
     authTitle: {
         color: colors.Text01,
         marginBottom: 2,
-    },
-    subscriptionAlert: {
-        backgroundColor: colors.UtilityRed100,
-        borderRadius: 4,
-        marginTop: 12,
-        padding: 12,
-    },
-    subscriptionAlertTitle: {
-        color: colors.UtilityRed200,
-        marginBottom: 4,
-    },
-    subscriptionAlertBody: {
-        color: colors.Text02,
     },
     steps: {
         marginTop: 12,

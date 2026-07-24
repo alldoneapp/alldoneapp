@@ -1,15 +1,12 @@
 import React from 'react'
-import { Platform, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import ChangeContactInfoModal from './ChangeContactInfoModal'
 import { setUserInfoModalWhenUserJoinsToGuide } from '../../../redux/actions'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import { colors, hexColorToRGBa } from '../../styles/global'
-import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 
 export default function ChangeContactInfoModalContainerForNewGuideUsers() {
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const projectId = useSelector(state => state.loggedUserProjects[state.loggedUserProjects.length - 1].id)
@@ -27,7 +24,7 @@ export default function ChangeContactInfoModalContainerForNewGuideUsers() {
     }
 
     return (
-        <View style={[localStyles.parent, safeAreaOverlayPadding]}>
+        <View style={localStyles.parent}>
             <ChangeContactInfoModal
                 closePopover={closePopover}
                 onSaveData={onSaveData}
@@ -48,12 +45,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        // Truly centered (not the top-pinned overlay: the child caps itself at
-        // height-32, which overflowed the 80/16 reserve), and with a real
-        // scrim - this was an invisible full-screen click blocker before.
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
-        ...Platform.select({ web: { position: 'fixed' } }),
     },
 })

@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const firebase_tools = require('firebase-tools')
 
 const { removeAlgoliaRecordsInProject } = require('../AlgoliaGlobalSearchHelper')
 const { recursiveDeleteHelper } = require('../Utils/HelperFunctionsCloud')
@@ -7,10 +8,8 @@ const {
     safelySyncHeartbeatSchedules,
 } = require('../Assistant/assistantHeartbeatSchedule')
 
-const removeProjectData = async (projectId, admin) => {
+const removeProjectData = async (projectId, admin, firebase_tools, process) => {
     const basePaths = [
-        // Each artifact's delete trigger removes its versions' bytes from Storage.
-        'artifactItems',
         'assistantTasks',
         'assistants',
         'chatComments',
@@ -44,7 +43,7 @@ const removeProjectData = async (projectId, admin) => {
 
     basePaths.forEach(basePath => {
         const path = `${basePath}/${projectId}`
-        deletePromises.push(recursiveDeleteHelper(path))
+        deletePromises.push(recursiveDeleteHelper(firebase_tools, process.env.GCLOUD_PROJECT, path))
     })
 
     const getPromises = []
@@ -65,8 +64,8 @@ const removeProjectData = async (projectId, admin) => {
 
 const onDeleteProject = async projectId => {
     const promises = []
-    promises.push(removeProjectData(projectId, admin))
-    promises.push(removeAlgoliaRecordsInProject(projectId, { alsoRemoveFromTypesense: true }))
+    promises.push(removeProjectData(projectId, admin, firebase_tools, process))
+    promises.push(removeAlgoliaRecordsInProject(projectId))
     promises.push(
         safelySyncHeartbeatSchedules(() => deleteHeartbeatSchedulesForProject(projectId), {
             source: 'project_deleted',

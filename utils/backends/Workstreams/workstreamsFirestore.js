@@ -1,4 +1,4 @@
-import firebase from 'firebase/compat/app'
+import { firebase } from '@firebase/app'
 
 import { DEFAULT_WORKSTREAM_ID, WORKSTREAM_ID_PREFIX } from '../../../components/Workstreams/WorkstreamHelper'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
@@ -9,20 +9,17 @@ import { addWorkstreamToUser, removeWorkstreamFromUser } from '../Users/usersFir
 
 //ACCESS FUNCTIONS
 
-export async function watchProjectWorkstreams(projectId, callback, watcherKey, { onError } = {}) {
+export async function watchProjectWorkstreams(projectId, callback, watcherKey) {
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`projectsWorkstreams/${projectId}/workstreams`)
-        .onSnapshot(
-            async docs => {
-                const workstreams = []
-                docs.forEach(doc => {
-                    workstreams.push(mapWorkstreamData(doc.id, doc.data()))
-                })
+        .onSnapshot(async docs => {
+            const workstreams = []
+            docs.forEach(doc => {
+                workstreams.push(mapWorkstreamData(doc.id, doc.data()))
+            })
 
-                callback(workstreams)
-            },
-            error => onError?.(error)
-        )
+            callback(workstreams)
+        })
 }
 
 export async function getWorkstreamData(projectId, workstreamId) {

@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 
 import HashtagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/HashtagInteractionPopup/HashtagsInteractionPopup'
 import HashtagTag from './HashtagTag'
-import { setSearchText, showGlobalSearchPopup } from '../../../../../redux/actions'
+import { setSearchText, showGlobalSearchPopup, startLoadingData, stopLoadingData } from '../../../../../redux/actions'
 import { exportRef } from '../../../../NotesView/NotesDV/EditorView/NotesEditorView'
 import { quillTextInputRefs } from '../../CustomTextInput3'
 import { getQuillEditorRef } from '../../textInputHelper'
-import { buildHashtagColorHistoryEntry } from '../../quillHistoryEntries'
 import { COLOR_KEY_4 } from '../../../../NotesView/NotesDV/EditorView/HashtagInteractionPopup/HashtagsInteractionPopup'
 import Backend from '../../../../../utils/BackendBridge'
 import { removeColor } from '../../../../../functions/Utils/hashtagUtils'
@@ -86,16 +85,20 @@ export default function HashtagWrapper({ data }) {
             }
 
             if (colorKey !== newColorKey) {
-                // A marker entry, not a document change: it carries no delta, and `beforeUndoRedo`
-                // consumes it instead of letting quill invert it. See quillHistoryEntries.js.
-                editor.history.stack.undo.push(
-                    buildHashtagColorHistoryEntry({
+                editor.history.stack.undo.push({
+                    redo: {
                         objectId: projectId,
-                        text: newText,
+                        type: 'hashtagColor',
                         colorKey: newColorKey,
-                        previousColorKey: colorKey,
-                    })
-                )
+                        text: newText,
+                    },
+                    undo: {
+                        objectId: projectId,
+                        type: 'hashtagColor',
+                        colorKey: colorKey,
+                        text: newText,
+                    },
+                })
             }
         }, 400)
     }
@@ -103,8 +106,8 @@ export default function HashtagWrapper({ data }) {
     useEffect(() => {
         if (!virtualQuillLoaded) {
             const cleanedText = removeColor(text)
-
-            Backend.watchHastagsColors(projectId, tagId, cleanedText)
+            dispatch(startLoadingData())
+            Backend.watchHastagsColors(projectId, tagId, cleanedText, () => dispatch(stopLoadingData()))
             return () => {
                 Backend.unwatchHastagsColors(tagId)
             }
@@ -112,7 +115,7 @@ export default function HashtagWrapper({ data }) {
     }, [projectId, text, tagId])
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <HashtagsInteractionPopup
                     text={text}
@@ -128,6 +131,6 @@ export default function HashtagWrapper({ data }) {
             isOpen={isOpen}
         >
             <HashtagTag disabled={loggedUser.isAnonymous} text={text} onPress={openModal} colorKey={colorKey} />
-        </AppPopover>
+        </Popover>
     )
 }

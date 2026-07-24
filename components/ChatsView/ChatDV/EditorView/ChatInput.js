@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Keyboard, StyleSheet, View, Text } from 'react-native'
-import { shallowEqual, useSelector, useDispatch } from 'react-redux'
-import firebase from 'firebase/compat/app'
-import ReactQuill from 'react-quill-new'
+import { Keyboard, StyleSheet, View } from 'react-native'
+import { useSelector, useDispatch } from 'react-redux'
+import { firebase } from '@firebase/app'
+import ReactQuill from 'react-quill'
 
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { colors } from '../../../styles/global'
@@ -25,13 +25,8 @@ import {
 import ChatInputButtons from './ChatInputButtons'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
-import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
-import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
-import { selectAssistantEnabledFor } from '../../Utils/assistantEnabledScope'
-import { endBotSpinnerWait } from '../../Utils/botSpinnerTrigger'
-import useHomeIndicatorLift from '../../../../hooks/useHomeIndicatorLift'
-import { readCommentDraft, saveCommentDraft, clearCommentDraft } from '../../../../utils/commentDraftStore'
-import { CHAT_COMPOSER_LIFT, getChatComposerLift } from '../chatComposerLayout'
+import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
+import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -57,48 +52,21 @@ export default function ChatInput({
     autoFocus = true,
 }) {
     const dispatch = useDispatch()
-    const homeIndicatorLift = useHomeIndicatorLift()
     const isMentionModalOpen = useSelector(state => state.openModals[MENTION_MODAL_ID])
     const quotedNoteText = useSelector(state => state.quotedNoteText)
     const quotedText = useSelector(state => state.quotedText)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const gold = useSelector(state => state.loggedUser.gold)
     const disableAutoFocusInChat = useSelector(state => state.disableAutoFocusInChat)
-    // Read the global flag through the chat scope: a flag armed for a different chat must not
-    // reactivate the assistant here. `isAssistantActive` ORs this with the persisted state and
-    // feeds `explicitAssistantEnabled`, which OVERRIDES the object's own `isAssistantEnabled`
-    // inside `createObjectMessage` — so an unscoped leak would fire a real (Gold-spending)
-    // assistant run in a chat where the user had switched the assistant off (AT-2084).
-    const assistantEnabled = useSelector(state => selectAssistantEnabledFor(state, projectId, chat?.id))
-    useSelector(
-        state => ({
-            projectAssistants: state.projectAssistants,
-            globalAssistants: state.globalAssistants,
-            defaultAssistant: state.defaultAssistant,
-            loggedUserProjects: state.loggedUserProjects,
-            loggedUserProjectsMap: state.loggedUserProjectsMap,
-        }),
-        shallowEqual
-    )
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const [autoFocusDisabled, setAutoFocusDisabled] = useState(disableAutoFocusInChat)
     const [chatEditor, setChatEditor] = useState(null)
-    const draftContext = { userId: loggedUserId, projectId, objectId: messageId || chat.id, objectType: chat.type }
-    const [recoveredDraft] = useState(() => readCommentDraft(draftContext)?.comment)
-    const [inputText, setInputText] = useState(recoveredDraft || '')
-    const [sendError, setSendError] = useState('')
-    const [isSending, setIsSending] = useState(false)
-    const sendingRef = useRef(false)
-    const persistInput = text => {
-        setInputText(text.trim())
-        if (!saveCommentDraft(draftContext, { comment: text })) {
-            setSendError(translate('Could not save on this device. Keep this window open and try again.'))
-        }
-    }
+    const [inputText, setInputText] = useState('')
     const [inputCursorIndex, setInputCursorIndex] = useState(0)
     const [showRunOutGoalModal, setShowRunOutGoalModal] = useState(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
-    const displayedAssistantId = resolveAssistantForProjectObject(projectId, assistantId)?.uid || assistantId
+    const displayedAssistantId = getAssistantInProjectObject(projectId, assistantId)?.uid || assistantId
     const selectedAssistantIdRef = useRef(displayedAssistantId)
 
     const { id: objectId, type: chatType } = chat
@@ -108,8 +76,8 @@ export default function ChatInput({
     const persistedAssistantActive = hasExplicitChatAssistantState
         ? chat.isAssistantEnabled === true
         : hasParentAssistantState
-          ? parentObject.isAssistantEnabled === true
-          : false
+        ? parentObject.isAssistantEnabled === true
+        : false
     const isAssistantActive = persistedAssistantActive || assistantEnabled
     const explicitAssistantEnabled =
         hasExplicitChatAssistantState || hasParentAssistantState || assistantEnabled ? isAssistantActive : null
@@ -138,22 +106,13 @@ export default function ChatInput({
         }
     }, [])
 
-    const onEdit = async event => {
-        event?.preventDefault?.()
-        if (sendingRef.current) return
+    const onEdit = event => {
         if (disabledEdition || initialText.trim() === inputText.trim()) {
-            clearCommentDraft(draftContext, inputText)
             closeEditMode()
         } else {
-            sendingRef.current = true
-            setIsSending(true)
-            setSendError('')
-            try {
-                if (!saveCommentDraft(draftContext, { comment: inputText })) {
-                    throw new Error(translate('Could not save on this device. Keep this window open and try again.'))
-                }
-                const commentWithAttachments = await updateNewAttachmentsData(projectId, inputText)
-                await createObjectMessage(
+            event?.preventDefault?.()
+            updateNewAttachmentsData(projectId, inputText).then(commentWithAttachments => {
+                createObjectMessage(
                     projectId,
                     objectId,
                     commentWithAttachments,
@@ -164,64 +123,48 @@ export default function ChatInput({
                     false, // skipAssistantTrigger
                     explicitAssistantEnabled
                 )
-                clearCommentDraft(draftContext, inputText)
-                setAmountOfNewCommentsToHighligth(0)
-                closeEditMode()
-            } catch (error) {
-                setSendError(error.message || translate('Comment could not be sent. Your text is still here.'))
-            } finally {
-                sendingRef.current = false
-                setIsSending(false)
-            }
+            })
+            setAmountOfNewCommentsToHighligth(0)
+            closeEditMode()
         }
     }
 
-    const onSubmit = async eventOrText => {
-        eventOrText?.preventDefault?.()
-        if (sendingRef.current) return
+    const onSubmit = eventOrText => {
+        const isEvent = eventOrText && eventOrText.preventDefault
+        if (isEvent) eventOrText.preventDefault()
+
         const textToSubmit = typeof eventOrText === 'string' ? eventOrText : inputText
-        if (!textToSubmit?.trim()) return
+        const selectedAssistantId = selectedAssistantIdRef.current
+
         if (isAssistantActive && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
-            return
-        }
-        if (checkIsLimitedByXp(projectId)) return
-        sendingRef.current = true
-        const submittedAssistantId = selectedAssistantIdRef.current
-        setIsSending(true)
-        setSendError('')
-        try {
-            if (!saveCommentDraft(draftContext, { comment: textToSubmit })) {
-                throw new Error(translate('Could not save on this device. Keep this window open and try again.'))
+        } else {
+            if (!checkIsLimitedByXp(projectId)) {
+                inputRef.current.clear()
+
+                if (isAssistantActive) setWaitingForBotAnswer(true)
+
+                // Re-enable auto-scroll when user sends a message
+                if (onMessageSent) onMessageSent()
+
+                updateNewAttachmentsData(projectId, textToSubmit).then(commentWithAttachments => {
+                    createObjectMessage(
+                        projectId,
+                        objectId,
+                        commentWithAttachments,
+                        chatType,
+                        chatType === 'tasks' ? STAYWARD_COMMENT : null,
+                        null,
+                        null,
+                        false, // skipAssistantTrigger
+                        explicitAssistantEnabled,
+                        selectedAssistantId
+                    )
+                })
+                setAmountOfNewCommentsToHighligth(0)
+                updateXpByCommentInChat(loggedUserId, firebase, Backend.getDb(), projectId)
             }
-            if (isAssistantActive) setWaitingForBotAnswer(true)
-            const comment = await updateNewAttachmentsData(projectId, textToSubmit)
-            await createObjectMessage(
-                projectId,
-                objectId,
-                comment,
-                chatType,
-                chatType === 'tasks' ? STAYWARD_COMMENT : null,
-                null,
-                null,
-                false,
-                explicitAssistantEnabled,
-                submittedAssistantId
-            )
-            clearCommentDraft(draftContext, textToSubmit)
-            inputRef.current?.clear()
-            setInputText('')
-            onMessageSent?.()
-            setAmountOfNewCommentsToHighligth(0)
-            updateXpByCommentInChat(loggedUserId, firebase, Backend.getDb(), projectId)
-        } catch (error) {
-            if (isAssistantActive) endBotSpinnerWait(projectId, objectId)
-            setWaitingForBotAnswer(false)
-            setSendError(error.message || translate('Comment could not be sent. Your text is still here.'))
-        } finally {
-            sendingRef.current = false
-            setIsSending(false)
         }
     }
 
@@ -385,7 +328,7 @@ export default function ChatInput({
         // The content should already be in HTML format from the PerplexityClient
         // We just need to ensure it's properly formatted for Quill
         console.log('Converting content to Quill delta format...')
-        const tempDelta = editor.clipboard.convert({ html: content })
+        const tempDelta = editor.clipboard.convert(content)
         console.log('Converted delta:', tempDelta)
 
         // Process each operation in the delta
@@ -428,32 +371,20 @@ export default function ChatInput({
     }
 
     return (
-        <AttachmentDropZone
+        <ChatImageDropZone
             testID="full-chat-image-drop-zone"
-            style={[
-                localStyles.inputContainer,
-                // Keep the floating composer clear of the iOS home indicator
-                // now that #root no longer reserves that region (0 elsewhere,
-                // and 0 while the keyboard is open — see useHomeIndicatorLift).
-                homeIndicatorLift > 0 && { bottom: getChatComposerLift(homeIndicatorLift) },
-                containerStyle,
-            ]}
+            style={[localStyles.inputContainer, containerStyle]}
             disabled={disabledEdition}
             editor={chatEditor}
             inputCursorIndex={inputCursorIndex}
             projectId={projectId}
             setInputCursorIndex={setInputCursorIndex}
         >
-            {!!sendError && (
-                <Text accessibilityRole="alert" style={{ color: colors.Text02 }}>
-                    {sendError}
-                </Text>
-            )}
             <CustomTextInput3
                 ref={inputRef}
                 placeholder={translate('Type to add new comment')}
                 placeholderTextColor={colors.Text03}
-                onChangeText={persistInput}
+                onChangeText={text => setInputText(text.trim())}
                 autoFocus={shouldAutoFocus}
                 projectId={projectId}
                 externalAlignment={localStyles.textInputAlignment}
@@ -462,23 +393,13 @@ export default function ChatInput({
                 setInputCursorIndex={setInputCursorIndex}
                 setEditor={updateEditor}
                 otherFormats={['image', 'attachment', 'customImageFormat', 'videoFormat']}
-                disabledEdition={disabledEdition || isSending}
-                initialTextExtended={recoveredDraft || initialText || quotedNoteText}
+                disabledEdition={disabledEdition}
+                initialTextExtended={initialText || quotedNoteText}
                 keepBreakLines={true}
                 characterLimit={CHAT_INPUT_LIMIT_IN_CHARACTERS}
                 setShowRunOutGoalModal={setShowRunOutGoalModal}
                 chatAssistantData={{ objectId, objectAssistantId: assistantId, objectType: chatType }}
                 setAssistantId={updateSelectedAssistant}
-                // Same as the assistant line: the mic is pinned on in the chat composer rather
-                // than revealed on hover/focus (AT-2355). The strip it sits in is reserved
-                // whenever dictation is enabled, so nothing reflows.
-                alwaysShowDictation={true}
-                // Push-to-talk (AT-2405). This composer submits through a document-level keydown
-                // listener rather than the generic `forceTriggerEnterActionForBreakLines`, so it
-                // has to hand the send action over explicitly. The text passed in is the whole
-                // composer content (existing draft + transcript), and `onSubmit` already accepts a
-                // string precisely so a programmatic send does not race the `inputText` state.
-                onDictationSubmit={editing ? undefined : text => text && onSubmit(text)}
             />
             <ChatInputButtons
                 projectId={projectId}
@@ -490,7 +411,7 @@ export default function ChatInput({
                 editor={chatEditor}
                 initialText={initialText}
                 editing={editing}
-                disabledEdition={disabledEdition || isSending}
+                disabledEdition={disabledEdition}
                 closeEditMode={closeEditMode}
                 creatorId={creatorId}
                 inputRef={inputRef}
@@ -503,15 +424,13 @@ export default function ChatInput({
                 objectType={objectType}
                 assistantEnabled={isAssistantActive}
             />
-        </AttachmentDropZone>
+        </ChatImageDropZone>
     )
 }
 
 const localStyles = StyleSheet.create({
     inputContainer: {
-        // Shared, because the "New message ↓" pill has to stay clear of where this actually paints
-        // — a relative offset leaves the layout box behind. See chatComposerLayout.js.
-        bottom: CHAT_COMPOSER_LIFT,
+        bottom: 24,
         left: 0,
         right: 0,
         backgroundColor: '#ffffff',
@@ -519,7 +438,10 @@ const localStyles = StyleSheet.create({
         borderStyle: 'solid',
         borderColor: colors.Grey200,
         borderRadius: 4,
-        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
+        shadowColor: 'rgba(0,0,0,0.08)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
     },
     textInputContainer: {
         marginTop: 2,
@@ -528,10 +450,7 @@ const localStyles = StyleSheet.create({
         borderTopRightRadius: 4,
         minHeight: 40, // 59 - (7 + 12)
         marginLeft: 17,
-        // 8, not TaskInput's 40: that margin clears the assignee avatar in the task row, but the
-        // chat input has nothing on its right (its buttons live below), and the dictation mic
-        // anchors to the frame's right edge — 40 left it floating mid-row.
-        marginRight: 8,
+        marginRight: 40,
     },
     textInputAlignment: {
         paddingLeft: 0,

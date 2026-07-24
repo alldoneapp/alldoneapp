@@ -4,11 +4,6 @@ const admin = require('firebase-admin')
 
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
-const { Timestamp } = require('firebase-admin/firestore')
-const { getEmailIdentity, matchesEmailThread } = require('../Email/emailThreadIdentity')
-const { canAccessObject } = require('./privacyAccess')
-const { buildEmailTaskUpdate } = require('../Email/emailTaskContentUpdate')
-const { resolveEmailThreadTask } = require('../Email/emailThreadTaskStore')
 
 const COMMENT_MAX_LENGTH = 5000
 
@@ -31,23 +26,8 @@ class TaskCommentService {
         this.database = database || admin.firestore()
     }
 
-    async addComment({
-        projectId,
-        taskId,
-        task = null,
-        comment,
-        actor,
-        fromAssistant = false,
-        silent = false,
-        requestUserId = null,
-        suppressAssistantReply = false,
-        commentId: suppliedCommentId = null,
-        gmailData = null,
-        linkEmail = false,
-        emailContinuation = null,
-    }) {
+    async addComment({ projectId, taskId, task = null, comment, actor, fromAssistant = false, silent = false }) {
         if (!projectId || !taskId) throw new Error('Project ID and task ID are required to add a comment')
-        if (emailContinuation && !gmailData) throw new Error('Email continuation requires email metadata')
 
         const commentText = normalizeTaskComment(comment)
         const actorId = actor?.uid || actor?.id || actor?.creatorId
@@ -56,61 +36,20 @@ class TaskCommentService {
         const taskRef = this.database.doc(`items/${projectId}/tasks/${taskId}`)
         const chatRef = this.database.doc(`chatObjects/${projectId}/chats/${taskId}`)
         const followersRef = this.database.doc(`followers/${projectId}/tasks/${taskId}`)
-        const commentId = suppliedCommentId || getId()
+        const commentId = getId()
         const commentRef = this.database.doc(`chatComments/${projectId}/tasks/${taskId}/comments/${commentId}`)
         const now = Date.now()
         let notificationData = null
-        let existing = false
-        let updatedTaskName = null
 
         await this.database.runTransaction(async transaction => {
-            notificationData = null
-            existing = false
-            const [taskSnapshot, chatSnapshot, followersSnapshot, commentSnapshot] = await Promise.all([
+            const [taskSnapshot, chatSnapshot, followersSnapshot] = await Promise.all([
                 transaction.get(taskRef),
                 transaction.get(chatRef),
                 transaction.get(followersRef),
-                suppliedCommentId ? transaction.get(commentRef) : Promise.resolve(null),
             ])
             if (!taskSnapshot.exists) throw new Error(`Task not found: ${taskId}`)
-            updatedTaskName = taskSnapshot.data()?.name || null
-            if (commentSnapshot?.exists) {
-                existing = true
-                return
-            }
 
             const taskData = taskSnapshot.data() || task || {}
-            if (gmailData) {
-                const identity = getEmailIdentity(gmailData.accountUserId, gmailData)
-                if (!identity || !matchesEmailThread(taskData.gmailData, identity)) {
-                    throw new Error('Email comment does not match the task account and thread')
-                }
-                if (emailContinuation) {
-                    if (!canAccessObject(taskData, identity.ownerId))
-                        throw new Error('Email task is no longer readable')
-                    const selected = await resolveEmailThreadTask({
-                        database: this.database,
-                        identity,
-                        projectIds: emailContinuation.projectIds,
-                        transaction,
-                    })
-                    if (selected?.taskId !== taskId || selected?.projectId !== projectId) {
-                        throw new Error('Email thread selection changed; retry processing')
-                    }
-                    if (
-                        [taskData.gmailData.messageId, ...(taskData.gmailData.messageIds || [])].includes(
-                            identity.messageId
-                        )
-                    ) {
-                        existing = true
-                        return
-                    }
-                }
-            }
-            const contentUpdate = emailContinuation
-                ? buildEmailTaskUpdate(taskData, emailContinuation.plan, gmailData, actorId, now)
-                : {}
-            updatedTaskName = contentUpdate.name || taskData.name || null
             const chatData = chatSnapshot.exists ? chatSnapshot.data() || {} : {}
             const followersData = followersSnapshot.exists ? followersSnapshot.data() || {} : {}
             const existingFollowers = uniqueStrings([
@@ -132,44 +71,16 @@ class TaskCommentService {
                 creatorId: actorId,
                 commentText,
                 commentType: STAYWARD_COMMENT,
-                lastChangeDate: Timestamp.now(),
+                lastChangeDate: admin.firestore.Timestamp.now(),
                 created: now,
                 originalContent: commentText,
                 fromAssistant: !!fromAssistant,
-                ...(fromAssistant && requestUserId ? { requestUserId } : {}),
-                ...(fromAssistant && suppressAssistantReply ? { suppressAssistantReply: true } : {}),
-                ...(gmailData ? { gmailData } : {}),
             }
 
             transaction.set(commentRef, commentData)
-            if (emailContinuation) {
-                const identity = getEmailIdentity(gmailData.accountUserId, gmailData)
-                transaction.set(
-                    this.database.doc(`users/${identity.ownerId}/emailThreadTasks/message_${identity.messageKey}`),
-                    {
-                        projectId,
-                        taskId,
-                    }
-                )
-            }
             const taskCommentsData =
                 taskData.commentsData && typeof taskData.commentsData === 'object' ? taskData.commentsData : {}
             transaction.update(taskRef, {
-                ...contentUpdate,
-                ...(linkEmail && gmailData?.messageId
-                    ? {
-                          gmailData: {
-                              ...(taskData.gmailData || {}),
-                              ...(contentUpdate.gmailData || {}),
-                              messageIds: uniqueStrings([
-                                  ...(taskData.gmailData?.messageIds || []),
-                                  taskData.gmailData?.messageId,
-                                  gmailData.messageId,
-                              ]),
-                              archiveStatus: null,
-                          },
-                      }
-                    : {}),
                 commentsData: {
                     ...taskCommentsData,
                     lastCommentOwnerId: actorId,
@@ -182,7 +93,7 @@ class TaskCommentService {
             const nextChatData = {
                 id: taskId,
                 projectId,
-                title: contentUpdate.extendedName || taskData.extendedName || taskData.name || 'Task',
+                title: taskData.extendedName || taskData.name || 'Task',
                 type: 'tasks',
                 creatorId: chatData.creatorId || taskData.creatorId || taskData.userId || actorId,
                 created: chatData.created || taskData.created || now,
@@ -203,7 +114,7 @@ class TaskCommentService {
                 },
             }
             if (fromAssistant) {
-                nextChatData.assistantId = taskData.assistantId || chatData.assistantId || actorId
+                nextChatData.assistantId = actorId
                 nextChatData.lastAssistantComment = now
             }
 
@@ -224,7 +135,7 @@ class TaskCommentService {
         // which is the sole source of the chatNotifications unread markers (plus push/email).
         // This keeps assistant-authored update_task comments from marking threads as unread.
         let notificationError = null
-        if (!silent && !existing) {
+        if (!silent) {
             try {
                 await this.notifyFollowers({ projectId, taskId, ...notificationData, fromAssistant })
             } catch (error) {
@@ -247,8 +158,6 @@ class TaskCommentService {
             silent: !!silent,
             notifiedFollowers: silent ? 0 : notificationData?.followers?.length || 0,
             notificationError,
-            ...(suppliedCommentId ? { existing } : {}),
-            ...(emailContinuation ? { taskName: updatedTaskName } : {}),
         }
     }
 

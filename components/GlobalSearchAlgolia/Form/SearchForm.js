@@ -14,7 +14,6 @@ export default function SearchForm({
     placeholder,
     buttonIcon,
     disabledButton,
-    onSubmitEditing,
 }) {
     useEffect(() => {
         // Buffer keystrokes that arrive before the input is focused,
@@ -74,8 +73,6 @@ export default function SearchForm({
                     placeholderTextColor={colors.Text03}
                     onChangeText={setLocalText}
                     value={localText}
-                    onSubmitEditing={onSubmitEditing}
-                    blurOnSubmit={onSubmitEditing ? false : undefined}
                 />
             </View>
             <View>

@@ -10,7 +10,6 @@ import Shortcut from '../UIControls/Shortcut'
 import SharedHelper from '../../utils/SharedHelper'
 import WrapperTaskParentGoalModal from '../UIComponents/FloatModals/TaskParentGoalModal/WrapperTaskParentGoalModal'
 import { translate } from '../../i18n/TranslationService'
-import { useTaskHierarchy } from './TaskHierarchy'
 
 function AddTask({
     isSubtask,
@@ -21,10 +20,7 @@ function AddTask({
     hideParentGoalButton,
     isLocked,
     dateFormated,
-    disabled = false,
-    setRepeatModeOnOpen = true,
 }) {
-    const taskHierarchy = useTaskHierarchy()
     const dispatch = useDispatch()
     const showShortcuts = useSelector(state => state.showShortcuts)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -32,24 +28,21 @@ function AddTask({
     const taskItem = useRef()
 
     const onCheckboxPress = () => {
-        if (disabled) return
         toggleModal()
-        if (setRepeatModeOnOpen) dispatch(setAddTaskRepeatMode())
+        dispatch(setAddTaskRepeatMode())
     }
 
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     return (
-        <View ref={taskItem} style={[localStyles.container, disabled && localStyles.disabled]}>
+        <View ref={taskItem} style={localStyles.container}>
             <View style={{ borderRadius: 4 }}>
                 <View
                     style={[
                         localStyles.taskRow,
                         isSubtask ? subTaskStyles.taskRow : undefined,
                         isSubtask && newItem ? { paddingLeft: 2 } : undefined,
-                        {
-                            backgroundColor: isSubtask ? colors.Grey200 : taskHierarchy ? 'transparent' : '#ffffff',
-                        },
+                        { backgroundColor: isSubtask ? colors.Grey200 : '#ffffff' },
                     ]}
                 >
                     <View style={[localStyles.checkBoxLabel]}>
@@ -59,7 +52,7 @@ function AddTask({
                             activeOpacity={0.35}
                             onPress={onCheckboxPress}
                             onLongPress={onCheckboxPress}
-                            disabled={!accessGranted || disabled}
+                            disabled={!accessGranted}
                         >
                             <Icon name={'plus-square'} size={24} color={colors.Primary100} />
                         </TouchableOpacity>
@@ -79,7 +72,7 @@ function AddTask({
                                     isSubtask ? subTaskStyles.descriptionText : undefined,
                                     isSubtask ? { color: colors.Text03 } : undefined,
                                 ]}
-                                onPress={disabled ? undefined : toggleModal}
+                                onPress={toggleModal}
                                 numberOfLines={3}
                                 wrapText
                                 newItem
@@ -90,8 +83,8 @@ function AddTask({
                                     ? isSubtask
                                         ? translate('Add new subtask')
                                         : currentUser.uid === loggedUser.uid
-                                          ? translate('Type to add new task')
-                                          : translate('Type to suggest a new task')
+                                        ? translate('Type to add new task')
+                                        : translate('Type to suggest a new task')
                                     : ''}
                             </SocialText>
                             {!isSubtask && !hideParentGoalButton && (
@@ -106,7 +99,7 @@ function AddTask({
                 </View>
             </View>
 
-            {showShortcuts && !isSubtask && newItem && accessGranted && !isLocked && !disabled && (
+            {showShortcuts && !isSubtask && newItem && accessGranted && !isLocked && (
                 <View style={{ position: 'absolute', top: 0, right: 14 }}>
                     <Shortcut text={'+'} />
                 </View>
@@ -120,9 +113,6 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         marginLeft: -16,
         marginRight: -16,
-    },
-    disabled: {
-        opacity: 0.5,
     },
     taskRow: {
         flexDirection: 'row',

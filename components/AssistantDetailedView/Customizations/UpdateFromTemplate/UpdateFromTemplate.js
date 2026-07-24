@@ -5,26 +5,36 @@ import Button from '../../../UIControls/Button'
 import styles, { colors } from '../../../styles/global'
 import { resolveAssistantTemplateConflicts } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
-import { getAssistantReasoningEffortLabelKey } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
-import { getAssistantTemplateReviewLabelKey } from './templateReview'
-import { formatTemplateConflictField } from './templateConflictFields'
 
-// Re-exported so the existing importers (and UpdateFromTemplate.test.js) keep
-// their entry point after the formatter moved to a Firestore-free module.
-export { formatTemplateConflictField }
+const FIELD_LABEL_KEYS = {
+    displayName: 'Name',
+    description: 'Description',
+    emailSignature: 'Email signature',
+    heartbeatModel: 'Heartbeat model',
+    model: 'Assistant model',
+    temperature: 'Temperature',
+}
 
 const MODEL_LABELS = {
-    MODEL_GPT6_SOL: 'GPT 6.1 Sol',
+    MODEL_GPT5_6_SOL: 'GPT 5.6 Sol',
     MODEL_GPT5_6_TERRA: 'GPT 5.6 Terra',
-    MODEL_GPT6_LUNA: 'GPT 6 Luna',
-    MODEL_DEEPSEEK_V4_FLASH: 'DeepSeek V4 Flash',
+    MODEL_GPT5_6_LUNA: 'GPT 5.6 Luna',
+}
+
+export const formatTemplateConflictField = field => {
+    const labelKey = FIELD_LABEL_KEYS[field]
+    if (labelKey) return translate(labelKey)
+
+    const readable = String(field || '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .trim()
+    return readable ? readable.charAt(0).toUpperCase() + readable.slice(1) : ''
 }
 
 export const formatTemplateConflictValue = (field, value, exists) => {
     if (!exists) return translate('(removed)')
-    if (field === 'model' || field === 'emailModel' || field === 'heartbeatModel') return MODEL_LABELS[value] || value
-    if (field === 'reasoningEffort' || field === 'heartbeatReasoningEffort')
-        return translate(getAssistantReasoningEffortLabelKey(value))
+    if (field === 'model' || field === 'heartbeatModel') return MODEL_LABELS[value] || value
     if (typeof value === 'string') return value || translate('(empty)')
     try {
         return JSON.stringify(value, null, 2)
@@ -56,7 +66,10 @@ export default function UpdateFromTemplate({ projectId, assistant, disabled }) {
                 <View style={localStyles.statusCopy}>
                     {!!conflicts.length && (
                         <Text style={localStyles.reviewCount}>
-                            {conflicts.length} {translate(getAssistantTemplateReviewLabelKey(conflicts.length))}
+                            {conflicts.length}{' '}
+                            {translate(
+                                conflicts.length === 1 ? 'template change needs review' : 'template changes need review'
+                            )}
                         </Text>
                     )}
                     <Text style={localStyles.status}>{syncedLabel}</Text>

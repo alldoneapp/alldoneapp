@@ -1,14 +1,12 @@
-import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { StyleSheet, View, Dimensions } from 'react-native'
 import { useSelector } from 'react-redux'
-import useWindowSize from '../../../../utils/useWindowSize'
 
 import { colors } from '../../../styles/global'
 import GoalEditForm from './GoalEditForm'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import ModalHeader from '../ModalHeader'
 import { translate } from '../../../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function MainModal({
     projectId,
@@ -24,7 +22,18 @@ export default function MainModal({
     setGoal,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const [, windowHeight] = useWindowSize()
+    const [screenDimensions, setScreenDimensions] = useState(Dimensions.get('window'))
+
+    const setDimensions = e => {
+        setScreenDimensions(e.window)
+    }
+
+    useEffect(() => {
+        Dimensions.addEventListener('change', setDimensions)
+        return () => {
+            Dimensions.removeEventListener('change', setDimensions)
+        }
+    })
 
     return (
         <View
@@ -32,7 +41,7 @@ export default function MainModal({
                 localStyles.container,
                 applyPopoverWidth(),
                 smallScreenNavigation && { minWidth: 315 },
-                { maxHeight: getSafeAreaModalMaxHeight(windowHeight) },
+                { maxHeight: screenDimensions.height - 32 },
             ]}
         >
             <ModalHeader closeModal={closeModal} title={translate('Add goal')} description="" />
@@ -59,7 +68,10 @@ const localStyles = StyleSheet.create({
         paddingVertical: 16,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         height: 'auto',
     },

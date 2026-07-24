@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { TouchableOpacity } from 'react-native'
 import StatisticsByProjectAndEstimationType from '../../UIComponents/FloatModals/StatisticsByProjectAndEstimationType/StatisticsByProjectAndEstimationType'
 import { useDispatch, useSelector } from 'react-redux'
@@ -23,7 +23,7 @@ export default function StatisticItemWrapper({ children, title, subtitle, estima
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <StatisticsByProjectAndEstimationType
                     title={title}
@@ -43,6 +43,6 @@ export default function StatisticItemWrapper({ children, title, subtitle, estima
             <TouchableOpacity onPress={showPopover} accessible={false}>
                 {children}
             </TouchableOpacity>
-        </AppPopover>
+        </Popover>
     )
 }

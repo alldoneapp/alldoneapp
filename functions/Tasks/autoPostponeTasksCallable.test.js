@@ -138,19 +138,7 @@ describe('autoPostponeTasksCallable', () => {
             })
         )
         expect(mockBatchCommit).toHaveBeenCalledTimes(1)
-        // AT-2251: the postponed task is an exclusion, and the replacement is only installed while
-        // the focus still points at it — so a client that already swapped is not overwritten.
-        expect(mockFindAndSetNewFocusTask).toHaveBeenCalledWith(
-            'target-1',
-            'project-1',
-            'goal-1',
-            'task-1',
-            120,
-            null,
-            {
-                expectedCurrentFocusTaskId: 'task-1',
-            }
-        )
+        expect(mockFindAndSetNewFocusTask).toHaveBeenCalledWith('target-1', 'project-1', 'goal-1', 'task-1', 120)
         expect(result).toEqual({
             requestedCount: 2,
             updatedCount: 1,
@@ -196,7 +184,6 @@ describe('autoPostponeTasksCallable', () => {
 
         mockDocuments['users/actor-1'].projectIds = ['project-1']
         mockDocuments['users/target-1'].projectIds = ['project-1']
-        mockDocuments['projects/project-1'].userIds = ['actor-1', 'target-1']
         await expect(
             executeAutoPostponeTasks({
                 actorUserId: 'actor-1',

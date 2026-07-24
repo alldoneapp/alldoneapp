@@ -3,7 +3,6 @@ import renderer, { act } from 'react-test-renderer'
 
 import UndoActionBar from './UndoActionBar'
 import { reverseUndoAction } from '../../utils/undo/undoActions'
-import { UNDO_BURST_SETTLE_MS } from '../../utils/undo/undoActionGrouping'
 
 const mockOnSnapshot = jest.fn()
 
@@ -14,9 +13,8 @@ jest.mock('react-redux', () => ({
             loggedUser: { uid: 'user-1' },
         }),
 }))
-jest.mock('firebase/compat/app', () => ({
-    __esModule: true,
-    default: {
+jest.mock('@firebase/app', () => ({
+    firebase: {
         firestore: () => ({
             collection: () => ({
                 orderBy: () => ({
@@ -27,15 +25,10 @@ jest.mock('firebase/compat/app', () => ({
     },
 }))
 jest.mock('../../utils/undo/undoActions', () => ({ reverseUndoAction: jest.fn(() => Promise.resolve()) }))
-jest.mock('../../hooks/useModalSizing', () => ({
-    __esModule: true,
-    default: () => ({ safeAreaInsets: { left: 47, right: 12, bottom: 34 } }),
-}))
 jest.mock('../styles/global', () => ({
     __esModule: true,
     default: { body2: {}, button: {} },
     colors: { Text01: '#000000', UtilityBlue200: '#0000FF' },
-    hexColorToRGBa: () => 'rgba(0,0,0,0.8)',
 }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: value => value }))
 
@@ -47,16 +40,13 @@ const action = {
     status: 'applied',
 }
 
-const renderActionBar = (renderedAction = action) => {
+const renderActionBar = () => {
     let tree
     act(() => {
         tree = renderer.create(<UndoActionBar />)
     })
     act(() => {
-        mockOnSnapshot.mock.calls[0][0]({ docs: [{ data: () => renderedAction }] })
-    })
-    act(() => {
-        jest.advanceTimersByTime(UNDO_BURST_SETTLE_MS)
+        mockOnSnapshot.mock.calls[0][0]({ docs: [{ data: () => action }] })
     })
     return tree
 }
@@ -64,16 +54,6 @@ const renderActionBar = (renderedAction = action) => {
 describe('UndoActionBar interactions', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        jest.useFakeTimers()
-    })
-
-    afterEach(() => jest.useRealTimers())
-
-    it('uses the safe-area position for the rendered banner', () => {
-        const tree = renderActionBar()
-        const overlayStyle = tree.root.findByProps({ testID: 'undo-action-overlay' }).props.style
-
-        expect(overlayStyle[1]).toEqual({ left: 71, right: 104, bottom: 58 })
     })
 
     it('dismisses when the notification background is pressed without undoing', () => {
@@ -96,20 +76,5 @@ describe('UndoActionBar interactions', () => {
         expect(event.stopPropagation).toHaveBeenCalledTimes(1)
         expect(reverseUndoAction).toHaveBeenCalledWith('action-1', 'undo')
         expect(tree.root.findByProps({ testID: 'undo-action-bar' })).toBeTruthy()
-    })
-
-    it('abbreviates a long task name but keeps the Undo button and the full name (AT-2626)', () => {
-        const fullLabel =
-            'Completed “Kremer den aktuellen AVV schicken (Y Chi): https://jtl-software.atlassian.net/browse/LEG-257?atlOrigin=eyJpIjoiNWRkNTljNzYxNjVmNDY3MDlhMDU5Y2ZhYzA5YTRkZjUiLCJwIjoiaiJ9”'
-        const tree = renderActionBar({ ...action, label: fullLabel })
-
-        const shownText = tree.root.findByProps({ testID: 'undo-action-message' }).props.children
-        expect(shownText.length).toBeLessThan(fullLabel.length)
-        expect(shownText).toContain('jtl-software')
-        expect(shownText).not.toContain('atlOrigin')
-        expect(tree.root.findByProps({ testID: 'undo-action-button' })).toBeTruthy()
-        expect(tree.root.findByProps({ testID: 'undo-action-bar' }).props.accessibilityLabel).toBe(
-            `Dismiss: ${fullLabel}`
-        )
     })
 })

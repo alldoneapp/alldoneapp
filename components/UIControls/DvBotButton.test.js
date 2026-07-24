@@ -26,12 +26,7 @@ jest.mock('react-tiny-popover', () => {
         </React.Fragment>
     )
 })
-jest.mock(
-    'react-hot-keys',
-    () =>
-        ({ children }) =>
-            children
-)
+jest.mock('react-hot-keys', () => ({ children }) => children)
 jest.mock('../AdminPanel/Assistants/assistantsHelper', () => ({
     getAssistantInProjectObject: jest.fn(),
     resolveAssistantForProjectObject: jest.fn(),

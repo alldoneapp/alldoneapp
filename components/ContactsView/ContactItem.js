@@ -1,14 +1,13 @@
-import { TaskHierarchyBackgroundContext } from '../TaskListView/TaskHierarchy'
 import React, { Component } from 'react'
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
 import store from '../../redux/store'
 import MemberTag from '../Tags/MemberTag'
 import TaskSummarizeTags from '../Tags/TaskSummarizeTags'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
+import Spinner from '../UIComponents/Spinner'
 import ContactsHelper, { PHOTO_SIZE_50 } from './Utils/ContactsHelper'
-import ContactPhoto from './ContactPhoto'
 import Backend from '../../utils/BackendBridge'
 import BacklinksTag from '../Tags/BacklinksTag'
 import ContactCommentsWrapper from '../Tags/ContactCommentsWrapper'
@@ -18,7 +17,6 @@ import { FEED_CONTACT_OBJECT_TYPE, FEED_USER_OBJECT_TYPE } from '../Feeds/Utils/
 import SocialText from '../UIControls/SocialText/SocialText'
 import Icon from '../Icon'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
-import { createSwipeCloseGuard } from '../../hooks/useSwipeCloseGuard'
 import NavigationService from '../../utils/NavigationService'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import SwipeNewTaskWrapper from '../NotesView/SwipeNewTaskWrapper'
@@ -28,25 +26,14 @@ import ContactStatusTag from '../Tags/ContactStatusTag'
 import { translate } from '../../i18n/TranslationService'
 import { setSelectedNavItem } from '../../redux/actions'
 import { DV_TAB_CONTACT_PROPERTIES, DV_TAB_USER_PROFILE } from '../../utils/TabNavigationConstants'
-import v4 from 'uuid/v4'
-import {
-    getContactBacklinksWatcherKey,
-    getContactInfoPreview,
-    getContactItemStoreUpdate,
-    getContactPresentationData,
-} from './contactItemStoreUpdate'
-import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
-
-export const CONTACT_BACKLINKS_ROOT_MARGIN = '600px 0px'
 
 export default class ContactItem extends Component {
-    static contextType = TaskHierarchyBackgroundContext
-
     constructor(props) {
         super(props)
         const storeState = store.getState()
 
         this.state = {
+            loading: false,
             loggedUserProjects: storeState.loggedUserProjects,
             smallScreenNavigation: storeState.smallScreenNavigation,
             isMiddleScreen: storeState.isMiddleScreen,
@@ -63,43 +50,12 @@ export default class ContactItem extends Component {
         }
 
         this.itemSwipe = React.createRef()
-        this.containerRef = React.createRef()
-        // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
-        // and leave the row permanently unopenable. See the hook module.
-        this.swipeCloseGuard = createSwipeCloseGuard(blockOpen => this.setState({ blockOpen }))
     }
 
     componentDidMount() {
-        const target = this.containerRef.current
-        if (typeof IntersectionObserver === 'undefined' || !target) {
-            this.startBacklinksWatcher()
-            return
-        }
-
-        try {
-            this.backlinksObserver = new IntersectionObserver(
-                entries => {
-                    if (!entries.some(entry => entry.isIntersecting)) return
-                    this.backlinksObserver?.disconnect()
-                    this.backlinksObserver = null
-                    this.startBacklinksWatcher()
-                },
-                { rootMargin: CONTACT_BACKLINKS_ROOT_MARGIN }
-            )
-            this.backlinksObserver.observe(target)
-        } catch {
-            this.backlinksObserver?.disconnect()
-            this.backlinksObserver = null
-            this.startBacklinksWatcher()
-        }
-    }
-
-    startBacklinksWatcher = () => {
-        if (this.backlinksWatcherKey) return
         const { loggedUserProjects } = this.state
         const { projectIndex, contact } = this.props
         const projectId = loggedUserProjects[projectIndex].id
-        this.backlinksWatcherKey = getContactBacklinksWatcherKey(projectId, contact.uid, v4())
 
         Backend.watchBacklinksCount(
             projectId,
@@ -114,22 +70,24 @@ export default class ContactItem extends Component {
                 } else if (parentObjectType === 'notes') {
                     this.setState({ backlinksNotesCount: parentsAmount, backlinkNoteObject: aloneParentObject })
                 }
-            },
-            this.backlinksWatcherKey
+            }
         )
     }
 
     componentWillUnmount() {
-        this.backlinksObserver?.disconnect()
         const { contact } = this.props
-        if (this.backlinksWatcherKey) Backend.unwatchBacklinksCount(contact.uid, this.backlinksWatcherKey)
+        Backend.unwatchBacklinksCount(contact.uid)
         this.state.unsubscribe()
     }
 
     updateState = () => {
         const storeState = store.getState()
 
-        this.setState(state => getContactItemStoreUpdate(state, storeState))
+        this.setState({
+            loggedUserProjects: storeState.loggedUserProjects,
+            smallScreenNavigation: storeState.smallScreenNavigation,
+            isMiddleScreen: storeState.isMiddleScreen,
+        })
     }
 
     toggleShowTagsSummarizeArea = e => {
@@ -140,17 +98,10 @@ export default class ContactItem extends Component {
         this.setState(state => ({ showTagsSummarizeArea: !state.showTagsSummarizeArea }))
     }
 
-    // Swipeable calls the swipe renderers during its own render, so setting state synchronously
-    // would update this component while another one renders. dragX is stable per Swipeable
-    // instance, so deferring the swap adopts it just as reliably, one render later.
-    adoptPanColor = dragX => {
-        if (this.state.panColor !== dragX) {
-            Promise.resolve().then(() => this.setState({ panColor: dragX }))
-        }
-    }
-
     renderLeftSwipe = (progress, dragX) => {
-        this.adoptPanColor(dragX)
+        if (this.state.panColor !== dragX) {
+            this.setState({ panColor: dragX })
+        }
 
         return <View style={{ width: 150 }} />
     }
@@ -168,7 +119,9 @@ export default class ContactItem extends Component {
     }
 
     renderRightSwipe = (progress, dragX) => {
-        this.adoptPanColor(dragX)
+        if (this.state.panColor !== dragX) {
+            this.setState({ panColor: dragX })
+        }
 
         return <View style={{ width: 150 }} />
     }
@@ -195,6 +148,7 @@ export default class ContactItem extends Component {
 
     render() {
         const {
+            loading,
             loggedUserProjects,
             blockOpen,
             panColor,
@@ -205,15 +159,13 @@ export default class ContactItem extends Component {
             backlinkNoteObject,
             loggedUserId,
         } = this.state
-        const { projectIndex, contact: contactFromProps, isMember, inCommentPopup, onPress } = this.props
-        const projectPrivacy = isMember ? ProjectHelper.getUserPrivacyInProject(projectIndex, contactFromProps) : null
-        const contact = getContactPresentationData(contactFromProps, projectPrivacy)
+        const { projectIndex, contact, isMember, inCommentPopup, onPress } = this.props
 
         const projectId = loggedUserProjects[projectIndex].id
         const showContact = isMember || !ContactsHelper.isPrivateContact(contact)
         const contactHighlightColor = ProjectHelper.getUserHighlightInProject(projectIndex, contact)
 
-        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : this.context
+        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
         const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
         const backColor = panColor.interpolate({
             inputRange: [-100, 0, 100],
@@ -241,6 +193,10 @@ export default class ContactItem extends Component {
             inCommentPopup || contactHighlightColor.toLowerCase() === '#ffffff' ? backColor : backColorHighlight
         const usesCommentPopupBackground = inCommentPopup
 
+        if (isMember) {
+            ContactsHelper.getAndAssignUserPrivacy(projectIndex, contact)
+        }
+
         const parseDate = date => {
             if (Date.now() - date < 60000) {
                 return translate('Just now')
@@ -248,13 +204,12 @@ export default class ContactItem extends Component {
             return `${translate('Edited')}: ${moment(date).format(`${getTimeFormat(true)} of ${getDateFormat()}`)}`
         }
 
-        const userInfo = getContactInfoPreview(
+        const userInfo =
             !role && !company && !description
                 ? ''
                 : `${role ? role : ''}${role && (company || description) ? ' • ' : ''}${company ? company : ''}${
                       company && description ? ' • ' : ''
                   }${description ? description : ''}`
-        )
 
         const backlinksCount = backlinksTasksCount + backlinksNotesCount
         const backlinkObject =
@@ -278,10 +233,7 @@ export default class ContactItem extends Component {
         const showSummarizeTag = (this.state.smallScreenNavigation && amountTags > 1) || amountTags > 2
 
         return showContact ? (
-            <View
-                ref={this.containerRef}
-                dataSet={{ annaObjectType: 'contact', annaObjectId: contact.uid, annaProjectId: projectId }}
-            >
+            <View>
                 <View style={localStyles.swipeContainer}>
                     <View style={localStyles.leftSwipeArea}>
                         <Icon name="circle-details" size={18} color={colors.UtilityGreen200} />
@@ -305,7 +257,6 @@ export default class ContactItem extends Component {
                 </View>
 
                 <Swipeable
-                    useNativeAnimations={false}
                     ref={this.itemSwipe}
                     rightThreshold={80}
                     leftThreshold={80}
@@ -319,7 +270,12 @@ export default class ContactItem extends Component {
                     friction={2}
                     containerStyle={{ overflow: 'visible' }}
                     failOffsetY={[-5, 5]}
-                    {...this.swipeCloseGuard}
+                    onSwipeableWillClose={() => {
+                        this.setState({ blockOpen: true })
+                    }}
+                    onSwipeableClose={() => {
+                        this.setState({ blockOpen: false })
+                    }}
                 >
                     <TouchableOpacity
                         onPress={blockOpen ? undefined : inCommentPopup ? onPress : this.onOpenDV}
@@ -335,11 +291,19 @@ export default class ContactItem extends Component {
                                 },
                             ]}
                         >
-                            <ProjectMoveIndicator object={contact} projectId={projectId} />
                             <View style={localStyles.mainRow}>
                                 <View style={localStyles.avatarContainer}>
                                     {contact.photoURL != null && contact.photoURL !== '' ? (
-                                        <ContactPhoto uri={contactPhotoURL50} style={localStyles.image} />
+                                        <>
+                                            <Image
+                                                onLoadStart={() => this.setState({ loading: true })}
+                                                onLoadEnd={() => this.setState({ loading: false })}
+                                                source={{ uri: contactPhotoURL50 }}
+                                                style={[localStyles.image, { display: loading ? 'none' : 'flex' }]}
+                                            />
+
+                                            {loading && <Spinner containerSize={48} spinnerSize={24} />}
+                                        </>
                                     ) : (
                                         <SVGGenericUser
                                             width={48}

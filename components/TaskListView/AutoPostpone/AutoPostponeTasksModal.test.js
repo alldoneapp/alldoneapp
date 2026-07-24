@@ -105,9 +105,7 @@ const collectTestIds = tree => {
     const testIds = []
     const visit = node => {
         if (!node || typeof node !== 'object') return
-        // react-native-web serializes host nodes with data-testid, not testID
-        const testId = node.props?.testID || node.props?.['data-testid']
-        if (testId) testIds.push(testId)
+        if (node.props?.testID) testIds.push(node.props.testID)
         ;(node.children || []).forEach(visit)
     }
     const roots = Array.isArray(tree) ? tree : [tree]

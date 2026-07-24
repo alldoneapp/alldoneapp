@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { StyleSheet, Text, View } from 'react-native'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import moment from 'moment'
 
 import SelectDateModal from './SelectDateModal'
@@ -70,7 +70,7 @@ export default function FilterBy({ updateFilterData, statisticsFilter, modalDesc
 
     const rangeText = getRangeText()
     return (
-        <AppPopover
+        <Popover
             content={
                 <SelectDateModal
                     modalDescription={modalDescription}
@@ -97,7 +97,7 @@ export default function FilterBy({ updateFilterData, statisticsFilter, modalDesc
                     onPress={showPopover}
                 />
             </View>
-        </AppPopover>
+        </Popover>
     )
 }
 

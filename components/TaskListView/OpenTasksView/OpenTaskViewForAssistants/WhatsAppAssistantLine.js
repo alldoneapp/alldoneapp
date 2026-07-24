@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import { Image, Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -57,7 +57,7 @@ export default function WhatsAppAssistantLine({ assistant, projectId }) {
 
     return (
         <View style={localStyles.container}>
-            <AppPopover
+            <Popover
                 content={
                     <ChangePhoneModal
                         closePopover={() => setOpen(false)}
@@ -83,7 +83,7 @@ export default function WhatsAppAssistantLine({ assistant, projectId }) {
                         {translate('Chat with Anna on WhatsApp')}: {WHATSAPP_NUMBER_DISPLAY}
                     </Text>
                 </TouchableOpacity>
-            </AppPopover>
+            </Popover>
             <AssistantVoiceCallButton
                 variant="link"
                 assistant={assistant}

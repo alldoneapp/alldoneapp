@@ -7,11 +7,10 @@ const { getProject } = require('../Firestore/generalFirestoreCloud')
 const { processDeletedNoteForRevisionHistory } = require('../NotesRevisionHistory')
 const { mapTaskData } = require('../Utils/MapDataFuncions')
 const { deleteNote } = require('./notesFirestoreCloud')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const removeNoteContent = async (projectId, noteId) => {
-    const { getNotesBucketName } = require('../shared/notesStorageBucket')
-    const notesBucketName = getNotesBucketName()
+    const { defineString } = require('firebase-functions/params')
+    const notesBucketName = defineString('GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET').value()
 
     const notesBucket = admin.storage().bucket(notesBucketName)
     const noteContentFile = notesBucket.file(`notesData/${projectId}/${noteId}`)
@@ -40,7 +39,7 @@ const removeNoteFromInnerTasks = async (projectId, taskId, noteId) => {
         .firestore()
         .doc(`items/${projectId}/tasks/${taskId}`)
         .update({
-            containerNotesIds: FieldValue.arrayRemove(noteId),
+            containerNotesIds: admin.firestore.FieldValue.arrayRemove(noteId),
         })
 }
 

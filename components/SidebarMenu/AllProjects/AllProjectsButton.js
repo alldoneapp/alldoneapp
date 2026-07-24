@@ -1,4 +1,4 @@
-import React, { useContext, useEffect } from 'react'
+import React, { useEffect } from 'react'
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -26,11 +26,9 @@ import ItemShortcut from '../Items/Common/ItemShortcut'
 import { isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
 import AmountBadge from '../ProjectFolding/Common/AmountBadge'
 import getAllProjectsOpenTasksAmount from '../../../utils/Tasks/getAllProjectsOpenTasksAmount'
-import AnnaWorkspaceNavigationContext from '../../Anna/AnnaWorkspaceNavigationContext'
 
 export default function AllProjectsButton() {
     const dispatch = useDispatch()
-    const showAlldone = useContext(AnnaWorkspaceNavigationContext)
     const showShortcuts = useSelector(state => state.showShortcuts)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const themeName = useSelector(state => state.loggedUser.themeName)
@@ -72,7 +70,6 @@ export default function AllProjectsButton() {
 
     const onPress = e => {
         e?.preventDefault()
-        showAlldone()
 
         if (!ROOT_ROUTES.includes(route)) NavigationService.navigate('Root')
 

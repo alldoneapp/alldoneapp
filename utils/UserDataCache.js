@@ -2,7 +2,6 @@
  * User Data Cache utility for faster app initialization
  * Caches user data in localStorage to reduce Firebase requests on subsequent visits
  */
-import { isBrowserOffline } from './connectionState'
 
 const CACHE_KEYS = {
     USER_DATA: 'alldone_cached_user_data',
@@ -26,12 +25,6 @@ class UserDataCache {
             if (!timestamp || !version || version !== CACHE_VERSION) {
                 return false
             }
-
-            // Offline, a stale cache beats a blank screen: the age limit exists to
-            // bound how long the fast-boot path can lag the server, and offline there
-            // is no server to lag (OFFLINE_SUPPORT_PLAN.md Stage 5). The version check
-            // above still applies — a structurally incompatible cache is never served.
-            if (isBrowserOffline()) return true
 
             const cacheAge = Date.now() - parseInt(timestamp)
             const maxAge = CACHE_EXPIRY_HOURS * 60 * 60 * 1000
@@ -68,7 +61,7 @@ class UserDataCache {
             localStorage.setItem(CACHE_KEYS.USER_DATA, JSON.stringify(userData))
             localStorage.setItem(CACHE_KEYS.CACHE_TIMESTAMP, Date.now().toString())
             localStorage.setItem(CACHE_KEYS.CACHE_VERSION, CACHE_VERSION)
-            if (__DEV__) console.log('User data cached successfully')
+            console.log('User data cached successfully')
         } catch (error) {
             console.warn('Error caching user data:', error)
         }
@@ -99,7 +92,7 @@ class UserDataCache {
             localStorage.setItem(CACHE_KEYS.GLOBAL_DATA, JSON.stringify(globalData))
             localStorage.setItem(CACHE_KEYS.CACHE_TIMESTAMP, Date.now().toString())
             localStorage.setItem(CACHE_KEYS.CACHE_VERSION, CACHE_VERSION)
-            if (__DEV__) console.log('Global data cached successfully')
+            console.log('Global data cached successfully')
         } catch (error) {
             console.warn('Error caching global data:', error)
         }
@@ -113,7 +106,7 @@ class UserDataCache {
             Object.values(CACHE_KEYS).forEach(key => {
                 localStorage.removeItem(key)
             })
-            if (__DEV__) console.log('Cache cleared successfully')
+            console.log('Cache cleared successfully')
         } catch (error) {
             console.warn('Error clearing cache:', error)
         }

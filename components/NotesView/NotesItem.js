@@ -1,4 +1,3 @@
-import { useTaskHierarchyBackground } from '../TaskListView/TaskHierarchy'
 import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Icon from '../Icon'
@@ -7,7 +6,7 @@ import moment from 'moment'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import ContactsHelper from '../ContactsView/Utils/ContactsHelper'
 import SocialText from '../UIControls/SocialText/SocialText'
-import { shallowEqual, useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import SharedHelper from '../../utils/SharedHelper'
 import BacklinksTag from '../Tags/BacklinksTag'
 import PrivacyTag from '../Tags/PrivacyTag'
@@ -16,22 +15,18 @@ import { dismissAllPopups } from '../../utils/HelperFunctions'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
-import { setPrevScreen, setSelectedNavItem, setSelectedNote } from '../../redux/actions'
+import { setPrevScreen, setSelectedNavItem, setSelectedNote, startLoadingData } from '../../redux/actions'
 import { DV_TAB_NOTE_EDITOR } from '../../utils/TabNavigationConstants'
 import NavigationService from '../../utils/NavigationService'
 import SwipeNewTaskWrapper from './SwipeNewTaskWrapper'
 import { exitsOpenModals, removeModal, RICH_CREATE_TASK_MODAL_ID, storeModal } from '../ModalsManager/modalsManager'
 import { LINKED_OBJECT_TYPE_NOTE, getDvNoteTabLink } from '../../utils/LinkingHelper'
 import useBacklinks from '../../hooks/useBacklinks'
-import useSwipeCloseGuard from '../../hooks/useSwipeCloseGuard'
 import { openNoteDV } from './NotesDV/EditorView/notesHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from '../RootView/Themes'
 import LastEditionData from './LastEditionData'
-import Avatar from '../Avatar'
-import { resolveNoteOwner } from './NoteFilters/noteOwnerFilterHelper'
-import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
 
 const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommentPopup, onPress }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -42,10 +37,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
     let hasTasks = false
     const trimmedPreview = note.preview.trim()
     const emptyNote = !hasTasks && trimmedPreview.length === 0
-    // The owner of a note can be an assistant since AT-2194, so resolve against assistants
-    // as well as project members. Selector form (rather than a bare store read) so the row
-    // repaints once the assistants/users slices finish loading.
-    const noteOwner = useSelector(() => resolveNoteOwner(project.id, note.userId), shallowEqual)
+    const noteOwner = TasksHelper.getUserInProject(project.id, note.userId)
     const accessGranted = SharedHelper.accessGranted(loggedUser, project.id)
     const { backlinksTasksCount, backlinkTaskObject, backlinksNotesCount, backlinkNoteObject } = useBacklinks(
         project.id,
@@ -53,9 +45,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
         'linkedParentNotesIds',
         note.id
     )
-    // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
-    // and leave the row permanently unopenable. See the hook.
-    const { blockOpen, ...swipeCloseGuard } = useSwipeCloseGuard()
+    const [blockOpen, setBlockOpen] = useState(false)
     const [panColor, setPanColor] = useState(new Animated.Value(0))
     const showNewTaskPopup = useRef(false)
     const isUnmountedRef = useRef(false)
@@ -70,8 +60,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
             : null
     const contactPhotoURL = contact ? ContactsHelper.getContactPhotoURL(contact, false) : null
 
-    const projectBackgroundColor = useTaskHierarchyBackground()
-    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : projectBackgroundColor
+    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
     const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],
@@ -94,11 +83,13 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                 clearTimeout(rightSwipeTimeoutRef.current)
             }
             // Debug: track unmount to diagnose setState-after-unmount
-            if (__DEV__) console.debug('NotesItem unmounted', { noteId: note.id })
+            console.debug('NotesItem unmounted', { noteId: note.id })
         }
     }, [])
 
     const openObjectNote = () => {
+        dispatch(startLoadingData())
+
         const url = getDvNoteTabLink(
             project.id,
             note.parentObject.id,
@@ -131,23 +122,18 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
         setRenderFlag(!renderFlag)
     }
 
-    // Swipeable calls these during its own render, so adopting its dragX node synchronously would
-    // set state on this component while another one renders. dragX is stable per Swipeable
-    // instance, so deferring the swap by a microtask adopts it just as reliably, one render later.
-    const adoptPanColor = dragX => {
-        if (panColor !== dragX) {
-            Promise.resolve().then(() => setPanColor(dragX))
-        }
-    }
-
     const renderRightSwipe = (progress, dragX) => {
-        adoptPanColor(dragX)
+        if (panColor !== dragX) {
+            setPanColor(dragX)
+        }
 
         return <View style={{ width: 150 }} />
     }
 
     const renderLeftSwipe = (progress, dragX) => {
-        adoptPanColor(dragX)
+        if (panColor !== dragX) {
+            setPanColor(dragX)
+        }
 
         return <View style={{ width: 150 }} />
     }
@@ -214,7 +200,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
         (loggedUserIsCreator || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(project.id))
 
     return (
-        <View dataSet={{ annaObjectType: 'note', annaObjectId: note.id, annaProjectId: project.id }}>
+        <View>
             <View style={localStyles.swipeContainer}>
                 <View style={localStyles.leftSwipeArea}>
                     <Icon name={'circle-details'} size={18} color={colors.UtilityGreen200} />
@@ -234,7 +220,6 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
             </View>
 
             <Swipeable
-                useNativeAnimations={false}
                 ref={itemSwipe}
                 rightThreshold={80}
                 leftThreshold={80}
@@ -248,7 +233,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                 friction={2}
                 containerStyle={{ overflow: 'visible' }}
                 failOffsetY={[-5, 5]}
-                {...swipeCloseGuard}
+                onSwipeableWillClose={() => setBlockOpen(true)}
+                onSwipeableClose={() => setBlockOpen(false)}
             >
                 <Animated.View
                     style={[
@@ -257,7 +243,6 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                         isSticky && [localStyles.containerSticky, theme.containerSticky(project.color)],
                     ]}
                 >
-                    <ProjectMoveIndicator object={note} />
                     <TouchableOpacity
                         style={localStyles.subContainer}
                         onPress={inCommentPopup ? onPress : onOpenNoteDV}
@@ -341,11 +326,9 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                                             />
                                         )}
                                         <View style={localStyles.userImageContainer}>
-                                            <Avatar
-                                                avatarId={note.userId}
-                                                reviewerPhotoURL={noteOwner?.photoURL}
-                                                size={20}
-                                                borderSize={2}
+                                            <Image
+                                                source={{ uri: noteOwner?.photoURL }}
+                                                style={localStyles.userImage}
                                             />
                                         </View>
                                     </View>
@@ -371,8 +354,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                                         {emptyNote
                                             ? 'This note has no content'
                                             : !note.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-                                              ? 'Private note'
-                                              : note.preview}
+                                            ? 'Private note'
+                                            : note.preview}
                                     </SocialText>
                                 </View>
                             </View>
@@ -469,6 +452,11 @@ const localStyles = StyleSheet.create({
     },
     userImageContainer: {
         marginLeft: 8,
+    },
+    userImage: {
+        width: 24,
+        height: 24,
+        borderRadius: 100,
     },
     swipeContainer: {
         height: '100%',

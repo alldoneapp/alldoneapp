@@ -8,7 +8,6 @@ const { createAssistantFollowedFeed } = require('../Feeds/assistantsFeeds')
 const { getFeedObjectLastState, deleteObjectFeedCounter } = require('../Feeds/globalFeedsHelper')
 const { getGlobalState } = require('../GlobalState/globalState')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
-const { FieldValue } = require('firebase-admin/firestore')
 
 function addFollowerWithoutFeeds(
     projectId,
@@ -26,32 +25,19 @@ function addFollowerWithoutFeeds(
     batch.set(userFollowingRef, entry, { merge: true })
 
     const followersRef = appAdmin.firestore().doc(`followers/${projectId}/${followObjectsType}/${followObjectId}`)
-    batch.set(followersRef, { usersFollowing: FieldValue.arrayUnion(userFollowingId) }, { merge: true })
+    batch.set(followersRef, { usersFollowing: admin.firestore.FieldValue.arrayUnion(userFollowingId) }, { merge: true })
 
     if (followObjectsType === 'notes' && actionType !== 'delete') {
         if (followObject) {
-            const updateData = { followersIds: FieldValue.arrayUnion(userFollowingId) }
+            const updateData = { followersIds: admin.firestore.FieldValue.arrayUnion(userFollowingId) }
             if (
                 followObject.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
                 followObject.isPublicFor.includes(userFollowingId)
             ) {
-                updateData.isVisibleInFollowedFor = FieldValue.arrayUnion(userFollowingId)
+                updateData.isVisibleInFollowedFor = admin.firestore.FieldValue.arrayUnion(userFollowingId)
             }
             appAdmin.firestore().doc(`noteItems/${projectId}/notes/${followObjectId}`).set(updateData, { merge: true })
         }
-    }
-
-    // Artifacts keep the same follower fields as notes; they drive the artifacts' "Followed" list.
-    if (followObjectsType === 'artifacts' && actionType !== 'delete' && followObject) {
-        const isPublicFor = Array.isArray(followObject.isPublicFor) ? followObject.isPublicFor : []
-        const updateData = { followersIds: FieldValue.arrayUnion(userFollowingId) }
-        if (isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userFollowingId)) {
-            updateData.isVisibleInFollowedFor = FieldValue.arrayUnion(userFollowingId)
-        }
-        appAdmin
-            .firestore()
-            .doc(`artifactItems/${projectId}/artifacts/${followObjectId}`)
-            .set(updateData, { merge: true })
     }
 }
 
@@ -64,7 +50,7 @@ async function addFollowerToChat(projectId, chatId, userId) {
         const usersFollowing = Array.isArray(chat.usersFollowing) ? chat.usersFollowing : []
         if (!usersFollowing.includes(userId)) {
             await db.doc(`chatObjects/${projectId}/chats/${chatId}`).update({
-                usersFollowing: FieldValue.arrayUnion(userId),
+                usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
             })
         }
     }

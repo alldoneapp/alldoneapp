@@ -39,8 +39,6 @@ const getEnvFunctions = () => {
             PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || '',
             STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
             STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
-            REVENUECAT_WEBHOOK_AUTH: process.env.REVENUECAT_WEBHOOK_AUTH || '',
-            REVENUECAT_ALLOW_SANDBOX: process.env.REVENUECAT_ALLOW_SANDBOX || '',
             GOOGLE_FIREBASE_DEPLOY_TOKEN: process.env.GOOGLE_FIREBASE_DEPLOY_TOKEN || '',
             GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_FIREBASE_WEB_CLIENT_ID || '',
             GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
@@ -50,6 +48,8 @@ const getEnvFunctions = () => {
             TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
             TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
             TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
+            ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
+            ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
             SIB_API_KEY: process.env.SIB_API_KEY || '',
             SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
             IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -64,14 +64,11 @@ const getEnvFunctions = () => {
             ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
             DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
             TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+            APIFY_API_KEY: process.env.APIFY_API_KEY || '',
             ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
-            OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
             E2B_API_KEY: process.env.E2B_API_KEY || '',
             VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
             VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
-            BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
-            BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
-            BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
             MENUBAR_APP_WEBHOOK_SECRET: process.env.MENUBAR_APP_WEBHOOK_SECRET || '',
             EXTERNAL_TOOLS_SIGNING_SECRET: process.env.EXTERNAL_TOOLS_SIGNING_SECRET || '',
         }
@@ -86,8 +83,6 @@ const getEnvFunctions = () => {
                     PERPLEXITY_API_KEY: envJson.PERPLEXITY_API_KEY || '',
                     STRIPE_SECRET_KEY: envJson.STRIPE_SECRET_KEY || '',
                     STRIPE_WEBHOOK_SECRET: envJson.STRIPE_WEBHOOK_SECRET || '',
-                    REVENUECAT_WEBHOOK_AUTH: envJson.REVENUECAT_WEBHOOK_AUTH || '',
-                    REVENUECAT_ALLOW_SANDBOX: envJson.REVENUECAT_ALLOW_SANDBOX || '',
                     GOOGLE_FIREBASE_DEPLOY_TOKEN: envJson.GOOGLE_FIREBASE_DEPLOY_TOKEN || '',
                     GOOGLE_OAUTH_CLIENT_ID: envJson.GOOGLE_OAUTH_CLIENT_ID || '',
                     GOOGLE_OAUTH_CLIENT_SECRET: envJson.GOOGLE_OAUTH_CLIENT_SECRET || '',
@@ -97,6 +92,8 @@ const getEnvFunctions = () => {
                     TWILIO_ACCOUNT_SID: envJson.TWILIO_ACCOUNT_SID || '',
                     TWILIO_AUTH_TOKEN: envJson.TWILIO_AUTH_TOKEN || '',
                     TWILIO_WHATSAPP_FROM: envJson.TWILIO_WHATSAPP_FROM || '',
+                    ALGOLIA_APP_ID: envJson.ALGOLIA_APP_ID || '',
+                    ALGOLIA_ADMIN_API_KEY: envJson.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: envJson.SIB_API_KEY || '',
                     SIB_MARKETING_SERVICE_LIST: envJson.SIB_MARKETING_SERVICE_LIST || '5',
                     IP_REGISTRY_API_KEY: envJson.IP_REGISTRY_API_KEY || '',
@@ -115,18 +112,11 @@ const getEnvFunctions = () => {
                     ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: envJson.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                     DEEPGRAM_API_KEY: envJson.DEEPGRAM_API_KEY || '',
                     TAVILY_API_KEY: envJson.TAVILY_API_KEY || '',
+                    APIFY_API_KEY: envJson.APIFY_API_KEY || '',
                     ANTHROPIC_API_KEY: envJson.ANTHROPIC_API_KEY || '',
-                    // AT-2230. This map is an explicit allowlist, NOT a passthrough of the JSON: a
-                    // key added to GOOGLE_FUNCTIONS_ENV_DEV/_PROD but missing here is silently
-                    // invisible to every caller of getEnvFunctions(). That is exactly how the
-                    // platform OpenRouter key was configured in CI and still read as unconfigured.
-                    OPENROUTER_API_KEY: envJson.OPENROUTER_API_KEY || '',
                     E2B_API_KEY: envJson.E2B_API_KEY || '',
                     VM_PROXY_SIGNING_SECRET: envJson.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: envJson.VM_LLM_PROXY_BASE_URL || '',
-                    BROWSER_WORKER_URL: envJson.BROWSER_WORKER_URL || '',
-                    BROWSER_WORKER_SIGNING_SECRET: envJson.BROWSER_WORKER_SIGNING_SECRET || '',
-                    BROWSER_ALLOWED_DOMAINS: envJson.BROWSER_ALLOWED_DOMAINS || '',
                     MENUBAR_APP_WEBHOOK_SECRET: envJson.MENUBAR_APP_WEBHOOK_SECRET || '',
                     EXTERNAL_TOOLS_SIGNING_SECRET: envJson.EXTERNAL_TOOLS_SIGNING_SECRET || '',
                     OPENAI_PROJECT_ID: envJson.OPENAI_PROJECT_ID || '',
@@ -140,9 +130,6 @@ const getEnvFunctions = () => {
                     BROWSER_CALLS_ENABLED: envJson.BROWSER_CALLS_ENABLED || '',
                     WHATSAPP_CALL_MAX_DURATION_SECONDS: envJson.WHATSAPP_CALL_MAX_DURATION_SECONDS || '',
                     GOOGLE_MAPS_API_KEY: envJson.GOOGLE_MAPS_API_KEY || '',
-                    TYPESENSE_HOST: envJson.TYPESENSE_HOST || '',
-                    TYPESENSE_ADMIN_API_KEY: envJson.TYPESENSE_ADMIN_API_KEY || '',
-                    TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY: envJson.TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY || '',
                 }
 
                 // Check if JSON file has real values or just placeholders
@@ -164,6 +151,8 @@ const getEnvFunctions = () => {
                         TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
                         TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
                         TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
+                        ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
+                        ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                         SIB_API_KEY: process.env.SIB_API_KEY || '',
                         SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                         IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -182,13 +171,11 @@ const getEnvFunctions = () => {
                         ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                         DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                         TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+                        APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                         ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
                         E2B_API_KEY: process.env.E2B_API_KEY || '',
                         VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                         VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
-                        BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
-                        BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
-                        BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
                     }
                 }
             } catch (error) {
@@ -207,6 +194,8 @@ const getEnvFunctions = () => {
                     TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
                     TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
                     TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
+                    ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
+                    ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                     SIB_API_KEY: process.env.SIB_API_KEY || '',
                     SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                     IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -229,9 +218,6 @@ const getEnvFunctions = () => {
                     E2B_API_KEY: process.env.E2B_API_KEY || '',
                     VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                     VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
-                    BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
-                    BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
-                    BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
                 }
             }
         } else {
@@ -250,6 +236,8 @@ const getEnvFunctions = () => {
                 TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
                 TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
                 TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || '',
+                ALGOLIA_APP_ID: process.env.ALGOLIA_APP_ID || '',
+                ALGOLIA_ADMIN_API_KEY: process.env.ALGOLIA_ADMIN_API_KEY || '',
                 SIB_API_KEY: process.env.SIB_API_KEY || '',
                 SIB_MARKETING_SERVICE_LIST: process.env.SIB_MARKETING_SERVICE_LIST || '5',
                 IP_REGISTRY_API_KEY: process.env.IP_REGISTRY_API_KEY || '',
@@ -268,23 +256,17 @@ const getEnvFunctions = () => {
                 ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD: process.env.ANNA_EMAIL_WEBHOOK_BASIC_PASSWORD || '',
                 DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY || '',
                 TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+                APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                 ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
-                OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
                 E2B_API_KEY: process.env.E2B_API_KEY || '',
                 VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                 VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',
-                BROWSER_WORKER_URL: process.env.BROWSER_WORKER_URL || '',
-                BROWSER_WORKER_SIGNING_SECRET: process.env.BROWSER_WORKER_SIGNING_SECRET || '',
-                BROWSER_ALLOWED_DOMAINS: process.env.BROWSER_ALLOWED_DOMAINS || '',
             }
         }
     }
 
     // Runtime environment variables/secrets can override missing realtime calling values.
-    // Listed here rather than only in the maps above so the JSON-missing / JSON-error / no-JSON
-    // fallback branches resolve them too.
     ;[
-        'OPENROUTER_API_KEY',
         'MENUBAR_APP_WEBHOOK_SECRET',
         'EXTERNAL_TOOLS_SIGNING_SECRET',
         'OPENAI_PROJECT_ID',
@@ -298,9 +280,6 @@ const getEnvFunctions = () => {
         'BROWSER_CALLS_ENABLED',
         'WHATSAPP_CALL_MAX_DURATION_SECONDS',
         'GOOGLE_MAPS_API_KEY',
-        'TYPESENSE_HOST',
-        'TYPESENSE_ADMIN_API_KEY',
-        'TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY',
     ].forEach(key => {
         if (!envFunctions[key]) envFunctions[key] = process.env[key] || ''
     })
@@ -318,6 +297,12 @@ const getEnvFunctions = () => {
     }
     if (!envFunctions.OPEN_AI_KEY || isPlaceholderValue(envFunctions.OPEN_AI_KEY)) {
         console.warn('Warning: OPENAI_API_KEY is not set or is a placeholder')
+    }
+    if (!envFunctions.ALGOLIA_APP_ID || isPlaceholderValue(envFunctions.ALGOLIA_APP_ID)) {
+        console.warn('Warning: ALGOLIA_APP_ID is not set or is a placeholder')
+    }
+    if (!envFunctions.ALGOLIA_ADMIN_API_KEY || isPlaceholderValue(envFunctions.ALGOLIA_ADMIN_API_KEY)) {
+        console.warn('Warning: ALGOLIA_ADMIN_API_KEY is not set or is a placeholder')
     }
     if (!envFunctions.SIB_API_KEY || isPlaceholderValue(envFunctions.SIB_API_KEY)) {
         console.warn('Warning: SIB_API_KEY is not set or is a placeholder')

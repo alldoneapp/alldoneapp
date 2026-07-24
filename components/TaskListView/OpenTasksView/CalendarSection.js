@@ -1,49 +1,37 @@
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useSelector } from 'react-redux'
-import { TaskHierarchyGroup } from '../TaskHierarchy'
-
+import moment from 'moment'
+import { orderBy } from 'lodash'
 import styles, { colors } from '../../styles/global'
 import GoogleCalendar from '../../../assets/svg/GoogleCalendar'
 import { CALENDAR_TASK_INDEX, NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../../../utils/backends/openTasks'
 import TasksList from './TasksList'
 import ParentGoalSection from './ParentGoalSection'
+import { sortBy } from 'lodash'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
+import { useSelector } from 'react-redux'
+import GeneralTasksHeader from './GeneralTasksHeader'
+// Removed global single-project lookup; use the current project instead
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
-import { buildChronologicalCalendarRuns } from './calendarSectionGrouping'
-import CalendarSectionMoreButton from '../../UIComponents/FloatModals/PrepareMeetings/CalendarSectionMoreButton'
-import {
-    getCalendarConnectedProjectIds,
-    getCalendarProviderUrl,
-    getCalendarSectionTitle,
-} from './calendarSectionHelper'
 
-/**
- * AT-2377 - the dedicated "Calendar" section of one day on the open-tasks board.
- *
- * Meetings are shown here instead of inside the priority-sorted main list, ordered by event start
- * rather than by goal position, priority or `sortIndex`: a meeting happens when it happens, so the
- * order the user cares about is the clock.
- *
- * AT-2436 - the clock wins over the grouping, not the other way round. The whole day is sorted
- * chronologically first and then cut into runs of consecutive meetings that share a goal
- * (`buildChronologicalCalendarRuns`), so a goal card is a heading INSIDE the chronological list and
- * the "General tasks" header resumes after it. Rendering the store's goal buckets as contiguous
- * blocks - what this section did before - meant one meeting carrying a goal dragged the whole
- * bucket to its position and left its own start time out of order.
- *
- * The chronological order itself comes from `compareTasksByCalendarPlacement`, the AT-2351 rule,
- * rather than from a local sort: "(calendar day, all-day first, start time, arrival)". Reusing it
- * keeps this section, My Day and the focus-task pick from disagreeing about which meeting is next.
- */
 export default function CalendarSection({ projectId, calendarEvents, dateIndex, isActiveOrganizeMode, instanceKey }) {
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
     const openMilestones = useSelector(state => state.openMilestonesByProjectInTasks[projectId])
     const doneMilestones = useSelector(state => state.doneMilestonesByProjectInTasks[projectId])
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
     const currentUserId = useSelector(state => state.currentUser.uid)
-    const displayedProjectSections = useSelector(state => state.filteredOpenTasksStore?.[instanceKey])
+    const firstLoginDateInDay = useSelector(state => state.loggedUser.firstLoginDateInDay)
+
+    const openLink = () => {
+        const calendarData = calendarEvents[0][1][0].calendarData
+        return window.open(
+            calendarData.provider === 'microsoft'
+                ? calendarData.link || 'https://outlook.office.com/calendar/'
+                : 'https://calendar.google.com/calendar/u/?' + `authuser=${calendarData.email}`,
+            '_blank'
+        )
+    }
 
     const goalsPositionId = sortGoalTasksGorups(
         projectId,
@@ -56,23 +44,81 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
 
     if (!goalsPositionId) return null
 
-    const calendarRuns = buildChronologicalCalendarRuns(calendarEvents)
+    const sortedCalendarTasks = [...calendarEvents]
+    sortedCalendarTasks.sort((a, b) => goalsPositionId[a[0]] - goalsPositionId[b[0]])
 
-    // Same rule as the main list's `hasGoals` (MainSection): the "General tasks" header only means
-    // something once a goal heading is on screen to tell it apart from. When it does, EVERY run
-    // without a goal gets one - including the first - so the reading stays General -> goal -> General.
-    const showGeneralTasksHeader = calendarRuns.some(run => run.goalId !== NOT_PARENT_GOAL_INDEX)
+    const showGneralTasksHeader = sortedCalendarTasks.length > 0 && sortedCalendarTasks[0][0] !== NOT_PARENT_GOAL_INDEX
 
-    const allCalendarTasks = calendarEvents.flatMap(goalTasksData => goalTasksData[1])
-    const displayedProjectCalendarTasks = displayedProjectSections?.flatMap(day =>
-        (day[CALENDAR_TASK_INDEX] || []).flatMap(([, tasks]) => tasks)
-    )
-    const firstCalendarData = allCalendarTasks[0]?.calendarData
-    const connectedProjectIds = getCalendarConnectedProjectIds(allCalendarTasks, apisConnected, projectId)
+    const sortCalendarTaskListChronologically = (tasks, firstLoginDate, endTimeForAllDay) => {
+        if (!tasks || tasks.length === 0) return []
+        return orderBy(
+            tasks,
+            [
+                task => {
+                    if (!task.calendarData?.start) return Number.MAX_SAFE_INTEGER
+                    return task.calendarData.start.dateTime
+                        ? moment(task.calendarData.start.dateTime).valueOf()
+                        : firstLoginDate
+                },
+                task => {
+                    if (!task.calendarData?.end) return Number.MAX_SAFE_INTEGER
+                    return task.calendarData.end.dateTime
+                        ? moment(task.calendarData.end.dateTime).valueOf()
+                        : endTimeForAllDay
+                },
+                task => task.id,
+            ],
+            ['asc', 'asc', 'asc']
+        )
+    }
 
-    const openLink = () => window.open(getCalendarProviderUrl(firstCalendarData), '_blank')
+    const endTimeForAllDayCalendarTasks = firstLoginDateInDay
 
-    const syncAllCalendars = projectIds => Promise.all(projectIds.map(pid => checkIfCalendarConnected(pid)))
+    // Get all unique calendar-connected project IDs from the calendar task data
+    const getCalendarConnectedProjectIds = () => {
+        const uniqueProjectIds = new Set()
+
+        // Iterate through all goals/tasks to find source projects
+        calendarEvents.forEach(goalData => {
+            const tasks = goalData[1]
+            tasks.forEach(task => {
+                if (!task.calendarData) return
+
+                // Priority 1: originalProjectId
+                if (task.calendarData.originalProjectId) {
+                    uniqueProjectIds.add(task.calendarData.originalProjectId)
+                    return
+                }
+
+                // Priority 2: Find project by calendar email
+                const calendarEmail = task.calendarData.email
+                if (apisConnected && calendarEmail) {
+                    for (const [projId, apis] of Object.entries(apisConnected)) {
+                        if (apis.calendar && apis.calendarEmail === calendarEmail) {
+                            uniqueProjectIds.add(projId)
+                            return
+                        }
+                    }
+                }
+            })
+        })
+
+        // If no specific projects found, default to current project
+        if (uniqueProjectIds.size === 0) {
+            uniqueProjectIds.add(projectId)
+        }
+
+        return Array.from(uniqueProjectIds)
+    }
+
+    const calendarConnectedProjectIds = getCalendarConnectedProjectIds()
+    const connectedProjectIds = calendarConnectedProjectIds.filter(pid => apisConnected?.[pid]?.calendar)
+    const hasConnectedCalendars = connectedProjectIds.length > 0
+
+    const syncAllCalendars = async projectIds => {
+        if (__DEV__) console.log('[CalendarSection] Syncing calendars for projects:', projectIds)
+        return Promise.all(projectIds.map(pid => checkIfCalendarConnected(pid)))
+    }
 
     return (
         <View style={localStyles.container}>
@@ -80,24 +126,27 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                 <View style={localStyles.centeredRow}>
                     <TouchableOpacity onPress={openLink} style={{ flexDirection: 'row' }}>
                         <GoogleCalendar />
-                        <Text style={localStyles.title}>{getCalendarSectionTitle(firstCalendarData)}</Text>
+                        <Text style={localStyles.title}>Google Calendar</Text>
                     </TouchableOpacity>
-                    <CalendarSectionMoreButton
-                        projectId={projectId}
-                        tasks={displayedProjectCalendarTasks || allCalendarTasks}
-                    />
-                    {connectedProjectIds.length > 0 && (
+                    {hasConnectedCalendars && (
                         <ReloadCalendar projectId={connectedProjectIds} Promise={syncAllCalendars} />
                     )}
                 </View>
             </View>
 
-            {calendarRuns.map(({ goalId, taskList, goalIndex, occurrence, key }, index) => {
-                const isLastIndex = calendarRuns.length - 1 === index
-
+            {sortedCalendarTasks.map((goalTasksData, index) => {
+                const goalId = goalTasksData[0]
+                const taskList = goalTasksData[1]
+                const chronoSortedTaskList = sortCalendarTaskListChronologically(
+                    taskList,
+                    firstLoginDateInDay,
+                    endTimeForAllDayCalendarTasks
+                )
+                const isLastIndex = sortedCalendarTasks.length - 1 === index
+                const goalIndex = calendarEvents.findIndex(data => data[0] === goalId)
                 return goalId === NOT_PARENT_GOAL_INDEX ? (
-                    <TaskHierarchyGroup key={key}>
-                        {showGeneralTasksHeader && (
+                    <View key={goalId}>
+                        {showGneralTasksHeader && (
                             <SwipeableGeneralTasksHeader
                                 projectId={projectId}
                                 taskList={taskList}
@@ -110,28 +159,22 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                             dateIndex={dateIndex}
                             subtaskByTask={[]}
                             isActiveOrganizeMode={isActiveOrganizeMode}
-                            taskList={taskList}
+                            taskList={chronoSortedTaskList}
                             taskListIndex={CALENDAR_TASK_INDEX}
                             goalIndex={goalIndex}
                             instanceKey={instanceKey}
                         />
-                    </TaskHierarchyGroup>
+                    </View>
                 ) : (
                     <ParentGoalSection
-                        key={key}
+                        key={goalId}
                         projectId={projectId}
                         dateIndex={dateIndex}
                         goalId={goalId}
                         subtaskByTask={[]}
                         isActiveOrganizeMode={isActiveOrganizeMode}
-                        taskList={taskList}
+                        taskList={chronoSortedTaskList}
                         taskListIndex={CALENDAR_TASK_INDEX}
-                        // A goal split across two runs renders two cards, so their `refKey`s - built
-                        // from `${goalId}${dateIndex}${taskListIndex}${nestedTaskListIndex}` - have to
-                        // differ, or the two cards share one dismissible ref and open each other's
-                        // edit popup. Only the second and later runs need it, so the single-run case
-                        // (every goal, almost always) keeps the exact key it had before.
-                        nestedTaskListIndex={occurrence > 0 ? occurrence : undefined}
                         containerStyle={isLastIndex ? null : { marginBottom: 16 }}
                         goalIndex={goalIndex}
                         instanceKey={instanceKey}

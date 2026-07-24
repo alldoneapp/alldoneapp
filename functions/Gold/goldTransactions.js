@@ -1,30 +1,6 @@
 const admin = require('firebase-admin')
-const crypto = require('crypto')
-const { FieldValue } = require('firebase-admin/firestore')
 
-const GOLD_CONTEXT_FIELDS = [
-    'projectId',
-    'goalId',
-    'objectId',
-    'objectType',
-    'channel',
-    'note',
-    'callSessionId',
-    // Billing dimensions (AT-2487). `model` is the pricing key the charge was computed
-    // with, stored verbatim so the exact value survives even though the rollup slugs it.
-    // `correlationId` is the VM run id: the ledger previously carried nothing that could
-    // be joined back to `vmJobs`, which is why answering "was this spend token-billed?"
-    // needed a manual, approximate match on projectId + objectId + timestamp.
-    'model',
-    'correlationId',
-]
-
-// Booleans need their own list because the string sanitizer below drops everything that is
-// not a non-empty string. `billingExempt` is a tristate — true / false / absent — and the
-// absent case is load-bearing (see goldDimensions.js), so it is persisted only when the
-// caller passes an actual boolean. An `undefined` from a charge site that has no concept of
-// billing exemption must never be written as `false`.
-const GOLD_CONTEXT_BOOLEAN_FIELDS = ['billingExempt']
+const GOLD_CONTEXT_FIELDS = ['projectId', 'goalId', 'objectId', 'objectType', 'channel', 'note', 'callSessionId']
 
 function sanitizeContext(context = {}) {
     const sanitized = {}
@@ -37,14 +13,6 @@ function sanitizeContext(context = {}) {
         }
     })
 
-    GOLD_CONTEXT_BOOLEAN_FIELDS.forEach(field => {
-        const value = context[field]
-
-        if (typeof value === 'boolean') {
-            sanitized[field] = value
-        }
-    })
-
     return sanitized
 }
 
@@ -53,7 +21,7 @@ function buildGoldTransaction({ amount, direction, source, balanceBefore, balanc
         amount,
         direction,
         source,
-        createdAt: FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
         balanceBefore,
         balanceAfter,
         ...sanitizeContext(context),
@@ -129,39 +97,15 @@ async function applyGoldChange({
     requireSufficientBalance = false,
     additionalUserFields = {},
     onTransaction,
-    idempotencyKey = '',
 }) {
     const userRef = admin.firestore().doc(`users/${userId}`)
-    const normalizedIdempotencyKey =
-        typeof idempotencyKey === 'string' && idempotencyKey.trim() ? idempotencyKey.trim() : ''
-    const claimRef = normalizedIdempotencyKey
-        ? userRef
-              .collection('goldChangeClaims')
-              .doc(crypto.createHash('sha256').update(normalizedIdempotencyKey).digest('hex'))
-        : null
     let result = { success: false, message: 'User not found' }
 
     await admin.firestore().runTransaction(async transaction => {
-        const [userDoc, claimDoc] = await Promise.all([
-            transaction.get(userRef),
-            claimRef ? transaction.get(claimRef) : Promise.resolve(null),
-        ])
+        const userDoc = await transaction.get(userRef)
 
         if (!userDoc.exists) {
             result = { success: false, message: 'User not found' }
-            return
-        }
-
-        if (claimDoc?.exists) {
-            const claim = claimDoc.data() || {}
-            result = {
-                success: true,
-                alreadyProcessed: true,
-                previousBalance: claim.previousBalance,
-                newBalance: claim.newBalance,
-                amount: claim.amount,
-                entryId: claim.entryId,
-            }
             return
         }
 
@@ -190,28 +134,12 @@ async function applyGoldChange({
                 entryId: result.entryId,
             })
         }
-
-        if (result.success && claimRef) {
-            transaction.set(claimRef, {
-                idempotencyKey: normalizedIdempotencyKey,
-                amount: result.amount,
-                direction,
-                source,
-                previousBalance: result.previousBalance,
-                newBalance: result.newBalance,
-                entryId: result.entryId,
-                createdAt: FieldValue.serverTimestamp(),
-            })
-        }
     })
 
     return result
 }
 
 module.exports = {
-    GOLD_CONTEXT_FIELDS,
-    GOLD_CONTEXT_BOOLEAN_FIELDS,
-    sanitizeContext,
     applyGoldChange,
     applyGoldChangeInTransaction,
 }

@@ -63,7 +63,7 @@ export default function AdminPanelView({ navigation }) {
             {!mobile ? <CustomSideMenu navigation={navigation} isWeb /> : null}
 
             <View style={{ flex: 1 }}>
-                {!mobile && !isMiddleScreen && (
+                {!isMiddleScreen && (
                     <View
                         style={[
                             localStyles.backButtonContainer,

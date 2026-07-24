@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
+import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import PreConfigTaskButton from './PreConfigTaskButton'
 import PreConfigTaskGeneratorModal from '../../../UIComponents/FloatModals/PreConfigTaskGeneratorModal/PreConfigTaskGeneratorModal'
 import { dismissAllPopups } from '../../../../utils/HelperFunctions'
@@ -13,21 +14,12 @@ import {
     TASK_TYPE_IFRAME,
 } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
-import useFloatPopupLock from '../../../../hooks/useFloatPopupLock'
 
-export default function PreConfigTaskGeneratorWrapper({
-    projectId,
-    task,
-    assistant,
-    children,
-    disabled = false,
-    skipNavigation = false,
-}) {
+export default function PreConfigTaskGeneratorWrapper({ projectId, task, assistant }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const isExecuting = useSelector(state => state.preConfigTaskExecuting)
     const [isOpen, setIsOpen] = useState(false)
-    const popupLock = useFloatPopupLock()
 
     const {
         prompt,
@@ -36,30 +28,28 @@ export default function PreConfigTaskGeneratorWrapper({
         type,
         link,
         aiModel,
-        aiReasoningEffort,
+        aiTemperature,
         aiSystemMessage,
         taskMetadata,
         sendWhatsApp,
     } = task
 
     const openModal = () => {
-        if (popupLock.isAcquired()) return
-
         dismissAllPopups()
         setIsOpen(true)
-        popupLock.acquire()
+        dispatch(showFloatPopup())
     }
 
     const closeModal = () => {
         if (isModalOpen(MENTION_MODAL_ID)) return
         setIsOpen(false)
-        popupLock.release()
+        dispatch(hideFloatPopup())
     }
 
     const addTask = async () => {
         const aiSettings = {
             model: aiModel,
-            reasoningEffort: aiReasoningEffort,
+            temperature: aiTemperature,
             systemMessage: aiSystemMessage,
         }
         console.log('PreConfigTaskGeneratorWrapper generating task:', {
@@ -70,29 +60,18 @@ export default function PreConfigTaskGeneratorWrapper({
             sendWhatsAppType: typeof sendWhatsApp,
             sendWhatsAppRawValue: sendWhatsApp,
         })
-        const mergedTaskMetadata = {
-            ...(taskMetadata || {}),
-            sendWhatsApp: !!sendWhatsApp,
-            executionMode: task.executionMode,
-        }
+        const mergedTaskMetadata = { ...(taskMetadata || {}), sendWhatsApp: !!sendWhatsApp }
         console.log('PreConfigTaskGeneratorWrapper merged taskMetadata:', {
             mergedTaskMetadata,
             originalSendWhatsApp: sendWhatsApp,
             convertedSendWhatsApp: !!sendWhatsApp,
         })
-        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata, {
-            skipNavigation,
-        })
+        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata)
     }
 
-    const running = isExecuting === name
-    const executionDisabled = disabled || running
-
-    const pressButton = event => {
-        event?.stopPropagation?.()
-
+    const pressButton = () => {
         // Prevent execution if this task is already running
-        if (executionDisabled) {
+        if (isExecuting === name) {
             return
         }
 
@@ -100,11 +79,7 @@ export default function PreConfigTaskGeneratorWrapper({
             openModal()
         } else {
             if (type === TASK_TYPE_PROMPT || type === TASK_TYPE_WEBHOOK) {
-                if ((variables || []).length > 0) {
-                    openModal()
-                } else {
-                    addTask()
-                }
+                variables.length > 0 ? openModal() : addTask()
             } else if (type === TASK_TYPE_IFRAME) {
                 dispatch({
                     type: 'Set iframe modal data',
@@ -119,7 +94,7 @@ export default function PreConfigTaskGeneratorWrapper({
     }
 
     return (
-        <AppPopover
+        <Popover
             key={!isOpen}
             content={
                 gold > 0 ? (
@@ -139,16 +114,12 @@ export default function PreConfigTaskGeneratorWrapper({
             isOpen={isOpen}
             contentLocation={null}
         >
-            {typeof children === 'function' ? (
-                children({ onPress: pressButton, running, disabled: executionDisabled })
-            ) : (
-                <PreConfigTaskButton
-                    projectId={projectId}
-                    task={task}
-                    onPress={pressButton}
-                    disabled={executionDisabled}
-                />
-            )}
-        </AppPopover>
+            <PreConfigTaskButton
+                projectId={projectId}
+                task={task}
+                onPress={pressButton}
+                disabled={isExecuting === name}
+            />
+        </Popover>
     )
 }

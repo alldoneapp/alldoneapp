@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import ObjectCommentsTag from './ObjectCommentsTag'
 import { useDispatch, useSelector } from 'react-redux'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
-import { popoverToTop, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
+import { popoverToTop } from '../../utils/HelperFunctions'
 import { RECORD_SCREEN_MODAL_ID, RECORD_VIDEO_MODAL_ID } from '../Feeds/CommentsTextInput/textInputHelper'
 import {
     BOT_OPTION_MODAL_ID,
@@ -70,7 +70,7 @@ export default function ContactCommentsWrapper({
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment
         ) {
-            await createObjectMessage(
+            createObjectMessage(
                 projectId,
                 contactId,
                 comment,
@@ -86,7 +86,7 @@ export default function ContactCommentsWrapper({
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -97,7 +97,6 @@ export default function ContactCommentsWrapper({
                     userGettingKarmaId={userGettingKarmaId}
                     showBotButton={true}
                     objectName={contact.displayName}
-                    initialObject={contact}
                     externalAssistantId={contact.assistantId}
                 />
             }
@@ -108,7 +107,6 @@ export default function ContactCommentsWrapper({
             align={'end'}
             disableReposition={true}
             contentLocation={popoverToTop}
-            containerStyle={popoverToTopContainerStyle}
         >
             <ObjectCommentsTag
                 commentsData={commentsData}
@@ -119,6 +117,6 @@ export default function ContactCommentsWrapper({
                 disabled={disabled}
                 inTextInput={inTextInput}
             />
-        </AppPopover>
+        </Popover>
     )
 }

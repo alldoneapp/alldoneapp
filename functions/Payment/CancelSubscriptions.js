@@ -11,7 +11,6 @@ const {
     revokeMandate,
 } = require('./Mollie')
 const { getUserData } = require('../Users/usersFirestore')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const processCanceledSubscription = async (userPayingId, subscription, alreadyCanceledInMollie) => {
     const { subscriptionIdInMollie, customerId, paidUsersIds, mandateId } = subscription
@@ -29,12 +28,12 @@ const processCanceledSubscription = async (userPayingId, subscription, alreadyCa
                     paidUsersIds: [],
                     activePaidUsersIds: [],
                     selectedUserIds: [],
-                    nextPaymentDate: FieldValue.delete(),
-                    paymentLink: FieldValue.delete(),
-                    paymentId: FieldValue.delete(),
-                    subscriptionIdInMollie: FieldValue.delete(),
-                    mandateId: FieldValue.delete(),
-                    cardNumber: FieldValue.delete(),
+                    nextPaymentDate: admin.firestore.FieldValue.delete(),
+                    paymentLink: admin.firestore.FieldValue.delete(),
+                    paymentId: admin.firestore.FieldValue.delete(),
+                    subscriptionIdInMollie: admin.firestore.FieldValue.delete(),
+                    mandateId: admin.firestore.FieldValue.delete(),
+                    cardNumber: admin.firestore.FieldValue.delete(),
                 },
                 { merge: true }
             )
@@ -122,7 +121,7 @@ const cancelSubscription = async userPayingId => {
         admin.firestore().doc(`subscriptions/${userPayingId}`).update({
             status: SUBSCRIPTION_STATUS_CANCELED,
             activePaidUsersIds: [],
-            subscriptionIdInMollie: FieldValue.delete(),
+            subscriptionIdInMollie: admin.firestore.FieldValue.delete(),
             selectedUserIds: [],
         })
     )

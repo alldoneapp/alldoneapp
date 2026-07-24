@@ -19,7 +19,6 @@ const copyTasks = async (firebase, projectId, newProjectId, user, originTasks, i
             const newTaskRef = db.doc(`/items/${newProjectId}/tasks/${task.id}`)
             const newTaskData = {
                 ...taskData,
-                projectId: newProjectId,
                 isPrivate: false,
                 isPublicFor: [FEED_PUBLIC_FOR_ALL, user.uid],
                 userId: user.uid,

@@ -12,9 +12,8 @@ import {
     importAssistantSkillsFromRepo,
     watchSkillImportJob,
 } from '../../../utils/backends/AssistantSkills/assistantSkillsFirestore'
-import { GLOBAL_SKILL_CATALOG_ID as GLOBAL_PROJECT_ID } from '../../../utils/AssistantSkills/skillCatalog'
 
-export default function ImportSkillsPanel({ skills, pendingImports, projectId = GLOBAL_PROJECT_ID }) {
+export default function ImportSkillsPanel({ skills, pendingImports }) {
     const [repoUrl, setRepoUrl] = useState('')
     const [importing, setImporting] = useState(false)
     const [resultText, setResultText] = useState('')
@@ -49,7 +48,7 @@ export default function ImportSkillsPanel({ skills, pendingImports, projectId = 
         watchSkillImportJob(jobId, watcherKey, setJobProgress)
 
         try {
-            const result = await importAssistantSkillsFromRepo(repoUrl.trim(), null, jobId, projectId)
+            const result = await importAssistantSkillsFromRepo(repoUrl.trim(), null, jobId)
             const stagedCount = result?.staged?.length || 0
             const skippedCount = result?.skipped?.length || 0
             setResultText(
@@ -69,7 +68,7 @@ export default function ImportSkillsPanel({ skills, pendingImports, projectId = 
     const approve = async stagedImport => {
         setProcessingImportId(stagedImport.uid)
         try {
-            await approveAssistantSkillImport(stagedImport, skills, projectId)
+            await approveAssistantSkillImport(stagedImport, skills)
         } finally {
             setProcessingImportId('')
         }
@@ -78,7 +77,7 @@ export default function ImportSkillsPanel({ skills, pendingImports, projectId = 
     const dismiss = async stagedImport => {
         setProcessingImportId(stagedImport.uid)
         try {
-            await dismissAssistantSkillImport(stagedImport.uid, projectId)
+            await dismissAssistantSkillImport(stagedImport.uid)
         } finally {
             setProcessingImportId('')
         }

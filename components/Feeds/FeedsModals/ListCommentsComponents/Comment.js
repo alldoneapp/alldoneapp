@@ -1,5 +1,6 @@
 import React from 'react'
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import moment from 'moment'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -13,7 +14,6 @@ import {
     parseMarkdownLines,
     parseInlineFormatting,
 } from '../../../ChatsView/ChatDV/EditorView/markdownParserFunctions'
-import { hasContentBeforeLine, MARKDOWN_HEADING_TOP_MARGIN } from '../../../ChatsView/ChatDV/EditorView/markdownLayout'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import Icon from '../../../Icon'
@@ -30,24 +30,10 @@ import LinkTag from '../../../Tags/LinkTag'
 import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
-import { localizedMoment } from '../../../../i18n/localizedMoment'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
-import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
-import MessageSendStatus from '../../../ChatsView/ChatDV/EditorView/MessageSendStatus'
-
-const INLINE_COMMENT_ELEMENT_TYPES = new Set([TEXT_ELEMENT, HASH_ELEMENT, URL_ELEMENT, MENTION_ELEMENT, EMAIL_ELEMENT])
-
-const canRenderInline = segments => {
-    const elements = segments.reduce(
-        (parsedElements, segment) => parsedElements.concat(parseFeedComment(segment.text, false, segment.bold)),
-        []
-    )
-
-    return elements.length > 0 && elements.every(element => INLINE_COMMENT_ELEMENT_TYPES.has(element.type))
-}
 
 // Render inline formatted text segments with link/tag parsing
 const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => {
@@ -227,15 +213,12 @@ export default function Comment({
     linkedEmailArchiving,
     linkedEmailArchived,
     onArchiveLinkedEmail,
-    contentOverride,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const { commentText, lastChangeDate, creatorId } = comment
 
-    const { photoURL, displayName, isAssistant } = useGetUserPresentationData(creatorId, {
-        fromAssistant: comment.fromAssistant,
-    })
+    const { photoURL, displayName } = useGetUserPresentationData(creatorId)
 
     const textsFiltered = divideQuotedText(commentText, 'quote')
 
@@ -248,11 +231,10 @@ export default function Comment({
         return linkCounter
     }
 
-    const renderTextContent = (text, firstItem, lastItem) => {
+    const renderTextContent = (text, lastItem) => {
         const textData = divideCodeText(text)
 
         return textData.map((data, subIndex) => {
-            const firstItemInsideItem = firstItem && subIndex === 0
             const lastItemInsideItem = lastItem && subIndex === textData.length - 1
             if (data.type === 'code') {
                 return (
@@ -281,20 +263,10 @@ export default function Comment({
                         )
                     } else if (/^h[1-6]$/.test(line.type)) {
                         const headingStyle = localStyles[`header${line.type.substring(1)}`]
-                        const hasPrecedingContent = hasContentBeforeLine(
-                            processedLines,
-                            lineIndex,
-                            !firstItemInsideItem
-                        )
                         return (
                             <Text
                                 key={`header-${lineIndex}`}
-                                testID="markdown-heading"
-                                style={[
-                                    headingStyle,
-                                    hasPrecedingContent && { marginTop: MARKDOWN_HEADING_TOP_MARGIN },
-                                    !isLastLine && { marginBottom: 16 },
-                                ]}
+                                style={[headingStyle, !isLastLine && { marginBottom: 16 }]}
                             >
                                 {renderFormattedText(line.segments, headingStyle, projectId, getLinkCounter)}
                             </Text>
@@ -362,20 +334,13 @@ export default function Comment({
                             </View>
                         )
                     } else {
+                        // For regular text, check if it has inline formatting
                         const segments = parseInlineFormatting(line.text)
                         const hasFormatting = segments.some(s => s.bold || s.italic || s.strikethrough)
 
-                        // Keep normal prose in one inline formatting context. The legacy
-                        // element parser uses a flex item and margin for every word, which
-                        // leaves unselectable gaps and loses semantic spaces when copied.
-                        // Media and attachment tokens still need its block renderer.
-                        if (hasFormatting || canRenderInline(segments)) {
+                        if (hasFormatting) {
                             return (
-                                <Text
-                                    key={`text-${lineIndex}`}
-                                    testID="comment-inline-text"
-                                    style={[localStyles.comment, marginStyle]}
-                                >
+                                <Text key={`text-${lineIndex}`} style={[localStyles.comment, marginStyle]}>
                                     {renderFormattedText(segments, localStyles.comment, projectId, getLinkCounter)}
                                 </Text>
                             )
@@ -401,47 +366,35 @@ export default function Comment({
         <View style={[localStyles.container, containerStyle]}>
             <View style={localStyles.commentBody}>
                 <View style={localStyles.commentHeader} testID="feed-comment-header">
-                    {isAssistant ? (
-                        <AssistantAvatar
-                            photoURL={photoURL?.uri || photoURL}
-                            assistantId={creatorId}
-                            size={24}
-                            containerStyle={{ marginRight: 8, flexShrink: 0 }}
-                        />
-                    ) : (
-                        <Image style={localStyles.avatar} source={{ uri: photoURL }} />
-                    )}
+                    <Image style={localStyles.avatar} source={{ uri: photoURL }} />
                     <Text style={[localStyles.name, { maxWidth: smallScreenNavigation ? 130 : 250 }]} numberOfLines={1}>
                         {displayName}
                     </Text>
                     <Text style={[localStyles.commentSubHeader, { marginHorizontal: 4 }]}>•</Text>
                     <Text style={localStyles.commentSubHeader} numberOfLines={1}>
-                        {localizedMoment(date).fromNow()}
+                        {moment(date).fromNow()}
                     </Text>
                     {linkedEmail && linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
-                    <MessageSendStatus pendingSend={comment.pendingSend} dark style={{ marginLeft: 8 }} />
                 </View>
 
-                {contentOverride ||
-                    textsFiltered.map((commentData, index) => {
-                        const { type, text } = commentData
-                        const firstItem = index === 0
-                        const lastItem = index === textsFiltered.length - 1
-                        if (type === 'quote') {
-                            return (
-                                <QuotedText
-                                    key={index}
-                                    projectId={projectId}
-                                    lastItem={lastItem}
-                                    quotedText={text}
-                                    backgroundColor={colors.Secondary300}
-                                    textColor={colors.Text04}
-                                />
-                            )
-                        } else {
-                            return renderTextContent(text, firstItem, lastItem)
-                        }
-                    })}
+                {textsFiltered.map((commentData, index) => {
+                    const { type, text } = commentData
+                    const lastItem = index === textsFiltered.length - 1
+                    if (type === 'quote') {
+                        return (
+                            <QuotedText
+                                key={index}
+                                projectId={projectId}
+                                lastItem={lastItem}
+                                quotedText={text}
+                                backgroundColor={colors.Secondary300}
+                                textColor={colors.Text04}
+                            />
+                        )
+                    } else {
+                        return renderTextContent(text, lastItem)
+                    }
+                })}
                 {linkedEmail && (
                     <View style={localStyles.linkedEmailActions} testID="linked-email-actions">
                         <GmailTag
@@ -467,15 +420,14 @@ export default function Comment({
                                     disabled={linkedEmailArchiving || linkedEmailArchived}
                                     accessibilityLabel={translate('Archive email')}
                                 >
-                                    {/* Archived wins over archiving (AT-2424): the archive is
-                                        optimistic, so the check mark is the answer from the
-                                        press onwards. */}
-                                    {linkedEmailArchived ? (
-                                        <Icon name="check" size={14} color={colors.UtilityBlue125} />
-                                    ) : linkedEmailArchiving ? (
+                                    {linkedEmailArchiving ? (
                                         <ActivityIndicator size="small" color={colors.UtilityBlue125} />
                                     ) : (
-                                        <Icon name="archive" size={14} color={colors.UtilityBlue125} />
+                                        <Icon
+                                            name={linkedEmailArchived ? 'check' : 'archive'}
+                                            size={14}
+                                            color={colors.UtilityBlue125}
+                                        />
                                     )}
                                     <Text style={localStyles.linkedEmailButtonText}>
                                         {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
@@ -513,7 +465,6 @@ const localStyles = StyleSheet.create({
     name: {
         ...styles.subtitle1,
         color: colors.Text04,
-        flexShrink: 1,
     },
     commentBody: {
         flex: 1,

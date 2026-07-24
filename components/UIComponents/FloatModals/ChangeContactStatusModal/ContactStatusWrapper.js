@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
@@ -28,7 +28,7 @@ export default function ContactStatusWrapper({ disabled, projectId, currentStatu
     }
 
     return (
-        <AppPopover
+        <Popover
             key={!isOpen}
             content={
                 <ContactStatusModal
@@ -50,6 +50,6 @@ export default function ContactStatusWrapper({ disabled, projectId, currentStatu
                 statusId={currentStatusId}
                 onPress={openModal}
             />
-        </AppPopover>
+        </Popover>
     )
 }

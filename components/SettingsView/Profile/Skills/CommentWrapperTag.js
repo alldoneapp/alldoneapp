@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import ObjectCommentsTag from '../../../Tags/ObjectCommentsTag'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import RichCommentModal from '../../../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
-import { popoverToTop, popoverToTopContainerStyle } from '../../../../utils/HelperFunctions'
+import { popoverToTop } from '../../../../utils/HelperFunctions'
 import {
     BOT_OPTION_MODAL_ID,
     BOT_WARNING_MODAL_ID,
@@ -59,13 +59,13 @@ export default function CommentWrapperTag({
             !isBotWarningModalOpen &&
             comment
         ) {
-            await createObjectMessage(projectId, skillId, comment, 'skills', null, null, null)
+            createObjectMessage(projectId, skillId, comment, 'skills', null, null, null)
             if (!assistantEnabled) closeModal()
         }
     }
 
     return commentsData ? (
-        <AppPopover
+        <Popover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -86,7 +86,6 @@ export default function CommentWrapperTag({
             align={'end'}
             disableReposition={true}
             contentLocation={popoverToTop}
-            containerStyle={popoverToTopContainerStyle}
         >
             <ObjectCommentsTag
                 commentsData={commentsData}
@@ -97,6 +96,6 @@ export default function CommentWrapperTag({
                 style={{ marginLeft: 8 }}
                 disabled={disabled}
             />
-        </AppPopover>
+        </Popover>
     ) : null
 }

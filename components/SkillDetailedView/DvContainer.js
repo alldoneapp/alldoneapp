@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector, shallowEqual, useDispatch } from 'react-redux'
 
@@ -12,7 +12,6 @@ import NavigationBarContainer from './NavigationBarContainer'
 import { setDvIsFullScreen } from '../../redux/actions'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
-import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 export default function DvContainer({ projectId }) {
     const dispatch = useDispatch()
@@ -22,6 +21,7 @@ export default function DvContainer({ projectId }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isFullScreen = useSelector(state => state.dvIsFullScreen)
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
 
     const userHasAccessToProject = SharedHelper.checkIfUserHasAccessToProject(
         isAnonymous,
@@ -34,22 +34,16 @@ export default function DvContainer({ projectId }) {
 
     const CustomView =
         selectedNavItem === DV_TAB_SKILL_NOTE || selectedNavItem === DV_TAB_SKILL_CHAT ? View : CustomScrollView
-    const scrollRef = useRef()
-    useResetDetailedViewScroll(selectedNavItem, scrollRef)
 
     useEffect(() => {
-        // Fullscreen is global for skill details, so reset stale note fullscreen state on entry.
-        dispatch(setDvIsFullScreen(false))
-    }, [])
+        dispatch(setDvIsFullScreen(assistantEnabled))
+    }, [assistantEnabled])
 
     return (
         <View style={{ flex: 1 }}>
-            {!smallScreenNavigation && !isMiddleScreen && userHasAccessToProject && (
-                <BackButton projectId={projectId} />
-            )}
+            {!isMiddleScreen && userHasAccessToProject && <BackButton projectId={projectId} />}
 
             <CustomView
-                ref={scrollRef}
                 style={[
                     localStyles.scrollPanel,
                     smallScreenNavigation

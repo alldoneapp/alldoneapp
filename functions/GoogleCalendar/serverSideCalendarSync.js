@@ -1,7 +1,7 @@
 'use strict'
 const { google } = require('googleapis')
 const admin = require('firebase-admin')
-const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { getMicrosoftGraphClient } = require('../MicrosoftGraph/graphClient')
 const {
     addCalendarEvents,
@@ -10,7 +10,7 @@ const {
     getRoutedCalendarEventIds,
 } = require('../GoogleCalendarTasks/calendarTasks')
 const { routeCalendarEventsToProjects } = require('./calendarProjectRouting')
-const { getUserLocalDayStart, resolveTimezoneOffsetMinutes, resolveUserTimezone } = require('./calendarUserDay')
+const moment = require('moment-timezone')
 
 function graphEventToGoogleEvent(event = {}) {
     return {
@@ -45,7 +45,6 @@ function graphEventToGoogleEvent(event = {}) {
                   displayName: event.organizer.emailAddress.name || '',
               }
             : null,
-        recurringEventId: event.seriesMasterId || '',
         provider: 'microsoft',
     }
 }
@@ -78,18 +77,47 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             throw new Error('Calendar not connected for this project')
         }
 
-        // AT-2480: the user's timezone and the local day it implies now come from
-        // `calendarUserDay`, so the scheduled sync's "already synced for this local day" marker
-        // and the window fetched here can never name different days.
-        const timezone = resolveUserTimezone(userData)
-        const timezoneOffset = resolveTimezoneOffsetMinutes(timezone)
+        // Get user timezone (string or offset)
+        const timezone =
+            (typeof userData?.timezone !== 'undefined' ? userData.timezone : null) ??
+            (typeof userData?.timezoneOffset !== 'undefined' ? userData.timezoneOffset : null) ??
+            (typeof userData?.timezoneMinutes !== 'undefined' ? userData.timezoneMinutes : null) ??
+            0
+
+        // Calculate timezone offset in minutes
+        let timezoneOffset = 0
+        if (typeof timezone === 'string') {
+            // It's an IANA timezone string (e.g., "Europe/Berlin")
+            timezoneOffset = moment.tz(timezone).utcOffset()
+        } else if (typeof timezone === 'number') {
+            // It's already an offset. If small number, treat as hours (e.g. 1 -> 60)
+            // Range checks for valid hour offsets (typically -12 to +14)
+            if (Math.abs(timezone) <= 16) {
+                timezoneOffset = timezone * 60
+            } else {
+                timezoneOffset = timezone
+            }
+        }
 
         console.log(
             `[serverSideCalendarSync] Timezone: ${timezone}, Offset: ${timezoneOffset}, User: ${userId}, Project: ${projectId}`
         )
 
         // Calculate time range for events using user's timezone
-        const startOfTodayUserTz = getUserLocalDayStart(userData)
+        // Calculate time range for events using user's timezone
+        let startOfTodayUserTz
+        try {
+            if (typeof timezone === 'string') {
+                startOfTodayUserTz = moment.tz(timezone).startOf('day')
+            } else {
+                // Numeric offset or default 0
+                startOfTodayUserTz = moment().utcOffset(timezoneOffset).startOf('day')
+            }
+        } catch (e) {
+            console.error(`[serverSideCalendarSync] Error parsing timezone '${timezone}':`, e)
+            // Fallback to UTC if timezone parsing fails
+            startOfTodayUserTz = moment.utc().startOf('day')
+        }
 
         const timeMin = startOfTodayUserTz.toDate()
         const timeMax = startOfTodayUserTz.clone().endOf('day').toDate()
@@ -118,10 +146,14 @@ async function syncCalendarEvents(userId, projectId, daysAhead = 30) {
             })
             events = (response?.value || []).map(graphEventToGoogleEvent)
         } else {
-            // Authenticated client with full refreshable credentials: the stored access
-            // token is refreshed when it is expired or of unknown age, and the client can
-            // refresh again on its own mid-sync (AT-2195).
-            const oauth2Client = await getAuthorizedOAuth2Client(userId, projectId, 'calendar')
+            // Get fresh access token (automatically refreshes if needed)
+            const accessToken = await getAccessToken(userId, projectId, 'calendar')
+
+            // Create authenticated OAuth2 client
+            const oauth2Client = getOAuth2Client()
+            oauth2Client.setCredentials({
+                access_token: accessToken,
+            })
 
             // Create calendar API instance
             const calendar = google.calendar({ version: 'v3', auth: oauth2Client })

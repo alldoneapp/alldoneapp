@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useState } from 'react'
 import DueDateModal from '../UIComponents/FloatModals/DueDateModal/DueDateModal'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import moment from 'moment'
-import { useSelector } from 'react-redux'
+import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
+import { useDispatch, useSelector } from 'react-redux'
 import DateTag from '../Tags/DateTag'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
-import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function DateTagButton({
     task,
@@ -16,42 +16,29 @@ export default function DateTagButton({
     disabled,
     style,
     saveDueDateBeforeSaveTask,
-    setToBacklogBeforeSaveTask,
     outline = false,
 }) {
     const smallScreen = useSelector(state => state.smallScreen)
     const currentUser = useSelector(state => state.currentUser)
     const [visiblePopover, setVisiblePopover] = useState(false)
-    const isUnmountedRef = useRef(false)
-    const hideTimeoutRef = useRef(null)
-    const popupLock = useFloatPopupLock()
+    const dispatch = useDispatch()
     const date = task.done
         ? task.completed
         : isObservedTask
-          ? task.dueDateByObserversIds[currentUser.uid]
-          : task.dueDate
+        ? task.dueDateByObserversIds[currentUser.uid]
+        : task.dueDate
     const icon = task.done ? 'square-checked-gray' : isObservedTask ? 'calendar-observer' : 'calendar'
 
-    useEffect(() => {
-        return () => {
-            isUnmountedRef.current = true
-            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
-        }
-    }, [])
-
     const hidePopover = () => {
-        if (isUnmountedRef.current) return
         setVisiblePopover(false)
-        popupLock.release()
+        dispatch(hideFloatPopup())
         if (onDismissPopup) onDismissPopup()
     }
 
     const delayHidePopover = () => {
         // This timeout is necessary to stop the propagation of the click
         // to close the Modal, and reach the dismiss event of the EditTask
-        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
-        hideTimeoutRef.current = setTimeout(() => {
-            hideTimeoutRef.current = null
+        setTimeout(async () => {
             hidePopover()
         })
     }
@@ -59,17 +46,13 @@ export default function DateTagButton({
     const showPopover = () => {
         /* istanbul ignore next */
         if (!visiblePopover) {
-            if (hideTimeoutRef.current) {
-                clearTimeout(hideTimeoutRef.current)
-                hideTimeoutRef.current = null
-            }
             setVisiblePopover(true)
-            popupLock.acquire()
+            dispatch(showFloatPopup())
         }
     }
 
     return visiblePopover ? (
-        <AppPopover
+        <Popover
             content={
                 <DueDateModal
                     task={task}
@@ -78,7 +61,6 @@ export default function DateTagButton({
                     delayClosePopover={delayHidePopover}
                     isObservedTask={isObservedTask}
                     saveDueDateBeforeSaveTask={saveDueDateBeforeSaveTask}
-                    setToBacklogBeforeSaveTask={setToBacklogBeforeSaveTask}
                 />
             }
             onClickOutside={delayHidePopover}
@@ -97,7 +79,7 @@ export default function DateTagButton({
                 outline={outline}
                 disabled={disabled}
             />
-        </AppPopover>
+        </Popover>
     ) : (
         <DateTag
             date={moment(date).format(getDateFormat())}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
-import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import v4 from 'uuid/v4'
 
 import Icon from '../../../../Icon'
@@ -9,10 +9,9 @@ import styles, { colors } from '../../../../styles/global'
 import Button from '../../../../UIControls/Button'
 import { translate } from '../../../../../i18n/TranslationService'
 import ProjectHelper from '../../../ProjectsSettings/ProjectHelper'
-import ProjectListModal from '../../../../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
+import SelectProjectFromListModal from './SelectProjectFromListModal'
 import { unwatch, watchActiveAndArchivedProjects, watchProject } from '../../../../../utils/backends/firestore'
 import { setDefaultProjectId } from '../../../../../utils/backends/Users/usersFirestore'
-import { getProjectsOwnedByUser, isProjectOwnedByUser } from '../../../../../utils/defaultProjectAuthorization'
 
 export default function DefaultProject({ user }) {
     const mobile = useSelector(state => state.smallScreen)
@@ -23,10 +22,7 @@ export default function DefaultProject({ user }) {
     const { defaultProjectId, uid: userId } = user
 
     const onSelectProject = projectId => {
-        const project = activeProjects.find(activeProject => activeProject.id === projectId)
-        if (defaultProjectId !== projectId && isProjectOwnedByUser(project, userId)) {
-            setDefaultProjectId(userId, projectId)
-        }
+        if (defaultProjectId !== projectId) setDefaultProjectId(userId, projectId)
     }
 
     const closeModal = () => {
@@ -39,7 +35,7 @@ export default function DefaultProject({ user }) {
 
     const filterActiveProjects = projects => {
         const activeProjects = ProjectHelper.getActiveProjects2(projects, user)
-        setActiveProjects(getProjectsOwnedByUser(activeProjects, userId))
+        setActiveProjects(activeProjects)
     }
 
     useEffect(() => {
@@ -71,15 +67,15 @@ export default function DefaultProject({ user }) {
                 </Text>
             </View>
             <View style={[localStyles.settingRowSection, localStyles.settingRowRight]}>
-                <AppPopover
+                <Popover
                     content={
-                        <ProjectListModal
+                        <SelectProjectFromListModal
                             closeModal={closeModal}
                             projects={activeProjects}
                             title={translate('Select one of the projects')}
                             description={translate('You need to select a default project')}
-                            onSelectProject={project => onSelectProject(project.id)}
-                            selectedProjectId={defaultProject ? defaultProject.id : ''}
+                            onSelectProject={onSelectProject}
+                            activeProjectId={defaultProject ? defaultProject.id : ''}
                         />
                     }
                     onClickOutside={closeModal}
@@ -106,7 +102,7 @@ export default function DefaultProject({ user }) {
                             disabled={activeProjects.length === 0}
                         />
                     )}
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )

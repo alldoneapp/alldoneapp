@@ -1,9 +1,7 @@
 import {
     ASSISTANT_INPUT_MAX_HEIGHT,
     getAssistantInputLayout,
-    ASSISTANT_CONTROLS_STACKED_HEIGHT,
-    getAssistantControlsStacked,
-    getAssistantInputDisplayHeight,
+    getStableControlsWidth,
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from './assistantInputLayout'
 
@@ -68,106 +66,30 @@ describe('assistant input layout', () => {
     })
 })
 
-describe('assistant controls stacking', () => {
-    it('stacks the voice and send buttons as soon as the field grows past one line', () => {
-        expect(getAssistantControlsStacked({ inputHeight: 62, hasText: true, wasStacked: false })).toBe(true)
+describe('stable send-controls width', () => {
+    it('captures the collapsed (row) width so the input width can stay fixed', () => {
+        expect(getStableControlsWidth(120.4, false, null)).toBe(121)
     })
 
-    it('keeps the row layout while the field is a single line', () => {
-        expect(getAssistantControlsStacked({ inputHeight: 40, hasText: true, wasStacked: false })).toBe(false)
+    it('never adopts a narrower measurement taken while the cluster is stacked/expanded', () => {
+        // The row layout measured 120; once the input expands the cluster becomes
+        // a column and reports ~72. Trusting that would widen the flex:1 input and
+        // restart the wrap/height oscillation, so the pinned width must not move.
+        expect(getStableControlsWidth(72, true, 120)).toBe(120)
     })
 
-    it('holds the stack when the widened input re-wraps back to one line', () => {
-        // Stacking narrows the cluster by ~48px, so the flex:1 input gets wider
-        // and the text can re-wrap to a single line. Un-stacking here would
-        // re-widen the cluster, re-wrap the text and oscillate forever.
-        expect(getAssistantControlsStacked({ inputHeight: 40, hasText: true, wasStacked: true })).toBe(true)
+    it('holds the pinned width against sub-pixel jitter to avoid needless re-renders', () => {
+        expect(getStableControlsWidth(120.2, false, 120)).toBe(120)
     })
 
-    it('returns to the compact row only once the field is empty', () => {
-        expect(getAssistantControlsStacked({ inputHeight: 40, hasText: false, wasStacked: true })).toBe(false)
+    it('re-measures a genuinely different collapsed width (e.g. after a resize)', () => {
+        expect(getStableControlsWidth(96, false, 120)).toBe(96)
     })
 
-    it('keeps a wrapped placeholder in the row layout without starting the expansion latch', () => {
-        expect(getAssistantControlsStacked({ inputHeight: 64, hasText: false, wasStacked: false })).toBe(false)
-        expect(getAssistantControlsStacked({ inputHeight: 88, hasText: false, wasStacked: true })).toBe(false)
-    })
-
-    it('ignores invalid measurements without dropping the stack', () => {
-        expect(getAssistantControlsStacked({ inputHeight: NaN, hasText: true, wasStacked: true })).toBe(true)
-        expect(getAssistantControlsStacked({ inputHeight: NaN, hasText: false, wasStacked: true })).toBe(false)
-    })
-})
-
-describe('assistant input display height', () => {
-    it('leaves the collapsed height untouched', () => {
-        expect(getAssistantInputDisplayHeight(40, false)).toBe(40)
-        expect(getAssistantInputDisplayHeight(62, false)).toBe(62)
-    })
-
-    it('grows the field to the stacked cluster height so the buttons never overhang', () => {
-        expect(ASSISTANT_CONTROLS_STACKED_HEIGHT).toBe(88)
-        expect(getAssistantInputDisplayHeight(40, true)).toBe(88)
-        expect(getAssistantInputDisplayHeight(62, true)).toBe(88)
-    })
-
-    it('keeps a taller field as measured and never exceeds the scroll ceiling', () => {
-        expect(getAssistantInputDisplayHeight(106, true)).toBe(106)
-        expect(getAssistantInputDisplayHeight(120, true)).toBe(120)
-    })
-})
-
-// AT-2444 — a composer holding a dropped/pasted attachment is allowed past the text cap so the
-// image preview is visible instead of half-shown inside a scroller. The cap is a parameter, so
-// every assertion above (which passes none) is also the proof that the text path is unchanged.
-describe('assistant input layout with a raised cap for attachments', () => {
-    const MEDIA_MAX = 260
-
-    it('grows past the text cap when a taller cap is passed', () => {
-        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT, MEDIA_MAX)).toEqual({
-            height: 220,
-            scrollEnabled: false,
-        })
-        // The same measurement against the default cap still clamps and scrolls.
-        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT)).toEqual({
-            height: ASSISTANT_INPUT_MAX_HEIGHT,
-            scrollEnabled: true,
-        })
-    })
-
-    it('moves the scroll threshold and the clamp with the cap', () => {
-        expect(getAssistantInputLayout(300, INITIAL_ASSISTANT_INPUT_LAYOUT, MEDIA_MAX)).toEqual({
-            height: MEDIA_MAX,
-            scrollEnabled: true,
-        })
-    })
-
-    it('collapses back below the text cap when the attachment is removed', () => {
-        const expanded = { height: MEDIA_MAX, scrollEnabled: false }
-        expect(getAssistantInputLayout(40, expanded, ASSISTANT_INPUT_MAX_HEIGHT)).toEqual({
-            height: 40,
-            scrollEnabled: false,
-        })
-    })
-
-    it('falls back to the text cap for a missing or nonsensical cap', () => {
-        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT, undefined)).toEqual({
-            height: ASSISTANT_INPUT_MAX_HEIGHT,
-            scrollEnabled: true,
-        })
-        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT, NaN)).toEqual({
-            height: ASSISTANT_INPUT_MAX_HEIGHT,
-            scrollEnabled: true,
-        })
-        expect(getAssistantInputLayout(220, INITIAL_ASSISTANT_INPUT_LAYOUT, 5)).toEqual({
-            height: ASSISTANT_INPUT_MAX_HEIGHT,
-            scrollEnabled: true,
-        })
-    })
-
-    it('lets the stacked display height follow the raised cap too', () => {
-        expect(getAssistantInputDisplayHeight(220, true, MEDIA_MAX)).toBe(220)
-        expect(getAssistantInputDisplayHeight(300, true, MEDIA_MAX)).toBe(MEDIA_MAX)
-        expect(getAssistantInputDisplayHeight(220, true)).toBe(ASSISTANT_INPUT_MAX_HEIGHT)
+    it('ignores zero / invalid measurements and keeps the previous width', () => {
+        expect(getStableControlsWidth(0, false, 120)).toBe(120)
+        expect(getStableControlsWidth(NaN, false, 120)).toBe(120)
+        expect(getStableControlsWidth(-5, false, 120)).toBe(120)
+        expect(getStableControlsWidth(undefined, false, null)).toBe(null)
     })
 })

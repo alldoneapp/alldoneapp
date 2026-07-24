@@ -5,56 +5,64 @@ import styles, { colors } from '../../../styles/global'
 import DropDown from './DropDown'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { NEW_TOPIC_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
-import {
-    INHERIT_ASSISTANT_MODEL,
-    PRE_CONFIG_TASK_MODEL_OPTIONS,
-} from '../../../../functions/Assistant/preConfigTaskModel'
-import { PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS } from '../../../../functions/Assistant/preConfigTaskReasoningEffort'
-import { normalizeAssistantReasoningEffort } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
-import { getAssistantModelGoldRateText } from '../../AssistantModelGoldRate'
 
-export const getModelOptions = () => {
-    return [
-        { label: translate('Use assistant model'), value: INHERIT_ASSISTANT_MODEL },
-        ...PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => ({
-            ...option,
-            label: `${translate(option.labelKey)} · ${getAssistantModelGoldRateText({
-                tokensPerGold: option.tokensPerGold,
-            })}`,
-        })),
-    ]
+const MODEL_OPTIONS = [
+    { label: 'GPT-3.5', value: 'MODEL_GPT3_5' },
+    { label: 'GPT-4', value: 'MODEL_GPT4' },
+    { label: 'GPT-4o', value: 'MODEL_GPT4O' },
+    { label: 'GPT-5.1', value: 'MODEL_GPT5_1' },
+    { label: 'GPT-5.6 Sol', value: 'MODEL_GPT5_6_SOL' },
+    { label: 'GPT-5.5', value: 'MODEL_GPT5_5' },
+    { label: 'Sonar', value: 'MODEL_SONAR' },
+    { label: 'Sonar Pro', value: 'MODEL_SONAR_PRO' },
+    { label: 'Sonar Reasoning', value: 'MODEL_SONAR_REASONING' },
+    { label: 'Sonar Reasoning Pro', value: 'MODEL_SONAR_REASONING_PRO' },
+    { label: 'Sonar Deep Research', value: 'MODEL_SONAR_DEEP_RESEARCH' },
+]
+
+const getModelOptions = selectedModel => {
+    if (selectedModel !== 'MODEL_GPT5_2') return MODEL_OPTIONS
+
+    return [...MODEL_OPTIONS, { label: 'GPT-5.2', value: 'MODEL_GPT5_2' }]
 }
 
-export const getReasoningEffortOptions = model =>
-    PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS.filter(
-        option => !['MODEL_GPT6_SOL', 'MODEL_GPT5_6_SOL'].includes(model) || option.value !== 'none'
-    ).map(option => ({
-        ...option,
-        label: translate(option.labelKey),
-    }))
+const TEMPERATURE_OPTIONS = [
+    { label: translate('Very Low'), value: 'TEMPERATURE_VERY_LOW' },
+    { label: translate('Low'), value: 'TEMPERATURE_LOW' },
+    { label: translate('Normal'), value: 'TEMPERATURE_NORMAL' },
+    { label: translate('High'), value: 'TEMPERATURE_HIGH' },
+    { label: translate('Very High'), value: 'TEMPERATURE_VERY_HIGH' },
+]
 
 export default function AISettingsArea({
     disabled,
     aiModel,
-    assistantModel = 'MODEL_GPT6_SOL',
     setAiModel,
-    aiReasoningEffort,
-    setAiReasoningEffort,
+    aiTemperature,
+    setAiTemperature,
     aiSystemMessage,
     setAiSystemMessage,
     isMiddleScreen,
     smallScreenNavigation,
 }) {
-    const modelOptions = getModelOptions()
-    const effectiveModel = aiModel === INHERIT_ASSISTANT_MODEL ? assistantModel : aiModel
-    const reasoningEffortOptions = getReasoningEffortOptions(effectiveModel)
+    const modelOptions = getModelOptions(aiModel)
+
+    console.log('AISettingsArea render:', {
+        aiModel,
+        aiTemperature,
+        aiSystemMessage,
+        modelOptions: modelOptions.map(opt => opt.value),
+        tempOptions: TEMPERATURE_OPTIONS.map(opt => opt.value),
+    })
 
     const handleModelChange = value => {
+        console.log('Model change:', { from: aiModel, to: value })
         setAiModel(value)
     }
 
-    const handleReasoningEffortChange = value => {
-        setAiReasoningEffort(value)
+    const handleTemperatureChange = value => {
+        console.log('Temperature change:', { from: aiTemperature, to: value })
+        setAiTemperature(value)
     }
 
     return (
@@ -77,15 +85,11 @@ export default function AISettingsArea({
             />
 
             <DropDown
-                items={reasoningEffortOptions}
-                value={
-                    aiReasoningEffort === 'none'
-                        ? normalizeAssistantReasoningEffort(aiReasoningEffort, effectiveModel)
-                        : aiReasoningEffort
-                }
-                setValue={handleReasoningEffortChange}
-                placeholder={translate('Reasoning effort')}
-                header={translate('Reasoning effort')}
+                items={TEMPERATURE_OPTIONS}
+                value={aiTemperature}
+                setValue={handleTemperatureChange}
+                placeholder={translate('Choose temperature')}
+                header={translate('Temperature')}
                 containerStyle={{ marginTop: 12, zIndex: 2 }}
                 disabled={disabled}
                 arrowStyle={{

@@ -11,6 +11,7 @@ import useCollapsibleSidebar from './Collapsible/UseCollapsibleSidebar'
 import LoggedUserSidebar from './LoggedUserSidebar/LoggedUserSidebar'
 import AnonymousUserSidebar from './AnonymousUserSidebar/AnonymousUserSidebar'
 import Backdrop from './Backdrop'
+
 export default function CustomSideMenu({ navigation }) {
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -28,13 +29,13 @@ export default function CustomSideMenu({ navigation }) {
     const floatingContainerStl = smallScreenNavigation
         ? [styles.floatingContainer, { width: floatingWidth }, theme.floatingContainer]
         : overlay
-          ? [
-                styles.overlayContainer,
-                expanded && styles.overlayExpanded,
-                { width: floatingWidth },
-                theme.overlayContainer,
-            ]
-          : [styles.container, theme.container, { width: floatingWidth }]
+        ? [
+              styles.overlayContainer,
+              expanded && styles.overlayExpanded,
+              { width: floatingWidth },
+              theme.overlayContainer,
+          ]
+        : [styles.container, theme.container, { width: floatingWidth }]
 
     useEffect(() => {
         const targetWidth = expanded ? SIDEBAR_MENU_WIDTH : SIDEBAR_MENU_COLLAPSED_WIDTH
@@ -49,8 +50,6 @@ export default function CustomSideMenu({ navigation }) {
         Animated.timing(floatingWidth, {
             toValue: targetWidth,
             duration: 100,
-            // width is a layout prop, so the native driver cannot drive it.
-            useNativeDriver: false,
         }).start()
     }, [expanded])
 
@@ -84,7 +83,10 @@ const styles = StyleSheet.create({
         height: 'calc(100% - 56px)',
         position: 'absolute',
         zIndex: 10,
-        boxShadow: '0px -16px 16px rgba(0,0,0,0.56)',
+        shadowColor: 'rgba(0,0,0,0.56)',
+        shadowOffset: { width: 0, height: -16 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         overflow: 'hidden',
     },
@@ -96,7 +98,10 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
     overlayExpanded: {
-        boxShadow: '0px -16px 16px rgba(0,0,0,0.56)',
+        shadowColor: 'rgba(0,0,0,0.56)',
+        shadowOffset: { width: 0, height: -16 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
     },
     backdrop: {
         width: '100%',

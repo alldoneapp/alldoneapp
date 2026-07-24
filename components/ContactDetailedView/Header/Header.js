@@ -16,12 +16,11 @@ import SharedHelper from '../../../utils/SharedHelper'
 import { DV_TAB_CONTACT_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 import { setProjectContactName } from '../../../utils/backends/Contacts/contactsFirestore'
-import ProjectMoveIndicator from '../../UIComponents/ProjectMoveIndicator'
 
 export default function Header({ contact, disabled, isFullscreen, setFullscreen, projectId }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
-    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
+    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const selectedNavItem = useSelector(state => state.selectedNavItem)
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
     const [inputWidth, setInputWidth] = useState(0)
@@ -89,12 +88,9 @@ export default function Header({ contact, disabled, isFullscreen, setFullscreen,
     const disabledBtn = contact.displayName === contactName || contactName === ''
 
     return (
-        <View
-            style={[localStyles.container, isFullscreen && !accessGranted && localStyles.sharedChatContainer]}
-            dataSet={{ annaObjectType: 'contact', annaObjectId: contact.uid, annaProjectId: projectId }}
-        >
-            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
-                {inlineBackButton && accessGranted && (
+        <View style={localStyles.container}>
+            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: 16 }]}>
+                {isMiddleScreen && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton user={contact} projectIndex={project.index} />
                     </View>
@@ -165,7 +161,6 @@ export default function Header({ contact, disabled, isFullscreen, setFullscreen,
                         </View>
                     </View>
                 )}
-                <ProjectMoveIndicator object={contact} projectId={projectId} showLabel />
             </View>
 
             {!isFullscreen && (
@@ -173,7 +168,7 @@ export default function Header({ contact, disabled, isFullscreen, setFullscreen,
                     <TagList project={project} contact={contact} />
                 </View>
             )}
-            {isFullscreen && selectedNavItem === DV_TAB_CONTACT_CHAT && accessGranted && (
+            {isFullscreen && selectedNavItem === DV_TAB_CONTACT_CHAT && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}
@@ -195,10 +190,6 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingBottom: 24,
         overflow: 'hidden',
-    },
-    sharedChatContainer: {
-        height: 'auto',
-        paddingBottom: 0,
     },
     upperHeader: {
         flexDirection: 'row',

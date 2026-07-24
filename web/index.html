@@ -29,13 +29,17 @@
  -->
         <meta
             name="viewport"
-            content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content"
+            content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no"
+        />
+        <meta
+            viewport="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+            mobileAppIOS="true"
         />
         <meta name="full-screen" content="yes" />
         <meta name="browsermode" content="application" />
         <meta name="screen-orientation" content="portrait" />
 
-        <meta name="theme-color" content="#FFFFFF" />
+        <!-- <meta name="theme-color" content="#0A44A5" /> -->
         <meta name="keywords" content="Alldone, Alldone.app, Project Management, Task Management, Collaboration Tool" />
         <meta name="author" content="Alldone GmbH" />
         <meta name="robots" content="index" />
@@ -53,11 +57,9 @@
         <meta http-equiv="cache-control" content="no-store" />
         <meta http-equiv="expires" content="1" />
         <meta http-equiv="pragma" content="no-store" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-touch-fullscreen" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Alldone.app" />
+        <!--        <meta name="apple-mobile-web-app-capable" content="yes" />-->
+        <!--        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />-->
+        <!--        <meta name="apple-mobile-web-app-title" content="Alldone.app" />-->
         <!--        <link rel="apple-touch-startup-image" href="apple-touch-icon-2048x2048.png" />-->
 
         <script type="application/ld+json">
@@ -86,6 +88,19 @@
                 }
             }
         </script>
+        <script>
+            let color = '#fff'
+            const style = document.createElement('style')
+            if (
+                /(Mac|iPhone|iPod|iPad)/i.test(window.navigator.platform) &&
+                navigator.maxTouchPoints &&
+                navigator.maxTouchPoints > 2
+            ) {
+                color = '#000000'
+            }
+            style.innerHTML = `body {background-color: ${color}}`
+            document.head.appendChild(style)
+        </script>
         <script src="/service-worker-handler.js"></script>
         <title>%WEB_TITLE%</title>
         <style>
@@ -107,16 +122,6 @@
                 padding: 0px;
                 /* Allows content to fill the viewport and go beyond the bottom */
                 min-height: 100%;
-                /* AND bind the app shell to the viewport (AT-2177). See the
-                   identical block in web-bundler/index.html (the deployed
-                   template): without a DEFINITE height the app tree grows to
-                   its content, the document becomes the only scroller, and
-                   scrolling the main content drags the sidebar navigation
-                   with it. */
-                height: 100%;
-                /* safe-area padding must not push the shell past 100% */
-                box-sizing: border-box;
-                background-color: #ffffff;
             }
 
             #root {
@@ -125,38 +130,6 @@
                 flex-grow: 1;
                 display: flex;
                 flex: 1;
-                /* The home-indicator region is deliberately NOT reserved:
-                   content flows under the indicator like native iOS apps
-                   (the old #root padding painted a detached white strip there
-                   — AT-2321 history). Bottom-anchored interactive surfaces pad
-                   themselves instead (ChatInput via useHomeIndicatorLift, the
-                   BottomSheet already did); the top/left/right insets stay on
-                   body. */
-            }
-
-            /* Mobile virtual keyboard (AT-2248). See the identical block in
-               web-bundler/index.html (the deployed template): the shell is
-               shrunk by the strip the keyboard covers, which utils/
-               virtualKeyboard.js measures with `visualViewport` and publishes as
-               --app-keyboard-inset, so inner scrollers can reveal the focused
-               input with a minimal correction. Only <html> takes the
-               subtraction (body and #root resolve 100% against it), and
-               min-height must be released or it would override the height. */
-            html.app-keyboard-open {
-                height: calc(100% - var(--app-keyboard-inset, 0px));
-                min-height: 0;
-            }
-
-            html.app-keyboard-open body,
-            html.app-keyboard-open #root {
-                height: 100%;
-                min-height: 0;
-            }
-
-            /* The measured keyboard inset already includes the covered home-
-               indicator area, so do not reserve that strip a second time. */
-            html.app-keyboard-open #root {
-                padding-bottom: 0 !important;
             }
 
             html {

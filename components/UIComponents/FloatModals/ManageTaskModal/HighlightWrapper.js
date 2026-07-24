@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react'
-import AppPopover from '../../ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Hotkeys from 'react-hot-keys'
 
 import { colors } from '../../../styles/global'
@@ -31,7 +31,7 @@ export default function HighlightWrapper({ object, setColor, disabled = false })
     }
 
     return (
-        <AppPopover
+        <Popover
             content={<HighlightColorModal onPress={selectColor} selectedColor={object.hasStar} />}
             align={'start'}
             position={['bottom']}
@@ -58,6 +58,6 @@ export default function HighlightWrapper({ object, setColor, disabled = false })
                     disabled={disabled}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }

@@ -9,8 +9,7 @@ import store from '../../redux/store'
 import { toggleNavPicker } from '../../redux/actions'
 import Hotkeys from 'react-hot-keys'
 import dom from 'react-dom'
-import { NAVBAR_ITEM_MAP } from '../../utils/TabNavigationConstants'
-import { resolveTabBadgeAmount } from './tabBadges'
+import { DV_TAB_SETTINGS_INVITATIONS, NAVBAR_ITEM_MAP } from '../../utils/TabNavigationConstants'
 
 const finalHeight = 56
 export default class NavigationBar extends Component {
@@ -245,11 +244,8 @@ export default class NavigationBar extends Component {
             feedAmount,
             showSearchBadges,
             invitationsAmount,
-            integrationsAlertAmount,
             style,
         } = this.props
-
-        const badgeAmountFor = tabItem => resolveTabBadgeAmount(tabItem, { invitationsAmount, integrationsAlertAmount })
 
         const { height, forceTabletMargins, expanded, selectedNavItem, smallScreenNavigation } = this.state
         if (!smallScreenNavigation || isSecondary) {
@@ -291,7 +287,11 @@ export default class NavigationBar extends Component {
                                             (NAVBAR_ITEM_MAP[tabItem] === 'Updates' || tabItem === 'Updates') &&
                                             feedAmount
                                         }
-                                        badgeAmount={badgeAmountFor(tabItem)}
+                                        invitationsAmount={
+                                            tabItem === DV_TAB_SETTINGS_INVITATIONS && invitationsAmount > 0
+                                                ? invitationsAmount
+                                                : 0
+                                        }
                                         showFollowedNotifications={showFollowedNotifications}
                                         forceTabletMargins={forceTabletMargins}
                                         isNextShortcutTab={this.isNextShortcutTab(tabItem)}
@@ -356,8 +356,6 @@ export default class NavigationBar extends Component {
                 {
                     toValue: 0, // Animate to final value
                     duration: 200,
-                    // height is a layout prop, so the native driver cannot drive it.
-                    useNativeDriver: false,
                 }
             ).start(this.toggleNavPickerOff) // Start the animation
         } else {
@@ -367,8 +365,6 @@ export default class NavigationBar extends Component {
                 {
                     toValue: finalHeight, // Animate to final value
                     duration: 200,
-                    // height is a layout prop, so the native driver cannot drive it.
-                    useNativeDriver: false,
                 }
             ).start(this.toggleNavPickerOn) // Start the animation
         }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 import { StyleSheet } from 'react-native'
 
@@ -28,7 +28,7 @@ export default function SelectProjectModalInInvoceGenerationWrapper() {
     }
 
     return (
-        <AppPopover
+        <Popover
             content={<SelectProjectModalInInvoceGeneration closeModal={closeModal} />}
             align={'start'}
             position={['bottom']}
@@ -44,7 +44,7 @@ export default function SelectProjectModalInInvoceGenerationWrapper() {
                 onPress={openModal}
                 disabled={activeProjectsAmount === 0}
             />
-        </AppPopover>
+        </Popover>
     )
 }
 

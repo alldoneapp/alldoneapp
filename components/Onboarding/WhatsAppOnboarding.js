@@ -11,9 +11,9 @@ import {
     Animated,
 } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import firebase from 'firebase/compat/app'
+import { firebase } from '@firebase/app'
 
-import styles, { colors, hexColorToRGBa } from '../styles/global'
+import styles from '../styles/global'
 import Colors from '../../Themes/Colors'
 import { translate } from '../../i18n/TranslationService'
 import { validatePhoneNumber } from '../../utils/phoneValidation'
@@ -27,7 +27,6 @@ import { requestNotificationPermission, logEvent } from '../../utils/backends/fi
 import { setUserReceivePushNotifications } from '../../utils/backends/Users/usersFirestore'
 import { updateAssistantHeartbeatSettings } from '../../utils/backends/Assistants/assistantsFirestore'
 import { COUNTRY_CODES, DEFAULT_COUNTRY } from '../../utils/CountryCodes'
-import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
 const DEFAULT_POST_ONBOARDING_URL = '/projects/tasks/open'
 
@@ -76,7 +75,6 @@ const ProgressBar = ({ current, total }) => {
 }
 
 export default function WhatsAppOnboarding({ navigation }) {
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const [phone, setPhone] = useState('')
     const [selectedCountry, setSelectedCountry] = useState(DEFAULT_COUNTRY || COUNTRY_CODES[0])
     const [showCountryPicker, setShowCountryPicker] = useState(false)
@@ -113,12 +111,12 @@ export default function WhatsAppOnboarding({ navigation }) {
                 Animated.timing(blinkAnim, {
                     toValue: 0.5,
                     duration: 500,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }),
                 Animated.timing(blinkAnim, {
                     toValue: 1,
                     duration: 500,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }),
             ])
         ).start()
@@ -374,7 +372,7 @@ export default function WhatsAppOnboarding({ navigation }) {
         if (!showCountryPicker) return null
 
         return (
-            <View style={[localStyles.modalOverlay, safeAreaOverlayPadding]}>
+            <View style={localStyles.modalOverlay}>
                 <View style={localStyles.modalContent}>
                     <View style={localStyles.modalHeader}>
                         <Text style={localStyles.modalTitle}>{translate('Select Country')}</Text>
@@ -752,7 +750,13 @@ const localStyles = StyleSheet.create({
         borderColor: Colors.Grey300,
         borderRadius: 8,
         marginRight: 8,
-        boxShadow: '0px 1px 2px rgba(0,0,0,0.05)',
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 1,
+        },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
         elevation: 2,
     },
     dialCode: {
@@ -771,7 +775,13 @@ const localStyles = StyleSheet.create({
         borderRadius: 8,
         backgroundColor: Colors.White,
         height: 48,
-        boxShadow: '0px 1px 2px rgba(0,0,0,0.05)',
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 1,
+        },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
         elevation: 2,
     },
     modalOverlay: {
@@ -780,7 +790,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1000,
@@ -792,7 +802,10 @@ const localStyles = StyleSheet.create({
         backgroundColor: Colors.White,
         borderRadius: 16,
         padding: 24,
-        boxShadow: '0px 4px 8px rgba(0,0,0,0.25)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
         elevation: 5,
     },
     modalHeader: {
@@ -838,7 +851,13 @@ const localStyles = StyleSheet.create({
         width: '100%',
         alignItems: 'center',
         marginBottom: 16,
-        boxShadow: '0px 8px 16px rgba(0,127,255,0.20)',
+        shadowColor: Colors.Primary100,
+        shadowOffset: {
+            width: 0,
+            height: 8,
+        },
+        shadowOpacity: 0.2,
+        shadowRadius: 16,
         elevation: 8,
     },
     primaryButtonText: {

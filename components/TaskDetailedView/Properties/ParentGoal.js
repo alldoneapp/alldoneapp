@@ -4,8 +4,6 @@ import Icon from '../../Icon'
 import styles, { colors } from '../../styles/global'
 import ParentGoalWrapper from './ParentGoalWrapper'
 import { translate } from '../../../i18n/TranslationService'
-import SuggestedGoalTag from '../../Tags/SuggestedGoalTag'
-import { hasPendingGoalSuggestion } from '../../../utils/TaskGoalSuggestion'
 
 export default function ParentGoal({ projectId, task, disabled }) {
     return (
@@ -15,11 +13,7 @@ export default function ParentGoal({ projectId, task, disabled }) {
             </View>
             <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Goal')}</Text>
             <View style={{ marginLeft: 'auto' }}>
-                {hasPendingGoalSuggestion(task) ? (
-                    <SuggestedGoalTag projectId={projectId} task={task} disabled={disabled} propertyButton />
-                ) : (
-                    <ParentGoalWrapper projectId={projectId} task={task} disabled={disabled} />
-                )}
+                <ParentGoalWrapper projectId={projectId} task={task} disabled={disabled} />
             </View>
         </View>
     )

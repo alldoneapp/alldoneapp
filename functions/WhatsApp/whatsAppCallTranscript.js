@@ -1,7 +1,6 @@
 const crypto = require('crypto')
 const admin = require('firebase-admin')
 const { STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
-const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 function getTranscriptCommentId(sessionId, turnId, role) {
     return crypto.createHash('sha256').update(`${sessionId}:${turnId}:${role}`).digest('hex').slice(0, 40)
@@ -52,9 +51,6 @@ async function storeCallTranscriptTurn({
     userId,
     assistantId,
     source = 'whatsapp_call',
-    updateExisting = false,
-    createdAt = null,
-    isCallTranscript = true,
 }) {
     const normalizedText = String(text || '').trim()
     if (!normalizedText) return { stored: false, reason: 'empty' }
@@ -69,31 +65,18 @@ async function storeCallTranscriptTurn({
 
     await admin.firestore().runTransaction(async transaction => {
         const existing = await transaction.get(commentRef)
-        if (existing.exists) {
-            if (updateExisting && existing.data()?.commentText !== normalizedText) {
-                const chat = await transaction.get(chatRef)
-                transaction.update(commentRef, { commentText: normalizedText, lastChangeDate: Timestamp.now() })
-                const commentsData = chat.data()?.commentsData || {}
-                if (
-                    commentsData.lastComment === existing.data().commentText.substring(0, 200) &&
-                    commentsData.lastCommentOwnerId === creatorId
-                ) {
-                    transaction.update(chatRef, { 'commentsData.lastComment': normalizedText.substring(0, 200) })
-                }
-            }
-            return
-        }
+        if (existing.exists) return
 
         transaction.set(commentRef, {
             commentText: normalizedText,
-            lastChangeDate: Timestamp.now(),
-            created: Number.isFinite(createdAt) ? createdAt : now,
+            lastChangeDate: admin.firestore.Timestamp.now(),
+            created: now,
             creatorId,
             fromAssistant: role === 'assistant',
             source,
             callSessionId: sessionId,
             realtimeTurnId: String(turnId || ''),
-            isCallTranscript,
+            isCallTranscript: true,
         })
         transaction.update(chatRef, {
             lastEditionDate: now,
@@ -101,12 +84,12 @@ async function storeCallTranscriptTurn({
             'commentsData.lastComment': normalizedText.substring(0, 200),
             'commentsData.lastCommentOwnerId': creatorId,
             'commentsData.lastCommentType': STAYWARD_COMMENT,
-            'commentsData.amount': FieldValue.increment(1),
+            'commentsData.amount': admin.firestore.FieldValue.increment(1),
         })
         transaction.set(
             sessionRef,
             {
-                transcriptTurnCount: FieldValue.increment(1),
+                transcriptTurnCount: admin.firestore.FieldValue.increment(1),
                 updatedAt: now,
             },
             { merge: true }

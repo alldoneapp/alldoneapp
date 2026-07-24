@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -14,6 +14,7 @@ import {
     setSelectedNavItem,
     setSelectedSidebarTab,
     setShowAccessDeniedPopup,
+    stopLoadingData,
     storeCurrentUser,
 } from '../../redux/actions'
 import CustomScrollView from '../UIControls/CustomScrollView'
@@ -21,7 +22,6 @@ import {
     DV_TAB_ASSISTANT_BACKLINKS,
     DV_TAB_ASSISTANT_CHAT,
     DV_TAB_ASSISTANT_CUSTOMIZATIONS,
-    DV_TAB_ASSISTANT_WORKFLOW,
     DV_TAB_ASSISTANT_NOTE,
     DV_TAB_ASSISTANT_UPDATES,
     DV_TAB_ROOT_TASKS,
@@ -42,8 +42,6 @@ import RootViewFeedsAssistant from '../Feeds/RootViewFeedsAssistant'
 import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
-import WorkflowView from '../WorkflowView/WorkflowView'
-import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 export default function AssistantDetailedView({ navigation }) {
     const assistantId = navigation.getParam('assistantId', undefined)
@@ -55,23 +53,15 @@ export default function AssistantDetailedView({ navigation }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const loggedUser = useSelector(state => state.loggedUser)
     const administratorUserId = useSelector(state => state.administratorUser.uid)
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const [assistant, setAssistant] = useState(null)
     const [projectOriginId, setProjectOriginId] = useState('')
     const [isFullscreen, setFullscreen] = useState(false)
-    const scrollRef = useRef()
-    useResetDetailedViewScroll(selectedNavItem, scrollRef)
 
     const isGlobalAsisstant = projectId !== projectOriginId
     const isInGlobalProject = projectId === GLOBAL_PROJECT_ID
-    const canManageWorkflow =
-        !isInGlobalProject &&
-        !isGlobalAsisstant &&
-        !loggedUser.isAnonymous &&
-        Array.isArray(loggedUser.realProjectIds) &&
-        loggedUser.realProjectIds.includes(projectId)
 
     const navigationTabs = [DV_TAB_ASSISTANT_CUSTOMIZATIONS]
-    if (canManageWorkflow) navigationTabs.push(DV_TAB_ASSISTANT_WORKFLOW)
     if (!isInGlobalProject) navigationTabs.push(DV_TAB_ASSISTANT_BACKLINKS)
     if (!isInGlobalProject && !isGlobalAsisstant) navigationTabs.push(DV_TAB_ASSISTANT_NOTE)
     if (!isInGlobalProject && !isGlobalAsisstant) navigationTabs.push(DV_TAB_ASSISTANT_CHAT)
@@ -89,7 +79,7 @@ export default function AssistantDetailedView({ navigation }) {
 
             navigation.navigate('Root')
             if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
+                dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
             } else {
                 dispatch([resetFloatPopup(), setShowAccessDeniedPopup(true), navigateToAllProjectsTasks()])
             }
@@ -139,6 +129,10 @@ export default function AssistantDetailedView({ navigation }) {
         }
     }, [accessGranted])
 
+    useEffect(() => {
+        setFullscreen(assistantEnabled)
+    }, [assistantEnabled])
+
     const linkedParentObject = {
         type: LINKED_OBJECT_TYPE_ASSISTANT,
         id: assistantId,
@@ -157,10 +151,9 @@ export default function AssistantDetailedView({ navigation }) {
             {!smallScreenNavigation ? <CustomSideMenu navigation={navigation} isWeb /> : null}
             {!!assistant && !!projectOriginId && (
                 <View style={{ flex: 1 }}>
-                    {!smallScreenNavigation && !isMiddleScreen && <BackButton assistant={assistant} />}
+                    {!isMiddleScreen && <BackButton assistant={assistant} />}
 
                     <CustomView
-                        ref={scrollRef}
                         style={[
                             localStyles.scrollPanel,
                             smallScreenNavigation
@@ -182,16 +175,14 @@ export default function AssistantDetailedView({ navigation }) {
                                 />
                             )}
                             <View style={{ flex: 1 }}>
-                                {!isFullscreen && (
-                                    <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
-                                        <NavigationBar
-                                            taskDetail
-                                            isSecondary
-                                            tabs={navigationTabs}
-                                            style={{ height: 56 }}
-                                        />
-                                    </View>
-                                )}
+                                <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
+                                    <NavigationBar
+                                        taskDetail
+                                        isSecondary
+                                        tabs={navigationTabs}
+                                        style={{ height: 56 }}
+                                    />
+                                </View>
 
                                 {(() => {
                                     switch (selectedNavItem) {
@@ -204,15 +195,6 @@ export default function AssistantDetailedView({ navigation }) {
                                                     isGlobalAsisstant={isGlobalAsisstant}
                                                     isInGlobalProject={isInGlobalProject}
                                                     isAdmin={loggedUser.uid === administratorUserId}
-                                                />
-                                            )
-                                        case DV_TAB_ASSISTANT_WORKFLOW:
-                                            return (
-                                                <WorkflowView
-                                                    user={assistant}
-                                                    projectIndex={project.index}
-                                                    projectId={projectId}
-                                                    ownerType="assistant"
                                                 />
                                             )
                                         case DV_TAB_ASSISTANT_BACKLINKS:
@@ -247,8 +229,6 @@ export default function AssistantDetailedView({ navigation }) {
                                                     chatTitle={assistant.displayName}
                                                     assistantId={assistant.uid}
                                                     objectType={'assistants'}
-                                                    isFullscreen={isFullscreen}
-                                                    setFullscreen={setFullscreen}
                                                 />
                                             )
                                         case DV_TAB_ASSISTANT_UPDATES:

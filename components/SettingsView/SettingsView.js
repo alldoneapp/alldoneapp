@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
@@ -40,8 +40,6 @@ import {
     DV_TAB_SETTINGS_SKILLS,
 } from '../../utils/TabNavigationConstants'
 import StripePremiumTab from '../Premium/PremiumTab/StripePremiumTab'
-import IapPremiumTab from '../Premium/PremiumTab/IapPremiumTab'
-import { isCapacitorIosShell } from '../../utils/CapacitorShell'
 import ExportTab from './Export/ExportTab'
 import MCPSettings from './MCP/MCPSettings'
 import IntegrationsSettings from './Integrations/IntegrationsSettings'
@@ -52,8 +50,6 @@ import UserProfileSettings from './Profile/UserProfileSettings'
 import DragModalsContainer from '../UIComponents/FloatModals/DragModalsContainer'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
-import { countBrokenConnections, countBrokenVmSubscriptions } from './Integrations/connectionHealth'
-import { getVmSubscriptionStatus } from '../../utils/backends/firestore'
 
 const SettingsView = ({ navigation }) => {
     const dispatch = useDispatch()
@@ -65,30 +61,6 @@ const SettingsView = ({ navigation }) => {
     const showProjectInvitationPopup = useSelector(state => state.showProjectInvitationPopup.visible)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const amountProjectInvitations = useSelector(state => state.loggedUser.invitedProjectIds.length)
-    // Broken email/calendar connections badge the Integrations tab. Selected as a count,
-    // not as the connection objects, so an unrelated write to the user document cannot
-    // re-render the whole settings shell (AT-2336's rule).
-    const brokenConnectionsAmount = useSelector(state => countBrokenConnections(state.loggedUser))
-    const [brokenVmSubscriptionsAmount, setBrokenVmSubscriptionsAmount] = useState(0)
-    const updateVmSubscriptionAlerts = useCallback(
-        status => setBrokenVmSubscriptionsAmount(countBrokenVmSubscriptions(status)),
-        []
-    )
-
-    // VM subscription state is private and therefore is not part of loggedUser's live snapshot.
-    // Load its small, sanitized status when Settings opens so the Integrations tab can warn before
-    // the user opens it; the section reports later reconnects back through the same callback.
-    useEffect(() => {
-        let cancelled = false
-        getVmSubscriptionStatus()
-            .then(status => {
-                if (!cancelled) updateVmSubscriptionAlerts(status)
-            })
-            .catch(() => {})
-        return () => {
-            cancelled = true
-        }
-    }, [updateVmSubscriptionAlerts])
 
     const { overlay } = useCollapsibleSidebar()
 
@@ -137,7 +109,7 @@ const SettingsView = ({ navigation }) => {
             {!mobile ? <CustomSideMenu navigation={navigation} isWeb /> : null}
 
             <View style={{ flex: 1 }}>
-                {!mobile && !isMiddleScreen && (
+                {!isMiddleScreen && (
                     <View
                         style={[
                             localStyles.backButtonContainer,
@@ -164,7 +136,6 @@ const SettingsView = ({ navigation }) => {
                                 isSecondary
                                 tabs={navigationTabs}
                                 invitationsAmount={amountProjectInvitations}
-                                integrationsAlertAmount={brokenConnectionsAmount + brokenVmSubscriptionsAmount}
                             />
                         </View>
                         {(() => {
@@ -188,19 +159,13 @@ const SettingsView = ({ navigation }) => {
                                 case DV_TAB_SETTINGS_SHORTCUTS:
                                     return <ShortcutsSection />
                                 case DV_TAB_SETTINGS_PREMIUM:
-                                    // iOS shell: digital goods must go through Apple IAP
-                                    // (guideline 3.1.1) — same tab, StoreKit instead of Stripe.
-                                    return isCapacitorIosShell() ? <IapPremiumTab /> : <StripePremiumTab />
+                                    return <StripePremiumTab />
                                 case DV_TAB_SETTINGS_EXPORT:
                                     return <ExportTab />
                                 case DV_TAB_SETTINGS_MCP:
                                     return <MCPSettings />
                                 case DV_TAB_SETTINGS_INTEGRATIONS:
-                                    return (
-                                        <IntegrationsSettings
-                                            onVmSubscriptionStatusChanged={updateVmSubscriptionAlerts}
-                                        />
-                                    )
+                                    return <IntegrationsSettings />
                             }
                         })()}
                     </View>

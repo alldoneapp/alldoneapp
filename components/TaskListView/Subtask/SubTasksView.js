@@ -1,8 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
-import { setDomAttributes } from '../../../utils/setDomAttributes'
-import { useTaskHierarchy, taskHierarchyStyles } from '../TaskHierarchy'
 
 import DismissibleItem from '../../UIComponents/DismissibleItem'
 import TaskPresentation from '../TaskItem/TaskPresentation/TaskPresentation'
@@ -14,9 +12,6 @@ import store from '../../../redux/store'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import EditTask from '../TaskItem/EditTask'
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
-import { useIsUserEditing } from '../../../utils/editingGuard'
-import useProjectPostponePreview from '../../../hooks/useProjectPostponePreview'
-import { projectTaskPreview } from '../../../utils/backends/Tasks/optimisticProjectPostpone'
 
 export default function SubTasksView({
     projectId,
@@ -30,7 +25,6 @@ export default function SubTasksView({
     isPending,
     createSubtaskRequest,
 }) {
-    const taskHierarchy = useTaskHierarchy()
     const dispatch = useDispatch()
     const checkTaskItem = useSelector(state => state.checkTaskItem)
     const focusedTaskItem = useSelector(state => state.focusedTaskItem)
@@ -39,7 +33,6 @@ export default function SubTasksView({
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const projectIds = useSelector(state => state.loggedUser.projectIds, shallowEqual)
     const [firstLoadedEnded, setFirstLoadedEnded] = useState(false)
-    const isUserEditing = useIsUserEditing()
 
     const dismissibleRefs = useRef([])
     const taskItemRefs = useRef([])
@@ -47,26 +40,14 @@ export default function SubTasksView({
     const parentRefsList = useRef([])
 
     const parentInTaskOutOfOpen = isPending || isToReviewTask || parentTask.inDone
-    const postponeEntry = useProjectPostponePreview(projectId)
-    const displayedSubtasks =
-        !postponeEntry || parentInTaskOutOfOpen || isObservedTask
-            ? subtaskList
-            : subtaskList.flatMap(task => {
-                  const preview = projectTaskPreview(task, postponeEntry)
-                  return preview.hidden ? [] : [preview.task]
-              })
-    const renderedSubtaskList = parentInTaskOutOfOpen
-        ? displayedSubtasks
-        : sortTasksByPriority(displayedSubtasks, focusedTaskId)
+    const renderedSubtaskList = parentInTaskOutOfOpen ? subtaskList : sortTasksByPriority(subtaskList, focusedTaskId)
 
     const setAriaTaskId = () => {
         for (let index in renderedSubtaskList) {
             const task = renderedSubtaskList[index]
             if (task && parentRefsList.current[index]) {
-                setDomAttributes(parentRefsList.current[index], { 'aria-task-id': task.id })
-                setDomAttributes(parentRefsList.current[index], {
-                    'is-observed-task': isObservedTask ? 'true' : 'false',
-                })
+                parentRefsList.current[index].setNativeProps({ 'aria-task-id': task.id })
+                parentRefsList.current[index].setNativeProps({ 'is-observed-task': isObservedTask ? 'true' : 'false' })
             }
         }
     }
@@ -96,13 +77,9 @@ export default function SubTasksView({
     }, [createSubtaskRequest])
 
     useEffect(() => {
-        // `subtaskByTaskStore` is rewritten on every snapshot and can drop to 0
-        // transiently. Collapsing here would unmount the open "add subtask"
-        // editor together with its typed text, so hold off while the user is
-        // busy - `isUserEditing` is in the deps, so it collapses once they stop.
-        if (firstLoadedEnded && subtaskList.length === 0 && !isUserEditing) hideSubtaskList()
+        if (firstLoadedEnded && subtaskList.length === 0) hideSubtaskList()
         setAriaTaskId()
-    }, [subtaskList.length, isUserEditing])
+    }, [subtaskList.length])
 
     useEffect(() => {
         if (focusedTaskItem.isObserved === !!isObservedTask) {
@@ -133,7 +110,7 @@ export default function SubTasksView({
         loggedUserIsParentTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
     return (
-        <View style={taskHierarchy ? taskHierarchyStyles.subtasks : { marginLeft: 34 }}>
+        <View style={{ marginLeft: 34 }}>
             {renderedSubtaskList.length > 0
                 ? isActiveOrganizeMode
                     ? renderedSubtaskList.map(subTask => {

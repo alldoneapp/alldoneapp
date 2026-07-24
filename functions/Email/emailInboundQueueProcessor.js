@@ -7,7 +7,6 @@ const { extractTextFromWhatsAppFile } = require('../WhatsApp/whatsAppFileExtract
 const { getAssistantForChat } = require('../Assistant/assistantHelper')
 const { sendAnnaEmailReply } = require('./emailReplyService')
 const { processAnnaEmailAssistantMessage } = require('./emailAssistantBridge')
-const { maybeCreateGuestMeetingGrant } = require('./emailGuestMeetingGrant')
 const {
     getOrCreateDailyEmailTopic,
     storeEmailAssistantMessageInTopic,
@@ -16,13 +15,10 @@ const {
 const {
     DEFAULT_PUBLIC_EMAIL,
     buildReplyAllRecipients,
-    isAssistantBlindCopied,
     buildEmailCommentText,
     pickActionableAttachment,
-    shouldAutoAttachInvoice,
     summarizeAttachments,
 } = require('./emailChannelHelpers')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const QUEUE_STATUS_PENDING = 'pending'
 const QUEUE_STATUS_PROCESSING = 'processing'
@@ -75,7 +71,6 @@ async function processQueueItem(userId, item) {
             ccEmails: data.ccEmails || [],
             subject: data.subject || '',
             messageId,
-            sentAt: Number(data.sentAt) > 0 ? Number(data.sentAt) : null,
             replyTo: data.threadHeaders?.replyTo || '',
             inReplyTo: data.threadHeaders?.inReplyTo || '',
             references: data.threadHeaders?.references || '',
@@ -94,7 +89,7 @@ async function processQueueItem(userId, item) {
               }
             : null
 
-        const assistantResult = await processAnnaEmailAssistantMessage(
+        const responseText = await processAnnaEmailAssistantMessage(
             userId,
             projectId,
             chatId,
@@ -108,34 +103,18 @@ async function processQueueItem(userId, item) {
                 subject: buildReplySubject(data.subject),
                 messageId,
                 initialPendingAttachmentPayload,
-                autoAttachInvoice: shouldAutoAttachInvoice(actionableAttachment, messageText),
                 hasAdditionalRecipients: replyDelivery.toEmails.length + replyDelivery.ccEmails.length > 1,
-                replyToSenderOnly: replyDelivery.replyToSenderOnly,
                 isParticipantScopedTopic,
                 skipCurrentMessageAppend: true,
-                returnExecutionMetadata: true,
             }
         )
-        const normalizedAssistantResult = normalizeEmailAssistantResult(assistantResult)
-        const responseText = normalizedAssistantResult.responseText
 
         const emailSignature = await getEmailSignatureForQueueItem(userId, projectId, assistantId)
-        const replyResult = await sendReplyForQueueItem(data, responseText, replyDelivery, emailSignature)
-        const guestGrantResult = await createGuestMeetingGrantSafely({
-            userId,
-            projectId,
-            assistantId,
-            data,
-            replyDelivery,
-            replyResult,
-            assistantResult: normalizedAssistantResult,
-        })
+        await sendReplyForQueueItem(data, responseText, replyDelivery, emailSignature)
         await finalizeQueueItem(item.ref, messageId, {
             status: 'processed',
             replyStatus: 'sent',
             chatId,
-            guestMeetingGrantStatus: guestGrantResult.created ? 'created' : guestGrantResult.reason || 'not_created',
-            guestMeetingGrantId: guestGrantResult.grantId || null,
         })
     } catch (error) {
         console.error('Email Channel: Queue item processing failed', {
@@ -169,7 +148,7 @@ async function processQueueItem(userId, item) {
             status: QUEUE_STATUS_FAILED,
             updatedAt: Date.now(),
             error: error.message || 'Unknown processing error',
-            attempts: FieldValue.increment(1),
+            attempts: admin.firestore.FieldValue.increment(1),
         })
         await admin
             .firestore()
@@ -190,60 +169,6 @@ async function processQueueItem(userId, item) {
                 'I could not complete this email request right now. Please try again later.'
             )
         } catch (_) {}
-    }
-}
-
-function normalizeEmailAssistantResult(result) {
-    if (typeof result === 'string') {
-        return {
-            responseText: result,
-            guestMeetingContext: null,
-            canCreateCalendarEvent: false,
-            calendarOwnerName: '',
-            language: '',
-        }
-    }
-
-    return {
-        responseText: String(result?.responseText || '').trim(),
-        guestMeetingContext: result?.guestMeetingContext || null,
-        canCreateCalendarEvent: result?.canCreateCalendarEvent === true,
-        calendarOwnerName: String(result?.calendarOwnerName || '').trim(),
-        language: String(result?.language || '').trim(),
-    }
-}
-
-async function createGuestMeetingGrantSafely({
-    userId,
-    projectId,
-    assistantId,
-    data,
-    replyDelivery,
-    replyResult,
-    assistantResult,
-}) {
-    try {
-        return await maybeCreateGuestMeetingGrant({
-            ownerUserId: userId,
-            projectId,
-            assistantId,
-            ownerEmail: data.fromEmail || '',
-            ownerName: assistantResult.calendarOwnerName,
-            language: assistantResult.language,
-            subject: data.subject || '',
-            ownerRequestText: data.textBody || data.htmlBody || '',
-            inboundMessageId: data.messageId || '',
-            outboundMessageId: replyResult?.messageId || '',
-            recipientEmails: [...replyDelivery.toEmails, ...replyDelivery.ccEmails],
-            safeActionContext: assistantResult.guestMeetingContext,
-            canCreateCalendarEvent: assistantResult.canCreateCalendarEvent,
-        })
-    } catch (error) {
-        console.error('Email Channel: Failed creating guest meeting grant', {
-            messageId: data.messageId || '',
-            error: error.message,
-        })
-        return { created: false, reason: 'grant_write_failed' }
     }
 }
 
@@ -294,11 +219,6 @@ function getReplyDeliveryForQueueItem(data) {
     })
     return {
         fromEmail,
-        replyToSenderOnly: isAssistantBlindCopied({
-            toEmails: data.toEmails || [],
-            ccEmails: data.ccEmails || [],
-            assistantEmailAddresses: [fromEmail],
-        }),
         ...recipients,
     }
 }
@@ -363,7 +283,7 @@ async function claimNextPendingEmailForUser(userId, ownerId) {
         status: QUEUE_STATUS_PROCESSING,
         lockOwnerId: ownerId,
         updatedAt: Date.now(),
-        attempts: FieldValue.increment(1),
+        attempts: admin.firestore.FieldValue.increment(1),
     })
 
     return {

@@ -1,11 +1,6 @@
 const mockQueryGet = jest.fn()
 const mockUserDocUpdate = jest.fn(() => Promise.resolve())
 const mockParentDocGet = jest.fn(() => Promise.resolve({ exists: false }))
-const mockFieldValue = {
-    increment: jest.fn(value => ({ __increment__: value })),
-}
-
-jest.mock('firebase-admin/firestore', () => ({ FieldValue: mockFieldValue }))
 
 jest.mock('firebase-admin', () => ({
     firestore: Object.assign(
@@ -27,7 +22,9 @@ jest.mock('firebase-admin', () => ({
             })),
         })),
         {
-            FieldValue: mockFieldValue,
+            FieldValue: {
+                increment: jest.fn(value => ({ __increment__: value })),
+            },
         }
     ),
 }))

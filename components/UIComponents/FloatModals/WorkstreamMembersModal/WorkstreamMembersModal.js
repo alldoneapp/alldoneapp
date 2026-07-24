@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import useWindowSize from '../../../../utils/useWindowSize'
 import { useDispatch, useSelector } from 'react-redux'
 import { sortBy } from 'lodash'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../../../styles/global'
 import Hotkeys from 'react-hot-keys'
@@ -18,7 +18,6 @@ import { removeModal, storeModal, WORKSTREAM_MEMBERS_MODAL_ID } from '../../../M
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import { translate } from '../../../../i18n/TranslationService'
 import { filterUserShapesByText } from '../AssigneeAndObserversModal/AssigneeAndObserversModal'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function WorkstreamMembersModal({
     closeModal,
@@ -41,7 +40,7 @@ export default function WorkstreamMembersModal({
     const header = headerText || translate('Choose members')
     const subheader = subheaderText || translate('Select here the project members for this workstream')
 
-    const tmpHeight = getSafeAreaModalMaxHeight(height)
+    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     const onSelectUser = contact => {
@@ -126,7 +125,10 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         paddingVertical: 16,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     heading: {

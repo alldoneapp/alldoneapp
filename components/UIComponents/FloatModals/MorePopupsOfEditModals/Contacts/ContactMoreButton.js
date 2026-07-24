@@ -13,8 +13,7 @@ import {
 } from '../../../../ModalsManager/modalsManager'
 import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
 import RichCreateTaskModal from '../../RichCreateTaskModal/RichCreateTaskModal'
-import FollowingModalItem from '../Common/FollowingModalItem'
-import { FOLLOWER_CONTACTS_TYPE, FOLLOWER_USERS_TYPE } from '../../../../Followers/FollowerConstants'
+import FollowingModalItem from './FollowingModalItem'
 import PrivacyModal from '../../PrivacyModal/PrivacyModal'
 import GenericModalItem from '../Common/GenericModalItem'
 import Backend from '../../../../../utils/BackendBridge'
@@ -56,8 +55,8 @@ export default function ContactMoreButton({
             Array.isArray(contact.emails) && contact.emails.length > 0
                 ? contact.emails
                 : contact.email
-                  ? [contact.email]
-                  : []
+                ? [contact.email]
+                : []
         return emails.join('\n')
     }
 
@@ -252,9 +251,8 @@ export default function ContactMoreButton({
                     <FollowingModalItem
                         key={'mbtn-following'}
                         projectId={projectId}
-                        followObjectsType={isMember ? FOLLOWER_USERS_TYPE : FOLLOWER_CONTACTS_TYPE}
-                        followObjectId={contact.uid}
-                        followObject={contact}
+                        contact={contact}
+                        isMember={isMember}
                         closeModal={hideTaskPopup}
                         shortcut={shortcut}
                     />

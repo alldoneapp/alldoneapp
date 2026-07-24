@@ -63,8 +63,9 @@ function deltaToMarkdown(ops) {
                 const { text } = mention
                 markdown += `@${text}`
             } else if (email) {
-                // The email blot stores the address under `text`; `email` is the legacy key.
-                markdown += email.text || email.email || ''
+                // Email - keep as is
+                const { email: emailAddr } = email
+                markdown += emailAddr
             } else if (url) {
                 // URL object - extract the actual URL
                 const { url: link } = url
@@ -79,10 +80,6 @@ function deltaToMarkdown(ops) {
                 markdown += `![image](${imageUrl})`
             } else if (markdownTable) {
                 markdown += markdownTableToMarkdown(markdownTable)
-            } else if (insert) {
-                // Task tags, attachments, videos…: say what is there rather than dropping it.
-                const { renderNoteEmbedAsText } = require('../shared/noteTextProjection')
-                markdown += renderNoteEmbedAsText(insert)
             }
         }
 
@@ -180,14 +177,7 @@ function markdownTableToMarkdown(tableData) {
         }
     }
 
-    const formatRow = row =>
-        `| ${row
-            .map(cell =>
-                String(cell || '')
-                    .replace(/\r\n?|\n/g, '<br>')
-                    .replace(/\|/g, '\\|')
-            )
-            .join(' | ')} |`
+    const formatRow = row => `| ${row.map(cell => String(cell || '').replace(/\|/g, '\\|')).join(' | ')} |`
     return [formatRow(normalizedRows[0]), formatRow(separatorCells), ...normalizedRows.slice(1).map(formatRow)].join(
         '\n'
     )

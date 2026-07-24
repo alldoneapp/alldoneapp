@@ -13,16 +13,16 @@ const TypingIndicator = () => {
             const duration = 300
             const sequence = [
                 Animated.sequence([
-                    Animated.timing(dot1Opacity, { toValue: 1, duration, useNativeDriver: false }),
-                    Animated.timing(dot1Opacity, { toValue: 0.3, duration, useNativeDriver: false }),
+                    Animated.timing(dot1Opacity, { toValue: 1, duration, useNativeDriver: true }),
+                    Animated.timing(dot1Opacity, { toValue: 0.3, duration, useNativeDriver: true }),
                 ]),
                 Animated.sequence([
-                    Animated.timing(dot2Opacity, { toValue: 1, duration, useNativeDriver: false }),
-                    Animated.timing(dot2Opacity, { toValue: 0.3, duration, useNativeDriver: false }),
+                    Animated.timing(dot2Opacity, { toValue: 1, duration, useNativeDriver: true }),
+                    Animated.timing(dot2Opacity, { toValue: 0.3, duration, useNativeDriver: true }),
                 ]),
                 Animated.sequence([
-                    Animated.timing(dot3Opacity, { toValue: 1, duration, useNativeDriver: false }),
-                    Animated.timing(dot3Opacity, { toValue: 0.3, duration, useNativeDriver: false }),
+                    Animated.timing(dot3Opacity, { toValue: 1, duration, useNativeDriver: true }),
+                    Animated.timing(dot3Opacity, { toValue: 0.3, duration, useNativeDriver: true }),
                 ]),
             ]
 
@@ -60,13 +60,13 @@ const OptionBubble = ({ option, onPress }) => {
                     Animated.timing(scaleAnim, {
                         toValue: 1.05,
                         duration: 800,
-                        useNativeDriver: false,
+                        useNativeDriver: true,
                         easing: Easing.inOut(Easing.ease),
                     }),
                     Animated.timing(opacityAnim, {
                         toValue: 0.8,
                         duration: 800,
-                        useNativeDriver: false,
+                        useNativeDriver: true,
                         easing: Easing.inOut(Easing.ease),
                     }),
                 ]),
@@ -74,13 +74,13 @@ const OptionBubble = ({ option, onPress }) => {
                     Animated.timing(scaleAnim, {
                         toValue: 1,
                         duration: 800,
-                        useNativeDriver: false,
+                        useNativeDriver: true,
                         easing: Easing.inOut(Easing.ease),
                     }),
                     Animated.timing(opacityAnim, {
                         toValue: 1,
                         duration: 800,
-                        useNativeDriver: false,
+                        useNativeDriver: true,
                         easing: Easing.inOut(Easing.ease),
                     }),
                 ]),
@@ -211,7 +211,10 @@ const styles = StyleSheet.create({
         borderWidth: 8,
         borderColor: '#1c1c1e',
         overflow: 'hidden',
-        boxShadow: '0px 20px 40px rgba(0,0,0,0.30)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 20 },
+        shadowOpacity: 0.3,
+        shadowRadius: 40,
         elevation: 20,
     },
     statusBar: {
@@ -300,7 +303,10 @@ const styles = StyleSheet.create({
         padding: 10,
         maxWidth: '80%',
         marginBottom: 8,
-        boxShadow: '0px 1px 1px rgba(0,0,0,0.05)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 1,
     },
     messageBubbleSent: {
         alignSelf: 'flex-end',
@@ -310,7 +316,10 @@ const styles = StyleSheet.create({
         padding: 10,
         maxWidth: '80%',
         marginBottom: 8,
-        boxShadow: '0px 1px 1px rgba(0,0,0,0.05)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 1,
     },
     messageText: {
         fontSize: 15,
@@ -360,7 +369,10 @@ const styles = StyleSheet.create({
         borderWidth: 2, // Thicker border
         borderColor: Colors.Primary100, // Primary color border
         marginBottom: 8,
-        boxShadow: '0px 1px 1px rgba(0,0,0,0.05)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 1,
     },
     optionText: {
         color: Colors.Primary100,

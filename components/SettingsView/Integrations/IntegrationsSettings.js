@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
@@ -31,17 +31,8 @@ import {
     startMicrosoftServerSideAuth,
 } from '../../../apis/microsoft/MicrosoftOAuthServerSide'
 import ConnectionSettingsModal from './ConnectionSettingsModal'
-import ProjectListModal from '../../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
 import AgentSubscriptionsSection from './AgentSubscriptionsSection'
 import DefaultVmAgentSection from './DefaultVmAgentSection'
-import IntegrationsLoadingRegion from './IntegrationsLoadingRegion'
-import { brokenForDays, formatBrokenSince, getBreakageConsequenceKey, isConnectionBroken } from './connectionHealth'
-import {
-    HEALTH_CHECKING,
-    HEALTH_CONNECTED,
-    HEALTH_RECONNECT_REQUIRED,
-    useConnectionHealth,
-} from './useConnectionHealth'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 10000 }
 
@@ -55,26 +46,41 @@ function microsoftServiceFor(service) {
     return service === CONNECTION_SERVICE_CALENDAR ? 'calendar' : 'email'
 }
 
-// Connecting an account REQUIRES choosing its default project. The list is
-// the shared ProjectListModal (this was the plan's "hidden ninth picker").
+// Simple project list popover — connecting an account REQUIRES choosing its default project.
+function ProjectPicker({ projects, onSelect, closePopover }) {
+    return (
+        <View style={localStyles.pickerContainer}>
+            <Text style={[styles.subtitle2, localStyles.pickerTitle]}>{translate('Choose a default project')}</Text>
+            {projects.map(project => (
+                <TouchableOpacity
+                    key={project.id}
+                    style={localStyles.pickerRow}
+                    onPress={() => {
+                        closePopover()
+                        onSelect(project)
+                    }}
+                >
+                    <View style={[localStyles.projectDot, { backgroundColor: project.color || colors.Primary100 }]} />
+                    <Text style={[styles.body2, localStyles.pickerRowText]} numberOfLines={1}>
+                        {project.name}
+                    </Text>
+                </TouchableOpacity>
+            ))}
+        </View>
+    )
+}
+
 function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled }) {
     const [isOpen, setIsOpen] = useState(false)
     return (
-        <AppPopover
+        <Popover
             isOpen={isOpen}
             position={['bottom', 'top', 'right', 'left']}
             align="start"
             padding={4}
             containerStyle={POPOVER_CONTAINER_STYLE}
             onClickOutside={() => setIsOpen(false)}
-            content={
-                <ProjectListModal
-                    closeModal={() => setIsOpen(false)}
-                    projects={projects}
-                    title={translate('Choose a default project')}
-                    onSelectProject={onSelect}
-                />
-            }
+            content={<ProjectPicker projects={projects} onSelect={onSelect} closePopover={() => setIsOpen(false)} />}
         >
             <TouchableOpacity
                 style={localStyles.projectButton}
@@ -88,59 +94,18 @@ function ProjectPickerButton({ projects, currentProjectName, onSelect, disabled 
                 </Text>
                 <Icon name="chevron-down" size={13} color={colors.Text03} />
             </TouchableOpacity>
-        </AppPopover>
+        </Popover>
     )
 }
 
-// The broken-account block. Deliberately loud: the previous treatment was a 14px yellow
-// "Reconnect account" line on an otherwise normal card, which is indistinguishable from a
-// hint at a glance — a production account sat dead for four days with that line showing
-// (AT-2491). This states what broke, what stopped working as a result, since when, and
-// gives the reconnect its own primary button instead of hiding it in a text link.
-export function ConnectionAuthAlert({ service, connection, onReconnect, busy, error }) {
-    const since = formatBrokenSince(connection.authInvalidAt)
-    const days = brokenForDays(connection.authInvalidAt)
-
-    return (
-        <View style={localStyles.alert} testID="connection-auth-alert">
-            <View style={localStyles.alertHeader}>
-                <Icon name="alert-circle" size={16} color={colors.UtilityRed200} />
-                <Text style={[styles.subtitle2, localStyles.alertTitle]}>{translate('Reconnect required')}</Text>
-            </View>
-            <Text style={[styles.body2, localStyles.alertBody]}>{translate(getBreakageConsequenceKey(service))}</Text>
-            {since && (
-                <Text style={[styles.caption1, localStyles.alertSince]}>
-                    {`${translate('Stopped working on')} ${since}`}
-                    {days > 0 ? ` · ${translate('Amount days ago', { amount: days })}` : ''}
-                </Text>
-            )}
-            {!!error && <Text style={[styles.caption1, localStyles.alertError]}>{error}</Text>}
-            <Button
-                title={translate('Reconnect account')}
-                icon="refresh-cw"
-                onPress={onReconnect}
-                disabled={busy}
-                processing={busy}
-                processingTitle={translate('Reconnecting')}
-                buttonStyle={localStyles.alertButton}
-            />
-        </View>
-    )
-}
-
-export function ConnectionCard({ service, connection, projects, health, onReconnected }) {
+function ConnectionCard({ service, connection, projects }) {
     const dispatch = useDispatch()
     const [busy, setBusy] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
     const settingsOpenRef = useRef(false)
     const [authStatus, setAuthStatus] = useState(null)
-    const [reconnectError, setReconnectError] = useState('')
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
-    // The stored flag is authoritative once set, but the live check can discover a dead
-    // grant the flag does not know about yet — an account nobody has used since it broke.
-    // `unknown` (offline, provider unreachable) deliberately proves nothing.
-    const broken = isConnectionBroken(connection) || health?.status === HEALTH_RECONNECT_REQUIRED
     const isGoogle = connection.provider !== PROVIDER_MICROSOFT
     const defaultProject = projects.find(project => project.id === connection.defaultProjectId)
     // Labeling is Gmail-only; calendar routing works for both providers.
@@ -154,22 +119,10 @@ export function ConnectionCard({ service, connection, projects, health, onReconn
     }
 
     const closeSettings = () => {
-        // Closing is not idempotent: the Gmail labeling header close button
-        // defers its close (see components/FollowUp/CloseButton.js), so the
-        // same click can reach this handler again after the popover already
-        // unmounted. A second hide under a re-opened popup would release
-        // somebody else's lock; only honour the first (AT-2243).
         if (!settingsOpenRef.current) return
-        // A popup that was already closed must never be able to hide the
-        // global float-popup lock twice: a mouse-down on the (still visible)
-        // header close button fires its close, then the button's own click
-        // re-opens the settings and re-acquires the lock. With the ref
-        // cleared before the dispatch, the re-open is what comes last and the
-        // lock stays balanced.
-        const wasOpen = settingsOpenRef.current
         settingsOpenRef.current = false
         setSettingsOpen(false)
-        if (wasOpen) dispatch(hideFloatPopup())
+        dispatch(hideFloatPopup())
     }
 
     useEffect(() => {
@@ -200,17 +153,13 @@ export function ConnectionCard({ service, connection, projects, health, onReconn
         }
     }, [settingsOpen])
 
-    const runBusy = async (action, { onError } = {}) => {
+    const runBusy = async action => {
         if (busy) return
         setBusy(true)
         try {
             await action()
         } catch (error) {
             console.error('[Integrations] Connection action failed:', error)
-            // A reconnect can fail for reasons the user can act on — a blocked popup, a
-            // cancelled consent screen. Swallowing that into console.error left the button
-            // looking like it had simply done nothing.
-            if (onError) onError(error)
         } finally {
             setBusy(false)
         }
@@ -234,34 +183,25 @@ export function ConnectionCard({ service, connection, projects, health, onReconn
             )
         )
 
-    const reconnect = () => {
-        setReconnectError('')
-        return runBusy(
-            async () => {
-                if (isGoogle) {
-                    await startServerSideAuth(
-                        connection.defaultProjectId,
-                        googleServiceFor(service),
-                        undefined,
-                        connection.connectionId
-                    )
-                } else {
-                    await startMicrosoftServerSideAuth(
-                        connection.defaultProjectId,
-                        microsoftServiceFor(service),
-                        undefined,
-                        connection.connectionId
-                    )
-                }
-                setAuthStatus(null)
-                // Re-verify. Redux clears `authInvalid` on a fresh consent, but the health
-                // result from the check that ran BEFORE the fix would otherwise keep forcing
-                // this card into the reconnect state.
-                if (onReconnected) onReconnected()
-            },
-            { onError: () => setReconnectError(translate('Reconnecting failed. Please try again.')) }
-        )
-    }
+    const reconnect = () =>
+        runBusy(async () => {
+            if (isGoogle) {
+                await startServerSideAuth(
+                    connection.defaultProjectId,
+                    googleServiceFor(service),
+                    undefined,
+                    connection.connectionId
+                )
+            } else {
+                await startMicrosoftServerSideAuth(
+                    connection.defaultProjectId,
+                    microsoftServiceFor(service),
+                    undefined,
+                    connection.connectionId
+                )
+            }
+            setAuthStatus(null)
+        })
 
     const disconnect = () =>
         runBusy(async () => {
@@ -273,29 +213,19 @@ export function ConnectionCard({ service, connection, projects, health, onReconn
         })
 
     return (
-        <View style={[localStyles.card, broken && localStyles.cardBroken]}>
+        <View style={localStyles.card}>
             <View style={localStyles.cardHeader}>
                 <View style={localStyles.cardHeaderLeft}>
                     <Icon
                         name={service === CONNECTION_SERVICE_CALENDAR ? 'calendar' : 'mail'}
                         size={16}
-                        color={broken ? colors.UtilityRed200 : colors.Text02}
+                        color={colors.Text02}
                     />
                     <View style={localStyles.cardTitleArea}>
                         <View style={localStyles.cardTitleRow}>
                             <Text style={[styles.subtitle1, localStyles.cardTitle]} numberOfLines={1}>
                                 {connection.email}
                             </Text>
-                            {/* The status badge outranks the "Default account" one: a dead
-                                default account showing only a green badge is exactly how this
-                                went unnoticed. */}
-                            {broken && (
-                                <View style={localStyles.brokenBadge}>
-                                    <Text style={[styles.caption2, localStyles.brokenBadgeText]}>
-                                        {translate('Not connected')}
-                                    </Text>
-                                </View>
-                            )}
                             {connection.isDefaultAccount && (
                                 <View style={localStyles.defaultBadge}>
                                     <Text style={[styles.caption2, localStyles.defaultBadgeText]}>
@@ -304,37 +234,19 @@ export function ConnectionCard({ service, connection, projects, health, onReconn
                                 </View>
                             )}
                         </View>
-                        <View style={localStyles.providerRow}>
-                            <Text style={[styles.caption1, localStyles.providerText]}>
-                                {getProviderLabel(connection.provider)}
-                            </Text>
-                            {/* Live verification result. Only the two states the user can act
-                                on are shown: an `unknown` answer renders nothing rather than
-                                casting doubt on a mailbox that is probably fine. */}
-                            {!broken && health?.status === HEALTH_CHECKING && (
-                                <Text style={[styles.caption1, localStyles.checkingText]}>
-                                    {` · ${translate('Checking connection')}`}
-                                </Text>
-                            )}
-                            {!broken && health?.status === HEALTH_CONNECTED && (
-                                <Text style={[styles.caption1, localStyles.connectedText]}>
-                                    {` · ${translate('Connection verified')}`}
-                                </Text>
-                            )}
-                        </View>
+                        <Text style={[styles.caption1, localStyles.providerText]}>
+                            {getProviderLabel(connection.provider)}
+                        </Text>
                     </View>
                 </View>
                 {busy && <ActivityIndicator size="small" color={colors.Primary100} />}
             </View>
 
-            {broken && (
-                <ConnectionAuthAlert
-                    service={service}
-                    connection={connection}
-                    onReconnect={reconnect}
-                    busy={busy}
-                    error={reconnectError}
-                />
+            {connection.authInvalid && (
+                <TouchableOpacity style={localStyles.reconnectBanner} onPress={reconnect} disabled={busy}>
+                    <Icon name="alert-circle" size={14} color={colors.UtilityYellow300} />
+                    <Text style={[styles.caption1, localStyles.reconnectText]}>{translate('Reconnect account')}</Text>
+                </TouchableOpacity>
             )}
 
             <View style={localStyles.cardControls}>
@@ -352,7 +264,7 @@ export function ConnectionCard({ service, connection, projects, health, onReconn
                     </TouchableOpacity>
                 )}
                 {hasSettingsSection && (
-                    <AppPopover
+                    <Popover
                         isOpen={settingsOpen}
                         position={['right', 'bottom', 'left', 'top']}
                         padding={4}
@@ -380,7 +292,7 @@ export function ConnectionCard({ service, connection, projects, health, onReconn
                             <Icon name="settings" size={13} color={colors.Primary100} />
                             <Text style={[styles.caption1, localStyles.textActionLabel]}>{translate('Settings')}</Text>
                         </TouchableOpacity>
-                    </AppPopover>
+                    </Popover>
                 )}
                 <TouchableOpacity style={localStyles.textAction} onPress={disconnect} disabled={busy}>
                     <Icon name="unlink" size={13} color={colors.UtilityRed200} />
@@ -393,7 +305,7 @@ export function ConnectionCard({ service, connection, projects, health, onReconn
     )
 }
 
-function ConnectionsSection({ service, title, connections, projects, healthByConnectionId = {}, onReconnected }) {
+function ConnectionsSection({ service, title, connections, projects }) {
     const [connectPicker, setConnectPicker] = useState(null) // null | 'google' | 'microsoft'
 
     const connectWith = (provider, project) => {
@@ -417,13 +329,11 @@ function ConnectionsSection({ service, title, connections, projects, healthByCon
                     service={service}
                     connection={connection}
                     projects={projects}
-                    health={healthByConnectionId[connection.connectionId]}
-                    onReconnected={onReconnected}
                 />
             ))}
             <View style={localStyles.connectRow}>
                 {[PROVIDER_GOOGLE, PROVIDER_MICROSOFT].map(provider => (
-                    <AppPopover
+                    <Popover
                         key={provider}
                         isOpen={connectPicker === provider}
                         position={['bottom', 'top', 'right', 'left']}
@@ -432,11 +342,10 @@ function ConnectionsSection({ service, title, connections, projects, healthByCon
                         containerStyle={POPOVER_CONTAINER_STYLE}
                         onClickOutside={() => setConnectPicker(null)}
                         content={
-                            <ProjectListModal
+                            <ProjectPicker
                                 projects={projects}
-                                title={translate('Choose a default project')}
-                                onSelectProject={project => connectWith(provider, project)}
-                                closeModal={() => setConnectPicker(null)}
+                                onSelect={project => connectWith(provider, project)}
+                                closePopover={() => setConnectPicker(null)}
                             />
                         }
                     >
@@ -447,14 +356,14 @@ function ConnectionsSection({ service, title, connections, projects, healthByCon
                             buttonStyle={{ marginRight: 12 }}
                             onPress={() => setConnectPicker(provider)}
                         />
-                    </AppPopover>
+                    </Popover>
                 ))}
             </View>
         </View>
     )
 }
 
-export default function IntegrationsSettings({ onVmSubscriptionStatusChanged }) {
+export default function IntegrationsSettings() {
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
 
@@ -469,37 +378,22 @@ export default function IntegrationsSettings({ onVmSubscriptionStatusChanged }) 
     const emailConnections = listEmailConnections(loggedUser)
     const calendarConnections = listCalendarConnections(loggedUser)
 
-    // Verify every account against its provider when the page opens. The stored flag is
-    // only written when something tried to USE the account, so an untouched connection
-    // whose grant died reads as healthy until some background job stumbles on it (AT-2491).
-    const { healthByConnectionId, recheck } = useConnectionHealth(
-        [...emailConnections, ...calendarConnections].map(connection => connection.connectionId)
-    )
-
     return (
         <View style={localStyles.container}>
             <Text style={[styles.body1, localStyles.description]}>{translate('IntegrationsSettingsDescription')}</Text>
-            {/* One spinner for both server-fetched sections; the account lists below come from
-                already-loaded Redux state and stay interactive. */}
-            <IntegrationsLoadingRegion>
-                <DefaultVmAgentSection />
-                <AgentSubscriptionsSection onStatusChanged={onVmSubscriptionStatusChanged} />
-            </IntegrationsLoadingRegion>
+            <DefaultVmAgentSection />
+            <AgentSubscriptionsSection />
             <ConnectionsSection
                 service={CONNECTION_SERVICE_EMAIL}
                 title="Email accounts"
                 connections={emailConnections}
                 projects={projects}
-                healthByConnectionId={healthByConnectionId}
-                onReconnected={recheck}
             />
             <ConnectionsSection
                 service={CONNECTION_SERVICE_CALENDAR}
                 title="Calendar accounts"
                 connections={calendarConnections}
                 projects={projects}
-                healthByConnectionId={healthByConnectionId}
-                onReconnected={recheck}
             />
         </View>
     )
@@ -562,61 +456,17 @@ const localStyles = StyleSheet.create({
     defaultBadgeText: {
         color: colors.UtilityGreen300,
     },
-    providerRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
     providerText: {
         color: colors.Text03,
     },
-    checkingText: {
-        color: colors.Text03,
-    },
-    connectedText: {
-        color: colors.UtilityGreen300,
-    },
-    cardBroken: {
-        borderColor: colors.UtilityRed150,
-        backgroundColor: colors.UtilityRed100,
-    },
-    brokenBadge: {
-        marginLeft: 8,
-        paddingHorizontal: 8,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: colors.UtilityRed200,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    brokenBadgeText: {
-        color: '#FFFFFF',
-    },
-    alert: {
-        marginTop: 12,
-    },
-    alertHeader: {
+    reconnectBanner: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginTop: 10,
     },
-    alertTitle: {
-        color: colors.UtilityRed300,
+    reconnectText: {
+        color: colors.UtilityYellow300,
         marginLeft: 6,
-    },
-    alertBody: {
-        color: colors.Text01,
-        marginTop: 6,
-    },
-    alertSince: {
-        color: colors.Text02,
-        marginTop: 4,
-    },
-    alertError: {
-        color: colors.UtilityRed300,
-        marginTop: 8,
-    },
-    alertButton: {
-        marginTop: 12,
-        alignSelf: 'flex-start',
     },
     cardControls: {
         flexDirection: 'row',
@@ -660,5 +510,40 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 4,
+    },
+    pickerContainer: {
+        backgroundColor: colors.Secondary400,
+        borderRadius: 4,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        minWidth: 220,
+        maxWidth: 280,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOpacity: 1,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 3,
+    },
+    pickerTitle: {
+        color: '#ffffff',
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+    },
+    pickerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        height: 36,
+        borderRadius: 4,
+    },
+    projectDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        marginRight: 8,
+    },
+    pickerRowText: {
+        color: '#ffffff',
+        flexShrink: 1,
     },
 })

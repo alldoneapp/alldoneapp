@@ -19,7 +19,7 @@
 .ql-container.ql-disabled .ql-tooltip {
     visibility: hidden;
 }
-.ql-container.ql-disabled .ql-editor li[data-list] > .ql-ui {
+.ql-container.ql-disabled .ql-editor ul[data-checked] > li::before {
     pointer-events: none;
 }
 .ql-clipboard {
@@ -106,14 +106,6 @@
     background-color: #f6f8fc;
     font-weight: 700;
 }
-/* Quill 2 list DOM: every list renders as <ol>, the type lives in li[data-list]
-   (ordered | bullet | checked | unchecked), and the marker is drawn by the
-   contenteditable=false <span class="ql-ui"> child. The app's custom metrics
-   (7.4px list padding, 1.82em item padding, 9.7px marker gap) are preserved on
-   the new selectors. */
-.ql-editor {
-    counter-reset: list-0 list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
-}
 .ql-editor p,
 .ql-editor ol,
 .ql-editor ul,
@@ -127,187 +119,150 @@
 .ql-editor h6 {
     margin: 0;
     padding: 0;
+    counter-reset: list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
 }
-.ql-editor p,
-.ql-editor h1,
-.ql-editor h2,
-.ql-editor h3,
-.ql-editor h4,
-.ql-editor h5,
-.ql-editor h6 {
-    counter-reset: list-0 list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
-}
-/* AT-2254: a numbered list must restart at 1 unless it directly continues an
-   ordered list. Quill 2's ListContainer only ever accepts ListItem children
-   (ListContainer.allowedChildren = [ListItem]), so ANY other block -- a
-   paragraph, heading, blockquote, code block, markdown table, divider or image
-   -- necessarily splits the list into a second <ol>. Resetting the counter on
-   the container therefore covers every possible separator, where the previous
-   `p, h1..h6` rule above covered only two of them and let a list that was
-   interrupted by anything else keep counting (1..6 at the top of a note, then
-   7.. much further down). Kept alongside that rule rather than replacing it:
-   it is what stock quill ships, and it costs nothing. */
-.ql-editor ol {
+.ql-editor ol,
+.ql-editor ul {
     padding-left: 7.4px; /*Previous value was 0.25em*/
-    counter-reset: list-0 list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
 }
-.ql-editor li {
+.ql-editor ol > li,
+.ql-editor ul > li {
     list-style-type: none;
-    position: relative;
 }
-.ql-editor li > .ql-ui::before {
-    display: inline-block;
-    white-space: nowrap;
-    width: 1.2em;
-    text-align: right;
-}
-.ql-editor li[data-list='ordered'] > .ql-ui::before {
-    margin-left: -1.65em;
-    margin-right: 0.45em;
-}
-.ql-editor li[data-list='bullet'] > .ql-ui::before {
+.ql-editor ul > li::before {
     content: '\2022';
-    margin-left: -1.5em;
-    margin-right: 9.7px;
 }
-.ql-editor li[data-list='checked'] > .ql-ui,
-.ql-editor li[data-list='unchecked'] > .ql-ui {
+.ql-editor ul[data-checked='true'],
+.ql-editor ul[data-checked='false'] {
+    pointer-events: none;
+}
+.ql-editor ul[data-checked='true'] > li *,
+.ql-editor ul[data-checked='false'] > li * {
+    pointer-events: all;
+}
+.ql-editor ul[data-checked='true'] > li::before,
+.ql-editor ul[data-checked='false'] > li::before {
     color: #777;
     cursor: pointer;
     pointer-events: all;
 }
-.ql-editor li[data-list='checked'] > .ql-ui::before {
+.ql-editor ul[data-checked='true'] > li::before {
     content: '\2611';
-    margin-left: -1.5em;
-    margin-right: 9.7px;
 }
-.ql-editor li[data-list='unchecked'] > .ql-ui::before {
+.ql-editor ul[data-checked='false'] > li::before {
     content: '\2610';
+}
+.ql-editor li::before {
+    /* display: inline-block; */
+    white-space: nowrap;
+    width: 1.2em;
+    padding-left: 0.5em;
+}
+.ql-editor ol > li:not(.ql-direction-rtl)::before {
+    margin-left: -1.65em;
+    text-align: right;
+}
+.ql-editor ul > li:not(.ql-direction-rtl)::before {
     margin-left: -1.5em;
     margin-right: 9.7px;
+    text-align: right;
 }
-.ql-editor li.ql-direction-rtl > .ql-ui::before {
+.ql-editor li.ql-direction-rtl::before {
     margin-left: 0.3em;
     margin-right: -1.5em;
-    text-align: left;
 }
-.ql-editor li:not(.ql-direction-rtl) {
+.ql-editor ol li:not(.ql-direction-rtl),
+.ql-editor ul li:not(.ql-direction-rtl) {
     padding-left: 1.82em;
 }
-.ql-editor li.ql-direction-rtl {
+.ql-editor ol li.ql-direction-rtl,
+.ql-editor ul li.ql-direction-rtl {
     padding-right: 1.82em;
 }
-.ql-editor li[data-list] {
+.ql-editor ol li {
     counter-reset: list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
-}
-/* AT-2254: the one separator that does NOT split the <ol>. Quill 2 keeps
-   bullets, checkboxes and numbers in a single container and distinguishes them
-   only by li[data-list], so a bulleted or checklist run between two numbered
-   runs leaves them in the same <ol> and the container reset above never fires.
-   `counter-set` is deliberate: it touches list-0 alone, so it cannot collide
-   with the list-1..list-9 `counter-reset` cascade above and in the indent chain
-   below (same property + equal specificity would drop the nested resets). */
-.ql-editor li[data-list='bullet'],
-.ql-editor li[data-list='checked'],
-.ql-editor li[data-list='unchecked'] {
-    counter-set: list-0 0;
-}
-/* Safari < 17.2 has no counter-set. Falling back to counter-reset re-introduces
-   the collision described above, so an INDENTED bullet loses its list-1..list-9
-   reset there; top-level separation -- the reported bug -- still works. */
-@supports not (counter-set: none) {
-    .ql-editor li[data-list='bullet'],
-    .ql-editor li[data-list='checked'],
-    .ql-editor li[data-list='unchecked'] {
-        counter-reset: list-0 list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
-    }
-}
-.ql-editor li[data-list='ordered'] {
     counter-increment: list-0;
 }
-.ql-editor li[data-list='ordered'] > .ql-ui::before {
+.ql-editor ol li:before {
     content: counter(list-0, decimal) '. ';
 }
-.ql-editor li[data-list='ordered'].ql-indent-1 {
+.ql-editor ol li.ql-indent-1 {
     counter-increment: list-1;
 }
-.ql-editor li[data-list='ordered'].ql-indent-1 > .ql-ui::before {
+.ql-editor ol li.ql-indent-1:before {
     content: counter(list-1, lower-alpha) '. ';
 }
-.ql-editor li[data-list].ql-indent-1 {
+.ql-editor ol li.ql-indent-1 {
     counter-reset: list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
 }
-.ql-editor li[data-list='ordered'].ql-indent-2 {
+.ql-editor ol li.ql-indent-2 {
     counter-increment: list-2;
 }
-.ql-editor li[data-list='ordered'].ql-indent-2 > .ql-ui::before {
+.ql-editor ol li.ql-indent-2:before {
     content: counter(list-2, lower-roman) '. ';
 }
-.ql-editor li[data-list].ql-indent-2 {
+.ql-editor ol li.ql-indent-2 {
     counter-reset: list-3 list-4 list-5 list-6 list-7 list-8 list-9;
 }
-.ql-editor li[data-list='ordered'].ql-indent-3 {
+.ql-editor ol li.ql-indent-3 {
     counter-increment: list-3;
 }
-.ql-editor li[data-list='ordered'].ql-indent-3 > .ql-ui::before {
+.ql-editor ol li.ql-indent-3:before {
     content: counter(list-3, decimal) '. ';
 }
-.ql-editor li[data-list].ql-indent-3 {
+.ql-editor ol li.ql-indent-3 {
     counter-reset: list-4 list-5 list-6 list-7 list-8 list-9;
 }
-.ql-editor li[data-list='ordered'].ql-indent-4 {
+.ql-editor ol li.ql-indent-4 {
     counter-increment: list-4;
 }
-.ql-editor li[data-list='ordered'].ql-indent-4 > .ql-ui::before {
+.ql-editor ol li.ql-indent-4:before {
     content: counter(list-4, lower-alpha) '. ';
 }
-.ql-editor li[data-list].ql-indent-4 {
+.ql-editor ol li.ql-indent-4 {
     counter-reset: list-5 list-6 list-7 list-8 list-9;
 }
-.ql-editor li[data-list='ordered'].ql-indent-5 {
+.ql-editor ol li.ql-indent-5 {
     counter-increment: list-5;
 }
-.ql-editor li[data-list='ordered'].ql-indent-5 > .ql-ui::before {
+.ql-editor ol li.ql-indent-5:before {
     content: counter(list-5, lower-roman) '. ';
 }
-.ql-editor li[data-list].ql-indent-5 {
+.ql-editor ol li.ql-indent-5 {
     counter-reset: list-6 list-7 list-8 list-9;
 }
-.ql-editor li[data-list='ordered'].ql-indent-6 {
+.ql-editor ol li.ql-indent-6 {
     counter-increment: list-6;
 }
-.ql-editor li[data-list='ordered'].ql-indent-6 > .ql-ui::before {
+.ql-editor ol li.ql-indent-6:before {
     content: counter(list-6, decimal) '. ';
 }
-.ql-editor li[data-list].ql-indent-6 {
+.ql-editor ol li.ql-indent-6 {
     counter-reset: list-7 list-8 list-9;
 }
-.ql-editor li[data-list='ordered'].ql-indent-7 {
+.ql-editor ol li.ql-indent-7 {
     counter-increment: list-7;
 }
-.ql-editor li[data-list='ordered'].ql-indent-7 > .ql-ui::before {
+.ql-editor ol li.ql-indent-7:before {
     content: counter(list-7, lower-alpha) '. ';
 }
-.ql-editor li[data-list].ql-indent-7 {
+.ql-editor ol li.ql-indent-7 {
     counter-reset: list-8 list-9;
 }
-.ql-editor li[data-list='ordered'].ql-indent-8 {
+.ql-editor ol li.ql-indent-8 {
     counter-increment: list-8;
 }
-.ql-editor li[data-list='ordered'].ql-indent-8 > .ql-ui::before {
+.ql-editor ol li.ql-indent-8:before {
     content: counter(list-8, lower-roman) '. ';
 }
-.ql-editor li[data-list].ql-indent-8 {
+.ql-editor ol li.ql-indent-8 {
     counter-reset: list-9;
 }
-.ql-editor li[data-list='ordered'].ql-indent-9 {
+.ql-editor ol li.ql-indent-9 {
     counter-increment: list-9;
 }
-.ql-editor li[data-list='ordered'].ql-indent-9 > .ql-ui::before {
+.ql-editor ol li.ql-indent-9:before {
     content: counter(list-9, decimal) '. ';
-}
-.ql-editor .ql-ui {
-    position: absolute;
 }
 .ql-editor .ql-indent-1:not(.ql-direction-rtl) {
     padding-left: 3.32em;
@@ -470,16 +425,10 @@
     color: #93f;
 }
 .ql-editor .ql-font-serif {
-    font-family:
-        Georgia,
-        Times New Roman,
-        serif;
+    font-family: Georgia, Times New Roman, serif;
 }
 .ql-editor .ql-font-monospace {
-    font-family:
-        Monaco,
-        Courier New,
-        monospace;
+    font-family: Monaco, Courier New, monospace;
 }
 .ql-editor .ql-size-small {
     font-size: 0.75em;
@@ -1158,16 +1107,10 @@
     content: 'Monospace';
 }
 .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='serif']::before {
-    font-family:
-        Georgia,
-        Times New Roman,
-        serif;
+    font-family: Georgia, Times New Roman, serif;
 }
 .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='monospace']::before {
-    font-family:
-        Monaco,
-        Courier New,
-        monospace;
+    font-family: Monaco, Courier New, monospace;
 }
 .ql-snow .ql-picker.ql-size {
     width: 98px;
@@ -1275,9 +1218,7 @@
     padding-right: 0px;
 
     background: #fafbfb;
-    box-shadow:
-        0px 4px 6px rgba(0, 0, 0, 0.04),
-        0px 2px 3px rgba(0, 0, 0, 0.04);
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.04), 0px 2px 3px rgba(0, 0, 0, 0.04);
     border-radius: 4px;
 }
 .ql-toolbar.ql-snow .ql-formats {
@@ -1473,103 +1414,4 @@
     width: 180px;
     top: -16px !important;
     left: -14px;
-}
-
-/* Cell editing stays inside the existing table; controls wrap on phones. */
-.ql-editor[contenteditable='true'] .ql-markdown-table [data-row][data-column] {
-    cursor: text;
-}
-.ql-editor .ql-markdown-table [data-row][data-column]:focus,
-.ql-editor .ql-markdown-table [data-row][data-column]:focus-within {
-    outline: 2px solid #8a9eff;
-    outline-offset: -2px;
-}
-.ql-editor .ql-table-cell-input {
-    display: block;
-    box-sizing: border-box;
-    width: 100%;
-    min-width: 76px;
-    margin: 0;
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    outline: none;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    text-align: inherit;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    overflow: hidden;
-    resize: none;
-    min-height: 20px;
-}
-.ql-editor .ql-markdown-table th,
-.ql-editor .ql-markdown-table td {
-    white-space: pre-wrap;
-}
-.ql-editor .ql-table-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding: 6px 0;
-    white-space: normal;
-}
-.ql-editor .ql-table-controls button,
-.ql-container .ql-table-draft-recovery button {
-    padding: 5px 8px;
-    border: 1px solid #d7dff0;
-    border-radius: 4px;
-    background: #f6f8fc;
-    color: #04142f;
-    font: inherit;
-    font-size: 12px;
-    cursor: pointer;
-}
-.ql-editor .ql-table-controls button[aria-pressed='true'] {
-    background: #e8edff;
-    border-color: #8a9eff;
-}
-.ql-editor .ql-table-controls button:disabled {
-    opacity: 0.45;
-    cursor: default;
-}
-.ql-container.ql-disabled .ql-table-controls {
-    display: none;
-}
-.ql-container .ql-table-draft-recovery {
-    padding: 12px;
-    margin: 12px 0;
-    border: 1px solid #d7dff0;
-    border-radius: 4px;
-    background: #f6f8fc;
-}
-.ql-container .ql-table-draft-recovery textarea {
-    box-sizing: border-box;
-    width: 100%;
-    padding: 8px;
-    margin: 8px 0;
-}
-
-/* Use the same responsive state as the detail header, which follows the Alldone
-   pane in assistant mode. Mobile pages already supply their 16px outer gutter. */
-[data-note-editor-layout='desktop'] {
-    --note-editor-gutter: 104px;
-}
-[data-note-editor-layout='tablet'] {
-    --note-editor-gutter: 56px;
-}
-[data-note-editor-layout='mobile'] {
-    --note-editor-gutter: 0px;
-}
-[data-note-editor] .ql-toolbar-container,
-[data-note-editor] .ql-editor {
-    padding-inline: var(--note-editor-gutter, 0px);
-}
-[data-note-editor] .ql-container {
-    padding-inline: 0;
-}
-[data-note-editor] .ql-editor.ql-blank::before {
-    inset-inline: var(--note-editor-gutter, 0px);
-    padding-inline: 0;
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 import Button from '../../UIControls/Button'
@@ -52,7 +52,7 @@ export default function MembersWrapper({
 
     const cleanedName = displayName.trim()
     return (
-        <AppPopover
+        <Popover
             content={
                 <WorkstreamMembersModal
                     closeModal={closeModal}
@@ -91,6 +91,6 @@ export default function MembersWrapper({
                     shortcutText={'A'}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }

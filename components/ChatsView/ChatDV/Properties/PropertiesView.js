@@ -28,11 +28,7 @@ export default function PropertiesView({ projectId, chat }) {
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     useEffect(() => {
-        if (loggedUser.isAnonymous) {
-            afterCreatorFetch(SharedHelper.createAnonymousResourceUser(chat.creatorId))
-        } else {
-            Backend.getUserOrContactBy(projectId, chat.creatorId).then(afterCreatorFetch)
-        }
+        Backend.getUserOrContactBy(projectId, chat.creatorId).then(afterCreatorFetch)
         writeBrowserURL()
     }, [])
 

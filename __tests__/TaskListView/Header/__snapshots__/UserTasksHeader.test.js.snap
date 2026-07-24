@@ -1,485 +1,123 @@
-// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+// Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`UserTasksHeader component UserTasksHeader empty snapshot test should render correctly for basic header 1`] = `
-<div
-  className="css-view-g5y9jx r-width-13qz1uu"
-  dir={null}
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 80,
+        "maxHeight": 80,
+        "minHeight": 80,
+        "paddingBottom": 8,
+        "paddingTop": 40,
+      },
+      undefined,
+    ]
+  }
 >
-  <div
-    className="css-view-g5y9jx r-alignItems-1oszu61 r-justifyContent-1777fci r-paddingBottom-lhv16n r-paddingTop-1ygmrgt r-width-13qz1uu"
-    dir={null}
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 24,
+        "lineHeight": 32,
+        "marginRight": 14,
+      }
+    }
   >
-    <div
-      className="css-view-g5y9jx r-backgroundColor-2lf47b r-borderColor-1mwhlak r-borderRadius-t23y2h r-borderWidth-rs99b7 r-boxShadow-12jrkdb r-paddingBlock-11f147o r-paddingInline-1ubuhtd r-width-13qz1uu r-alignItems-1awozwy r-flexDirection-18u37iz"
-      dir={null}
+    Martina's tasks
+  </Text>
+  <View
+    style={
+      Object {
+        "height": 28,
+        "justifyContent": "flex-end",
+        "marginLeft": 16,
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+          },
+        ]
+      }
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-justifyContent-1h0z5md r-minWidth-bcqeeo"
-        dir={null}
-      >
-        <div
-          className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1h0z5md r-paddingBlock-1mkv55d r-paddingInline-1e084wi"
-          dir={null}
-        >
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Tasks
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Goals
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Notes
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Contacts
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Artifacts
-            </div>
-          </div>
-        </div>
-      </div>
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-marginLeft-19u6a5r"
-        dir={null}
-      >
-        <div
-          className="css-view-g5y9jx r-marginRight-1pcdyqj"
-          dir={null}
-        >
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-            style={
-              {
-                "alignSelf": "center",
-              }
-            }
-          >
-            <div
-              className="css-view-g5y9jx r-alignSelf-1wv73ep r-backgroundColor-1v0ekwd r-borderRadius-t23y2h r-flexDirection-18u37iz r-height-1k25im9 r-overflow-1udh08x r-paddingBottom-l4nmg1 r-paddingLeft-nk90ef r-paddingRight-14q5wjw r-paddingTop-vmopo1 r-position-bnwqim"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
-                dir={null}
-                style={
-                  {
-                    "transform": "translateX(0px)",
-                    "width": "0px",
-                  }
-                }
-              />
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                dir={null}
-              >
-                <div
-                  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-justifyContent-1777fci"
-                  dir={null}
-                  onClick={[Function]}
-                  onContextMenu={[Function]}
-                  onKeyDown={[Function]}
-                  style={
-                    {
-                      "transitionDuration": "0s",
-                    }
-                  }
-                  tabIndex="0"
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                    dir={null}
-                  >
-                    <div
-                      className="css-text-146c3p1 r-alignItems-1awozwy r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-paddingLeft-f727ji r-paddingRight-1hvjb8t r-color-1q5n9ts r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb"
-                      dir="auto"
-                    >
-                      Open
-                    </div>
-                    <div
-                      className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1b43r93 r-height-18yzcnr r-letterSpacing-3da313 r-lineHeight-hbpseb r-maxHeight-rcggws r-minHeight-12sks89"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(0,127,255,1.00)",
-                          "paddingRight": "12px",
-                        }
-                      }
-                    >
-                      0
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-justifyContent-1777fci"
-                  dir={null}
-                  onClick={[Function]}
-                  onContextMenu={[Function]}
-                  onKeyDown={[Function]}
-                  style={
-                    {
-                      "transitionDuration": "0s",
-                    }
-                  }
-                  tabIndex="0"
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                    dir={null}
-                  >
-                    <div
-                      className="css-text-146c3p1 r-alignItems-1awozwy r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-1hvjb8t"
-                      dir="auto"
-                    >
-                      Done
-                    </div>
-                    <div
-                      className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1b43r93 r-height-18yzcnr r-letterSpacing-3da313 r-lineHeight-hbpseb r-maxHeight-rcggws r-minHeight-12sks89"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(138,148,166,1.00)",
-                          "paddingRight": "12px",
-                        }
-                      }
-                    >
-                      0
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+      
+    </Text>
+  </View>
+</View>
 `;
 
 exports[`UserTasksHeader component UserTasksHeader empty snapshot test should render correctly for header with caption 1`] = `
-<div
-  className="css-view-g5y9jx r-width-13qz1uu"
-  dir={null}
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "flex": 1,
+        "flexDirection": "row",
+        "height": 80,
+        "maxHeight": 80,
+        "minHeight": 80,
+        "paddingBottom": 8,
+        "paddingTop": 40,
+      },
+      undefined,
+    ]
+  }
 >
-  <div
-    className="css-view-g5y9jx r-alignItems-1oszu61 r-justifyContent-1777fci r-paddingBottom-lhv16n r-paddingTop-1ygmrgt r-width-13qz1uu"
-    dir={null}
+  <Text
+    style={
+      Object {
+        "fontFamily": "Roboto-Regular",
+        "fontSize": 24,
+        "lineHeight": 32,
+        "marginRight": 14,
+      }
+    }
   >
-    <div
-      className="css-view-g5y9jx r-backgroundColor-2lf47b r-borderColor-1mwhlak r-borderRadius-t23y2h r-borderWidth-rs99b7 r-boxShadow-12jrkdb r-paddingBlock-11f147o r-paddingInline-1ubuhtd r-width-13qz1uu r-alignItems-1awozwy r-flexDirection-18u37iz"
-      dir={null}
+    Done team task
+  </Text>
+  <View
+    style={
+      Object {
+        "height": 28,
+        "justifyContent": "flex-end",
+        "marginLeft": 16,
+      }
+    }
+  >
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+          },
+        ]
+      }
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-justifyContent-1h0z5md r-minWidth-bcqeeo"
-        dir={null}
-      >
-        <div
-          className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1h0z5md r-paddingBlock-1mkv55d r-paddingInline-1e084wi"
-          dir={null}
-        >
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Tasks
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Goals
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Notes
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Contacts
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderBottomColor-oucylx r-borderBottomWidth-opedn5 r-height-1r8g8re r-justifyContent-1777fci r-marginInline-1j93nrh r-paddingInline-is05cd"
-            dir={null}
-            onClick={[Function]}
-            onContextMenu={[Function]}
-            onKeyDown={[Function]}
-            style={
-              {
-                "transitionDuration": "0s",
-              }
-            }
-            tabIndex="0"
-          >
-            <div
-              className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-ubezar r-letterSpacing-uz4sb0 r-lineHeight-135wba7"
-              dir="auto"
-            >
-              Artifacts
-            </div>
-          </div>
-        </div>
-      </div>
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-marginLeft-19u6a5r"
-        dir={null}
-      >
-        <div
-          className="css-view-g5y9jx r-marginRight-1pcdyqj"
-          dir={null}
-        >
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-            style={
-              {
-                "alignSelf": "center",
-              }
-            }
-          >
-            <div
-              className="css-view-g5y9jx r-alignSelf-1wv73ep r-backgroundColor-1v0ekwd r-borderRadius-t23y2h r-flexDirection-18u37iz r-height-1k25im9 r-overflow-1udh08x r-paddingBottom-l4nmg1 r-paddingLeft-nk90ef r-paddingRight-14q5wjw r-paddingTop-vmopo1 r-position-bnwqim"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
-                dir={null}
-                style={
-                  {
-                    "transform": "translateX(0px)",
-                    "width": "0px",
-                  }
-                }
-              />
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                dir={null}
-              >
-                <div
-                  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-justifyContent-1777fci"
-                  dir={null}
-                  onClick={[Function]}
-                  onContextMenu={[Function]}
-                  onKeyDown={[Function]}
-                  style={
-                    {
-                      "transitionDuration": "0s",
-                    }
-                  }
-                  tabIndex="0"
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                    dir={null}
-                  >
-                    <div
-                      className="css-text-146c3p1 r-alignItems-1awozwy r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-paddingLeft-f727ji r-paddingRight-1hvjb8t r-color-1q5n9ts r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb"
-                      dir="auto"
-                    >
-                      Open
-                    </div>
-                    <div
-                      className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1b43r93 r-height-18yzcnr r-letterSpacing-3da313 r-lineHeight-hbpseb r-maxHeight-rcggws r-minHeight-12sks89"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(0,127,255,1.00)",
-                          "paddingRight": "12px",
-                        }
-                      }
-                    >
-                      0
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-justifyContent-1777fci"
-                  dir={null}
-                  onClick={[Function]}
-                  onContextMenu={[Function]}
-                  onKeyDown={[Function]}
-                  style={
-                    {
-                      "transitionDuration": "0s",
-                    }
-                  }
-                  tabIndex="0"
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                    dir={null}
-                  >
-                    <div
-                      className="css-text-146c3p1 r-alignItems-1awozwy r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-16dba41 r-height-18yzcnr r-justifyContent-1777fci r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-paddingLeft-f727ji r-paddingRight-1hvjb8t"
-                      dir="auto"
-                    >
-                      Done
-                    </div>
-                    <div
-                      className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1b43r93 r-height-18yzcnr r-letterSpacing-3da313 r-lineHeight-hbpseb r-maxHeight-rcggws r-minHeight-12sks89"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(138,148,166,1.00)",
-                          "paddingRight": "12px",
-                        }
-                      }
-                    >
-                      0
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+      5 Open
+    </Text>
+  </View>
+</View>
 `;

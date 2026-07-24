@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { colors } from '../../../../styles/global'
-import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../../utils/HelperFunctions'
 import { progressData } from '../../../../GoalsView/GoalsHelper'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import CustomScrollView from '../../../../UIControls/CustomScrollView'
@@ -19,7 +19,6 @@ import CommentInfo from '../../../../UIComponents/FloatModals/GoalsProgressModal
 import EditForm from '../../../../UIComponents/FloatModals/RichCommentModal/EditForm'
 import AttachmentsSelectorModal from '../../../../UIComponents/FloatModals/AttachmentsSelectorModal'
 import { createObjectMessage } from '../../../../../utils/backends/Chats/chatsComments'
-import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 
 export default function SkillCompletionModal({ closeModal, changeCompletion, completion, projectId, skillId }) {
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
@@ -74,11 +73,7 @@ export default function SkillCompletionModal({ closeModal, changeCompletion, com
                 />
             ) : (
                 <View
-                    style={[
-                        localStyles.container,
-                        applyPopoverWidth(),
-                        { maxHeight: getSafeAreaModalMaxHeight(height) },
-                    ]}
+                    style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}
                 >
                     <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                         <ModalHeader
@@ -128,7 +123,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

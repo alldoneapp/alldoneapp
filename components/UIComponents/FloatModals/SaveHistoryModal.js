@@ -1,18 +1,19 @@
-import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import React, { useState, useEffect, useRef } from 'react'
 import { StyleSheet, View, TextInput, Text } from 'react-native'
+import { useSelector, useDispatch } from 'react-redux'
 
 import ModalHeader from './ModalHeader'
 import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import styles, { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
 import Backend from '../../../utils/BackendBridge'
-
+import { startLoadingData, stopLoadingData } from '../../../redux/actions'
 import { translate } from '../../../i18n/TranslationService'
 
 export const CURRENT_DAY_VERSION_ID = '-1'
 
 export default function SaveHistoryModal({ projectId, note, closeModal }) {
+    const dispatch = useDispatch()
     const [versionName, setVersionName] = useState('')
     const inputText = useRef(null)
 
@@ -29,12 +30,11 @@ export default function SaveHistoryModal({ projectId, note, closeModal }) {
     }
 
     const saveVersion = async () => {
-        return runWithLoading('save_note_version', async () => {
-            closeModal()
-            const paths = getPaths()
-
-            await Backend.saveNoteCopy(projectId, note, versionName, paths)
-        })
+        closeModal()
+        const paths = getPaths()
+        dispatch(startLoadingData())
+        await Backend.saveNoteCopy(projectId, note, versionName, paths)
+        dispatch(stopLoadingData())
     }
 
     const onKeyDown = event => {
@@ -98,7 +98,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         paddingVertical: 16,
         height: 244,

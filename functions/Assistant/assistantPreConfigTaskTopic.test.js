@@ -10,9 +10,7 @@ const mockRemoveSingleChatNotification = jest.fn(async () => {})
 const mockSendTaskCompletionNotification = jest.fn()
 const mockSendWhatsAppMessageWithConversationLink = jest.fn()
 const mockGetUserLocalDayBounds = jest.fn(() => ({ startOfDay: 100, endOfDay: 200 }))
-const mockMirrorAssistantResultToWhatsAppDailyTopic = jest.fn(async () => ({ mirrored: true, reason: 'stored' }))
 const mockCommentQueryWhere = jest.fn()
-const mockCommentQueryGet = jest.fn(async () => mockBuildEmptyQuerySnapshot())
 
 const mockBuildEmptyQuerySnapshot = () => ({ empty: true })
 
@@ -55,10 +53,6 @@ jest.mock('../Chats/chatsFirestoreCloud', () => ({
     removeSingleChatNotification: (...args) => mockRemoveSingleChatNotification(...args),
 }))
 
-jest.mock('../WhatsApp/whatsAppResultMirror', () => ({
-    mirrorAssistantResultToWhatsAppDailyTopic: (...args) => mockMirrorAssistantResultToWhatsAppDailyTopic(...args),
-}))
-
 jest.mock('../Services/TwilioWhatsAppService', () =>
     jest.fn().mockImplementation(() => ({
         sendTaskCompletionNotification: (...args) => mockSendTaskCompletionNotification(...args),
@@ -68,10 +62,7 @@ jest.mock('../Services/TwilioWhatsAppService', () =>
 
 jest.mock('firebase-admin', () => {
     const docGet = jest.fn(async path => ({
-        data: () =>
-            path === 'users/user-1'
-                ? { phone: '+1234567890', defaultProjectId: 'whatsapp-project', displayName: 'Karsten' }
-                : {},
+        data: () => (path === 'users/user-1' ? { phone: '+1234567890' } : {}),
     }))
 
     const query = {
@@ -81,7 +72,7 @@ jest.mock('firebase-admin', () => {
         }),
         orderBy: jest.fn(() => query),
         limit: jest.fn(() => query),
-        get: jest.fn((...args) => mockCommentQueryGet(...args)),
+        get: jest.fn(async () => mockBuildEmptyQuerySnapshot()),
     }
 
     return {
@@ -112,55 +103,10 @@ jest.mock(
     { virtual: true }
 )
 
-const {
-    generatePreConfigTaskResult,
-    getLatestUserMessageOnUserLocalDay,
-    hasUserMessageOnUserLocalDay,
-    buildScheduledTaskSourceLabel,
-} = require('./assistantPreConfigTaskTopic')
+const { generatePreConfigTaskResult, hasUserMessageOnUserLocalDay } = require('./assistantPreConfigTaskTopic')
 
 test('exports the local-day user-message lookup used by heartbeats', () => {
-    expect(getLatestUserMessageOnUserLocalDay).toEqual(expect.any(Function))
     expect(hasUserMessageOnUserLocalDay).toEqual(expect.any(Function))
-})
-
-test('returns the latest user message position using timestamp and ID ordering', async () => {
-    jest.clearAllMocks()
-    mockCommentQueryGet
-        .mockResolvedValueOnce({
-            empty: false,
-            docs: [{ id: 'message-a', data: () => ({ created: 350 }) }],
-        })
-        .mockResolvedValueOnce({
-            empty: false,
-            docs: [{ id: 'message-z', data: () => ({ created: 350 }) }],
-        })
-
-    await expect(getLatestUserMessageOnUserLocalDay('project-1', 'chat-1', 'user-1', {}, 350)).resolves.toEqual({
-        createdAt: 350,
-        commentId: 'message-z',
-    })
-})
-
-test('daily-chat message lookup counts only user-authored messages inside the user local day', async () => {
-    jest.clearAllMocks()
-    mockGetUserLocalDayBounds.mockReturnValueOnce({ startOfDay: 300, endOfDay: 400 })
-
-    await hasUserMessageOnUserLocalDay(
-        'project-1',
-        'Heartbeat20260505user-1',
-        'user-1',
-        {
-            uid: 'user-1',
-            timezone: 120,
-        },
-        350
-    )
-
-    expect(mockGetUserLocalDayBounds).toHaveBeenCalledWith(expect.objectContaining({ timezone: 120 }), 350)
-    expect(mockCommentQueryWhere).toHaveBeenCalledWith('creatorId', '==', 'user-1')
-    expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '>=', 300)
-    expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '<=', 400)
 })
 
 describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
@@ -218,10 +164,7 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         )
 
         expect(mockGetCommonData).toHaveBeenCalledWith('project-1', 'topics', 'chat-1')
-        expect(mockGetUserLocalDayBounds).toHaveBeenCalledWith(
-            expect.objectContaining({ uid: 'user-1' }),
-            expect.any(Number)
-        )
+        expect(mockGetUserLocalDayBounds).toHaveBeenCalledWith(expect.objectContaining({ uid: 'user-1' }))
         expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '>=', 100)
         expect(mockCommentQueryWhere).toHaveBeenCalledWith('created', '<=', 200)
     })
@@ -308,31 +251,6 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         })
     })
 
-    test('a task time limit cannot return success or send a completion notification', async () => {
-        mockStoreBotAnswerStream.mockImplementationOnce(async (...args) => {
-            args[args.length - 2].guardrailStopped = { reason: 'time_budget', message: 'Time limit reached' }
-            return 'Partially completed.'
-        })
-        await expect(
-            generatePreConfigTaskResult(
-                'user-1',
-                'project-1',
-                'task-1',
-                ['user-1'],
-                ['PUBLIC'],
-                'assistant-1',
-                'Finish the workflow',
-                'en',
-                aiSettings,
-                { sendWhatsApp: true, name: 'Scheduled workflow' },
-                null,
-                'tasks'
-            )
-        ).rejects.toMatchObject({ code: 'ASSISTANT_WORKFLOW_INCOMPLETE' })
-        expect(mockSendTaskCompletionNotification).not.toHaveBeenCalled()
-        expect(mockSendWhatsAppMessageWithConversationLink).not.toHaveBeenCalled()
-    })
-
     test('injects optional open tasks context before the prompt', async () => {
         mockGetOpenTasksContextMessage.mockResolvedValue({
             message: 'Today (including overdue) the user has 4 open tasks in total.',
@@ -385,102 +303,8 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         )
 
         expect(mockStoreBotAnswerStream.mock.calls[0][18]).toEqual(
-            expect.objectContaining({
-                maxRunWallClockMs: 55 * 60 * 1000,
-                failOnToolExecutionError: true,
-            })
+            expect.objectContaining({ maxRunWallClockMs: 55 * 60 * 1000 })
         )
-    })
-
-    // tool search trades a retry for a smaller prompt, and an unattended run has no
-    // retry — it did every step of the work, reported the tool it was told to use as unavailable,
-    // spent the Gold and was marked done.
-    describe('hosted tool search is opt-out per run', () => {
-        const runWithOptions = options =>
-            generatePreConfigTaskResult(
-                'user-1',
-                'project-1',
-                'chat-1',
-                ['user-1'],
-                ['PUBLIC'],
-                'assistant-1',
-                'Update the global user description',
-                'en',
-                aiSettings,
-                { sendWhatsApp: false, name: 'Recurring task' },
-                null,
-                'tasks',
-                options
-            )
-
-        test('an unattended caller can turn it off', async () => {
-            await runWithOptions({ disableToolSearch: true })
-
-            expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
-                expect.objectContaining({ disableToolSearch: true })
-            )
-        })
-
-        test('passes the server workflow handoff hook to VM tool execution', async () => {
-            const onVmJobStarted = jest.fn()
-            await runWithOptions({ onVmJobStarted })
-            expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(expect.objectContaining({ onVmJobStarted }))
-        })
-
-        test('an interactive run keeps it on, because the user can simply ask again', async () => {
-            await runWithOptions({})
-
-            expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
-                expect.objectContaining({ disableToolSearch: false })
-            )
-        })
-    })
-
-    // The two option bags look interchangeable at a call site, and one of them is silently ignored.
-    describe('run options passed as task metadata are called out', () => {
-        const runWithMetadata = taskMetadata =>
-            generatePreConfigTaskResult(
-                'user-1',
-                'project-1',
-                'chat-1',
-                ['user-1'],
-                ['PUBLIC'],
-                'assistant-1',
-                'Recurring prompt',
-                'en',
-                aiSettings,
-                taskMetadata,
-                null,
-                'tasks'
-            )
-
-        test('warns and still uses the default when a run option lands in the metadata bag', async () => {
-            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
-
-            await runWithMetadata({ name: 'Recurring task', maxRunWallClockMs: 25 * 60 * 1000 })
-
-            expect(warn).toHaveBeenCalledWith(
-                expect.stringContaining('run options passed as task metadata are ignored'),
-                expect.objectContaining({ misplaced: ['maxRunWallClockMs'] })
-            )
-            // The point of the warning: the value really was ignored.
-            expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
-                expect.objectContaining({ maxRunWallClockMs: 55 * 60 * 1000 })
-            )
-            warn.mockRestore()
-        })
-
-        test('stays quiet for ordinary task metadata', async () => {
-            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
-
-            await runWithMetadata({ sendWhatsApp: false, name: 'Recurring task', recurrence: 'daily' })
-
-            expect(warn).not.toHaveBeenCalledWith(
-                expect.stringContaining('run options passed as task metadata are ignored'),
-                expect.anything()
-            )
-            warn.mockRestore()
-        })
     })
 
     test('uses canonical task context for a background VM-style predefined prompt', async () => {
@@ -543,127 +367,6 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
             message: 'Execute this task in a VM',
             content: 'Execute this task in a VM',
             currentMessageImageUrls: [],
-        })
-    })
-
-    // AT-2387: the answer is written into this task's own thread, but a WhatsApp
-    // follow-up is answered out of the daily WhatsApp topic. Without the mirror the
-    // user reads the result on their phone and the assistant has never seen it.
-    describe('daily WhatsApp topic mirror (AT-2387)', () => {
-        beforeEach(() => {
-            // Default to a closed 24h window (template path). jest.clearAllMocks() does not
-            // undo a mockResolvedValue, so each test has to state which path it exercises.
-            mockCommentQueryGet.mockResolvedValue({ empty: true })
-        })
-
-        const runRecurringTask = () =>
-            generatePreConfigTaskResult(
-                'user-1',
-                'project-1',
-                'generated-task-1',
-                ['user-1'],
-                ['PUBLIC'],
-                'assistant-1',
-                'Summarize the market',
-                'en',
-                aiSettings,
-                { sendWhatsApp: true, name: 'Daily Market Analysis', recurrence: 'every_day' },
-                null,
-                'tasks'
-            )
-
-        test('mirrors the result after a plain WhatsApp delivery', async () => {
-            // A user message earlier today means the 24h window is open, so the plain path runs.
-            mockCommentQueryGet.mockResolvedValue({
-                empty: false,
-                docs: [{ id: 'user-message', data: () => ({ created: 150 }) }],
-            })
-            mockSendWhatsAppMessageWithConversationLink.mockResolvedValue({ success: true })
-
-            await runRecurringTask()
-
-            expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalled()
-            expect(mockMirrorAssistantResultToWhatsAppDailyTopic).toHaveBeenCalledWith({
-                userId: 'user-1',
-                assistantId: 'assistant-1',
-                resultText: 'AI reply',
-                sourceProjectId: 'project-1',
-                sourceObjectId: 'generated-task-1',
-                sourceObjectType: 'tasks',
-                sourceLabel: 'From your recurring task "Daily Market Analysis"',
-                sourceCommentId: 'comment-1',
-                userData: expect.objectContaining({ uid: 'user-1', defaultProjectId: 'whatsapp-project' }),
-            })
-        })
-
-        test('mirrors the result after a template WhatsApp delivery too', async () => {
-            mockSendTaskCompletionNotification.mockResolvedValue({ success: true })
-
-            await runRecurringTask()
-
-            expect(mockSendTaskCompletionNotification).toHaveBeenCalled()
-            expect(mockMirrorAssistantResultToWhatsAppDailyTopic).toHaveBeenCalledWith(
-                expect.objectContaining({ resultText: 'AI reply', sourceObjectId: 'generated-task-1' })
-            )
-        })
-
-        test('does not mirror when the WhatsApp delivery failed', async () => {
-            mockSendTaskCompletionNotification.mockResolvedValue({ success: false })
-
-            await runRecurringTask()
-
-            expect(mockMirrorAssistantResultToWhatsAppDailyTopic).not.toHaveBeenCalled()
-        })
-
-        test('does not mirror when the task does not send WhatsApp at all', async () => {
-            await generatePreConfigTaskResult(
-                'user-1',
-                'project-1',
-                'generated-task-1',
-                ['user-1'],
-                ['PUBLIC'],
-                'assistant-1',
-                'Summarize the market',
-                'en',
-                aiSettings,
-                { sendWhatsApp: false, name: 'Daily Market Analysis' },
-                null,
-                'tasks'
-            )
-
-            expect(mockMirrorAssistantResultToWhatsAppDailyTopic).not.toHaveBeenCalled()
-        })
-
-        test('passes the full user doc, not the gold/timezone-only optimized user', async () => {
-            // getUserDataOptimized deliberately returns only gold + timezone fields, so the
-            // mirror cannot resolve defaultProjectId from it.
-            mockSendTaskCompletionNotification.mockResolvedValue({ success: true })
-
-            await runRecurringTask()
-
-            const { userData } = mockMirrorAssistantResultToWhatsAppDailyTopic.mock.calls[0][0]
-            expect(userData.defaultProjectId).toBe('whatsapp-project')
-        })
-
-        test('names the task in the header so the daily topic says where the result came from', () => {
-            expect(buildScheduledTaskSourceLabel({ name: 'Daily Market Analysis', recurrence: 'every_day' })).toBe(
-                'From your recurring task "Daily Market Analysis"'
-            )
-            expect(buildScheduledTaskSourceLabel({ name: 'One-off research', recurrence: 'never' })).toBe(
-                'From your assistant task "One-off research"'
-            )
-            // An unnamed task still gets a header; it just cannot name itself.
-            expect(buildScheduledTaskSourceLabel({})).toBe('From your assistant task')
-            expect(buildScheduledTaskSourceLabel(null)).toBe('From your assistant task')
-        })
-
-        test('a failing mirror never breaks the run', async () => {
-            mockSendTaskCompletionNotification.mockResolvedValue({ success: true })
-            mockMirrorAssistantResultToWhatsAppDailyTopic.mockRejectedValueOnce(new Error('firestore down'))
-
-            const result = await runRecurringTask()
-
-            expect(result.success).toBe(true)
         })
     })
 

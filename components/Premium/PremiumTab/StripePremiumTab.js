@@ -151,7 +151,7 @@ export default function StripePremiumTab() {
     const renderGoldPackCta = (embedded = false) => (
         <View style={[localStyles.goldPackContainer, embedded && localStyles.goldPackContainerEmbedded]}>
             <View style={localStyles.goldPackHeader}>
-                <Icon name="crown" size={18} color={colors.Primary100} />
+                <Icon name="crown" size={18} color={colors.Primary} />
                 <Text style={localStyles.goldPackTitle}>Need more Gold?</Text>
             </View>
             <Text style={localStyles.goldPackDescription}>
@@ -175,7 +175,7 @@ export default function StripePremiumTab() {
             return (
                 <View style={localStyles.statusContainer}>
                     <View style={localStyles.statusHeader}>
-                        <Icon name="crown" size={24} color={colors.Primary100} />
+                        <Icon name="crown" size={24} color={colors.Primary} />
                         <Text style={localStyles.statusTitle}>{translate('Premium Active')}</Text>
                     </View>
 
@@ -226,7 +226,7 @@ export default function StripePremiumTab() {
                 {/* Hero Section */}
                 <View style={localStyles.heroSection}>
                     <View style={localStyles.crownContainer}>
-                        <Icon name="crown" size={48} color={colors.Primary100} />
+                        <Icon name="crown" size={48} color={colors.Primary} />
                     </View>
                     <Text style={localStyles.upgradeTitle}>{translate('Upgrade to Premium')}</Text>
                     <Text style={localStyles.upgradeDescription}>{translate('Premium upgrade description')}</Text>
@@ -236,19 +236,19 @@ export default function StripePremiumTab() {
                 <View style={localStyles.featuresGrid}>
                     <View style={localStyles.featureCard}>
                         <View style={localStyles.featureIconContainer}>
-                            <Icon name="check" size={20} color={colors.Primary100} />
+                            <Icon name="check" size={20} color={colors.Primary} />
                         </View>
                         <Text style={localStyles.featureTitle}>{translate('Unlimited projects')}</Text>
                     </View>
                     <View style={localStyles.featureCard}>
                         <View style={localStyles.featureIconContainer}>
-                            <Icon name="check" size={20} color={colors.Primary100} />
+                            <Icon name="check" size={20} color={colors.Primary} />
                         </View>
                         <Text style={localStyles.featureTitle}>{translate('Unlimited tasks per month')}</Text>
                     </View>
                     <View style={localStyles.featureCard}>
                         <View style={localStyles.featureIconContainer}>
-                            <Icon name="check" size={20} color={colors.Primary100} />
+                            <Icon name="check" size={20} color={colors.Primary} />
                         </View>
                         <Text style={localStyles.featureTitle}>{translate('Priority support')}</Text>
                     </View>
@@ -388,13 +388,16 @@ const localStyles = StyleSheet.create({
         marginBottom: 12,
     },
     statusContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.Surface,
         borderRadius: 16,
         padding: 32,
         marginBottom: 24,
         borderWidth: 2,
-        borderColor: colors.Primary100,
-        boxShadow: '0px 4px 8px rgba(0,127,255,0.10)',
+        borderColor: colors.Primary,
+        shadowColor: colors.Primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
         elevation: 4,
     },
     statusHeader: {
@@ -404,7 +407,7 @@ const localStyles = StyleSheet.create({
     },
     statusTitle: {
         ...global.title6,
-        color: colors.Primary100,
+        color: colors.Primary,
         marginLeft: 12,
     },
     subscriptionDetails: {
@@ -420,18 +423,21 @@ const localStyles = StyleSheet.create({
         color: colors.Text02,
     },
     upgradeContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.Surface,
         borderRadius: 16,
         padding: 0,
         marginBottom: 24,
-        boxShadow: '0px 2px 8px rgba(138,148,166,0.10)',
+        shadowColor: colors.Text03,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
         elevation: 2,
     },
     heroSection: {
         alignItems: 'center',
         paddingHorizontal: 32,
         paddingVertical: 40,
-        backgroundColor: `${colors.Primary100}10`,
+        backgroundColor: `${colors.Primary}10`,
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
     },
@@ -439,7 +445,7 @@ const localStyles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: `${colors.Primary100}20`,
+        backgroundColor: `${colors.Primary}20`,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 20,
@@ -469,7 +475,7 @@ const localStyles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: `${colors.Primary100}15`,
+        backgroundColor: `${colors.Primary}15`,
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 16,
@@ -496,7 +502,7 @@ const localStyles = StyleSheet.create({
     },
     pricingCard: {
         flex: 1,
-        backgroundColor: colors.Grey100,
+        backgroundColor: colors.Background,
         borderRadius: 16,
         padding: 28,
         borderWidth: 1,
@@ -509,23 +515,26 @@ const localStyles = StyleSheet.create({
     },
     yearlyCard: {
         borderColor: colors.Text03,
-        backgroundColor: `${colors.Primary100}05`,
+        backgroundColor: `${colors.Primary}05`,
     },
     popularBadge: {
         position: 'absolute',
         top: -10,
         alignSelf: 'center',
-        backgroundColor: colors.Primary100,
+        backgroundColor: colors.Primary,
         paddingHorizontal: 16,
         paddingVertical: 6,
         borderRadius: 20,
-        boxShadow: '0px 2px 4px rgba(0,127,255,0.30)',
+        shadowColor: colors.Primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
         elevation: 4,
         zIndex: 1,
     },
     popularText: {
         ...global.caption,
-        color: '#FFFFFF',
+        color: colors.Surface,
         fontWeight: '700',
         fontSize: 12,
     },
@@ -544,7 +553,7 @@ const localStyles = StyleSheet.create({
     },
     pricingPrice: {
         ...global.title3,
-        color: colors.Primary100,
+        color: colors.Primary,
         fontWeight: '700',
     },
     pricingPeriod: {
@@ -553,7 +562,7 @@ const localStyles = StyleSheet.create({
         marginLeft: 4,
     },
     savingsContainer: {
-        backgroundColor: `${colors.Primary100}15`,
+        backgroundColor: `${colors.Primary}15`,
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 12,
@@ -561,7 +570,7 @@ const localStyles = StyleSheet.create({
     },
     savingsText: {
         ...global.caption,
-        color: colors.Primary100,
+        color: colors.Primary,
         textAlign: 'center',
         fontWeight: '600',
     },
@@ -614,7 +623,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 12,
         borderWidth: 1,
         borderColor: colors.Text03,
-        backgroundColor: colors.Grey100,
+        backgroundColor: colors.Background,
         alignItems: 'center',
     },
     goldPackContainerEmbedded: {
@@ -649,13 +658,16 @@ const localStyles = StyleSheet.create({
         minWidth: 220,
     },
     linkingSection: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.Surface,
         borderRadius: 16,
         padding: 32,
         marginTop: 24,
         borderWidth: 1,
         borderColor: colors.Text03,
-        boxShadow: '0px 2px 8px rgba(138,148,166,0.10)',
+        shadowColor: colors.Text03,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
         elevation: 2,
     },
     linkingHeader: {
@@ -680,7 +692,7 @@ const localStyles = StyleSheet.create({
     emailInput: {
         ...global.body1,
         color: colors.Text01,
-        backgroundColor: colors.Grey100,
+        backgroundColor: colors.Background,
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 14,

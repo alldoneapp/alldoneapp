@@ -1,7 +1,6 @@
-import { beginLoadingOperation } from '../../../utils/redux/loadingOperation'
 import React, { useEffect, useState } from 'react'
 import { Text, View, StyleSheet } from 'react-native'
-import { useSelector } from 'react-redux'
+import { useSelector, useDispatch } from 'react-redux'
 
 import global from '../../styles/global'
 import { DV_TAB_SETTINGS_PREMIUM } from '../../../utils/TabNavigationConstants'
@@ -13,18 +12,23 @@ import SubscriptionPaidByOtherUser from './SubscriptionPaidByOtherUser/Subscript
 import useSubscriptionPaidByOtherUser from './useSubscriptionPaidByOtherUser'
 import useSubscription from './useSubscription'
 import CreatePremiumSubscription from './CreatePremiumSubscription/CreatePremiumSubscription'
-
+import { startLoadingData, stopLoadingData } from '../../../redux/actions'
 import Backend from '../../../utils/BackendBridge'
 
 export default function PremiumTab() {
+    const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const subscription = useSubscription(loggedUserId)
     const subscriptionPaidByOtherUser = useSubscriptionPaidByOtherUser(loggedUserId)
     const [subscriptionLoaded, setSubscriptionLoaded] = useState(false)
 
     useEffect(() => {
-        if (subscription === null) return beginLoadingOperation('subscription')
-        setSubscriptionLoaded(true)
+        if (subscription === null) {
+            dispatch(startLoadingData())
+        } else if (!subscriptionLoaded) {
+            dispatch(stopLoadingData())
+            setSubscriptionLoaded(true)
+        }
     }, [subscription])
 
     useEffect(() => {

@@ -45,6 +45,11 @@ jest.mock(
     '../../../TaskListView/TaskItem/TaskPresentation/CheckBoxContainer/CheckBoxContainer',
     () => 'CheckBoxContainer'
 )
+jest.mock('../../../TaskListView/TaskItem/TaskCompletionAnimation', () => ({
+    __esModule: true,
+    default: () => null,
+    ANIMATION_DURATION: 1,
+}))
 jest.mock('../../../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal', () => ({
     __esModule: true,
     default: () => null,
@@ -81,8 +86,8 @@ jest.mock('../../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 }))
 jest.mock('../../../TaskListView/TaskItem/TaskPresentation/TaskPresentation', () => {
     const React = require('react')
-    const CheckBoxWrapper =
-        require('../../../TaskListView/TaskItem/TaskPresentation/CheckBoxContainer/CheckBoxWrapper').default
+    const CheckBoxWrapper = require('../../../TaskListView/TaskItem/TaskPresentation/CheckBoxContainer/CheckBoxWrapper')
+        .default
     return props =>
         React.createElement(CheckBoxWrapper, {
             task: props.task,

@@ -3,14 +3,7 @@
  */
 
 import React from 'react'
-import { Provider } from 'react-redux'
-import store from '../../redux/store'
-import { Platform } from 'react-native'
-import DueDateModal from '../../components/UIComponents/FloatModals/DueDateModal/DueDateModal'
-
-// MyPlatform.osType only consults window.navigator off the mobile path,
-// and the react-native preset reports ios.
-Platform.OS = 'web'
+import DueDateModal from '../../components/UIComponents/FloatModals/DueDateModal'
 
 import renderer from 'react-test-renderer'
 import moment from 'moment'
@@ -24,17 +17,82 @@ describe('DueDateModal component', () => {
         it('Should render correctly', () => {
             const tree = renderer
                 .create(
-                    <Provider store={store}>
-                        <DueDateModal
-                            projectId={dummyProjectId}
-                            task={task}
-                            closePopover={() => {}}
-                            delayClosePopover={() => {}}
-                        />
-                    </Provider>
+                    <DueDateModal
+                        projectId={dummyProjectId}
+                        task={task}
+                        closePopover={() => {}}
+                        delayClosePopover={() => {}}
+                    />
                 )
                 .toJSON()
             expect(tree).toMatchSnapshot()
+        })
+    })
+
+    describe('Function toggleCalendar snapshot test', () => {
+        it('Should execute and render correctly', () => {
+            const tree = renderer.create(
+                <DueDateModal
+                    projectId={dummyProjectId}
+                    task={task}
+                    closePopover={() => {}}
+                    delayClosePopover={() => {}}
+                />
+            )
+
+            let instance = tree.getInstance()
+            instance.state.visibleCalendar = false
+            instance.toggleCalendar()
+
+            let state = instance.state
+            expect(state.visibleCalendar).toBeTruthy()
+        })
+    })
+
+    describe('Function selectDate snapshot test', () => {
+        it('Should execute and render correctly', () => {
+            const tree = renderer.create(
+                <DueDateModal
+                    projectId={dummyProjectId}
+                    task={task}
+                    closePopover={() => {}}
+                    delayClosePopover={() => {}}
+                />
+            )
+
+            tree.getInstance().selectDate(moment())
+            expect(tree.toJSON()).toMatchSnapshot()
+        })
+    })
+
+    describe('Function updateState snapshot test', () => {
+        it('should execute and render correctly', () => {
+            const tree = renderer.create(
+                <DueDateModal
+                    projectId={dummyProjectId}
+                    task={task}
+                    closePopover={() => {}}
+                    delayClosePopover={() => {}}
+                />
+            )
+            expect(tree.toJSON()).toMatchSnapshot()
+
+            tree.getInstance().updateState()
+            expect(tree.toJSON()).toMatchSnapshot()
+        })
+    })
+
+    describe('Task DueDate check unmount', () => {
+        it('should unmount correctly', () => {
+            const tree = renderer.create(
+                <DueDateModal
+                    projectId={dummyProjectId}
+                    task={task}
+                    closePopover={() => {}}
+                    delayClosePopover={() => {}}
+                />
+            )
+            tree.getInstance().componentWillUnmount()
         })
     })
 })

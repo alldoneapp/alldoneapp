@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import moment from 'moment'
 import { useDispatch } from 'react-redux'
 
@@ -62,7 +62,7 @@ export default function AlertTimeButton({ task, projectId, disabled }) {
     const buttonText = getAlertTimeButtonText()
 
     return visiblePopover ? (
-        <AppPopover
+        <Popover
             content={
                 <AlertTimeModal
                     task={task}
@@ -77,7 +77,7 @@ export default function AlertTimeButton({ task, projectId, disabled }) {
             containerStyle={{ zIndex: 10000 }}
         >
             <Button title={buttonText} type={'ghost'} icon={'bell'} onPress={showPopover} disabled={disabled} />
-        </AppPopover>
+        </Popover>
     ) : (
         <Button title={buttonText} type={'ghost'} icon={'bell'} onPress={showPopover} disabled={disabled} />
     )

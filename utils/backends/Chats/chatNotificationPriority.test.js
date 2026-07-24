@@ -22,7 +22,7 @@ describe('getProjectChatLastNotification', () => {
         })
     })
 
-    it('keeps the newest red notification and ignores grey notifications', () => {
+    it('keeps red notifications ahead of newer grey notifications', () => {
         const olderRed = notification('older-red-chat', true, 100)
         const newerRed = notification('newer-red-chat', true, 150)
         const grey = notification('grey-chat', false, 200)
@@ -32,13 +32,13 @@ describe('getProjectChatLastNotification', () => {
         expect(result['project-1']).toBe(newerRed)
     })
 
-    it('does not select a grey notification when there is no red notification', () => {
+    it('uses the newest grey notification when there is no red notification', () => {
         const olderGrey = notification('older-grey-chat', false, 100)
         const newerGrey = notification('newer-grey-chat', false, 200)
 
         const result = getProjectChatLastNotification('project-1', [olderGrey, newerGrey], {})
 
-        expect(result['project-1']).toBeNull()
+        expect(result['project-1']).toBe(newerGrey)
     })
 
     it('uses priority before timestamps across all projects', () => {
@@ -54,7 +54,7 @@ describe('getProjectChatLastNotification', () => {
         })
     })
 
-    it('keeps the first red notification for equal timestamps', () => {
+    it('prefers red for equal timestamps and otherwise keeps the first equal notification', () => {
         const grey = notification('grey-chat', false, 100)
         const red = notification('red-chat', true, 100)
         const secondRed = notification('second-red-chat', true, 100)
@@ -69,10 +69,10 @@ describe('getProjectChatLastNotification', () => {
         expect(emptyResult['project-1']).toBeNull()
         expect(emptyResult[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]).toBeNull()
 
-        const missingDate = notification('missing-date', true, null, { color: 'blue', type: 'system' })
-        const datedRed = notification('dated-red', true, 100)
-        const result = getProjectChatLastNotification('project-1', [missingDate, datedRed], {})
+        const missingDate = notification('missing-date', false, null, { color: 'blue', type: 'system' })
+        const datedGrey = notification('dated-grey', false, 100)
+        const result = getProjectChatLastNotification('project-1', [missingDate, datedGrey], {})
 
-        expect(result['project-1']).toBe(datedRed)
+        expect(result['project-1']).toBe(datedGrey)
     })
 })

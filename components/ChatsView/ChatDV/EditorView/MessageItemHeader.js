@@ -11,8 +11,6 @@ import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigationConstants'
 import { getAssistantProjectId } from '../../../AdminPanel/Assistants/assistantsHelper'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
-import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
-import MessageSendStatus from './MessageSendStatus'
 
 export default function MessageItemHeader({
     projectId,
@@ -29,7 +27,7 @@ export default function MessageItemHeader({
 
     const { lastChangeDate, creatorId, isVoiceTranscription, source } = message
 
-    const { photoURL, displayName, isProjectUser, isUnknownUser, isAssistant } = creatorData
+    const { photoURL, displayName, isProjectUser, isUnknownUser } = creatorData
 
     const accurateTime = getTimestampInMilliseconds(lastChangeDate)
 
@@ -79,23 +77,12 @@ export default function MessageItemHeader({
         <View style={localStyles.title} testID="message-item-header">
             {highlight && <View style={localStyles.dotNotification} />}
             <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, minWidth: 0 }}
+                style={{ flexDirection: 'row', alignItems: 'center' }}
                 disabled={isUnknownUser || !accessGranted}
                 onPress={navigateToUserDv}
             >
-                {isAssistant ? (
-                    <AssistantAvatar
-                        photoURL={photoURL?.uri || photoURL}
-                        assistantId={creatorId}
-                        size={24}
-                        containerStyle={{ flexShrink: 0 }}
-                    />
-                ) : (
-                    <Image source={photoURL} style={localStyles.userImage} />
-                )}
-                <Text style={localStyles.userName} numberOfLines={1}>
-                    {displayName}
-                </Text>
+                <Image source={photoURL} style={localStyles.userImage} />
+                <Text style={localStyles.userName}>{displayName}</Text>
             </TouchableOpacity>
             {editDisabled ? (
                 <>
@@ -128,7 +115,6 @@ export default function MessageItemHeader({
                 </TouchableOpacity>
             )}
             {linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
-            <MessageSendStatus pendingSend={message.pendingSend} style={{ marginLeft: 8 }} />
         </View>
     )
 }
@@ -143,7 +129,6 @@ const localStyles = StyleSheet.create({
         ...global.subtitle2,
         marginLeft: 12,
         color: colors.Text02,
-        flexShrink: 1,
     },
     userImage: {
         width: 24,

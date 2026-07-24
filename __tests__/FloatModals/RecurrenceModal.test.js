@@ -3,61 +3,56 @@
  */
 
 import React from 'react'
-import { Provider } from 'react-redux'
-import renderer from 'react-test-renderer'
-
 import RecurrenceModal from '../../components/UIComponents/FloatModals/RecurrenceModal'
-import store from '../../redux/store'
 
-// Selecting a recurrence really persists now that RNW events execute - keep the
-// firestore write (which needs the uninitialized `db`) out of the test.
-jest.mock('../../utils/backends/Tasks/tasksFirestore', () =>
-    Object.assign(Object.create(jest.requireActual('../../utils/backends/Tasks/tasksFirestore')), {
-        setTaskRecurrence: jest.fn(),
-    })
-)
+import renderer from 'react-test-renderer'
 
 const dummyProjectId = '-LcRVRo6mhbC0oXCcZ2F'
 const dummyTaskId = '-LcRVT6MEWlqGQRkE2xw'
 const task = { id: dummyTaskId, name: 'My task', recurrence: { type: 'never' } }
 
-// The class is wrapped in withWindowSizeHook and not exported on its own, so
-// tree.getInstance() reaches the wrapper rather than the modal. The options are
-// exercised through the rendered rows instead.
-const render = (props = {}) =>
-    renderer.create(
-        <Provider store={store}>
-            <RecurrenceModal projectId={dummyProjectId} task={task} closePopover={() => {}} {...props} />
-        </Provider>
-    )
-
 describe('RecurrenceModal component', () => {
-    it('Should render correctly', () => {
-        expect(render().toJSON()).toMatchSnapshot()
+    describe('RecurrenceModal snapshot test', () => {
+        it('Should render correctly', () => {
+            const tree = renderer
+                .create(<RecurrenceModal projectId={dummyProjectId} task={task} closePopover={() => {}} />)
+                .toJSON()
+            expect(tree).toMatchSnapshot()
+        })
     })
 
-    it('offers the recurrence options as pressable rows', () => {
-        const tree = render()
+    describe('Function selectRecurrence snapshot test', () => {
+        it('Should execute and render correctly', () => {
+            const tree = renderer.create(
+                <RecurrenceModal projectId={dummyProjectId} task={task} closePopover={() => {}} />
+            )
 
-        const pressables = tree.root.findAll(node => typeof node.props.onPress === 'function')
-
-        expect(pressables.length).toBeGreaterThan(0)
+            tree.getInstance().selectRecurrence({ type: 'every2Weeks' })
+            setTimeout(() => {
+                let state = tree.getInstance().state
+                expect(state.recurrence.type).toEqual('every2Weeks')
+            }, 10)
+        })
     })
 
-    it('selects a recurrence without throwing', () => {
-        const tree = render()
-        const pressables = tree.root.findAll(node => typeof node.props.onPress === 'function')
+    describe('Function updateState snapshot test', () => {
+        it('should execute and render correctly', () => {
+            const tree = renderer.create(
+                <RecurrenceModal projectId={dummyProjectId} task={task} closePopover={() => {}} />
+            )
+            expect(tree.toJSON()).toMatchSnapshot()
 
-        expect(() =>
-            renderer.act(() => {
-                pressables[0].props.onPress()
-            })
-        ).not.toThrow()
+            tree.getInstance().updateState()
+            expect(tree.toJSON()).toMatchSnapshot()
+        })
     })
 
-    it('should unmount correctly', () => {
-        const tree = render()
-
-        expect(() => tree.unmount()).not.toThrow()
+    describe('Task RecurrenceModal check unmount', () => {
+        it('should unmount correctly', () => {
+            const tree = renderer.create(
+                <RecurrenceModal projectId={dummyProjectId} task={task} closePopover={() => {}} />
+            )
+            tree.getInstance().componentWillUnmount()
+        })
     })
 })

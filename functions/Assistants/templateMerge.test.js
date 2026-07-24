@@ -2,7 +2,6 @@ const {
     getAssistantTemplateState,
     getTaskTemplateState,
     inheritMissingAssistantTemplateFields,
-    inheritMissingTaskTemplateFields,
     isTaskUnmodified,
     mergeTemplateState,
     buildBackfillConflicts,
@@ -45,78 +44,23 @@ describe('templateMerge', () => {
                 creatorId: 'admin',
                 isDefault: true,
                 templateSyncConflicts: [],
-                templateSyncReviewedBy: 'reviewer',
-                workflow: [{ id: 'project-local-step' }],
                 realtimeVoice: 'cedar',
                 mcpServers: [{ id: 'server' }],
             })
         ).toEqual({ realtimeVoice: 'cedar', mcpServers: [{ id: 'server' }] })
     })
 
-    test('tracks recurring schedule fields while excluding task execution state', () => {
-        const template = {
-            title: 'Run',
-            recurrence: 'daily',
-            startTime: 8,
-            startDate: '2026-08-28',
-            userTimezone: 'Europe/Berlin',
-            lastExecuted: 1,
-            lastExecutionStarted: 2,
-            lastGeneratedTaskId: 'template-run',
-            executionByUser: { user: { status: 'succeeded' } },
-            activatedInProjectIdByUser: { user: 'globalProject' },
-            aiModel: 'MODEL_GPT5_5',
-            aiModelOverride: 'MODEL_GPT5_6_TERRA',
-        }
+    test('preserves execution state and recurring schedule times in task comparisons', () => {
+        const template = { title: 'Run', recurrence: 'daily', startTime: 8, lastExecuted: 1 }
         const local = {
             title: 'Run',
             recurrence: 'daily',
             startTime: 12,
-            startDate: '2026-08-28',
-            userTimezone: 'Europe/Berlin',
             lastExecuted: 999,
-            lastExecutionStarted: 1000,
-            lastGeneratedTaskId: 'local-run',
-            executionByUser: { user: { status: 'in_progress' } },
-            activatedInProjectIdByUser: { user: 'project-1' },
-            completedOneOffUserIds: ['user'],
             activatedUserIds: ['user'],
-            aiModel: 'MODEL_GPT6_SOL',
-            aiModelOverride: 'MODEL_GPT5_6_TERRA',
         }
-        expect(getTaskTemplateState(local)).toEqual({
-            title: 'Run',
-            recurrence: 'daily',
-            startTime: 12,
-            startDate: '2026-08-28',
-            userTimezone: 'Europe/Berlin',
-            aiModelOverride: 'MODEL_GPT5_6_TERRA',
-        })
-        expect(isTaskUnmodified(template, local)).toBe(false)
-        expect(isTaskUnmodified(template, { ...local, startTime: 8 })).toBe(true)
-    })
-
-    test('repairs missing legacy schedule fields without replacing explicit local times', () => {
-        const template = {
-            title: 'Run',
-            recurrence: 'daily',
-            startDate: '2026-08-28',
-            startTime: 8,
-            userTimezone: 'Europe/Berlin',
-        }
-
-        expect(inheritMissingTaskTemplateFields({ title: 'Run', recurrence: 'daily' }, template)).toEqual({
-            normalizedLocalState: template,
-            inheritedPatch: {
-                startDate: '2026-08-28',
-                startTime: 8,
-                userTimezone: 'Europe/Berlin',
-            },
-        })
-        expect(
-            inheritMissingTaskTemplateFields({ title: 'Run', recurrence: 'daily', startTime: 12 }, template)
-                .normalizedLocalState.startTime
-        ).toBe(12)
+        expect(getTaskTemplateState(local)).toEqual({ title: 'Run', recurrence: 'daily' })
+        expect(isTaskUnmodified(template, local)).toBe(true)
     })
 
     test('backfill conservatively asks for review instead of overwriting historical differences', () => {
@@ -157,30 +101,6 @@ describe('templateMerge', () => {
         ])
     })
 
-    test('automatically propagates a template email model when the legacy local field is missing', () => {
-        const previousTemplate = { emailModel: 'terra' }
-        const currentTemplate = { emailModel: 'luna' }
-        const { normalizedLocalState } = inheritMissingAssistantTemplateFields({}, previousTemplate)
-
-        expect(mergeTemplateState(previousTemplate, currentTemplate, normalizedLocalState)).toEqual({
-            patch: { emailModel: 'luna' },
-            deleteFields: [],
-            conflicts: [],
-        })
-    })
-
-    test('preserves an explicit local email model as a genuine override', () => {
-        const previousTemplate = { emailModel: 'terra' }
-        const currentTemplate = { emailModel: 'luna' }
-        const { normalizedLocalState } = inheritMissingAssistantTemplateFields({ emailModel: 'sol' }, previousTemplate)
-        const result = mergeTemplateState(previousTemplate, currentTemplate, normalizedLocalState)
-
-        expect(result.patch).toEqual({})
-        expect(result.conflicts).toEqual([
-            expect.objectContaining({ field: 'emailModel', localValue: 'sol', templateValue: 'luna' }),
-        ])
-    })
-
     test('backfill inherits a missing heartbeat model without suppressing other conflicts', () => {
         const template = { heartbeatModel: 'terra', model: 'new' }
         const { normalizedLocalState, inheritedPatch } = inheritMissingAssistantTemplateFields(
@@ -192,36 +112,5 @@ describe('templateMerge', () => {
         expect(buildBackfillConflicts(template, normalizedLocalState)).toEqual([
             expect.objectContaining({ field: 'model', localValue: 'local', templateValue: 'new' }),
         ])
-    })
-
-    test('backfills an email model from a template when the local assistant predates the setting', () => {
-        const template = { emailModel: 'terra' }
-        const { normalizedLocalState, inheritedPatch } = inheritMissingAssistantTemplateFields({}, template)
-
-        expect(normalizedLocalState).toEqual(template)
-        expect(inheritedPatch).toEqual(template)
-    })
-
-    test('propagates reasoning effort while preserving a genuine local override', () => {
-        const previousTemplate = { reasoningEffort: null }
-        const currentTemplate = { reasoningEffort: 'max' }
-        const inherited = inheritMissingAssistantTemplateFields({}, previousTemplate)
-
-        expect(mergeTemplateState(previousTemplate, currentTemplate, inherited.normalizedLocalState)).toEqual({
-            patch: { reasoningEffort: 'max' },
-            deleteFields: [],
-            conflicts: [],
-        })
-        expect(mergeTemplateState(previousTemplate, currentTemplate, { reasoningEffort: 'low' }).conflicts).toEqual([
-            expect.objectContaining({ field: 'reasoningEffort', localValue: 'low', templateValue: 'max' }),
-        ])
-    })
-
-    test('backfills an explicit heartbeat reasoning effort from a template', () => {
-        const template = { heartbeatReasoningEffort: 'xhigh' }
-        const { normalizedLocalState, inheritedPatch } = inheritMissingAssistantTemplateFields({}, template)
-
-        expect(normalizedLocalState).toEqual(template)
-        expect(inheritedPatch).toEqual(template)
     })
 })

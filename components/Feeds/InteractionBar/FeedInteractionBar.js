@@ -96,7 +96,10 @@ export default function FeedInteractionBar(props) {
 
 const localStyles = StyleSheet.create({
     container: {
-        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
+        shadowColor: 'rgba(0,0,0,0.08)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
         elevation: 3,
         marginRight: -16,
         marginBottom: 8,

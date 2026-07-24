@@ -7,7 +7,7 @@ const FEED_PUBLIC_FOR_ALL = 0
 const DEFAULT_CHAT_LIMIT = 10
 const MAX_CHAT_LIMIT = 100
 const CHAT_MESSAGE_LIMIT = 50
-const VALID_CHAT_TYPES = ['topics', 'tasks', 'notes', 'contacts', 'goals', 'skills', 'assistants', 'artifacts']
+const VALID_CHAT_TYPES = ['topics', 'tasks', 'notes', 'contacts', 'goals', 'skills', 'assistants']
 
 class ChatRetrievalService {
     constructor(options = {}) {

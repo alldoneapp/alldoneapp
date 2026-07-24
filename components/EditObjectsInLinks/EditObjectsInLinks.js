@@ -16,7 +16,6 @@ import Icon from '../Icon'
 import EditProjectLink from './Projects/EditProjectLink'
 import EditChatLink from './Chats/EditChatLink'
 import EditSkillLink from './Skills/EditSkillLink'
-import EditArtifactLink from './Artifacts/EditArtifactLink'
 
 export default function EditObjectsInLinks({
     projectId,
@@ -29,7 +28,6 @@ export default function EditObjectsInLinks({
     tagId,
     objectUrl,
     isPrivate = false,
-    inNote = false,
 }) {
     const dispatch = useDispatch()
 
@@ -133,19 +131,6 @@ export default function EditObjectsInLinks({
                     />
                 )
             }
-            case 'artifact': {
-                return (
-                    <EditArtifactLink
-                        projectId={projectId}
-                        artifactData={objectData}
-                        closeModal={closeModal}
-                        objectUrl={objectUrl}
-                        editorRef={inNote ? editorRef : null}
-                        editorId={editorId}
-                        tagId={tagId}
-                    />
-                )
-            }
         }
     }
 
@@ -178,7 +163,10 @@ const localStyles = StyleSheet.create({
         paddingVertical: 0,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         height: 'auto',
         maxWidth: 305,

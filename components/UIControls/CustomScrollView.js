@@ -77,8 +77,6 @@ const CustomScrollView = (
                 onLayout={onLayout}
                 scrollEventThrottle={16}
                 onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: indicator } } }], {
-                    // The indicator is driven in JS (and web has no native driver anyway).
-                    useNativeDriver: false,
                     listener: event => {
                         if (onScroll) onScroll(event)
                     },
@@ -97,8 +95,8 @@ const CustomScrollView = (
                                 indicatorSize < 4 || indicatorSize - 8 < 4
                                     ? 4
                                     : indicatorSize < 8
-                                      ? indicatorSize
-                                      : indicatorSize - 8,
+                                    ? indicatorSize
+                                    : indicatorSize - 8,
                             transform: [
                                 {
                                     translateY: Animated.multiply(indicator, visibleHeight / wholeHeight).interpolate({

@@ -45,12 +45,9 @@ export default function TranscribeTag({ task, projectId, containerStyle, disable
             const newWindow = window.open(url, '_blank')
             console.log('[TranscribeTag] window.open result:', newWindow)
 
-            // Create the note in the background (no await needed). Reported rather than
-            // left as an unhandled rejection.
+            // Create the note in the background (no await needed)
             updateTaskData(projectId, task.id, { noteId: generatedId })
-            uploadNewNote(projectId, newNote).catch(error =>
-                console.error('[TranscribeTag] Could not create the note', error)
-            )
+            uploadNewNote(projectId, newNote)
         }
     }
 

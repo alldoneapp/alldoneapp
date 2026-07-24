@@ -1,8 +1,8 @@
 import React from 'react'
-import { Platform, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
-import styles, { colors, hexColorToRGBa } from '../styles/global'
+import styles, { colors } from '../styles/global'
 import { getPopoverWidth } from '../../utils/HelperFunctions'
 import Button from '../UIControls/Button'
 import CloseButton from '../FollowUp/CloseButton'
@@ -10,10 +10,8 @@ import { navigateToSettings, setShowLimitedFeatureModal } from '../../redux/acti
 import NavigationService from '../../utils/NavigationService'
 import { DV_TAB_SETTINGS_PREMIUM } from '../../utils/TabNavigationConstants'
 import { translate } from '../../i18n/TranslationService'
-import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function LimitedFeatureModal() {
-    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const modalState = useSelector(state => state.showLimitedFeatureModal)
 
@@ -38,7 +36,7 @@ export default function LimitedFeatureModal() {
               )
 
     return (
-        <View style={[localStyles.parent, safeAreaOverlayPadding]}>
+        <View style={localStyles.parent}>
             <View style={[localStyles.container, { minWidth: getPopoverWidth(), maxWidth: getPopoverWidth() }]}>
                 <View style={{ paddingHorizontal: 16 }}>
                     <Text style={[styles.title7, { color: 'white' }]}>{header}</Text>
@@ -72,12 +70,17 @@ const localStyles = StyleSheet.create({
         bottom: 0,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
-        ...Platform.select({ web: { position: 'fixed' } }),
     },
     container: {
-        maxHeight: '90%',
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        top: '50%',
+        left: '58.5%',
+        transform: [{ translateX: '-60%' }, { translateY: '-50%' }],
+        position: 'fixed',
+        width: 432,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,

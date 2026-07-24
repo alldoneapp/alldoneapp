@@ -8,10 +8,9 @@ import { TouchableOpacity } from 'react-native-gesture-handler'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import { useSelector } from 'react-redux'
 import { findIndex } from 'lodash'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 export const SHARE_ALL_SEE_MEMBER_EDIT = 0
 export const SHARE_ALL_SEE_ALL_EDIT = 1
@@ -81,7 +80,7 @@ export default function SharingPopup({ currentOption = SHARE_ALL_SEE_MEMBER_EDIT
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <View style={localStyles.title}>
                     <Text style={[styles.title7, { color: '#ffffff' }]}>Configure sharing settings</Text>
@@ -128,8 +127,12 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
+        width: 305,
         overflow: 'visible',
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

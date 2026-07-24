@@ -18,7 +18,7 @@ import GoalProgress from './GoalProgress'
 import { isEmpty } from 'lodash'
 import { isWorkstream } from '../../../Workstreams/WorkstreamHelper'
 import { getAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
-import { isPrivateObject } from './privacyMarker'
+import { FEED_PUBLIC_FOR_ALL } from '../../Utils/FeedsConstants'
 
 export default function MentionsItems({
     selectItemToMention,
@@ -123,8 +123,8 @@ export default function MentionsItems({
             ? items[activeItemIndex].id
                 ? items[activeItemIndex].id
                 : activeTab === MENTION_MODAL_TOPICS_TAB
-                  ? items[activeItemIndex].id
-                  : ''
+                ? items[activeItemIndex].id
+                : ''
             : ''
     }
 
@@ -134,6 +134,10 @@ export default function MentionsItems({
 
     const isKeyboardHighlighted = itemId => {
         return itemId === getActiveItemId()
+    }
+
+    const isPrivateItem = item => {
+        return item.isPrivate || (Array.isArray(item.isPublicFor) && !item.isPublicFor.includes(FEED_PUBLIC_FOR_ALL))
     }
 
     useEffect(() => {
@@ -148,8 +152,15 @@ export default function MentionsItems({
     return (
         <View style={externalContainerStyle}>
             {items.map(item => {
-                const { id, extendedName, photoURL, assigneesIds, progress, dynamicProgress, userIsWorkstream } =
-                    getItemData(item)
+                const {
+                    id,
+                    extendedName,
+                    photoURL,
+                    assigneesIds,
+                    progress,
+                    dynamicProgress,
+                    userIsWorkstream,
+                } = getItemData(item)
 
                 const isAssigned = isCurrentlyAssignedGoal(id)
                 const isHighlighted = isKeyboardHighlighted(id)
@@ -182,14 +193,14 @@ export default function MentionsItems({
                                 backgroundColor: isAssigned
                                     ? colors.Primary200
                                     : isHighlighted
-                                      ? colors.Primary300
-                                      : colors.Secondary400,
+                                    ? colors.Primary300
+                                    : colors.Secondary400,
                             }}
                             disebledTags={true}
                             maxHeight={48}
                             shortTags={true}
                         />
-                        {showPrivacyMarker && isPrivateObject(item) && (
+                        {showPrivacyMarker && isPrivateItem(item) && (
                             <View style={localStyles.privacyMarker}>
                                 <Icon name="lock" size={16} color={colors.Text03} />
                             </View>

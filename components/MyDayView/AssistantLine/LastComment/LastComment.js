@@ -2,7 +2,6 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import LastUserOrAssistantCommentContainer from './LastUserOrAssistantCommentContainer'
-import NoComment from '../NoComment/NoComment'
 
 export default function LastComment({
     project,
@@ -10,48 +9,38 @@ export default function LastComment({
     currentProjectChatLastNotification,
     currentLastAssistantCommentData,
     compact = false,
-    assistant,
-    scopeKey = null,
 }) {
-    const followedNotification = currentProjectChatLastNotification?.followed
-        ? currentProjectChatLastNotification
-        : null
-    const hasNotification = !!followedNotification
+    const hasNotification = !!currentProjectChatLastNotification
     const hasValidLastCommentData =
         !!currentLastAssistantCommentData &&
         !!currentLastAssistantCommentData.objectId &&
         !!currentLastAssistantCommentData.objectType
 
     if (!hasNotification && !hasValidLastCommentData) {
-        return compact ? null : (
-            <View style={localStyles.container}>
-                <NoComment projectId={project.id} assistant={assistant} />
-            </View>
-        )
+        console.warn('LastComment: missing or invalid lastAssistantCommentData; skipping render', {
+            currentLastAssistantCommentData,
+        })
+        return null
     }
     return (
         <View style={[localStyles.container, compact && localStyles.containerCompact]}>
-            {followedNotification ? (
+            {currentProjectChatLastNotification ? (
                 <LastUserOrAssistantCommentContainer
-                    key={`${project.id}:${followedNotification.chatType}:${followedNotification.chatId}`}
                     project={project}
-                    objectId={followedNotification.chatId}
-                    objectType={followedNotification.chatType}
+                    objectId={currentProjectChatLastNotification.chatId}
+                    objectType={currentProjectChatLastNotification.chatType}
                     setAModalIsOpen={setAModalIsOpen}
                     fromChatNotification={true}
-                    isFollowedNotification={true}
+                    isFollowedNotification={!!currentProjectChatLastNotification.followed}
                     compact={compact}
-                    scopeKey={scopeKey}
                 />
             ) : (
                 <LastUserOrAssistantCommentContainer
-                    key={`${project.id}:${currentLastAssistantCommentData.objectType}:${currentLastAssistantCommentData.objectId}`}
                     project={project}
                     objectId={currentLastAssistantCommentData.objectId}
                     objectType={currentLastAssistantCommentData.objectType}
                     setAModalIsOpen={setAModalIsOpen}
                     compact={compact}
-                    scopeKey={scopeKey}
                 />
             )}
         </View>

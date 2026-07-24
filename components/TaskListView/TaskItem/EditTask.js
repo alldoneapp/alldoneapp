@@ -32,7 +32,6 @@ import TasksHelper, {
 } from '../../TaskListView/Utils/TasksHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { dismissAllPopups } from '../../../utils/HelperFunctions'
-import useRevealEditorOnOpen from '../../../hooks/useRevealEditorOnOpen'
 import { getLinkedParentUrl } from '../../../utils/LinkingHelper'
 import SharedHelper from '../../../utils/SharedHelper'
 import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
@@ -45,7 +44,6 @@ import {
     createFollowUpTask,
     setTaskProjectWithGoal,
     updateTask,
-    updateFocusedTask,
     uploadNewSubTask,
 } from '../../../utils/backends/Tasks/tasksFirestore'
 import { createTaskWithService } from '../../../utils/backends/Tasks/TaskServiceFrontendHelper'
@@ -53,13 +51,8 @@ import { updateNoteTitleWithoutFeed } from '../../../utils/backends/Notes/notesF
 import { updateChatTitleWithoutFeeds } from '../../../utils/backends/Chats/chatsFirestore'
 import MainButtonsArea from './MainButtonsArea'
 import SecondaryButtonsArea from './SecondaryButtonsArea'
-import TaskInputArea from './TaskInputArea'
+import TaskInput from './TaskInput'
 import CheckboxAndIcon from './CheckboxAndIcon'
-import { taskEditorLayout } from './TaskEditorLayout'
-import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
-import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
-import { mergeBackgroundTaskUpdates } from './mergeBackgroundTaskUpdates'
-import { postponeTaskWithMotion } from './TaskPresentation/taskPostponeMotion'
 
 const generateNewTask = (useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) => {
     const task = TasksHelper.getNewDefaultTask(useLoggedUser)
@@ -113,7 +106,6 @@ export default function EditTask({
     createSubtask,
 }) {
     const dispatch = useDispatch()
-    useTaskEditorLock(!adding)
     let currentUserId = useSelector(state => state.currentUser.uid)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -133,7 +125,6 @@ export default function EditTask({
         linkedParentGoalsUrl: [],
         linkedParentSkillsUrl: [],
         linkedParentAssistantsUrl: [],
-        linkedParentArtifactsUrl: [],
     })
     const [linkedObjects, setLinkedObjects] = useState({
         initialLinkedTasksUrl: [],
@@ -149,21 +140,8 @@ export default function EditTask({
     const [tmpTask, setTmpTask] = useState(() =>
         adding ? generateNewTask(useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) : cloneDeep(task)
     )
-    const [newTaskInFocus, setNewTaskInFocus] = useState(false)
-
-    // The task exactly as it was when this editor opened. `tmpTask` starts as a copy of it and only
-    // ever diverges through the user's own actions, so the two together say precisely which fields
-    // this editing session owns - which is what lets a save keep the background updates that landed
-    // meanwhile instead of reverting them. See mergeBackgroundTaskUpdates.js (AT-2267).
-    const openedTaskRef = useRef(undefined)
-    if (openedTaskRef.current === undefined) openedTaskRef.current = adding || !task ? null : cloneDeep(task)
 
     const inputTask = useRef(null)
-    // Opening a task line replaces a one-line row with a much taller editor, so
-    // one opened near the bottom edge would otherwise hang off the screen. See
-    // useRevealEditorOnOpen (AT-2220).
-    const editorContainerRef = useRef(null)
-    useRevealEditorOnOpen(editorContainerRef)
 
     if (currentUserId === ALL_GOALS_ID) currentUserId = loggedUserId
     const isSuggestedTask = loggedUserId !== currentUserId
@@ -227,12 +205,12 @@ export default function EditTask({
                     const finalTask = { ...tmpTask, ...goalData }
                     // Note: Creating task in different project requires changing projectId context
                     // For now, just create with goal data - the task will be in current project with new goal
-                    return createTask(finalTask, false, false)
+                    createTask(finalTask, false, false)
                 } else {
-                    return setTaskProjectWithGoal(currentProject, newProject, tmpTask, goal)
+                    setTaskProjectWithGoal(currentProject, newProject, tmpTask, goal)
+                    dismissEditMode(true)
                 }
             }
-            return false
         } else {
             // Same project or no goal, just update the parent goal
             const goalData = goal
@@ -240,7 +218,7 @@ export default function EditTask({
                 : { parentGoalId: null, parentGoalIsPublicFor: null, lockKey: '' }
 
             const finalTask = { ...tmpTask, ...goalData }
-            return adding ? createTask(finalTask, false, false) : editTask(finalTask, false, false, null, '', true)
+            adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
         }
     }
 
@@ -253,63 +231,42 @@ export default function EditTask({
     const setDueDateBeforeSave = (dueDate, updateObservedDueDate) => {
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        return postponeTaskWithMotion(
-            {
-                projectId,
-                task,
-                targetDate: dueDate,
-                updatesDueDate: moveObservedDateAndDueDate || !updateObservedDueDate,
-                updatesObservedDate: moveObservedDateAndDueDate || updateObservedDueDate,
-            },
-            () => {
-                if (moveObservedDateAndDueDate) {
-                    const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
-                    const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate }
-                    return editTask(finalTask, true, false, null, '')
-                } else if (updateObservedDueDate) {
-                    const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
-                    const finalTask = { ...tmpTask, dueDateByObserversIds }
-                    return editTask(finalTask, true, false, null, '')
-                } else {
-                    const finalTask = { ...tmpTask, dueDate }
-                    return adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
-                }
+        if (moveObservedDateAndDueDate) {
+            const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
+            const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate }
+            editTask(finalTask, true, false, null, '')
+        } else {
+            if (updateObservedDueDate) {
+                const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: dueDate }
+                const finalTask = { ...tmpTask, dueDateByObserversIds }
+                editTask(finalTask, true, false, null, '')
+            } else {
+                const finalTask = { ...tmpTask, dueDate }
+                adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
             }
-        )
+        }
     }
 
     const setToBacklogBeforeSave = updateObservedBacklog => {
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        return postponeTaskWithMotion(
-            {
-                projectId,
-                task,
-                targetDate: BACKLOG_DATE_NUMERIC,
-                updatesDueDate: moveObservedDateAndDueDate || !updateObservedBacklog,
-                updatesObservedDate: moveObservedDateAndDueDate || updateObservedBacklog,
-            },
-            () => {
-                if (moveObservedDateAndDueDate) {
-                    const dueDateByObserversIds = {
-                        ...tmpTask.dueDateByObserversIds,
-                        [currentUserId]: BACKLOG_DATE_NUMERIC,
-                    }
-                    const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate: BACKLOG_DATE_NUMERIC }
-                    return editTask(finalTask, true, false, null, '')
-                } else if (updateObservedBacklog) {
-                    const dueDateByObserversIds = {
-                        ...tmpTask.dueDateByObserversIds,
-                        [currentUserId]: BACKLOG_DATE_NUMERIC,
-                    }
-                    const finalTask = { ...tmpTask, dueDateByObserversIds }
-                    return editTask(finalTask, true, false, null)
-                } else {
-                    const finalTask = { ...tmpTask, dueDate: BACKLOG_DATE_NUMERIC }
-                    return adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
+        if (moveObservedDateAndDueDate) {
+            const dueDateByObserversIds = { ...tmpTask.dueDateByObserversIds, [currentUserId]: BACKLOG_DATE_NUMERIC }
+            const finalTask = { ...tmpTask, dueDateByObserversIds, dueDate: BACKLOG_DATE_NUMERIC }
+            editTask(finalTask, true, false, null, '')
+        } else {
+            if (updateObservedBacklog) {
+                const dueDateByObserversIds = {
+                    ...tmpTask.dueDateByObserversIds,
+                    [currentUserId]: BACKLOG_DATE_NUMERIC,
                 }
+                const finalTask = { ...tmpTask, dueDateByObserversIds }
+                editTask(finalTask, true, false, null)
+            } else {
+                const finalTask = { ...tmpTask, dueDate: BACKLOG_DATE_NUMERIC }
+                adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
             }
-        )
+        }
     }
 
     const setPrivacyBeforeSave = (isPrivate, isPublicFor) => {
@@ -372,8 +329,7 @@ export default function EditTask({
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl,
-        linkedParentArtifactsUrl
+        linkedParentAssistantsUrl
     ) => {
         const extendedName = text.replace(/\r?\n|\r/g, '')
 
@@ -385,7 +341,6 @@ export default function EditTask({
             linkedParentGoalsUrl,
             linkedParentSkillsUrl,
             linkedParentAssistantsUrl,
-            linkedParentArtifactsUrl,
         })
 
         setTmpTask({ ...tmpTask, extendedName, name: TasksHelper.getTaskNameWithoutMeta(extendedName) })
@@ -393,7 +348,7 @@ export default function EditTask({
         if (adding) dispatch(setTmpInputTextTask(text))
     }
 
-    const runCreateTask = (newTask, actionBeforeSave, showSuggested) => {
+    const createTask = (newTask, actionBeforeSave, showSuggested) => {
         newTask.name = newTask.name.trim()
         newTask.extendedName = newTask.extendedName.trim()
 
@@ -421,10 +376,8 @@ export default function EditTask({
                 parentTask.parentGoalId !== newTask.parentGoalId ||
                 parentTask.recurrence !== newTask.recurrence)
 
-        let creation
-
         if (isSubtask && !needToPromoteSubtask) {
-            creation = uploadNewSubTask(projectId, parentTask, newTask, false, true).then(uploadedTask =>
+            uploadNewSubTask(projectId, parentTask, newTask, false, true).then(uploadedTask =>
                 onSuccessUploadNewTask(uploadedTask, actionBeforeSave, showSuggested)
             )
         } else {
@@ -432,7 +385,7 @@ export default function EditTask({
                 newTask.parentId = null
                 newTask.isSubtask = false
             }
-            creation = createTaskWithService(
+            createTaskWithService(
                 {
                     projectId,
                     ...newTask,
@@ -465,29 +418,11 @@ export default function EditTask({
         }
 
         dispatch(setTmpInputTextTask(''))
-
-        // Returned so the single flight guard below knows when this creation is
-        // finished and the editor may accept the next one.
-        return creation
     }
 
-    // Enter reaches this editor through both a global document listener and
-    // Quill's newline callback, and each run mints a new task id, so a double or
-    // held Return used to create several tasks. The guard only blocks while a
-    // creation is in flight, which keeps the repeat mode ("add task" staying
-    // open) able to create consecutive distinct tasks.
-    const createTask = useSingleFlightSubmit(runCreateTask, RELEASE_AFTER_SUBMISSION)
-
-    const editTask = (updatedTask, validDirectAction, showSuggested, followUpData, comment, deferDismiss = false) => {
+    const editTask = (updatedTask, validDirectAction, showSuggested, followUpData, comment) => {
         updatedTask.name = updatedTask.name.trim()
         updatedTask.extendedName = updatedTask.extendedName.trim()
-
-        // The editor now stays open across background updates (AT-2267), so by the time this runs
-        // the live task may already carry a goal an assistant assigned, a due date a colleague
-        // moved, and so on. `updatedTask` descends from the clone taken when the editor opened and
-        // `updateTask` writes the whole document, so saving it verbatim would revert all of it.
-        // Send only what this editing session actually changed, on top of the live task.
-        updatedTask = mergeBackgroundTaskUpdates(openedTaskRef.current, updatedTask, task)
 
         if (followUpData) {
             const { inBacklog, date } = followUpData
@@ -518,13 +453,13 @@ export default function EditTask({
         }
 
         const mentions = TasksHelper.getMentionUsersFromTitle(projectId, comment)
-        const saving = updateTask(projectId, taskToUpdate, task, oldAssignee, comment, mentions, isObservedTask).then(
-            () => trySetLinkedObjects(taskToUpdate.id)
+        updateTask(projectId, taskToUpdate, task, oldAssignee, comment, mentions, isObservedTask).then(() =>
+            trySetLinkedObjects(taskToUpdate.id)
         )
 
         if (validDirectAction) dispatch(hideFloatPopup())
 
-        if (!deferDismiss) dismissEditMode(true)
+        dismissEditMode(true)
 
         if (
             (currentUserId !== loggedUserId || loggedUserId !== updatedTask.userId) &&
@@ -535,8 +470,6 @@ export default function EditTask({
                 dispatch(updateTaskSuggestedCommentModalData(true, projectId, updatedTask, updatedTask.extendedName))
             })
         }
-
-        return saving
     }
 
     const setTask = (event, actionBeforeSave, validDirectAction, showSuggested) => {
@@ -592,10 +525,6 @@ export default function EditTask({
     const onSuccessUploadNewTask = (uploadedTask, actionBeforeSave, showSuggested) => {
         trySetLinkedObjects(uploadedTask.id)
 
-        if (newTaskInFocus) {
-            updateFocusedTask(loggedUserId, projectId, uploadedTask, null, null)
-        }
-
         if (actionBeforeSave) {
             NavigationService.navigate('TaskDetailedView', { task: uploadedTask, projectId })
             dispatch(setSelectedNavItem(DV_TAB_TASK_PROPERTIES))
@@ -603,7 +532,6 @@ export default function EditTask({
 
         if (addTaskRepeatMode) {
             setTmpTask(generateNewTask(useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate))
-            setNewTaskInFocus(false)
             inputTask.current?.clear()
             inputTask.current?.focus()
         }
@@ -684,11 +612,7 @@ export default function EditTask({
 
     const onKeyDown = event => {
         const { key } = event
-        if (key !== 'Enter') return
-        // Holding Return down repeats the keydown event, and an IME commit
-        // reports its own Enter. Neither is a second intended submission.
-        if (event.repeat || event.isComposing || event.keyCode === 229) return
-        onKeyEnterPressed(event)
+        if (key === 'Enter') onKeyEnterPressed(event)
     }
 
     useEffect(() => {
@@ -750,62 +674,51 @@ export default function EditTask({
 
     return (
         <View
-            ref={editorContainerRef}
-            dataSet={{ keyboardRevealTarget: true }}
             onLayout={onContainerLayout}
             style={[
                 localStyles.container,
                 isSubtask ? localStyles.subtaskContainer : undefined,
                 isMiddleScreen ? localStyles.containerUnderBreakpoint : undefined,
-                adding && !isSubtask ? taskEditorLayout.inlineEditor : undefined,
             ]}
         >
-            <TaskInputArea
-                isSubtask={isSubtask}
-                tmpTask={tmpTask}
-                adding={adding}
-                projectId={projectId}
-                accessGranted={accessGranted}
-                loggedUserCanUpdateObject={loggedUserCanUpdateObject}
-                isAssistant={isAssistant}
-                inputTask={inputTask}
-                onChangeInputText={onChangeInputText}
-                setMentionsModalActive={setMentionsModalActive}
-                getInitialText={getInitialText}
-                setInitialLinkedObject={setInitialLinkedObject}
-                onKeyEnterPressed={onKeyEnterPressed}
-                newTaskInFocus={newTaskInFocus}
-                leftAccessory={
-                    <CheckboxAndIcon
-                        tmpTask={tmpTask}
-                        isSubtask={isSubtask}
-                        adding={adding}
-                        accessGranted={accessGranted}
-                        showArrowInAnonymous={showArrowInAnonymous}
-                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
-                        isAssistant={isAssistant}
-                        projectId={projectId}
-                        editModeCheckOff={editModeCheckOff}
-                        dismissEditMode={dismissEditMode}
-                    />
-                }
-                rightAccessory={
-                    <EditAssigneeWrapper
-                        tmpTask={tmpTask}
-                        projectId={projectId}
-                        disabled={!hasName || !accessGranted || isSubtaskInGuide}
-                        saveAssigneeBeforeSaveTask={setAssigneeBeforeSave}
-                        onDismissPopup={onDismissPopup}
-                        isAssistant={isAssistant}
-                    />
-                }
-            />
-            <View
-                style={[
-                    taskEditorLayout.actionBar,
-                    adding && !isSubtask ? taskEditorLayout.inlineActionBar : undefined,
-                ]}
-            >
+            <View style={[localStyles.inputContainer, isSubtask ? localStyles.subtaskInputContainer : undefined]}>
+                <CheckboxAndIcon
+                    tmpTask={tmpTask}
+                    isSubtask={isSubtask}
+                    adding={adding}
+                    accessGranted={accessGranted}
+                    showArrowInAnonymous={showArrowInAnonymous}
+                    loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                    isAssistant={isAssistant}
+                    projectId={projectId}
+                    editModeCheckOff={editModeCheckOff}
+                    dismissEditMode={dismissEditMode}
+                />
+                <TaskInput
+                    isSubtask={isSubtask}
+                    tmpTask={tmpTask}
+                    adding={adding}
+                    projectId={projectId}
+                    accessGranted={accessGranted}
+                    loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                    isAssistant={isAssistant}
+                    inputTask={inputTask}
+                    onChangeInputText={onChangeInputText}
+                    setMentionsModalActive={setMentionsModalActive}
+                    getInitialText={getInitialText}
+                    setInitialLinkedObject={setInitialLinkedObject}
+                    onKeyEnterPressed={onKeyEnterPressed}
+                />
+                <EditAssigneeWrapper
+                    tmpTask={tmpTask}
+                    projectId={projectId}
+                    disabled={!hasName || !accessGranted || isSubtaskInGuide}
+                    saveAssigneeBeforeSaveTask={setAssigneeBeforeSave}
+                    onDismissPopup={onDismissPopup}
+                    isAssistant={isAssistant}
+                />
+            </View>
+            <View style={localStyles.buttonContainer}>
                 <SecondaryButtonsArea
                     tmpTask={tmpTask}
                     hasName={hasName}
@@ -818,8 +731,6 @@ export default function EditTask({
                     accessGranted={accessGranted}
                     loggedUserCanUpdateObject={loggedUserCanUpdateObject}
                     isAssistant={isAssistant}
-                    newTaskInFocus={newTaskInFocus}
-                    setNewTaskInFocus={setNewTaskInFocus}
                     dismissEditMode={dismissEditMode}
                     onDismissPopup={() => {
                         setTimeout(() => {
@@ -866,7 +777,10 @@ const localStyles = StyleSheet.create({
         borderStyle: 'solid',
         borderColor: colors.Grey200,
         borderRadius: 4,
-        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
+        shadowColor: 'rgba(0,0,0,0.08)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
         elevation: 3,
         marginLeft: -16,
         marginRight: -16,
@@ -876,7 +790,27 @@ const localStyles = StyleSheet.create({
         marginLeft: -8,
         marginRight: -8,
     },
+    buttonContainer: {
+        flex: 1,
+        height: 55,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        backgroundColor: colors.Grey100,
+        borderTopWidth: 1,
+        borderStyle: 'solid',
+        borderTopColor: colors.Gray300,
+        paddingVertical: 7,
+        paddingHorizontal: 9,
+    },
+    inputContainer: {
+        minHeight: 59,
+        overflow: 'hidden',
+    },
     subtaskContainer: {
         backgroundColor: colors.Grey200,
+    },
+    subtaskInputContainer: {
+        minHeight: 55,
+        overflow: 'hidden',
     },
 })

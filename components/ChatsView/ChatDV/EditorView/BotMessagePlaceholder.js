@@ -1,8 +1,9 @@
 import React from 'react'
-import { View, StyleSheet } from 'react-native'
+import { View, StyleSheet, Text } from 'react-native'
 
 import BotHeader from './BotHeader'
-import AssistantProgress from './AssistantProgress'
+import Spinner from '../../../UIComponents/Spinner'
+import global, { colors } from '../../../styles/global'
 
 export default function BotMessagePlaceholder({ projectId, assistantId }) {
     return (
@@ -10,8 +11,9 @@ export default function BotMessagePlaceholder({ projectId, assistantId }) {
             <View style={localStyles.headerContainer}>
                 <BotHeader projectId={projectId} assistantId={assistantId} />
             </View>
-            <View style={localStyles.progressContainer}>
-                <AssistantProgress activity={{ phase: 'preparing' }} compact={true} />
+            <View style={localStyles.statusRow}>
+                <Spinner containerSize={18} spinnerSize={12} />
+                <Text style={localStyles.helperText}>Working on your request. Live tool updates will appear here.</Text>
             </View>
         </View>
     )
@@ -26,9 +28,15 @@ const localStyles = StyleSheet.create({
     headerContainer: {
         marginTop: 8,
     },
-    // Matches MessageItemBody's messageContentContainer (24px avatar + 12px gap), so the
-    // card lines up with the text of the messages above it.
-    progressContainer: {
-        marginLeft: 36,
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 6,
+    },
+    helperText: {
+        ...global.caption2,
+        color: colors.Text03,
+        marginLeft: 8,
+        maxWidth: 360,
     },
 })

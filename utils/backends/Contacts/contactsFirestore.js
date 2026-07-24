@@ -1,9 +1,9 @@
-import { runWithLoading } from '../../redux/loadingOperation'
-import firebase from 'firebase/compat/app'
+import { firebase } from '@firebase/app'
 
 import {
     addContactFeedsChain,
-    callEnrichContactProfile,
+    callEnrichContactViaLinkedIn,
+    callSearchLinkedInProfile,
     deleteFolderFilesInStorage,
     getDb,
     getId,
@@ -36,6 +36,8 @@ import {
     setSelectedNavItem,
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
+    startLoadingData,
+    stopLoadingData,
     switchProject,
 } from '../../../redux/actions'
 import NavigationService from '../../../utils/NavigationService'
@@ -48,14 +50,6 @@ import {
     updateChatTitleWithoutFeeds,
 } from '../Chats/chatsFirestore'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
-import { queueObjectProjectMove, waitForProjectMoveCompletion } from '../projectMoves'
-import { createCachedSnapshotGate } from '../cachedSnapshotGate'
-import { createFirstSnapshotPerformance } from '../../performance/firestoreSnapshotPerformance'
-import {
-    mergePendingContacts,
-    publishOptimisticContactCreated,
-    publishOptimisticContactCreateFailed,
-} from './optimisticContactCreate'
 
 const normalizeContactEmail = value =>
     String(value || '')
@@ -100,49 +94,20 @@ const buildContactEmailFieldsFromList = emailList => {
 
 //ACCESS FUNCTIONS
 
-export async function watchProjectContacts(
-    projectId,
-    callback,
-    watcherKey,
-    { trackConnectionHealth = false, onError } = {}
-) {
+export async function watchProjectContacts(projectId, callback, watcherKey) {
     const { loggedUser } = store.getState()
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUser.uid]
-    const snapshotPerformance = createFirstSnapshotPerformance(
-        { object_type: 'contacts', scope: 'project', source: 'contacts_board' },
-        { sampleRate: 0.02 }
-    )
-    const gate = createCachedSnapshotGate(() => handleSnapshot, {
-        trackConnectionHealth,
-        connectionSource: 'contacts_snapshot',
-    })
 
-    function handleSnapshot(contactList) {
-        const buffered = gate.shouldBuffer(contactList)
-        snapshotPerformance.observe(contactList, buffered)
-        if (buffered) return
-
-        const contacts = []
-        contactList.forEach(contact => {
-            contacts.push(mapContactData(contact.id, contact.data()))
-        })
-        // AT-2508 - a contact the user just added is invisible to this query until the server
-        // has written its `readerIds` projection, so it is carried alongside the snapshot until
-        // this very snapshot can speak for it. Retiring the pending copy here, in the same
-        // delivery that brings the real one, is what stops the row blinking.
-        callback(mergePendingContacts(projectId, contacts))
-    }
-
-    const unsubscribe = getDb()
+    globalWatcherUnsub[watcherKey] = getDb()
         .collection(`/projectsContacts/${projectId}/contacts`)
-        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
-        .onSnapshot({ includeMetadataChanges: true }, handleSnapshot, error => {
-            gate.dispose()
-            snapshotPerformance.fail()
-            console.error('watchProjectContacts: onSnapshot error', { projectId, watcherKey, error })
-            onError?.(error)
+        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .onSnapshot(async contactList => {
+            const contacts = []
+            contactList.forEach(contact => {
+                contacts.push(mapContactData(contact.id, contact.data()))
+            })
+            callback(contacts)
         })
-    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(unsubscribe)
 }
 
 export async function watchContactData(projectId, contactId, callback, watcherKey) {
@@ -167,7 +132,7 @@ export async function getProjectContacts(projectId) {
     const contactDocs = (
         await getDb()
             .collection(`/projectsContacts/${projectId}/contacts`)
-            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
+            .where('isPublicFor', 'array-contains-any', allowUserIds)
             .get()
     ).docs
 
@@ -210,44 +175,21 @@ export async function addContactToProject(projectId, contact, onComplete) {
     const contactToStore = { ...contact, ...buildContactEmailFields(contact, contact.email, false) }
     let feedPhotoUrl = contact.photoURL
 
-    // AT-2508 - put the row on screen NOW, before the avatar upload and the write. Every field
-    // is already known locally (the id was minted above), and the list query cannot match this
-    // document for several seconds yet - see `optimisticContactCreate.js` for the measurement.
-    //
-    // The photo fields are deliberately emptied: at this point `photoURL` may still be a Blob or
-    // an object URL awaiting `uploadAvatarPhotos`, and this object goes into the shared
-    // `projectContacts` slice that the mentions picker and the assistant read too. The pending
-    // row draws a spinner in the avatar slot, and the real snapshot brings the real picture.
-    publishOptimisticContactCreated(
-        projectId,
-        contactId,
-        mapContactData(contactId, { ...contactToStore, photoURL: '', photoURL50: '', photoURL300: '' })
-    )
+    if (contact.photoURL) {
+        const pictures = [contact.photoURL, contact.photoURL50, contact.photoURL300]
+        const urlList = await uploadAvatarPhotos(
+            pictures,
+            `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
+            `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
+        )
 
-    try {
-        if (contact.photoURL) {
-            const pictures = [contact.photoURL, contact.photoURL50, contact.photoURL300]
-            const urlList = await uploadAvatarPhotos(
-                pictures,
-                `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
-                `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
-            )
-
-            contactToStore.photoURL = urlList[0]
-            contactToStore.photoURL50 = urlList[1]
-            contactToStore.photoURL300 = urlList[2]
-            feedPhotoUrl = urlList[3]
-        }
-
-        await getDb().doc(`projectsContacts/${projectId}/contacts/${contactId}`).set(contactToStore)
-    } catch (error) {
-        // Nothing was stored, so the row is a lie - take it away and let the caller report it.
-        // Note this only fires on a real rejection: offline the `set()` never settles at all and
-        // the contact is genuinely queued, so the row correctly stays.
-        publishOptimisticContactCreateFailed(projectId, contactId)
-        throw error
+        contactToStore.photoURL = urlList[0]
+        contactToStore.photoURL50 = urlList[1]
+        contactToStore.photoURL300 = urlList[2]
+        feedPhotoUrl = urlList[3]
     }
 
+    await getDb().doc(`projectsContacts/${projectId}/contacts/${contactId}`).set(contactToStore)
     if (onComplete) onComplete({ uid: contactId, ...contactToStore })
 
     addContactFeedsChain(projectId, contact, feedPhotoUrl, contactId)
@@ -318,12 +260,58 @@ export async function copyContactToProject(targetProjectId, sourceContact, onCom
 export async function setContactProject(currentProject, newProject, contact) {
     const { loggedUser, route } = store.getState()
     const contactId = contact.uid
-    await queueObjectProjectMove(currentProject.id, newProject.id, 'contact', contactId)
-    const movedContact = await waitForProjectMoveCompletion(currentProject.id, newProject.id, 'contact', contactId)
+
+    const contactData = {
+        displayName: contact.displayName || '',
+        photoURL: contact.photoURL || '',
+        photoURL50: contact.photoURL50 || '',
+        photoURL300: contact.photoURL300 || '',
+        company: contact.company || '',
+        role: contact.role || '',
+        description: contact.description || '',
+        extendedDescription: contact.extendedDescription || '',
+        ...buildContactEmailFields(contact, contact.email, false),
+        phone: contact.phone || '',
+        hasStar: contact.hasStar || '#FFFFFF',
+        isPrivate: contact.isPrivate || false,
+        isPublicFor: contact.isPublicFor || [FEED_PUBLIC_FOR_ALL, loggedUser.uid],
+        recorderUserId: contact.recorderUserId || loggedUser.uid,
+        lastEditorId: loggedUser.uid,
+        lastEditionDate: Date.now(),
+        noteId: null,
+        isPremium: contact.isPremium || false,
+        lastVisitBoard: {},
+        lastVisitBoardInGoals: {},
+        assistantId: '',
+        commentsData: null,
+        openTasksAmount: 0,
+        contactStatusId: null,
+        linkedInUrl: contact.linkedInUrl || '',
+    }
+
+    let feedPhotoUrl = contactData.photoURL
+
+    if (contactData.photoURL) {
+        const pictures = [contactData.photoURL, contactData.photoURL50, contactData.photoURL300]
+        const urlList = await uploadAvatarPhotos(
+            pictures,
+            `projectsContacts/${newProject.id}/${contactId}/${contactId}@${Date.now()}`,
+            `feeds/${newProject.id}/${contactId}_${getId()}@${Date.now()}`
+        )
+
+        contactData.photoURL = urlList[0]
+        contactData.photoURL50 = urlList[1]
+        contactData.photoURL300 = urlList[2]
+        feedPhotoUrl = urlList[3]
+    }
+
+    await getDb().doc(`projectsContacts/${newProject.id}/contacts/${contactId}`).set(contactData)
+
+    addContactFeedsChain(newProject.id, contactData, feedPhotoUrl, contactId)
 
     if (route === 'ContactDetailedView') {
         NavigationService.navigate('ContactDetailedView', {
-            contact: { uid: contactId, ...movedContact },
+            contact: { uid: contactId, ...contactData },
             project: newProject,
         })
 
@@ -336,7 +324,7 @@ export async function setContactProject(currentProject, newProject, contact) {
         ])
     }
 
-    return movedContact
+    await getDb().doc(`projectsContacts/${currentProject.id}/contacts/${contactId}`).delete()
 }
 
 export async function deleteProjectContact(projectId, contact, contactId) {
@@ -460,36 +448,37 @@ export async function setProjectContactDescription(projectId, contact, contactId
 }
 
 export async function setProjectContactPicture(projectId, contact, contactId, pictureFile) {
-    return runWithLoading('update_contact_picture', async () => {
-        if (!pictureFile) {
-            await deleteFolderFilesInStorage(`projectsContacts/${projectId}/${contactId}`)
-            await updateContactData(projectId, contactId, { photoURL: '', photoURL50: '', photoURL300: '' }, null)
+    if (!pictureFile) {
+        store.dispatch(startLoadingData())
+        await deleteFolderFilesInStorage(`projectsContacts/${projectId}/${contactId}`)
+        await updateContactData(projectId, contactId, { photoURL: '', photoURL50: '', photoURL300: '' }, null)
+        store.dispatch(stopLoadingData())
+        return
+    }
 
-            return
+    const pictures = await proccessPictureForAvatar(pictureFile)
+
+    if (pictures.length > 0) {
+        store.dispatch(startLoadingData())
+        await deleteFolderFilesInStorage(`projectsContacts/${projectId}/${contactId}`)
+        const urlList = await uploadAvatarPhotos(
+            pictures,
+            `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
+            `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
+        )
+
+        const contactToStore = {
+            ...contact,
+            photoURL: urlList[0],
+            photoURL50: urlList[1],
+            photoURL300: urlList[2],
         }
 
-        const pictures = await proccessPictureForAvatar(pictureFile)
+        await updateContactData(projectId, contactId, contactToStore, null)
 
-        if (pictures.length > 0) {
-            await deleteFolderFilesInStorage(`projectsContacts/${projectId}/${contactId}`)
-            const urlList = await uploadAvatarPhotos(
-                pictures,
-                `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
-                `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
-            )
-
-            const contactToStore = {
-                ...contact,
-                photoURL: urlList[0],
-                photoURL50: urlList[1],
-                photoURL300: urlList[2],
-            }
-
-            await updateContactData(projectId, contactId, contactToStore, null)
-
-            updateContactPhotoFeedsChain(projectId, contact, contactId, urlList)
-        }
-    })
+        updateContactPhotoFeedsChain(projectId, contact, contactId, urlList)
+        store.dispatch(stopLoadingData())
+    }
 }
 
 export async function setProjectContactPhone(projectId, contact, contactId, newPhoneNumber, oldPhoneNumber) {
@@ -601,22 +590,75 @@ export async function setProjectContactLinkedInUrl(projectId, contact, contactId
     await updateContactData(projectId, contactId, { linkedInUrl: newUrl }, null)
 }
 
-/**
- * "Enrich profile": starts an assistant research run in the contact's chat. Resolves as soon as
- * the run has posted its answer (or asked its question) — callers should not block the UI on it.
- * A client-generated requestId keys the server's run lock, so a request the browser replays after
- * a sleep/wake lands on the same comment and the same run.
- */
-export async function enrichContactProfile(projectId, contactId, assistantId) {
-    const requestId = getId()
-    const result = await callEnrichContactProfile({
+export async function enrichContactViaLinkedIn(projectId, contact, contactId) {
+    console.log('[LinkedIn Enrichment Client] Calling cloud function with URL:', contact.linkedInUrl)
+    const result = await callEnrichContactViaLinkedIn({
+        linkedInUrl: contact.linkedInUrl,
         projectId,
         contactId,
-        assistantId: assistantId || '',
-        requestId,
     })
-    if (result?.error === 'insufficient_gold') {
-        return { success: false, error: 'insufficient_gold', requestId }
+    console.log('[LinkedIn Enrichment Client] Cloud function result:', JSON.stringify(result.data))
+
+    if (result.data.error === 'insufficient_gold') {
+        console.warn('[LinkedIn Enrichment Client] Insufficient gold')
+        return { success: false, error: 'insufficient_gold' }
     }
-    return { ...(result || {}), requestId }
+
+    if (result.data.success) {
+        const enrichedData = result.data.data
+        const updates = {}
+
+        if (enrichedData.displayName) updates.displayName = enrichedData.displayName
+        if (enrichedData.company) updates.company = enrichedData.company
+        if (enrichedData.role) updates.role = enrichedData.role
+        if (enrichedData.email) updates.email = enrichedData.email
+        if (enrichedData.phone) updates.phone = enrichedData.phone
+        if (enrichedData.description) {
+            updates.description = enrichedData.description
+            updates.extendedDescription = enrichedData.description
+        }
+        if (enrichedData.photoURL) {
+            updates.photoURL = enrichedData.photoURL
+            updates.photoURL50 = enrichedData.photoURL
+            updates.photoURL300 = enrichedData.photoURL
+        }
+
+        console.log('[LinkedIn Enrichment Client] Fields to update:', Object.keys(updates))
+        if (Object.keys(updates).length > 0) {
+            await updateContactData(projectId, contactId, updates, null)
+            console.log('[LinkedIn Enrichment Client] Contact updated successfully')
+        } else {
+            console.log('[LinkedIn Enrichment Client] No empty fields to update')
+        }
+
+        return { success: true, updated: Object.keys(updates), data: enrichedData }
+    }
+
+    console.error('[LinkedIn Enrichment Client] Enrichment failed - unexpected response')
+    throw new Error('Enrichment failed')
+}
+
+export async function searchLinkedInProfile(projectId, contact, contactId) {
+    console.log('[LinkedIn Search Client] Searching for contact:', contact.displayName)
+    const result = await callSearchLinkedInProfile({
+        displayName: contact.displayName || '',
+        company: contact.company || '',
+        role: contact.role || '',
+        email: contact.email || '',
+    })
+    console.log('[LinkedIn Search Client] Search result:', JSON.stringify(result.data))
+
+    if (result.data.error === 'insufficient_gold') {
+        console.warn('[LinkedIn Search Client] Insufficient gold')
+        return { success: false, error: 'insufficient_gold' }
+    }
+
+    if (result.data.success && result.data.linkedInUrl) {
+        await updateContactData(projectId, contactId, { linkedInUrl: result.data.linkedInUrl }, null)
+        console.log('[LinkedIn Search Client] LinkedIn URL saved:', result.data.linkedInUrl)
+        return { success: true, linkedInUrl: result.data.linkedInUrl }
+    }
+
+    console.log('[LinkedIn Search Client] No LinkedIn profile found')
+    return { success: true, linkedInUrl: null }
 }

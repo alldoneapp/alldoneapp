@@ -134,17 +134,14 @@ export async function startServerSideAuth(
             }, 500)
 
             // Timeout after 5 minutes
-            timeout = setTimeout(
-                () => {
-                    window.removeEventListener('message', messageHandler)
-                    clearInterval(checkPopupClosed)
-                    if (!popup.closed) {
-                        popup.close()
-                    }
-                    reject(new Error('OAuth authentication timed out'))
-                },
-                5 * 60 * 1000
-            )
+            timeout = setTimeout(() => {
+                window.removeEventListener('message', messageHandler)
+                clearInterval(checkPopupClosed)
+                if (!popup.closed) {
+                    popup.close()
+                }
+                reject(new Error('OAuth authentication timed out'))
+            }, 5 * 60 * 1000)
         })
     } catch (error) {
         console.error('Error initiating OAuth:', error)
@@ -220,7 +217,6 @@ export async function setServerTokenInGoogleApi(
 ): Promise<void> {
     try {
         const accessToken = await getServerSideToken(projectId, service)
-        await googleApi.ensureInitialized()
 
         // Set the token in gapi client if available
         if (googleApi.gapi?.client) {

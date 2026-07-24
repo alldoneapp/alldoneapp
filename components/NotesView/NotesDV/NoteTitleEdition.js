@@ -26,7 +26,6 @@ export default function NoteTitleEdition({
     const [linkedParentGoalsUrl, setLinkedParentGoalsUrl] = useState([])
     const [linkedParentSkillsUrl, setLinkedParentSkillsUrl] = useState([])
     const [linkedParentAssistantsUrl, setLinkedParentAssistantsUrl] = useState([])
-    const [linkedParentArtifactsUrl, setLinkedParentArtifactsUrl] = useState([])
 
     const onChangeText = (
         name,
@@ -36,8 +35,7 @@ export default function NoteTitleEdition({
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl,
-        linkedParentArtifactsUrl
+        linkedParentAssistantsUrl
     ) => {
         if (name !== '') {
             setLinkedParentNotesUrl(linkedParentNotesUrl)
@@ -47,7 +45,6 @@ export default function NoteTitleEdition({
             setLinkedParentGoalsUrl(linkedParentGoalsUrl)
             setLinkedParentSkillsUrl(linkedParentSkillsUrl)
             setLinkedParentAssistantsUrl(linkedParentAssistantsUrl)
-            setLinkedParentArtifactsUrl(linkedParentArtifactsUrl)
         }
         setNewExtendedTitle(name)
     }
@@ -73,7 +70,6 @@ export default function NoteTitleEdition({
                     linkedParentGoalsUrl,
                     linkedParentSkillsUrl,
                     linkedParentAssistantsUrl,
-                    linkedParentArtifactsUrl,
                 },
                 {
                     type: 'note',

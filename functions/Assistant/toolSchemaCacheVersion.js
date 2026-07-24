@@ -1,7 +1,6 @@
 const admin = require('firebase-admin')
 
 const { GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const TOOL_SCHEMA_CACHE_VERSION_DOC_PREFIX = 'runtimeCaches/toolSchemaVersions/projects'
 const TOOL_SCHEMA_GLOBAL_VERSION_DOC_PATH = 'runtimeCaches/toolSchemaVersions/global/state'
@@ -109,8 +108,8 @@ async function bumpProjectToolSchemasCacheVersion(projectId, reason = 'assistant
 
     try {
         const updatePayload = {
-            assistantTopologyVersion: FieldValue.increment(1),
-            updatedAt: FieldValue.serverTimestamp(),
+            assistantTopologyVersion: admin.firestore.FieldValue.increment(1),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAtMs: Date.now(),
             lastReason: String(reason || 'assistant_change').slice(0, 80),
         }

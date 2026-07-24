@@ -8,7 +8,7 @@ import Options from './Options'
 import ShortcutToggle from './ShortcutToggle'
 import AactiveIndicator from './AactiveIndicator'
 
-export default function MultiToggleSwitch({ currentIndex = 0, options, onChangeOption, containerStyle }) {
+export default function MultiToggleSwitch({ currentIndex, options, onChangeOption, containerStyle }) {
     const showShortcuts = useSelector(state => state.showShortcuts)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
 
@@ -39,6 +39,10 @@ export default function MultiToggleSwitch({ currentIndex = 0, options, onChangeO
             )}
         </View>
     )
+}
+
+MultiToggleSwitch.defaultProps = {
+    currentIndex: 0,
 }
 
 const localStyles = StyleSheet.create({

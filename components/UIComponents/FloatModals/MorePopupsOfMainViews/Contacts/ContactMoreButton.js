@@ -4,7 +4,6 @@ import CopyLinkModalItem from '../../MorePopupsOfEditModals/Common/CopyLinkModal
 import { useSelector } from 'react-redux'
 import { FOLLOWED_TAB } from '../../../../Feeds/Utils/FeedsConstants'
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
-import OpenProjectModalItem from '../Common/OpenProjectModalItem'
 
 export default function ContactMoreButton({
     projectId,
@@ -49,8 +48,7 @@ export default function ContactMoreButton({
             wrapperStyle={wrapperStyle}
             iconSize={iconSize}
         >
-            {projectId && <OpenProjectModalItem projectId={projectId} shortcut={'1'} onPress={dismissModal} />}
-            {renderItems().map((item, index) => item((index + (projectId ? 2 : 1)).toString()))}
+            {renderItems().map((item, index) => item((index + 1).toString()))}
         </MoreButtonWrapper>
     )
 }

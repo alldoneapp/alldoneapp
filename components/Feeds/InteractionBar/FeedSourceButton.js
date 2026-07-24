@@ -6,7 +6,8 @@ import Button from '../../UIControls/Button'
 import Hotkeys from 'react-hot-keys'
 import { execShortcutFn } from '../../../utils/HelperFunctions'
 import { goToFeedSource } from '../Utils/HelperFunctions'
-
+import { useDispatch } from 'react-redux'
+import { startLoadingData } from '../../../redux/actions'
 import { translate } from '../../../i18n/TranslationService'
 
 export default function FeedSourceButton({
@@ -20,9 +21,11 @@ export default function FeedSourceButton({
     disabled,
     actionBeforeSave,
 }) {
+    const dispatch = useDispatch()
     const openBtnRef = useRef()
     const goToSourceView = () => {
         if (actionBeforeSave) {
+            dispatch(startLoadingData())
             actionBeforeSave()
         } else {
             goToFeedSource(NavigationService, projectId, feedObjectType, sourceId, source)

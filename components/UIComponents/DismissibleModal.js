@@ -139,19 +139,7 @@ class DismissibleModal extends Component {
         const showDueDateCalendar = storeState.showDueDateCalendar
 
         if (!MyPlatform.isMobile && storeState.smallScreenNavigation && storeState.showWebSideBar.visible) {
-            // Anna's split pane moves the sidebar away from the window origin.
-            // Read its current bounds before deciding to unmount it on mousedown;
-            // the stored layout assumes (0, 0) and would swallow project clicks.
-            const bounds = document.getElementById('app-sidebar')?.getBoundingClientRect()
-            const sideBarLayout =
-                bounds?.width > 0 && bounds?.height > 0
-                    ? {
-                          x: bounds.left + window.scrollX,
-                          y: bounds.top + window.scrollY,
-                          width: bounds.width,
-                          height: bounds.height,
-                      }
-                    : storeState.showWebSideBar.layout
+            const sideBarLayout = storeState.showWebSideBar.layout
             if (
                 DismissibleModal.isTouchOutside(pageX, pageY, {
                     x: sideBarLayout.x,

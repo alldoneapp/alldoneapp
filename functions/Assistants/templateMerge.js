@@ -19,8 +19,6 @@ const ASSISTANT_LOCAL_FIELDS = new Set([
     'templateSyncConflicts',
     'templateSyncStatus',
     'templateSyncedAt',
-    'templateSyncReviewedBy',
-    'workflow',
 ])
 
 const TASK_LOCAL_FIELDS = new Set([
@@ -33,35 +31,17 @@ const TASK_LOCAL_FIELDS = new Set([
     'templateSyncStatus',
     'templateTaskDeletedAt',
     'activatedInProjectId',
-    'activatedInProjectIdByUser',
     'lastExecuted',
     'lastExecutedByUser',
-    'lastExecutionStarted',
-    'lastExecutionCompleted',
-    'lastExecutionError',
-    'lastGeneratedTaskId',
-    'lastGeneratedTaskCompletionStatus',
-    'lastGeneratedTaskCompletionError',
-    'executionStatus',
-    'executionByUser',
     'creatorUserId',
     'activatorUserId',
-    'userId',
     'recurrenceByUser',
     'activatedUserIds',
-    'completedOneOffUserIds',
 ])
 
 // These settings did not exist on older derived assistants. Their absence is
 // therefore a legacy state, not a deliberate local override.
-const ASSISTANT_INHERITED_WHEN_MISSING_FIELDS = new Set([
-    'emailModel',
-    'heartbeatModel',
-    'reasoningEffort',
-    'heartbeatReasoningEffort',
-])
-
-const TASK_INHERITED_WHEN_MISSING_FIELDS = new Set(['startDate', 'startTime', 'userTimezone'])
+const ASSISTANT_INHERITED_WHEN_MISSING_FIELDS = new Set(['heartbeatModel'])
 
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key)
 
@@ -78,31 +58,24 @@ function getAssistantTemplateState(assistant) {
 
 function getTaskTemplateState(task) {
     const state = copyTemplateFields(task, TASK_LOCAL_FIELDS)
-    // aiModel was historically copied from the assistant into every task, so it
-    // cannot represent an intentional override. New explicit choices use
-    // aiModelOverride instead.
-    delete state.aiModel
+    if (task?.recurrence && task.recurrence !== 'never') {
+        delete state.startDate
+        delete state.startTime
+        delete state.userTimezone
+    }
     return state
 }
 
-function inheritMissingTemplateFields(localState, referenceTemplateState, inheritedWhenMissingFields) {
+function inheritMissingAssistantTemplateFields(localState, referenceTemplateState) {
     const normalizedLocalState = { ...(localState || {}) }
     const inheritedPatch = {}
-    inheritedWhenMissingFields.forEach(field => {
+    ASSISTANT_INHERITED_WHEN_MISSING_FIELDS.forEach(field => {
         if (!hasOwn(normalizedLocalState, field) && hasOwn(referenceTemplateState, field)) {
             normalizedLocalState[field] = referenceTemplateState[field]
             inheritedPatch[field] = referenceTemplateState[field]
         }
     })
     return { normalizedLocalState, inheritedPatch }
-}
-
-function inheritMissingAssistantTemplateFields(localState, referenceTemplateState) {
-    return inheritMissingTemplateFields(localState, referenceTemplateState, ASSISTANT_INHERITED_WHEN_MISSING_FIELDS)
-}
-
-function inheritMissingTaskTemplateFields(localState, referenceTemplateState) {
-    return inheritMissingTemplateFields(localState, referenceTemplateState, TASK_INHERITED_WHEN_MISSING_FIELDS)
 }
 
 function serializableValue(object, field) {
@@ -184,11 +157,9 @@ module.exports = {
     ASSISTANT_LOCAL_FIELDS,
     ASSISTANT_INHERITED_WHEN_MISSING_FIELDS,
     TASK_LOCAL_FIELDS,
-    TASK_INHERITED_WHEN_MISSING_FIELDS,
     getAssistantTemplateState,
     getTaskTemplateState,
     inheritMissingAssistantTemplateFields,
-    inheritMissingTaskTemplateFields,
     mergeTemplateState,
     isTaskUnmodified,
     buildBackfillConflicts,

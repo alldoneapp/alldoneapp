@@ -3,18 +3,13 @@ const mockUpdate = jest.fn(async () => {})
 const mockDoc = jest.fn(() => ({ get: mockGet, update: mockUpdate }))
 const mockFirestore = jest.fn(() => ({ doc: mockDoc }))
 
-test('legacy Codex none reasoning is read as high', async () => {
-    mockGet.mockResolvedValueOnce({
-        exists: true,
-        data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'none' }),
-    })
-    const result = await require('./vmAgentSettings').resolveVmAgentSettings('user-1')
-    expect(result).toEqual({ agent: 'codex', reasoningEffort: 'high' })
-})
-
-jest.mock('firebase-admin', () => ({
-    firestore: mockFirestore,
-}))
+jest.mock(
+    'firebase-admin',
+    () => ({
+        firestore: mockFirestore,
+    }),
+    { virtual: true }
+)
 
 jest.mock(
     'firebase-functions/v2/https',
@@ -29,61 +24,6 @@ jest.mock(
     { virtual: true }
 )
 
-// The catalog module is exercised in vmAgentModelCatalog.test.js; here it is stubbed so the
-// settings tests never touch a provider or the cache doc.
-const MOCK_CATALOGS = {
-    claude: {
-        families: [
-            { id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true },
-            { id: 'sonnet', label: 'Sonnet', resolvedModel: 'sonnet', isAlias: true },
-        ],
-        fetchedAt: 1,
-        source: 'live',
-    },
-    codex: {
-        families: [
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6.1-sol', isAlias: false },
-            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
-        ],
-        fetchedAt: 1,
-        source: 'live',
-    },
-    openrouter: {
-        families: [
-            {
-                id: 'openrouter:deepseek/deepseek-chat',
-                label: 'DeepSeek Chat',
-                vendor: 'deepseek',
-                modelId: 'deepseek/deepseek-chat',
-                resolvedModel: 'openrouter:deepseek/deepseek-chat',
-            },
-        ],
-        searchModels: [
-            {
-                id: 'openrouter:x-ai/grok-4.6',
-                label: 'SpaceXAI: Grok 4.6',
-                vendor: 'x-ai',
-                modelId: 'x-ai/grok-4.6',
-                resolvedModel: 'openrouter:x-ai/grok-4.6',
-            },
-        ],
-        fetchedAt: 1,
-        source: 'live',
-        available: true,
-    },
-}
-
-jest.mock('./vmAgentModelCatalog', () => {
-    const actual = jest.requireActual('./vmAgentModelCatalog')
-    return {
-        ...actual,
-        getAllModelCatalogs: jest.fn(async () => MOCK_CATALOGS),
-        getModelCatalog: jest.fn(async provider => MOCK_CATALOGS[provider]),
-    }
-})
-
-const { getModelCatalog } = require('./vmAgentModelCatalog')
-
 const {
     SYSTEM_DEFAULT_VM_AGENT,
     SYSTEM_DEFAULT_VM_REASONING_EFFORT,
@@ -92,8 +32,6 @@ const {
     resolveVmAgentSettings,
     setDefaultVmAgent,
     setDefaultVmAgentReasoningEffort,
-    setDefaultVmAgentModel,
-    resolveVmAgentModelFamily,
 } = require('./vmAgentSettings')
 
 describe('VM agent settings', () => {
@@ -123,13 +61,8 @@ describe('VM agent settings', () => {
             effectiveDefaultAgent: 'codex',
             defaultReasoningEffort: null,
             effectiveDefaultReasoningEffort: 'medium',
-            defaultApprovalPolicy: null,
-            effectiveDefaultApprovalPolicy: 'balanced',
-            defaultModelFamilies: { claude: null, codex: null },
-            modelCatalogs: MOCK_CATALOGS,
             validAgents: ['claude', 'codex'],
             validReasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
-            validApprovalPolicies: ['strict', 'balanced', 'permissive'],
         })
         await expect(resolveVmAgentSettings('user-1')).resolves.toEqual({
             agent: 'codex',
@@ -227,173 +160,6 @@ describe('VM agent settings', () => {
 
         await expect(setDefaultVmAgentReasoningEffort({ userId: 'user-1', effort: 'minimal' })).rejects.toMatchObject({
             code: 'invalid-argument',
-        })
-    })
-
-    describe('default model family (AT-2221)', () => {
-        test('reads a per-agent family map and ignores malformed entries', async () => {
-            mockGet.mockResolvedValue({
-                exists: true,
-                data: () => ({ defaultVmAgentModel: { claude: 'sonnet', codex: 'gpt-6.1-sol' } }),
-            })
-
-            await expect(resolveVmAgentModelFamily('user-1', 'claude')).resolves.toBe('sonnet')
-            // A concrete id is not a family id — it must not be honoured as one.
-            await expect(resolveVmAgentModelFamily('user-1', 'codex')).resolves.toBeNull()
-        })
-
-        test('returns no preference for users who never chose one', async () => {
-            await expect(resolveVmAgentModelFamily('user-1', 'claude')).resolves.toBeNull()
-        })
-
-        test('degrades to no preference when the settings read fails', async () => {
-            mockGet.mockRejectedValueOnce(new Error('Firestore unavailable'))
-            await expect(resolveVmAgentModelFamily('user-1', 'claude')).resolves.toBeNull()
-        })
-
-        test('persists one agent via a dotted path so the other agent keeps its choice', async () => {
-            await expect(
-                setDefaultVmAgentModel({ userId: 'user-1', agent: 'codex', family: 'terra' })
-            ).resolves.toEqual(expect.objectContaining({ success: true, agent: 'codex', family: 'terra' }))
-            expect(mockUpdate).toHaveBeenLastCalledWith(
-                expect.objectContaining({
-                    'defaultVmAgentModel.codex': 'terra',
-                    defaultVmAgentModelUpdatedAt: expect.any(Number),
-                })
-            )
-            // Never a whole-object write — that would clobber the sibling agent.
-            expect(mockUpdate.mock.calls.at(-1)[0]).not.toHaveProperty('defaultVmAgentModel')
-        })
-
-        test('clears the default with an explicit null', async () => {
-            await expect(setDefaultVmAgentModel({ userId: 'user-1', agent: 'claude', family: null })).resolves.toEqual(
-                expect.objectContaining({ success: true, family: null })
-            )
-            expect(mockUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ 'defaultVmAgentModel.claude': null }))
-        })
-
-        test('rejects an unknown agent, a malformed family, and a family the provider does not offer', async () => {
-            await expect(
-                setDefaultVmAgentModel({ userId: 'user-1', agent: 'gemini', family: 'opus' })
-            ).rejects.toMatchObject({ code: 'invalid-argument' })
-
-            await expect(
-                setDefaultVmAgentModel({ userId: 'user-1', agent: 'claude', family: '../etc/passwd' })
-            ).rejects.toMatchObject({ code: 'invalid-argument' })
-
-            await expect(
-                setDefaultVmAgentModel({ userId: 'user-1', agent: 'claude', family: 'haiku' })
-            ).rejects.toMatchObject({ code: 'invalid-argument' })
-            expect(mockUpdate).not.toHaveBeenCalled()
-        })
-
-        test('accepts any well-formed family when the catalog is degraded, rather than blocking the save', async () => {
-            getModelCatalog.mockResolvedValueOnce({ families: [], source: 'fallback', fetchedAt: 0 })
-
-            await expect(
-                setDefaultVmAgentModel({ userId: 'user-1', agent: 'claude', family: 'mythos' })
-            ).resolves.toEqual(expect.objectContaining({ success: true, family: 'mythos' }))
-        })
-
-        test('saves even when the catalog lookup itself throws', async () => {
-            getModelCatalog.mockRejectedValueOnce(new Error('provider down'))
-
-            await expect(setDefaultVmAgentModel({ userId: 'user-1', agent: 'codex', family: 'luna' })).resolves.toEqual(
-                expect.objectContaining({ success: true, family: 'luna' })
-            )
-        })
-
-        test('requires authentication', async () => {
-            await expect(setDefaultVmAgentModel({ agent: 'claude', family: 'opus' })).rejects.toMatchObject({
-                code: 'unauthenticated',
-            })
-        })
-    })
-
-    // AT-2230: OpenRouter models share the Codex slot, encoded with an `openrouter:` prefix.
-    describe('OpenRouter model selections', () => {
-        test('saves an OpenRouter selection for Codex against the OpenRouter catalog', async () => {
-            await expect(
-                setDefaultVmAgentModel({
-                    userId: 'user-1',
-                    agent: 'codex',
-                    family: 'openrouter:deepseek/deepseek-chat',
-                })
-            ).resolves.toEqual(expect.objectContaining({ success: true, family: 'openrouter:deepseek/deepseek-chat' }))
-            // Validated against the OpenRouter catalog, not the codex one.
-            expect(getModelCatalog).toHaveBeenLastCalledWith('openrouter')
-            expect(mockUpdate).toHaveBeenLastCalledWith(
-                expect.objectContaining({ 'defaultVmAgentModel.codex': 'openrouter:deepseek/deepseek-chat' })
-            )
-        })
-
-        test('saves a searched OpenRouter selection that is not featured', async () => {
-            await expect(
-                setDefaultVmAgentModel({
-                    userId: 'user-1',
-                    agent: 'codex',
-                    family: 'openrouter:x-ai/grok-4.6',
-                })
-            ).resolves.toEqual(expect.objectContaining({ success: true, family: 'openrouter:x-ai/grok-4.6' }))
-            expect(mockUpdate).toHaveBeenLastCalledWith(
-                expect.objectContaining({ 'defaultVmAgentModel.codex': 'openrouter:x-ai/grok-4.6' })
-            )
-        })
-
-        test('refuses to pair an OpenRouter model with Claude', async () => {
-            await expect(
-                setDefaultVmAgentModel({
-                    userId: 'user-1',
-                    agent: 'claude',
-                    family: 'openrouter:deepseek/deepseek-chat',
-                })
-            ).rejects.toMatchObject({ code: 'invalid-argument' })
-            expect(mockUpdate).not.toHaveBeenCalled()
-        })
-
-        test('refuses a model OpenRouter does not offer', async () => {
-            await expect(
-                setDefaultVmAgentModel({ userId: 'user-1', agent: 'codex', family: 'openrouter:nope/not-real' })
-            ).rejects.toMatchObject({ code: 'invalid-argument' })
-            expect(mockUpdate).not.toHaveBeenCalled()
-        })
-
-        test('refuses to save when OpenRouter is not configured for the environment', async () => {
-            getModelCatalog.mockResolvedValueOnce({
-                families: [{ id: 'openrouter:deepseek/deepseek-chat' }],
-                source: 'live',
-                fetchedAt: 1,
-                available: false,
-            })
-
-            await expect(
-                setDefaultVmAgentModel({
-                    userId: 'user-1',
-                    agent: 'codex',
-                    family: 'openrouter:deepseek/deepseek-chat',
-                })
-            ).rejects.toMatchObject({ code: 'failed-precondition' })
-            expect(mockUpdate).not.toHaveBeenCalled()
-        })
-
-        test('reads a saved OpenRouter selection back for Codex', async () => {
-            mockGet.mockResolvedValue({
-                exists: true,
-                data: () => ({ defaultVmAgentModel: { codex: 'openrouter:deepseek/deepseek-chat' } }),
-            })
-            await expect(resolveVmAgentModelFamily('user-1', 'codex')).resolves.toBe(
-                'openrouter:deepseek/deepseek-chat'
-            )
-        })
-
-        // Claude cannot run one, so a value that somehow landed there is read as "no preference"
-        // rather than being handed to a run that would reject it.
-        test('ignores an OpenRouter selection stored in the Claude slot', async () => {
-            mockGet.mockResolvedValue({
-                exists: true,
-                data: () => ({ defaultVmAgentModel: { claude: 'openrouter:deepseek/deepseek-chat' } }),
-            })
-            await expect(resolveVmAgentModelFamily('user-1', 'claude')).resolves.toBeNull()
         })
     })
 })

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Button from '../../../UIControls/Button'
 import ProjectPrivacyModal from './ProjectPrivacyModal'
 import styles, { colors, em2px } from '../../../styles/global'
@@ -18,7 +18,7 @@ const PrivacyProperty = ({ project, disabled }) => {
                 <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Project privacy')}</Text>
             </View>
             <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
-                <AppPopover
+                <Popover
                     isOpen={isOpen}
                     onClickOutside={() => setIsOpen(false)}
                     align={'center'}
@@ -38,7 +38,7 @@ const PrivacyProperty = ({ project, disabled }) => {
                         onPress={() => setIsOpen(!isOpen)}
                         disabled={disabled}
                     />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )

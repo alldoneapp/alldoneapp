@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 import moment from 'moment'
 
@@ -74,7 +74,7 @@ export default function HeartbeatAwakeTimeProperty({ disabled, projectId, assist
                 <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
                     {`${formatTime(awakeStart)} - ${formatTime(awakeEnd)}`}
                 </Text>
-                <AppPopover
+                <Popover
                     content={
                         <View style={localStyles.pickerContainer}>
                             <View style={localStyles.pickerColumn}>
@@ -121,7 +121,7 @@ export default function HeartbeatAwakeTimeProperty({ disabled, projectId, assist
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={openStartPicker} disabled={disabled} />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )
@@ -150,7 +150,10 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
         padding: 8,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     pickerColumn: {

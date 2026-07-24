@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Button from '../../../UIControls/Button'
 import ProjectEstimationTypeModal from './ProjectEstimationTypeModal'
 import styles, { colors, em2px } from '../../../styles/global'
@@ -18,7 +18,7 @@ const EstimationTypeProperty = ({ project, disabled }) => {
                 <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Estimation type')}</Text>
             </View>
             <View style={[localStyles.propertyRowSection, localStyles.propertyRowRight]}>
-                <AppPopover
+                <Popover
                     isOpen={isOpen}
                     onClickOutside={() => setIsOpen(false)}
                     align={'center'}
@@ -29,7 +29,7 @@ const EstimationTypeProperty = ({ project, disabled }) => {
                         title={translate(project.estimationType === ESTIMATION_TYPE_POINTS ? 'Points' : 'Time')}
                         icon={
                             <Icon
-                                name={project.estimationType === ESTIMATION_TYPE_POINTS ? 'story-point' : 'clock'}
+                                name={project.estimationType === ESTIMATION_TYPE_POINTS ? 'story-point' : 'clock' }
                                 size={24}
                                 color={colors.Text03}
                             />
@@ -38,7 +38,7 @@ const EstimationTypeProperty = ({ project, disabled }) => {
                         onPress={() => setIsOpen(!isOpen)}
                         disabled={disabled}
                     />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )

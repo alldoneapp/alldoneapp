@@ -42,44 +42,4 @@ describe('LeftTagsAndIcons', () => {
             'priority',
         ])
     })
-
-    test('keeps the calendar tag on a done calendar task so it still looks like a calendar task', () => {
-        const tree = renderer.create(
-            <LeftTagsAndIcons
-                task={{
-                    calendarData: { eventId: 'event-1' },
-                    done: true,
-                    inDone: true,
-                    completedTime: { startTime: 1786034078902, endTime: 1786037678902 },
-                }}
-            />
-        )
-
-        expect(tree.root.findAllByType(Text).map(node => node.props.children)).toEqual(['calendar'])
-    })
-
-    test('does not render the calendar tag for a done task without calendar data', () => {
-        const tree = renderer.create(
-            <LeftTagsAndIcons
-                task={{ done: true, inDone: true, completedTime: { startTime: 1786034078902, endTime: 1786037678902 } }}
-            />
-        )
-
-        expect(tree.root.findAllByType(Text)).toHaveLength(0)
-    })
-
-    test('leaves the calendar tag to the by-time layout when the calendar style is active', () => {
-        const tree = renderer.create(
-            <LeftTagsAndIcons
-                task={{
-                    calendarData: { eventId: 'event-1' },
-                    done: true,
-                    completedTime: { startTime: 1786034078902, endTime: 1786037678902 },
-                }}
-                activeCalendarStyle={true}
-            />
-        )
-
-        expect(tree.root.findAllByType(Text)).toHaveLength(0)
-    })
 })

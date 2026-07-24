@@ -18,16 +18,13 @@ export default function useEmailLabelGroups() {
     const summariesByKey = useSelector(state => state.emailLineSummaryByProject) || {}
 
     const connections = listEmailConnections(loggedUser)
-    const connectionFetchStateKey = connections
-        .map(connection => `${connection.connectionId}:${connection.authInvalid === true}`)
-        .join(',')
+    const connectionIds = connections.map(connection => connection.connectionId)
+    const connectionIdsKey = connectionIds.join(',')
 
     useEffect(() => {
-        connections
-            .filter(connection => !connection.authInvalid)
-            .forEach(connection => fetchEmailLineSummary(connection.connectionId))
+        connectionIds.forEach(connectionId => fetchEmailLineSummary(connectionId))
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [connectionFetchStateKey])
+    }, [connectionIdsKey])
 
     const groups = mergeLabelsAcrossConnections(connections, summariesByKey)
     const { labelOptionsByConnectionId, labelingDisabledByConnectionId } = buildLabelOptionMaps(

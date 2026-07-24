@@ -1,4 +1,3 @@
-import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import {
     URL_FEEDS_FOLLOWED,
     URL_FEEDS_NOT_FOLLOWED,
@@ -47,13 +46,13 @@ import {
 import TasksHelper from '../../TaskListView/Utils/TasksHelper'
 import { getDvMainTabLink, getDvNoteTabLink } from '../../../utils/LinkingHelper'
 import store from '../../../redux/store'
+import { startLoadingData, stopLoadingData } from '../../../redux/actions'
 
 import { LOADED_MODE, NEW_ATTACHMENT, OLD_ATTACHMENT } from '../CommentsTextInput/textInputHelper'
 import Backend from '../../../utils/BackendBridge'
 import URLTrigger from '../../../URLSystem/URLTrigger'
-import { getAssistant, getAssistantInProject } from '../../AdminPanel/Assistants/assistantsHelper'
+import { getAssistantInProject } from '../../AdminPanel/Assistants/assistantsHelper'
 import { removeColor } from '../../../functions/Utils/hashtagUtils'
-import { FEED_WIKI_TYPES, WIKI_FEED_OBJECTS_TYPE } from '../../../functions/KnowledgeBase/knowledgeWikiFeedModel'
 import {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN,
@@ -65,18 +64,40 @@ import {
     removeFormatTagsFromText,
     shrinkTagText,
 } from '../../../functions/Utils/parseTextUtils'
-import {
-    ATTACHMENT_TRIGGER,
-    IMAGE_TRIGGER,
-    VIDEO_TRIGGER,
-    REGEX_VIDEO,
-    REGEX_IMAGE,
-    REGEX_ATTACHMENT,
-    parseFeedComment,
-} from './feedCommentParser'
+import { getUrlTokenParts, REGEX_URL, splitMarkdownLinks } from './linkDetection'
 
 export const PAGINATION_AMOUNT = 100
-export * from './feedCommentParser'
+export const TEXT_ELEMENT = 'text'
+export const HASH_ELEMENT = 'hash'
+export const ATTACHMENT_ELEMENT = 'attachment'
+export const IMAGE_ELEMENT = 'image'
+export const VIDEO_ELEMENT = 'video'
+export const GENERIC_ELEMENT = 'generic'
+export const MENTION_ELEMENT = 'mention'
+export const EMAIL_ELEMENT = 'email'
+export const URL_ELEMENT = 'url'
+export const KARMA_ELEMENT = 'karma'
+export const MILESTONE_TAG_ELEMENT = 'milestoneTag'
+
+export const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
+export const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
+export const VIDEO_TRIGGER = 'ptPQsef7OeB5eWd'
+export const KARMA_TRIGGER = 'pMP4SB2IsTQr8LN'
+export const MILESTONE_TAG_TRIGGER = 'qM54HU5TsTOe3Yw'
+
+export const MENTION_SPACE_CODE = 'M2mVOSjAVPPKweL'
+export const BREAKLINE_CODE = '1UzPvQttIwgbqFX'
+
+export const REGEX_KARMA = /^pMP4SB2IsTQr8LN[\S]+/
+export const REGEX_MILESTONE_TAG = /^qM54HU5TsTOe3Yw[\S]+qM54HU5TsTOe3Yw[\S]+/
+export const REGEX_VIDEO = /^ptPQsef7OeB5eWd[\S]+ptPQsef7OeB5eWd[\S]+ptPQsef7OeB5eWd[\S]+/
+export const REGEX_IMAGE = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+/
+export const REGEX_ATTACHMENT = /^EbDsQTD14ahtSR5[\S]+EbDsQTD14ahtSR5[\S]+EbDsQTD14ahtSR5[\S]+/
+export const REGEX_GENERIC = /^(&[\S]+)$/i
+export const REGEX_HASHTAG = /(^|\s)(#[\S]+)$/i
+export const REGEX_MENTION = /^(@[\S]+)$/i
+export const REGEX_EMAIL = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)([,.])?/i
+export { REGEX_URL }
 
 export const REGEX_BOT_CODE = /```(.*?)```/g
 export const REGEX_BOT_BOLD = /\*\*(.*?)\*\*/g
@@ -176,11 +197,7 @@ export const getUserOrContactForMentions = (projectId, peopleId) => {
                 peopleName: contact.displayName,
             }
         }
-        // Assistant mentions may legitimately cross project boundaries (the mention picker searches
-        // every project the user can access). Prefer the current-project lookup, but fall back to
-        // the already-loaded assistant so the selected mention still renders as a person instead of
-        // an unresolved @ token in the assistant line (AT-2592).
-        const assistant = getAssistantInProject(projectId, peopleId) || getAssistant?.(peopleId)
+        const assistant = getAssistantInProject(projectId, peopleId)
         if (assistant) {
             return {
                 uid: peopleId,
@@ -220,99 +237,166 @@ export const parseBreakLineFeedComment = (text, bold) => {
     return linesElements
 }
 
+export const parseFeedComment = (text, isGenericTask, bold) => {
+    const commentElements = []
+    let needMarkWordLikeGeneric = isGenericTask
+
+    const addTextElement = textToAdd => {
+        if (textToAdd) {
+            commentElements.push({
+                type: TEXT_ELEMENT,
+                text: textToAdd,
+                bold,
+            })
+        }
+    }
+
+    const parseWord = word => {
+        if (needMarkWordLikeGeneric && REGEX_GENERIC.test(word)) {
+            needMarkWordLikeGeneric = false
+            commentElements.push({
+                type: GENERIC_ELEMENT,
+                text: word.substring(1),
+            })
+        } else if (REGEX_KARMA.test(word)) {
+            commentElements.push({
+                type: KARMA_ELEMENT,
+                text: word,
+            })
+        } else if (REGEX_MILESTONE_TAG.test(word)) {
+            commentElements.push({
+                type: MILESTONE_TAG_ELEMENT,
+                text: word,
+            })
+        } else if (REGEX_ATTACHMENT.test(word)) {
+            commentElements.push({
+                type: ATTACHMENT_ELEMENT,
+                text: word,
+            })
+        } else if (REGEX_IMAGE.test(word)) {
+            commentElements.push({
+                type: IMAGE_ELEMENT,
+                text: word,
+            })
+        } else if (REGEX_VIDEO.test(word)) {
+            commentElements.push({
+                type: VIDEO_ELEMENT,
+                text: word,
+            })
+        } else if (REGEX_HASHTAG.test(word)) {
+            commentElements.push({
+                type: HASH_ELEMENT,
+                text: word.substring(1),
+            })
+        } else if (REGEX_MENTION.test(word)) {
+            commentElements.push({
+                type: MENTION_ELEMENT,
+                text: word.substring(1),
+            })
+        } else if (REGEX_EMAIL.test(word)) {
+            const emailMatch = word.match(REGEX_EMAIL)
+            const email = emailMatch[1]
+
+            // Add the email element without any punctuation
+            const emailElement = {
+                type: EMAIL_ELEMENT,
+                text: email,
+                email: email,
+            }
+            commentElements.push(emailElement)
+
+            // Add any trailing punctuation as a separate text element
+            const punctuation = emailMatch[2]
+            if (punctuation) {
+                addTextElement(punctuation)
+            }
+        } else {
+            const urlParts = getUrlTokenParts(word)
+            if (urlParts) {
+                addTextElement(urlParts.prefix)
+                commentElements.push({ type: URL_ELEMENT, link: urlParts.url })
+                addTextElement(urlParts.suffix)
+            } else {
+                addTextElement(word)
+            }
+        }
+    }
+
+    splitMarkdownLinks(text).forEach(segment => {
+        if (segment.type === 'url') {
+            commentElements.push({ type: URL_ELEMENT, link: segment.value })
+        } else {
+            // Filter out empty strings to retain the parser's existing whitespace behavior.
+            segment.value
+                .split(' ')
+                .filter(word => word.length > 0)
+                .forEach(parseWord)
+        }
+    })
+
+    return commentElements
+}
+
 const searchRecordings = string => {
     return !string.search('video-record') || !string.search('screen-record')
 }
 
-export const hasPendingDescriptionAttachments = text =>
-    text.split(/\s+/).some(word => {
-        if (REGEX_ATTACHMENT.test(word)) return getAttachmentData(word).isNew === NEW_ATTACHMENT
-        if (REGEX_IMAGE.test(word)) return getImageData(word).isNew === NEW_ATTACHMENT
-        if (REGEX_VIDEO.test(word)) return getVideoData(word).isNew === NEW_ATTACHMENT
-        return false
-    })
+export const updateNewAttachmentsData = async (projectId, text) => {
+    store.dispatch(startLoadingData())
+    const words = text.split(' ')
 
-// Autosave must reject failed uploads instead of persisting session-local blob URLs.
-// Other submit flows retain their existing best-effort behaviour.
-export const updateNewAttachmentsData = async (projectId, text, { strict = false, uploadedTokens } = {}) => {
-    return runWithLoading('upload_comment_attachments', async () => {
-        const words = text.split(' ')
-
-        // Keep each failed attachment isolated so one failure cannot abort the submit.
-        // The enclosing operation owns feedback for the entire upload, including videos.
-
-        for (let i = 0; i < words.length; i++) {
-            const word = words[i]
-            if (uploadedTokens?.has(word)) {
-                words[i] = uploadedTokens.get(word)
-                continue
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i]
+        if (REGEX_ATTACHMENT.test(word)) {
+            const { attachmentText, uri, isNew } = getAttachmentData(word)
+            if (isNew === NEW_ATTACHMENT) {
+                const file = await fetch(uri)
+                    .then(r => r.blob())
+                    .then(blobFile => new File([blobFile], attachmentText))
+                const attachmentUri = await Backend.storeAttachment(projectId, file, false)
+                words[
+                    i
+                ] = `${ATTACHMENT_TRIGGER}${attachmentUri}${ATTACHMENT_TRIGGER}${attachmentText}${ATTACHMENT_TRIGGER}${false}`
             }
-            if (REGEX_ATTACHMENT.test(word)) {
-                const { attachmentText, uri, isNew } = getAttachmentData(word)
-                if (isNew === NEW_ATTACHMENT) {
-                    try {
-                        const file = await fetch(uri)
-                            .then(r => r.blob())
-                            .then(blobFile => new File([blobFile], attachmentText))
-                        const attachmentUri = await Backend.storeAttachment(projectId, file, false)
-                        words[i] =
-                            `${ATTACHMENT_TRIGGER}${attachmentUri}${ATTACHMENT_TRIGGER}${attachmentText}${ATTACHMENT_TRIGGER}${false}`
-                    } catch (error) {
-                        if (strict) throw error
-                        // Leave the word untouched: the comment still posts.
-                    }
-                }
-            } else if (REGEX_IMAGE.test(word)) {
-                const { imageText, uri, isNew } = getImageData(word)
-                if (isNew === NEW_ATTACHMENT) {
-                    const IMAGE_HEIGHT = 200
+        } else if (REGEX_IMAGE.test(word)) {
+            const { imageText, uri, isNew } = getImageData(word)
+            if (isNew === NEW_ATTACHMENT) {
+                const IMAGE_HEIGHT = 200
 
-                    let imageResizedUri = uri
-                    let imageUri = uri
-                    let uploaded = false
-                    try {
-                        const resizedImage = await HelperFunctions.resizeImage(uri, IMAGE_HEIGHT)
-                        const resizedFile = await HelperFunctions.convertURItoBlob(resizedImage.uri)
-                        imageResizedUri = await Backend.storeAttachment(projectId, resizedFile, false)
-                        const file = await HelperFunctions.convertURItoBlob(uri, imageText)
-                        imageUri = await Backend.storeAttachment(projectId, file, false)
-                        uploaded = true
-                    } catch (error) {
-                        if (strict) throw error
-                    }
+                let imageResizedUri = uri
+                let imageUri = uri
+                try {
+                    const resizedImage = await HelperFunctions.resizeImage(uri, IMAGE_HEIGHT)
+                    const resizedFile = await HelperFunctions.convertURItoBlob(resizedImage.uri)
+                    imageResizedUri = await Backend.storeAttachment(projectId, resizedFile, false)
+                    const file = await HelperFunctions.convertURItoBlob(uri, imageText)
+                    imageUri = await Backend.storeAttachment(projectId, file, false)
+                } catch (error) {}
 
-                    // Only mark it as stored when it really was. Stamping OLD_ATTACHMENT on
-                    // a failed upload persisted the local `blob:` uri as if it were a
-                    // remote one, which renders as a permanently broken image.
-                    if (uploaded) {
-                        words[i] =
-                            `${IMAGE_TRIGGER}${imageUri}${IMAGE_TRIGGER}${imageResizedUri}${IMAGE_TRIGGER}${imageText}${IMAGE_TRIGGER}${OLD_ATTACHMENT}`
-                    }
-                }
-            } else if (REGEX_VIDEO.test(word)) {
-                const { videoText, uri, isNew } = getVideoData(word)
-                if (isNew === NEW_ATTACHMENT) {
-                    try {
-                        const file = await fetch(uri)
-                            .then(r => r.blob())
-                            .then(blobFile => new File([blobFile], videoText))
-                        const videoUri = /(Apple)/i.test(navigator.vendor)
-                            ? await Backend.storeAttachment(projectId, file, false)
-                            : searchRecordings(videoText)
-                              ? await Backend.storeConvertedVideos(projectId, file)
-                              : await Backend.storeAttachment(projectId, file, false)
-                        words[i] = `${VIDEO_TRIGGER}${videoUri}${VIDEO_TRIGGER}${videoText}${VIDEO_TRIGGER}${false}`
-                    } catch (error) {
-                        if (strict) throw error
-                        // Leave the word untouched: the comment still posts.
-                    }
-                }
+                words[
+                    i
+                ] = `${IMAGE_TRIGGER}${imageUri}${IMAGE_TRIGGER}${imageResizedUri}${IMAGE_TRIGGER}${imageText}${IMAGE_TRIGGER}${OLD_ATTACHMENT}`
             }
-            if (word !== words[i]) uploadedTokens?.set(word, words[i])
+        } else if (REGEX_VIDEO.test(word)) {
+            const { videoText, uri, isNew } = getVideoData(word)
+            if (isNew === NEW_ATTACHMENT) {
+                const file = await fetch(uri)
+                    .then(r => r.blob())
+                    .then(blobFile => new File([blobFile], videoText))
+                store.dispatch(startLoadingData())
+                const videoUri = /(Apple)/i.test(navigator.vendor)
+                    ? await Backend.storeAttachment(projectId, file, false)
+                    : searchRecordings(videoText)
+                    ? await Backend.storeConvertedVideos(projectId, file)
+                    : await Backend.storeAttachment(projectId, file, false)
+                store.dispatch(stopLoadingData())
+                words[i] = `${VIDEO_TRIGGER}${videoUri}${VIDEO_TRIGGER}${videoText}${VIDEO_TRIGGER}${false}`
+            }
         }
+    }
 
-        return words.join(' ')
-    })
+    store.dispatch(stopLoadingData())
+    return words.join(' ')
 }
 
 export const updateNewAttachmentsDataInNotes = async (editor, id, text, uri, source) => {
@@ -363,8 +447,8 @@ export const updateNewAttachmentsDataInNotes = async (editor, id, text, uri, sou
             const videoUri = /(Apple)/i.test(navigator.vendor)
                 ? await Backend.storeAttachment(projectId, file, true)
                 : searchRecordings(text)
-                  ? await Backend.storeConvertedVideos(projectId, file)
-                  : await Backend.storeAttachment(projectId, file, true)
+                ? await Backend.storeConvertedVideos(projectId, file)
+                : await Backend.storeAttachment(projectId, file, true)
             updatedInsert = {
                 videoFormat: { ...videoFormat, uri: videoUri, isLoading: LOADED_MODE },
             }
@@ -445,8 +529,8 @@ export const getCommentTagParsed = (comment, commentsAmount, textLimitMultiplier
     const textLimit = smallScreenNavigation
         ? LAST_COMMENT_CHARACTER_LIMIT_IN_SMALL_SCREEN
         : isMiddleScreen
-          ? LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN
-          : LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN
+        ? LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN
+        : LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN
     const cleanedComment = shrinkTagText(comment, Math.round(textLimit * textLimitMultiplier))
     return `${cleanedComment}${commentsAmount > 1 ? ` +${commentsAmount - 1}` : ''}`
 }
@@ -484,9 +568,6 @@ export const getFeedObjectTypes = feedType => {
     if (FEED_ASSISTANT_TYPES.includes(feedType)) {
         return 'assistants'
     }
-    if (FEED_WIKI_TYPES.includes(feedType)) {
-        return WIKI_FEED_OBJECTS_TYPE
-    }
 }
 
 export const getObjectData = (data = OBJECT_DATA, commentedFeed) => {
@@ -498,8 +579,8 @@ export const getObjectData = (data = OBJECT_DATA, commentedFeed) => {
         return data === OBJECT_DATA
             ? { type: 'contacts', id: contactId }
             : data === OBJECT_DATA_TYPE
-              ? 'contacts'
-              : contactId
+            ? 'contacts'
+            : contactId
     else if (noteId)
         return data === OBJECT_DATA ? { type: 'notes', id: noteId } : data === OBJECT_DATA_TYPE ? 'notes' : noteId
     else if (goalId)
@@ -512,8 +593,8 @@ export const getObjectData = (data = OBJECT_DATA, commentedFeed) => {
         return data === OBJECT_DATA
             ? { type: 'assistants', id: assistantId }
             : data === OBJECT_DATA_TYPE
-              ? 'assistants'
-              : assistantId
+            ? 'assistants'
+            : assistantId
 }
 
 const getNoteFeedSourceLink = async (projectId, noteId, source) => {

@@ -78,9 +78,7 @@ async function getAssistantTasks(appAdmin, projectId, assistantId) {
     const taskDocs = (await appAdmin.firestore().collection(`/assistantTasks/${projectId}/${assistantId}`).get()).docs
     const tasks = []
     taskDocs.forEach(doc => {
-        const task = { id: doc.id, ...doc.data() }
-        delete task.aiModel
-        tasks.push(task)
+        tasks.push({ id: doc.id, ...doc.data() })
     })
     return tasks
 }

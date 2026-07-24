@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import TaskCommentsTag from './TaskCommentsTag'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
+import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
-import { popoverToTop, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
+import { popoverToTop } from '../../utils/HelperFunctions'
 import { RECORD_SCREEN_MODAL_ID, RECORD_VIDEO_MODAL_ID } from '../Feeds/CommentsTextInput/textInputHelper'
 import {
     BOT_OPTION_MODAL_ID,
@@ -14,7 +15,6 @@ import {
     RUN_OUT_OF_GOLD_MODAL_ID,
 } from '../ModalsManager/modalsManager'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
-import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function TaskCommentsWrapper({
     commentsData,
@@ -31,7 +31,6 @@ export default function TaskCommentsWrapper({
     outline,
     linkForNoteTopic,
     objectName,
-    object,
     assistantId,
     compact,
 }) {
@@ -40,37 +39,31 @@ export default function TaskCommentsWrapper({
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const [showModal, setShowModal] = useState(false)
     const isUnmountedRef = useRef(false)
-    const hideTimeoutRef = useRef(null)
-    const popupLock = useFloatPopupLock()
+    const dispatch = useDispatch()
 
     useEffect(() => {
         isUnmountedRef.current = false
         return () => {
             isUnmountedRef.current = true
-            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
         }
     }, [])
 
     const safeSetShowModal = value => {
         if (isUnmountedRef.current) {
-            if (__DEV__ && console && console.debug) {
+            if (console && console.debug) {
                 console.debug('[TaskCommentsWrapper] Ignored setShowModal on unmounted component', { value })
             }
             return
         }
-        if (__DEV__ && console && console.debug) {
+        if (console && console.debug) {
             console.debug('[TaskCommentsWrapper] setShowModal', { value })
         }
         setShowModal(value)
     }
 
     const openModal = () => {
-        if (hideTimeoutRef.current) {
-            clearTimeout(hideTimeoutRef.current)
-            hideTimeoutRef.current = null
-        }
         safeSetShowModal(true)
-        popupLock.acquire()
+        dispatch(showFloatPopup())
         if (unsubscribeClickObserver) {
             unsubscribeClickObserver()
         }
@@ -86,9 +79,8 @@ export default function TaskCommentsWrapper({
             !openModals[BOT_WARNING_MODAL_ID]
         ) {
             safeSetShowModal(false)
-            hideTimeoutRef.current = setTimeout(() => {
-                hideTimeoutRef.current = null
-                popupLock.release()
+            setTimeout(() => {
+                dispatch(hideFloatPopup())
             })
             if (subscribeClickObserver) {
                 subscribeClickObserver()
@@ -106,18 +98,16 @@ export default function TaskCommentsWrapper({
             comment
         ) {
             const clientSubmissionTime = Date.now()
-            if (__DEV__) {
-                console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper addComment called', {
-                    timestamp: new Date().toISOString(),
-                    submissionTime: clientSubmissionTime,
-                    projectId,
-                    objectType,
-                    objectId,
-                    assistantId,
-                    commentLength: comment?.length,
-                    explicitAssistantEnabled,
-                })
-            }
+            console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper addComment called', {
+                timestamp: new Date().toISOString(),
+                submissionTime: clientSubmissionTime,
+                projectId,
+                objectType,
+                objectId,
+                assistantId,
+                commentLength: comment?.length,
+                explicitAssistantEnabled,
+            })
             await createObjectMessage(
                 projectId,
                 objectId,
@@ -129,17 +119,15 @@ export default function TaskCommentsWrapper({
                 false, // skipAssistantTrigger
                 explicitAssistantEnabled
             )
-            if (__DEV__) {
-                console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper createObjectMessage completed', {
-                    timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-                })
-            }
+            console.log('⏱️ [TIMING] CLIENT: TaskCommentsWrapper createObjectMessage completed', {
+                timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+            })
             if (!assistantEnabled) closeModal()
         }
     }
 
     return showModal && !isUnmountedRef.current ? (
-        <AppPopover
+        <Popover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -150,7 +138,6 @@ export default function TaskCommentsWrapper({
                     userGettingKarmaId={userGettingKarmaId}
                     showBotButton={true}
                     objectName={objectName}
-                    initialObject={object}
                     externalAssistantId={assistantId}
                 />
             }
@@ -160,12 +147,7 @@ export default function TaskCommentsWrapper({
             padding={4}
             align={'end'}
             disableReposition={true}
-            // This popup is fixed at popoverToTop and never follows its task-row
-            // target. Polling that moving row every 10ms only forces layout work
-            // while the task board is still mounting/reordering projects.
-            disableTargetPositionListener={true}
             contentLocation={popoverToTop}
-            containerStyle={popoverToTopContainerStyle}
         >
             <TaskCommentsTag
                 commentsData={commentsData}
@@ -180,7 +162,7 @@ export default function TaskCommentsWrapper({
                 outline={outline}
                 compact={compact}
             />
-        </AppPopover>
+        </Popover>
     ) : (
         <TaskCommentsTag
             commentsData={commentsData}

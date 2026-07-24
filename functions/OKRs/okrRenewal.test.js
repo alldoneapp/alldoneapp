@@ -1,6 +1,10 @@
-jest.mock('firebase-admin', () => ({
-    firestore: jest.fn(),
-}))
+jest.mock(
+    'firebase-admin',
+    () => ({
+        firestore: jest.fn(),
+    }),
+    { virtual: true }
+)
 
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
     getFirstName: name => String(name || '').split(' ')[0],

@@ -42,7 +42,6 @@ import { objectIsLockedForUser } from '../Guides/guidesHelper'
 import { updateNoteTitleWithoutFeed } from '../../utils/backends/Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../../utils/backends/Chats/chatsFirestore'
 import GoalIndicator from '../TaskListView/GoalIndicator'
-import useSingleFlightSubmit from '../../hooks/useSingleFlightSubmit'
 import {
     GOAL_SCHEDULE_MODE_DYNAMIC,
     GOAL_SCHEDULE_MODE_FIXED,
@@ -109,10 +108,7 @@ export default function EditGoal({
         return adding ? cleanedName !== '' : cleanedName !== '' && cleanedName !== goal.extendedName.trim()
     }
 
-    // Enter reaches this editor through a document listener, Quill's newline
-    // callback and the done button at once, and every run mints a new id, so
-    // the creation is guarded against duplicated in flight submissions.
-    const createGoal = useSingleFlightSubmit(async newGoal => {
+    const createGoal = async newGoal => {
         setTimeout(() => {
             onCancelAction()
         })
@@ -120,7 +116,7 @@ export default function EditGoal({
         dispatch(setTmpInputTextGoal(''))
 
         return goal
-    })
+    }
 
     const updateGoal = (updatedGoal, avoidFollow) => {
         Backend.updateGoal(projectId, goal, updatedGoal, avoidFollow)
@@ -327,8 +323,8 @@ export default function EditGoal({
                             smallScreenNavigation
                                 ? { marginLeft: showContractExoandIndicator ? 32 : -8 }
                                 : showContractExoandIndicator
-                                  ? { marginLeft: 32 }
-                                  : null
+                                ? { marginLeft: 32 }
+                                : null
                         }
                         updateProgress={updateProgress}
                         disabled={isLocked || loggedUser.isAnonymous || !loggedUserCanUpdateObject}
@@ -493,7 +489,10 @@ const localStyles = StyleSheet.create({
         borderStyle: 'solid',
         borderColor: colors.Grey200,
         borderRadius: 4,
-        boxShadow: '0px 4px 8px rgba(0,0,0,0.08)',
+        shadowColor: 'rgba(0,0,0,0.08)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
         elevation: 3,
         marginLeft: -16,
         marginRight: -16,

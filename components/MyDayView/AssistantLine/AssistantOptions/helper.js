@@ -9,21 +9,35 @@ import {
 } from '../../../AdminPanel/Assistants/assistantsHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
+import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 import store from '../../../../redux/store'
 import { setPreConfigTaskExecuting } from '../../../../redux/actions'
-import { getAssistantTaskIcon, isScheduledAssistantTask } from './assistantTaskIcon'
 
 export const TASK_OPTION = 'TASK_OPTION'
 
-const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
-    const quickLinkTasks = tasks.filter(task => !isScheduledAssistantTask(task))
+const isRecurringAssistantTask = task => {
+    const recurrenceByUser = task?.recurrenceByUser || {}
+    const hasRecurringUser = Object.values(recurrenceByUser).some(
+        recurrence => recurrence && recurrence !== RECURRENCE_NEVER
+    )
 
-    return quickLinkTasks.map(task => {
+    return hasRecurringUser || (!!task?.recurrence && task.recurrence !== RECURRENCE_NEVER)
+}
+
+const sortAssistantTasksForQuickLinks = tasks => {
+    const oneTimeTasks = tasks.filter(task => !isRecurringAssistantTask(task))
+    const recurringTasks = tasks.filter(task => isRecurringAssistantTask(task))
+
+    return [...oneTimeTasks, ...recurringTasks]
+}
+
+const getOptions = (project, assistantId, tasks) => {
+    return sortAssistantTasksForQuickLinks(tasks).map(task => {
         return {
             id: task.id,
             type: TASK_OPTION,
-            text: showFullLabels ? task.name : shrinkTagText(task.name, 16),
-            icon: getAssistantTaskIcon(task),
+            text: shrinkTagText(task.name, 16),
+            icon: task.type === TASK_TYPE_PROMPT ? 'cpu' : 'bookmark',
             task,
             action: () => {
                 if (task.type === TASK_TYPE_IFRAME) {
@@ -39,10 +53,10 @@ const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
                     store.dispatch(setPreConfigTaskExecuting(task.name))
                     // Build aiSettings from task configuration
                     const aiSettings =
-                        task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
+                        task.aiModel || task.aiTemperature || task.aiSystemMessage
                             ? {
                                   model: task.aiModel,
-                                  reasoningEffort: task.aiReasoningEffort,
+                                  temperature: task.aiTemperature,
                                   systemMessage: task.aiSystemMessage,
                               }
                             : null
@@ -50,7 +64,6 @@ const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
                     const taskMetadata = {
                         ...(task.taskMetadata || {}),
                         sendWhatsApp: !!task.sendWhatsApp,
-                        executionMode: task.executionMode,
                     }
                     const targetProjectId = project?.id
                     if (!targetProjectId) return
@@ -71,50 +84,27 @@ const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
     })
 }
 
-export const getCollapsedQuickActionCount = ({ containerWidth, searchWidth, moreWidth, optionWidths }) => {
-    if (optionWidths.length === 0) return 0
+export const calculateAmountOfOptionButtons = (containerWidth, isMiddleScreen, isMobile) => {
+    const filledSpaceWidth = isMiddleScreen ? 174 : 274
+    const freeSpaceWidth = containerWidth - filledSpaceWidth
+    const avarageWidthOfButtons = isMobile ? 130 : 150
+    const calculatedAmount = Math.floor(freeSpaceWidth / avarageWidthOfButtons)
 
-    const hasCompleteMeasurements = containerWidth > 0 && searchWidth > 0 && optionWidths.every(width => width > 0)
-    if (!hasCompleteMeasurements) return 0
-
-    const allOptionsWidth = optionWidths.reduce((total, width) => total + width, 0)
-    if (searchWidth + allOptionsWidth <= containerWidth) return optionWidths.length
-
-    // If any option is hidden, More has to fit on the same line too. Until More has been
-    // measured, keep every task hidden rather than briefly rendering a wrapping row.
-    if (moreWidth <= 0) return 0
-
-    const availableOptionsWidth = Math.max(0, containerWidth - searchWidth - moreWidth)
-    let usedWidth = 0
-    let visibleCount = 0
-
-    for (const width of optionWidths) {
-        if (usedWidth + width > availableOptionsWidth) break
-        usedWidth += width
-        visibleCount += 1
+    // Ensure at least 2 buttons fit on mobile phones
+    if (isMobile && calculatedAmount < 2) {
+        return 2
     }
 
-    return visibleCount
+    return calculatedAmount
 }
 
-export const getOptionsPresentationData = (
-    project,
-    defaultAssistantId,
-    tasks,
-    amountOfButtonOptions,
-    showAllOptions = false
-) => {
-    const options = getOptions(project, defaultAssistantId, tasks, showAllOptions)
-    const hasAdditionalOptions = options.length > amountOfButtonOptions
-
-    if (showAllOptions) {
-        return { optionsLikeButtons: options, optionsInModal: [], showSubmenu: false, hasAdditionalOptions }
-    }
+export const getOptionsPresentationData = (project, defaultAssistantId, tasks, amountOfButtonOptions) => {
+    const options = getOptions(project, defaultAssistantId, tasks)
     const optionsLikeButtons = options.slice(0, amountOfButtonOptions)
     const optionsInModal = options.slice(amountOfButtonOptions)
     const showSubmenu = optionsInModal.length > 0
 
-    return { optionsLikeButtons, optionsInModal, showSubmenu, hasAdditionalOptions }
+    return { optionsLikeButtons, optionsInModal, showSubmenu }
 }
 
 export const getCommentData = (
@@ -129,25 +119,13 @@ export const getCommentData = (
 
     if (commentSource) {
         const { creatorId, creatorType, projectId } = commentSource
-        // A source that names its project must be rendered in THAT project. The preview subscribes
-        // to chatComments/<commentProject>/<objectType>/<objectId>, and under any other project the
-        // thread does not exist, so the rules deny it. That denial is not harmless: when the preview
-        // then remounts under the right project, removing the rejected listener raced the server's
-        // rejection and Firestore answered `Target id not found`, which tears down the WHOLE Listen
-        // stream. It happened on every boot of the All projects board, because project users and
-        // assistants load after this pointer and the old code fell back to the displayed project
-        // until they did. Show the skeleton instead of a wrong-project preview.
-        const sourceProject = projectId ? ProjectHelper.getProjectById(projectId) : null
-        if (projectId && !sourceProject)
-            return { commentCreator: null, commentProject: null, isAssistant: false, hasUnread }
-        const commentProject = sourceProject || project
+        const commentProject = (projectId && ProjectHelper.getProjectById(projectId)) || project
 
         if (commentProject) {
             const projectAssistantId = commentProject.assistantId || defaultAssistantId
             const projectAssistant =
                 (projectAssistantId && getAssistantInProject(commentProject.id, projectAssistantId)) ||
-                (projectAssistantId ? getAssistant(projectAssistantId) : null) ||
-                (projectId && defaultAssistantId ? getAssistant(defaultAssistantId) : null)
+                (projectAssistantId ? getAssistant(projectAssistantId) : null)
 
             const isAssistantComment = creatorType === 'assistant'
             const commentCreator = isAssistantComment
@@ -164,7 +142,6 @@ export const getCommentData = (
                     hasUnread,
                 }
             }
-            if (projectId) return { commentCreator: null, commentProject: null, isAssistant: false, hasUnread }
         }
     }
 
@@ -184,18 +161,9 @@ export const getCommentData = (
     }
 }
 
-export const getAssistantLineData = (
-    selectedProject,
-    defaultAssistantId,
-    defaultProjectId,
-    preferAssistantId = false
-) => {
+export const getAssistantLineData = (selectedProject, defaultAssistantId, defaultProjectId) => {
     const assistantId =
-        preferAssistantId && defaultAssistantId
-            ? defaultAssistantId
-            : selectedProject && selectedProject.assistantId
-              ? selectedProject.assistantId
-              : defaultAssistantId
+        selectedProject && selectedProject.assistantId ? selectedProject.assistantId : defaultAssistantId
     const assistant = getAssistant(assistantId)
 
     // Determine the actual project where the assistant lives

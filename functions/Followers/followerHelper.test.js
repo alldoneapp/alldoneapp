@@ -1,11 +1,3 @@
-let mockArrayUnion
-
-jest.mock('firebase-admin/firestore', () => ({
-    FieldValue: {
-        arrayUnion: (...values) => mockArrayUnion(...values),
-    },
-}))
-
 jest.mock('../Feeds/tasksFeeds', () => ({
     createTaskFollowedFeed: jest.fn().mockResolvedValue(undefined),
 }))
@@ -37,6 +29,7 @@ const { getGlobalState } = require('../GlobalState/globalState')
 const { tryAddFollower } = require('./followerHelper')
 
 describe('followerHelper', () => {
+    let arrayUnion
     let batch
     let chatUpdate
     let chatData
@@ -44,7 +37,7 @@ describe('followerHelper', () => {
 
     beforeEach(() => {
         jest.clearAllMocks()
-        mockArrayUnion = jest.fn(value => ({ arrayUnion: value }))
+        arrayUnion = jest.fn(value => ({ arrayUnion: value }))
         batch = { set: jest.fn() }
         chatUpdate = jest.fn().mockResolvedValue(undefined)
         chatData = { usersFollowing: ['user-1'] }
@@ -61,7 +54,7 @@ describe('followerHelper', () => {
             return {}
         })
         getGlobalState.mockReturnValue({
-            admin: { firestore: { FieldValue: { arrayUnion: mockArrayUnion } } },
+            admin: { firestore: { FieldValue: { arrayUnion } } },
             appAdmin: { firestore: () => ({ doc: firestoreDoc }) },
         })
     })
@@ -81,7 +74,6 @@ describe('followerHelper', () => {
 
         expect(chatUpdate).not.toHaveBeenCalled()
         expect(createTaskFollowedFeed).toHaveBeenCalled()
-        expect(batch.set).toHaveBeenCalledWith(expect.anything(), { tasks: { 'task-1': true } }, { merge: true })
     })
 
     test('adds the follower when a chat has no usersFollowing array', async () => {
@@ -99,66 +91,7 @@ describe('followerHelper', () => {
             true
         )
 
-        expect(mockArrayUnion).toHaveBeenCalledWith('user-1')
+        expect(arrayUnion).toHaveBeenCalledWith('user-1')
         expect(chatUpdate).toHaveBeenCalledWith({ usersFollowing: { arrayUnion: 'user-1' } })
-    })
-
-    test('adds an artifact follower to the artifact so it shows in their Followed list', async () => {
-        const artifactSet = jest.fn()
-        firestoreDoc.mockImplementation(path => {
-            if (path === 'followers/project-1/artifacts/artifact-1') {
-                return { get: jest.fn().mockResolvedValue({ data: () => undefined }) }
-            }
-            if (path === 'artifactItems/project-1/artifacts/artifact-1') return { set: artifactSet }
-            if (path === 'chatObjects/project-1/chats/artifact-1') {
-                return { get: jest.fn().mockResolvedValue({ exists: false }) }
-            }
-            return {}
-        })
-
-        await tryAddFollower(
-            'project-1',
-            {
-                followObjectsType: 'artifacts',
-                followObjectId: 'artifact-1',
-                followObject: { isPublicFor: [0, 'owner'] },
-                feedUser: { uid: 'user-2' },
-            },
-            batch,
-            true
-        )
-
-        expect(artifactSet).toHaveBeenCalledWith(
-            { followersIds: { arrayUnion: 'user-2' }, isVisibleInFollowedFor: { arrayUnion: 'user-2' } },
-            { merge: true }
-        )
-    })
-
-    test('never makes a private artifact visible to a follower who cannot read it', async () => {
-        const artifactSet = jest.fn()
-        firestoreDoc.mockImplementation(path => {
-            if (path === 'followers/project-1/artifacts/private-1') {
-                return { get: jest.fn().mockResolvedValue({ data: () => undefined }) }
-            }
-            if (path === 'artifactItems/project-1/artifacts/private-1') return { set: artifactSet }
-            if (path === 'chatObjects/project-1/chats/private-1') {
-                return { get: jest.fn().mockResolvedValue({ exists: false }) }
-            }
-            return {}
-        })
-
-        await tryAddFollower(
-            'project-1',
-            {
-                followObjectsType: 'artifacts',
-                followObjectId: 'private-1',
-                followObject: { isPublicFor: ['owner'] },
-                feedUser: { uid: 'user-2' },
-            },
-            batch,
-            true
-        )
-
-        expect(artifactSet).toHaveBeenCalledWith({ followersIds: { arrayUnion: 'user-2' } }, { merge: true })
     })
 })

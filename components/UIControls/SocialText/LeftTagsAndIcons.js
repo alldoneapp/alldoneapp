@@ -20,9 +20,7 @@ export default function LeftTagsAndIcons({
     return (
         <>
             {leadingStatusElement && leadingStatusElement}
-            {/* Done calendar tasks keep their calendar tag, so they stay recognizable as calendar
-                events in the Done list instead of looking like any other completed task. */}
-            {!activeCalendarStyle && task && task.calendarData && (
+            {!activeCalendarStyle && task && task.calendarData && !task.completedTime && (
                 <CalendarTag calendarData={task.calendarData} containerStyle={{ marginRight: 8 }} />
             )}
             {milestone && (isActiveMilestone || milestone.done) && (

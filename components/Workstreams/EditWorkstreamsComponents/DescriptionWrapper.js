@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -55,7 +55,7 @@ export default function DescriptionWrapper({
 
     const cleanedName = displayName.trim()
     return (
-        <AppPopover
+        <Popover
             content={
                 <DescriptionModal
                     projectId={projectId}
@@ -90,6 +90,6 @@ export default function DescriptionWrapper({
                     shortcutText={'D'}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }

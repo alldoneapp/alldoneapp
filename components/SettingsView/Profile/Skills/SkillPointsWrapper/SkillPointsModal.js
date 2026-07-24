@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../../styles/global'
 import ModalHeader from '../../../../UIComponents/FloatModals/ModalHeader'
-import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../../utils/HelperFunctions'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import Line from '../../../../UIComponents/FloatModals/GoalMilestoneModal/Line'
 import CustomScrollView from '../../../../UIControls/CustomScrollView'
@@ -15,7 +15,6 @@ import { translate } from '../../../../../i18n/TranslationService'
 import { checkIsLimitedByTraffic } from '../../../../Premium/PremiumHelper'
 import PointsStatistics from './PointsStatistics'
 import IncDecButtons from './IncDecButtons'
-import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 
 export default function SkillPointsModal({ projectId, skillId, points, changeSkillPoints, closeModal }) {
     const [showFileSelector, setShowFileSelector] = useState(false)
@@ -59,11 +58,7 @@ export default function SkillPointsModal({ projectId, skillId, points, changeSki
                 />
             ) : (
                 <View
-                    style={[
-                        localStyles.container,
-                        applyPopoverWidth(),
-                        { maxHeight: getSafeAreaModalMaxHeight(height) },
-                    ]}
+                    style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}
                 >
                     <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                         <ModalHeader
@@ -110,7 +105,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

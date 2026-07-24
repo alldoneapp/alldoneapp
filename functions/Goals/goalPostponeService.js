@@ -1,6 +1,6 @@
 const admin = require('firebase-admin')
 
-const { assertProjectAccess, canAccessObject } = require('../shared/privacyAccess')
+const { canAccessObject, getAccessibleProjectIdsFromUserData } = require('../shared/privacyAccess')
 const { createUndoActionRecord, MAX_OPERATIONS_PER_ACTION } = require('../shared/UndoActionService')
 
 const BACKLOG_DATE_NUMERIC = Number.MAX_SAFE_INTEGER
@@ -75,12 +75,6 @@ const createUpdateOperation = ({ objectType, projectId, objectId, beforeData, af
     }
 }
 
-const isTaskConnectedToTarget = (task = {}, targetUserId) =>
-    task.userId === targetUserId ||
-    task.currentReviewerId === targetUserId ||
-    (Array.isArray(task.userIds) && task.userIds.includes(targetUserId)) ||
-    (Array.isArray(task.observersIds) && task.observersIds.includes(targetUserId))
-
 async function executeGoalPostpone({
     actorUserId,
     data,
@@ -92,9 +86,10 @@ async function executeGoalPostpone({
 
     const request = normalizeRequest(data)
     const { projectId, goalId, targetUserId, requestId, date, endOfToday, cascadeToTasks } = request
-    try {
-        await assertProjectAccess(db, actorUserId, projectId)
-    } catch (_error) {
+    const userRef = db.doc(`users/${actorUserId}`)
+    const userSnapshot = await userRef.get()
+    if (!userSnapshot.exists) throw new GoalPostponeError('permission-denied', 'User not found')
+    if (!getAccessibleProjectIdsFromUserData(userSnapshot.data()).includes(projectId)) {
         throw new GoalPostponeError('permission-denied', 'No access to project')
     }
 
@@ -124,19 +119,11 @@ async function executeGoalPostpone({
         if (!canAccessObject(goal, actorUserId)) {
             throw new GoalPostponeError('permission-denied', 'No access to goal')
         }
-
-        const taskSnapshot = taskQuery ? await transaction.get(taskQuery) : { docs: [] }
-        const targetIsGoalAssignee = Array.isArray(goal.assigneesIds) && goal.assigneesIds.includes(targetUserId)
-        const targetHasLinkedTask =
-            cascadeToTasks && taskSnapshot.docs.some(taskDoc => isTaskConnectedToTarget(taskDoc.data(), targetUserId))
-
-        if (!targetIsGoalAssignee && !targetHasLinkedTask) {
-            throw new GoalPostponeError(
-                'failed-precondition',
-                'The target user is neither assigned to this goal nor connected through an open task'
-            )
+        if (!Array.isArray(goal.assigneesIds) || !goal.assigneesIds.includes(targetUserId)) {
+            throw new GoalPostponeError('failed-precondition', 'The target user is no longer assigned to this goal')
         }
 
+        const taskSnapshot = taskQuery ? await transaction.get(taskQuery) : { docs: [] }
         const tasksToPostpone = taskSnapshot.docs.filter(taskDoc => {
             const task = taskDoc.data()
             return Number.isFinite(task.dueDate) && task.dueDate <= endOfToday

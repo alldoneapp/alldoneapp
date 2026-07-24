@@ -1,16 +1,28 @@
-import { difference } from 'lodash'
-
 import store from '../../redux/store'
 import { getGlobalAssistants, getProjectAssistants, watchAssistants } from '../backends/Assistants/assistantsFirestore'
-import { getProjectContacts } from '../backends/Contacts/contactsFirestore'
-import { getProjectUsers, removeCopyProjectIdFromUser } from '../backends/Users/usersFirestore'
-import { getProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'
-import { getAdministratorUser, getProjectData, unwatch, watchProject, watchUserData } from '../backends/firestore'
+import { getProjectContacts, watchProjectContacts } from '../backends/Contacts/contactsFirestore'
+import { getProjectUsers, removeCopyProjectIdFromUser, watchProjectUsers } from '../backends/Users/usersFirestore'
+import { getProjectWorkstreams, watchProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'
+import {
+    getAdministratorUser,
+    getProjectData,
+    unwatch,
+    watchProject,
+    watchProjectInvitations,
+    watchProjectMeetings,
+    watchUserData,
+} from '../backends/firestore'
 import {
     removeProjectData,
     setAdministratorAndGlobalAssistants,
     setAdministratorUser,
+    setAssistantsInProject,
+    setContactsInProject,
     setGlobalAssistants,
+    setInvitationsInProject,
+    setMeetingsInProject,
+    setUsersInProject,
+    setWorkstreamsInProject,
     setShowEndCopyProjectPopup,
     storeLoggedUser,
     updateUserProject,
@@ -24,10 +36,6 @@ import { forceCloseModals } from '../HelperFunctions'
 import { ROOT_ROUTES } from '../TabNavigationConstants'
 import NavigationService from '../NavigationService'
 import { watchChatNotifications } from '../backends/Chats/chatsComments'
-import { isBrowserOffline } from '../connectionState'
-import { pruneStaleProjectIds } from './staleProjectSelfHeal'
-import { recoverDroppedProject } from './projectRecovery'
-import { forgetProjectData } from './projectDataLoader'
 
 export async function getInitialProjectData(projectId) {
     const promises = []
@@ -44,15 +52,6 @@ export async function getInitialProjectData(projectId) {
 export function watchProjectData(projectId, likeProjectMember, watchChatNotifications) {
     const updateProject = project => {
         if (project) {
-            if (!store.getState().loggedUserProjectsMap[projectId]) {
-                // The project was dropped from redux (transient read failure at InitialLoad, or a
-                // wrongful removal). 'Update user project' can only merge into an existing entry,
-                // so re-insert it with its full data bundle instead.
-                recoverDroppedProject(projectId).catch(error =>
-                    console.warn(`[InitialLoad] Failed to recover project ${projectId}:`, error)
-                )
-                return
-            }
             store.dispatch(updateUserProject(project))
         } else {
             const { loggedUser, selectedProjectIndex, loggedUserProjectsMap, route } = store.getState()
@@ -69,31 +68,40 @@ export function watchProjectData(projectId, likeProjectMember, watchChatNotifica
 
             unwatchProjectData(projectId)
             store.dispatch(removeProjectData(projectId))
-
-            // Self-heal: if the project doc is really gone (server-confirmed inside), drop its id
-            // from the logged user's doc so the next cold load does not re-arm this whole path.
-            pruneStaleProjectIds([projectId]).catch(error =>
-                console.warn('[InitialLoad] Stale project id self-heal failed:', error)
-            )
         }
     }
-    // AT-2386: only the project DOCUMENT is watched here now. Users, contacts, workstreams and
-    // assistants are armed by `projectDataLoader` - awaited only for the route project/default
-    // assistant dependency, then pulled on demand by whatever renders them. Arming them here as
-    // well would defeat that entirely, since this runs for every project at login.
-    //
-    // `watchProjectData` is still the right place to keep the project doc: it is what feeds the
-    // sidebar name/colour and the dropped-project recovery below, it is one document rather than a
-    // collection, and nothing renders a project row without it.
+    const updateUsers = users => {
+        if (users.length > 0) store.dispatch(setUsersInProject(projectId, users))
+    }
+    const updateContacts = contacts => {
+        store.dispatch(setContactsInProject(projectId, contacts))
+    }
+    const updateWorkstreams = workstreams => {
+        store.dispatch(setWorkstreamsInProject(projectId, workstreams))
+    }
+    const updateAssistants = assistants => {
+        store.dispatch(setAssistantsInProject(projectId, assistants))
+    }
+
     watchProject(projectId, updateProject, `${projectId}Project`)
+    watchProjectUsers(projectId, updateUsers, `${projectId}Users`)
+    watchProjectContacts(projectId, updateContacts, `${projectId}Contacts`)
+    watchAssistants(projectId, `${projectId}Assistants`, updateAssistants)
+    watchProjectWorkstreams(projectId, updateWorkstreams, `${projectId}Workstreams`)
 
     if (likeProjectMember) watchProjectDataThatIsOnlyForProjectMembers(projectId, watchChatNotifications)
 }
 
 export const watchProjectDataThatIsOnlyForProjectMembers = (projectId, watchChatNotifications) => {
-    // Pending invitations are only rendered by ProjectMembers, which watches them while it is open.
-    // Watching them here cost one live listener per project at every login, for collections that
-    // are empty almost everywhere.
+    const updateInvitations = invitations => {
+        store.dispatch(setInvitationsInProject(projectId, invitations))
+    }
+    const updateMeetings = meetings => {
+        store.dispatch(setMeetingsInProject(projectId, meetings))
+    }
+
+    watchProjectInvitations(projectId, updateInvitations, `${projectId}Invitations`)
+    watchProjectMeetings(projectId, updateMeetings, `${projectId}Mettings`)
     if (watchChatNotifications) watchProjectChatNotifications(projectId)
 }
 
@@ -108,8 +116,7 @@ export function watchProjectChatNotifications(projectId) {
 
 export function watchProjectsChatNotifications() {
     const { loggedUser } = store.getState()
-    const projectIds = Array.isArray(loggedUser?.projectIds) ? loggedUser.projectIds : []
-    projectIds.forEach(projectId => {
+    loggedUser.projectIds.forEach(projectId => {
         watchProjectChatNotifications(projectId)
     })
 }
@@ -146,33 +153,21 @@ export function watchLoggedUserData(loggedUser) {
         clearConfirmedOptimisticFocus(user)
     }
 
-    const notifyFinishedProjectCopy = user => {
-        // `difference` was used here without being imported, so this threw a ReferenceError for
-        // every user with a project duplication in flight - before `storeLoggedUser` below ran.
-        // Keep it isolated: a problem in this optional popup must never stop the user update.
-        try {
-            const copyProjectIds = Array.isArray(user.copyProjectIds) ? user.copyProjectIds : []
-            if (copyProjectIds.length === 0) return
-
-            const { loggedUser } = store.getState()
-            const newProjectId = difference(user.projectIds || [], loggedUser?.projectIds || [])[0]
-            if (newProjectId && copyProjectIds.includes(newProjectId)) {
-                // If there is a new project in the User data, then occurs a duplication in the background
-                getProjectData(newProjectId).then(project => {
-                    if (project) {
-                        removeCopyProjectIdFromUser(loggedUser.uid, newProjectId)
-                        store.dispatch(setShowEndCopyProjectPopup(true, project.name, project.color))
-                    }
-                })
-            }
-        } catch (error) {
-            console.warn('Failed to check for a finished project copy:', error)
-        }
-    }
-
     const setLoggedUser = user => {
         if (user) {
-            notifyFinishedProjectCopy(user)
+            if (user.copyProjectIds.length > 0) {
+                const { loggedUser } = store.getState()
+                const newProjectId = difference(user.projectIds, loggedUser.projectIds)[0]
+                if (newProjectId && user.copyProjectIds.includes(newProjectId)) {
+                    // If there is a new project in the User data, then occurs a duplication in the background
+                    getProjectData(newProjectId).then(project => {
+                        if (project) {
+                            removeCopyProjectIdFromUser(loggedUser.uid, newProjectId)
+                            store.dispatch(setShowEndCopyProjectPopup(true, project.name, project.color))
+                        }
+                    })
+                }
+            }
             store.dispatch(storeLoggedUser(user))
             clearConfirmedOptimisticFocus(user)
         }
@@ -182,9 +177,6 @@ export function watchLoggedUserData(loggedUser) {
 }
 
 export function watchGlobalAssistants() {
-    // Repairs can call loadGlobalData after the initial watcher was armed. Replace
-    // the existing subscription instead of leaking it under the same registry key.
-    unwatch('globalAssistants')
     watchAssistants(GLOBAL_PROJECT_ID, 'globalAssistants', assistants => {
         store.dispatch(setGlobalAssistants(assistants))
     })
@@ -192,70 +184,17 @@ export function watchGlobalAssistants() {
 
 export function watchAdministratorUser(userId) {
     if (!userId) return
-
-    // A single false-missing server snapshot must not revoke Administrator state.
-    // Keep the last valid value while the independent read used by
-    // getAdministratorUser decides whether the role/user is really gone.
-    unwatch('administratorUser')
-    let verificationVersion = 0
     watchUserData(
         userId,
         false,
         user => {
-            const currentVersion = ++verificationVersion
-            if (user) {
-                store.dispatch(setAdministratorUser(user))
-                return
-            }
-
-            getAdministratorUser()
-                .then(verifiedAdministrator => {
-                    // A newer snapshot already superseded this missing event.
-                    if (currentVersion !== verificationVersion) return
-
-                    if (verifiedAdministrator?.uid) {
-                        store.dispatch(setAdministratorUser(verifiedAdministrator))
-                        // The role may genuinely have moved to another user. Follow
-                        // the authoritative pointer instead of retaining the old watcher.
-                        if (!verifiedAdministrator.roleOnly && verifiedAdministrator.uid !== userId) {
-                            watchAdministratorUser(verifiedAdministrator.uid)
-                        }
-                    } else {
-                        store.dispatch(setAdministratorUser({}))
-                    }
-                })
-                .catch(error => {
-                    // Unverifiable is not absent. Preserve the last valid user and
-                    // let the watcher/integrity healer retry when transport recovers.
-                    console.warn(
-                        `[GlobalData] Could not verify missing Administrator /users/${userId}; ` +
-                            'preserving the last valid state.',
-                        error
-                    )
-                })
+            store.dispatch(setAdministratorUser(user))
         },
-        'administratorUser',
-        error => {
-            const permissionDenied =
-                error?.code === 'permission-denied' ||
-                String(error?.message || error).includes('Missing or insufficient permissions')
-            if (permissionDenied) {
-                // The role pointer is public to signed-in users, but the named person's private
-                // profile is not. Keep the identity needed for global-assistant ownership without
-                // letting an expected cross-user denial escape as an uncaught snapshot error.
-                store.dispatch(setAdministratorUser({ uid: userId, roleOnly: true }))
-                return
-            }
-            console.warn(`[GlobalData] Administrator listener failed for /users/${userId}:`, error)
-        }
+        'administratorUser'
     )
 }
 
-let activeGlobalDataLoadPromise = null
-
-export const getActiveGlobalDataLoadPromise = () => activeGlobalDataLoadPromise
-
-const performGlobalDataLoad = async (retryCount = 0) => {
+export const loadGlobalData = async (retryCount = 0) => {
     const MAX_RETRIES = 5
     const RETRY_DELAY_MS = 5000
 
@@ -273,55 +212,24 @@ const performGlobalDataLoad = async (retryCount = 0) => {
             store.dispatch(setAdministratorAndGlobalAssistants(administratorUser, globalAssistants))
 
             watchGlobalAssistants()
-            if (administratorUser?.uid && !administratorUser.roleOnly) {
+            if (administratorUser?.uid) {
                 watchAdministratorUser(administratorUser.uid)
             }
         } catch (error) {
             console.error('Failed to load global data:', error)
-            if (isBrowserOffline()) {
-                // Offline cache incompleteness is not deletion. Do not hold boot
-                // in a 25-second retry loop; the integrity healer re-runs when
-                // connectivity is proven live again.
-                console.warn('[GlobalData] Global data is unavailable offline; preserving the last valid state.')
-                return
-            }
             if (retryCount < MAX_RETRIES) {
                 console.log(
                     `Retrying loadGlobalData in ${RETRY_DELAY_MS / 1000}s... (attempt ${retryCount + 1}/${MAX_RETRIES})`
                 )
                 await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
-                return performGlobalDataLoad(retryCount + 1)
+                return loadGlobalData(retryCount + 1)
             }
-            // Exhausted retries still mean "unverifiable", not "absent". Keep
-            // whatever valid global state Redux already has; the integrity
-            // healer will retry after connectivity recovers.
-            console.warn('[GlobalData] Global data is still unavailable; preserving the last valid state.')
+            store.dispatch(setAdministratorAndGlobalAssistants({}, []))
         }
     }
 }
 
-export const loadGlobalData = (retryCount = 0) => {
-    // Cached startup, BootIntegrity and app-resume recovery can all ask for the same global
-    // bundle within milliseconds. Share one authoritative read so callers do not race each
-    // other and temporarily diagnose the Administrator as missing while another caller is
-    // already loading it.
-    if (activeGlobalDataLoadPromise) return activeGlobalDataLoadPromise
-
-    const loadPromise = performGlobalDataLoad(retryCount)
-    activeGlobalDataLoadPromise = loadPromise
-    const clearActiveLoad = () => {
-        if (activeGlobalDataLoadPromise === loadPromise) activeGlobalDataLoadPromise = null
-    }
-    loadPromise.then(clearActiveLoad, clearActiveLoad)
-    return loadPromise
-}
-
 export const unwatchProjectData = projectId => {
-    // The four collection watchers below are armed by `projectDataLoader`, which keeps its own
-    // record of what it armed. Unwatching without forgetting would leave it convinced the project
-    // is still loaded, so nothing would ever re-arm it.
-    forgetProjectData(projectId)
-
     unwatch(`${projectId}Project`)
     unwatch(`${projectId}Users`)
     unwatch(`${projectId}Contacts`)
@@ -333,8 +241,7 @@ export const unwatchProjectData = projectId => {
 }
 
 export const unwatchProjectsData = projectIds => {
-    const ids = Array.isArray(projectIds) ? projectIds : []
-    ids.forEach(projectId => {
+    projectIds.forEach(projectId => {
         unwatchProjectData(projectId)
     })
 }
@@ -368,9 +275,7 @@ export function convertAnonymousProjectsIntoSharedProjects(
     } = store.getState()
 
     let nextIndex = projects.length
-    const anonymousProjects = Array.isArray(anonymousLoggedUserProjects) ? anonymousLoggedUserProjects : []
-    anonymousProjects.forEach(project => {
-        if (!project || !project.id) return
+    anonymousLoggedUserProjects.forEach(project => {
         const sharedProject = { ...project, index: nextIndex }
         if (!projectsMap[sharedProject.id]) {
             projects.push(sharedProject)

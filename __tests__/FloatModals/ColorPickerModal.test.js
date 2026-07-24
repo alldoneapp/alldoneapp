@@ -1,35 +1,26 @@
 import React from 'react'
-import { Provider } from 'react-redux'
-import renderer from 'react-test-renderer'
-
 import ColorPickerModal from '../../components/UIComponents/FloatModals/ColorPickerModal'
-import store from '../../redux/store'
 
-// selectColor used to be a method on the class; it is a prop now, so the
-// behaviour is driven through the rendered swatches instead of an instance.
-const render = (props = {}) =>
-    renderer.create(
-        <Provider store={store}>
-            <ColorPickerModal closePopover={() => {}} {...props} />
-        </Provider>
-    )
+import renderer from 'react-test-renderer'
+import { colors } from '../../components/styles/global'
 
 describe('ColorPickerModal component', () => {
-    it('Should render correctly', () => {
-        expect(render().toJSON()).toMatchSnapshot()
+    describe('ColorPickerModal snapshot test', () => {
+        it('Should render correctly', () => {
+            const tree = renderer.create(<ColorPickerModal closePopover={() => {}} />).toJSON()
+            expect(tree).toMatchSnapshot()
+        })
     })
 
-    it('hands the chosen colour back to its caller', () => {
-        const selectColor = jest.fn()
-        const tree = render({ selectColor })
+    describe('Function selectColor snapshot test', () => {
+        it('Should execute and render correctly', () => {
+            const tree = renderer.create(<ColorPickerModal selectColor={() => {}} closePopover={() => {}} />)
 
-        const pressables = tree.root.findAll(node => typeof node.props.onPress === 'function')
-        expect(pressables.length).toBeGreaterThan(0)
+            tree.getInstance().selectColor(colors.ProjectColor400)
+            expect(tree.toJSON()).toMatchSnapshot()
 
-        renderer.act(() => {
-            pressables[0].props.onPress()
+            const state = tree.getInstance().state
+            expect(state.selectedColor).toEqual(colors.ProjectColor400)
         })
-
-        expect(selectColor).toHaveBeenCalled()
     })
 })

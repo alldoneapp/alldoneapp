@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd'
 import { useSelector } from 'react-redux'
 
 import Icon from '../../../Icon'

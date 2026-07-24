@@ -14,7 +14,7 @@ import DateRangeWrapper from '../../GoalsView/EditGoalsComponents/DateRangeWrapp
 import AssigneesWrapper from '../../GoalsView/EditGoalsComponents/AssigneesWrapper'
 import ProgressWrapper from '../../GoalsView/EditGoalsComponents/ProgressWrapper'
 import GoalMoreButton from '../../UIComponents/FloatModals/MorePopupsOfEditModals/Goals/GoalMoreButton'
-import { getDvMainTabLink } from '../../../utils/LinkingHelper'
+import { checkDVLink, getDvMainTabLink } from '../../../utils/LinkingHelper'
 import URLTrigger from '../../../URLSystem/URLTrigger'
 import { getPathname } from '../../Tags/LinkTag'
 import { COMMENT_MODAL_ID, exitsOpenModals, TAGS_EDIT_OBJECT_MODAL_ID } from '../../ModalsManager/modalsManager'
@@ -81,6 +81,7 @@ export default function EditGoalLink({ projectId, goalData, closeModal, objectUr
 
     const openDV = () => {
         closeModal()
+        checkDVLink('goal')
         const linkUrl = objectUrl != null ? getPathname(objectUrl) : getDvMainTabLink(projectId, goalData.id, 'goals')
         URLTrigger.processUrl(NavigationService, linkUrl)
     }

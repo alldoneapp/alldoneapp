@@ -5,7 +5,7 @@ import { difference } from 'lodash'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import Button from '../../../UIControls/Button'
 import useWindowSize from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
@@ -17,7 +17,6 @@ import UsersList from './UsersList'
 import { getSubscriptionStatus, PLAN_STATUS_PREMIUM } from '../../PremiumHelper'
 import PaymentPreviewModal from '../PaymentPreviewModal/PaymentPreviewModal'
 import { getUserData } from '../../../../utils/backends/Users/usersFirestore'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function SelectPremiumUsersModal({
     closeModal,
@@ -83,8 +82,9 @@ export default function SelectPremiumUsersModal({
     }
 
     const goToNextStep = () => {
-        const { isInactiveSubscription, isActiveSubscription, isCanceledSubscription } =
-            getSubscriptionStatus(subscription)
+        const { isInactiveSubscription, isActiveSubscription, isCanceledSubscription } = getSubscriptionStatus(
+            subscription
+        )
         if (
             (tmpSelectedUsersIds.length > 0 && (isInactiveSubscription || isCanceledSubscription)) ||
             isActiveSubscription
@@ -112,7 +112,7 @@ export default function SelectPremiumUsersModal({
 
     const filteredUsers = filterUsersByText(projectsUsersArray, filterText)
 
-    const tmpHeight = getSafeAreaModalMaxHeight(height)
+    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     return showPreviewModal ? (
@@ -165,7 +165,10 @@ const localStyles = StyleSheet.create({
         paddingVertical: 16,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     line: {

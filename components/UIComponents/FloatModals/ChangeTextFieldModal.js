@@ -5,11 +5,10 @@ import { TouchableOpacity } from 'react-native-gesture-handler'
 import PropTypes from 'prop-types'
 import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { withWindowSizeHook } from '../../../utils/useWindowSize'
 import { translate } from '../../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 class ChangeTextFieldModal extends Component {
     constructor(props) {
@@ -24,9 +23,7 @@ class ChangeTextFieldModal extends Component {
 
     componentDidMount() {
         document.addEventListener('keydown', this.onPressEnter)
-        // The ref object always exists, so guarding it alone still threw once the
-        // modal unmounted before this fired; `current` is the part that goes null.
-        setTimeout(() => this.inputText && this.inputText.current && this.inputText.current.focus(), 1)
+        setTimeout(() => this.inputText && this.inputText.current.focus(), 1)
     }
 
     componentWillUnmount() {
@@ -55,15 +52,23 @@ class ChangeTextFieldModal extends Component {
 
     render() {
         const { currentValue } = this.state
-        const { header, subheader, label, placeholder, validateFunction, windowSize, multiline, numberOfLines } =
-            this.props
+        const {
+            header,
+            subheader,
+            label,
+            placeholder,
+            validateFunction,
+            windowSize,
+            multiline,
+            numberOfLines,
+        } = this.props
 
         return (
             <View
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
+                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
                 ]}
             >
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
@@ -112,7 +117,11 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        width: 305,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

@@ -1,27 +1,14 @@
 const {
     DEFAULT_PROMPT,
-    HEARTBEAT_MODEL_OPTIONS,
     normalizeHeartbeatIntervalMs,
     normalizeHeartbeatChancePercent,
     parseHeartbeatTimeString,
     getEffectiveHeartbeatModel,
-    getEffectiveHeartbeatReasoningEffort,
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
 } = require('./heartbeatSettingsHelper')
-const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
 
 describe('heartbeatSettingsHelper', () => {
-    test('allows exactly the shared selectable models as heartbeat selections', () => {
-        expect(HEARTBEAT_MODEL_OPTIONS).toEqual(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
-        expect(HEARTBEAT_MODEL_OPTIONS).toEqual([
-            'MODEL_GPT6_SOL',
-            'MODEL_GPT5_6_TERRA',
-            'MODEL_GPT6_LUNA',
-            'MODEL_DEEPSEEK_V4_FLASH',
-        ])
-    })
-
     test('rounds and clamps heartbeat interval to the supported range', () => {
         expect(normalizeHeartbeatIntervalMs(17 * 60 * 1000)).toBe(15 * 60 * 1000)
         expect(normalizeHeartbeatIntervalMs(63 * 60 * 1000)).toBe(60 * 60 * 1000)
@@ -57,7 +44,7 @@ describe('heartbeatSettingsHelper', () => {
             chancePercent: 10,
             chanceNoReplyPercent: 10,
             sendWhatsApp: true,
-            model: 'MODEL_GPT6_SOL',
+            model: 'MODEL_GPT5_6_SOL',
             prompt: DEFAULT_PROMPT,
         })
     })
@@ -65,23 +52,11 @@ describe('heartbeatSettingsHelper', () => {
     test('uses an explicit heartbeat model and otherwise inherits the assistant model', () => {
         expect(
             getEffectiveHeartbeatModel({
-                model: 'MODEL_GPT6_SOL',
+                model: 'MODEL_GPT5_6_SOL',
                 heartbeatModel: 'MODEL_GPT5_6_TERRA',
             })
         ).toBe('MODEL_GPT5_6_TERRA')
         expect(getEffectiveHeartbeatModel({ model: 'MODEL_GPT5_5' })).toBe('MODEL_GPT5_5')
-        expect(getEffectiveHeartbeatModel({ heartbeatModel: 'MODEL_GPT5_6_LUNA' })).toBe('MODEL_GPT6_LUNA')
-        expect(getEffectiveHeartbeatModel({ model: 'MODEL_GPT5_6_SOL' })).toBe('MODEL_GPT6_SOL')
-    })
-
-    test('inherits assistant effort unless the heartbeat has an explicit effort setting', () => {
-        expect(getEffectiveHeartbeatReasoningEffort({ reasoningEffort: 'high' })).toBe('high')
-        expect(getEffectiveHeartbeatReasoningEffort({ reasoningEffort: 'high', heartbeatReasoningEffort: 'low' })).toBe(
-            'low'
-        )
-        expect(
-            getEffectiveHeartbeatReasoningEffort({ reasoningEffort: 'high', heartbeatReasoningEffort: null })
-        ).toBeNull()
     })
 
     test('builds context text including the current heartbeat prompt', () => {
@@ -93,8 +68,7 @@ describe('heartbeatSettingsHelper', () => {
                 heartbeatAwakeStart: 9 * 60 * 60 * 1000,
                 heartbeatAwakeEnd: 18 * 60 * 60 * 1000,
                 heartbeatSendWhatsApp: false,
-                heartbeatModel: 'MODEL_GPT6_LUNA',
-                heartbeatReasoningEffort: 'xhigh',
+                heartbeatModel: 'MODEL_GPT5_6_LUNA',
                 heartbeatPrompt: 'Check progress and remind about the focus task.',
             },
             { projectId: 'project-1', userData: { defaultProjectId: 'project-1' } }
@@ -103,18 +77,10 @@ describe('heartbeatSettingsHelper', () => {
         expect(contextMessage).toContain('Current heartbeat settings for this assistant:')
         expect(contextMessage).toContain('Awake time: 09:00 - 18:00')
         expect(contextMessage).toContain('Heartbeat interval: 20 minutes')
-        expect(contextMessage).toContain(
-            'Execution chance after the user replies to the latest visible heartbeat that local day: 45%'
-        )
-        expect(contextMessage).toContain(
-            'Execution chance until the user replies to the latest visible heartbeat that local day: 15%'
-        )
-        expect(contextMessage).toContain('Reply state resets after every new visible heartbeat')
-        expect(contextMessage).toContain('A message sent before the latest heartbeat does not count')
-        expect(contextMessage).toContain('HEARTBEAT_OK does not reset reply state')
+        expect(contextMessage).toContain('Execution chance when the user replied that day: 45%')
+        expect(contextMessage).toContain('Execution chance when the user did not reply that day: 15%')
         expect(contextMessage).toContain('WhatsApp notification: disabled')
-        expect(contextMessage).toContain('Heartbeat model: MODEL_GPT6_LUNA')
-        expect(contextMessage).toContain('Heartbeat reasoning effort: xhigh')
+        expect(contextMessage).toContain('Heartbeat model: MODEL_GPT5_6_LUNA')
         expect(contextMessage).toContain('Check progress and remind about the focus task.')
     })
 })

@@ -4,7 +4,7 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 const moment = require('moment-timezone')
 const { google } = require('googleapis')
-const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const {
     CONNECTION_SERVICE_EMAIL,
     findConnectionsForProject,
@@ -22,15 +22,14 @@ const {
 } = require('../Assistant/assistantHelper')
 const { getDefaultAssistantData, GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
 const { deductGold, refundGold } = require('../Gold/goldHelper')
-const { buildEmailCommentAuditPatch, reconcileEmailCommentReadState } = require('./emailCommentReadSync')
 const {
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
     GMAIL_DIRECTION_SCOPE_BOTH,
     GMAIL_DIRECTION_SCOPE_INCOMING,
     GMAIL_DIRECTION_SCOPE_OUTGOING,
+    DEFAULT_SYNC_INTERVAL_MINUTES,
     DEFAULT_GMAIL_LABELING_MODEL,
-    GMAIL_LABELING_MODEL_KEYS,
     buildConfigWriteData,
     buildDefaultState,
     getDefaultGmailLabelingConfig,
@@ -42,7 +41,6 @@ const {
     normalizePromptMode,
     slugifyLabelKey,
 } = require('./gmailLabelingConfig')
-const { getConfiguredSyncIntervalMinutes } = require('./gmailSyncInterval')
 const {
     extractEmailAddresses,
     getGmailMessageDirection,
@@ -50,10 +48,8 @@ const {
     parseEmailHeaderAddresses,
 } = require('./gmailMessageParser')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
-const { GMAIL_ACTIONABILITY_GUIDANCE } = require('./gmailClassifierPrompt')
 const { parseListUnsubscribe } = require('../Email/emailLine/emailLineShared')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
-const { Timestamp } = require('firebase-admin/firestore')
 
 const MAX_HISTORY_PAGES = 5
 const MAX_MESSAGES_FETCH_MULTIPLIER = 3
@@ -78,10 +74,9 @@ const DEFAULT_ADS_LABEL_GUIDANCE =
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
     'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer the strongest specific project label when the evidence is clear. If the email is work-relevant but it is not clear which project label fits best, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
     DEFAULT_ADS_LABEL_GUIDANCE +
-    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead. ' +
-    GMAIL_ACTIONABILITY_GUIDANCE
+    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead.'
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
-const DEFAULT_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT6_LUNA'
+const DEFAULT_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_LUNA'
 const CUSTOM_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_TERRA'
 const POST_LABEL_MAX_TOOL_CALL_ROUNDS = 8
 const DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER = "[today's date]"
@@ -137,6 +132,12 @@ function normalizeTimestampToMillis(value) {
     return Number.isNaN(date.getTime()) ? 0 : date.getTime()
 }
 
+function getConfiguredSyncIntervalMinutes(config = {}) {
+    const parsedInterval = Number(config?.syncIntervalMinutes)
+    if (!Number.isFinite(parsedInterval)) return DEFAULT_SYNC_INTERVAL_MINUTES
+    return Math.max(DEFAULT_SYNC_INTERVAL_MINUTES, Math.trunc(parsedInterval))
+}
+
 function isScheduledSyncDue(state = {}, config = {}) {
     const intervalMinutes = getConfiguredSyncIntervalMinutes(config)
     const lastSyncMillis = normalizeTimestampToMillis(state?.lastSyncAt || state?.lastSuccessfulSyncAt)
@@ -160,15 +161,25 @@ function createPostLabelPromptHash(ruleKey = '', prompt = '') {
 }
 
 async function getGmailClient(userId, projectId) {
-    // Full refreshable credentials, not a bare access token: a stored token of unknown or
-    // past expiry is refreshed before use, and the client can refresh again mid-run (AT-2195).
-    const auth = await getAuthorizedOAuth2Client(userId, projectId, 'gmail')
-    return google.gmail({ version: 'v1', auth })
+    const accessToken = await getAccessToken(userId, projectId, 'gmail')
+    const oauth2Client = getOAuth2Client()
+    oauth2Client.setCredentials({ access_token: accessToken })
+    return google.gmail({ version: 'v1', auth: oauth2Client })
 }
 
 function buildBootstrapQuery(config) {
     return `newer_than:${config.lookbackDays || 7}d`
 }
+
+const GMAIL_LABELING_LEGACY_GPT5_MODELS = new Set([
+    'MODEL_GPT5',
+    'MODEL_GPT5_1',
+    'MODEL_GPT5_2',
+    'MODEL_GPT5_4',
+    'MODEL_GPT5_5',
+    'MODEL_GPT5_4_MINI',
+    'MODEL_GPT5_6_LUNA',
+])
 
 function applyGmailLabelingModelMigration(config = {}) {
     if (!config || typeof config !== 'object') return config
@@ -177,7 +188,7 @@ function applyGmailLabelingModelMigration(config = {}) {
         promptMode: normalizePromptMode(config.promptMode, GMAIL_LABELING_PROMPT_MODE_CUSTOM),
     }
 
-    if (GMAIL_LABELING_MODEL_KEYS.has(migratedConfig.model)) {
+    if (migratedConfig.model && !GMAIL_LABELING_LEGACY_GPT5_MODELS.has(migratedConfig.model)) {
         return migratedConfig
     }
 
@@ -239,9 +250,9 @@ function buildDefaultProjectLabelDescription(project = {}, labelName = '', isDef
 function buildDefaultProjectFollowUpPrompt(labelName = '') {
     const projectLabel = labelName || 'the matched project'
     return [
-        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ". This automation instruction is not an explicit end-user request to create that task. You MUST set taskOrigin to "assistant_suggestion", never "user_request", and include a concise visible comment stating the concrete email-based reason the task is worth doing; do not merely restate the task title or give a generic reason. The task is assigned directly to the user, with the assistant identified in the comment.`,
+        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
         `When followUpType is "informational", never create a task. Always add one concise comment to the topic chat "Daily emails ${projectLabel} ${DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER}" with createIfMissing=true. Every informational email gets exactly one comment, including routine, promotional, automated, or redundant ones. The comment should be in this format: "Email from [sender name] ([sender email]): [one-line summary]". Do not include the Gmail web URL or any other email link in the comment; the server attaches the email metadata and the UI shows the linked email tag separately.`,
-        `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com), only use update_note when the sender already exists as a contact in the project ${projectLabel}. Set createIfMissing=false so a missing contact is never created. Update the existing contact note and include a link to the email with a space at the end.`,
+        `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
     ].join('\n')
 }
 
@@ -388,8 +399,8 @@ async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
         typeof config.projectId === 'string' && config.projectId.trim()
             ? config.projectId.trim()
             : typeof userData.defaultProjectId === 'string'
-              ? userData.defaultProjectId.trim()
-              : ''
+            ? userData.defaultProjectId.trim()
+            : ''
     const defaultConfig = await buildDefaultActiveProjectsGmailLabelingConfig(userData, defaultProjectId)
     if (config.enabled && defaultConfig.labelDefinitions.length === 0) {
         throw new Error('Default Gmail labeling requires at least one active project.')
@@ -552,7 +563,7 @@ async function getGmailLabelingConfigWithState(userId, projectId, gmailEmail = '
 
 async function acquireSyncLock(userId, projectId, gmailEmail = '') {
     const stateRef = getGmailLabelingStateRef(userId, projectId)
-    const now = Timestamp.now()
+    const now = admin.firestore.Timestamp.now()
 
     await admin.firestore().runTransaction(async transaction => {
         const stateDoc = await transaction.get(stateRef)
@@ -791,7 +802,7 @@ async function writeAuditRecord(userId, projectId, normalizedMessage, auditData)
                 from: normalizedMessage.from,
                 subject: normalizedMessage.subject,
                 snippet: normalizedMessage.snippet,
-                processedAt: Timestamp.now(),
+                processedAt: admin.firestore.Timestamp.now(),
                 ...auditData,
             },
             { merge: true }
@@ -934,7 +945,7 @@ function buildPostLabelActionSkipped({
         goldSpent: Number.isFinite(goldSpent) ? goldSpent : 0,
         estimatedNormalGoldCost: Number.isFinite(estimatedNormalGoldCost) ? estimatedNormalGoldCost : 0,
         tokenUsage,
-        executedAt: Timestamp.now(),
+        executedAt: admin.firestore.Timestamp.now(),
     }
 }
 
@@ -1010,7 +1021,7 @@ function buildPostLabelAssistantMessages({
     return [
         [
             'system',
-            'You are executing an automated follow-up action after a Gmail labeling rule matched. The follow-up instruction and email content are automation context, not an explicit end-user request to create a task. If you create a task from this run, you MUST set taskOrigin to assistant_suggestion, never user_request, and include a concise visible comment with the concrete email-based reason the task is worth doing. The task is assigned directly to the user, with the assistant identified in the comment. Use your available tools when needed. Return a concise execution summary. If a required tool is not available, say so clearly and do not claim completion.',
+            'You are executing a follow-up action after a Gmail labeling rule matched. Use your available tools when needed. Return a concise execution summary. If a required tool is not available, say so clearly and do not claim completion.',
         ],
         [
             'user',
@@ -1054,8 +1065,6 @@ function buildPostLabelGmailContext({
     targetContactName = '',
     topicChatTitle = '',
     followUpType = 'informational',
-    taskSuggestionComment = '',
-    archivedByLabeling = false,
 }) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
@@ -1079,27 +1088,13 @@ function buildPostLabelGmailContext({
         threadId,
         webUrl: buildGmailMessageUrl(normalizedEmail, messageId),
         archiveOnComplete: direction === GMAIL_DIRECTION_SCOPE_OUTGOING ? false : true,
-        // The labeling sync archived this message itself (auto-archive), so it was already out of
-        // the inbox when the comment appeared. The read sync must not read that as "the user
-        // handled it" (AT-2376).
-        archivedByLabeling: !!archivedByLabeling,
         direction,
         targetContactEmail: resolvedTargetContactEmail,
         targetContactName: typeof targetContactName === 'string' ? targetContactName.trim() : '',
         topicChatTitle: typeof topicChatTitle === 'string' ? topicChatTitle.trim() : '',
         followUpType: followUpType === 'actionable' ? 'actionable' : 'informational',
-        taskSuggestionComment: typeof taskSuggestionComment === 'string' ? taskSuggestionComment.trim() : '',
         ...(unsubscribe ? { unsubscribe } : {}),
     }
-}
-
-function buildPostLabelTaskSuggestionComment(normalizedMessage = {}) {
-    const subject = typeof normalizedMessage.subject === 'string' ? normalizedMessage.subject.trim() : ''
-    const conciseSubject = subject.length > 120 ? `${subject.slice(0, 117).trimEnd()}...` : subject
-
-    return conciseSubject
-        ? `The automatically processed email “${conciseSubject}” appears to require follow-up.`
-        : 'An automatically processed email appears to require follow-up.'
 }
 
 async function addRoutingCommentsToCreatedGmailTasks({
@@ -1116,7 +1111,7 @@ async function addRoutingCommentsToCreatedGmailTasks({
 
     const commentResults = []
     for (const createdTask of createdTaskResults) {
-        if (!createdTask?.projectId || !createdTask?.taskId || createdTask.existing) continue
+        if (!createdTask?.projectId || !createdTask?.taskId) continue
 
         try {
             const commentResult = await addProjectRoutingReasonComment({
@@ -1181,16 +1176,19 @@ async function executePostLabelPrompt({
     connectionProjectId = '',
     selectedProjectId = null,
     consistencyCheck = null,
-    archivedByLabeling = false,
 }) {
     const configuredPrompt =
         typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
-    let { prompt, topicChatTitle } = resolveDefaultFollowUpTopicPrompt(configuredPrompt, selectedDefinition, userData)
+    const { prompt, topicChatTitle } = resolveDefaultFollowUpTopicPrompt(configuredPrompt, selectedDefinition, userData)
     const promptHash = createPostLabelPromptHash(selectedDefinition?.key || '', configuredPrompt)
     const postLabelPromptDirectionScope =
         typeof selectedDefinition?.postLabelPromptDirectionScope === 'string'
             ? selectedDefinition.postLabelPromptDirectionScope.trim().toLowerCase()
             : ''
+
+    if (!prompt) {
+        return buildPostLabelActionSkipped({ prompt: '', promptHash: '', status: 'skipped' })
+    }
 
     if (
         postLabelPromptDirectionScope &&
@@ -1211,68 +1209,6 @@ async function executePostLabelPrompt({
             error: '',
         }
     }
-
-    let ambiguousThread = false
-    // Reuse precedes classification-based task/topic actions, including informational
-    // mail and labels pointing at another project. Do not expose this selection to AI.
-    try {
-        const { continueEmailThread } = require('../Email/emailThreadContinuation')
-        const continued = await continueEmailThread({
-            database: admin.firestore(),
-            userId,
-            userData,
-            gmailData: {
-                provider: 'google',
-                accountUserId: userId,
-                gmailEmail,
-                connectionId,
-                projectId: connectionProjectId,
-                messageId: normalizedMessage.messageId,
-                threadId: normalizedMessage.threadId,
-                webUrl: buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId),
-                archiveOnComplete: direction !== GMAIL_DIRECTION_SCOPE_OUTGOING,
-                archivedByLabeling,
-            },
-            context: normalizedMessage,
-            actor: async () => {
-                const author = await resolvePostLabelAssistantContext(userId, userData)
-                return {
-                    uid: author.assistantId || userId,
-                    displayName: author.assistant?.displayName || userData.displayName || 'Email',
-                    fromAssistant: !!author.assistantId,
-                }
-            },
-        })
-        if (continued?.ambiguous) {
-            ambiguousThread = true
-            followUpType = 'actionable'
-            prompt =
-                'Several existing tasks match this email thread and the correct task is ambiguous. ' +
-                'Create one separate task for the user to review this new email. Do not invent additional work. ' +
-                'Use taskOrigin=assistant_suggestion and explain visibly that the thread matches multiple tasks.'
-        } else if (continued)
-            return {
-                prompt,
-                promptHash,
-                status: 'completed',
-                error: '',
-                continuedTask: continued,
-                createdTaskResults: [],
-                createdChatCommentResults: [],
-                goldSpent: continued.goldCost,
-                estimatedNormalGoldCost: continued.goldCost,
-                executedToolNames: [],
-                executedToolCallsCount: 0,
-                executedAt: Timestamp.now(),
-            }
-    } catch (error) {
-        // A failed continuation must be retried, never fall through to duplicate creation.
-        return {
-            ...buildPostLabelActionSkipped({ prompt, promptHash, status: 'failed', error: error.message }),
-            threadContinuationPending: true,
-        }
-    }
-    if (!prompt) return buildPostLabelActionSkipped({ prompt: '', promptHash: '', status: 'skipped' })
 
     const { assistantProjectId, assistantId, assistant } = await resolvePostLabelAssistantContext(userId, userData)
     if (!assistantProjectId || !assistantId || !assistant) {
@@ -1330,12 +1266,7 @@ async function executePostLabelPrompt({
             targetContactName,
             topicChatTitle,
             followUpType,
-            taskSuggestionComment: ambiguousThread
-                ? 'This email needs a separate review because its thread matches several existing tasks and the correct task is unclear.'
-                : buildPostLabelTaskSuggestionComment(normalizedMessage),
-            archivedByLabeling,
         })
-        gmailContext.emailContext = normalizedMessage
         const toolRuntimeContext = {
             projectId: assistantProjectId,
             assistantId,
@@ -1386,7 +1317,6 @@ async function executePostLabelPrompt({
                 projectId: assistantProjectId,
                 objectId: normalizedMessage?.messageId || '',
                 channel: 'gmail',
-                model: executionModel || '',
             })
             if (goldResult?.success) {
                 goldSpent = estimatedNormalGoldCost
@@ -1411,12 +1341,6 @@ async function executePostLabelPrompt({
             executedToolNames: Array.isArray(result?.executedToolNames) ? result.executedToolNames : [],
             executedToolCallsCount: Number(result?.executedToolCallsCount) || 0,
             createdTaskResults: Array.isArray(result?.createdTaskResults) ? result.createdTaskResults : [],
-            // Which chat comment(s) this follow-up created, for the server-side read sync's
-            // messageId → comment mapping (AT-2376). Kept out of the persisted postLabelAction
-            // itself; processSingleMessage lifts it onto the audit record's own fields.
-            createdChatCommentResults: Array.isArray(result?.createdChatCommentResults)
-                ? result.createdChatCommentResults
-                : [],
             routingCommentResults,
             assistantResponse: result?.assistantResponse || '',
             status: 'completed',
@@ -1426,7 +1350,7 @@ async function executePostLabelPrompt({
             tokenUsage: {
                 totalTokens,
             },
-            executedAt: Timestamp.now(),
+            executedAt: admin.firestore.Timestamp.now(),
         }
     } catch (error) {
         const isBlocked = error.message?.includes('Tool not permitted')
@@ -1444,7 +1368,7 @@ async function executePostLabelPrompt({
             goldSpent: 0,
             estimatedNormalGoldCost: 0,
             tokenUsage: null,
-            executedAt: Timestamp.now(),
+            executedAt: admin.firestore.Timestamp.now(),
         }
     }
 }
@@ -1577,37 +1501,8 @@ async function processSingleMessage({
     const normalizedMessage = normalizeGmailMessage(rawMessage)
     const direction = getGmailMessageDirection(rawMessage)
     const eligibleLabelDefinitions = getEligibleLabelDefinitions(config.labelDefinitions, direction)
-    const promptVersion = config.updatedAt || Timestamp.now()
+    const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
     const existingAuditEntry = await loadAuditEntry(userId, projectId, normalizedMessage.messageId)
-
-    if (existingAuditEntry?.threadContinuationPending) {
-        const action = await executePostLabelPrompt({
-            userId,
-            userData,
-            normalizedMessage,
-            gmailEmail,
-            direction,
-            selectedDefinition:
-                config.labelDefinitions.find(label => label.key === existingAuditEntry.selectedLabelKey) || {},
-            connectionId: projectId,
-            connectionProjectId: goldProjectId,
-            selectedProjectId: existingAuditEntry.selectedProjectId,
-            archivedByLabeling: existingAuditEntry.archived,
-        })
-        await writeAuditRecord(userId, projectId, normalizedMessage, {
-            postLabelAction: action,
-            threadContinuationPending: !!action.threadContinuationPending,
-            ...(action.continuedTask ? { taskCreated: action.continuedTask } : {}),
-        })
-        return {
-            labeled: 0,
-            archived: 0,
-            skipped: 0,
-            goldSpent: action.goldSpent || 0,
-            estimatedNormalGoldCost: action.estimatedNormalGoldCost || 0,
-            threadContinuationPending: !!action.threadContinuationPending,
-        }
-    }
 
     // Check the user has at least the minimum balance to run the classifier.
     // No Gold is deducted here — we only want a single ledger entry per email,
@@ -1714,9 +1609,6 @@ async function processSingleMessage({
         projectId: goldProjectId,
         objectId: normalizedMessage.messageId,
         channel: 'gmail',
-        // The classifier model this charge was priced from (AT-2487) — the first and second
-        // pass can resolve to different models, so the total alone hides a model change.
-        model: config?.model || '',
     })
     if (chargeResult?.success) {
         classificationGoldSpent = goldToCharge
@@ -1742,23 +1634,11 @@ async function processSingleMessage({
         insufficientGoldForClassification,
     })
 
-    const selectedDefinition = eligibleLabelDefinitions.find(label => label.key === classifierResult.labelKey)
-    if (!classifierResult.matched || !selectedDefinition) {
-        const action = await executePostLabelPrompt({
-            userId,
-            userData,
-            normalizedMessage,
-            gmailEmail,
-            direction,
-            selectedDefinition: {},
-            connectionId: projectId,
-            connectionProjectId: goldProjectId,
-            followUpType,
-        })
+    if (!classifierResult.matched) {
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
             direction,
-            selectedLabelKey: classifierResult.matched ? classifierResult.labelKey : null,
+            selectedLabelKey: null,
             selectedGmailLabelName: null,
             autoArchive: false,
             confidence: classifierResult.confidence,
@@ -1767,23 +1647,48 @@ async function processSingleMessage({
             consistencyCheck: classifierResult.consistencyCheck || null,
             applied: false,
             archived: false,
-            skippedReason: classifierResult.matched ? 'missing_label_definition' : 'no_match',
+            skippedReason: 'no_match',
             promptVersion,
-            postLabelAction: action,
-            threadContinuationPending: !!action.threadContinuationPending,
-            ...(action.continuedTask ? { taskCreated: action.continuedTask } : {}),
+            postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
         })
+
         return {
             labeled: 0,
             archived: 0,
             skipped: 1,
-            goldSpent: classificationGoldSpent + (action.goldSpent || 0),
-            estimatedNormalGoldCost: estimatedNormalGoldCost + (action.estimatedNormalGoldCost || 0),
+            goldSpent: classificationGoldSpent,
+            estimatedNormalGoldCost,
             insufficientGold: insufficientGoldForClassification,
-            threadContinuationPending: !!action.threadContinuationPending,
         }
     }
 
+    const selectedDefinition = eligibleLabelDefinitions.find(label => label.key === classifierResult.labelKey)
+    if (!selectedDefinition) {
+        await writeAuditRecord(userId, projectId, normalizedMessage, {
+            syncRunId,
+            direction,
+            selectedLabelKey: classifierResult.labelKey,
+            selectedGmailLabelName: null,
+            autoArchive: false,
+            confidence: classifierResult.confidence,
+            reasoning: classifierResult.reasoning,
+            followUpType,
+            applied: false,
+            archived: false,
+            skippedReason: 'missing_label_definition',
+            promptVersion,
+            postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
+        })
+
+        return {
+            labeled: 0,
+            archived: 0,
+            skipped: 1,
+            goldSpent: classificationGoldSpent,
+            estimatedNormalGoldCost,
+            insufficientGold: insufficientGoldForClassification,
+        }
+    }
     const selectedProjectId =
         typeof selectedDefinition.sourceProjectId === 'string' && selectedDefinition.sourceProjectId.trim()
             ? selectedDefinition.sourceProjectId.trim()
@@ -1817,7 +1722,6 @@ async function processSingleMessage({
                 projectId: goldProjectId,
                 objectId: normalizedMessage.messageId,
                 channel: 'gmail',
-                model: config?.model || '',
                 note: 'Refund real classifier cost after Gmail label apply failure',
             })
         }
@@ -1855,7 +1759,6 @@ async function processSingleMessage({
             connectionProjectId: goldProjectId,
             selectedProjectId,
             consistencyCheck: classifierResult.consistencyCheck || null,
-            archivedByLabeling: modifyResult.archived,
         })
         postLabelActions.push(action)
         followUpGoldSpent += Number(action?.goldSpent) || 0
@@ -1883,15 +1786,6 @@ async function processSingleMessage({
         recipientEmails: targetContactEmails.filter(Boolean),
         postLabelAction: primaryPostLabelAction,
         postLabelActions,
-        threadContinuationPending: postLabelActions.some(action => action.threadContinuationPending),
-        ...(primaryPostLabelAction.continuedTask ? { taskCreated: primaryPostLabelAction.continuedTask } : {}),
-        // Mapping + work flag for the server-side email-comment read sync (AT-2376). Empty when the
-        // follow-up created no chat comment, so the reconciler's query only ever sees real work.
-        ...buildEmailCommentAuditPatch(
-            postLabelActions.flatMap(action =>
-                Array.isArray(action?.createdChatCommentResults) ? action.createdChatCommentResults : []
-            )
-        ),
     })
 
     return {
@@ -1901,7 +1795,6 @@ async function processSingleMessage({
         goldSpent: classificationGoldSpent + followUpGoldSpent,
         estimatedNormalGoldCost: estimatedNormalGoldCost + followUpEstimatedNormalGoldCost,
         insufficientGold: insufficientGoldForClassification,
-        threadContinuationPending: postLabelActions.some(action => action.threadContinuationPending),
     }
 }
 
@@ -2059,14 +1952,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             })
         }
 
-        // Failed continuations must survive the history cursor and auto-archive/read
-        // filters. Retry their original emails without another classification charge.
-        const pendingSnapshot = await getMessagesAuditCollectionRef(userId, projectId)
-            .where('threadContinuationPending', '==', true)
-            .limit(20)
-            .get()
-        const pendingIds = new Set(pendingSnapshot.docs.map(doc => doc.id))
-        const fetchedMessages = await fetchMessagesByIds(gmail, [...new Set([...pendingIds, ...messageIds])])
+        const fetchedMessages = await fetchMessagesByIds(gmail, messageIds)
         logSync('Fetched Gmail messages by id', {
             ...logContext,
             syncMode,
@@ -2074,14 +1960,10 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             fetchedMessageCount: fetchedMessages.length,
         })
 
-        const candidateMessages = [
-            ...new Map(
-                [
-                    ...fetchedMessages.filter(message => pendingIds.has(message.id)),
-                    ...filterCandidateMessages(fetchedMessages, effectiveConfig),
-                ].map(message => [message.id, message])
-            ).values(),
-        ].slice(0, effectiveConfig.maxMessagesPerRun)
+        const candidateMessages = filterCandidateMessages(fetchedMessages, effectiveConfig).slice(
+            0,
+            effectiveConfig.maxMessagesPerRun
+        )
         logSync('Filtered Gmail candidate messages', {
             ...logContext,
             syncMode,
@@ -2102,7 +1984,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
               )
         const messagesToProcess = options.forceBootstrap
             ? candidateMessages
-            : candidateMessages.filter(message => pendingIds.has(message.id) || !processedMessageIds.has(message.id))
+            : candidateMessages.filter(message => !processedMessageIds.has(message.id))
 
         logSync('Prepared Gmail messages for processing', {
             ...logContext,
@@ -2145,7 +2027,6 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 skipped += result.skipped
                 goldSpent += result.goldSpent || 0
                 estimatedNormalGoldSpent += result.estimatedNormalGoldCost || 0
-                if (result.threadContinuationPending) syncLastError = 'An email thread continuation is pending retry.'
                 logSync('Finished processing Gmail message', {
                     ...logContext,
                     messageId: rawMessage.id,
@@ -2187,40 +2068,15 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     applied: false,
                     archived: false,
                     skippedReason: 'processing_error',
-                    promptVersion: effectiveConfig.updatedAt || Timestamp.now(),
+                    promptVersion: effectiveConfig.updatedAt || admin.firestore.Timestamp.now(),
                     postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
                 })
                 skipped += 1
             }
         }
 
-        // Gmail → Alldone read sync (AT-2376). Runs on every sync tick, independent of whether
-        // this run had any new mail to label, because it is answering a question about OLD
-        // messages: did the user meanwhile read or archive an email whose Alldone chat comment is
-        // still unread. Best effort by design — labeling is this function's job, and a failure to
-        // reconcile read state must never fail (or roll back) a sync that labeled mail correctly.
-        let emailCommentReadSync = null
-        try {
-            emailCommentReadSync = await reconcileEmailCommentReadState({
-                gmail,
-                userId,
-                connectionKey: projectId,
-            })
-            if (emailCommentReadSync.candidates > 0) {
-                logSync('Reconciled Alldone email comments against the mailbox', {
-                    ...logContext,
-                    ...emailCommentReadSync,
-                })
-            }
-        } catch (error) {
-            console.warn('[gmailLabeling] Email comment read sync failed', {
-                ...logContext,
-                error: error.message,
-            })
-        }
-
         const latestHistoryId = await getCurrentProfileHistoryId(gmail)
-        const now = Timestamp.now()
+        const now = admin.firestore.Timestamp.now()
         const resolvedHistoryId = syncStartHistoryId || latestHistoryId || state.lastHistoryId || null
 
         await finalizeSyncState(
@@ -2267,7 +2123,6 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             skipped,
             goldSpent,
             estimatedNormalGoldSpent,
-            emailCommentReadSync,
             lastSyncAt: now,
             lastRunId: logContext.runId,
             recentAuditEntries: await loadRecentAuditEntries(userId, projectId),
@@ -2279,7 +2134,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             syncMode,
         }
     } catch (error) {
-        const now = Timestamp.now()
+        const now = admin.firestore.Timestamp.now()
         await finalizeSyncState(
             userId,
             projectId,
@@ -2384,7 +2239,6 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
 
 module.exports = {
     GmailSyncLockedError,
-    applyGmailLabelingModelMigration,
     applyGmailThreadLabelCorrection,
     buildThreadLabelModification,
     buildDefaultActiveProjectLabelDefinitions,

@@ -1,6 +1,6 @@
 import React from 'react'
 import { StyleSheet, View } from 'react-native'
-import { DragDropContext, Droppable } from '@hello-pangea/dnd'
+import { DragDropContext, Droppable } from 'react-beautiful-dnd'
 import { useDispatch } from 'react-redux'
 
 import { colors } from '../styles/global'
@@ -11,14 +11,7 @@ import Backend from '../../utils/BackendBridge'
 import store from '../../redux/store'
 import { setBoardGoalsByMilestoneInProject } from '../../redux/actions'
 import { BatchWrapper } from '../../functions/BatchWrapper/batchWrapper'
-export default function GoalListDroppable({
-    projectId,
-    goalsList,
-    milestoneId,
-    userId,
-    milestoneGoals,
-    focusAreaId = '',
-}) {
+export default function GoalListDroppable({ projectId, goalsList, milestoneId, userId, milestoneGoals }) {
     const dispatch = useDispatch()
     const sortGoals = (goalsList, startIndex, endIndex) => {
         const sortedList = [...goalsList]
@@ -72,7 +65,7 @@ export default function GoalListDroppable({
     return (
         <DragDropContext onDragEnd={onDragEnd}>
             <Droppable
-                droppableId={`${milestoneId}${DROPPABLE_SEPARATOR}${userId}${DROPPABLE_SEPARATOR}${focusAreaId}`}
+                droppableId={`${milestoneId}${DROPPABLE_SEPARATOR}${userId}`}
                 type={`${milestoneId}@${userId}`}
                 renderClone={(provided, snapshot, rubric) => (
                     <DraggableGoalActive

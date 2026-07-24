@@ -1,77 +1,115 @@
 import React from 'react'
-import { useTaskHierarchy } from '../TaskHierarchy'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import Icon from '../../Icon'
 import styles, { colors, windowTagStyle } from '../../styles/global'
+import Avatar from '../../Avatar'
+import Line from '../../Line'
 import { translate } from '../../../i18n/TranslationService'
 import SharedHelper from '../../../utils/SharedHelper'
-import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { chronoEntriesOrder } from '../../../utils/HelperFunctions'
+import AddTaskTag from '../../Tags/AddTaskTag'
+import AddGoalTag from '../../Tags/AddGoalTag'
+import ProjectHelper, { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
+import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper'
 import TaskHeaderMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import GoalMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Goals/GoalMoreButton'
 
 export default function TagsArea({
     projectId,
+    workflow,
+    user,
     mobile,
     onClickWorkflowIndicator,
     showWorkflow,
-    showTaskMore,
-    showGoalMore,
+    showAddTask,
+    showAddGoal,
+    setPressedShowMoreMainSection,
 }) {
-    const taskHierarchy = useTaskHierarchy()
     const loggedUser = useSelector(state => state.loggedUser)
     const currentUserId = useSelector(state => state.currentUser.uid)
+    const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
-    const workflowLabel = translate('Workflow')
+    const workflowEntries = workflow ? Object.entries(workflow).sort(chronoEntriesOrder) : []
 
     const loggedUserIsBoardOwner = loggedUser.uid === currentUserId
     const loggedUserCanUpdateObject =
         loggedUserIsBoardOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
+    const isSelectedProject = checkIfSelectedProject(selectedProjectIndex)
+
     return (
-        <View
-            style={[localStyles.container, taskHierarchy && { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}
-        >
+        <View style={localStyles.container}>
             {showWorkflow && (
                 <TouchableOpacity
                     style={localStyles.workflowIndicator}
                     onPress={onClickWorkflowIndicator}
                     disabled={!accessGranted}
-                    accessibilityLabel={workflowLabel}
-                    title={mobile ? workflowLabel : undefined}
                 >
-                    <Icon name="next-workflow" size={16} color={colors.Text03} style={localStyles.workflowIcon} />
-                    {!mobile && (
-                        <Text style={[styles.subtitle2, localStyles.workflowLabel, windowTagStyle()]}>
-                            {workflowLabel}
-                        </Text>
-                    )}
+                    <View style={localStyles.workflowIndicator}>
+                        <Icon
+                            name="next-workflow"
+                            size={16}
+                            color={colors.Text03}
+                            style={mobile && localStyles.workflowIconMobile}
+                        />
+                        <View style={localStyles.centeredRow}>
+                            {!mobile && (
+                                <Text style={[styles.subtitle2, localStyles.workflowLabel, windowTagStyle()]}>
+                                    {translate('Workflow')}
+                                </Text>
+                            )}
+                            <Avatar reviewerPhotoURL={user.photoURL} size={16} />
+                            <Line />
+                            {workflowEntries.map((step, index) => (
+                                <View key={index} style={localStyles.centeredRow}>
+                                    <Avatar
+                                        reviewerPhotoURL={getUserPresentationData(step[1].reviewerUid).photoURL}
+                                        size={16}
+                                    />
+                                    <Line width={index === workflowEntries.length - 1 ? 4 : 2} />
+                                </View>
+                            ))}
+                            <View style={{ marginLeft: -2 }}>
+                                <Icon name="square-checked-gray" color={colors.Text03} size={16} />
+                            </View>
+                        </View>
+                    </View>
                 </TouchableOpacity>
             )}
-            {showTaskMore && loggedUserCanUpdateObject && accessGranted && taskViewToggleSection === 'Open' && (
-                <TaskHeaderMoreButton
-                    projectIdOverride={projectId}
-                    userId={currentUserId}
-                    wrapperStyle={[localStyles.taskMoreWrapper, taskHierarchy && { marginLeft: 6, marginTop: 0 }]}
-                    buttonStyle={[
-                        localStyles.taskMoreButton,
-                        taskHierarchy && localStyles.headerMoreButton,
-                        taskHierarchy && mobile && { width: 36, height: 36 },
-                    ]}
-                    iconSize={16}
-                    iconColor={taskHierarchy ? colors.Text02 : undefined}
-                />
+            {showAddTask && loggedUserCanUpdateObject && accessGranted && (
+                <>
+                    <AddTaskTag
+                        projectId={projectId}
+                        style={{ marginLeft: 8 }}
+                        setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                        sourceType={FEED_TASK_OBJECT_TYPE}
+                        expandTaskListIfNeeded={true}
+                    />
+                    {taskViewToggleSection === 'Open' && (
+                        <TaskHeaderMoreButton
+                            projectIdOverride={projectId}
+                            userId={currentUserId}
+                            wrapperStyle={localStyles.taskMoreWrapper}
+                            buttonStyle={localStyles.taskMoreButton}
+                            iconSize={16}
+                        />
+                    )}
+                </>
             )}
-            {showGoalMore && loggedUserCanUpdateObject && accessGranted && (
-                <GoalMoreButton
-                    projectId={projectId}
-                    wrapperStyle={localStyles.goalMoreWrapper}
-                    buttonStyle={localStyles.goalMoreButton}
-                    iconSize={16}
-                />
+            {showAddGoal && loggedUserCanUpdateObject && accessGranted && (
+                <>
+                    <AddGoalTag projectId={projectId} style={{ marginLeft: 8 }} />
+                    <GoalMoreButton
+                        wrapperStyle={localStyles.goalMoreWrapper}
+                        buttonStyle={localStyles.goalMoreButton}
+                        iconSize={16}
+                    />
+                </>
             )}
         </View>
     )
@@ -80,12 +118,8 @@ export default function TagsArea({
 const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'row',
-        alignItems: 'center',
         height: 24,
         maxHeight: 24,
-        // Same rule as the other project-line action clusters: the title block on the left is the
-        // one that gives way, so these controls are never squashed on narrow screens (AT-2263).
-        flexShrink: 0,
     },
     workflowIndicator: {
         height: 24,
@@ -95,19 +129,17 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
-    workflowIcon: {
-        marginHorizontal: 4,
+    centeredRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    workflowIconMobile: {
+        marginRight: 6,
     },
     workflowLabel: {
         color: colors.Text03,
-        marginLeft: 2,
-        marginRight: 4,
-    },
-    headerMoreButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        marginLeft: 6,
+        marginRight: 8,
     },
     taskMoreWrapper: {
         marginLeft: 2,

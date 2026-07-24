@@ -121,10 +121,9 @@ function reasonMentionsProject(normalizedReason, projectName, { allowTokenSuffix
 
     while ((match = projectReferencePattern.exec(normalizedReason)) !== null) {
         const prefix = normalizedReason.slice(0, match.index).trimEnd()
-        const isNegatedReference =
-            /(?:^|\s)(?:not|nicht|rather than|instead of|statt|anstatt)(?:\s+(?:in|the|a|an|das|die|der|den|dem|ein|eine|einem|einer)){0,2}$/.test(
-                prefix
-            )
+        const isNegatedReference = /(?:^|\s)(?:not|nicht|rather than|instead of|statt|anstatt)(?:\s+(?:in|the|a|an|das|die|der|den|dem|ein|eine|einem|einer)){0,2}$/.test(
+            prefix
+        )
 
         if (!isNegatedReference) return true
     }
@@ -287,20 +286,6 @@ async function resolveCreateTaskTargetProject(
         return userProjectsPromise
     }
 
-    // Archived and community projects are still the creator's own: they are addressable by id,
-    // just not offered when a project is guessed from a name.
-    const loadAddressableProjects = async () => {
-        if (!creatorId) return []
-        const { ProjectService } = require('../shared/ProjectService')
-        const projectService = new ProjectService({ database })
-        await projectService.initialize()
-        return projectService.getUserProjects(creatorId, {
-            includeArchived: true,
-            includeCommunity: true,
-            activeOnly: false,
-        })
-    }
-
     const finalizeSelection = async selection => {
         if (!shouldCheckAssistantRoutingConsistency) return selection
 
@@ -319,15 +304,6 @@ async function resolveCreateTaskTargetProject(
     }
 
     if (normalizedRequestedProjectId) {
-        // TaskService writes through the Admin SDK and checks no membership of its own, so an
-        // explicit id (model-authored, or straight from an MCP caller) is honoured only for a
-        // project the creator belongs to. The global assistant project is not a membership.
-        if (normalizedRequestedProjectId !== globalProjectId) {
-            const accessibleProjects = await loadAddressableProjects()
-            if (!accessibleProjects.some(project => project?.id === normalizedRequestedProjectId)) {
-                throw new Error(`Target project not found or not accessible: "${normalizedRequestedProjectId}"`)
-            }
-        }
         const targetProjectName = await fetchProjectName(database, normalizedRequestedProjectId, globalProjectId)
         return finalizeSelection(
             buildSelectionResult({

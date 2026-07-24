@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react'
-import { useProjectSectionAccent, useProjectSectionBorder, taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
 import { StyleSheet, TouchableOpacity, View, Text } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 import moment from 'moment'
@@ -30,12 +29,8 @@ export default function MilestonePresentation({
     isActiveMilestone,
     loggedUserCanUpdateObject,
     hideMoreButton,
-    inHierarchyCard = false,
-    outlined = inHierarchyCard,
 }) {
     const dispatch = useDispatch()
-    const accentColor = useProjectSectionAccent()
-    const borderColor = useProjectSectionBorder()
     const usersInProject = useSelector(state => state.projectUsers[projectId])
     const loggedUser = useSelector(state => state.loggedUser)
     const [automaticCapacity, setAutomaticCapacity] = useState(0)
@@ -123,13 +118,7 @@ export default function MilestonePresentation({
         <View
             style={[
                 localStyles.container,
-                outlined && { borderRadius: 7 },
-                {
-                    backgroundColor:
-                        milestone.hasStar.toLowerCase() === '#ffffff'
-                            ? accentColor || colors.Grey100
-                            : milestone.hasStar,
-                },
+                { backgroundColor: milestone.hasStar.toLowerCase() === '#ffffff' ? colors.Grey100 : milestone.hasStar },
             ]}
         >
             <TouchableOpacity
@@ -218,17 +207,6 @@ export default function MilestonePresentation({
                     milestoneAssignees={usersInProject}
                     milestoneCapacity={milestoneCapacity}
                     disableTagsActions={loggedUser.isAnonymous || !loggedUserCanUpdateObject}
-                />
-            )}
-            {outlined && (
-                <View
-                    pointerEvents="none"
-                    style={[
-                        taskHierarchyStyles.goalRowOutline,
-                        { borderWidth: 1 },
-                        !inHierarchyCard && { top: 0, left: 0, right: 0 },
-                        borderColor && { borderColor },
-                    ]}
                 />
             )}
         </View>

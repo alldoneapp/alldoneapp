@@ -1,986 +1,1668 @@
-// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+// Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`StoryPointModal component StoryPointModal snapshot test Should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2"
-  dir={null}
+exports[`StoryPointModal component Function selectPoint snapshot test Should execute and render correctly 1`] = `
+<View
   style={
-    {
-      "maxHeight": "736px",
-      "maxWidth": "432px",
-      "minWidth": "432px",
-      "width": "432px",
+    Object {
+      "backgroundColor": "#091540",
+      "borderRadius": 4,
+      "shadowColor": "rgba(0,0,0,0.04)",
+      "shadowOffset": Object {
+        "height": 16,
+        "width": 0,
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 24,
     }
   }
 >
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+  <View
     style={
-      {
-        "flex": 1,
+      Array [
+        Object {
+          "paddingBottom": 8,
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 16,
+          "width": 305,
+        },
+        null,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "marginBottom": 21,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 18,
+              "lineHeight": 26,
+            },
+            Object {
+              "color": "#ffffff",
+            },
+          ]
+        }
+      >
+        Story Point Estimation
+      </Text>
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+            },
+            Object {
+              "color": "#8A94A6",
+            },
+          ]
+        }
+      >
+        Select an estimation for your task
+      </Text>
+    </View>
+    <View
+      style={
+        Object {
+          "flex": 1,
+          "justifyContent": "space-around",
+        }
+      }
+    >
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+                "opacity": 1,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                  "height": 48,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#8A94A6",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 16,
+                        "letterSpacing": 0.16,
+                        "lineHeight": 24,
+                      },
+                      Object {
+                        "color": "#ffffff",
+                        "marginLeft": 9,
+                      },
+                    ]
+                  }
+                >
+                  10 minutes
+                </Text>
+              </View>
+              <View
+                style={
+                  Object {
+                    "justifyContent": "flex-end",
+                  }
+                }
+              />
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+                "opacity": 1,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                  "height": 48,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#8A94A6",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 16,
+                        "letterSpacing": 0.16,
+                        "lineHeight": 24,
+                      },
+                      Object {
+                        "color": "#ffffff",
+                        "marginLeft": 9,
+                      },
+                    ]
+                  }
+                >
+                  30 minutes
+                </Text>
+              </View>
+              <View
+                style={
+                  Object {
+                    "justifyContent": "flex-end",
+                  }
+                }
+              />
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+                "opacity": 1,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                  "height": 48,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "backgroundColor": "#0D55CF",
+                      "borderColor": "#0C66FF",
+                      "borderRadius": 1000,
+                      "borderWidth": 2,
+                      "height": 22,
+                      "justifyContent": "center",
+                      "margin": 0.6,
+                      "width": 22,
+                    }
+                  }
+                >
+                  <View>
+                    <Text
+                      style={
+                        Object {
+                          "color": "#ffffff",
+                          "fontFamily": "alldone",
+                          "fontSize": 24,
+                          "opacity": 1,
+                        }
+                      }
+                    >
+                      
+                    </Text>
+                  </View>
+                </View>
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 16,
+                        "letterSpacing": 0.16,
+                        "lineHeight": 24,
+                      },
+                      Object {
+                        "color": "#ffffff",
+                        "marginLeft": 9,
+                      },
+                    ]
+                  }
+                >
+                  1-2 hours
+                </Text>
+              </View>
+              <View
+                style={
+                  Object {
+                    "justifyContent": "flex-end",
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#ffffff",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+                "opacity": 1,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                  "height": 48,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#8A94A6",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 16,
+                        "letterSpacing": 0.16,
+                        "lineHeight": 24,
+                      },
+                      Object {
+                        "color": "#ffffff",
+                        "marginLeft": 9,
+                      },
+                    ]
+                  }
+                >
+                  Half day
+                </Text>
+              </View>
+              <View
+                style={
+                  Object {
+                    "justifyContent": "flex-end",
+                  }
+                }
+              />
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+                "opacity": 1,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                  "height": 48,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#8A94A6",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 16,
+                        "letterSpacing": 0.16,
+                        "lineHeight": 24,
+                      },
+                      Object {
+                        "color": "#ffffff",
+                        "marginLeft": 9,
+                      },
+                    ]
+                  }
+                >
+                  1 day
+                </Text>
+              </View>
+              <View
+                style={
+                  Object {
+                    "justifyContent": "flex-end",
+                  }
+                }
+              />
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+                "opacity": 1,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                  "height": 48,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#8A94A6",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 16,
+                        "letterSpacing": 0.16,
+                        "lineHeight": 24,
+                      },
+                      Object {
+                        "color": "#ffffff",
+                        "marginLeft": 9,
+                      },
+                    ]
+                  }
+                >
+                  1.5 days
+                </Text>
+              </View>
+              <View
+                style={
+                  Object {
+                    "justifyContent": "flex-end",
+                  }
+                }
+              />
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+                "opacity": 1,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                  "height": 48,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#8A94A6",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 16,
+                        "letterSpacing": 0.16,
+                        "lineHeight": 24,
+                      },
+                      Object {
+                        "color": "#ffffff",
+                        "marginLeft": 9,
+                      },
+                    ]
+                  }
+                >
+                  2 days
+                </Text>
+              </View>
+              <View
+                style={
+                  Object {
+                    "justifyContent": "flex-end",
+                  }
+                }
+              />
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+                "opacity": 1,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                  "height": 48,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#8A94A6",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 16,
+                        "letterSpacing": 0.16,
+                        "lineHeight": 24,
+                      },
+                      Object {
+                        "color": "#ffffff",
+                        "marginLeft": 9,
+                      },
+                    ]
+                  }
+                >
+                  3 days
+                </Text>
+              </View>
+              <View
+                style={
+                  Object {
+                    "justifyContent": "flex-end",
+                  }
+                }
+              />
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "position": "absolute",
+        "right": 13,
+        "top": 13,
       }
     }
   >
-    <div
-      className="css-view-g5y9jx r-WebkitOverflowScrolling-150rngu r-flexDirection-eqz5dr r-flexGrow-16y2uox r-flexShrink-1wbh5a2 r-overflowX-11yh6sk r-overflowY-1rnoaur r-transform-agouwx r-scrollbarWidth-2eszeu"
-      dir={null}
-      onScroll={[Function]}
-      onTouchEnd={[Function]}
-      onTouchMove={[Function]}
-      onTouchStart={[Function]}
-      onWheel={[Function]}
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
     >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <div
-          className="css-view-g5y9jx r-paddingBottom-xd6kpl r-paddingLeft-1qhn6m8 r-paddingRight-i023vh r-paddingTop-95jzfe"
-          dir={null}
-        >
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <div
-              className="css-view-g5y9jx r-position-u8s1d r-zIndex-184en5c r-right-1svt5kg r-top-1wghi3f"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-justifyContent-1777fci r-margin-1vuahiu r-padding-1sp51qo"
-                dir={null}
-                onClick={[Function]}
-                onContextMenu={[Function]}
-                onKeyDown={[Function]}
-                style={
-                  {
-                    "transitionDuration": "0s",
-                  }
-                }
-                tabIndex="0"
-              >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
-                    style={
-                      {
-                        "color": "rgba(138,148,166,1.00)",
-                        "fontFamily": "alldone",
-                        "fontSize": "24px",
-                        "opacity": 1,
-                      }
-                    }
-                  >
-                    
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              className="css-text-146c3p1 r-color-jwli3a r-fontFamily-1k9400p r-fontSize-1i10wst r-lineHeight-eaezby"
-              dir="auto"
-            >
-              Estimation
-            </div>
-            <div
-              className="css-text-146c3p1 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb r-marginBottom-117bsoe"
-              dir="auto"
-            >
-              Select an estimation for your task
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-flex-13awgt0 r-justifyContent-a2tzq0"
-            dir={null}
-          >
-            <div
-              className="css-view-g5y9jx"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                dir={null}
-                onClick={[Function]}
-                onContextMenu={[Function]}
-                onKeyDown={[Function]}
-                style={
-                  {
-                    "transitionDuration": "0s",
-                  }
-                }
-                tabIndex="0"
-              >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                  dir={null}
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-t6fudj r-borderColor-1wx6kod r-borderRadius-1i53x9q r-borderWidth-d045u9 r-height-18yzcnr r-justifyContent-1777fci r-margin-8sg8gq r-width-yc9v9c"
-                      dir={null}
-                    >
-                      <div
-                        className="css-view-g5y9jx"
-                        dir={null}
-                      >
-                        <div
-                          className="css-text-146c3p1"
-                          dir="auto"
-                          style={
-                            {
-                              "color": "rgba(255,255,255,1.00)",
-                              "fontFamily": "alldone",
-                              "fontSize": "24px",
-                              "opacity": 1,
-                            }
-                          }
-                        >
-                          
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                          "marginLeft": "9px",
-                        }
-                      }
-                    >
-                      no estimation
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx"
-                      dir={null}
-                    >
-                      <div
-                        className="css-text-146c3p1"
-                        dir="auto"
-                        style={
-                          {
-                            "color": "rgba(255,255,255,1.00)",
-                            "fontFamily": "alldone",
-                            "fontSize": "24px",
-                            "opacity": 1,
-                          }
-                        }
-                      >
-                        
-                      </div>
-                    </div>
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
-                      style={
-                        {
-                          "marginLeft": "4px",
-                        }
-                      }
-                    >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
-                        style={
-                          {
-                            "marginLeft": "4px",
-                          }
-                        }
-                      >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
-                        >
-                          0
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              className="css-view-g5y9jx"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                dir={null}
-                onClick={[Function]}
-                onContextMenu={[Function]}
-                onKeyDown={[Function]}
-                style={
-                  {
-                    "transitionDuration": "0s",
-                  }
-                }
-                tabIndex="0"
-              >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                  dir={null}
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx"
-                      dir={null}
-                    >
-                      <div
-                        className="css-text-146c3p1"
-                        dir="auto"
-                        style={
-                          {
-                            "color": "rgba(138,148,166,1.00)",
-                            "fontFamily": "alldone",
-                            "fontSize": "24px",
-                            "opacity": 1,
-                          }
-                        }
-                      >
-                        
-                      </div>
-                    </div>
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                          "marginLeft": "9px",
-                        }
-                      }
-                    >
-                      15 minutes
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
-                      style={
-                        {
-                          "marginLeft": "4px",
-                        }
-                      }
-                    >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
-                        style={
-                          {
-                            "marginLeft": "4px",
-                          }
-                        }
-                      >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
-                        >
-                          1
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              className="css-view-g5y9jx"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                dir={null}
-                onClick={[Function]}
-                onContextMenu={[Function]}
-                onKeyDown={[Function]}
-                style={
-                  {
-                    "transitionDuration": "0s",
-                  }
-                }
-                tabIndex="0"
-              >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                  dir={null}
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx"
-                      dir={null}
-                    >
-                      <div
-                        className="css-text-146c3p1"
-                        dir="auto"
-                        style={
-                          {
-                            "color": "rgba(138,148,166,1.00)",
-                            "fontFamily": "alldone",
-                            "fontSize": "24px",
-                            "opacity": 1,
-                          }
-                        }
-                      >
-                        
-                      </div>
-                    </div>
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                          "marginLeft": "9px",
-                        }
-                      }
-                    >
-                      30 minutes
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
-                      style={
-                        {
-                          "marginLeft": "4px",
-                        }
-                      }
-                    >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
-                        style={
-                          {
-                            "marginLeft": "4px",
-                          }
-                        }
-                      >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
-                        >
-                          2
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              className="css-view-g5y9jx"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                dir={null}
-                onClick={[Function]}
-                onContextMenu={[Function]}
-                onKeyDown={[Function]}
-                style={
-                  {
-                    "transitionDuration": "0s",
-                  }
-                }
-                tabIndex="0"
-              >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                  dir={null}
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx"
-                      dir={null}
-                    >
-                      <div
-                        className="css-text-146c3p1"
-                        dir="auto"
-                        style={
-                          {
-                            "color": "rgba(138,148,166,1.00)",
-                            "fontFamily": "alldone",
-                            "fontSize": "24px",
-                            "opacity": 1,
-                          }
-                        }
-                      >
-                        
-                      </div>
-                    </div>
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                          "marginLeft": "9px",
-                        }
-                      }
-                    >
-                      1 hour
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
-                      style={
-                        {
-                          "marginLeft": "4px",
-                        }
-                      }
-                    >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
-                        style={
-                          {
-                            "marginLeft": "4px",
-                          }
-                        }
-                      >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
-                        >
-                          3
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              className="css-view-g5y9jx"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                dir={null}
-                onClick={[Function]}
-                onContextMenu={[Function]}
-                onKeyDown={[Function]}
-                style={
-                  {
-                    "transitionDuration": "0s",
-                  }
-                }
-                tabIndex="0"
-              >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                  dir={null}
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx"
-                      dir={null}
-                    >
-                      <div
-                        className="css-text-146c3p1"
-                        dir="auto"
-                        style={
-                          {
-                            "color": "rgba(138,148,166,1.00)",
-                            "fontFamily": "alldone",
-                            "fontSize": "24px",
-                            "opacity": 1,
-                          }
-                        }
-                      >
-                        
-                      </div>
-                    </div>
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                          "marginLeft": "9px",
-                        }
-                      }
-                    >
-                      2 hours
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
-                      style={
-                        {
-                          "marginLeft": "4px",
-                        }
-                      }
-                    >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
-                        style={
-                          {
-                            "marginLeft": "4px",
-                          }
-                        }
-                      >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
-                        >
-                          4
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              className="css-view-g5y9jx"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                dir={null}
-                onClick={[Function]}
-                onContextMenu={[Function]}
-                onKeyDown={[Function]}
-                style={
-                  {
-                    "transitionDuration": "0s",
-                  }
-                }
-                tabIndex="0"
-              >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                  dir={null}
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx"
-                      dir={null}
-                    >
-                      <div
-                        className="css-text-146c3p1"
-                        dir="auto"
-                        style={
-                          {
-                            "color": "rgba(138,148,166,1.00)",
-                            "fontFamily": "alldone",
-                            "fontSize": "24px",
-                            "opacity": 1,
-                          }
-                        }
-                      >
-                        
-                      </div>
-                    </div>
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                          "marginLeft": "9px",
-                        }
-                      }
-                    >
-                      4 hours
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
-                      style={
-                        {
-                          "marginLeft": "4px",
-                        }
-                      }
-                    >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
-                        style={
-                          {
-                            "marginLeft": "4px",
-                          }
-                        }
-                      >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
-                        >
-                          5
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              className="css-view-g5y9jx"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                dir={null}
-                onClick={[Function]}
-                onContextMenu={[Function]}
-                onKeyDown={[Function]}
-                style={
-                  {
-                    "transitionDuration": "0s",
-                  }
-                }
-                tabIndex="0"
-              >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                  dir={null}
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx"
-                      dir={null}
-                    >
-                      <div
-                        className="css-text-146c3p1"
-                        dir="auto"
-                        style={
-                          {
-                            "color": "rgba(138,148,166,1.00)",
-                            "fontFamily": "alldone",
-                            "fontSize": "24px",
-                            "opacity": 1,
-                          }
-                        }
-                      >
-                        
-                      </div>
-                    </div>
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                          "marginLeft": "9px",
-                        }
-                      }
-                    >
-                      8 hours
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
-                      style={
-                        {
-                          "marginLeft": "4px",
-                        }
-                      }
-                    >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
-                        style={
-                          {
-                            "marginLeft": "4px",
-                          }
-                        }
-                      >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
-                        >
-                          6
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              className="css-view-g5y9jx"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                dir={null}
-                onClick={[Function]}
-                onContextMenu={[Function]}
-                onKeyDown={[Function]}
-                style={
-                  {
-                    "transitionDuration": "0s",
-                  }
-                }
-                tabIndex="0"
-              >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt"
-                  dir={null}
-                >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx"
-                      dir={null}
-                    >
-                      <div
-                        className="css-text-146c3p1"
-                        dir="auto"
-                        style={
-                          {
-                            "color": "rgba(138,148,166,1.00)",
-                            "fontFamily": "alldone",
-                            "fontSize": "24px",
-                            "opacity": 1,
-                          }
-                        }
-                      >
-                        
-                      </div>
-                    </div>
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                          "marginLeft": "9px",
-                        }
-                      }
-                    >
-                      16 hours
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                    dir={null}
-                  >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
-                      style={
-                        {
-                          "marginLeft": "4px",
-                        }
-                      }
-                    >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
-                        style={
-                          {
-                            "marginLeft": "4px",
-                          }
-                        }
-                      >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
-                        >
-                          7
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div
-          className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
-          dir={null}
-          onClick={[Function]}
-          onContextMenu={[Function]}
-          onKeyDown={[Function]}
+      <View>
+        <Text
           style={
-            {
-              "transitionDuration": "0s",
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 24,
+              "opacity": 1,
             }
           }
-          tabIndex="0"
         >
-          <div
-            className="css-view-g5y9jx r-alignItems-1oszu61 r-borderTopColor-12rkw8h r-borderTopWidth-5kkj8d r-flex-13awgt0 r-flexDirection-eqz5dr r-paddingBlock-11f147o r-paddingInline-3pj75a"
-            dir={null}
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`StoryPointModal component StoryPointModal snapshot test Should render correctly 1`] = `
+<View
+  style={
+    Object {
+      "backgroundColor": "#091540",
+      "borderRadius": 4,
+      "elevation": 3,
+      "shadowColor": "rgba(78, 93, 120, 0.56)",
+      "shadowOffset": Object {
+        "height": 4,
+        "width": 0,
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 16,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "paddingBottom": 8,
+          "paddingLeft": 16,
+          "paddingRight": 16,
+          "paddingTop": 16,
+          "width": 305,
+        },
+        null,
+      ]
+    }
+  >
+    <View
+      style={
+        Object {
+          "marginBottom": 21,
+        }
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 18,
+              "lineHeight": 26,
+            },
+            Object {
+              "color": "#ffffff",
+            },
+          ]
+        }
+      >
+        Estimation
+      </Text>
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+            },
+            Object {
+              "color": "#8A94A6",
+            },
+          ]
+        }
+      >
+        Select an estimation for your task
+      </Text>
+    </View>
+    <View
+      style={
+        Object {
+          "flex": 1,
+          "justifyContent": "space-around",
+        }
+      }
+    >
+      <View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 48,
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+              }
+            }
           >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-h3s6tt r-justifyContent-1777fci"
-              dir={null}
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "flexGrow": 1,
+                }
+              }
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "backgroundColor": "#0D55CF",
+                    "borderColor": "#0C66FF",
+                    "borderRadius": 1000,
+                    "borderWidth": 2,
+                    "height": 22,
+                    "justifyContent": "center",
+                    "margin": 0.6,
+                    "width": 22,
+                  }
+                }
               >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
+                <View>
+                  <Text
                     style={
-                      {
-                        "color": "rgba(138,148,166,1.00)",
+                      Object {
+                        "color": "#ffffff",
                         "fontFamily": "alldone",
-                        "fontSize": "24px",
+                        "fontSize": 24,
                         "opacity": 1,
                       }
                     }
                   >
-                    
-                  </div>
-                </div>
-                <div
-                  className="css-text-146c3p1"
-                  dir="auto"
-                  style={
-                    {
-                      "color": "rgba(255,255,255,1.00)",
+                    
+                  </Text>
+                </View>
+              </View>
+              <Text
+                style={
+                  Array [
+                    Object {
                       "fontFamily": "Roboto-Medium",
-                      "fontSize": "16px",
-                      "letterSpacing": "0.16px",
-                      "lineHeight": "24px",
-                      "marginLeft": "9px",
-                    }
-                  }
-                >
-                  Custom
-                </div>
-              </div>
-              <div
-                className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-17s6mgv"
-                dir={null}
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#ffffff",
+                      "marginLeft": 9,
+                    },
+                  ]
+                }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                  dir={null}
+                10 minutes
+              </Text>
+            </View>
+            <View
+              style={
+                Object {
+                  "justifyContent": "flex-end",
+                }
+              }
+            >
+              <View>
+                <Text
                   style={
-                    {
-                      "marginLeft": "4px",
+                    Object {
+                      "color": "#ffffff",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
                     }
                   }
                 >
-                  <div
-                    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                    dir={null}
-                    style={
-                      {
-                        "marginLeft": "4px",
-                      }
+                  
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+      <View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 48,
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "flexGrow": 1,
+                }
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
                     }
-                  >
-                    <div
-                      className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                      dir="auto"
-                    >
-                      8
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+                  }
+                >
+                  
+                </Text>
+              </View>
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#ffffff",
+                      "marginLeft": 9,
+                    },
+                  ]
+                }
+              >
+                30 minutes
+              </Text>
+            </View>
+            <View
+              style={
+                Object {
+                  "justifyContent": "flex-end",
+                }
+              }
+            />
+          </View>
+        </View>
+      </View>
+      <View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 48,
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "flexGrow": 1,
+                }
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#ffffff",
+                      "marginLeft": 9,
+                    },
+                  ]
+                }
+              >
+                1-2 hours
+              </Text>
+            </View>
+            <View
+              style={
+                Object {
+                  "justifyContent": "flex-end",
+                }
+              }
+            />
+          </View>
+        </View>
+      </View>
+      <View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 48,
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "flexGrow": 1,
+                }
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#ffffff",
+                      "marginLeft": 9,
+                    },
+                  ]
+                }
+              >
+                Half day
+              </Text>
+            </View>
+            <View
+              style={
+                Object {
+                  "justifyContent": "flex-end",
+                }
+              }
+            />
+          </View>
+        </View>
+      </View>
+      <View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 48,
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "flexGrow": 1,
+                }
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#ffffff",
+                      "marginLeft": 9,
+                    },
+                  ]
+                }
+              >
+                1 day
+              </Text>
+            </View>
+            <View
+              style={
+                Object {
+                  "justifyContent": "flex-end",
+                }
+              }
+            />
+          </View>
+        </View>
+      </View>
+      <View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 48,
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "flexGrow": 1,
+                }
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#ffffff",
+                      "marginLeft": 9,
+                    },
+                  ]
+                }
+              >
+                1.5 days
+              </Text>
+            </View>
+            <View
+              style={
+                Object {
+                  "justifyContent": "flex-end",
+                }
+              }
+            />
+          </View>
+        </View>
+      </View>
+      <View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 48,
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "flexGrow": 1,
+                }
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#ffffff",
+                      "marginLeft": 9,
+                    },
+                  ]
+                }
+              >
+                2 days
+              </Text>
+            </View>
+            <View
+              style={
+                Object {
+                  "justifyContent": "flex-end",
+                }
+              }
+            />
+          </View>
+        </View>
+      </View>
+      <View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "flex": 1,
+              "flexDirection": "row",
+              "height": 48,
+              "opacity": 1,
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "alignItems": "center",
+                "flex": 1,
+                "flexDirection": "row",
+                "height": 48,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "flexGrow": 1,
+                }
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#ffffff",
+                      "marginLeft": 9,
+                    },
+                  ]
+                }
+              >
+                3 days
+              </Text>
+            </View>
+            <View
+              style={
+                Object {
+                  "justifyContent": "flex-end",
+                }
+              }
+            />
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "position": "absolute",
+        "right": 13,
+        "top": 13,
+      }
+    }
+  >
+    <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "alignItems": "center",
+          "justifyContent": "center",
+          "opacity": 1,
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 24,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
 `;

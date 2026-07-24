@@ -3,7 +3,6 @@
  */
 
 import React from 'react'
-import { seedProjects } from '../../../testUtils/seedStore'
 import { TasksDone_1, TasksOpen_1, TasksPending_1 } from '../../../__mocks__/MockData/TasksView/TasksListInput_1'
 import TasksHelper, {
     RECURRENCE_TEXT_VALUES,
@@ -12,9 +11,11 @@ import TasksHelper, {
     TASK_TYPE_PENDING,
 } from '../../../components/TaskListView/Utils/TasksHelper'
 import store from '../../../redux/store'
-import { storeCurrentUser, storeLoggedUser } from '../../../redux/actions'
+import { storeCurrentUser, storeLoggedUser, storeLoggedUserProjects } from '../../../redux/actions'
 import { ALL_PROJECTS_INDEX } from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { DV_TAB_ROOT_TASKS } from '../../../utils/TabNavigationConstants'
+
+jest.mock('firebase', () => ({ firestore: {} }))
 
 const dummyUser = { uid: 'C08CK8x1I5YS2lxVixuLHaF3SrA3' }
 
@@ -22,7 +23,36 @@ const navigation = { navigate: route => route }
 
 describe('TasksHelper class', () => {
     beforeEach(() => {
-        store.dispatch([...seedProjects([{ id: 'id1' }]), storeLoggedUser(dummyUser), storeCurrentUser(dummyUser)])
+        store.dispatch([
+            storeLoggedUserProjects([{ id: 'id1' }]),
+            storeLoggedUser(dummyUser),
+            storeCurrentUser(dummyUser),
+        ])
+    })
+    describe('Function getTodayProgressByProject', () => {
+        it('Should execute correctly', async () => {
+            let inputAmounts = { open: 2, pending: 2, done: 6 }
+            let progress = TasksHelper.getTodayProgressByProject(inputAmounts)
+            expect(progress).toEqual(60)
+        })
+    })
+
+    describe('Function getTaskType', () => {
+        it('Identify Open task correctly', async () => {
+            store.dispatch([storeLoggedUser({ uid: '-Uxyz_1' }), storeCurrentUser({ uid: '-Uxyz_1' })])
+            let value = TasksHelper.getTaskType(TasksOpen_1)
+            expect(value).toEqual(TASK_TYPE_OPEN)
+        })
+        it('Identify Pending task correctly', async () => {
+            store.dispatch([storeLoggedUser({ uid: '-Uxyz_1' }), storeCurrentUser({ uid: '-Uxyz_1' })])
+            let value = TasksHelper.getTaskType(TasksPending_1)
+            expect(value).toEqual(TASK_TYPE_PENDING)
+        })
+        it('Identify Done task correctly', async () => {
+            store.dispatch([storeLoggedUser({ uid: '-Uxyz_1' }), storeCurrentUser({ uid: '-Uxyz_1' })])
+            let value = TasksHelper.getTaskType(TasksDone_1)
+            expect(value).toEqual(TASK_TYPE_DONE)
+        })
     })
 
     describe('Function isOpenTask', () => {
@@ -68,24 +98,24 @@ describe('TasksHelper class', () => {
             done: false,
             dueDate: Date.now(),
             estimations: { '-1': 0 },
-            hasStar: '#FFFFFF',
+            followerUserIds: [],
+            followerUsers: [],
+            hasStar: false,
             isPrivate: false,
+            lastChangeUserId: '-Uxyz_1',
+            mentionedUserIds: [],
             name: '',
             userId: '-Uxyz_1',
             userIds: ['-Uxyz_1'],
             stepHistory: [-1],
             parentId: null,
             subtaskIds: [],
-            recurrence: 'never',
-            executionMode: 'workflow',
+            recurrence: null,
         }
-        it('defaults new tasks to workflow execution', async () => {
+        it('The function work correctly', async () => {
             store.dispatch([storeLoggedUser({ uid: '-Uxyz_1' }), storeCurrentUser({ uid: '-Uxyz_1' })])
             const value = TasksHelper.getNewDefaultTask()
-
-            // The default task carries many more fields than it used to, so the
-            // ones this test named are checked rather than the whole object.
-            expect(value).toMatchObject(defaultTask)
+            expect(value).toEqual(defaultTask)
         })
     })
 
@@ -97,8 +127,61 @@ describe('TasksHelper class', () => {
             const storeState = store.getState()
             expect(storeState.selectedProjectIndex).toEqual(ALL_PROJECTS_INDEX)
             expect(storeState.hiddenSideMenuUser).toBeFalsy()
-            expect(storeState.currentUser.uid).toEqual('-Uxyz_1')
+            expect(storeState.currentUser).toEqual({ uid: '-Uxyz_1' })
             expect(storeState.selectedNavItem).toEqual(DV_TAB_ROOT_TASKS)
+        })
+    })
+
+    describe('Function getRecurrenceText', () => {
+        it('Function work correctly for never value', () => {
+            const test = 'never'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
+        })
+        it('Function work correctly for daily value', () => {
+            const test = 'daily'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
+        })
+        it('Function work correctly for everyWorkday value', () => {
+            const test = 'everyWorkday'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
+        })
+        it('Function work correctly for weekly value', () => {
+            const test = 'weekly'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
+        })
+        it('Function work correctly for every2Weeks value', () => {
+            const test = 'every2Weeks'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
+        })
+        it('Function work correctly for every3Weeks value', () => {
+            const test = 'every3Weeks'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
+        })
+        it('Function work correctly for monthly value', () => {
+            const test = 'monthly'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
+        })
+        it('Function work correctly for every3Months value', () => {
+            const test = 'every3Months'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
+        })
+        it('Function work correctly for every6Months value', () => {
+            const test = 'every6Months'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
+        })
+        it('Function work correctly for annually value', () => {
+            const test = 'annually'
+            const value = TasksHelper.getRecurrenceText(test)
+            expect(value).toEqual(RECURRENCE_TEXT_VALUES[test])
         })
     })
 })

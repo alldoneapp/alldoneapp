@@ -1,5 +1,4 @@
 const { isEqual } = require('lodash')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const ACTION_STATUS_APPLIED = 'applied'
 const ACTION_STATUS_UNDONE = 'undone'
@@ -76,7 +75,7 @@ const getMissingFields = (operation, state) => {
     return Array.isArray(operation[key]) ? operation[key] : []
 }
 
-const getDeleteFieldValue = () => FieldValue.delete()
+const getDeleteFieldValue = () => require('firebase-admin').firestore.FieldValue.delete()
 
 const buildReplacement = (fields, missingFields) => {
     const replacement = { ...fields }

@@ -12,7 +12,6 @@ import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPr
 import { getTimestampInMilliseconds } from '../../Utils/ChatHelper'
 import SharedHelper from '../../../../utils/SharedHelper'
 import { resolveEffectiveMessageLoading } from './messageLoadingState'
-import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
 
 export default function MessageItem({
     chat,
@@ -36,14 +35,12 @@ export default function MessageItem({
     // Members can quote/edit messages; shared-resource viewers (anonymous + logged-in non-members)
     // see messages read-only.
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
-    // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
-    // and leave the message permanently uneditable. See the hook.
-    const { blockOpen, ...swipeCloseGuard } = useSwipeCloseGuard()
+    const [blockOpen, setBlockOpen] = useState(false)
     const [panColor, setPanColor] = useState(new Animated.Value(0))
     const itemSwipe = useRef(null)
     const dismissibleRef = useRef(null)
     const editOpenTimeoutRef = useRef(null)
-    const creatorData = useGetUserPresentationData(message.creatorId, { fromAssistant: message.fromAssistant })
+    const creatorData = useGetUserPresentationData(message.creatorId)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const activeChatMessageId = useSelector(state => state.activeChatMessageId)
 
@@ -61,7 +58,7 @@ export default function MessageItem({
             modalVisibleBefore,
         })
 
-        if (!message.pendingSend && !blockOpen && dismissibleRef.current) {
+        if (!blockOpen && dismissibleRef.current) {
             dispatch(setActiveChatMessageId(message.id))
             if (editOpenTimeoutRef.current) clearTimeout(editOpenTimeoutRef.current)
             editOpenTimeoutRef.current = setTimeout(() => {
@@ -101,12 +98,7 @@ export default function MessageItem({
     }
 
     const renderLeftSwipe = (progress, dragX) => {
-        // Swipeable calls this during its own render, so setting state synchronously would update
-        // this component while another one renders. dragX is stable per Swipeable instance, so
-        // deferring the swap adopts it just as reliably, one render later.
-        if (panColor !== dragX) {
-            Promise.resolve().then(() => setPanColor(dragX))
-        }
+        if (panColor != dragX) setPanColor(dragX)
         return <View style={{ width: 150 }} />
     }
 
@@ -132,7 +124,6 @@ export default function MessageItem({
         <View style={{ paddingVertical: 8, marginLeft: 14 }}>
             <SwipeAreasContainer pointerEvents="none" style={{ paddingBottom: 16 }} leftText="Quote" />
             <Swipeable
-                useNativeAnimations={false}
                 ref={itemSwipe}
                 leftThreshold={80}
                 enabled={accessGranted && dismissibleRef.current && !dismissibleRef.current.modalIsVisible()}
@@ -143,7 +134,12 @@ export default function MessageItem({
                 friction={2}
                 containerStyle={{ overflow: 'visible' }}
                 failOffsetY={[-5, 5]}
-                {...swipeCloseGuard}
+                onSwipeableWillClose={() => {
+                    setBlockOpen(true)
+                }}
+                onSwipeableClose={() => {
+                    setBlockOpen(false)
+                }}
             >
                 <Animated.View
                     style={{ backgroundColor: backColor, marginHorizontal: -8, paddingHorizontal: 8, borderRadius: 4 }}
@@ -155,7 +151,7 @@ export default function MessageItem({
                         creatorData={creatorData}
                         highlight={highlight}
                         onEditPress={enableEditMode}
-                        editDisabled={!accessGranted || !!message.pendingSend}
+                        editDisabled={!accessGranted}
                         accessGranted={accessGranted}
                         linkedEmailNew={accessGranted && !!linkedEmail && linkedEmailNew}
                     />

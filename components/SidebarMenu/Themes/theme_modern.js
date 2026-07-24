@@ -10,7 +10,10 @@ const ThemeColors = {
         },
         floatingContainer: {
             backgroundColor: Colors.GraySidebar,
-            boxShadow: '0px 0px 6px rgba(4,20,47,0.24)',
+            shadowColor: 'rgba(4, 20, 47, 0.24)',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 1,
+            shadowRadius: 6,
             elevation: 3,
         },
         overlayContainer: {
@@ -21,7 +24,10 @@ const ThemeColors = {
         },
         backdropDesktop: {
             backgroundColor: Colors.Transparent,
-            boxShadow: '0px 0px 6px rgba(4,20,47,0.24)',
+            shadowColor: 'rgba(4, 20, 47, 0.24)',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 1,
+            shadowRadius: 6,
             elevation: 3,
             zIndex: 10,
         },

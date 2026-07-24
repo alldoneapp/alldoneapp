@@ -1,7 +1,11 @@
 import v4 from 'uuid/v4'
 import ProjectHelper from '../components/SettingsView/ProjectsSettings/ProjectHelper'
+import { REGEX_URL } from '../components/Feeds/Utils/HelperFunctions'
+import { setSelectedSidebarTab } from '../redux/actions'
+import { DV_TAB_ROOT_CONTACTS, DV_TAB_ROOT_NOTES, DV_TAB_ROOT_TASKS, DV_TAB_ROOT_GOALS } from './TabNavigationConstants'
+import store from '../redux/store'
+import NavigationService from '../utils/NavigationService'
 import { getAppUrlHost } from './backends/firestore'
-import { handleNestedLinks } from './nestedLinkText'
 
 export const LINKED_OBJECT_TYPE_CONTACT = 'contact'
 export const LINKED_OBJECT_TYPE_PROJECT = 'project'
@@ -10,7 +14,6 @@ export const LINKED_OBJECT_TYPE_TASK = 'task'
 export const LINKED_OBJECT_TYPE_GOAL = 'goal'
 export const LINKED_OBJECT_TYPE_SKILL = 'skill'
 export const LINKED_OBJECT_TYPE_ASSISTANT = 'assistant'
-export const LINKED_OBJECT_TYPE_ARTIFACT = 'artifact'
 
 export const LINKED_PARENT_TASK = 0
 export const LINKED_PARENT_NOTE = 1
@@ -128,10 +131,6 @@ const isValidChatLink = (url, projectId) => {
     return isValidLink(url, projectId, 'chats')
 }
 
-const isValidArtifactLink = (url, projectId) => {
-    return isValidLink(url, projectId, 'artifacts')
-}
-
 const isValidPreConfigTaskLink = (url, projectId) => {
     return isValidLink(url, projectId, 'preConfigTasks')
 }
@@ -190,8 +189,6 @@ const getUrlObject = (fullUrl, rootUrl, projectId, editorId, userIdAllowedToEdit
         linkedParentObjectType = 'skill'
     } else if (isValidAssistantLink(urlParts, _projectId)) {
         linkedParentObjectType = 'assistant'
-    } else if (isValidArtifactLink(urlParts, _projectId)) {
-        linkedParentObjectType = 'artifact'
     } else {
         linkedParentObjectType = 'plain'
     }
@@ -227,27 +224,37 @@ const getUrlObject = (fullUrl, rootUrl, projectId, editorId, userIdAllowedToEdit
     }
 }
 
-// `checkDVLink` lived here until AT-2417 and is deliberately gone. It bounced every
-// detailed-view link through the matching ROOT LIST (`setSelectedSidebarTab` +
-// `NavigationService.navigate('Root')`) before the URL system navigated to the target,
-// which is why opening a note showed the notes list first. It was a June-2021 workaround
-// for react-navigation: back then `NavigationService.navigate` was a plain
-// `NavigationActions.navigate`, so navigating from a DV to another DV of the SAME route
-// name did not remount the screen or re-read its params — the bounce forced a real route
-// change. #7524 (June 2022) made `navigate` a `StackActions.reset` with a changing key,
-// and the Stage 2 rewrite kept that contract explicitly: NavigationService increments
-// `id` on every navigate and AppNavigator renders the screen under `key={id}`, so EVERY
-// navigation already remounts the subtree with fresh params. The bounce has therefore
-// been dead weight since 2022, while still costing a full mount of the wrong list — which
-// `URLsNotes.push`/`URLsTasks.push` etc. record as a junk browser-history entry, so Back
-// landed on that list instead of where the user came from.
-//
-// It was also driven by STALE state: nothing resets `selectedNavItem` to a `ROOT_*` value
-// when you leave a DV for a root list, so after opening any note once, `selectedNavItem`
-// stayed `NOTE_EDITOR` for the rest of the session and a note link clicked in the TASK
-// LIST still took the note-to-note branch. That is the exact reported symptom.
-//
-// Do not reintroduce it: a link to a DV must navigate straight to that DV.
+const checkDVLink = type => {
+    const { selectedNavItem } = store.getState()
+    if (type === 'task' && selectedNavItem.startsWith('TASK_')) {
+        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
+        NavigationService.navigate('Root')
+    } else if (type === 'people' && selectedNavItem.startsWith('USER_')) {
+        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS))
+        NavigationService.navigate('Root')
+    } else if (type === 'people' && selectedNavItem.startsWith('CONTACT_')) {
+        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS))
+        NavigationService.navigate('Root')
+    } else if (type === 'project' && selectedNavItem.startsWith('PROJECT_')) {
+        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
+        NavigationService.navigate('Root')
+    } else if (type === 'note' && selectedNavItem.startsWith('NOTE_')) {
+        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_NOTES))
+        NavigationService.navigate('Root')
+    } else if (type === 'goal' && selectedNavItem.startsWith('GOAL_')) {
+        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_GOALS))
+        NavigationService.navigate('Root')
+    } else if (type === 'chat' && selectedNavItem.startsWith('CHAT_')) {
+        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
+        NavigationService.navigate('Root')
+    } else if (type === 'skill' && selectedNavItem.startsWith('SKILL_')) {
+        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
+        NavigationService.navigate('Root')
+    } else if (type === 'assistant' && selectedNavItem.startsWith('ASSISTANT_')) {
+        store.dispatch(setSelectedSidebarTab(DV_TAB_ROOT_TASKS))
+        NavigationService.navigate('Root')
+    }
+}
 
 const formatUrl = plainUrl => {
     let execRes = null
@@ -288,11 +295,23 @@ const formatUrl = plainUrl => {
     return execRes
 }
 
-// `handleNestedLinks` used to live here and replaced every URL-looking word in an
-// object title with the literal string `LINK` (AT-2470). It moved to the pure leaf
-// module `./nestedLinkText` — see the header comment there for why the placeholder was
-// wrong for real URLs AND for ordinary words like `package.json`. It is re-exported
-// unchanged below so no call site had to move.
+const handleNestedLinks = text => {
+    const words = text.split(' ')
+    let parsedText = ''
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i]
+
+        if (REGEX_URL.test(word)) {
+            parsedText += 'LINK '
+        } else {
+            parsedText += `${word} `
+        }
+    }
+
+    parsedText = parsedText.trim()
+
+    return parsedText
+}
 
 export {
     formatUrl,
@@ -305,9 +324,9 @@ export {
     isValidGoalLink,
     isValidSkillLink,
     isValidAssistantLink,
-    isValidArtifactLink,
     isValidPreConfigTaskLink,
     getUrlObject,
     handleNestedLinks,
+    checkDVLink,
     getUrlParts,
 }

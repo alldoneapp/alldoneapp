@@ -7,11 +7,7 @@ const { v4: uuidv4 } = require('uuid')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { sendAnnaEmailReply } = require('./emailReplyService')
 const { DEFAULT_PUBLIC_EMAIL, normalizeEmailAddress, normalizeEmailAddressList } = require('./emailChannelHelpers')
-const {
-    SENDER_STATUS_AMBIGUOUS,
-    getDefaultAssistantIdForUser,
-    resolveEmailSenderIdentity,
-} = require('./emailUserRouting')
+const { findVerifiedUserByEmailIdentity, getDefaultAssistantIdForUser } = require('./emailUserRouting')
 
 async function handleIncomingAnnaEmail(req, res) {
     if (req.method !== 'POST') {
@@ -34,44 +30,10 @@ async function handleIncomingAnnaEmail(req, res) {
             return res.status(403).send('Forbidden')
         }
 
-        // A verified account owner can explicitly offer safe meeting slots to one external
-        // participant. Replies to that exact Anna message carry a one-purpose grant and must
-        // be resolved before ordinary account routing, even if the guest also has Alldone.
-        const { tryHandleGuestMeetingReply } = require('./emailGuestMeetingGrant')
-        const guestMeetingResult = await tryHandleGuestMeetingReply(payload)
-        if (guestMeetingResult.matched) {
-            await upsertAuditRecord(payload.messageId, {
-                status: guestMeetingResult.status,
-                userId: guestMeetingResult.ownerUserId || null,
-                fromEmail: payload.fromEmail,
-                guestMeetingGrantId: guestMeetingResult.grantId || null,
-                updatedAt: Date.now(),
-            })
-            return res.status(200).json({ ok: true, status: guestMeetingResult.status })
-        }
-
-        // A sender that cannot be routed used to leave no trace at all: no audit record,
-        // no log line, and a reply blaming verification for what was in fact an ambiguity.
-        // Both outcomes are now recorded and named (AT-2483).
-        const senderIdentity = await resolveEmailSenderIdentity(payload.fromEmail)
-        const user = senderIdentity.user
+        const user = await findVerifiedUserByEmailIdentity(payload.fromEmail)
         if (!user) {
-            const ambiguous = senderIdentity.status === SENDER_STATUS_AMBIGUOUS
-            const status = ambiguous ? 'ambiguous_sender' : 'unknown_sender'
-            await replySafely(
-                payload,
-                ambiguous
-                    ? `This email address belongs to more than one Alldone account, so I can't tell which one this should go to. Disconnect it from the account you don't want it on, or write from an address that only one account uses.`
-                    : `I couldn't match this sender to a verified Alldone account email.`
-            )
-            await upsertAuditRecord(payload.messageId, {
-                status,
-                fromEmail: payload.fromEmail,
-                subject: payload.subject,
-                senderCandidates: senderIdentity.candidates || [],
-                updatedAt: Date.now(),
-            })
-            return res.status(200).json({ ok: true, status })
+            await replySafely(payload, `I couldn't match this sender to a verified Alldone account email.`)
+            return res.status(200).json({ ok: true, status: 'unknown_sender' })
         }
 
         if (user.assistantEmailEnabled !== true) {
@@ -102,7 +64,6 @@ async function handleIncomingAnnaEmail(req, res) {
             textBody: payload.textBody,
             htmlBody: payload.htmlBody,
             receivedAt: payload.receivedAt,
-            sentAt: payload.sentAt,
             threadHeaders: payload.threadHeaders,
             headers: payload.headers,
             attachments,
@@ -132,20 +93,6 @@ async function handleIncomingAnnaEmail(req, res) {
     }
 }
 
-// The sender's own "Date:" header is the only record of when the mail was actually sent.
-// Without it the assistant is shown the queue-processing time, which drifts with backlog,
-// retries and cold starts. Returns null when the header is missing or unparseable so
-// downstream callers can fall back to the stored comment timestamp.
-function parseEmailDateHeader(value) {
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value
-
-    const normalized = String(value || '').trim()
-    if (!normalized) return null
-
-    const parsed = Date.parse(normalized)
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
-}
-
 function normalizeInboundEmailPayload(body = {}, headers = {}) {
     const normalizedHeaders = isObject(body.headers) ? body.headers : {}
     const threadHeaders = isObject(body.threadHeaders) ? body.threadHeaders : {}
@@ -163,7 +110,6 @@ function normalizeInboundEmailPayload(body = {}, headers = {}) {
         textBody: String(body.textBody || body.text || '').trim(),
         htmlBody: String(body.htmlBody || body.html || '').trim(),
         receivedAt: Number(body.receivedAt || Date.now()) || Date.now(),
-        sentAt: parseEmailDateHeader(body.sentAt || normalizedHeaders.Date || normalizedHeaders.date || ''),
         headers: normalizedHeaders,
         threadHeaders: {
             replyTo: String(

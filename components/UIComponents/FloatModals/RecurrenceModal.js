@@ -8,14 +8,13 @@ import store from '../../../redux/store'
 import Button from '../../UIControls/Button'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import Hotkeys from 'react-hot-keys'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import { withWindowSizeHook } from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
 import {
     RECURRENCE_MAP,
     RECURRENCE_NEVER,
-    RECURRENCE_ONCE,
     RECURRENCE_DAILY,
     RECURRENCE_EVERY_WORKDAY,
     RECURRENCE_WEEKLY,
@@ -32,7 +31,6 @@ import {
     isCustomRecurrence,
 } from '../../TaskListView/Utils/TasksHelper'
 import { setTaskRecurrence } from '../../../utils/backends/Tasks/tasksFirestore'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 class RecurrenceModal extends Component {
     constructor(props) {
@@ -51,7 +49,6 @@ class RecurrenceModal extends Component {
 
         this.recurrences = [
             RECURRENCE_NEVER,
-            ...(props.allowOneOffSchedule ? [RECURRENCE_ONCE] : []),
             RECURRENCE_DAILY,
             RECURRENCE_EVERY_WORKDAY,
             RECURRENCE_WEEKLY,
@@ -213,7 +210,7 @@ class RecurrenceModal extends Component {
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
+                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
                 ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>
@@ -273,7 +270,7 @@ class RecurrenceModal extends Component {
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
+                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
                 ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>
@@ -349,8 +346,12 @@ const localStyles = StyleSheet.create({
         paddingTop: 16,
         paddingBottom: 8,
         borderRadius: 4,
+        width: 305,
         overflow: 'visible',
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     title: {
@@ -445,12 +446,10 @@ RecurrenceModal.propTypes = {
     projectId: PropTypes.string.isRequired,
     closePopover: PropTypes.func,
     showBackButton: PropTypes.bool,
-    allowOneOffSchedule: PropTypes.bool,
 }
 
 RecurrenceModal.defaultProps = {
     showBackButton: false,
-    allowOneOffSchedule: false,
 }
 
 export default withWindowSizeHook(RecurrenceModal)

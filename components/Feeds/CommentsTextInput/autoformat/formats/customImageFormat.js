@@ -1,17 +1,20 @@
-import React from 'react'
+import React, { createRef } from 'react'
+import ReactQuill from 'react-quill'
+import ReactDOM from 'react-dom'
 import v4 from 'uuid/v4'
 
 import CustomImageContainer from '../tags/CustomImageContainer'
 import { getPopoverWidth } from '../../../../../utils/HelperFunctions'
 import { Provider } from 'react-redux'
 import store from '../../../../../redux/store'
-import { renderEmbedContent } from './embedReactRoot'
-import ReactEmbedBlot from './reactEmbedBlot'
 
-export default class CustomImageFormat extends ReactEmbedBlot {
+const Embed = ReactQuill.Quill.import('blots/embed')
+
+export default class CustomImageFormat extends Embed {
     static create(imageData) {
         const { text, uri, resizedUri, isNew, externalId, isLoading, editorId } = imageData
         const node = super.create(text)
+        const refs = CustomImageFormat.refs
         const id = externalId ? externalId : v4()
 
         node.setAttribute('data-id', id)
@@ -20,18 +23,18 @@ export default class CustomImageFormat extends ReactEmbedBlot {
         node.setAttribute('resizedUri', resizedUri)
         node.setAttribute('contenteditable', false)
         node.setAttribute('isNew', isNew)
-        // setAttribute stringifies, so an absent value would round-trip through
-        // static value() as the literal string 'undefined' and key the per-editor project
-        // map with it (AT-2227). Leave the attribute off instead.
-        if (isLoading != null) node.setAttribute('isLoading', isLoading)
-        if (editorId != null) node.setAttribute('editorId', editorId)
+        node.setAttribute('isLoading', isLoading)
+        node.setAttribute('editorId', editorId)
 
         CustomImageFormat.data = text
+        CustomImageFormat.refs = {
+            ...refs,
+            [id]: createRef(),
+        }
 
         // Get the editor width
         const maxWidth = getPopoverWidth() - 64
-        renderEmbedContent(
-            node,
+        ReactDOM.render(
             <Provider store={store}>
                 <CustomImageContainer
                     editorId={editorId}
@@ -41,13 +44,7 @@ export default class CustomImageFormat extends ReactEmbedBlot {
                     maxWidth={maxWidth}
                 />
             </Provider>,
-            {
-                editorId,
-                kind: 'media',
-                label: text,
-                width: maxWidth,
-                height: store.getState().smallScreenNavigation ? 100 : store.getState().isMiddleScreen ? 150 : 200,
-            }
+            node
         )
 
         return node
@@ -66,8 +63,8 @@ export default class CustomImageFormat extends ReactEmbedBlot {
         return commentData
     }
 
-    constructor(scroll, domNode) {
-        super(scroll, domNode)
+    constructor(domNode) {
+        super(domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = CustomImageFormat.data
     }

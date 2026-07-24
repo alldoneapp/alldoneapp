@@ -182,7 +182,6 @@ async function generateBotDailyTopicFirstComment(
         projectId: defaultProjectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
-        openAiReasoningEffort: assistant.reasoningEffort || null,
         objectType: 'topics',
         objectId,
     }

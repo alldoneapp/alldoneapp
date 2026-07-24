@@ -1,6 +1,5 @@
-import { writeBrowserHistory } from '../browserHistory'
 import { GLOBAL_PROJECT_ID } from '../../components/AdminPanel/Assistants/assistantsHelper'
-import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
+import { getProjectData } from '../../utils/backends/firestore'
 import URLSystem from '../URLSystem'
 
 /**
@@ -12,11 +11,6 @@ export const URL_ASSISTANT_DETAILS = 'ASSISTANT_DETAILS'
  * /projects/{projectId}/assistants/{assistantId}/customizations
  */
 export const URL_ASSISTANT_DETAILS_CUSTOMIZATIONS = 'ASSISTANT_DETAILS_CUSTOMIZATIONS'
-
-/**
- * /projects/{projectId}/assistants/{assistantId}/workflow
- */
-export const URL_ASSISTANT_DETAILS_WORKFLOW = 'ASSISTANT_DETAILS_WORKFLOW'
 
 /**
  * /projects/{projectId}/assistants/{assistantId}/backlinks/tasks
@@ -54,11 +48,13 @@ class URLsAssistants {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLsAssistants.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        writeBrowserHistory('replace', data, urlPath, () => URLsAssistants.setTitle(urlConstant, false, ...params))
+        URLsAssistants.setTitle(urlConstant, false, ...params)
+        history.replaceState(data, '', `${originPath}/${urlPath}`)
     }
 
     /**
@@ -68,11 +64,13 @@ class URLsAssistants {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
+        const originPath = window.location.origin
         let urlPath = URLsAssistants.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        writeBrowserHistory('push', data, urlPath, () => URLsAssistants.setTitle(urlConstant, false, ...params))
+        URLsAssistants.setTitle(urlConstant, false, ...params)
+        history.pushState(data, '', `${originPath}/${urlPath}`)
     }
 
     static getPath = (urlConstant, ...params) => {
@@ -81,8 +79,6 @@ class URLsAssistants {
                 return `projects/${params[0]}/assistants/${params[1]}`
             case URL_ASSISTANT_DETAILS_CUSTOMIZATIONS:
                 return `projects/${params[0]}/assistants/${params[1]}/customizations`
-            case URL_ASSISTANT_DETAILS_WORKFLOW:
-                return `projects/${params[0]}/assistants/${params[1]}/workflow`
             case URL_ASSISTANT_DETAILS_BACKLINKS_TASKS:
                 return `projects/${params[0]}/assistants/${params[1]}/backlinks/tasks`
             case URL_ASSISTANT_DETAILS_BACKLINKS_NOTES:
@@ -96,18 +92,15 @@ class URLsAssistants {
         }
     }
 
-    static setTitle = (urlConstant, internal = false, ...params) => {
+    static setTitle = async (urlConstant, internal = false, ...params) => {
         const projectId = params[0]
-        // Use the loaded project like the other object routes. A delayed
-        // Firestore read can leave the previous object's title on this entry
-        // or overwrite the next view's title after navigating away.
-        const projectName =
-            projectId === GLOBAL_PROJECT_ID ? 'Admin' : ProjectHelper.getProjectNameById(projectId, 'Project')
+        const project = projectId === GLOBAL_PROJECT_ID ? { name: 'Admin' } : await getProjectData(projectId)
 
         const prefix = internal ? '' : 'Alldone.app - '
         let title = ''
 
         const assistantDetails = (titleSuffix = '') => {
+            const projectName = project ? project.name : 'Project'
             title = `${prefix}${projectName} - Assistant details${titleSuffix}`
         }
 
@@ -118,10 +111,6 @@ class URLsAssistants {
             }
             case URL_ASSISTANT_DETAILS_CUSTOMIZATIONS: {
                 assistantDetails(' - Customizations')
-                break
-            }
-            case URL_ASSISTANT_DETAILS_WORKFLOW: {
-                assistantDetails(' - Workflow')
                 break
             }
             case URL_ASSISTANT_DETAILS_BACKLINKS_TASKS: {

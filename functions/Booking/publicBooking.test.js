@@ -2,17 +2,8 @@ jest.mock('firebase-admin', () => ({
     firestore: jest.fn(),
 }))
 
-jest.mock('firebase-admin/firestore', () => ({
-    FieldValue: { serverTimestamp: jest.fn(() => 'now') },
-}))
-
 jest.mock('../GoogleCalendar/assistantCalendarTools', () => ({
     createCalendarEventForAssistantRequest: jest.fn(),
-}))
-
-jest.mock('./bookingEmails', () => ({
-    sendBookingNotificationToHost: jest.fn().mockResolvedValue(undefined),
-    sendBookingConfirmationToVisitor: jest.fn().mockResolvedValue(undefined),
 }))
 
 jest.mock('./bookingSettings', () => ({
@@ -20,22 +11,16 @@ jest.mock('./bookingSettings', () => ({
     getConnectedCalendarCount: jest.fn(),
     getHostingUrl: jest.fn(() => 'https://my.alldone.app'),
     getPublicBookingPage: jest.fn(),
-    // Null = no same-day restriction, which is what the pre-existing cases assume.
-    resolveEarliestBookableStart: jest.fn(() => null),
-    resolvePublicDuration: jest.fn(
-        (settings, durationMinutes) => parseInt(durationMinutes, 10) || settings.durationMinutes || 30
-    ),
+    resolvePublicDuration: jest.fn((settings, durationMinutes) => parseInt(durationMinutes, 10) || settings.durationMinutes || 30),
     slugify: value =>
         String(value || '')
             .trim()
             .toLowerCase(),
 }))
 
-const moment = require('moment-timezone')
 const admin = require('firebase-admin')
 const { createCalendarEventForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
 const bookingSettings = require('./bookingSettings')
-const bookingEmails = require('./bookingEmails')
 const { bookingApiHandler } = require('./publicBooking')
 
 function createResponse() {
@@ -86,7 +71,6 @@ describe('public booking API', () => {
         jest.clearAllMocks()
         bookingSettings.getPublicBookingPage.mockResolvedValue(page)
         bookingSettings.getConnectedCalendarCount.mockResolvedValue(1)
-        bookingSettings.resolveEarliestBookableStart.mockReturnValue(null)
         bookingSettings.findPublicBookingSlots.mockResolvedValue({
             success: true,
             timeZone: 'Europe/Berlin',
@@ -97,8 +81,6 @@ describe('public booking API', () => {
             provider: 'google',
             calendarId: 'primary',
             event: { eventId: 'event-1', htmlLink: 'https://calendar.example/event-1' },
-            joinUrl: 'https://meet.google.com/abc-defg-hij',
-            joinProvider: 'google_meet',
         })
         admin.firestore.mockReturnValue({
             collection: jest.fn(() => ({
@@ -109,6 +91,7 @@ describe('public booking API', () => {
             })),
             FieldValue: { serverTimestamp: jest.fn(() => 'now') },
         })
+        admin.firestore.FieldValue = { serverTimestamp: jest.fn(() => 'now') }
     })
 
     test('returns not found for unknown booking pages', async () => {
@@ -119,21 +102,6 @@ describe('public booking API', () => {
 
         expect(res.statusCode).toBe(404)
         expect(res.body.success).toBe(false)
-    })
-
-    test('never exposes the host minimum free hours to visitors (AT-2278)', async () => {
-        // The rule is enforced server-side in findPublicBookingSlots. Publishing it would
-        // tell any stranger how loaded the host's calendar is.
-        bookingSettings.getPublicBookingPage.mockResolvedValue({
-            ...page,
-            settings: { ...page.settings, minFreeHoursPerDay: 4 },
-        })
-        const res = createResponse()
-
-        await bookingApiHandler(createRequest({ path: '/page/karsten-wysk' }), res)
-
-        expect(res.statusCode).toBe(200)
-        expect(res.body.page.settings).not.toHaveProperty('minFreeHoursPerDay')
     })
 
     test('rejects booking without visitor name and email', async () => {
@@ -157,11 +125,7 @@ describe('public booking API', () => {
     })
 
     test('returns conflict when selected slot is no longer available', async () => {
-        bookingSettings.findPublicBookingSlots.mockResolvedValue({
-            success: true,
-            timeZone: 'Europe/Berlin',
-            options: [],
-        })
+        bookingSettings.findPublicBookingSlots.mockResolvedValue({ success: true, timeZone: 'Europe/Berlin', options: [] })
         const res = createResponse()
 
         await bookingApiHandler(
@@ -183,61 +147,6 @@ describe('public booking API', () => {
         expect(createCalendarEventForAssistantRequest).not.toHaveBeenCalled()
     })
 
-    describe('same-day booking rule (AT-2271)', () => {
-        const sameDayBody = {
-            slug: 'karsten-wysk',
-            start: '2026-06-18T09:00:00+02:00',
-            end: '2026-06-18T09:30:00+02:00',
-            visitorName: 'Visitor',
-            visitorEmail: 'visitor@example.com',
-        }
-
-        test('exposes the flag on the public page, defaulting to false', async () => {
-            const res = createResponse()
-
-            await bookingApiHandler(createRequest({ path: '/page/karsten-wysk' }), res)
-
-            // The page doc predates the setting, so the visitor page must read false.
-            expect(res.body.page.settings.allowSameDayBooking).toBe(false)
-        })
-
-        test('exposes the flag as true once the host opts in', async () => {
-            bookingSettings.getPublicBookingPage.mockResolvedValue({
-                ...page,
-                settings: { ...page.settings, allowSameDayBooking: true },
-            })
-            const res = createResponse()
-
-            await bookingApiHandler(createRequest({ path: '/page/karsten-wysk' }), res)
-
-            expect(res.body.page.settings.allowSameDayBooking).toBe(true)
-        })
-
-        test('refuses a same-day booking posted straight to the API', async () => {
-            // The visitor page never offers today, but nothing stops a direct POST.
-            bookingSettings.resolveEarliestBookableStart.mockReturnValue(moment.parseZone('2026-06-19T00:00:00+02:00'))
-            const res = createResponse()
-
-            await bookingApiHandler(createRequest({ method: 'POST', path: '/book', body: sameDayBody }), res)
-
-            expect(res.statusCode).toBe(409)
-            expect(res.body.error).toMatch(/same-day/i)
-            // Rejected before the availability re-check, so no calendar work happens at all.
-            expect(bookingSettings.findPublicBookingSlots).not.toHaveBeenCalled()
-            expect(createCalendarEventForAssistantRequest).not.toHaveBeenCalled()
-        })
-
-        test('allows a booking at or after the earliest bookable instant', async () => {
-            bookingSettings.resolveEarliestBookableStart.mockReturnValue(moment.parseZone('2026-06-18T00:00:00+02:00'))
-            const res = createResponse()
-
-            await bookingApiHandler(createRequest({ method: 'POST', path: '/book', body: sameDayBody }), res)
-
-            expect(res.statusCode).toBe(200)
-            expect(createCalendarEventForAssistantRequest).toHaveBeenCalled()
-        })
-    })
-
     test('creates a calendar event and booking record on success', async () => {
         const set = jest.fn().mockResolvedValue(undefined)
         admin.firestore.mockReturnValue({
@@ -245,6 +154,7 @@ describe('public booking API', () => {
                 doc: jest.fn(() => ({ id: 'booking-1', set })),
             })),
         })
+        admin.firestore.FieldValue = { serverTimestamp: jest.fn(() => 'now') }
         const res = createResponse()
 
         await bookingApiHandler(
@@ -275,93 +185,7 @@ describe('public booking API', () => {
                 attendees: [{ email: 'visitor@example.com', displayName: 'Visitor' }],
             })
         )
-        expect(set).toHaveBeenCalledWith(
-            expect.objectContaining({ status: 'confirmed', visitorEmail: 'visitor@example.com' })
-        )
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'confirmed', visitorEmail: 'visitor@example.com' }))
         expect(res.body.bookingId).toBe('booking-1')
-    })
-
-    // AT-2198: a booked meeting must carry a join link everywhere the booking is
-    // represented — the stored record, both emails, and the API response.
-    describe('meeting join link', () => {
-        function bookRequest() {
-            return createRequest({
-                method: 'POST',
-                path: '/book',
-                body: {
-                    slug: 'karsten-wysk',
-                    start: '2026-06-18T09:00:00+02:00',
-                    end: '2026-06-18T09:30:00+02:00',
-                    timeZone: 'Europe/Berlin',
-                    visitorName: 'Visitor',
-                    visitorEmail: 'visitor@example.com',
-                },
-            })
-        }
-
-        test('persists the join link on the booking record', async () => {
-            const set = jest.fn().mockResolvedValue(undefined)
-            admin.firestore.mockReturnValue({
-                collection: jest.fn(() => ({ doc: jest.fn(() => ({ id: 'booking-1', set })) })),
-            })
-
-            await bookingApiHandler(bookRequest(), createResponse())
-
-            expect(set).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    event: expect.objectContaining({
-                        joinUrl: 'https://meet.google.com/abc-defg-hij',
-                        joinProvider: 'google_meet',
-                    }),
-                })
-            )
-        })
-
-        test('sends the join link to both the host and the visitor', async () => {
-            const res = createResponse()
-
-            await bookingApiHandler(bookRequest(), res)
-
-            expect(bookingEmails.sendBookingNotificationToHost).toHaveBeenCalledWith(
-                expect.objectContaining({ joinUrl: 'https://meet.google.com/abc-defg-hij' })
-            )
-            expect(bookingEmails.sendBookingConfirmationToVisitor).toHaveBeenCalledWith(
-                expect.objectContaining({ joinUrl: 'https://meet.google.com/abc-defg-hij' })
-            )
-            expect(res.body.joinUrl).toBe('https://meet.google.com/abc-defg-hij')
-        })
-
-        // Conferencing is best-effort: a provider that refuses to create a
-        // conference must not turn into a failed booking.
-        test('still confirms the booking when no join link could be created', async () => {
-            createCalendarEventForAssistantRequest.mockResolvedValue({
-                success: true,
-                provider: 'google',
-                calendarId: 'primary',
-                event: { eventId: 'event-1', htmlLink: 'https://calendar.example/event-1' },
-                joinUrl: '',
-                joinProvider: '',
-            })
-            const set = jest.fn().mockResolvedValue(undefined)
-            admin.firestore.mockReturnValue({
-                collection: jest.fn(() => ({ doc: jest.fn(() => ({ id: 'booking-1', set })) })),
-            })
-            const res = createResponse()
-
-            await bookingApiHandler(bookRequest(), res)
-
-            expect(res.statusCode).toBe(200)
-            expect(res.body.success).toBe(true)
-            expect(res.body.joinUrl).toBe('')
-            expect(set).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    status: 'confirmed',
-                    event: expect.objectContaining({ joinUrl: '' }),
-                })
-            )
-            expect(bookingEmails.sendBookingConfirmationToVisitor).toHaveBeenCalledWith(
-                expect.objectContaining({ joinUrl: '' })
-            )
-        })
     })
 })

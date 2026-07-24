@@ -21,14 +21,9 @@ import ColoredCircleSmall from '../../SidebarMenu/ProjectFolding/ProjectItem/Col
 import { DV_TAB_PROJECT_PROPERTIES, DV_TAB_ROOT_GOALS } from '../../../utils/TabNavigationConstants'
 import { allGoals } from '../../AllSections/allSectionHelper'
 import withSafePopover from '../../UIComponents/HOC/withSafePopover'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
-import useWindowSize from '../../../utils/useWindowSize'
-import { getSafeAreaViewportHeightCap } from '../../../utils/modalSafeArea'
-import { pinPopoverInsideWindow } from '../../../utils/popoverPositioning'
-import { HEADER_POPOVER_HEIGHT_FRACTION, HEADER_POPOVER_OFFSET } from '../../styles/modals'
+import Popover from 'react-tiny-popover'
 
-function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isOpen, textColor }) {
-    const [, windowHeight] = useWindowSize()
+function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isOpen }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const project = useSelector(state => state.loggedUserProjects[projectIndex])
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
@@ -112,10 +107,7 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
                     containerStyle={{ marginHorizontal: 4 }}
                     projectId={project.id}
                 />
-                <Text
-                    style={[styles.subtitle1, localStyles.projectName, textColor && { color: textColor }]}
-                    numberOfLines={1}
-                >
+                <Text style={[styles.subtitle1, localStyles.projectName]} numberOfLines={1}>
                     {project.name}
                 </Text>
                 {badge}
@@ -124,7 +116,7 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
     )
 
     return isOpen ? (
-        <AppPopover
+        <Popover
             isOpen={true}
             position={mobile ? ['bottom'] : ['bottom', 'top', 'right', 'left']}
             align="start"
@@ -134,14 +126,7 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
             containerStyle={
                 mobile
                     ? {
-                          // AT-2339: `80vh` is a fraction of the RAW viewport,
-                          // so it never accounted for the status bar or the
-                          // home indicator below the pinned top offset.
-                          maxHeight: getSafeAreaViewportHeightCap(
-                              windowHeight,
-                              HEADER_POPOVER_HEIGHT_FRACTION,
-                              HEADER_POPOVER_OFFSET.top
-                          ),
+                          maxHeight: '80vh',
                           overflow: 'auto',
                           position: 'fixed',
                           zIndex: 9999,
@@ -150,12 +135,10 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
             }
             contentLocation={
                 mobile
-                    ? // Force position for small screens. `disableReposition`
-                      // means the library never nudges this into the safe
-                      // rectangle, so the offset has to absorb the insets
-                      // itself — otherwise a 59px Dynamic Island leaves the
-                      // hard-coded `top: 60` one pixel of clearance.
-                      args => pinPopoverInsideWindow(args, HEADER_POPOVER_OFFSET)
+                    ? args => {
+                          // Force position for small screens
+                          return { top: 60, left: 16 }
+                      }
                     : args => popoverToSafePosition(args, mobile)
             }
             content={
@@ -175,7 +158,7 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
             }
         >
             {trigger}
-        </AppPopover>
+        </Popover>
     ) : (
         trigger
     )

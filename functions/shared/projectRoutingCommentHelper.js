@@ -5,7 +5,6 @@ const admin = require('firebase-admin')
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { getDefaultAssistantData, GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
 const { STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
-const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 function normalizeText(value) {
     return typeof value === 'string' ? value.trim() : ''
@@ -44,8 +43,8 @@ function buildProjectRoutingReasonComment({
         typeof secondPassUsed !== 'boolean'
             ? ''
             : secondPassUsed
-              ? ` Second pass: used${normalizedSecondPassModel ? ` (${normalizedSecondPassModel})` : ''}.`
-              : ' Second pass: not used.'
+            ? ` Second pass: used${normalizedSecondPassModel ? ` (${normalizedSecondPassModel})` : ''}.`
+            : ' Second pass: not used.'
 
     if (!matched) {
         const reason = normalizeReasonClause(reasoning, 'it did not match any of your other projects')
@@ -54,16 +53,6 @@ function buildProjectRoutingReasonComment({
 
     const reason = normalizeReasonClause(reasoning, 'it matched the routing criteria')
     return `I chose ${name} because ${reason}.${confidenceText}${secondPassText}`
-}
-
-function buildGoalRoutingReasonComment({ goalName = '', reasoning = '', confidence = null }) {
-    const name = normalizeText(goalName) || 'this goal'
-    const normalizedConfidence = normalizeConfidence(confidence)
-    const confidenceText =
-        normalizedConfidence === null ? '' : ` Confidence: ${Math.round(normalizedConfidence * 100)}%.`
-    const reason = normalizeReasonClause(reasoning, 'it directly advances this goal')
-
-    return `I automatically assigned this task to the goal “${name}” because ${reason}.${confidenceText}`
 }
 
 async function getDefaultAssistantIdForProject(userData = {}, projectId = '') {
@@ -184,10 +173,6 @@ async function addProjectRoutingReasonComment({
     routingData = {},
     commentId = '',
     sourceDataField = '',
-    destinationType = 'project',
-    destinationId = '',
-    destinationName = '',
-    sourceDataRoutingKey = '',
 }) {
     if (!projectId || !taskId) return null
 
@@ -199,22 +184,15 @@ async function addProjectRoutingReasonComment({
     const chatRef = db.doc(`chatObjects/${projectId}/chats/${taskId}`)
     const resolvedCommentId = commentId || getId()
     const now = Date.now()
-    const isGoalRouting = destinationType === 'goal'
-    const resolvedProjectName = isGoalRouting ? '' : projectName || (await fetchProjectName(projectId))
-    const commentText = isGoalRouting
-        ? buildGoalRoutingReasonComment({
-              goalName: destinationName,
-              reasoning,
-              confidence,
-          })
-        : buildProjectRoutingReasonComment({
-              projectName: resolvedProjectName,
-              reasoning,
-              confidence,
-              matched,
-              secondPassUsed,
-              secondPassModel,
-          })
+    const resolvedProjectName = projectName || (await fetchProjectName(projectId))
+    const commentText = buildProjectRoutingReasonComment({
+        projectName: resolvedProjectName,
+        reasoning,
+        confidence,
+        matched,
+        secondPassUsed,
+        secondPassModel,
+    })
 
     let taskData = task
     if (!taskData) {
@@ -229,20 +207,6 @@ async function addProjectRoutingReasonComment({
         taskData = taskDoc.data() || {}
     }
 
-    const routingDataKey = sourceDataRoutingKey || (isGoalRouting ? 'goalRouting' : 'projectRouting')
-    const existingSourceData = sourceDataField ? taskData?.[sourceDataField] : null
-    const existingRoutingData = existingSourceData?.[routingDataKey]
-    if (existingRoutingData?.commentId === resolvedCommentId) {
-        return {
-            commentId: resolvedCommentId,
-            commentText,
-            assistantProjectId: assistantContext.assistantProjectId,
-            assistantId: assistantContext.assistantId,
-            alreadyExists: true,
-            ...(isGoalRouting ? { goalRoutingData: existingRoutingData } : { projectRoutingData: existingRoutingData }),
-        }
-    }
-
     const currentTaskCommentsAmount = Number(taskData?.commentsData?.amount) || 0
     const commentsData = {
         lastCommentOwnerId: assistantContext.assistantId,
@@ -250,39 +214,31 @@ async function addProjectRoutingReasonComment({
         lastCommentType: STAYWARD_COMMENT,
         amount: currentTaskCommentsAmount + 1,
     }
-    const routingMetadata = {
+    const projectRoutingData = {
         source,
         routingKey,
+        chosenProjectId: projectId,
+        projectName: resolvedProjectName,
         reasoning: normalizeText(reasoning),
         confidence: normalizeConfidence(confidence),
         commentId: resolvedCommentId,
         commentedAt: now,
-        ...(isGoalRouting
-            ? {
-                  chosenGoalId: normalizeText(destinationId),
-                  goalName: normalizeText(destinationName),
-                  projectId,
-              }
-            : {
-                  chosenProjectId: projectId,
-                  projectName: resolvedProjectName,
-              }),
         ...routingData,
     }
     const taskUpdate = { commentsData }
     if (sourceDataField) {
-        taskUpdate[`${sourceDataField}.${routingDataKey}`] = routingMetadata
+        taskUpdate[`${sourceDataField}.projectRouting`] = projectRoutingData
     }
 
     await db.doc(`chatComments/${projectId}/tasks/${taskId}/comments/${resolvedCommentId}`).set({
         creatorId: assistantContext.assistantId,
         commentText,
         commentType: STAYWARD_COMMENT,
-        lastChangeDate: Timestamp.now(),
+        lastChangeDate: admin.firestore.Timestamp.now(),
         created: now,
         originalContent: commentText,
         fromAssistant: true,
-        [isGoalRouting ? 'goalRoutingData' : 'projectRoutingData']: routingMetadata,
+        projectRoutingData,
     })
 
     await taskRef.update(taskUpdate)
@@ -298,7 +254,7 @@ async function addProjectRoutingReasonComment({
         },
         lastEditionDate: now,
         lastEditorId: assistantContext.assistantId,
-        members: FieldValue.arrayUnion(assistantContext.assistantId),
+        members: admin.firestore.FieldValue.arrayUnion(assistantContext.assistantId),
     }
 
     if (chatDoc.exists) {
@@ -318,7 +274,7 @@ async function addProjectRoutingReasonComment({
             creatorId: taskData?.creatorId || taskData?.userId || '',
             created: taskData?.created || now,
             isPublicFor: taskData?.isPublicFor || [0, taskData?.userId].filter(Boolean),
-            usersFollowing: FieldValue.arrayUnion(...followingIds),
+            usersFollowing: admin.firestore.FieldValue.arrayUnion(...followingIds),
             hasStar: taskData?.hasStar || '#ffffff',
             stickyData: { days: 0, stickyEndDate: 0 },
             ...chatData,
@@ -330,52 +286,12 @@ async function addProjectRoutingReasonComment({
         commentText,
         assistantProjectId: assistantContext.assistantProjectId,
         assistantId: assistantContext.assistantId,
-        ...(isGoalRouting ? { goalRoutingData: routingMetadata } : { projectRoutingData: routingMetadata }),
+        projectRoutingData,
     }
 }
 
-async function addGoalRoutingReasonComment({
-    userData = {},
-    projectId,
-    taskId,
-    task = null,
-    goalId,
-    goalName = '',
-    reasoning = '',
-    confidence = null,
-    source = 'task_goal_routing',
-    routingKey = '',
-    routingData = {},
-    commentId = '',
-}) {
-    if (!goalId) return null
-
-    return await addProjectRoutingReasonComment({
-        userData: {
-            ...userData,
-            defaultProjectId: userData.defaultProjectId || projectId,
-        },
-        projectId,
-        taskId,
-        task,
-        reasoning,
-        confidence,
-        source,
-        routingKey,
-        routingData,
-        commentId,
-        sourceDataField: 'goalSuggestion',
-        sourceDataRoutingKey: 'goalRouting',
-        destinationType: 'goal',
-        destinationId: goalId,
-        destinationName: goalName,
-    })
-}
-
 module.exports = {
-    addGoalRoutingReasonComment,
     addProjectRoutingReasonComment,
-    buildGoalRoutingReasonComment,
     buildProjectRoutingReasonComment,
     getDefaultAssistantIdForProject,
 }

@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-jest.mock('react-quill-new', () => ({
+jest.mock('react-quill', () => ({
     Quill: {
         import: path => {
             if (path === 'core/module') return class MockModule {}
@@ -21,7 +21,7 @@ jest.mock('react-quill-new', () => ({
                     }
                 }
             }
-            if (path === 'parchment') return { StyleAttributor: class {}, Scope: { INLINE: 'INLINE' } }
+            if (path === 'parchment') return { Attributor: { Style: class {} }, Scope: { INLINE: 'INLINE' } }
             return class {}
         },
         events: {},
@@ -31,7 +31,6 @@ jest.mock('react-quill-new', () => ({
 
 jest.mock('../../textInputHelper', () => ({
     checkIfInputHaveKarma: jest.fn(),
-    getEditorMetaFromEditor: jest.fn(() => ({})),
     getPlaceholderData: jest.fn(),
     NEW_ATTACHMENT: '1',
     processPastedText: jest.fn(),

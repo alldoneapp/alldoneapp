@@ -4,6 +4,7 @@ const {
     buildOpenAiPromptCacheKey,
     getCachedEnvFunctions,
     getOpenAiCacheUsage,
+    getOpenAIClient,
     logOpenAiCacheUsage,
     normalizeModelKey,
 } = require('../Assistant/assistantHelper')
@@ -11,54 +12,42 @@ const {
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_GMAIL_LABELING_MODEL,
     DEFAULT_GMAIL_CONSISTENCY_MODEL,
+    GMAIL_LABELING_PROMPT_MODE_DEFAULT,
     slugifyLabelKey,
 } = require('./gmailLabelingConfig')
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
-const { getOpenRouterAssistantModelId } = require('../Assistant/assistantModelRouting')
-const { resolveClassifierClient } = require('../Assistant/classifierModelClient')
-const {
-    GMAIL_ACTIONABILITY_GUIDANCE,
-    GMAIL_CLASSIFIER_SYSTEM_PROMPT,
-    buildClassifierLabelDefinitions,
-    buildClassifierMessage,
-    buildDecisionGuidance,
-    buildFirstPassClassifierPromptSections,
-    buildNoMatchResponseGuidance,
-    buildUserDescriptionSection,
-} = require('./gmailClassifierPrompt')
+
+const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
+    'You classify Gmail messages into exactly one configured label or no match, and classify the follow-up as actionable or informational. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must always be either "actionable" or "informational". Actionable means the email creates a concrete action, responsibility, decision, deadline, or follow-up for the user. Informational means it does not create a concrete action for the user, including useful updates, notifications, newsletters, automated messages, and irrelevant email. Confidence must be a number between 0 and 1 and must describe confidence in the returned decision.'
 
 // Second-pass auditor used when the first-pass reasoning looks inconsistent with the
 // label it chose (e.g. it chose the "Bechtle" label but the reasoning describes "JTL").
 const GMAIL_CONSISTENCY_SYSTEM_PROMPT =
-    'You audit a Gmail classification for self-consistency. You are given the email, configured labels, and a first-pass decision including its label and follow-up type. Decide the FINAL best label and whether the email is actionable or informational. ' +
-    GMAIL_ACTIONABILITY_GUIDANCE +
-    ' If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
+    'You audit a Gmail classification for self-consistency. You are given the email, configured labels, and a first-pass decision including its label and follow-up type. Decide the FINAL best label and whether the email is actionable or informational. If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
-    'MODEL_GPT6_SOL',
+    'MODEL_GPT5_6_SOL',
     'MODEL_GPT5_6_TERRA',
-    'MODEL_GPT6_LUNA',
+    'MODEL_GPT5_6_LUNA',
     'MODEL_GPT5_1',
     'MODEL_GPT5_2',
     'MODEL_GPT5_5',
     'MODEL_GPT5_4_MINI',
     'MODEL_GPT5_4_NANO',
 ])
+const MAX_CLASSIFIER_LABEL_DESCRIPTION_CHARS = 900
+const MAX_CLASSIFIER_BODY_CHARS = 12000
+
 function mapAssistantModelToOpenAIModel(modelKey) {
     const normalizedKey = normalizeModelKey(modelKey || DEFAULT_GMAIL_LABELING_MODEL)
-    // Models served through OpenRouter resolve from the shared routing table. Checked first so the
-    // `gpt-5.2` fallback at the bottom — which exists for genuinely unknown keys — can never quietly
-    // swallow a known non-OpenAI model and bill the user for a model they did not select.
-    const openRouterModelId = getOpenRouterAssistantModelId(normalizedKey)
-    if (openRouterModelId) return openRouterModelId
     if (normalizedKey === 'MODEL_GPT3_5') return 'gpt-3.5-turbo'
     if (normalizedKey === 'MODEL_GPT4') return 'gpt-4'
     if (normalizedKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (normalizedKey === 'MODEL_GPT5_1') return 'gpt-5.1'
     if (normalizedKey === 'MODEL_GPT5_5') return 'gpt-5.5'
-    if (normalizedKey === 'MODEL_GPT6_SOL') return 'gpt-6.1-sol'
+    if (normalizedKey === 'MODEL_GPT5_6_SOL') return 'gpt-5.6-sol'
     if (normalizedKey === 'MODEL_GPT5_6_TERRA') return 'gpt-5.6-terra'
-    if (normalizedKey === 'MODEL_GPT6_LUNA') return 'gpt-6-luna'
+    if (normalizedKey === 'MODEL_GPT5_6_LUNA') return 'gpt-5.6-luna'
     if (normalizedKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'
     if (normalizedKey === 'MODEL_GPT5_4_NANO') return 'gpt-5.4-nano'
     return 'gpt-5.2'
@@ -170,6 +159,18 @@ function normalizeConfidenceThreshold(value) {
     return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), 1) : DEFAULT_CONFIDENCE_THRESHOLD
 }
 
+function buildDecisionGuidance(confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD) {
+    return [
+        `Configured confidence threshold: ${confidenceThreshold}.`,
+        `Return matched:true only when the best configured label's confidence is at least ${confidenceThreshold}.`,
+        'For matched:true, confidence means confidence that the returned labelKey is the correct configured label.',
+        'For matched:false, confidence means confidence that no configured label matches.',
+        'Use high no-match confidence only when the reasoning explains why the email is unrelated to every configured label.',
+        'Do not return matched:false when your reasoning identifies a configured label, project name, client name, sender domain, or project-specific link. In that case return matched:true with that labelKey.',
+        'Explicit project names, client names, sender domains, subjects, body references, deadlines, action requests, deliverables, or links to project-specific Alldone URLs are strong match evidence.',
+    ].join('\n')
+}
+
 function noMatchReasoningSuggestsPositiveMatch(reasoning = '') {
     const text = String(reasoning || '').toLowerCase()
     if (!text.trim()) return false
@@ -234,15 +235,9 @@ async function runClassifierCompletion(
         cacheKey,
         cacheRoute,
         enableCacheWrite = true,
-        isOpenRouter = false,
     }
 ) {
-    // Prompt caching here is an OpenAI extension end to end: `prompt_cache_key`,
-    // `prompt_cache_options` and the per-part `prompt_cache_breakpoint` are all OpenAI-proprietary.
-    // OpenRouter's Chat Completions surface does not define them, so they are omitted rather than
-    // sent and hoped-for — an ignored field is luck, a 400 on an unknown field is an outage.
-    // DeepSeek caches automatically on its own side, so nothing is actually lost.
-    const supportsExplicitCaching = !isOpenRouter && /^gpt-(?:5\.6|6)(?:[.-])/.test(selectedModel)
+    const supportsExplicitCaching = selectedModel.startsWith('gpt-5.6')
     const usesExplicitCacheBreakpoint = supportsExplicitCaching && enableCacheWrite
     const requestParams = {
         model: selectedModel,
@@ -262,10 +257,7 @@ async function runClassifierCompletion(
             },
             { role: 'user', content: dynamicUserContent },
         ],
-    }
-
-    if (!isOpenRouter) {
-        requestParams.prompt_cache_key = cacheKey
+        prompt_cache_key: cacheKey,
     }
 
     if (supportsExplicitCaching) {
@@ -305,6 +297,45 @@ function buildConsistencyOptionsFromLabels(labelDefinitions = []) {
         .map(label => ({ key: label.key, names: [label.gmailLabelName || '', label.key] }))
 }
 
+function buildClassifierLabelDefinitions(labelDefinitions = []) {
+    return (Array.isArray(labelDefinitions) ? labelDefinitions : [])
+        .filter(label => label && label.key)
+        .map(label => ({
+            key: label.key,
+            gmailLabelName: label.gmailLabelName || '',
+            description: String(label.description || '').slice(0, MAX_CLASSIFIER_LABEL_DESCRIPTION_CHARS),
+        }))
+        .sort((a, b) => String(a.key).localeCompare(String(b.key)))
+}
+
+function compactClassifierBody(body = '') {
+    const normalizedBody = String(body || '')
+    if (normalizedBody.length <= MAX_CLASSIFIER_BODY_CHARS) return normalizedBody
+    return `${normalizedBody.slice(0, MAX_CLASSIFIER_BODY_CHARS)}\n[Older email content truncated]`
+}
+
+function buildClassifierMessage(message = {}) {
+    return {
+        direction: message.direction || '',
+        from: message.from || '',
+        to: message.to || '',
+        cc: message.cc || '',
+        bcc: message.bcc || '',
+        date: message.date || '',
+        subject: message.subject || '',
+        snippet: message.snippet || '',
+        bodyText: compactClassifierBody(message.bodyText || message.body || ''),
+        inReplyTo: message.inReplyTo || '',
+        references: message.references || '',
+        gmailLabelIds: Array.isArray(message.gmailLabelIds)
+            ? message.gmailLabelIds
+            : Array.isArray(message.labelIds)
+            ? message.labelIds
+            : [],
+        listUnsubscribe: message.listUnsubscribe || '',
+    }
+}
+
 function buildAuditLabelDefinitions(labelDefinitions, firstResult, crossReference, consistencyTrigger) {
     if (consistencyTrigger?.type === 'zero_confidence') return labelDefinitions
 
@@ -321,18 +352,24 @@ function buildAuditLabelDefinitions(labelDefinitions, firstResult, crossReferenc
     return candidates.length > 0 ? candidates : labelDefinitions
 }
 
+// Optional "who is the user" section — helps judge relevance (cold outreach vs a real
+// business opportunity, which newsletters the user plausibly subscribed to).
+function buildUserDescriptionSection(config = {}) {
+    const description = typeof config.userDescription === 'string' ? config.userDescription.trim() : ''
+    return description ? `About the user (context for judging relevance):\n${description}\n\n` : ''
+}
+
+function buildNoMatchResponseGuidance(config = {}) {
+    if (config.promptMode === GMAIL_LABELING_PROMPT_MODE_DEFAULT) {
+        return 'If the email is work-relevant but no specific non-default project label matches clearly, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label.'
+    }
+
+    return 'Use matched:false only when the prompt and configured labels do not provide a suitable label.'
+}
+
 async function verifyClassificationConsistency(
     openai,
-    {
-        selectedModel,
-        isReasoningModel,
-        isOpenRouter = false,
-        config,
-        message,
-        labelDefinitions,
-        confidenceThreshold,
-        firstResult,
-    }
+    { selectedModel, isReasoningModel, config, message, labelDefinitions, confidenceThreshold, firstResult }
 ) {
     const staticUserContent =
         `Prompt:\n${config.prompt}\n\n` +
@@ -375,7 +412,6 @@ async function verifyClassificationConsistency(
         // Audits are sparse and their user-specific prefixes are almost never reused.
         // Explicit mode without a breakpoint avoids a charged one-off cache write.
         enableCacheWrite: false,
-        isOpenRouter,
     })
 
     const verified = coerceClassifierResult({ ...parsed }, labelDefinitions, confidenceThreshold)
@@ -385,7 +421,6 @@ async function verifyClassificationConsistency(
 async function classifyGmailMessage({ config, message }) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
-    const openRouterKey = envFunctions?.OPENROUTER_API_KEY
     const labelDefinitions = Array.isArray(config?.labelDefinitions) ? config.labelDefinitions : []
     const confidenceThreshold = normalizeConfidenceThreshold(config?.confidenceThreshold)
 
@@ -399,14 +434,7 @@ async function classifyGmailMessage({ config, message }) {
         }
     }
 
-    // The two passes resolve their client independently, because they can legitimately sit on
-    // different providers: the first pass is user-selectable (and may be DeepSeek via OpenRouter)
-    // while the auditor defaults to a strong OpenAI model. A single shared client would send one of
-    // them to the wrong upstream.
-    const { client: openai, isOpenRouter } = resolveClassifierClient(config?.model, {
-        openAiKey,
-        openRouterKey,
-    })
+    const openai = getOpenAIClient(openAiKey)
     const selectedModel = mapAssistantModelToOpenAIModel(config?.model)
     const isReasoningModel = isGpt5ReasoningModel(config?.model)
 
@@ -417,20 +445,20 @@ async function classifyGmailMessage({ config, message }) {
     const auditModelKey = config?.consistencyModel || DEFAULT_GMAIL_CONSISTENCY_MODEL
     const auditModel = mapAssistantModelToOpenAIModel(auditModelKey)
     const auditIsReasoningModel = isGpt5ReasoningModel(auditModelKey)
-    const { client: auditOpenai, isOpenRouter: auditIsOpenRouter } = resolveClassifierClient(auditModelKey, {
-        openAiKey,
-        openRouterKey,
-    })
-    const {
-        classifierLabelDefinitions,
-        classifierMessage,
-        staticUserContent: firstStaticUserContent,
-        dynamicUserContent: firstDynamicUserContent,
-    } = buildFirstPassClassifierPromptSections({
-        config: { ...config, labelDefinitions },
-        message,
-        confidenceThreshold,
-    })
+    const classifierLabelDefinitions = buildClassifierLabelDefinitions(labelDefinitions)
+    const classifierMessage = buildClassifierMessage(message)
+
+    const firstStaticUserContent =
+        `Prompt:\n${config.prompt}\n\n` +
+        buildUserDescriptionSection(config) +
+        `Configured labels:\n${JSON.stringify(classifierLabelDefinitions)}\n\n` +
+        `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}`
+    const firstDynamicUserContent =
+        `Email:\n${JSON.stringify(classifierMessage)}\n\n` +
+        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","confidence":0.92,"reasoning":"..."}. ' +
+        `${buildNoMatchResponseGuidance(
+            config
+        )} If returning no match, use JSON like {"matched":false,"labelKey":null,"followUpType":"informational","confidence":0.2,"reasoning":"..."}.`
 
     const { parsed, usage: firstUsage } = await runClassifierCompletion(openai, {
         selectedModel,
@@ -446,7 +474,6 @@ async function classifyGmailMessage({ config, message }) {
             firstStaticUserContent
         ),
         cacheRoute: 'gmail-classifier-first-pass',
-        isOpenRouter,
     })
 
     const firstResult = coerceClassifierResult({ ...parsed, usage: firstUsage }, labelDefinitions, confidenceThreshold)
@@ -499,14 +526,9 @@ async function classifyGmailMessage({ config, message }) {
             crossReference,
             consistencyTrigger
         )
-        const {
-            verified,
-            usage: verifyUsage,
-            parsed: verifyParsed,
-        } = await verifyClassificationConsistency(auditOpenai, {
+        const { verified, usage: verifyUsage, parsed: verifyParsed } = await verifyClassificationConsistency(openai, {
             selectedModel: auditModel,
             isReasoningModel: auditIsReasoningModel,
-            isOpenRouter: auditIsOpenRouter,
             config,
             message: classifierMessage,
             labelDefinitions: auditLabelDefinitions,

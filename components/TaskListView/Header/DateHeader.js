@@ -1,5 +1,4 @@
 import React from 'react'
-import { useProjectSectionAccent } from '../TaskHierarchy'
 import { StyleSheet, Text, View } from 'react-native'
 import moment from 'moment'
 
@@ -9,16 +8,15 @@ import { translate } from '../../../i18n/TranslationService'
 import { generateDateHeaderText } from '../../../utils/EstimationHelper'
 
 export default function DateHeader({
-    dateText = 'Today',
-    isToday = false,
-    isOverdue = false,
+    dateText,
+    isToday,
+    isOverdue,
     estimation,
     date,
     firstDateSection,
-    amountTasks = 0,
+    amountTasks,
     projectId,
 }) {
-    const accentColor = useProjectSectionAccent()
     const weekdays = [
         translate('Monday'),
         translate('Tuesday'),
@@ -50,13 +48,7 @@ export default function DateHeader({
                 isOverdue && localStyles.overdueContainer,
             ]}
         >
-            <View
-                style={[
-                    localStyles.innerContainer,
-                    isOverdue && localStyles.overdueIContainer,
-                    accentColor && { backgroundColor: accentColor },
-                ]}
-            >
+            <View style={[localStyles.innerContainer, isOverdue && localStyles.overdueIContainer]}>
                 <View style={{ flex: 1, justifyContent: 'flex-start', flexDirection: 'row' }}>
                     <Text style={[styles.overline, isOverdue ? localStyles.overdueText : localStyles.dateText]}>
                         {text}
@@ -65,6 +57,13 @@ export default function DateHeader({
             </View>
         </View>
     )
+}
+
+DateHeader.defaultProps = {
+    dateText: 'Today',
+    isToday: false,
+    isOverdue: false,
+    amountTasks: 0,
 }
 
 const localStyles = StyleSheet.create({
@@ -96,7 +95,7 @@ const localStyles = StyleSheet.create({
     dateText: {
         color: colors.Text02,
         zIndex: 1,
-        paddingLeft: 8,
+        paddingLeft: 12,
     },
     overdueText: {
         ...styles.body3,

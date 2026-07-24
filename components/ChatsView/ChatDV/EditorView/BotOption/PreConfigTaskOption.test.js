@@ -42,7 +42,7 @@ describe('PreConfigTaskOption prompt execution', () => {
             variables: [],
             type: TASK_TYPE_PROMPT,
             aiModel: 'MODEL_TEST',
-            aiReasoningEffort: 'high',
+            aiTemperature: 'TEMPERATURE_NORMAL',
             aiSystemMessage: 'Be concise',
             taskMetadata: { source: 'predefined' },
             sendWhatsApp: true,
@@ -66,7 +66,7 @@ describe('PreConfigTaskOption prompt execution', () => {
             'Prepare launch',
             {
                 model: 'MODEL_TEST',
-                reasoningEffort: 'high',
+                temperature: 'TEMPERATURE_NORMAL',
                 systemMessage: 'Be concise',
             },
             { taskMetadata: { source: 'predefined', sendWhatsApp: true } }
@@ -105,7 +105,7 @@ describe('PreConfigTaskOption prompt execution', () => {
             'Notify system',
             'assistant-1',
             'Send update',
-            { model: undefined, reasoningEffort: undefined, systemMessage: undefined },
+            { model: undefined, temperature: undefined, systemMessage: undefined },
             { isWebhookTask: true, webhookUrl: 'https://example.com/hook', sendWhatsApp: false }
         )
     })

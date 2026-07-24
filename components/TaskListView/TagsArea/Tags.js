@@ -1,4 +1,3 @@
-import v4 from 'uuid/v4'
 import React, { useState, useEffect } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
 import moment from 'moment'
@@ -36,10 +35,7 @@ import { checkIfInMyDay, checkIfInMyDayOpenTab } from '../../MyDayView/MyDayTask
 import AlertTag from '../../Tags/AlertTag'
 import TranscribeTag from '../../Tags/TranscribeTag'
 import MergeStatusTag from '../../Tags/MergeStatusTag'
-import SuggestedGoalTag from '../../Tags/SuggestedGoalTag'
-import { hasPendingGoalSuggestion } from '../../../utils/TaskGoalSuggestion'
 import { getWorkflowStepReviewerPhotoURL } from './workflowReviewerPhoto'
-import { postponeTaskWithMotion } from '../TaskItem/TaskPresentation/taskPostponeMotion'
 
 export default function Tags({
     task,
@@ -133,8 +129,13 @@ export default function Tags({
         setTaskDescription(projectId, task.id, description, task, task.description)
     }
 
-    const { ownerEstimation, observerEstimation, currentReviewerEstimation, currentStepId, reviwerPhotoURL } =
-        getEstimationsTagsInfo()
+    const {
+        ownerEstimation,
+        observerEstimation,
+        currentReviewerEstimation,
+        currentStepId,
+        reviwerPhotoURL,
+    } = getEstimationsTagsInfo()
 
     const isOverdue = moment(task.dueDate).isBefore(moment(), 'day')
     const isToday = moment(task.dueDateByObserversIds[currentUserId]).isSame(moment(), 'day')
@@ -158,52 +159,27 @@ export default function Tags({
         const inReview = task.userIds.length > 0 && !task.inDone
         const moveObservedDateAndDueDate = inMyDayOpenTab && isObservedTask && inReview
 
-        return postponeTaskWithMotion(
-            {
-                projectId,
-                task,
-                targetDate: dateTimestamp,
-                updatesDueDate: moveObservedDateAndDueDate || !isObservedTabActive,
-                updatesObservedDate: moveObservedDateAndDueDate || isObservedTabActive,
-            },
-            async () => {
-                if (moveObservedDateAndDueDate) {
-                    await setTaskDueDate(projectId, task.id, dateTimestamp, task, false, null)
-                    await setTaskDueDate(projectId, task.id, dateTimestamp, task, true, null)
-                } else {
-                    return setTaskDueDate(projectId, task.id, dateTimestamp, task, isObservedTabActive, null)
-                }
-            }
-        )
+        if (moveObservedDateAndDueDate) {
+            await setTaskDueDate(projectId, task.id, dateTimestamp, task, false, null)
+            await setTaskDueDate(projectId, task.id, dateTimestamp, task, true, null)
+        } else {
+            setTaskDueDate(projectId, task.id, dateTimestamp, task, isObservedTabActive, null)
+        }
     }
 
     const updateTaskDateToBacklog = async (taskToUpdate, isObservedTabActive) => {
         const inReview = task.userIds.length > 0 && !task.inDone
         const moveObservedDateAndDueDate = inMyDayOpenTab && isObservedTask && inReview
 
-        return postponeTaskWithMotion(
-            {
-                projectId,
-                task,
-                targetDate: Number.MAX_SAFE_INTEGER,
-                updatesDueDate: moveObservedDateAndDueDate || !isObservedTabActive,
-                updatesObservedDate: moveObservedDateAndDueDate || isObservedTabActive,
-            },
-            async () => {
-                if (moveObservedDateAndDueDate) {
-                    await setTaskToBacklog(projectId, task.id, task, false, null)
-                    await setTaskToBacklog(projectId, task.id, task, true, null)
-                } else {
-                    return setTaskToBacklog(projectId, task.id, task, isObservedTabActive, null)
-                }
-            }
-        )
+        if (moveObservedDateAndDueDate) {
+            await setTaskToBacklog(projectId, task.id, task, false, null)
+            await setTaskToBacklog(projectId, task.id, task, true, null)
+        } else {
+            setTaskToBacklog(projectId, task.id, task, isObservedTabActive, null)
+        }
     }
 
     useEffect(() => {
-        // Own key: without one, a second row showing the same task replaced this registration and
-        // either unmount then closed the other's listener.
-        const watcherKey = v4()
         Backend.watchBacklinksCount(
             projectId,
             {
@@ -219,12 +195,11 @@ export default function Tags({
                     setBacklinksNotesCount(parentsAmount)
                     setBacklinkNoteObject(aloneParentObject)
                 }
-            },
-            watcherKey
+            }
         )
 
         return () => {
-            Backend.unwatchBacklinksCount(task.id, watcherKey)
+            Backend.unwatchBacklinksCount(task.id)
         }
     }, [task.id])
 
@@ -247,7 +222,6 @@ export default function Tags({
                     userGettingKarmaId={task.userId}
                     disabled={isActiveOrganizeMode || isLocked}
                     objectName={task.name}
-                    object={task}
                     assistantId={task.assistantId}
                     compact={true}
                 />
@@ -467,14 +441,6 @@ export default function Tags({
                     projectId={projectId}
                     goalId={task.parentGoalId}
                     disabled={isActiveOrganizeMode}
-                />
-            )}
-            {!isSubtask && hasPendingGoalSuggestion(task) && (
-                <SuggestedGoalTag
-                    containerStyle={[tagAlignment, tagsStyle]}
-                    projectId={projectId}
-                    task={task}
-                    disabled={isActiveOrganizeMode || isLocked || !accessGranted || !loggedUserCanUpdateObject}
                 />
             )}
             {!needSummarize && inMyDayAndNotSubtask && (

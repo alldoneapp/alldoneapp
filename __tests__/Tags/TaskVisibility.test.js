@@ -1,12 +1,9 @@
 import React from 'react'
-import { Platform } from 'react-native'
 import TaskVisibility from '../../components/Tags/TaskVisibility'
 
-// MyPlatform.osType only consults window.navigator off the mobile path,
-// and the react-native preset reports ios.
-Platform.OS = 'web'
-
 import renderer from 'react-test-renderer'
+
+jest.mock('firebase', () => ({ firestore: {} }));
 
 describe('Task Visibility Tag component', () => {
     describe('Task Visibility snapshot test', () => {

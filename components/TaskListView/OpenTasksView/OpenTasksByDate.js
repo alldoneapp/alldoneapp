@@ -11,9 +11,6 @@ import SelectedProjectEmptyInbox from './SelectedProjectEmptyInbox'
 import TasksSections from './TasksSections'
 import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
-import { AssistantScheduleRows } from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
-import WorkflowTaskCreator from './OpenTaskViewForAssistants/WorkflowTaskCreator'
-import TaskListSkeleton from '../TaskListSkeleton'
 
 export default function OpenTasksByDate({
     projectId,
@@ -24,11 +21,6 @@ export default function OpenTasksByDate({
     sortedLoggedUserProjectIds,
     pressedShowMoreMainSection,
     setPressedShowMoreMainSection,
-    assistantProfileMode = false,
-    assistantScheduleOccurrences = [],
-    assistantScheduleContext = null,
-    assistantTaskCreatorContext = null,
-    projectCelebrationRunId = 0,
 }) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -60,10 +52,6 @@ export default function OpenTasksByDate({
     const initialLoadingEndObservedTasks = useSelector(state =>
         state.initialLoadingEndObservedTasks[instanceKey] ? state.initialLoadingEndObservedTasks[instanceKey] : false
     )
-    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
-    const initialTaskDataIsLoading = !initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks
-    const showFallbackSkeleton =
-        !singleTaskIsLoading && initialTaskDataIsLoading && amountTasks === 0 && emptyGoalsAmount === 0
 
     const openTasksShowMoreData = useSelector(state => state.openTasksShowMoreData[projectId])
     const hasFutureTasks = openTasksShowMoreData?.hasFutureTasks
@@ -111,28 +99,6 @@ export default function OpenTasksByDate({
         }
     }, [])
 
-    const showProjectEmptyInbox =
-        !assistantProfileMode &&
-        amountTasks === 0 &&
-        assistantScheduleOccurrences.length === 0 &&
-        emptyGoalsAmount === 0 &&
-        initialLoadingEndOpenTasks &&
-        initialLoadingEndObservedTasks
-
-    /**
-     * AT-2492 — the small pop the Anna "tasks done" picture makes when this project was cleared
-     * today.
-     *
-     * The DECISION is not made here any more. It moved up to `OpenTasksByProject` together with the
-     * celebration itself: the sweep it drives is on the project line, which in All Projects is
-     * dropped from the board at the very moment the list empties, so nothing below that component
-     * is still mounted to decide anything. All that is left here is forwarding, and one gate that
-     * genuinely belongs to a date section: `dateIsToday`. This component renders once per date
-     * section, so with Later expanded several of them can be empty at once, and without this a
-     * single clearing would pop three pictures.
-     */
-    const emptyInboxPopRunId = dateIsToday ? projectCelebrationRunId : 0
-
     const isActiveOrganizeMode =
         activeDragTaskModeInDate &&
         activeDragTaskModeInDate.projectId === projectId &&
@@ -141,7 +107,6 @@ export default function OpenTasksByDate({
     const isFirstDate = dateIndex === 0
 
     const showAllProjectsShowMoreButtonContainer = sortedLoggedUserProjectIds && isFirstDate && laterTasksExpanded
-    const showSingleTaskSkeleton = singleTaskIsLoading && dateFormated === lastFormatedDate
 
     return (
         <View>
@@ -150,38 +115,23 @@ export default function OpenTasksByDate({
                 dateIndex={dateIndex}
                 instanceKey={instanceKey}
                 accessGranted={accessGranted}
-                additionalTasksAmount={assistantScheduleOccurrences.length}
             />
-            {!!assistantTaskCreatorContext && <WorkflowTaskCreator {...assistantTaskCreatorContext} />}
 
-            {showFallbackSkeleton ? (
-                <TaskListSkeleton />
-            ) : (
-                <TasksSections
-                    projectId={projectId}
-                    dateIndex={dateIndex}
-                    projectIndex={projectIndex}
-                    instanceKey={instanceKey}
-                    isActiveOrganizeMode={isActiveOrganizeMode}
-                    pressedShowMoreMainSection={pressedShowMoreMainSection}
-                    setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                    assistantProfileMode={assistantProfileMode}
-                />
-            )}
-            {assistantScheduleOccurrences.length > 0 && (
-                <AssistantScheduleRows
-                    projectId={projectId}
-                    occurrences={assistantScheduleOccurrences}
-                    {...assistantScheduleContext}
-                />
-            )}
-            {showProjectEmptyInbox && (
-                <SelectedProjectEmptyInbox
-                    projectId={projectId}
-                    instanceKey={instanceKey}
-                    celebrationRunId={emptyInboxPopRunId}
-                />
-            )}
+            <TasksSections
+                projectId={projectId}
+                dateIndex={dateIndex}
+                projectIndex={projectIndex}
+                instanceKey={instanceKey}
+                isActiveOrganizeMode={isActiveOrganizeMode}
+                pressedShowMoreMainSection={pressedShowMoreMainSection}
+                setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+            />
+            {amountTasks === 0 &&
+                emptyGoalsAmount === 0 &&
+                initialLoadingEndOpenTasks &&
+                initialLoadingEndObservedTasks && (
+                    <SelectedProjectEmptyInbox projectId={projectId} instanceKey={instanceKey} />
+                )}
             {showTopShowMoreButton && (
                 <TopShowMoreButton
                     instanceKey={instanceKey}
@@ -216,7 +166,6 @@ export default function OpenTasksByDate({
                     )}
                 </View>
             )}
-            {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
         </View>
     )
 }

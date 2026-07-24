@@ -62,10 +62,6 @@ export default function Sections({ projectId, userHasAccessToProject }) {
                                 chatTitle={extendedName}
                                 assistantId={assistantId}
                                 objectType={'skills'}
-                                isFullscreen={isFullScreen}
-                                setFullscreen={value => {
-                                    dispatch(setDvIsFullScreen(value))
-                                }}
                             />
                         )
                     case DV_TAB_SKILL_NOTE:

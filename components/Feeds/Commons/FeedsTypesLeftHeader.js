@@ -4,13 +4,11 @@ import moment from 'moment'
 import { useSelector } from 'react-redux'
 
 import NewFeedDot from '../FollowSwitchableTag/NewFeedDot'
-import styles, { colors } from '../../styles/global'
-import Icon from '../../Icon'
+import styles from '../../styles/global'
 import { getTimeFormat } from '../../UIComponents/FloatModals/DateFormatPickerModal'
 import { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 
-// `icon` stands in for the avatar of a change nobody in the project made (the wiki's own updates).
-export default function FeedsTypesLeftHeader({ projectId, showNewFeedDot, feedActiveTab, feed, projectColor, icon }) {
+export default function FeedsTypesLeftHeader({ projectId, showNewFeedDot, feedActiveTab, feed, projectColor }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const { lastChangeDate, creatorId } = feed
 
@@ -20,11 +18,7 @@ export default function FeedsTypesLeftHeader({ projectId, showNewFeedDot, feedAc
         <View style={[localStyles.container]}>
             {showNewFeedDot && <NewFeedDot feedActiveTab={feedActiveTab} isMiddleScreen={isMiddleScreen} />}
             <Text style={localStyles.time}>{creationTime}</Text>
-            {icon ? (
-                <View style={localStyles.projectColorContainer}>
-                    <Icon name={icon} size={16} color={colors.Text03} />
-                </View>
-            ) : projectColor ? (
+            {projectColor ? (
                 <View style={localStyles.projectColorContainer}>
                     <View style={[localStyles.projectColorBall, { backgroundColor: projectColor }]} />
                 </View>

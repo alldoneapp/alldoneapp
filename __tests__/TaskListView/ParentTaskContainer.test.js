@@ -3,269 +3,84 @@
  */
 
 import React from 'react'
-import {
-    beginProjectPostpone,
-    clearProjectPostpone,
-    getProjectPostpone,
-    projectTaskPreview,
-} from '../../utils/backends/Tasks/optimisticProjectPostpone'
 import renderer from 'react-test-renderer'
-import { useDispatch, useSelector } from 'react-redux'
-
 import ParentTaskContainer from '../../components/TaskListView/ParentTaskContainer'
-import store from '../../redux/store'
-import { setFocusedTaskItem, unsetUploadedNewSubtask } from '../../redux/actions'
-import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
-import { objectIsLockedForUser } from '../../components/Guides/guidesHelper'
-import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../components/TaskListView/Utils/TasksHelper'
+import { SubTaskList } from '../../__mocks__/MockData/SubTaskList'
 
-jest.mock('react-redux', () => ({
-    useDispatch: jest.fn(),
-    useSelector: jest.fn(),
-    shallowEqual: jest.fn(),
-}))
-const mockOpenModal = jest.fn()
+jest.mock('react-native-web-webview')
 
-// Stand in for the real TaskItem, which is what fills the dismissible ref the
-// container reaches through when a task gets focused.
-jest.mock('../../components/TaskListView/TaskItem', () => {
-    const mockReact = require('react')
-    return props => {
-        if (props.dismissibleRef && !props.dismissibleRef.current) {
-            props.dismissibleRef.current = { openModal: mockOpenModal }
-        }
-        return mockReact.createElement('TaskItem', props)
-    }
-})
-jest.mock('../../components/TaskListView/TaskIndicator', () => 'TaskIndicator')
-jest.mock('../../components/TaskListView/Subtask/SubTasksView', () => 'SubTasksView')
-jest.mock('../../redux/store', () => ({
-    __esModule: true,
-    default: { getState: jest.fn() },
-}))
-jest.mock('../../redux/actions', () => ({
-    setFocusedTaskItem: jest.fn((id, isObserved) => ({ type: 'Set focused task item', id, isObserved })),
-    unsetUploadedNewSubtask: jest.fn(() => ({ type: 'Unset uploaded new subtask' })),
-}))
-jest.mock('../../components/SettingsView/ProjectsSettings/ProjectHelper', () => ({
-    __esModule: true,
-    default: { checkIfLoggedUserIsNormalUserInGuide: jest.fn(() => false) },
-}))
-jest.mock('../../components/Guides/guidesHelper', () => ({
-    objectIsLockedForUser: jest.fn(() => false),
-}))
-jest.mock('../../components/TaskListView/Utils/TasksHelper', () => ({
-    TASK_ASSIGNEE_ASSISTANT_TYPE: 'assistant',
-}))
-
-const projectId = '-LcRVRo6mhbC0oXCcZ2F'
-const userId = 'UUKU61Jc7ET8zE5ncN8F61HE19y1'
-const task = {
+const dummyProjectId = '-LcRVRo6mhbC0oXCcZ2F'
+const dummyTask = {
     id: '-LyzhG-xGsc74qaNARtB',
     done: false,
     name: 'Hallo ',
-    userId,
-    userIds: [userId],
+    userIds: ['UUKU61Jc7ET8zE5ncN8F61HE19y1'],
     hasStar: false,
     created: 1579410000000,
-    creatorId: userId,
+    creatorId: 'UUKU61Jc7ET8zE5ncN8F61HE19y1',
     dueDate: 1579410000000,
     completed: null,
     isPrivate: true,
     parentId: null,
-    recurrence: { type: 'never' },
-    subtaskIds: [],
+    recurrence: {type: 'never'},
+    subtaskIds: ['-LyzhG-xGsc74qsf54dds', '-LyzhG-dfgr563tbeh4g5tf', '-LyzhG-6534tfryj8567j'],
 }
-
-const subtaskList = [{ id: 'subtask-1' }, { id: 'subtask-2' }]
-const dispatch = jest.fn()
-
-const createState = ({ isFocusedTaskItem = false, isMiddleScreen = false, draggingParentTaskId = '' } = {}) => ({
-    draggingParentTaskId,
-    focusedTaskItem: { id: isFocusedTaskItem ? task.id : '' },
-    isMiddleScreen,
-    loggedUser: { uid: userId },
-})
-
-const createStoreState = ({ activeEditMode = false, uploadedNewSubtask = false } = {}) => ({
-    activeEditMode,
-    loggedUser: { unlockedKeysByGuides: {} },
-    uploadedNewSubtask,
-})
-
-// The container writes aria attributes on its host View through a ref, which
-// the test renderer only provides via createNodeMock.
-const renderContainer = (state = createState(), props = {}) => {
-    useSelector.mockImplementation(selector => selector(state))
-
-    let tree
-    renderer.act(() => {
-        tree = renderer.create(
-            <ParentTaskContainer projectId={projectId} task={task} subtaskList={subtaskList} {...props} />,
-            { createNodeMock: () => ({ setNativeProps: jest.fn() }) }
-        )
-    })
-    return tree
-}
-
 describe('ParentTaskContainer component', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        useDispatch.mockReturnValue(dispatch)
-        store.getState.mockReturnValue(createStoreState())
-        objectIsLockedForUser.mockReturnValue(false)
-        ProjectHelper.checkIfLoggedUserIsNormalUserInGuide.mockReturnValue(false)
-    })
-
-    describe('rendering', () => {
-        it('renders the task item with its subtasks', () => {
-            const tree = renderContainer()
-
-            const [taskItem] = tree.root.findAllByType('TaskItem')
-            expect(taskItem.props.task).toBe(task)
-            expect(taskItem.props.projectId).toBe(projectId)
-            expect(taskItem.props.subtaskList).toBe(subtaskList)
-        })
-
-        it('renders the subtask indicator when the task has subtasks', () => {
-            const tree = renderContainer()
-
-            expect(tree.root.findAllByType('TaskIndicator')).toHaveLength(1)
-        })
-
-        it('hides the subtask indicator on a middle screen', () => {
-            const tree = renderContainer(createState({ isMiddleScreen: true }))
-
-            expect(tree.root.findAllByType('TaskIndicator')).toHaveLength(0)
-        })
-
-        it('hides the subtask indicator for a task assigned to an assistant', () => {
-            const tree = renderContainer(createState(), {
-                task: { ...task, assigneeType: TASK_ASSIGNEE_ASSISTANT_TYPE },
-            })
-
-            expect(tree.root.findAllByType('TaskIndicator')).toHaveLength(0)
-        })
-
-        it('keeps the subtask list collapsed until it is toggled', () => {
-            const tree = renderContainer()
-
-            expect(tree.root.findAllByType('SubTasksView')).toHaveLength(0)
+    describe('ParentTaskContainer snapshot test', () => {
+        it('should render correctly', async () => {
+            const tree = renderer.create(<ParentTaskContainer task={dummyTask} projectId={dummyProjectId} />).toJSON()
+            expect(tree).toMatchSnapshot()
         })
     })
 
-    describe('toggleSubTaskList', () => {
-        it('expands and collapses the subtask list', () => {
-            const expandOrContractSubtasks = jest.fn()
-            const tree = renderContainer(createState(), { expandOrContractSubtasks })
+    describe('ParentTaskContainer functions snapshot test', () => {
+        it('check updateState function', () => {
+            const tree = renderer.create(<ParentTaskContainer task={dummyTask} projectId={dummyProjectId} />)
+            expect(tree.toJSON()).toMatchSnapshot()
 
-            const [taskItem] = tree.root.findAllByType('TaskItem')
-            renderer.act(() => {
-                taskItem.props.toggleSubTaskList()
-            })
-
-            expect(expandOrContractSubtasks).toHaveBeenCalledWith(task.id, true)
-            expect(tree.root.findAllByType('SubTasksView')).toHaveLength(1)
-
-            renderer.act(() => {
-                tree.root.findAllByType('TaskItem')[0].props.toggleSubTaskList()
-            })
-
-            expect(expandOrContractSubtasks).toHaveBeenLastCalledWith(task.id, false)
-            expect(tree.root.findAllByType('SubTasksView')).toHaveLength(0)
+            tree.getInstance().updateState()
+            expect(tree.toJSON()).toMatchSnapshot()
         })
 
-        it('expands the list and requests a new subtask', () => {
-            const tree = renderContainer()
+        xit('check toggleSubTaskList function', () => {
+            const tree = renderer.create(<ParentTaskContainer task={dummyTask} projectId={dummyProjectId} />)
+            expect(tree.toJSON()).toMatchSnapshot()
 
-            const [taskItem] = tree.root.findAllByType('TaskItem')
-            renderer.act(() => {
-                taskItem.props.createSubtask()
-            })
-
-            expect(tree.root.findAllByType('SubTasksView')).toHaveLength(1)
-            expect(tree.root.findAllByType('SubTasksView')[0].props.createSubtaskRequest).toBe(1)
+            tree.getInstance().toggleSubTaskList(true)
+            let state = tree.getInstance().state
+            expect(state.showSubTaskList).toBeTruthy()
         })
 
-        it('contracts the subtasks on unmount', () => {
-            const expandOrContractSubtasks = jest.fn()
-            const tree = renderContainer(createState(), { expandOrContractSubtasks })
-            expandOrContractSubtasks.mockClear()
+        xit('check toggleSubTaskIndicator function', () => {
+            const tree = renderer.create(<ParentTaskContainer task={dummyTask} projectId={dummyProjectId} />)
+            expect(tree.toJSON()).toMatchSnapshot()
 
-            renderer.act(() => {
-                tree.unmount()
-            })
+            tree.getInstance().state.showSubTaskList = true
 
-            expect(expandOrContractSubtasks).toHaveBeenCalledWith(task.id, false)
-        })
-    })
-
-    describe('uploaded new subtask', () => {
-        it('expands the subtask list and clears the flag', () => {
-            store.getState.mockReturnValue(createStoreState({ uploadedNewSubtask: true }))
-
-            const tree = renderContainer()
-
-            expect(tree.root.findAllByType('SubTasksView')).toHaveLength(1)
-            expect(dispatch).toHaveBeenCalledWith(unsetUploadedNewSubtask())
-        })
-    })
-
-    describe('focused task item', () => {
-        it('opens the edit modal', () => {
-            renderContainer(createState({ isFocusedTaskItem: true }))
-
-            expect(mockOpenModal).toHaveBeenCalled()
+            tree.getInstance().toggleSubTaskIndicator(true)
+            let state = tree.getInstance().state
+            expect(state.showSubTaskIndicator).toBeTruthy()
         })
 
-        it('leaves the modal closed while another edit is active', () => {
-            store.getState.mockReturnValue(createStoreState({ activeEditMode: true }))
+        it('check updateSubTaskList function', () => {
+            const tree = renderer.create(<ParentTaskContainer task={dummyTask} projectId={dummyProjectId} />)
+            expect(tree.toJSON()).toMatchSnapshot()
 
-            renderContainer(createState({ isFocusedTaskItem: true }))
-
-            expect(mockOpenModal).not.toHaveBeenCalled()
+            tree.getInstance().updateSubTaskList(SubTaskList)
+            expect(tree.toJSON()).toMatchSnapshot()
         })
 
-        it('only clears the flag for a locked task', () => {
-            objectIsLockedForUser.mockReturnValue(true)
+        it('check onToggleModal function', () => {
+            const tree = renderer.create(<ParentTaskContainer task={dummyTask} projectId={dummyProjectId} />)
+            expect(tree.toJSON()).toMatchSnapshot()
 
-            renderContainer(createState({ isFocusedTaskItem: true }))
-
-            expect(mockOpenModal).not.toHaveBeenCalled()
-            expect(dispatch).toHaveBeenCalledWith(setFocusedTaskItem('', false))
+            tree.getInstance().onToggleModal(true)
+            expect(tree.toJSON()).toMatchSnapshot()
         })
 
-        it('does nothing while the task is not focused', () => {
-            renderContainer()
-
-            expect(mockOpenModal).not.toHaveBeenCalled()
+        it('check the unmount action', () => {
+            const tree = renderer.create(<ParentTaskContainer task={dummyTask} projectId={dummyProjectId} />)
+            tree.unmount()
         })
-    })
-})
-
-describe('project postpone preview for mixed task families', () => {
-    it('hides only the parent row and preserves expanded unaffected children, then restores on rollback', () => {
-        useDispatch.mockReturnValue(dispatch)
-        store.getState.mockReturnValue(createStoreState())
-        const ownTask = { ...task, dueDate: 1, currentReviewerId: userId, inDone: false }
-        const tree = renderContainer(createState(), { task: ownTask })
-        renderer.act(() => tree.root.findByType('TaskItem').props.toggleSubTaskList())
-        renderer.act(() =>
-            beginProjectPostpone({
-                projectId,
-                userId,
-                requestId: 'mixed-family',
-                date: Number.MAX_SAFE_INTEGER,
-                mode: 'date',
-                tasks: [ownTask],
-            })
-        )
-        expect(projectTaskPreview(ownTask, getProjectPostpone(projectId, userId)).hidden).toBe(true)
-        expect(tree.root.findAllByType('TaskItem')).toHaveLength(0)
-        expect(tree.root.findAllByType('TaskIndicator')).toHaveLength(0)
-        expect(tree.root.findByType('SubTasksView').props.subtaskList).toBe(subtaskList)
-        renderer.act(() => clearProjectPostpone(projectId, userId, 'mixed-family'))
-        expect(tree.root.findByType('TaskItem').props.task).toBe(ownTask)
-        renderer.act(() => tree.unmount())
     })
 })

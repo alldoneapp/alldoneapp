@@ -10,9 +10,6 @@ import URLsNotesTrigger from '../../URLSystem/Notes/URLsNotesTrigger'
 import URLsGoalsTrigger from '../../URLSystem/Goals/URLsGoalsTrigger'
 import URLsChatsTrigger from '../../URLSystem/Chats/URLsChatsTrigger'
 import URLsAssistantsTrigger from '../../URLSystem/Assistants/URLsAssistantsTrigger'
-import URLsArtifactsTrigger from '../../URLSystem/Artifacts/URLsArtifactsTrigger'
-import URLsArtifacts, { URL_ARTIFACT_DETAILS, URL_ARTIFACT_DETAILS_CHAT } from '../../URLSystem/Artifacts/URLsArtifacts'
-import * as URLsArtifactsConstants from '../../URLSystem/Artifacts/URLsArtifacts'
 import { URL_NOT_MATCH } from '../../URLSystem/URLSystemTrigger'
 import URLsTasks, {
     URL_ROOT,
@@ -50,6 +47,7 @@ import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../../utils/NavigationService'
 import {
     addProtocol,
+    checkDVLink,
     checkIfUrlBelongsToProjectInTheList,
     handleNestedLinks,
     isValidHost,
@@ -74,17 +72,12 @@ import URLsAssistants, {
 import { GLOBAL_PROJECT_ID, getAssistant, isGlobalAssistant } from '../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import { cleanTextMetaData, shrinkTagText } from '../../functions/Utils/parseTextUtils'
-import { getAssistantData } from '../../utils/backends/Assistants/assistantsFirestore'
-import { resolvePreConfigTaskLink } from '../../utils/preConfigTaskLink'
+import { getPreConfigTask, getAssistantData } from '../../utils/backends/Assistants/assistantsFirestore'
 import { setPreConfigTaskModalData, setIframeModalData } from '../../redux/actions'
 import { generateTaskFromPreConfig } from '../../utils/assistantHelper'
 import { getShortExternalUrlText } from './linkTextUtils'
-import { getPeopleDocumentDescriptor } from '../../utils/People/peopleDocumentPath'
 
 export const MIN_WIDTH_LINK_TAG = 100
-
-// An artifact is shared with its project when the whole project (0) may read it, like a note.
-const isSharedArtifact = data => Array.isArray(data?.isPublicFor) && data.isPublicFor.includes(0)
 
 export default function LinkTag({
     link = '',
@@ -145,7 +138,6 @@ export default function LinkTag({
         URLsChats,
         URLsSkills,
         URLsAssistants,
-        URLsArtifacts,
     ]
 
     const matchersList = [
@@ -157,7 +149,6 @@ export default function LinkTag({
         URLsChatsTrigger,
         URLsSkillsTrigger,
         URLsAssistantsTrigger,
-        URLsArtifactsTrigger,
     ]
 
     if (expandFullTitle) {
@@ -222,6 +213,7 @@ export default function LinkTag({
         const watchId = Backend.getId()
         setTitle(initialTitle || getDomain(link))
         let { objectType, path, projectId, objectId } = processUrl(getPathname(link))
+        let newPath = false
 
         // Handle preConfigTask separately - no Firestore watching needed
         if (objectType === 'preConfigTask') {
@@ -238,7 +230,6 @@ export default function LinkTag({
         if (objectType !== '' && path !== '') {
             Backend.watchObjectLTag(objectType, path, watchId, data => {
                 if (data != null) {
-                    const peopleDocumentIsMember = objectType === 'people' && path.startsWith('users/')
                     setTitleFromObject(objectType, data)
                     setSharedFromObject(objectType, data)
                     setObjectId(objectId)
@@ -251,15 +242,44 @@ export default function LinkTag({
                     objectType === 'people' || objectType === 'assistant'
                         ? setObjectData?.({ ...data, uid: objectId })
                         : setObjectData?.({ ...data, id: objectId })
-                    setIsPrivate?.(
-                        objectType === 'people' && !peopleDocumentIsMember
-                            ? ContactsHelper.isPrivateContact(data)
-                            : getIsPrivate(objectType, data, projectId)
-                    )
+                    setIsPrivate?.(getIsPrivate(objectType, data, projectId))
                 } else {
                     Backend.unwatchObjectLTag(objectType, path, watchId)
-                    setTitle(initialTitle || getDomain(link))
-                    setLinkUrl(addProtocol(link))
+
+                    if (objectType === 'people') {
+                        const parts = path.split('/')
+                        const userPath = `projectsContacts/${projectId}/contacts/${parts[parts.length - 1]}`
+                        newPath = userPath
+
+                        Backend.watchObjectLTag(objectType, userPath, watchId, data => {
+                            if (data) {
+                                const isPrivate =
+                                    ContactsHelper.findUserInProject(projectId, loggedUser.uid) ||
+                                    ContactsHelper.isPrivateContact(data)
+
+                                setTitleFromObject(objectType, data)
+                                setSharedFromObject(objectType, data)
+                                setObjectId(objectId)
+                                setType(objectType)
+                                setLinkUrl(getPathname(link))
+                                setInternalLink(true)
+                                setEnableLink(true)
+                                setTagIcon('user-aster')
+                                setObjectType?.(objectType)
+                                setObjectProjectId?.(projectId)
+                                setObjectData?.({ ...data, uid: objectId })
+                                setIsPrivate?.(isPrivate)
+                                setUserIsMember?.(false)
+                            } else {
+                                Backend.unwatchObjectLTag(objectType, userPath, watchId)
+                                setTitle(getDomain(link))
+                                setLinkUrl(addProtocol(link))
+                            }
+                        })
+                    } else {
+                        setTitle(getDomain(link))
+                        setLinkUrl(addProtocol(link))
+                    }
                 }
             })
         } else {
@@ -282,7 +302,7 @@ export default function LinkTag({
 
         return () => {
             if (objectType !== '' && path !== '') {
-                Backend.unwatchObjectLTag(objectType, path, watchId)
+                Backend.unwatchObjectLTag(objectType, newPath || path, watchId)
             }
         }
     }, [link, initialTitle])
@@ -378,12 +398,8 @@ export default function LinkTag({
                     setTagIcon('user')
                     objectType = 'people'
                     objectId = params.userId
+                    path = `users/${params.userId}`
                     projectId = params.projectId
-                    const projectUserIds = ProjectHelper.getProjectById(projectId)?.userIds
-                    const descriptor = getPeopleDocumentDescriptor(projectId, params.userId, projectUserIds)
-                    path = descriptor.path
-                    setUserIsMember?.(descriptor.isMember)
-                    if (!descriptor.isMember) setTagIcon('user-aster')
 
                     const user = TasksHelper.getUserInProject(projectId, params.userId)
                     if (user?.displayName != null && user?.displayName !== '') {
@@ -448,15 +464,6 @@ export default function LinkTag({
                     objectType = 'topic'
                     objectId = params.chatId
                     path = `chatObjects/${params.projectId}/chats/${params.chatId}`
-                    projectId = params.projectId
-                    break
-                }
-                // Process artifact
-                case matchedObj.key.indexOf(URL_ARTIFACT_DETAILS) >= 0: {
-                    setTagIcon('layers')
-                    objectType = 'artifact'
-                    objectId = params.artifactId
-                    path = `artifactItems/${params.projectId}/artifacts/${params.artifactId}`
                     projectId = params.projectId
                     break
                 }
@@ -545,12 +552,6 @@ export default function LinkTag({
                     objectType = 'topic'
                     break
                 }
-                // Process artifacts
-                case Object.values(URLsArtifactsConstants).includes(matchedObj.key): {
-                    setTagIcon('layers')
-                    objectType = 'artifact'
-                    break
-                }
             }
 
             // check for object note url
@@ -587,7 +588,6 @@ export default function LinkTag({
             URL_CONTACT_DETAILS_CHAT,
             URL_SKILL_DETAILS_CHAT,
             URL_ASSISTANT_DETAILS_CHAT,
-            URL_ARTIFACT_DETAILS_CHAT,
         ]
         if (notesTabs.includes(matchedObj.key)) {
             setTagIcon('comments-thread')
@@ -597,8 +597,7 @@ export default function LinkTag({
     const setSharedFromObject = (objectType, data) => {
         setShared(
             (objectType === 'task' && !TasksHelper.isPrivateTask(data)) ||
-                (objectType === 'note' && !isPrivateNote(data)) ||
-                (objectType === 'artifact' && isSharedArtifact(data))
+                (objectType === 'note' && !isPrivateNote(data))
         )
     }
 
@@ -641,10 +640,6 @@ export default function LinkTag({
                 setTitle(cleanedText)
                 break
             }
-            case 'artifact': {
-                setTitle(cleanTextMetaData(data.title || ''))
-                break
-            }
         }
     }
 
@@ -678,9 +673,6 @@ export default function LinkTag({
                 case 'topic': {
                     return FeedHelper.isPrivateTopic(data)
                 }
-                case 'artifact': {
-                    return !isSharedArtifact(data)
-                }
             }
         }
     }
@@ -689,76 +681,88 @@ export default function LinkTag({
         if (enableLink) {
             // Handle preConfigTask links based on task type
             if (type === 'preConfigTask') {
+                console.log('[LinkTag] Opening preConfigTask link:', link)
                 try {
-                    const resolved = await resolvePreConfigTaskLink(link, projectId)
-                    if (resolved) {
-                        const { task, assistantId, assistantProjectId, targetProjectId } = resolved
-                        const taskType = task.type || 'prompt'
+                    const urlObj = new URL(addProtocol(link))
+                    const assistantId = urlObj.searchParams.get('assistantId')
+                    const assistantProjectId = urlObj.searchParams.get('assistantProjectId') || projectId
+                    const pathParts = urlObj.pathname.split('/')
+                    const preConfigTasksIndex = pathParts.indexOf('preConfigTasks')
+                    const taskId = preConfigTasksIndex >= 0 ? pathParts[preConfigTasksIndex + 1] : null
 
-                        // Handle different task types
-                        if (taskType === 'prompt' || taskType === 'webhook') {
-                            // For prompt/webhook: show modal if has variables, otherwise execute directly
-                            if (task.variables && task.variables.length > 0) {
-                                // Get assistant from Redux, or fetch from backend
-                                let assistant = getAssistant(assistantId)
-                                if (!assistant) {
-                                    const fetchProjectId = isGlobalAssistant(assistantId)
-                                        ? GLOBAL_PROJECT_ID
-                                        : assistantProjectId
-                                    assistant = await getAssistantData(fetchProjectId, assistantId)
-                                }
-                                console.log('[LinkTag] Got assistant:', assistant)
+                    console.log('[LinkTag] Parsed preConfigTask URL:', { taskId, assistantId, assistantProjectId })
 
-                                if (assistant) {
-                                    console.log('[LinkTag] Opening PreConfigTaskGeneratorModal for task with variables')
-                                    dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
+                    if (taskId && assistantId) {
+                        const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
+                        console.log('[LinkTag] Got task:', task)
+
+                        if (task) {
+                            const taskType = task.type || 'prompt'
+                            const targetProjectId = projectId || assistantProjectId
+
+                            // Handle different task types
+                            if (taskType === 'prompt' || taskType === 'webhook') {
+                                // For prompt/webhook: show modal if has variables, otherwise execute directly
+                                if (task.variables && task.variables.length > 0) {
+                                    // Get assistant from Redux, or fetch from backend
+                                    let assistant = getAssistant(assistantId)
+                                    if (!assistant) {
+                                        const fetchProjectId = isGlobalAssistant(assistantId)
+                                            ? GLOBAL_PROJECT_ID
+                                            : assistantProjectId
+                                        assistant = await getAssistantData(fetchProjectId, assistantId)
+                                    }
+                                    console.log('[LinkTag] Got assistant:', assistant)
+
+                                    if (assistant) {
+                                        console.log(
+                                            '[LinkTag] Opening PreConfigTaskGeneratorModal for task with variables'
+                                        )
+                                        dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
+                                    }
+                                } else {
+                                    // No variables - execute directly
+                                    console.log('[LinkTag] Executing prompt task directly (no variables)')
+                                    const aiSettings =
+                                        task.aiModel || task.aiTemperature || task.aiSystemMessage
+                                            ? {
+                                                  model: task.aiModel,
+                                                  temperature: task.aiTemperature,
+                                                  systemMessage: task.aiSystemMessage,
+                                              }
+                                            : null
+                                    const taskMetadata = {
+                                        ...(task.taskMetadata || {}),
+                                        sendWhatsApp: !!task.sendWhatsApp,
+                                    }
+                                    generateTaskFromPreConfig(
+                                        targetProjectId,
+                                        task.name,
+                                        assistantId,
+                                        task.prompt,
+                                        aiSettings,
+                                        taskMetadata
+                                    )
                                 }
-                            } else {
-                                // No variables - execute directly
-                                console.log('[LinkTag] Executing prompt task directly (no variables)')
-                                const aiSettings =
-                                    task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
-                                        ? {
-                                              model: task.aiModel,
-                                              reasoningEffort: task.aiReasoningEffort,
-                                              systemMessage: task.aiSystemMessage,
-                                          }
-                                        : null
-                                const taskMetadata = {
-                                    ...(task.taskMetadata || {}),
-                                    sendWhatsApp: !!task.sendWhatsApp,
-                                    executionMode: task.executionMode,
-                                }
-                                generateTaskFromPreConfig(
-                                    targetProjectId,
-                                    task.name,
-                                    assistantId,
-                                    task.prompt,
-                                    aiSettings,
-                                    taskMetadata
-                                )
-                            }
-                        } else if (taskType === 'iframe') {
-                            // Open iframe modal
-                            console.log('[LinkTag] Opening iframe modal:', task.link)
-                            dispatch(setIframeModalData(true, task.link, task.name))
-                        } else if (taskType === 'link') {
-                            // Open external link in new tab
-                            console.log('[LinkTag] Opening external link:', task.link)
-                            window.open(task.link, '_blank')
-                        } else {
-                            // Unknown type - try to open as link
-                            console.log('[LinkTag] Unknown task type, opening as link:', taskType)
-                            if (task.link) {
+                            } else if (taskType === 'iframe') {
+                                // Open iframe modal
+                                console.log('[LinkTag] Opening iframe modal:', task.link)
+                                dispatch(setIframeModalData(true, task.link, task.name))
+                            } else if (taskType === 'link') {
+                                // Open external link in new tab
+                                console.log('[LinkTag] Opening external link:', task.link)
                                 window.open(task.link, '_blank')
+                            } else {
+                                // Unknown type - try to open as link
+                                console.log('[LinkTag] Unknown task type, opening as link:', taskType)
+                                if (task.link) {
+                                    window.open(task.link, '_blank')
+                                }
                             }
                         }
-                    } else {
-                        window.alert(translate('pre_config_task_link_unavailable'))
                     }
                 } catch (error) {
                     console.error('[LinkTag] Error opening pre-configured task:', error)
-                    window.alert(translate('pre_config_task_link_load_failed'))
                 }
                 return
             }
@@ -778,6 +782,7 @@ export default function LinkTag({
             } else {
                 if (internalLink && getModalParams(TAGS_EDIT_OBJECT_MODAL_ID) == null) {
                     if (!loggedUser.isAnonymous || shared) {
+                        checkDVLink(type)
                         URLTrigger.processUrl(NavigationService, linkUrl)
                     }
                 } else {
@@ -791,8 +796,8 @@ export default function LinkTag({
         const baseStyle = inTaskDV
             ? { height: 32, paddingRight: 12, paddingLeft: 7 }
             : useCommentTagStyle
-              ? { minHeight: 20, height: 20, paddingRight: 6 }
-              : { height: 24 }
+            ? { minHeight: 20, height: 20, paddingRight: 6 }
+            : { height: 24 }
         return { ...customStyle, ...baseStyle, ...overwriteStyle }
     }
 
@@ -883,8 +888,8 @@ export default function LinkTag({
                         {expandTitle
                             ? handleNestedLinks(title)
                             : tagIcon === 'link'
-                              ? getShortExternalUrlText(title || '', textLimit)
-                              : getShrinkTagText(title, textLimit)}
+                            ? getShortExternalUrlText(title || '', textLimit)
+                            : getShrinkTagText(title, textLimit)}
                     </Text>
                 </View>
             </a>
@@ -922,10 +927,11 @@ export const getPathname = url => {
         const obj = new URL(tmpURL)
         return obj.host === window.location.host || isValidHost(obj.host) ? obj.pathname : url
     } catch (e) {
-        // Not a parseable URL even with a protocol prepended (a template placeholder, a
-        // bare word, a blank). The caller gets the raw value back and renders it as an
-        // external link, which is the designed fallback — it is not worth a console entry,
-        // and Sentry's console instrumentation reported every one as an error.
+        if (url === '') {
+            console.log('Blank URL')
+        } else {
+            console.log(e)
+        }
     }
 
     return url

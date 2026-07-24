@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import ProjectStatusModal from '../../ProjectDetailedView/ProjectProperties/Status/ProjectStatusModal'
@@ -41,7 +41,7 @@ export default function ProjectStatusModalWrapper({ project, activeDragMode }) {
     }
 
     return (
-        <AppPopover
+        <Popover
             content={<ProjectStatusModal project={project} closeModal={closeModal} />}
             onClickOutside={closeModal}
             isOpen={isOpen}
@@ -57,6 +57,6 @@ export default function ProjectStatusModalWrapper({ project, activeDragMode }) {
                 onPress={openModal}
                 disabled={project.isTemplate || activeDragMode}
             />
-        </AppPopover>
+        </Popover>
     )
 }

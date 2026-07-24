@@ -11,21 +11,17 @@ import {
     getStatisticsFilterData,
 } from '../../StatisticsView/statisticsHelper'
 import HappinessStatsPanel from '../../ProjectHappiness/HappinessStatsPanel'
-import HappinessRatingModal from '../../ProjectHappiness/HappinessRatingModal'
-import Button from '../../UIControls/Button'
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import { updateUserStatisticsFilter } from '../../../utils/backends/Users/usersFirestore'
 import Backend from '../../../utils/BackendBridge'
 
 export default function UserHappiness() {
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const filterData = useSelector(state => state.loggedUser.statisticsData)
     const { timestamp1, timestamp2 } = getDateRangesTimestamps(filterData, true)
     const [happinessByProject, setHappinessByProject] = useState({})
-    const [showRatingModal, setShowRatingModal] = useState(false)
 
     const writeBrowserURL = () => {
         URLsSettings.push(URL_SETTINGS_HAPPINESS)
@@ -64,25 +60,9 @@ export default function UserHappiness() {
 
     return (
         <View style={localStyles.container}>
-            {/* On a phone the title and the two controls cannot share one
-                72px line: the "Rate happiness" button ended up squeezed
-                against the date filter. The header stacks and the controls
-                wrap instead. */}
-            <View style={[localStyles.header, mobile && localStyles.mobileHeader]} testID="happinessHeader">
+            <View style={localStyles.header}>
                 <Text style={[styles.title6, { color: colors.Text01 }]}>{translate('Happiness')}</Text>
-                <View
-                    style={[localStyles.actionsContainer, mobile && localStyles.mobileActionsContainer]}
-                    testID="happinessHeaderActions"
-                >
-                    {/* The on-demand twin of the "new day" popup (AT-2392): the
-                        same rating rows, for a day you pick. */}
-                    <Button
-                        title={translate('Rate happiness')}
-                        type="primary"
-                        icon="smile"
-                        onPress={() => setShowRatingModal(true)}
-                        buttonStyle={localStyles.rateButton}
-                    />
+                <View style={localStyles.filterContainer}>
                     <FilterBy
                         updateFilterData={updateHappinessFilter}
                         statisticsFilter={getFilterOption(filterData)}
@@ -93,8 +73,6 @@ export default function UserHappiness() {
             </View>
 
             <HappinessStatsPanel happinessByProject={happinessByProject} showTitle={false} />
-
-            {showRatingModal && <HappinessRatingModal onClose={() => setShowRatingModal(false)} />}
         </View>
     )
 }
@@ -104,28 +82,13 @@ const localStyles = StyleSheet.create({
         flex: 1,
     },
     header: {
-        minHeight: 72,
+        height: 72,
         paddingTop: 32,
         paddingBottom: 12,
         alignItems: 'center',
         flexDirection: 'row',
     },
-    mobileHeader: {
-        flexDirection: 'column',
-        alignItems: 'stretch',
-    },
-    actionsContainer: {
+    filterContainer: {
         marginLeft: 'auto',
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    mobileActionsContainer: {
-        marginLeft: 0,
-        marginTop: 12,
-        flexWrap: 'wrap',
-        rowGap: 8,
-    },
-    rateButton: {
-        marginRight: 8,
     },
 })

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { View } from 'react-native'
-import { useSelector } from 'react-redux'
-import AppPopover from '../../ModalShell/AppPopover'
+import { useSelector, useDispatch } from 'react-redux'
+import Popover from 'react-tiny-popover'
 
 import TaskEditionMode from './TaskEditionMode'
 import TaskPresentationMode from './TaskPresentationMode'
@@ -13,7 +13,7 @@ import TasksHelper, {
     OPEN_STEP,
     TASK_ASSIGNEE_ASSISTANT_TYPE,
 } from '../../../TaskListView/Utils/TasksHelper'
-
+import { stopLoadingData } from '../../../../redux/actions'
 import { WORKSTREAM_ID_PREFIX } from '../../../Workstreams/WorkstreamHelper'
 import { checkIsLimitedByXp } from '../../../Premium/PremiumHelper'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../utils/backends/Tasks/tasksFirestore'
@@ -36,6 +36,7 @@ export default function TaskArea({
     setTaskBeenEdited,
     objectUrl,
 }) {
+    const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [inEditionMode, setInEditionMode] = useState(startInEditionMode)
@@ -75,10 +76,11 @@ export default function TaskArea({
 
     const closeWorkflowModal = () => {
         setWorkflowModalIsOpen(false)
+        dispatch(stopLoadingData())
     }
 
     const handleWorkflowTaskWorkflowInteraction = (longPress, workflow) => {
-        if (task.workflowTask || task.userIds.length > 1 || longPress) {
+        if (task.userIds.length > 1 || longPress) {
             setWorkflowModalIsOpen(true)
         } else {
             const stepsEntries = Object.entries(workflow).sort(chronoEntriesOrder)
@@ -90,7 +92,6 @@ export default function TaskArea({
         const taskOwner = task?.userId?.startsWith(WORKSTREAM_ID_PREFIX)
             ? loggedUser
             : TasksHelper.getTaskOwner(task.userId, projectId)
-        if (taskOwner?.temperature && !task.workflowTask) return null
         if (taskOwner.recorderUserId) {
             return null
         } else {
@@ -118,11 +119,7 @@ export default function TaskArea({
             if (isSubtask) {
                 handleSubtaskWorkflowInteraction()
             } else if (done) {
-                const workflow = task.workflowTask ? getWorkflow(task) : null
-                const firstWorkflowStepId = workflow ? Object.entries(workflow).sort(chronoEntriesOrder)[0]?.[0] : null
-                if (!task.workflowTask || firstWorkflowStepId) {
-                    moveTasksFromDone(projectId, task, firstWorkflowStepId || OPEN_STEP)
-                }
+                moveTasksFromDone(projectId, task, OPEN_STEP)
             } else {
                 const workflow = getWorkflow(task)
                 if (!task.isPrivate && workflow && !task.genericData) {
@@ -174,7 +171,7 @@ export default function TaskArea({
                     objectUrl={objectUrl}
                 />
             ) : recurrenceDateBasisModalIsOpen ? (
-                <AppPopover
+                <Popover
                     content={
                         <RecurringTaskDateBasisModal
                             task={task}
@@ -192,7 +189,7 @@ export default function TaskArea({
                     disableReposition
                 >
                     {presentationMode}
-                </AppPopover>
+                </Popover>
             ) : (
                 presentationMode
             )}

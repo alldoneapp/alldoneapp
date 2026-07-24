@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import Hotkeys from 'react-hot-keys'
 import { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
@@ -41,7 +41,7 @@ export default function ContactInfoWrapper({ contact, projectId, setInfo, disabl
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <ChangeContactInfoModal
                     projectId={projectId}
@@ -79,6 +79,6 @@ export default function ContactInfoWrapper({ contact, projectId, setInfo, disabl
                     forceShowShortcut={true}
                 />
             </Hotkeys>
-        </AppPopover>
+        </Popover>
     )
 }

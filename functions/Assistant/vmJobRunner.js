@@ -5,14 +5,11 @@ const path = require('path')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { advanceVmThreadQueue, requeueVmJobToThreadFront } = require('./vmThreadQueue')
 const {
-    buildVmFailureHoldUpdate,
-    prepareVmFailureHoldForRun,
-    restoreVmFailureWorkflowHold,
-} = require('./vmWorkflowHold')
-const { buildVmChatPath, summarizeVmObjectiveForSession } = require('./vmHostTaskHelper')
-const { DEFAULT_APPROVAL_POLICY_LEVEL } = require('./vmAgentApprovalPolicy')
-const { buildAssistantCommentPointer } = require('./assistantCommentPointer')
-const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
+    ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
+    FEED_PUBLIC_FOR_ALL,
+    STAYWARD_COMMENT,
+    getBaseUrl,
+} = require('../Utils/HelperFunctionsCloud')
 const {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     cleanTextMetaData,
@@ -23,6 +20,7 @@ const {
     VM_JOB_GOLD_SOURCE,
     VM_JOB_GOLD_REFUND_SOURCE,
     VM_GOLD_PER_MINUTE,
+    VM_TOKENS_PER_GOLD,
     getAgentLabel,
     formatAgentRunSuffix,
     formatVmBillingStatus,
@@ -32,14 +30,6 @@ const {
     DEFAULT_CODEX_REASONING_EFFORT,
 } = require('./vmJob')
 const {
-    resolveModelRoute,
-    isOpenRouterRun,
-    resolveJobCredentialProvider,
-    OPENROUTER_LABEL,
-} = require('./vmModelRouting')
-const { resolveEffectiveTokensPerGold, calculateTokenGold, calculateSolUsageGold } = require('./vmTokenPricing')
-const { SOL_MODEL } = require('./solModelPricing')
-const {
     MAX_VM_RUNTIME_MS,
     VM_JOB_FINALIZATION_HEADROOM_MS,
     E2B_SANDBOX_TERMINATION_GRACE_MS,
@@ -47,8 +37,6 @@ const {
     E2B_SANDBOX_SLICE_MS,
     E2B_COMMAND_CONNECTION_TIMEOUT_MS,
 } = require('./vmJobConfig')
-const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
-const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
@@ -61,8 +49,6 @@ const VM_GOLD_EXHAUSTED_TEXT =
 const VM_JOB_CANCELLED_STATUS = 'cancelled'
 const VM_JOB_CANCEL_REQUESTED_STATUS = 'cancel_requested'
 const VM_JOB_CANCELLED_TEXT = 'Stopped.'
-const VM_JOB_INTERRUPTED_STATUS = 'interrupted'
-const VM_JOB_INTERRUPTED_FAILURE_REASON = 'execution_interrupted'
 const VM_RUNTIME_TIMEOUT_FAILURE_REASON = 'runtime_timeout'
 const VM_SUBSCRIPTION_AUTH_FAILURE_REASON = 'subscription_auth_refresh_required'
 const VM_AUTH_RECOVERY_WAIT_MS = 2 * 60 * 1000
@@ -87,7 +73,6 @@ const MAX_BOOTSTRAP_DIAGNOSTIC_CHARS = 16 * 1024
 const VM_AGENT_BRIDGE_DIR = '/home/user/.alldone/agent-bridge'
 const VM_AGENT_BRIDGE_INPUT_PATH = `${VM_AGENT_BRIDGE_DIR}/input.json`
 const VM_INTERACTIVE_EXECUTION_MODES = ['plan_first', 'interactive']
-const RUNTIME_MODEL_SAFE_PATTERN = /^[A-Za-z0-9._-]+$/
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
@@ -115,11 +100,6 @@ const KEEP_ALIVE_KILL_MS = 15 * 60 * 1000 // sandbox self-kill timeout (> grace 
 // minutes and refunding Gold on a doomed run.
 const RESUME_HEALTHCHECK_TIMEOUT_MS = 15 * 1000
 
-// Upper bound for the E2B control-plane read that reports a sandbox's real expiry. It runs
-// once per run on the startup path, and every failure (including this timeout) degrades to
-// the caller's assumed deadline rather than failing the run.
-const SANDBOX_INFO_REQUEST_TIMEOUT_MS = 10 * 1000
-
 // Per-task-type guidance prepended to the agent's objective.
 const TASK_TYPE_PROFILES = {
     research:
@@ -128,7 +108,8 @@ const TASK_TYPE_PROFILES = {
         'You are an autonomous agent that produces polished documents. Generate the requested deliverable (document, spreadsheet, or slides) and summarize what you produced.',
     prototype:
         'You are an autonomous coding agent. Write working code / a small prototype to satisfy the objective, then explain what you built and how to run it.',
-    data: 'You are an autonomous data agent. Acquire, clean and analyze the relevant data, then report the findings with any key figures.',
+    data:
+        'You are an autonomous data agent. Acquire, clean and analyze the relevant data, then report the findings with any key figures.',
 }
 
 // --- Git repository integration (optional, per-project; GitLab or GitHub) ---
@@ -203,10 +184,6 @@ function buildVmRuntimeTimeoutText(runtimeMs = MAX_VM_RUNTIME_MS) {
     )}. Start a new VM task to continue.`
 }
 
-function buildVmExecutionInterruptedText(agentLabel = 'the agent') {
-    return `⚠️ The VM lost its connection to ${agentLabel} before receiving a final result. Some requested actions may already have completed. The same VM session was preserved when possible; check the current state before continuing. No consequential action was repeated automatically.`
-}
-
 function isInteractiveVmExecutionEnabled(env = process.env, userId = '') {
     if (env.VM_INTERACTIVE_EXECUTION_ENABLED === 'true') return true
     const allowedUserIds = String(env.VM_INTERACTIVE_USER_IDS || '')
@@ -252,11 +229,6 @@ function buildVmBridgeTurnPrompt(basePrompt, pendingWebhook = {}, phase = 'execu
         }.`
     }
     if (answered.kind === 'tool_approval') {
-        if (response.action === 'approve_for_run') {
-            return `The user approved the previously requested operation, and approved this kind of operation for the rest of this run - equivalent operations will no longer pause.${
-                response.message ? ` Their note: ${response.message}` : ''
-            } Continue the task.`
-        }
         return response.action === 'approve'
             ? `The user approved the previously requested operation once.${
                   response.message ? ` Their note: ${response.message}` : ''
@@ -346,12 +318,7 @@ async function claimVmJobLease(pendingRef, correlationId) {
         const snapshot = await transaction.get(pendingRef)
         if (!snapshot.exists) return false
         const data = snapshot.data() || {}
-        if (
-            ['completed', 'failed', 'cancelled', VM_JOB_INTERRUPTED_STATUS, VM_JOB_CANCEL_REQUESTED_STATUS].includes(
-                data.status
-            )
-        )
-            return false
+        if (['completed', 'failed', 'cancelled', VM_JOB_CANCEL_REQUESTED_STATUS].includes(data.status)) return false
         if (data.status === 'initiated' && Number(data.leaseExpiresAt) > now && data.leaseOwner !== leaseOwner) {
             return false
         }
@@ -483,35 +450,9 @@ function isReusableVmSession(session) {
     return !!session && ['paused', 'idle_running'].includes(session.status || 'paused')
 }
 
-function shouldResumeVmSession(session) {
-    // Missing status is the legacy paused shape. `idle_running` is deliberately still live during
-    // the keep-alive window and must be connected directly; POST /resume returns 409 for it.
-    return !!session && (session.status || 'paused') === 'paused'
-}
-
-// E2B answers every operation on an expired, killed or paused sandbox with a 404 whose body
-// reads `Sandbox "<id>" doesn't exist or you don't have access to it`. A sandbox that has
-// vanished can never be kept alive or paused, so recognizing it lets the runner discard the
-// session deterministically instead of discovering it through the keep-alive/pause/kill
-// cascade (the `keep-alive failed — pausing instead` line every one of these incidents left).
-function isE2bSandboxMissing(error) {
-    const message = String(error?.message || error || '')
-    // Deliberately keyed on E2B's exact shape — the quoted sandbox id — rather than on a bare
-    // "not found". An agent-exit error carries the assistant's own narration, and a loose
-    // match there would discard a perfectly healthy warm session because the model happened to
-    // write the words.
-    if (/sandbox\s+["'`][^"'`]+["'`]\s+(?:doesn'?t|does not)\s+exist/i.test(message)) return true
-    return Number(error?.status || error?.statusCode) === 404 && /\bsandbox\b/i.test(message)
-}
-
 function isUnhealthyVmSessionError(error) {
     const message = String(error?.message || error || '')
-    return (
-        isE2bSandboxTimeout(error) ||
-        isE2bSandboxMissing(error) ||
-        error?.vmCommandTerminationUncertain === true ||
-        /exited with exit status -1\b/i.test(message)
-    )
+    return isE2bSandboxTimeout(error) || /exited with exit status -1\b/i.test(message)
 }
 
 // Probe a just-resumed sandbox's command channel with a trivial command under a short timeout.
@@ -576,15 +517,13 @@ function getVmParentObjectPath(projectId, objectType, objectId) {
             return `skills/${projectId}/items/${objectId}`
         case 'tasks':
             return `items/${projectId}/tasks/${objectId}`
-        case 'artifacts':
-            return `artifactItems/${projectId}/artifacts/${objectId}`
         default:
             return null
     }
 }
 
 function buildVmChatLink(projectId, objectType, objectId) {
-    return `${getBaseUrl()}${buildVmChatPath(projectId, objectType, objectId)}`
+    return `${getBaseUrl()}/projects/${projectId}/${objectType === 'topics' ? 'chats' : objectType}/${objectId}/chat`
 }
 
 function getNonEmptyString(...values) {
@@ -662,12 +601,7 @@ async function resolveVmCompletionFollowers(pendingWebhook) {
     )
 }
 
-async function applyVmCompletionMetadata(
-    pendingWebhook,
-    commentId,
-    text,
-    { activateTaskAssistant = false, failureHoldUserId = null, failureReason = null } = {}
-) {
+async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { activateTaskAssistant = false } = {}) {
     const { projectId, objectType = 'tasks', objectId, assistantId } = pendingWebhook
     if (!projectId || !objectId || !assistantId || !commentId) return { applied: false, reason: 'missing-context' }
 
@@ -694,26 +628,7 @@ async function applyVmCompletionMetadata(
             transaction.get(assistantRef),
         ])
 
-        // AT-2196: a run that failed or was cancelled hands the task to the requesting user, the
-        // same way an agent question does — reviewer only, workflow step untouched. Otherwise the
-        // task keeps its assistant reviewer and vanishes from every human's list with only an unread
-        // comment to show for it.
-        const failureHold =
-            failureHoldUserId && objectType === 'tasks' && parentRef && parentSnap && parentSnap.exists
-                ? buildVmFailureHoldUpdate(parentSnap.data() || {}, {
-                      correlationId: pendingWebhook.correlationId,
-                      reviewerId: failureHoldUserId,
-                      triggeredAt: now,
-                      failureReason,
-                      claimableReviewerIds: [pendingWebhook.taskReviewerAtRunStart, assistantId],
-                  })
-                : null
-
         if (commentSnap.exists && commentSnap.data()?.vmCompletionMetadataAppliedAt) {
-            // The comment metadata is one-shot, but the hold is not: a run that already posted a
-            // final answer and then threw during billing settles as failed, and that failure still
-            // has to reach a human.
-            if (failureHold) transaction.update(parentRef, failureHold)
             return { applied: false, reason: 'already-applied' }
         }
 
@@ -744,12 +659,10 @@ async function applyVmCompletionMetadata(
                 lastAssistantComment: now,
                 assistantId,
                 followerIds,
-                commentsData: {
-                    lastCommentOwnerId: assistantId,
-                    lastComment,
-                    lastCommentType: STAYWARD_COMMENT,
-                    amount: FieldValue.increment(1),
-                },
+                [`commentsData.lastCommentOwnerId`]: assistantId,
+                [`commentsData.lastComment`]: lastComment,
+                [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
+                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
             },
             { merge: true }
         )
@@ -758,20 +671,35 @@ async function applyVmCompletionMetadata(
             transaction.update(parentRef, {
                 [`commentsData.lastComment`]: parentLastComment,
                 [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                [`commentsData.amount`]: FieldValue.increment(1),
+                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
                 ...(activateTaskAssistant && objectType === 'tasks'
                     ? {
                           assistantId,
                           isAssistantEnabled: true,
                       }
                     : {}),
-                ...(failureHold || {}),
             })
         }
 
-        const pointer = buildAssistantCommentPointer(projectId, objectType, objectId, assistantId, now)
+        const updateDate = {
+            objectType,
+            objectId,
+            creatorId: assistantId,
+            creatorType: 'assistant',
+            date: now,
+        }
         followerIds.forEach(followerId => {
-            transaction.set(db.doc(`users/${followerId}`), pointer, { merge: true })
+            transaction.set(
+                db.doc(`users/${followerId}`),
+                {
+                    [`lastAssistantCommentData.${projectId}`]: updateDate,
+                    [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                        ...updateDate,
+                        projectId,
+                    },
+                },
+                { merge: true }
+            )
         })
 
         notificationUsers.forEach(userId => {
@@ -828,7 +756,6 @@ async function syncVmStatusCommentPreview(pendingWebhook, text) {
 
     const db = admin.firestore()
     const lastComment = cleanTextMetaData(removeFormatTagsFromText(text), true)
-    const followerIds = await resolveVmCompletionFollowers(pendingWebhook)
     const previewUpdates = [
         db.doc(`chatObjects/${projectId}/chats/${objectId}`).update({
             lastEditionDate: Date.now(),
@@ -847,14 +774,6 @@ async function syncVmStatusCommentPreview(pendingWebhook, text) {
             })
         )
     }
-
-    // Progress edits must also select this thread in the assistant line. Updating
-    // only chat/task commentsData leaves it subscribed to an older conversation.
-    // Keep this separate from completion metadata: no unread/push/email or counts.
-    const pointer = buildAssistantCommentPointer(projectId, objectType, objectId, assistantId)
-    followerIds.forEach(followerId => {
-        previewUpdates.push(db.doc(`users/${followerId}`).set(pointer, { merge: true }))
-    })
 
     await Promise.all(previewUpdates)
 }
@@ -1104,14 +1023,7 @@ function buildGcpEnv(gcpContext) {
 async function writeStatusComment(
     pendingWebhook,
     text,
-    {
-        isFinal = false,
-        output = null,
-        mediaContext = null,
-        assistantRunStatus = null,
-        interaction = null,
-        failureReason = null,
-    } = {}
+    { isFinal = false, output = null, mediaContext = null, assistantRunStatus = null, interaction = null } = {}
 ) {
     const { projectId, objectType = 'tasks', objectId, assistantId, statusCommentId } = pendingWebhook
     const db = admin.firestore()
@@ -1129,7 +1041,7 @@ async function writeStatusComment(
         commentText: text,
         originalContent: text,
         commentType: 'STAYWARD_COMMENT',
-        lastChangeDate: Timestamp.now(),
+        lastChangeDate: admin.firestore.Timestamp.now(),
         fromAssistant: true,
         isLoading: runIsActive,
         isThinking: false,
@@ -1142,7 +1054,6 @@ async function writeStatusComment(
         },
     }
     if (runStatus === VM_JOB_CANCELLED_STATUS) commentPayload.assistantRun.cancelledAt = Date.now()
-    if (runStatus === VM_JOB_INTERRUPTED_STATUS) commentPayload.assistantRun.interruptedAt = Date.now()
     if (runStatus === 'failed') commentPayload.assistantRun.failedAt = Date.now()
     if (runStatus === 'completed') commentPayload.assistantRun.completedAt = Date.now()
     if (Array.isArray(mediaContext) && mediaContext.length) {
@@ -1160,7 +1071,7 @@ async function writeStatusComment(
         console.warn('🖥️ VM JOB: Cannot create fallback status comment without originating assistant', {
             correlationId: pendingWebhook.correlationId,
         })
-        return false
+        return
     }
 
     try {
@@ -1175,20 +1086,14 @@ async function writeStatusComment(
             correlationId: pendingWebhook.correlationId,
             error: error.message,
         })
-        return false
+        return
     }
 
     // Keep the chat object / parent object comment preview in sync and emit the
     // same unread/notification metadata as a normal assistant message. A failed or
     // cancelled run is also a settled result that users should see in the task list.
     // The idempotency marker on the comment prevents retries from incrementing twice.
-    const isSettled =
-        isFinal ||
-        runStatus === 'failed' ||
-        runStatus === VM_JOB_CANCELLED_STATUS ||
-        runStatus === VM_JOB_INTERRUPTED_STATUS
-    const settledUnfinished =
-        runStatus === 'failed' || runStatus === VM_JOB_CANCELLED_STATUS || runStatus === VM_JOB_INTERRUPTED_STATUS
+    const isSettled = isFinal || runStatus === 'failed' || runStatus === VM_JOB_CANCELLED_STATUS
     if (isSettled) {
         try {
             await applyVmCompletionMetadata(pendingWebhook, commentId, text, {
@@ -1196,10 +1101,6 @@ async function writeStatusComment(
                 // Failed and cancelled runs still settle the status/comment metadata above,
                 // but must not opt the user back into assistant replies.
                 activateTaskAssistant: objectType === 'tasks' && isFinal && runStatus === 'completed',
-                // ...and they hand the task itself to the user who asked for the run, so the
-                // unfinished work is visible and actionable instead of parked on the assistant.
-                failureHoldUserId: settledUnfinished ? pendingWebhook.userId : null,
-                failureReason: settledUnfinished ? failureReason || runStatus : null,
             })
         } catch (error) {
             console.warn('🖥️ VM JOB: Failed applying completion metadata', {
@@ -1217,7 +1118,6 @@ async function writeStatusComment(
             })
         }
     }
-    return true
 }
 
 /**
@@ -1315,10 +1215,8 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
     parts.push(
         '',
         'Work autonomously to completion. Your final message will be delivered verbatim to the user as the result, so make it a complete, self-contained answer.',
-        'The VM host owns all task-thread delivery and attributes it to the invoking assistant. Do not use an Alldone app, MCP tool, API, or task-update/comment tool to post your result, progress, status, or questions into the originating task/thread yourself; that would create a duplicate user-authored comment. Return normal output in your final message. In interactive mode, ask through the native interaction mechanism so the host can present the question with the correct assistant identity.',
         'IMPORTANT: Do not create an output file just to return a normal text/chat answer. Put the answer directly in your final message unless the user asked for a file or you genuinely produced an artifact.',
-        'If you produce any deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) that are NOT part of the repository, SAVE them into the /home/user/output/ directory (an absolute path). Every file there is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in /home/user/output/ instead.',
-        'Deliverables are also published as project artifacts that open live in Alldone: a folder in /home/user/output/ that contains an index.html becomes one web artifact (relative links between its files keep working, give the page a <title>), and every other file becomes an artifact of its own. To update a deliverable from an earlier run in this thread, write to the same folder or file name; it becomes a new version of the same artifact. The links are added to your result automatically.'
+        'If you produce any deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) that are NOT part of the repository, SAVE them into the /home/user/output/ directory (an absolute path). Every file there is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in /home/user/output/ instead.'
     )
     return parts.join('\n')
 }
@@ -1416,15 +1314,7 @@ async function collectArtifacts(sandbox, correlationId, sinceMs = 0) {
                 const data = await sandbox.files.read(entry.path, { format: 'bytes' })
                 const buffer = Buffer.from(data)
                 totalBytes += buffer.length
-                artifacts.push({
-                    fileName: entry.name,
-                    relativePath:
-                        typeof entry.path === 'string' && entry.path.startsWith(`${ARTIFACT_DIR}/`)
-                            ? entry.path.slice(ARTIFACT_DIR.length + 1)
-                            : entry.name,
-                    mimeType: mimeForFile(entry.name),
-                    bytes: buffer,
-                })
+                artifacts.push({ fileName: entry.name, mimeType: mimeForFile(entry.name), bytes: buffer })
             } catch (error) {
                 console.warn('🖥️ VM JOB: failed reading artifact', {
                     correlationId,
@@ -1443,78 +1333,6 @@ async function collectArtifacts(sandbox, correlationId, sinceMs = 0) {
         return artifacts
     } catch (error) {
         console.warn('🖥️ VM JOB: collectArtifacts failed', { correlationId, error: error.message })
-        return []
-    }
-}
-
-// Group this run's deliverables into project artifacts and read the bytes they need while the
-// sandbox is still alive (see Artifacts/vmArtifactPublisher.js). A touched web bundle is published
-// whole, so its unchanged files are read too; files already read for the chat attachments are
-// reused. Best effort: returns [] on any failure, the chat attachments are unaffected.
-async function collectOutputArtifactGroups(sandbox, correlationId, sinceMs = 0, collected = []) {
-    try {
-        const { planVmOutputArtifacts } = require('../Artifacts/vmArtifactPublisher')
-        let entries
-        try {
-            entries = await sandbox.files.list(ARTIFACT_DIR, { depth: 5 })
-        } catch (_) {
-            return []
-        }
-        const groups = planVmOutputArtifacts(entries, { outputDir: ARTIFACT_DIR, sinceMs })
-        const known = new Map((collected || []).map(file => [file.relativePath, file.bytes]))
-        const withBytes = []
-        for (const group of groups) {
-            try {
-                const files = []
-                for (const file of group.files) {
-                    let bytes = known.get(file.relativePath)
-                    if (!bytes) {
-                        bytes = Buffer.from(
-                            await sandbox.files.read(`${ARTIFACT_DIR}/${file.relativePath}`, { format: 'bytes' })
-                        )
-                    }
-                    files.push({ ...file, bytes })
-                }
-                withBytes.push({ ...group, files })
-            } catch (error) {
-                console.warn('🖥️ VM JOB: could not read an output for its artifact', {
-                    correlationId,
-                    outputPath: group.outputPath,
-                    error: error.message,
-                })
-            }
-        }
-        return withBytes
-    } catch (error) {
-        console.warn('🖥️ VM JOB: collectOutputArtifactGroups failed', { correlationId, error: error.message })
-        return []
-    }
-}
-
-// Publish the collected groups as artifacts in the host thread's project, for the requesting user.
-async function publishVmOutputs(pendingWebhook, vmJob, groups) {
-    if (!Array.isArray(groups) || groups.length === 0) return []
-    try {
-        const { publishVmOutputArtifacts } = require('../Artifacts/vmArtifactPublisher')
-        const bytesByPath = new Map()
-        groups.forEach(group => group.files.forEach(file => bytesByPath.set(file.relativePath, file.bytes)))
-        return await publishVmOutputArtifacts({
-            job: {
-                projectId: pendingWebhook.projectId,
-                objectType: pendingWebhook.objectType,
-                objectId: pendingWebhook.objectId,
-                requestUserId: vmJob.requestUserId || pendingWebhook.userId,
-                assistantId: pendingWebhook.assistantId,
-                correlationId: pendingWebhook.correlationId,
-            },
-            groups,
-            readFile: async relativePath => bytesByPath.get(relativePath),
-        })
-    } catch (error) {
-        console.warn('🖥️ VM JOB: publishing outputs as artifacts failed', {
-            correlationId: pendingWebhook.correlationId,
-            error: error.message,
-        })
         return []
     }
 }
@@ -1615,7 +1433,7 @@ function appendCodexActivity(evt, state) {
             inputTokens: input,
             outputTokens: output,
             cacheTokens: cache,
-            totalTokens: u.total_tokens || input + output,
+            totalTokens: u.total_tokens || input + output + cache,
             costUsd: null,
         }
         return
@@ -1661,62 +1479,21 @@ function appendCodexActivity(evt, state) {
 // real values even when the assistant omitted agentModel / agentReasoningEffort on the tool call.
 function resolveAgentRunDetails(vmJob) {
     const agent = (vmJob && vmJob.agent) || DEFAULT_AGENT
-    const savedModel = (vmJob && vmJob.agentModel) || (agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
-    const model = agent === 'codex' && savedModel === 'gpt-6-sol' ? DEFAULT_CODEX_MODEL : savedModel
-    const savedEffort =
+    const model = (vmJob && vmJob.agentModel) || (agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
+    const effort =
         (vmJob && vmJob.agentReasoningEffort) ||
         (agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL)
-    const effort = agent === 'codex' && savedEffort === 'none' ? 'high' : savedEffort
-    const persistedResolvedModel = vmJob?.resolvedAgentModel
-    const resolvedModel =
-        typeof persistedResolvedModel === 'string' &&
-        persistedResolvedModel.startsWith('claude-') &&
-        RUNTIME_MODEL_SAFE_PATTERN.test(persistedResolvedModel)
-            ? persistedResolvedModel
-            : null
-    return { model, effort, ...(resolvedModel ? { resolvedModel } : {}) }
+    return { model, effort }
 }
 
-// Claude Code and the Agent SDK both emit a system/init event whose model is the
-// concrete ID selected for an alias. A primary assistant response carries the actual
-// API model too, which confirms the init value and covers older streams without init.
-function resolveRuntimeAgentModel(evt, agent) {
-    if (agent !== 'claude' || !evt || typeof evt !== 'object') return null
-
-    let model = null
-    if (evt.type === 'system' && evt.subtype === 'init') {
-        model = evt.model
-    } else if (evt.type === 'assistant' && (evt.parent_tool_use_id === null || evt.parent_tool_use_id === undefined)) {
-        model = evt.message?.model
-    }
-
-    return typeof model === 'string' && RUNTIME_MODEL_SAFE_PATTERN.test(model) && model.startsWith('claude-')
-        ? model
-        : null
-}
-
-function applyRuntimeAgentModel(evt, agent, runDetails) {
-    const resolvedModel = resolveRuntimeAgentModel(evt, agent)
-    if (!resolvedModel || !runDetails || resolvedModel === runDetails.resolvedModel) return null
-    runDetails.resolvedModel = resolvedModel
-    return resolvedModel
-}
-
-// `credentialLabel` names the key slot rather than the harness, so an OpenRouter run driven by the
-// Codex agent says "your personal OpenRouter API key". Deliberately does NOT pass agentModel /
-// tokensPerGold: the Alldone-Gold rate note belongs to the launch comment, which quotes the rate
-// frozen on the job — re-deriving it here could print a number different from the one being billed.
-function renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel = '') {
-    const displayModel = runDetails?.resolvedModel || runDetails?.model
-    const suffix = runDetails ? formatAgentRunSuffix(displayModel, runDetails.effort) : ''
+function renderVmWorkingHeader(agentLabel, runDetails, credentialMode) {
+    const suffix = runDetails ? formatAgentRunSuffix(runDetails.model, runDetails.effort) : ''
     const header = `🖥️ Working with ${agentLabel}${suffix} in a VM…`
-    return credentialMode !== undefined
-        ? `${header}\n\n${formatVmBillingStatus(agentLabel, credentialMode, '', 0, credentialLabel)}`
-        : header
+    return credentialMode !== undefined ? `${header}\n\n${formatVmBillingStatus(agentLabel, credentialMode)}` : header
 }
 
-function renderActivityLog(lines, agentLabel, runDetails, credentialMode, credentialLabel = '') {
-    return `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel)}\n\n${lines
+function renderActivityLog(lines, agentLabel, runDetails, credentialMode) {
+    return `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n${lines
         .slice(-MAX_ACTIVITY_LINES)
         .join('\n')}`
 }
@@ -1743,11 +1520,7 @@ function shellQuoteArg(value) {
     return `'${String(value).replace(/'/g, `'\\''`)}'`
 }
 
-/**
- * Build the proxy base URL for one upstream route. Shared by the config overrides and the
- * sandbox env so the two can never disagree about where Codex is pointed.
- */
-function buildCodexProxyRouteUrl(proxyBaseUrl, route) {
+function buildCodexProxyConfigOverrides(proxyBaseUrl) {
     let parsed
     try {
         parsed = new URL(proxyBaseUrl)
@@ -1761,35 +1534,16 @@ function buildCodexProxyRouteUrl(proxyBaseUrl, route) {
         throw new Error('Codex VM proxy base URL must not contain a query string or fragment.')
     }
 
-    parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}${route}`
-    return parsed.toString().replace(/\/$/, '')
-}
-
-/**
- * Codex provider config for a run.
- *
- * The OpenRouter route (AT-2230) differs from the OpenAI one only in its path: `/openrouter/v1`
- * instead of `/openai/v1`, so the proxy swaps in the OpenRouter key. Both routes speak
- * `wire_api = "responses"`. OpenRouter originally forced `chat` here (its Responses API did not
- * exist yet), but the Codex CLI removed the `chat` wire API entirely in February 2026 — a current
- * CLI refuses to boot on it ("`wire_api = \"chat\"` is no longer supported", exit 13,
- * https://github.com/openai/codex/discussions/7782) — and OpenRouter's Responses API
- * (`POST /api/v1/responses`) is GA since July 2026, so the proxy forwards it unchanged.
- * Do not reintroduce `chat`: the runner always installs the latest Codex CLI at run start, so
- * there is no CLI version left that accepts it.
- */
-function buildCodexProxyConfigOverrides(proxyBaseUrl, { openRouter = false } = {}) {
-    const routeUrl = buildCodexProxyRouteUrl(proxyBaseUrl, openRouter ? '/openrouter/v1' : '/openai/v1')
+    parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}/openai/v1`
+    const openAiProxyBaseUrl = parsed.toString().replace(/\/$/, '')
 
     // Codex's built-in OpenAI provider may use the Responses WebSocket transport. Our
     // Cloud Function proxy is HTTP-only, so use an explicit custom provider and disable
     // WebSockets instead of relying on the legacy OPENAI_BASE_URL environment override.
     return [
         `model_provider=${JSON.stringify(CODEX_VM_PROXY_PROVIDER)}`,
-        `model_providers.${CODEX_VM_PROXY_PROVIDER}.name=${JSON.stringify(
-            openRouter ? 'Alldone VM LLM proxy (OpenRouter)' : 'Alldone VM LLM proxy'
-        )}`,
-        `model_providers.${CODEX_VM_PROXY_PROVIDER}.base_url=${JSON.stringify(routeUrl)}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.name=${JSON.stringify('Alldone VM LLM proxy')}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.base_url=${JSON.stringify(openAiProxyBaseUrl)}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.env_key=${JSON.stringify('OPENAI_API_KEY')}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.wire_api=${JSON.stringify('responses')}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.supports_websockets=false`,
@@ -1810,12 +1564,6 @@ function normalizeAdditionalWritableRoots(additionalWritableRoots = []) {
 function buildCodexSandboxConfigOverrides(additionalWritableRoots = []) {
     const writableRoots = normalizeAdditionalWritableRoots(additionalWritableRoots)
     return [
-        // A personal ChatGPT subscription can expose the user's connected apps to Codex. Those
-        // app calls are authenticated only as the human user and carry no Alldone VM/assistant
-        // identity, so an agent calling update_task(comment=...) would create a second comment
-        // attributed to that user. VM output and interactions have dedicated host-owned delivery
-        // paths below; keep personal apps out of both automatic exec and app-server bridge runs.
-        'features.apps=false',
         'sandbox_mode="workspace-write"',
         `sandbox_workspace_write.writable_roots=${JSON.stringify(writableRoots)}`,
         'sandbox_workspace_write.network_access=true',
@@ -1831,17 +1579,14 @@ function buildCodexRunCommand(
     additionalWritableRoots = []
 ) {
     const resumePart = isResume ? 'exec resume --last' : 'exec'
-    // `route.model` is the bare provider id — the `openrouter:` prefix is Alldone's routing marker
-    // and must never reach the CLI. Quoted because an OpenRouter id contains `/` and may contain `:`.
-    const route = resolveModelRoute('codex', agentModel)
-    const modelFlag = route.model ? ` --model ${shellQuoteArg(route.model)}` : ''
+    const modelFlag = agentModel ? ` --model ${agentModel}` : ''
     const effortFlag = agentReasoningEffort ? ` -c model_reasoning_effort=${agentReasoningEffort}` : ''
     const sandboxFlags = buildCodexSandboxConfigOverrides(additionalWritableRoots)
         .map(override => ` -c ${shellQuoteArg(override)}`)
         .join('')
     const providerFlags = subscriptionUsed
         ? ''
-        : buildCodexProxyConfigOverrides(proxyBaseUrl, { openRouter: route.source === 'openrouter' })
+        : buildCodexProxyConfigOverrides(proxyBaseUrl)
               .map(override => ` -c ${shellQuoteArg(override)}`)
               .join('')
     return `codex ${resumePart}${sandboxFlags} --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
@@ -1953,27 +1698,9 @@ function buildStageError(stage, error, stdout = '', stderr = '') {
 function buildAgentExitError(agentLabel, result, state, stderr = '', fallbackError = null) {
     const exitCode = result?.exitCode ?? fallbackError?.exitCode ?? fallbackError?.code
     const output = (state?.finalResult || state?.assistantText || '').trim()
-    const bridgeError = sanitizeVmErrorText(state?.bridgeError || '')
-    const transportError = sanitizeVmErrorText(fallbackError?.message || '')
-    const cleanStderr = sanitizeVmErrorText(stderr)
-    const partialOutput = sanitizeVmErrorText(output)
-    // A transport failure can arrive after many minutes of valid assistant output. Keep that
-    // partial output as diagnostics, but lead with the actual failure so truncation cannot erase
-    // the only actionable error (the production AT-2450 incident did exactly that).
-    const detail = fallbackError
-        ? [bridgeError, transportError, cleanStderr].filter(Boolean).join(' ')
-        : [bridgeError, partialOutput, cleanStderr].filter(Boolean).join(' ')
+    const detail = sanitizeVmErrorText([output, stderr, fallbackError?.message].filter(Boolean).join('\n'))
     const status = exitCode !== undefined && exitCode !== null ? ` with exit status ${exitCode}` : ''
-    const error = new Error(`${agentLabel} exited${status}.${detail ? ` ${detail}` : ''}`)
-    error.vmExitCode = exitCode ?? null
-    error.vmBridgeError = bridgeError || null
-    error.vmTransportError = transportError || null
-    error.vmPartialOutput = partialOutput || null
-    return error
-}
-
-function hasRecoverableVmAgentTerminalState(state) {
-    return !!state && !state.bridgeError && !!(state.bridgeCompleted || state.providerCompleted || state.interaction)
+    return new Error(`${agentLabel} exited${status}.${detail ? ` ${detail}` : ''}`)
 }
 
 function isVmSubscriptionAuthError(error, provider) {
@@ -1982,7 +1709,6 @@ function isVmSubscriptionAuthError(error, provider) {
     if (provider === 'codex') {
         return [
             'refresh_token_reused',
-            'invalid_refresh_token',
             'refresh token has already been used',
             'refresh token was already used',
             'access token could not be refreshed',
@@ -2008,39 +1734,16 @@ function isVmSubscriptionAuthError(error, provider) {
 
 function markSafeVmSubscriptionAuthRetry(error, provider, state) {
     if (!isVmSubscriptionAuthError(error, provider)) return error
-    const usage = state?.usage || {}
-    const hasUsage = ['inputTokens', 'outputTokens', 'cacheTokens', 'totalTokens', 'costUsd'].some(
-        key => Number(usage[key]) > 0
-    )
     const hasAgentWork = !!(
         state?.finalResult ||
         state?.assistantText ||
-        hasUsage ||
+        state?.usage ||
         state?.interaction ||
         state?.providerState
     )
-    const hasNonAuthActivity = (state?.activity || []).some(activity => {
-        const text = String(activity || '').trim()
-        if (!text || text.startsWith('⚠️')) return false
-        return !isVmSubscriptionAuthError(text, provider)
-    })
+    const hasNonAuthActivity = (state?.activity || []).some(activity => !isVmSubscriptionAuthError(activity, provider))
     error.vmAuthRetrySafe = !hasAgentWork && !hasNonAuthActivity
     return error
-}
-
-function buildAgentExitErrorWithAuthRetry(
-    agentLabel,
-    result,
-    state,
-    stderr = '',
-    provider = null,
-    fallbackError = null
-) {
-    return markSafeVmSubscriptionAuthRetry(
-        buildAgentExitError(agentLabel, result, state, stderr, fallbackError),
-        provider,
-        state
-    )
 }
 
 function sleep(ms) {
@@ -2079,59 +1782,23 @@ function buildVmSubscriptionAuthFailureText(agentLabel) {
     return `❌ The VM task could not continue because the ${agentLabel} subscription login needs to be refreshed. Reconnect it in Settings → Integrations, then try again.`
 }
 
-async function markRejectedVmSubscriptionAuth(userId, subscriptionAuth, correlationId, { markInvalid } = {}) {
-    if (!userId || !subscriptionAuth?.provider || !subscriptionAuth?.credentialVersion) return false
-    const persistInvalid = markInvalid || require('./vmSubscriptionAuth').markVmSubscriptionAuthInvalid
-    try {
-        return await persistInvalid(userId, subscriptionAuth.provider, subscriptionAuth.credentialVersion)
-    } catch (error) {
-        console.warn('🖥️ VM JOB RUNNER: could not mark rejected subscription login', {
-            correlationId,
-            provider: subscriptionAuth.provider,
-            error: error.message,
-        })
-        return false
-    }
-}
-
-function renderAgentCliCheckStatus(agentLabel, isResume) {
-    return isResume
-        ? `🔄 Resuming VM and checking ${agentLabel} for updates…`
-        : `🆕 Starting a fresh VM and checking ${agentLabel}…`
-}
-
-function parseAgentCliInstallingMarker(output) {
-    const match = String(output || '').match(/AGENT_CLI_INSTALLING from=(\S+) to=(\S+)/)
-    return match ? { fromVersion: match[1], toVersion: match[2] } : null
-}
-
-function renderAgentCliChangeStatus(agentLabel, marker) {
-    if (!marker || marker.fromVersion === 'missing-or-invalid') return `📦 Installing ${agentLabel}…`
-    return `⬆️ Updating ${agentLabel} from ${marker.fromVersion} to ${marker.toVersion}…`
-}
-
-async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header, { isResume = false } = {}) {
+async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header) {
     const command = typeof config.installGuard === 'function' ? config.installGuard() : config.installGuard
     if (!command) return
 
     let stdout = ''
     let stderr = ''
-    let cliChange = null
-    if (typeof onActivity === 'function') {
-        onActivity(`${header}\n\n${renderAgentCliCheckStatus(agentLabel, isResume)}`)
-    }
+    let installationAnnounced = false
     const appendDiagnostic = (current, data) => `${current}${data}`.slice(-MAX_BOOTSTRAP_DIAGNOSTIC_CHARS)
     const handleStdout = data => {
-        stdout = appendDiagnostic(stdout, data)
-        if (!cliChange) {
-            cliChange = parseAgentCliInstallingMarker(stdout)
-            if (cliChange && typeof onActivity === 'function') {
-                onActivity(`${header}\n\n${renderAgentCliChangeStatus(agentLabel, cliChange)}`)
-            }
+        if (!installationAnnounced && String(data).includes('AGENT_CLI_INSTALLING')) {
+            installationAnnounced = true
+            if (typeof onActivity === 'function') onActivity(`${header}\n\n📦 Installing ${agentLabel}…`)
         }
+        stdout = appendDiagnostic(stdout, data)
     }
 
-    console.log('🖥️ VM JOB: checking agent CLI for updates', { agent: agentLabel, version: 'latest', isResume })
+    console.log('🖥️ VM JOB: updating agent CLI', { agent: agentLabel, version: 'latest' })
     try {
         await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
             envs: buildSandboxCommandEnv(),
@@ -2142,9 +1809,7 @@ async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, 
             },
         })
     } catch (error) {
-        const stage = cliChange
-            ? `${agentLabel} ${cliChange.fromVersion === 'missing-or-invalid' ? 'installation' : 'update'}`
-            : `${agentLabel} update check`
+        const stage = installationAnnounced ? `${agentLabel} installation` : `${agentLabel} bootstrap`
         const stageError = buildStageError(stage, error, stdout, stderr)
         console.error('🖥️ VM JOB: agent CLI bootstrap failed', {
             agent: agentLabel,
@@ -2198,7 +1863,6 @@ function buildVmAgentBridgeInput({
     runDetails,
     agentCredentials,
     additionalWritableRoots = [],
-    gitContext = null,
 }) {
     const executionMode = vmJob.executionMode || 'automatic'
     const phase = resolveVmInteractionPhase(executionMode, pendingWebhook)
@@ -2206,12 +1870,9 @@ function buildVmAgentBridgeInput({
     const interactionResponse = pendingWebhook?.interactionResponse || null
     const providerState = pendingWebhook?.interactionProviderState || null
     const writableRoots = normalizeAdditionalWritableRoots(additionalWritableRoots)
-    // The bridge drives the provider CLIs directly, so it gets the bare provider model id with the
-    // `openrouter:` routing marker stripped (see resolveModelRoute).
-    const modelRoute = resolveModelRoute(vmJob.agent || DEFAULT_AGENT, runDetails.model)
     const input = {
         cwd: workdir,
-        model: modelRoute.model,
+        model: runDetails.model,
         effort: runDetails.effort,
         phase,
         prompt: buildVmBridgeTurnPrompt(prompt, pendingWebhook, phase),
@@ -2230,14 +1891,6 @@ function buildVmAgentBridgeInput({
             phase === 'planning' ? 'plan' : executionMode === 'plan_first' ? 'bypassPermissions' : 'default'
         input.additionalDirectories = writableRoots
         input.settingSources = ['user', 'project', 'local']
-        // Approval strictness + the context the policy needs to tell a feature-branch push apart
-        // from a push that lands on the protected base branch. The allowlist carries the user's
-        // "Allow for this run" grants and is reset whenever a new job starts.
-        input.approvalPolicy = vmJob.approvalPolicy || DEFAULT_APPROVAL_POLICY_LEVEL
-        input.baseBranch = gitContext?.enabled ? gitContext.baseBranch || '' : ''
-        input.approvalAllowlist = Array.isArray(pendingWebhook?.approvalAllowlist)
-            ? pendingWebhook.approvalAllowlist
-            : []
     } else {
         input.approvalPolicy = phase === 'executing' && executionMode === 'plan_first' ? 'never' : 'on-request'
         input.approvalsReviewer = executionMode === 'interactive' ? 'auto_review' : 'user'
@@ -2245,9 +1898,7 @@ function buildVmAgentBridgeInput({
         const providerArgs =
             agentCredentials.mode === 'subscription'
                 ? []
-                : buildCodexProxyConfigOverrides(agentCredentials.baseUrl, {
-                      openRouter: modelRoute.source === 'openrouter',
-                  }).flatMap(override => ['-c', override])
+                : buildCodexProxyConfigOverrides(agentCredentials.baseUrl).flatMap(override => ['-c', override])
         input.codexArgs = [...sandboxArgs, ...providerArgs]
     }
     return input
@@ -2325,22 +1976,13 @@ const AGENT_CONFIGS = {
             ),
         // `apiKey` is a short-lived per-job proxy token. The run command selects an explicit
         // HTTP-only custom provider; OPENAI_BASE_URL remains for older Codex CLI compatibility.
-        // The legacy OPENAI_BASE_URL must follow the same route as the explicit provider config
-        // above, or an older Codex CLI that honours the env var would talk to the wrong upstream
-        // with a token minted for this job and get a confusing 404 instead of a model.
-        sandboxEnv: ({ apiKey, baseUrl, mode, agentModel }) =>
+        sandboxEnv: ({ apiKey, baseUrl, mode }) =>
             mode === 'subscription'
                 ? { CODEX_HOME: CODEX_AUTH_DIR, CI: 'true' }
                 : {
                       CODEX_API_KEY: apiKey,
                       OPENAI_API_KEY: apiKey,
-                      ...(baseUrl
-                          ? {
-                                OPENAI_BASE_URL: `${baseUrl}/${
-                                    isOpenRouterRun('codex', agentModel) ? 'openrouter' : 'openai'
-                                }/v1`,
-                            }
-                          : {}),
+                      ...(baseUrl ? { OPENAI_BASE_URL: `${baseUrl}/openai/v1` } : {}),
                       CI: 'true',
                   },
         handleEvent: appendCodexActivity,
@@ -2414,50 +2056,22 @@ function calculateAccruedRuntimeGold(runtimeMs) {
     return elapsedMinutes * VM_GOLD_PER_MINUTE
 }
 
-/**
- * Final Gold settlement for a finished run.
- *
- * `tokensPerGold` / `agentModel` are the run's persisted pricing state and only affect the *token*
- * charge: they select the researched tokens-per-Gold rate for the concrete model, relative to the
- * 100-token Sol baseline. Runtime minutes are unaffected — they pay for the E2B
- * sandbox, which costs the same whichever model the agent talks to.
- *
- * The token line is a settlement, not a fresh charge: the proxy has already billed
- * `proxyTokenGoldCharged` incrementally while the run streamed. Both sides resolve the rate through
- * the same `resolveEffectiveTokensPerGold` from the same persisted state, which is the whole point of
- * routing it through vmTokenPricing — if the two disagreed, a higher rate here would silently
- * overcharge and a lower one would clamp to zero and hide the discrepancy entirely.
- */
 function calculateCompletionGoldCharges({
     runtimeMs,
     usage,
     runtimeGoldCharged = 0,
     proxyTokenGoldCharged = 0,
     subscriptionUsed = false,
-    agentModel = '',
-    tokensPerGold: persistedTokensPerGold = 0,
-    proxyTokenUsage = {},
 }) {
     const minutes = Math.max(1, Math.ceil(Math.max(0, Number(runtimeMs) || 0) / 60000))
-    // The proxy sees all requests across turns/resumes, while CLI usage may cover only the last turn.
-    const totalTokens = Math.max(Number(usage?.totalTokens) || 0, Number(proxyTokenUsage.totalTokens) || 0)
+    const totalTokens = usage && usage.totalTokens ? usage.totalTokens : 0
     const runtimeGoldTotal = minutes * VM_GOLD_PER_MINUTE
     const runtimeGoldRemaining = Math.max(0, runtimeGoldTotal - (Number(runtimeGoldCharged) || 0))
-    const tokensPerGold = resolveEffectiveTokensPerGold({ tokensPerGold: persistedTokensPerGold, agentModel })
-    const tokenGoldTotal = subscriptionUsed
-        ? 0
-        : agentModel === SOL_MODEL && proxyTokenUsage.solPricedTokens > 0
-          ? calculateSolUsageGold(
-                proxyTokenUsage.solCostUsd,
-                tokensPerGold,
-                Math.max(0, totalTokens - proxyTokenUsage.solPricedTokens)
-            )
-          : calculateTokenGold(totalTokens, tokensPerGold)
+    const tokenGoldTotal = subscriptionUsed ? 0 : Math.round(totalTokens / VM_TOKENS_PER_GOLD)
     const tokenGold = Math.max(0, tokenGoldTotal - (Number(proxyTokenGoldCharged) || 0))
     return {
         minutes,
         totalTokens,
-        tokensPerGold,
         runtimeGoldTotal,
         runtimeGoldRemaining,
         runtimeGoldCharged: Number(runtimeGoldCharged) || 0,
@@ -2487,11 +2101,6 @@ function buildVmGoldContext(pendingWebhook, vmJob, note) {
         projectId: pendingWebhook.projectId,
         objectId: pendingWebhook.objectId,
         objectType: pendingWebhook.objectType,
-        // Billing dimensions (AT-2487). Read from `pendingWebhook` first because the runner
-        // re-asserts credentialMode/tokenBillingExempt onto it once the credential route is
-        // resolved, so it is the fresher of the two documents; `vmJob` supplies the model for
-        // a legacy job whose pending doc predates the field.
-        ...buildVmGoldBillingDimensions({ ...vmJob, ...pendingWebhook }),
         note: note || `VM ${vmJob.agent || 'claude'} runtime`,
     }
 }
@@ -2751,86 +2360,7 @@ async function resumeE2bSandbox(sandboxId, e2bApiKey, timeoutSec) {
     })
     if (!resp.ok) {
         const body = await resp.text().catch(() => '')
-        // Firestore can lag the E2B lifecycle briefly. If E2B says the sandbox is already running,
-        // connecting to it is exactly the desired continuation behavior.
-        if (resp.status === 409 && /already running/i.test(body)) return false
         throw new Error(`E2B resume ${resp.status}: ${body.substring(0, 200)}`)
-    }
-    return true
-}
-
-// Ask E2B when this sandbox actually expires instead of assuming the runner's own
-// `setTimeout()` decided it. E2B pins the expiry to the start of the sandbox's current
-// session (create or resume) and a later `setTimeout()` does not move it, so a warm sandbox
-// reused inside the keep-alive window holds only the REMAINDER of that hour. Assuming a full
-// hour is what schedules the protective lease rotation after the sandbox is already dead.
-// Every failure path falls back to the caller's assumption: a missing/failing `getInfo` must
-// never break a run, it only costs the accuracy this read is meant to add.
-async function readSandboxLeaseDeadlineMs(sandbox, fallbackDeadlineMs) {
-    if (!sandbox || typeof sandbox.getInfo !== 'function') return fallbackDeadlineMs
-    try {
-        // Bounded: this sits on the run's startup path, and a hung control-plane request must
-        // cost the accuracy, never the run.
-        const info = await sandbox.getInfo({ requestTimeoutMs: SANDBOX_INFO_REQUEST_TIMEOUT_MS })
-        const endAtMs = new Date(info?.endAt).getTime()
-        return Number.isFinite(endAtMs) ? endAtMs : fallbackDeadlineMs
-    } catch (error) {
-        return fallbackDeadlineMs
-    }
-}
-
-// Reuse a thread's sandbox on a FRESH lease — every time, whatever state it was left in.
-//
-// E2B pins a sandbox's expiry to the start of its current session and `setTimeout()` cannot
-// move it afterwards, so the only way to give a reused sandbox the full hour is to start a
-// new session. A paused sandbox gets one from the resume it needs anyway; a still-running
-// keep-alive sandbox has to be paused first. Both paths therefore end in the same REST
-// resume, and every run starts on the same predictable 60 minutes instead of inheriting an
-// unknown remainder of somebody else's hour.
-//
-// Pausing costs a few seconds of startup latency on a warm reuse. That is the deliberate
-// trade: a keep-alive reuse used to start instantly and then die mid-run once the inherited
-// lease ran out, which is far more expensive than the pause.
-async function resumeVmSessionWithFreshLease({
-    Sandbox,
-    sandboxId,
-    e2bApiKey,
-    wasPaused,
-    pauseSandbox = pauseE2bSandbox,
-    resumeSandbox = resumeE2bSandbox,
-    readLeaseDeadline = readSandboxLeaseDeadlineMs,
-    probeSandbox = probeResumedVmSandbox,
-}) {
-    let pauseError = null
-    if (!wasPaused) {
-        // Pausing is what ENDS the running session; the resume below then starts a new one.
-        try {
-            await pauseSandbox(sandboxId, e2bApiKey)
-        } catch (error) {
-            // A pause that lost a race — the idle pauser got there first, or the sandbox is
-            // already gone — must not fail the run; the resume decides. If it really is still
-            // running, resume answers 409 and we continue on the inherited lease, degraded but
-            // correctly budgeted, because the deadline below is measured rather than assumed.
-            pauseError = error
-        }
-    }
-    const sessionRestarted =
-        (await resumeSandbox(sandboxId, e2bApiKey, Math.ceil(E2B_SANDBOX_TIMEOUT_MS / 1000))) !== false
-    const sandbox = await Sandbox.connect(sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
-    await sandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
-    // Verify the command channel actually executes before we commit to it. connect() and
-    // setTimeout() both succeed on a resume that came back with a dead envd (E2B #884); this
-    // trivial command hangs instead, so the caller can discard the zombie and fall through to
-    // a fresh sandbox rather than hanging the first real command for its full budget.
-    await probeSandbox(sandbox)
-    return {
-        sandbox,
-        // A genuine resume really does start a full hour, so this should be `now + timeout` —
-        // read it anyway so a lost pause race or a change in E2B's semantics shows up as a
-        // shorter budgeted run instead of a sandbox that dies under a running agent.
-        leaseDeadlineMs: await readLeaseDeadline(sandbox, Date.now() + E2B_SANDBOX_TIMEOUT_MS),
-        sessionRestarted,
-        pauseError,
     }
 }
 
@@ -2864,7 +2394,6 @@ async function superviseVmCommand({
     pauseSandbox = pauseE2bSandbox,
     resumeSandbox = resumeE2bSandbox,
     resolveSliceRuntime = resolveVmAgentSliceRuntimeMs,
-    readLeaseDeadline = readSandboxLeaseDeadlineMs,
     now = Date.now,
 }) {
     let activeSandbox = sandbox
@@ -2873,22 +2402,6 @@ async function superviseVmCommand({
     let sliceCount = 1
     let activeRuntimeMs = 0
     const commandPid = commandHandle.pid
-    let unexpectedReconnectAttempts = 0
-    let firstTransportError = null
-    const stopUnobservedCommand = async () => {
-        try {
-            await activeCommandHandle.kill()
-            firstTransportError.vmUnobservedCommandStopped = true
-        } catch (error) {
-            const terminationError = sanitizeVmErrorText(error?.message || '')
-            firstTransportError.vmUnobservedCommandStopped = false
-            firstTransportError.vmCommandTerminationError = terminationError || null
-            // A missing process is already stopped. Any other failed stop leaves its continued
-            // execution uncertain, so the outer cleanup discards the sandbox instead of reusing it.
-            firstTransportError.vmCommandTerminationUncertain =
-                !/not found|doesn'?t exist|already (?:stopped|exited)/i.test(terminationError)
-        }
-    }
 
     while (true) {
         const currentTimeMs = now()
@@ -2904,10 +2417,7 @@ async function superviseVmCommand({
         let outcome
         try {
             outcome = await Promise.race([
-                commandPromise.then(
-                    result => ({ type: 'command_completed', result }),
-                    error => ({ type: 'command_failed', error })
-                ),
+                commandPromise.then(result => ({ type: 'command_completed', result })),
                 sliceTimer.promise,
                 monitor ? monitor.promise : new Promise(() => {}),
                 cancellationMonitor ? cancellationMonitor.promise : new Promise(() => {}),
@@ -2918,56 +2428,6 @@ async function superviseVmCommand({
 
         if (outcome.type === 'command_completed') {
             return { result: outcome.result, sandbox: activeSandbox, commandHandle: activeCommandHandle, sliceCount }
-        }
-        if (outcome.type === 'command_failed') {
-            const transportError =
-                outcome.error instanceof Error ? outcome.error : new Error(String(outcome.error || 'Command failed.'))
-            firstTransportError = firstTransportError || transportError
-            const completedResult =
-                typeof getCompletedResult === 'function' ? await getCompletedResult(activeSandbox) : null
-            if (completedResult) {
-                return {
-                    result: completedResult,
-                    sandbox: activeSandbox,
-                    commandHandle: activeCommandHandle,
-                    sliceCount,
-                }
-            }
-
-            // Reconnect to the existing process exactly once. This does not repeat any agent or
-            // tool action; it only repairs the observer channel after an E2B transport failure.
-            if (unexpectedReconnectAttempts >= 1 || commandPid == null) {
-                await stopUnobservedCommand()
-                firstTransportError.vmCommandObservationFailed = true
-                firstTransportError.vmCommandReconnectAttempts = unexpectedReconnectAttempts
-                throw firstTransportError
-            }
-            unexpectedReconnectAttempts += 1
-            try {
-                activeCommandHandle = await activeSandbox.commands.connect(commandPid, {
-                    timeoutMs: E2B_COMMAND_CONNECTION_TIMEOUT_MS,
-                    onStdout,
-                    onStderr,
-                })
-                if (typeof onCommandHandleChange === 'function') onCommandHandleChange(activeCommandHandle)
-                continue
-            } catch (reconnectError) {
-                const completedAfterReconnectFailure =
-                    typeof getCompletedResult === 'function' ? await getCompletedResult(activeSandbox) : null
-                if (completedAfterReconnectFailure) {
-                    return {
-                        result: completedAfterReconnectFailure,
-                        sandbox: activeSandbox,
-                        commandHandle: activeCommandHandle,
-                        sliceCount,
-                    }
-                }
-                await stopUnobservedCommand()
-                firstTransportError.vmCommandObservationFailed = true
-                firstTransportError.vmCommandReconnectAttempts = unexpectedReconnectAttempts
-                firstTransportError.vmCommandReconnectError = sanitizeVmErrorText(reconnectError?.message || '')
-                throw firstTransportError
-            }
         }
         activeRuntimeMs += sliceRuntimeMs
         if (finalSlice) {
@@ -2997,10 +2457,7 @@ async function superviseVmCommand({
         await resumeSandbox(sandboxId, e2bApiKey, Math.floor(E2B_SANDBOX_TIMEOUT_MS / 1000))
         activeSandbox = await Sandbox.connect(sandboxId, { apiKey: e2bApiKey, allowInternetAccess: true })
         await activeSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
-        // The resume above genuinely re-arms E2B's clock, so `now + timeout` is right here —
-        // but read the reported expiry anyway (falling back to it) so the next slice is
-        // budgeted against what E2B will actually enforce rather than what we asked for.
-        leaseDeadlineMs = await readLeaseDeadline(activeSandbox, now() + E2B_SANDBOX_TIMEOUT_MS)
+        leaseDeadlineMs = now() + E2B_SANDBOX_TIMEOUT_MS
         sliceCount += 1
         try {
             activeCommandHandle = await activeSandbox.commands.connect(commandPid, {
@@ -3025,40 +2482,6 @@ async function superviseVmCommand({
     }
 }
 
-// Remove a dead sandbox from a session without deleting the session document itself. The document
-// also owns the per-thread FIFO queue, so deleting it here strands every queued pendingWebhooks
-// record. Lease/sandbox guards keep a late cleanup from clearing a newer run that already reused
-// the thread.
-async function clearDeadVmSessionSandbox(
-    sessionRef,
-    { sandboxId = null, leaseOwner = null, sessionData = {}, now = Date.now() } = {}
-) {
-    return admin.firestore().runTransaction(async transaction => {
-        const snapshot = await transaction.get(sessionRef)
-        if (!snapshot.exists) return false
-        const session = snapshot.data() || {}
-        if (sandboxId && session.sandboxId && session.sandboxId !== sandboxId) return false
-
-        const activeLeaseLive = !!session.activeLeaseOwner && Number(session.activeLeaseExpiresAt || 0) > now
-        if (leaseOwner ? session.activeLeaseOwner !== leaseOwner : activeLeaseLive) return false
-
-        transaction.set(
-            sessionRef,
-            {
-                ...sessionData,
-                sandboxId: null,
-                status: 'failed',
-                activeLeaseOwner: null,
-                activeLeaseExpiresAt: null,
-                activeCorrelationId: null,
-                deadSandboxAt: now,
-            },
-            { merge: true }
-        )
-        return true
-    })
-}
-
 // After a run, KEEP the sandbox running for the keep-alive grace window (so back-to-back
 // tasks hit a live VM) and record whether the latest run completed or failed. The scheduled
 // pauser pauses it once idle. If keep-alive can't be set, fall back to pausing now; if that
@@ -3075,9 +2498,6 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOw
         lastUsedAt: Date.now(),
         lastRunStatus,
         lastRunAt: Date.now(),
-        // What the last run was about, so an assistant looking for a thread to continue can
-        // recognize it without joining back to vmJobs (which would need a composite index).
-        lastObjective: summarizeVmObjectiveForSession(vmJob.objective),
     }
     try {
         await sandbox.setTimeout(KEEP_ALIVE_KILL_MS) // stays alive ~15 min unless reused/paused
@@ -3134,11 +2554,7 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOw
             try {
                 await sandbox.kill()
             } catch (_) {}
-            await clearDeadVmSessionSandbox(sessionRef, {
-                sandboxId,
-                leaseOwner,
-                sessionData: baseDoc,
-            }).catch(() => {})
+            await sessionRef.delete().catch(() => {})
             return false
         }
     }
@@ -3196,36 +2612,14 @@ async function pauseIdleVmSessions() {
             await doc.ref.set({ status: 'paused', pausedAt: Date.now() }, { merge: true })
             console.log('💤 VM SESSIONS PAUSER: paused', { sandboxId: s.sandboxId })
         } catch (error) {
-            // Likely already killed (kill timeout) — clear only the sandbox fields. The session may
-            // own queued jobs even without a live lease, so deleting it would orphan those jobs.
+            // Likely already killed (kill timeout) — clear so the thread starts fresh next time.
             console.warn('💤 VM SESSIONS PAUSER: pause failed, clearing session', {
                 sandboxId: s.sandboxId,
                 error: error.message,
             })
-            await clearDeadVmSessionSandbox(doc.ref, { sandboxId: s.sandboxId }).catch(() => {})
+            await doc.ref.delete().catch(() => {})
         }
     }
-}
-
-async function deleteIdleVmSessionIfUnoccupied(sessionRef, cutoff, now = Date.now()) {
-    return admin.firestore().runTransaction(async transaction => {
-        const snapshot = await transaction.get(sessionRef)
-        if (!snapshot.exists) return null
-        const session = snapshot.data() || {}
-        const queue = Array.isArray(session.queue) ? session.queue : []
-        const activeLeaseLive = !!session.activeLeaseOwner && Number(session.activeLeaseExpiresAt || 0) > now
-        if (
-            Number(session.lastUsedAt || 0) >= cutoff ||
-            queue.length > 0 ||
-            session.blockedByCorrelationId ||
-            activeLeaseLive
-        ) {
-            return null
-        }
-
-        transaction.delete(sessionRef)
-        return session
-    })
 }
 
 // Scheduled cleanup: delete paused sandboxes (and their session docs) idle longer than the TTL.
@@ -3236,11 +2630,7 @@ async function cleanupIdleVmSessions() {
     const snap = await admin.firestore().collection('vmSessions').where('lastUsedAt', '<', cutoff).get()
     console.log('🧹 VM SESSIONS CLEANUP: idle sessions found', { count: snap.size })
     for (const doc of snap.docs) {
-        // Delete the Firestore document transactionally before killing its sandbox. A new dispatch
-        // either lands before this transaction (and makes it skip) or recreates a clean session
-        // afterwards; in neither ordering can its queue be erased or its sandbox be killed.
-        const s = await deleteIdleVmSessionIfUnoccupied(doc.ref, cutoff).catch(() => null)
-        if (!s) continue
+        const s = doc.data()
         if (s.sandboxId && e2bApiKey) {
             try {
                 await Sandbox.kill(s.sandboxId, { apiKey: e2bApiKey })
@@ -3248,6 +2638,7 @@ async function cleanupIdleVmSessions() {
                 console.warn('🧹 VM SESSIONS CLEANUP: kill failed', { sandboxId: s.sandboxId, error: error.message })
             }
         }
+        await doc.ref.delete().catch(() => {})
     }
 }
 
@@ -3309,17 +2700,13 @@ async function runAgentInSandbox(
     pendingWebhook = null,
     pendingRef = null,
     subscriptionAuth = null,
-    allowAuthRecovery = true,
-    sharedRunDetails = null
+    allowAuthRecovery = true
 ) {
     const { Sandbox } = require('e2b')
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     // Model + effort the agent runs with, surfaced in the live status header.
-    const runDetails = sharedRunDetails || resolveAgentRunDetails(vmJob)
+    const runDetails = resolveAgentRunDetails(vmJob)
     const credentialMode = subscriptionAuth ? 'subscription' : vmJob.credentialMode === 'byok' ? 'byok' : 'api'
-    // The key slot, which for an OpenRouter model is not the agent (AT-2230 BYOK).
-    const credentialProvider = resolveJobCredentialProvider(vmJob)
-    const credentialLabel = credentialProvider === 'openrouter' ? OPENROUTER_LABEL : agentLabel
     // Always use E2B's managed prebuilt template for the selected agent.
     const template = config.defaultTemplate
     vmJob.vmTemplate = template
@@ -3375,33 +2762,30 @@ async function runAgentInSandbox(
             isReusableVmSession(sess)
         ) {
             try {
-                // Every reuse starts a NEW E2B session, so the run always gets the full hour:
-                // a paused sandbox from the resume it needs anyway, a still-running keep-alive
-                // one by being paused first. `setTimeout()` cannot do this — it reports success
-                // and leaves the expiry pinned to the session that is already running.
-                const wasPaused = shouldResumeVmSession(sess)
-                const lease = await resumeVmSessionWithFreshLease({
-                    Sandbox,
-                    sandboxId: sess.sandboxId,
-                    e2bApiKey,
-                    wasPaused,
-                })
-                sandboxLeaseDeadlineMs = lease.leaseDeadlineMs
-                sandbox = lease.sandbox
-                isResume = true
-                if (lease.pauseError) {
-                    console.warn('🖥️ VM JOB: could not pause a running session before reuse', {
-                        correlationId: vmJob.correlationId,
-                        sandboxId: sess.sandboxId,
-                        error: lease.pauseError.message,
-                    })
+                // A paused sandbox must be explicitly resumed first (connect alone won't
+                // auto-resume it on e2b@1.x); a still-running one (keep-alive) just connects.
+                if (sess.status !== 'running') {
+                    await resumeE2bSandbox(sess.sandboxId, e2bApiKey, Math.ceil(E2B_SANDBOX_TIMEOUT_MS / 1000))
                 }
+                const resumedSandbox = await Sandbox.connect(sess.sandboxId, {
+                    apiKey: e2bApiKey,
+                    allowInternetAccess: true,
+                })
+                await resumedSandbox.setTimeout(E2B_SANDBOX_TIMEOUT_MS)
+                // Verify the resumed sandbox's command channel actually executes before we commit
+                // to it. connect()/setTimeout() succeed even on a resume that came back with a dead
+                // envd; this trivial command hangs (→ deadline_exceeded under the short timeout) in
+                // that case, so we discard the zombie via the catch below and fall through to a
+                // fresh sandbox — instead of hanging the first real command (git clone / skill
+                // mount / CLI bootstrap) for its full multi-minute budget and failing the run.
+                await probeResumedVmSandbox(resumedSandbox)
+                sandboxLeaseDeadlineMs = Date.now() + E2B_SANDBOX_TIMEOUT_MS
+                sandbox = resumedSandbox
+                isResume = true
                 console.log('🖥️ VM JOB: resumed session', {
                     correlationId: vmJob.correlationId,
                     sandboxId: sess.sandboxId,
-                    wasPaused,
-                    sessionRestarted: lease.sessionRestarted,
-                    leaseRemainingMs: sandboxLeaseDeadlineMs - Date.now(),
+                    wasPaused: sess.status !== 'running',
                 })
             } catch (error) {
                 console.warn('🖥️ VM JOB: resume failed, starting fresh', {
@@ -3481,13 +2865,7 @@ async function runAgentInSandbox(
         }
         // Record that a valid golden was actually seeded (drives the unused-TTL cleanup).
         if (goldenSnapshotId) require('./vmGolden').touchGoldenUsage(vmJob.projectId)
-        // A fresh create really does start a full lease, so the computed value is already
-        // correct here; read E2B's own expiry anyway so every path downstream reasons about a
-        // measured deadline rather than an assumed one, and falls back to the assumption.
-        sandboxLeaseDeadlineMs = await readSandboxLeaseDeadlineMs(
-            sandbox,
-            sandboxCreateStartedAt + E2B_SANDBOX_TIMEOUT_MS
-        )
+        sandboxLeaseDeadlineMs = sandboxCreateStartedAt + E2B_SANDBOX_TIMEOUT_MS
     }
     console.log('🖥️ VM JOB: sandbox ready', {
         correlationId: vmJob.correlationId,
@@ -3538,7 +2916,7 @@ async function runAgentInSandbox(
         if (gitContext && gitContext.enabled) {
             if (typeof onActivity === 'function') {
                 onActivity(
-                    `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel)}\n\n📥 ${
+                    `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n📥 ${
                         isResume ? 'Refreshing' : 'Cloning'
                     } the connected repository…`
                 )
@@ -3575,8 +2953,7 @@ async function runAgentInSandbox(
             config,
             agentLabel,
             onActivity,
-            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth, credentialLabel),
-            { isResume }
+            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
         )
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
@@ -3585,7 +2962,7 @@ async function runAgentInSandbox(
                   sandbox,
                   vmJob.agent || DEFAULT_AGENT,
                   onActivity,
-                  renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth, credentialLabel)
+                  renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
               )
             : null
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
@@ -3598,9 +2975,6 @@ async function runAgentInSandbox(
             interaction: null,
             providerState: null,
             bridgeError: null,
-            bridgeCompleted: false,
-            providerCompleted: false,
-            resolvedModelUpdatePromise: null,
         }
         let stdoutBuf = ''
         let stderr = ''
@@ -3617,49 +2991,12 @@ async function runAgentInSandbox(
             } catch (_) {
                 return // non-JSON noise (e.g. stray install output) — ignore
             }
-            const resolvedModel = applyRuntimeAgentModel(evt, vmJob.agent || DEFAULT_AGENT, runDetails)
-            if (resolvedModel) {
-                vmJob.resolvedAgentModel = resolvedModel
-                const resolvedModelUpdate = {
-                    resolvedAgentModel: resolvedModel,
-                    resolvedAgentModelAt: Date.now(),
-                }
-                const previousUpdate = state.resolvedModelUpdatePromise || Promise.resolve()
-                state.resolvedModelUpdatePromise = previousUpdate
-                    .then(() => {
-                        const persistResolvedModel = Promise.all([
-                            pendingRef?.set(resolvedModelUpdate, { merge: true }),
-                            admin
-                                .firestore()
-                                .doc(`vmJobs/${vmJob.correlationId}`)
-                                .set(resolvedModelUpdate, { merge: true }),
-                        ])
-                        const publishResolvedModel =
-                            publishActivity && typeof onActivity === 'function'
-                                ? onActivity(
-                                      renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel),
-                                      {
-                                          force: true,
-                                      }
-                                  )
-                                : null
-                        return Promise.all([persistResolvedModel, publishResolvedModel])
-                    })
-                    .catch(error => {
-                        console.warn('🖥️ VM JOB: failed publishing runtime-resolved model', {
-                            correlationId: vmJob.correlationId,
-                            resolvedModel,
-                            error: error.message,
-                        })
-                    })
-            }
             if (evt.type === 'alldone.interaction') {
                 state.interaction = evt.interaction || null
                 state.providerState = evt.interaction?.providerState || null
                 return
             }
             if (evt.type === 'alldone.completed') {
-                state.bridgeCompleted = true
                 state.finalResult = typeof evt.output === 'string' ? evt.output : state.finalResult
                 state.usage = evt.usage || state.usage
                 state.providerState = evt.providerState || null
@@ -3670,11 +3007,10 @@ async function runAgentInSandbox(
                 state.providerState = evt.providerState || null
                 return
             }
-            if (evt.type === 'result' || evt.type === 'turn.completed') state.providerCompleted = true
             const before = state.activity.length
             config.handleEvent(evt, state)
             if (publishActivity && state.activity.length > before && typeof onActivity === 'function') {
-                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, credentialMode, credentialLabel))
+                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, credentialMode))
             }
         }
         const handleStdout = data => {
@@ -3705,16 +3041,13 @@ async function runAgentInSandbox(
                   agent: vmJob.agent || DEFAULT_AGENT,
                   realApiKey: apiKey,
                   credentialMode,
-                  // Scopes the minted token to this run's key slot, so it can only ever be spent on
-                  // the matching proxy route (see mintProxyToken).
-                  credentialProvider,
                   ttlMs: MAX_VM_RUNTIME_MS + VM_JOB_FINALIZATION_HEADROOM_MS,
               })
         console.log('🖥️ VM JOB: agent credential mode', {
             correlationId: vmJob.correlationId,
             mode: agentCredentials.mode,
         })
-        const agentEnv = config.sandboxEnv({ ...agentCredentials, agentModel: runDetails.model })
+        const agentEnv = config.sandboxEnv(agentCredentials)
         const additionalWritableRoots = buildVmAdditionalWritableRoots(gitContext)
         const runEnvs = buildSandboxCommandEnv(
             agentEnv,
@@ -3731,7 +3064,6 @@ async function runAgentInSandbox(
                 runDetails,
                 agentCredentials,
                 additionalWritableRoots,
-                gitContext,
             })
             await sandbox.files.write(VM_AGENT_BRIDGE_INPUT_PATH, JSON.stringify(bridgeInput))
             agentCommand = `node ${shellQuoteArg(bridgePath)} ${shellQuoteArg(
@@ -3752,36 +3084,6 @@ async function runAgentInSandbox(
         const commandTimeoutMs = E2B_COMMAND_CONNECTION_TIMEOUT_MS
         const runStatePaths = buildVmRunStatePaths(vmJob.correlationId)
         const durableCommand = buildDurableVmCommand(command, runStatePaths)
-        const reloadDurableAgentOutput = async () => {
-            try {
-                const [durableStdout, durableStderr] = await Promise.all([
-                    sandbox.files.read(runStatePaths.stdoutPath),
-                    sandbox.files.read(runStatePaths.stderrPath),
-                ])
-                state.activity.length = 0
-                state.finalResult = ''
-                state.assistantText = ''
-                state.usage = null
-                state.interaction = null
-                state.providerState = null
-                state.bridgeError = null
-                state.bridgeCompleted = false
-                state.providerCompleted = false
-                String(durableStdout)
-                    .split('\n')
-                    .forEach(line => handleLine(line, false))
-                stdoutBuf = ''
-                stderr = String(durableStderr)
-                return true
-            } catch (error) {
-                console.warn('🖥️ VM JOB: could not reload durable command output', {
-                    correlationId: vmJob.correlationId,
-                    error: error.message,
-                })
-                if (stdoutBuf.trim()) handleLine(stdoutBuf)
-                return false
-            }
-        }
         console.log('🖥️ VM JOB: running agent command', {
             correlationId: vmJob.correlationId,
             agent: config.label,
@@ -3848,8 +3150,7 @@ async function runAgentInSandbox(
                                 `${renderVmWorkingHeader(
                                     agentLabel,
                                     runDetails,
-                                    credentialMode,
-                                    credentialLabel
+                                    credentialMode
                                 )}\n\n⏸️ Extending VM runtime after slice ${completedSliceCount}…`
                             )
                         }
@@ -3871,74 +3172,60 @@ async function runAgentInSandbox(
                 if (cancellationMonitor) cancellationMonitor.stop()
             }
         } catch (runError) {
-            await reloadDurableAgentOutput()
-            if (state.resolvedModelUpdatePromise) await state.resolvedModelUpdatePromise
+            if (stdoutBuf.trim()) handleLine(stdoutBuf)
             if (isVmGoldExhaustedError(runError) || isVmJobCancelledError(runError)) throw runError
-            if (runError.vmCommandObservationFailed && hasRecoverableVmAgentTerminalState(state)) {
-                result = { exitCode: 0, recoveredFromDurableAgentState: true }
-                console.warn('🖥️ VM JOB: recovered terminal agent state after command-channel failure', {
-                    correlationId: vmJob.correlationId,
-                    agent: config.label,
-                    bridgeCompleted: state.bridgeCompleted,
-                    providerCompleted: state.providerCompleted,
-                    interaction: !!state.interaction,
-                    transportError: sanitizeVmErrorText(runError.message),
-                })
-            } else {
-                // The command was killed (e.g. timeout) before returning — log whatever it
-                // produced so we can see where the agent got stuck, then rethrow.
-                const detailedError = buildAgentExitError(agentLabel, null, state, stderr, runError)
-                detailedError.vmCommandReconnectAttempts = runError.vmCommandReconnectAttempts || 0
-                detailedError.vmCommandReconnectError = runError.vmCommandReconnectError || null
-                detailedError.vmUnobservedCommandStopped = runError.vmUnobservedCommandStopped === true
-                detailedError.vmCommandTerminationError = runError.vmCommandTerminationError || null
-                detailedError.vmCommandTerminationUncertain = runError.vmCommandTerminationUncertain === true
-                console.error('🖥️ VM JOB: command errored/terminated', {
-                    correlationId: vmJob.correlationId,
-                    agent: config.label,
-                    error: detailedError.message,
-                    events: state.activity.length,
-                    lastActivity: state.activity.slice(-3).map(line => sanitizeVmErrorText(line)),
-                    stdoutBufLen: stdoutBuf.length,
-                    stderrLen: stderr.length,
-                    stderrPreview: sanitizeVmErrorText(stderr, 800),
-                    bridgeError: detailedError.vmBridgeError,
-                    transportError: detailedError.vmTransportError,
-                    exitCode: detailedError.vmExitCode,
-                    partialOutput: detailedError.vmPartialOutput,
-                    reconnectAttempts: runError.vmCommandReconnectAttempts || 0,
-                    reconnectError: runError.vmCommandReconnectError || null,
-                    unobservedCommandStopped: runError.vmUnobservedCommandStopped === true,
-                    terminationError: runError.vmCommandTerminationError || null,
-                    terminationUncertain: runError.vmCommandTerminationUncertain === true,
-                    runtimeGoldCharged,
-                })
-                const errorToThrow = markSafeVmSubscriptionAuthRetry(
-                    selectVmCommandError(runError, detailedError),
-                    subscriptionAuth?.provider,
-                    state
-                )
-                if (
-                    runError.vmCommandObservationFailed &&
-                    !state.bridgeError &&
-                    !isVmRuntimeTimeoutError(errorToThrow)
-                ) {
-                    errorToThrow.vmExecutionInterrupted = true
-                }
-                if (typeof errorToThrow.runtimeGoldCharged !== 'number') {
-                    errorToThrow.runtimeGoldCharged =
-                        typeof runError.runtimeGoldCharged === 'number'
-                            ? runError.runtimeGoldCharged
-                            : runtimeGoldCharged
-                }
-                throw errorToThrow
+            // The command was killed (e.g. timeout) before returning — log whatever it
+            // produced so we can see where the agent got stuck, then rethrow.
+            const detailedError = buildAgentExitError(agentLabel, null, state, stderr, runError)
+            console.error('🖥️ VM JOB: command errored/terminated', {
+                correlationId: vmJob.correlationId,
+                agent: config.label,
+                error: detailedError.message,
+                events: state.activity.length,
+                lastActivity: state.activity.slice(-3).map(line => sanitizeVmErrorText(line)),
+                stdoutBufLen: stdoutBuf.length,
+                stderrLen: stderr.length,
+                stderrPreview: sanitizeVmErrorText(stderr, 800),
+                runtimeGoldCharged,
+            })
+            const errorToThrow = markSafeVmSubscriptionAuthRetry(
+                selectVmCommandError(runError, detailedError),
+                subscriptionAuth?.provider,
+                state
+            )
+            if (typeof errorToThrow.runtimeGoldCharged !== 'number') {
+                errorToThrow.runtimeGoldCharged =
+                    typeof runError.runtimeGoldCharged === 'number' ? runError.runtimeGoldCharged : runtimeGoldCharged
             }
+            throw errorToThrow
         }
         // Rebuild the parser state from the in-VM log. This captures output emitted while
         // E2B's command stream was disconnected for a pause/resume handoff.
-        await reloadDurableAgentOutput()
+        try {
+            const [durableStdout, durableStderr] = await Promise.all([
+                sandbox.files.read(runStatePaths.stdoutPath),
+                sandbox.files.read(runStatePaths.stderrPath),
+            ])
+            state.activity.length = 0
+            state.finalResult = ''
+            state.assistantText = ''
+            state.usage = null
+            state.interaction = null
+            state.providerState = null
+            state.bridgeError = null
+            String(durableStdout)
+                .split('\n')
+                .forEach(line => handleLine(line, false))
+            stdoutBuf = ''
+            stderr = String(durableStderr)
+        } catch (error) {
+            console.warn('🖥️ VM JOB: could not reload durable command output', {
+                correlationId: vmJob.correlationId,
+                error: error.message,
+            })
+            if (stdoutBuf.trim()) handleLine(stdoutBuf)
+        }
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
-        if (state.resolvedModelUpdatePromise) await state.resolvedModelUpdatePromise
         console.log('🖥️ VM JOB: command finished', {
             correlationId: vmJob.correlationId,
             agent: config.label,
@@ -3951,7 +3238,11 @@ async function runAgentInSandbox(
 
         const output = (state.finalResult || state.assistantText || '').trim()
         if (result?.exitCode !== undefined && result.exitCode !== 0) {
-            throw buildAgentExitErrorWithAuthRetry(agentLabel, result, state, stderr, subscriptionAuth?.provider)
+            throw markSafeVmSubscriptionAuthRetry(
+                buildAgentExitError(agentLabel, result, state, stderr),
+                subscriptionAuth?.provider,
+                state
+            )
         }
         if (state.bridgeError) {
             throw new Error(`${agentLabel} interactive bridge failed: ${state.bridgeError}`)
@@ -3995,23 +3286,10 @@ async function runAgentInSandbox(
             }
         }
         if (!output) {
-            throw buildAgentExitErrorWithAuthRetry(
-                agentLabel,
-                result,
-                state,
-                stderr,
-                subscriptionAuth?.provider,
-                new Error('Agent produced no output.')
-            )
+            throw buildAgentExitError(agentLabel, result, state, stderr, new Error('Agent produced no output.'))
         }
         // Collect deliverable files written during THIS run (while the sandbox is still alive).
         const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
-        const outputArtifactGroups = await collectOutputArtifactGroups(
-            sandbox,
-            vmJob.correlationId,
-            runStartMs,
-            artifacts
-        )
         if (subscriptionCredentialPrepared) {
             await persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth, vmJob.requestUserId)
             subscriptionCredentialPrepared = false
@@ -4029,7 +3307,6 @@ async function runAgentInSandbox(
             output,
             usage: state.usage,
             artifacts,
-            outputArtifactGroups,
             runtimeGoldCharged,
             attemptRuntimeMs: Date.now() - runStartMs,
             activeRuntimeMs: (Number(pendingWebhook?.vmActiveRuntimeMs) || 0) + (Date.now() - runStartMs),
@@ -4044,14 +3321,7 @@ async function runAgentInSandbox(
             // Preserve normal agent failures, but never reuse a VM whose command channel
             // timed out or whose agent was forcibly terminated: those sessions can retain
             // orphaned child processes and caused the Git setup hang this guards against.
-            await keepVmSessionAlive(
-                sessionRef,
-                sandbox,
-                vmJob,
-                e2bApiKey,
-                sessionLeaseOwner,
-                err.vmExecutionInterrupted ? VM_JOB_INTERRUPTED_STATUS : 'failed'
-            ).catch(() => {})
+            await keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, sessionLeaseOwner, 'failed').catch(() => {})
         } else {
             await sandbox?.kill().catch(() => {})
             if (ownsSessionLease) {
@@ -4097,12 +3367,10 @@ async function refundVmJob(pendingWebhook, reason, extraGold = 0) {
         const { refundGold } = require('../Gold/goldHelper')
         await refundGold(pendingWebhook.userId, amount, {
             source: VM_JOB_GOLD_REFUND_SOURCE,
-            idempotencyKey: `vm_job_refund:${pendingWebhook.correlationId}`,
             channel: 'assistant',
             projectId: pendingWebhook.projectId,
             objectId: pendingWebhook.objectId,
             objectType: pendingWebhook.objectType,
-            ...buildVmGoldBillingDimensions(pendingWebhook),
             note: reason || 'VM task failed',
         })
     } catch (error) {
@@ -4186,8 +3454,8 @@ async function chargeVmTopup(
             credentialMode === 'byok'
                 ? 'personal API key, provider-billed, 0 Gold'
                 : subscriptionUsed
-                  ? 'personal subscription, 0 Gold'
-                  : `${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining`
+                ? 'personal subscription, 0 Gold'
+                : `${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining`
         })` +
         (typeof costUsd === 'number' ? ` (~$${costUsd.toFixed(2)})` : '')
     const ctx = {
@@ -4196,7 +3464,6 @@ async function chargeVmTopup(
         projectId: pendingWebhook.projectId,
         objectId: pendingWebhook.objectId,
         objectType: pendingWebhook.objectType,
-        ...buildVmGoldBillingDimensions({ ...vmJob, ...pendingWebhook }),
         note,
     }
     const result = await deductGold(pendingWebhook.userId, topup, ctx).catch(() => null)
@@ -4230,39 +3497,6 @@ function buildWhatsAppVmResultMessage(output, { mediaContext = [] } = {}) {
     const heading = files.length === 1 ? 'Generated file:' : 'Generated files:'
     const links = files.map(m => `${m.fileName || 'file'}: ${m.storageUrl}`).join('\n')
     return `${heading}\n${links}\n\n${message}`
-}
-
-// Mirror a WhatsApp-delivered VM result into the user's daily WhatsApp topic, so the next
-// WhatsApp message ("did it open the MR?") is answered by an assistant that can see the
-// result the user just read (AT-2387). The host task thread is a different conversation
-// from the one WhatsApp follow-ups land in. Idempotent on the correlationId + notification
-// type, so a runner retry or a reconciliation pass cannot post it twice, and skipped when
-// postVmOriginConversationNote is already going to write into that same topic.
-async function mirrorVmResultToWhatsAppDailyTopic(pendingWebhook, message, notificationType) {
-    try {
-        const { mirrorAssistantResultToWhatsAppDailyTopic } = require('../WhatsApp/whatsAppResultMirror')
-        await mirrorAssistantResultToWhatsAppDailyTopic({
-            userId: pendingWebhook.userId,
-            assistantId: pendingWebhook.assistantId || pendingWebhook.originAssistantId || '',
-            resultText: message,
-            sourceProjectId: pendingWebhook.projectId,
-            sourceObjectId: pendingWebhook.objectId,
-            sourceObjectType: pendingWebhook.objectType || 'tasks',
-            sourceLabel: 'From your VM task',
-            sourceCommentId: `vmJob:${pendingWebhook.correlationId}:${notificationType}`,
-            alreadyDeliveredTo: [
-                {
-                    projectId: pendingWebhook.originProjectId || '',
-                    objectId: pendingWebhook.originObjectId || '',
-                },
-            ],
-        })
-    } catch (error) {
-        console.warn('🖥️ VM JOB: Failed mirroring WhatsApp result into the daily topic', {
-            correlationId: pendingWebhook?.correlationId,
-            error: error?.message || String(error),
-        })
-    }
 }
 
 async function sendWhatsAppVmResultNotification(
@@ -4312,7 +3546,6 @@ async function sendWhatsAppVmResultNotification(
                 ...baseLog,
                 sid: notificationData.sid,
             })
-            await mirrorVmResultToWhatsAppDailyTopic(pendingWebhook, message, notificationType)
         } else {
             console.warn('🖥️ VM JOB: WhatsApp result notification failed', {
                 ...baseLog,
@@ -4361,22 +3594,9 @@ async function postVmOriginConversationNote(pendingWebhook, text, { notification
 
     const hostObjectType = pendingWebhook.objectType || 'tasks'
     const link = buildVmChatLink(pendingWebhook.projectId, hostObjectType, pendingWebhook.objectId)
-    const icon =
-        notificationType === 'completed'
-            ? '✅'
-            : notificationType === 'cancelled'
-              ? '🛑'
-              : notificationType === VM_JOB_INTERRUPTED_STATUS
-                ? '⚠️'
-                : '❌'
+    const icon = notificationType === 'completed' ? '✅' : notificationType === 'cancelled' ? '🛑' : '❌'
     const verb =
-        notificationType === 'completed'
-            ? 'finished'
-            : notificationType === 'cancelled'
-              ? 'was cancelled'
-              : notificationType === VM_JOB_INTERRUPTED_STATUS
-                ? 'was interrupted'
-                : 'failed'
+        notificationType === 'completed' ? 'finished' : notificationType === 'cancelled' ? 'was cancelled' : 'failed'
     const snippet = shrinkTagText(
         cleanTextMetaData(removeFormatTagsFromText(text || ''), true),
         VM_ORIGIN_NOTE_SNIPPET_MAX
@@ -4418,32 +3638,6 @@ async function notifyVmResultChannels(pendingWebhook, text, opts = {}) {
     await postVmOriginConversationNote(pendingWebhook, text, { notificationType: opts.notificationType })
 }
 
-// A workflow step parked on this VM can move as soon as all of the job's own finalization has
-// finished. Read the authoritative status back first: a failed status write must leave the workflow
-// parked for the minute poller's recovery path, not advance on an in-memory assumption.
-async function resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook) {
-    try {
-        const snapshot = await pendingRef.get()
-        if (!snapshot.exists) return 0
-
-        // pendingWebhook was already restored from the immutable vmJobs snapshot at runner start;
-        // pass it as the authoritative callback context rather than letting a mutable status record
-        // override routing fields during this final read.
-        const settledJob = {
-            ...pendingWebhook,
-            ...resolveVmCallbackContext(snapshot.data() || {}, pendingWebhook),
-        }
-        const { resolveWorkflowRunsForSettledVmJob } = require('../Tasks/workflowAiStep')
-        return await resolveWorkflowRunsForSettledVmJob(settledJob)
-    } catch (error) {
-        console.warn('🖥️ VM JOB: Immediate workflow completion failed; poller will retry', {
-            correlationId: pendingWebhook.correlationId,
-            error: error.message,
-        })
-        return 0
-    }
-}
-
 /**
  * Worker entry point: run a queued VM job to completion and post the result back
  * into the conversation. Invoked by the runVmJob onTaskDispatched function.
@@ -4468,8 +3662,7 @@ async function runVmJobByCorrelationId(correlationId) {
     if (
         pendingWebhook.status === 'completed' ||
         pendingWebhook.status === 'failed' ||
-        pendingWebhook.status === 'cancelled' ||
-        pendingWebhook.status === VM_JOB_INTERRUPTED_STATUS
+        pendingWebhook.status === 'cancelled'
     ) {
         console.warn('🖥️ VM JOB RUNNER: Already settled, skipping', { correlationId, status: pendingWebhook.status })
         return
@@ -4486,7 +3679,6 @@ async function runVmJobByCorrelationId(correlationId) {
         await refundVmJob(pendingWebhook, 'VM task stopped before execution')
         // This job held the thread's dispatch lease; hand off to any queued follow-up.
         await drainThreadAfterRun(threadSessionRef)
-        await resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook)
         return
     }
 
@@ -4497,21 +3689,6 @@ async function runVmJobByCorrelationId(correlationId) {
     }
     const heartbeat = startVmJobHeartbeat(pendingRef, lease.leaseOwner)
 
-    // AT-2196: a previous run on this task may have failed and parked the task with the user so they
-    // could see it. Work is starting again, so give the step back to the reviewer that failure
-    // displaced — if this run fails too, the hold is simply re-applied when it settles. An
-    // interaction hold is never touched here; it releases through its own answer/cancel path.
-    // The reviewer the task ends up with is also the only one this run may claim back on failure:
-    // anything else means a human took the task over while the VM was working, and that wins.
-    const failureHoldState = await prepareVmFailureHoldForRun(db, pendingWebhook).catch(error => {
-        console.warn('🖥️ VM JOB RUNNER: Failed releasing previous failure hold', {
-            correlationId,
-            error: error.message,
-        })
-        return null
-    })
-    pendingWebhook.taskReviewerAtRunStart = failureHoldState ? failureHoldState.reviewerAtRunStart : null
-
     const env = getEnvFunctions()
     const e2bApiKey = env.E2B_API_KEY
     // Resolve the agent the assistant chose (defaults to Claude) and its config.
@@ -4520,43 +3697,30 @@ async function runVmJobByCorrelationId(correlationId) {
     const runDetails = resolveAgentRunDetails(vmJob)
     const wantsSubscription = vmJob.credentialMode === 'subscription'
     const wantsByok = vmJob.credentialMode === 'byok'
-    // The key slot this run authenticates with — 'openrouter' for an OpenRouter model, otherwise the
-    // agent. Read from the job (falling back to a derivation for pre-AT-2230 docs) so the runner and
-    // the proxy answer the credential question identically.
-    const credentialProvider = resolveJobCredentialProvider(vmJob)
-    const credentialProviderLabel = credentialProvider === 'openrouter' ? OPENROUTER_LABEL : agentLabel
     let subscriptionAuth = wantsSubscription
         ? await require('./vmSubscriptionAuth').loadVmSubscriptionAuth(
               vmJob.requestUserId,
               vmJob.agent || DEFAULT_AGENT
           )
         : null
-    const subscriptionAuthRejected = wantsSubscription && subscriptionAuth?.authInvalid === true
     const byokStatus = wantsByok
         ? await require('./vmApiKeyAuth')
               .getVmApiKeyStatus(vmJob.requestUserId)
               .catch(() => null)
         : null
-    const byokAvailable = !!byokStatus?.[credentialProvider]?.connected
-    // An OpenRouter run is platform-billed against the OpenRouter key, not the OpenAI one the Codex
-    // agent config names. Checking the agent's key here would pass on a missing OpenRouter key and
-    // fail later inside the proxy, mid-run, after Gold had been spent.
-    const apiKey = credentialProvider === 'openrouter' ? env.OPENROUTER_API_KEY : env[config.apiKeyField]
+    const byokAvailable = !!byokStatus?.[vmJob.agent || DEFAULT_AGENT]?.connected
+    const apiKey = env[config.apiKeyField]
     if (
-        (wantsSubscription && (!subscriptionAuth || subscriptionAuthRejected)) ||
+        (wantsSubscription && !subscriptionAuth) ||
         (wantsByok && !byokAvailable) ||
         (!wantsSubscription && !wantsByok && !apiKey) ||
         !e2bApiKey
     ) {
         const message = wantsSubscription
-            ? subscriptionAuthRejected
-                ? `VM task could not run: your ${agentLabel} subscription login needs to be refreshed. Reconnect it in Settings → Integrations.`
-                : `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
+            ? `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
             : wantsByok
-              ? `VM task could not run: your personal ${credentialProviderLabel} API key is missing. Add or replace it in Settings → Integrations.`
-              : credentialProvider === 'openrouter' && !apiKey
-                ? `VM task could not run: OpenRouter is not configured for Alldone Gold on this environment (OPENROUTER_API_KEY is missing). Add your own OpenRouter API key in Settings → Integrations, or choose an OpenAI model.`
-                : `VM task could not run: ${config.label} sandbox credentials are not configured.`
+            ? `VM task could not run: your personal ${agentLabel} API key is missing. Add or replace it in Settings → Integrations.`
+            : `VM task could not run: ${config.label} sandbox credentials are not configured.`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
         await notifyVmResultChannels(pendingWebhook, failureText, {
@@ -4568,18 +3732,17 @@ async function runVmJobByCorrelationId(correlationId) {
         heartbeat.stop()
         // This job held the thread's dispatch lease (it never reached runAgentInSandbox); hand off.
         await drainThreadAfterRun(threadSessionRef)
-        await resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook)
         return
     }
 
     // Throttled live-activity updates to the single status comment. The worker passes
     // a fully-rendered activity log; we just rate-limit the Firestore writes.
     let lastProgressAt = 0
-    const onActivity = (text, { force = false } = {}) => {
+    const onActivity = text => {
         const now = Date.now()
-        if (!force && now - lastProgressAt < PROGRESS_UPDATE_INTERVAL_MS) return
+        if (now - lastProgressAt < PROGRESS_UPDATE_INTERVAL_MS) return
         lastProgressAt = now
-        return writeStatusComment(pendingWebhook, text).catch(() => {})
+        writeStatusComment(pendingWebhook, text).catch(() => {})
     }
 
     // For a coding ("prototype") task, surface the project's connected repo (GitHub or GitLab)
@@ -4618,18 +3781,12 @@ async function runVmJobByCorrelationId(correlationId) {
         await pendingRef
             .update({
                 credentialMode,
-                // Re-asserted (not changed) so the doc the proxy reads always carries both halves of
-                // the billing route, including for a job launched before this field existed.
-                credentialProvider,
                 subscriptionUsed: credentialMode === 'subscription',
                 personalApiKeyUsed: credentialMode === 'byok',
                 tokenBillingExempt,
             })
             .catch(() => {})
-        await writeStatusComment(
-            pendingWebhook,
-            renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialProviderLabel)
-        )
+        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, credentialMode))
         const runAgent = (allowAuthRecovery = true) =>
             runAgentInSandbox(
                 vmJob,
@@ -4642,8 +3799,7 @@ async function runVmJobByCorrelationId(correlationId) {
                 pendingWebhook,
                 pendingRef,
                 subscriptionAuth,
-                allowAuthRecovery,
-                runDetails
+                allowAuthRecovery
             )
         let agentResult
         try {
@@ -4656,10 +3812,6 @@ async function runVmJobByCorrelationId(correlationId) {
             })
             let retryStarted = false
             try {
-                // Surface the reconnect state while this job is waiting, not only after its
-                // recovery deadline. The marker is credential-version guarded, so a concurrent
-                // VM that already rotated the token cannot poison the newer stored login.
-                await markRejectedVmSubscriptionAuth(vmJob.requestUserId, subscriptionAuth, correlationId)
                 const waitingText = buildVmSubscriptionAuthWaitingText(agentLabel)
                 await pendingRef
                     .set(
@@ -4717,8 +3869,7 @@ async function runVmJobByCorrelationId(correlationId) {
                     `${renderVmWorkingHeader(
                         agentLabel,
                         runDetails,
-                        credentialMode,
-                        credentialProviderLabel
+                        credentialMode
                     )}\n\n🔄 Subscription login refreshed; retrying automatically…`
                 )
                 retryStarted = true
@@ -4751,7 +3902,6 @@ async function runVmJobByCorrelationId(correlationId) {
             output,
             usage,
             artifacts,
-            outputArtifactGroups = [],
             runtimeGoldCharged = 0,
             attemptRuntimeMs = 0,
             activeRuntimeMs = 0,
@@ -4761,10 +3911,7 @@ async function runVmJobByCorrelationId(correlationId) {
         // attachment tokens (render as inline downloadable FileDownloadableTags). Keep the
         // tokens on their own first line so generated artifacts are visible before the VM answer.
         const mediaContext = await uploadArtifacts(pendingWebhook, artifacts)
-        // The same deliverables as project artifacts that open live, linked under the answer.
-        const { appendVmArtifactLinks } = require('../Artifacts/vmArtifactPublisher')
-        const publishedArtifacts = await publishVmOutputs(pendingWebhook, vmJob, outputArtifactGroups)
-        const finalText = appendVmArtifactLinks(buildVmFinalCommentText(output, mediaContext), publishedArtifacts)
+        const finalText = buildVmFinalCommentText(output, mediaContext)
 
         // Coding agents already return the MR/PR URL in their final result. Associate that
         // provider-validated URL with the host task and fetch its initial status server-side.
@@ -4782,7 +3929,7 @@ async function runVmJobByCorrelationId(correlationId) {
 
         // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
         await writeStatusComment(pendingWebhook, finalText, { isFinal: true, output: finalText, mediaContext })
-        await notifyVmResultChannels(pendingWebhook, appendVmArtifactLinks(output, publishedArtifacts), {
+        await notifyVmResultChannels(pendingWebhook, output, {
             mediaContext,
             pendingRef,
             notificationType: 'completed',
@@ -4793,20 +3940,20 @@ async function runVmJobByCorrelationId(correlationId) {
         const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
         const runtimeMs = activeRuntimeMs || (Number(latestPendingData.vmActiveRuntimeMs) || 0) + attemptRuntimeMs
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
-        const { minutes, totalTokens, tokensPerGold, runtimeGoldRemaining, tokenGold, tokenGoldTotal, topup } =
-            calculateCompletionGoldCharges({
-                runtimeMs,
-                usage,
-                runtimeGoldCharged,
-                proxyTokenGoldCharged,
-                subscriptionUsed: tokenBillingExempt,
-                agentModel: vmJob.agentModel,
-                // The rate frozen at launch. Read from the job doc, which is also where the proxy's
-                // mirror of it came from, so settlement and the incremental charges are the same rate
-                // by construction rather than by two matching derivations.
-                tokensPerGold: vmJob.tokensPerGold,
-                proxyTokenUsage: latestPendingData.proxyTokenUsage,
-            })
+        const {
+            minutes,
+            totalTokens,
+            runtimeGoldRemaining,
+            tokenGold,
+            tokenGoldTotal,
+            topup,
+        } = calculateCompletionGoldCharges({
+            runtimeMs,
+            usage,
+            runtimeGoldCharged,
+            proxyTokenGoldCharged,
+            subscriptionUsed: tokenBillingExempt,
+        })
         await chargeVmTopup(pendingWebhook, vmJob, {
             topup,
             minutes,
@@ -4851,7 +3998,6 @@ async function runVmJobByCorrelationId(correlationId) {
             tokenBillingExempt,
             tokenGoldTotal,
             tokenGold,
-            tokensPerGold,
             topup,
             costUsd: usage?.costUsd ?? null,
         })
@@ -4862,11 +4008,6 @@ async function runVmJobByCorrelationId(correlationId) {
         if (isVmThreadBusyError(error)) {
             console.warn('🖥️ VM JOB RUNNER: thread busy at run start; job re-queued', { correlationId })
             await pendingRef.set({ status: 'queued', requeuedAt: Date.now() }, { merge: true }).catch(() => {})
-            // This deferral produces no failure comment and no settlement, so nothing would re-apply
-            // the earlier failure hold this run released at start. Put it back (AT-2196).
-            if (failureHoldState?.releasedHold) {
-                await restoreVmFailureWorkflowHold(db, pendingWebhook, failureHoldState.releasedHold).catch(() => {})
-            }
             return
         }
         console.error('🖥️ VM JOB RUNNER: Failed', { correlationId, error: error.message, stack: error.stack })
@@ -4875,10 +4016,7 @@ async function runVmJobByCorrelationId(correlationId) {
         const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
         if (isVmGoldExhaustedError(error) || latestPendingData.failureReason === VM_GOLD_EXHAUSTED_FAILURE_REASON) {
-            await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
-                assistantRunStatus: 'failed',
-                failureReason: VM_GOLD_EXHAUSTED_FAILURE_REASON,
-            })
+            await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, { assistantRunStatus: 'failed' })
             await notifyVmResultChannels(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
                 pendingRef,
                 notificationType: 'failed',
@@ -4918,10 +4056,7 @@ async function runVmJobByCorrelationId(correlationId) {
 
         if (isVmRuntimeTimeoutError(error)) {
             const timeoutText = buildVmRuntimeTimeoutText(error.runtimeMs || MAX_VM_RUNTIME_MS)
-            await writeStatusComment(pendingWebhook, timeoutText, {
-                assistantRunStatus: 'failed',
-                failureReason: VM_RUNTIME_TIMEOUT_FAILURE_REASON,
-            })
+            await writeStatusComment(pendingWebhook, timeoutText, { assistantRunStatus: 'failed' })
             await notifyVmResultChannels(pendingWebhook, timeoutText, {
                 pendingRef,
                 notificationType: 'failed',
@@ -4947,55 +4082,11 @@ async function runVmJobByCorrelationId(correlationId) {
         const subscriptionAuthFailure =
             error.failureReason === VM_SUBSCRIPTION_AUTH_FAILURE_REASON ||
             (wantsSubscription && isVmSubscriptionAuthError(error, vmJob.agent || DEFAULT_AGENT))
-        if (subscriptionAuthFailure) {
-            await markRejectedVmSubscriptionAuth(vmJob.requestUserId, subscriptionAuth, correlationId)
-        }
-        if (error.vmExecutionInterrupted && !subscriptionAuthFailure) {
-            const interruptedText = buildVmExecutionInterruptedText(agentLabel)
-            await writeStatusComment(pendingWebhook, interruptedText, {
-                assistantRunStatus: VM_JOB_INTERRUPTED_STATUS,
-                failureReason: VM_JOB_INTERRUPTED_FAILURE_REASON,
-            })
-            await notifyVmResultChannels(pendingWebhook, interruptedText, {
-                pendingRef,
-                notificationType: VM_JOB_INTERRUPTED_STATUS,
-            })
-            await pendingRef
-                .update({
-                    status: VM_JOB_INTERRUPTED_STATUS,
-                    error: sanitizeVmErrorText(error.message),
-                    failureReason: VM_JOB_INTERRUPTED_FAILURE_REASON,
-                    interruptedAt: Date.now(),
-                    runtimeGoldCharged,
-                    proxyTokenGoldCharged,
-                    diagnostics: {
-                        bridgeError: error.vmBridgeError || null,
-                        transportError: error.vmTransportError || null,
-                        exitCode: error.vmExitCode ?? null,
-                        partialOutput: error.vmPartialOutput || null,
-                        reconnectAttempts: error.vmCommandReconnectAttempts || 0,
-                        reconnectError: error.vmCommandReconnectError || null,
-                        unobservedCommandStopped: error.vmUnobservedCommandStopped === true,
-                        terminationError: error.vmCommandTerminationError || null,
-                        terminationUncertain: error.vmCommandTerminationUncertain === true,
-                    },
-                })
-                .catch(() => {})
-            await refundVmJob(
-                pendingWebhook,
-                'VM task execution was interrupted',
-                runtimeGoldCharged + proxyTokenGoldCharged
-            )
-            return
-        }
         const message = subscriptionAuthFailure
             ? buildVmSubscriptionAuthFailureText(agentLabel).replace(/^❌\s*/, '')
             : `The VM task could not be completed: ${error.message}`
         const failureText = `❌ ${message}`
-        await writeStatusComment(pendingWebhook, failureText, {
-            assistantRunStatus: 'failed',
-            ...(subscriptionAuthFailure ? { failureReason: VM_SUBSCRIPTION_AUTH_FAILURE_REASON } : {}),
-        })
+        await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
         await notifyVmResultChannels(pendingWebhook, failureText, {
             pendingRef,
             notificationType: 'failed',
@@ -5013,7 +4104,6 @@ async function runVmJobByCorrelationId(correlationId) {
         await refundVmJob(pendingWebhook, 'VM task failed during execution', runtimeGoldCharged + proxyTokenGoldCharged)
     } finally {
         heartbeat.stop()
-        await resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook)
     }
 }
 
@@ -5024,9 +4114,6 @@ module.exports = {
     MAX_VM_RUNTIME_MS,
     __private__: {
         buildAgentPrompt,
-        collectArtifacts,
-        collectOutputArtifactGroups,
-        publishVmOutputs,
         GIT_SETUP_SCRIPT,
         buildGitEnv,
         setupGitRepo,
@@ -5035,8 +4122,6 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
-        AGENT_CONFIGS,
-        buildClaudeRunCommand,
         isInteractiveVmExecutionEnabled,
         resolveVmInteractionPhase,
         formatVmInteractionAnswers,
@@ -5052,25 +4137,17 @@ module.exports = {
         sanitizeVmErrorText,
         buildStageError,
         buildAgentExitError,
-        hasRecoverableVmAgentTerminalState,
         isVmSubscriptionAuthError,
         markSafeVmSubscriptionAuthRetry,
-        buildAgentExitErrorWithAuthRetry,
         waitForVmSubscriptionAuthChange,
         buildVmSubscriptionAuthWaitingText,
         buildVmSubscriptionAuthFailureText,
-        markRejectedVmSubscriptionAuth,
         ensureAgentCliAvailable,
-        renderAgentCliCheckStatus,
-        parseAgentCliInstallingMarker,
-        renderAgentCliChangeStatus,
         appendClaudeActivity,
         appendCodexActivity,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,
-        resolveRuntimeAgentModel,
-        applyRuntimeAgentModel,
         calculateAccruedRuntimeGold,
         calculateCompletionGoldCharges,
         checkAndChargeVmRuntimeGold,
@@ -5096,16 +4173,9 @@ module.exports = {
         startVmJobHeartbeat,
         claimVmSessionLease,
         startVmSessionHeartbeat,
-        clearDeadVmSessionSandbox,
-        deleteIdleVmSessionIfUnoccupied,
         keepVmSessionAlive,
         isReusableVmSession,
-        shouldResumeVmSession,
-        resumeE2bSandbox,
         isUnhealthyVmSessionError,
-        isE2bSandboxMissing,
-        readSandboxLeaseDeadlineMs,
-        resumeVmSessionWithFreshLease,
         probeResumedVmSandbox,
         RESUME_HEALTHCHECK_TIMEOUT_MS,
         formatVmRuntimeDuration,
@@ -5115,7 +4185,6 @@ module.exports = {
         sendWhatsAppVmResultNotification,
         postVmOriginConversationNote,
         notifyVmResultChannels,
-        resolveWorkflowAfterVmJobSettlement,
         writeStatusComment,
         buildAttachmentTokens,
         buildVmFinalCommentText,

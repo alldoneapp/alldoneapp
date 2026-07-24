@@ -8,7 +8,6 @@ import { getAttachmentTagName, LOADING_MODE } from '../Feeds/CommentsTextInput/t
 import Spinner from '../UIComponents/Spinner'
 import { getCustomStyle, getFileSize } from '../../utils/HelperFunctions'
 import { checkIsLimitedByTraffic } from '../Premium/PremiumHelper'
-import SaveAttachmentAsArtifactButton from './SaveAttachmentAsArtifactButton'
 
 export default function FileDownloadableTag({
     projectId,
@@ -21,18 +20,11 @@ export default function FileDownloadableTag({
     useCommentTagStyle,
     iconSize,
     textStyle,
-    canSaveAsArtifact = false,
-    editorId = null,
 }) {
     const virtualQuillLoaded = useSelector(state => state.virtualQuillLoaded)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const { uid } = useSelector(state => state.loggedUser)
-    // Inside an editor the chip is rendered by a blot that may not know its project yet; the editor
-    // registers it under its id.
-    const editorProjectId = useSelector(state =>
-        editorId ? state.quillTextInputProjectIdsByEditorId?.[editorId] || null : null
-    )
     const [textToShow, setTextToShow] = useState('')
 
     const downloadFile = () => {
@@ -77,14 +69,6 @@ export default function FileDownloadableTag({
             >
                 {textToShow}
             </Text>
-            {canSaveAsArtifact && isLoading !== LOADING_MODE && !disabled && (
-                <SaveAttachmentAsArtifactButton
-                    projectId={projectId || editorProjectId}
-                    uri={uri}
-                    fileName={text}
-                    iconSize={iconSize || (inDetaliedView ? 16 : 14)}
-                />
-            )}
         </TouchableOpacity>
     )
 }

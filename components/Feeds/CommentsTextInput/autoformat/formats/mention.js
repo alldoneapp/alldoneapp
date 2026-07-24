@@ -1,15 +1,18 @@
-import React from 'react'
+import React, { createRef } from 'react'
+import ReactQuill from 'react-quill'
+import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 
 import MentionWrapper from '../tags/MentionWrapper'
 import store from '../../../../../redux/store'
-import { renderEmbedContent } from './embedReactRoot'
-import ReactEmbedBlot from './reactEmbedBlot'
 
-export default class Mention extends ReactEmbedBlot {
+const Embed = ReactQuill.Quill.import('blots/embed')
+
+export default class Mention extends Embed {
     static create(mentionData) {
         const { text, id, userId, editorId, userIdAllowedToEditTags } = mentionData
         const node = super.create(text)
+        const refs = Mention.refs
 
         node.setAttribute('data-id', id)
         node.setAttribute('editorId', editorId)
@@ -19,12 +22,16 @@ export default class Mention extends ReactEmbedBlot {
         node.setAttribute('contenteditable', false)
 
         Mention.data = text
+        Mention.refs = {
+            ...refs,
+            [id]: createRef(),
+        }
 
-        renderEmbedContent(
-            node,
+        ReactDOM.render(
             <Provider store={store}>
                 <MentionWrapper data={mentionData} />
-            </Provider>
+            </Provider>,
+            node
         )
 
         return node
@@ -41,8 +48,8 @@ export default class Mention extends ReactEmbedBlot {
         return mentionData
     }
 
-    constructor(scroll, domNode) {
-        super(scroll, domNode)
+    constructor(domNode) {
+        super(domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = Mention.data
     }

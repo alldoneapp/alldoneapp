@@ -1,6 +1,5 @@
 const admin = require('firebase-admin')
 const crypto = require('crypto')
-const { Timestamp } = require('firebase-admin/firestore')
 
 /**
  * Process incoming webhook callbacks from external services
@@ -62,7 +61,7 @@ async function processWebhookCallback(req, res) {
         })
 
         // Check if already processed
-        if (['completed', 'failed', 'cancelled', 'interrupted'].includes(pendingWebhook.status)) {
+        if (pendingWebhook.status === 'completed' || pendingWebhook.status === 'failed') {
             console.warn('🌐 WEBHOOK CALLBACK: Webhook already processed:', {
                 correlationId,
                 currentStatus: pendingWebhook.status,
@@ -122,7 +121,7 @@ async function processWebhookCallback(req, res) {
                     creatorId: assistantId,
                     commentText: `❌ Webhook task failed: ${error || 'External service error'}`,
                     commentType: 'STAYWARD_COMMENT',
-                    lastChangeDate: Timestamp.now(),
+                    lastChangeDate: admin.firestore.Timestamp.now(),
                     created: Date.now(),
                     originalContent: `❌ Webhook task failed: ${error || 'External service error'}`,
                     fromAssistant: true,
@@ -170,7 +169,7 @@ async function processWebhookCallback(req, res) {
                 creatorId: assistantId,
                 commentText,
                 commentType: 'STAYWARD_COMMENT',
-                lastChangeDate: Timestamp.now(),
+                lastChangeDate: admin.firestore.Timestamp.now(),
                 created: Date.now(),
                 originalContent: commentText,
                 fromAssistant: true,
@@ -339,7 +338,7 @@ async function cleanupExpiredWebhooks() {
                 creatorId: assistantId,
                 commentText: '⏱️ Webhook task timed out: No response received within the expected timeframe',
                 commentType: 'STAYWARD_COMMENT',
-                lastChangeDate: Timestamp.now(),
+                lastChangeDate: admin.firestore.Timestamp.now(),
                 created: Date.now(),
                 originalContent: '⏱️ Webhook task timed out: No response received within the expected timeframe',
                 fromAssistant: true,

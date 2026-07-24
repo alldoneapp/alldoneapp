@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View, Text, TextInput } from 'react-native'
-
+import { useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import Button from '../../UIControls/Button'
 import { unwatch } from '../../../utils/backends/firestore'
-
+import { resetLoadingData, startLoadingData, stopLoadingData } from '../../../redux/actions'
 import { watchUserByEmail } from '../../../utils/backends/Users/usersFirestore'
 
 const INITIAL_STATE = 'INITIAL_STATE'
@@ -16,6 +16,7 @@ const EMPTY_STATE = 'EMPTY_STATE'
 const LOADED_STATE = 'LOADED_STATE'
 
 export default function UserSelection({ setUser, setText }) {
+    const dispatch = useDispatch()
     const [userState, setUserState] = useState(INITIAL_STATE)
     const [emailInInput, setEmailInInput] = useState('')
     const [email, setEmail] = useState('')
@@ -33,13 +34,14 @@ export default function UserSelection({ setUser, setText }) {
     const loadUser = async () => {
         if (email.trim() !== emailInInput.trim()) {
             setUser(null)
-
+            dispatch(startLoadingData())
             setUserState(SEARCHING_STATE)
             setEmail(emailInInput.trim())
         }
     }
 
     const updateUser = user => {
+        dispatch(stopLoadingData())
         setUserState(user ? LOADED_STATE : EMPTY_STATE)
         setUser(user)
     }
@@ -59,15 +61,18 @@ export default function UserSelection({ setUser, setText }) {
             userState === INITIAL_STATE
                 ? 'Please search for a user to display his/her data'
                 : userState === SEARCHING_STATE
-                  ? 'Searching user'
-                  : userState === EMPTY_STATE
-                    ? 'Sorry, there are no users with that email'
-                    : ''
+                ? 'Searching user'
+                : userState === EMPTY_STATE
+                ? 'Sorry, there are no users with that email'
+                : ''
         )
     }, [userState])
 
     useEffect(() => {
         inputText.current.focus()
+        return () => {
+            dispatch(resetLoadingData())
+        }
     }, [])
 
     return (

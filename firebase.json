@@ -26,15 +26,6 @@
                 ]
             },
             {
-                "source": "/static/**",
-                "headers": [
-                    {
-                        "key": "Cache-Control",
-                        "value": "public, max-age=31536000, immutable"
-                    }
-                ]
-            },
-            {
                 "source": "**/*.mp4",
                 "headers": [
                     {
@@ -48,19 +39,6 @@
                     {
                         "key": "Accept-Ranges",
                         "value": "bytes"
-                    }
-                ]
-            },
-            {
-                "source": "/ota/**",
-                "headers": [
-                    {
-                        "key": "Access-Control-Allow-Origin",
-                        "value": "*"
-                    },
-                    {
-                        "key": "Cache-Control",
-                        "value": "private, no-cache, max-age=0"
                     }
                 ]
             }
@@ -136,13 +114,6 @@
                 }
             },
             {
-                "source": "/api/menubar/upcoming",
-                "function": {
-                    "functionId": "menubarUpcoming",
-                    "region": "europe-west1"
-                }
-            },
-            {
                 "source": "/api/menubar/notes",
                 "function": {
                     "functionId": "menubarPushNote",
@@ -155,14 +126,6 @@
                     "functionId": "menubarAssistantMessage",
                     "region": "europe-west1"
                 }
-            },
-            {
-                "source": "/api/menubar/writing-start",
-                "function": { "functionId": "menubarWritingStart", "region": "europe-west1" }
-            },
-            {
-                "source": "/api/menubar/writing-session",
-                "function": { "functionId": "menubarWritingSession", "region": "europe-west1" }
             },
             {
                 "source": "/api/menubar/assistant-thread",
@@ -212,7 +175,7 @@
     },
     "functions": {
         "source": "functions",
-        "runtime": "nodejs22",
+        "runtime": "nodejs20",
         "region": "europe-west1",
         "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "e2b-template/**"]
     },

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect } from 'react'
+import { useEffect } from 'react'
 import moment from 'moment'
 import { difference, isEmpty } from 'lodash'
 import { useDispatch, useSelector, shallowEqual } from 'react-redux'
@@ -8,8 +8,16 @@ import {
     clearOpenTasksMap,
     clearOpenSubtasksMap,
     setTaskListWatchersVars,
+    setTodayEmptyGoalsTotalAmountInOpenTasksView,
     setLaterTasksExpandedForNavigateFromAllProjects,
     setSomedayTasksExpandedForNavigateFromAllProjects,
+    updateOpenTasks,
+    updateThereAreHiddenNotMainTasks,
+    updateFilteredOpenTasks,
+    updateSubtaskByTask,
+    updateThereAreNotTasksInFirstDay,
+    updateInitialLoadingEndOpenTasks,
+    updateInitialLoadingEndObservedTasks,
 } from '../../../redux/actions'
 import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import {
@@ -26,22 +34,11 @@ import useEffectDebug from '../../../hooks/useEffectDebug'
 import { cleanDataWhenRemoveWorkstreamMember, WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
 import store from '../../../redux/store'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
+import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
-import { useIsUserEditing } from '../../../utils/editingGuard'
-import usePageVisibleRefreshGeneration from '../../../hooks/usePageVisibleRefreshGeneration'
 
-export default function OpenTasksByProjectHandler({
-    projectIndex,
-    firstProject,
-    setProjectsHaveTasksInFirstDay,
-    assistantProfileMode = false,
-    taskWatchersEnabled = true,
-}) {
+export default function OpenTasksByProjectHandler({ projectIndex, firstProject, setProjectsHaveTasksInFirstDay }) {
     const dispatch = useDispatch()
-    // Contracting the day list re-subscribes the open-task watchers with an
-    // empty cache, which unmounts every OpenTasksByDate block - and with it any
-    // open editor. Defer it while the user is typing. See utils/editingGuard.js.
-    const isUserEditing = useIsUserEditing()
     const projectId = useSelector(state => state.loggedUserProjects[projectIndex]?.id)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const laterTasksExpanded = useSelector(state => state.laterTasksExpanded)
@@ -68,13 +65,10 @@ export default function OpenTasksByProjectHandler({
     )
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
-    const pageVisibleRefreshGeneration = usePageVisibleRefreshGeneration({ enabled: taskWatchersEnabled })
 
-    const stopTasksWatchers = ({ preserveSessionSnapshot = false } = {}) => {
-        if (!preserveSessionSnapshot) {
-            dispatch([clearOpenTasksMap(projectId), clearOpenSubtasksMap(projectId)])
-        }
-        unwatchOpenTasks(projectId, currentUserId, { preserveData: preserveSessionSnapshot })
+    const clearTasksAndWatchers = () => {
+        dispatch([clearOpenTasksMap(projectId), clearOpenSubtasksMap(projectId)])
+        unwatchOpenTasks(projectId, currentUserId)
     }
 
     const updateTaks = (initialTasks, initialLoadingInOpenTasks) => {
@@ -88,55 +82,24 @@ export default function OpenTasksByProjectHandler({
         )
     }
 
-    useLayoutEffect(() => {
-        const {
-            openTasksStore,
-            laterTasksExpandedForNavigateFromAllProjects,
-            somedayTasksExpandedForNavigateFromAllProjects,
-        } = store.getState()
-        const retainedTasks = openTasksStore[instanceKey]
-        if (!retainedTasks) return
-
-        const keepExpandedDays =
-            laterTasksExpanded ||
-            somedayTasksExpanded ||
-            laterTasksExpandedForNavigateFromAllProjects ||
-            somedayTasksExpandedForNavigateFromAllProjects
-        const tasksForCurrentView = keepExpandedDays ? retainedTasks : retainedTasks.slice(0, 1)
-
-        // A selected-project snapshot contains sections that All Projects deliberately hides.
-        // Re-apply the current view projection before paint so navigating selected -> All Projects
-        // cannot flash observed/workstream rows from the previous task-board context.
-        updateOpTasks(projectId, instanceKey, tasksForCurrentView, undefined, null, inSelectedProject)
-    }, [])
-
-    // Keep integration refreshes out of the All Projects mount fan-out. The unified Email line
-    // refreshes connected accounts once.
-    //
-    // AT-2480: calendar used to be refreshed here too, per project block and only when that
-    // project was selected - which is exactly why meetings never appeared in All Projects. The
-    // calendar connection belongs to the user, not to the rendered project, so the pull now runs
-    // once for the whole board in `useTaskBoardCalendarSync` (mounted by `TasksByProjectSections`)
-    // and covers both views.
+    // Auto-sync calendar and gmail on page load
+    // Now safe with server-side sync + cooldown cache
     useEffect(() => {
         const { loggedUser } = store.getState()
-        if (inSelectedProject && currentUserId === loggedUser.uid) {
+        if (currentUserId === loggedUser.uid) {
             const projectApis = loggedUser.apisConnected?.[projectId]
+            if (projectApis?.calendar) {
+                console.log('[OpenTasksByProjectHandler] 📅 Checking calendar sync for project:', projectId)
+                checkIfCalendarConnected(projectId)
+            }
             if (projectApis?.email || projectApis?.gmail) {
-                if (__DEV__)
-                    console.log('[OpenTasksByProjectHandler] 📧 Fetching email line summary for project:', projectId)
+                console.log('[OpenTasksByProjectHandler] 📧 Fetching email line summary for project:', projectId)
                 fetchEmailLineSummary(projectId)
             }
         }
-    }, [projectId, currentUserId, inSelectedProject])
+    }, [projectId, currentUserId])
 
     useEffect(() => {
-        // These flags are written straight from onSnapshot, so a task completed
-        // by an assistant can collapse the list under an open editor. Skipping
-        // is safe: `isUserEditing` is in the dependency list, so the contraction
-        // is re-evaluated as soon as the user is done.
-        if (isUserEditing) return
-
         if (inSelectedProject) {
             const {
                 laterTasksExpandedForNavigateFromAllProjects,
@@ -172,21 +135,15 @@ export default function OpenTasksByProjectHandler({
         thereAreLaterEmptyGoalsInProject,
         thereAreSomedayOpenTasksInProject,
         thereAreSomedayEmptyGoalsInProject,
-        isUserEditing,
     ])
 
     useEffect(() => {
-        if (currentUserId && taskWatchersEnabled) {
+        if (currentUserId) {
             const {
                 laterTasksExpandedForNavigateFromAllProjects,
                 somedayTasksExpandedForNavigateFromAllProjects,
-                openTasksStore,
-                globalDataByProject,
             } = store.getState()
-            const hasRenderedSessionSnapshot = openTasksStore[instanceKey] !== undefined
-            const canReuseWatcherData = hasRenderedSessionSnapshot && !!globalDataByProject[projectId]
-
-            stopTasksWatchers({ preserveSessionSnapshot: hasRenderedSessionSnapshot })
+            clearTasksAndWatchers()
             dispatch([
                 setTaskListWatchersVars(WATCHER_VARS_DEFAULT),
                 setLaterTasksExpandedForNavigateFromAllProjects(false),
@@ -197,23 +154,16 @@ export default function OpenTasksByProjectHandler({
                 updateTaks,
                 laterTasksExpandedForNavigateFromAllProjects,
                 somedayTasksExpandedForNavigateFromAllProjects,
-                canReuseWatcherData,
-                instanceKey,
-                assistantProfileMode,
-                {
-                    trackConnectionHealth: inSelectedProject,
-                    deferSecondaryStreams: !inSelectedProject,
-                }
+                false,
+                instanceKey
             )
 
             return () => {
-                // Keep the last published task/decorator snapshot in Redux and the mutable watcher
-                // indexes in globalDataByProject. Returning from Notes/Goals/etc. can paint those
-                // rows immediately; the newly attached listeners reconcile them in the background.
-                stopTasksWatchers({ preserveSessionSnapshot: true })
+                dispatch([setTodayEmptyGoalsTotalAmountInOpenTasksView(projectId, 0)])
+                clearTasksAndWatchers()
             }
         }
-    }, [taskWatchersEnabled, pageVisibleRefreshGeneration])
+    }, [])
 
     useEffect(() => {
         const { openTasksStore } = store.getState()
@@ -241,7 +191,7 @@ export default function OpenTasksByProjectHandler({
     if (!currentUserId.startsWith(WORKSTREAM_ID_PREFIX)) {
         useEffectDebug(
             changedDeps => {
-                if (!isEmpty(changedDeps) && currentUserId && taskWatchersEnabled) {
+                if (!isEmpty(changedDeps) && currentUserId) {
                     let changes = changedDeps.streams
 
                     if (changes.before) {
@@ -261,8 +211,7 @@ export default function OpenTasksByProjectHandler({
                                 taskListWatchersVars.subtasksMap,
                                 laterTasksExpanded,
                                 somedayTasksExpanded,
-                                userId,
-                                inSelectedProject
+                                userId
                             )
                         }
 
@@ -286,6 +235,18 @@ export default function OpenTasksByProjectHandler({
             dispatch(setLastAddNewTaskDate({ projectId: projectId, date }))
         }
     }, [firstProject])
+
+    useEffect(() => {
+        return () => {
+            dispatch(updateOpenTasks(instanceKey, null))
+            dispatch(updateThereAreHiddenNotMainTasks(instanceKey, null))
+            dispatch(updateFilteredOpenTasks(instanceKey, null))
+            dispatch(updateSubtaskByTask(instanceKey, null))
+            dispatch(updateThereAreNotTasksInFirstDay(instanceKey, null))
+            dispatch(updateInitialLoadingEndOpenTasks(instanceKey, null))
+            dispatch(updateInitialLoadingEndObservedTasks(instanceKey, null))
+        }
+    }, [])
 
     return null
 }

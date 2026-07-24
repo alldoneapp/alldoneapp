@@ -24,13 +24,10 @@ export default function ChatsSwitchableTag({ smallScreenNavigation, amountFollow
                 Animated.timing(backgroundLeftPosition, {
                     toValue: nextPosition,
                     duration: 300,
-                    // left/width are layout props, so the native driver cannot drive them.
-                    useNativeDriver: false,
                 }),
                 Animated.timing(backgroundWidthAnim, {
                     toValue: nextWidth,
                     duration: 200,
-                    useNativeDriver: false,
                 }),
             ],
             { stopTogether: false }
@@ -117,7 +114,10 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Grey100,
         height: 22,
         borderRadius: 12,
-        boxShadow: '0px 0px 8px rgba(138,148,166,1.00)',
+        shadowColor: colors.Text03,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
         elevation: 3,
     },
     activeViewMobile: {

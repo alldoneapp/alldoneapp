@@ -2,11 +2,11 @@ import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
-import AppPopover from '../UIComponents/ModalShell/AppPopover'
-import { useSelector } from 'react-redux'
+import Popover from 'react-tiny-popover'
+import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
+import { useDispatch, useSelector } from 'react-redux'
 import DescriptionModal from '../UIComponents/FloatModals/DescriptionModal/DescriptionModal'
 import { cleanTextMetaData, shrinkTagText } from '../../functions/Utils/parseTextUtils'
-import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function DescriptionTag({
     projectId,
@@ -21,26 +21,26 @@ export default function DescriptionTag({
 }) {
     const mobile = useSelector(state => state.mobile)
     const tablet = useSelector(state => state.isMiddleScreen)
+    const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
-    const popupLock = useFloatPopupLock()
     const textLimit = mobile ? 15 : tablet ? 20 : 25
     const compactTextLimit = Math.round(textLimit * 0.6)
 
     const hidePopover = () => {
         setIsOpen(false)
-        popupLock.release()
+        dispatch(hideFloatPopup())
         if (onDismissPopup) onDismissPopup()
     }
 
     const showPopover = () => {
         if (!isOpen) {
             setIsOpen(true)
-            popupLock.acquire()
+            dispatch(showFloatPopup())
         }
     }
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <DescriptionModal
                     projectId={projectId}
@@ -82,7 +82,7 @@ export default function DescriptionTag({
                     )}
                 </View>
             </TouchableOpacity>
-        </AppPopover>
+        </Popover>
     )
 }
 

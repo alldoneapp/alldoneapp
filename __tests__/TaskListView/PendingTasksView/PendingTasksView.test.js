@@ -8,7 +8,11 @@ import PendingTasksView from '../../../components/TaskListView/PendingTasksView/
 
 describe('PendingTasksView component', () => {
     it('should render correctly', async () => {
-        const tree = renderer.create(<PendingTasksView></PendingTasksView>).toJSON()
+        const tree = renderer
+            .create(
+                <PendingTasksView></PendingTasksView>
+            )
+            .toJSON()
         expect(tree).toMatchSnapshot()
     })
 })

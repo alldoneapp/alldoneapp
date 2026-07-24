@@ -5,8 +5,8 @@ import PropTypes from 'prop-types'
 import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import FileTag from '../../Tags/FileTag'
-import { applyPopoverWidth, getPopoverWidth } from '../../../utils/HelperFunctions'
-import * as ImagePicker from '../../../utils/WebShims/ImagePicker'
+import { applyPopoverWidth, getPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import * as ImagePicker from 'expo-image-picker'
 import { Platform } from 'react-native-web'
 import Spinner from '../Spinner'
 import store from '../../../redux/store'
@@ -15,9 +15,8 @@ import Hotkeys from 'react-hot-keys'
 import { withWindowSizeHook } from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
-export class ImagePickerModal extends Component {
+class ImagePickerModal extends Component {
     constructor(props) {
         super(props)
         const storeState = store.getState()
@@ -32,13 +31,11 @@ export class ImagePickerModal extends Component {
         }
 
         this.actionButton = React.createRef()
-        this._isMounted = false
     }
 
     async componentDidMount() {
-        this._isMounted = true
         const { onOpenModal } = this.props
-        this.focusActionButton()
+        this.actionButton.current.focus()
         if (onOpenModal) {
             onOpenModal()
         }
@@ -46,29 +43,22 @@ export class ImagePickerModal extends Component {
 
         if (Platform.OS !== 'web') {
             const { status } = await ImagePicker.requestCameraRollPermissionsAsync()
-            if (this._isMounted && status !== 'granted') {
+            if (status !== 'granted') {
                 this.setState({ enabled: false })
             }
         }
 
-        if (this.props.picture)
-            Image.getSize(this.props.picture, (width, height) => {
-                if (!this._isMounted) return
-                this.setState({
-                    pictures: [{ index: 0, file: this.props.picture }],
-                    height: height * ((getPopoverWidth() - 34) / width),
-                })
+        Image.getSize(this.props.picture, (width, height) => {
+            this.setState({
+                pictures: [{ index: 0, file: this.props.picture }],
+                height: height * ((getPopoverWidth() - 34) / width),
             })
+        })
     }
 
     componentWillUnmount() {
-        this._isMounted = false
         document.removeEventListener('keydown', this.onPressSaveButton)
         this.state.unsubscribe()
-    }
-
-    focusActionButton = () => {
-        this.actionButton.current?.focus()
     }
 
     updateState = () => {
@@ -87,22 +77,17 @@ export class ImagePickerModal extends Component {
             quality: 1,
         })
 
-        if (!this._isMounted) return
-
         if (!result.cancelled) {
             Image.getSize(result.uri, (width, height) => {
-                if (!this._isMounted) return
-                this.setState(
-                    {
-                        pictures: [{ index: 0, file: result.uri }],
-                        height: height * ((getPopoverWidth() - 34) / width),
-                        changed: true,
-                    },
-                    this.focusActionButton
-                )
+                this.setState({
+                    pictures: [{ index: 0, file: result.uri }],
+                    height: height * ((getPopoverWidth() - 34) / width),
+                    changed: true,
+                })
+                this.actionButton.current.focus()
             })
         } else {
-            this.focusActionButton()
+            this.actionButton.current.focus()
         }
     }
 
@@ -117,7 +102,7 @@ export class ImagePickerModal extends Component {
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
+                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
                 ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>
@@ -240,7 +225,10 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         width: 305,
         overflow: 'visible',
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     title: {

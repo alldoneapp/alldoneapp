@@ -2,7 +2,6 @@
 
 const crypto = require('crypto')
 const admin = require('firebase-admin')
-const { Timestamp } = require('firebase-admin/firestore')
 
 const AUTO_COMPACTION_DEFAULTS = Object.freeze({
     triggerMessageCount: 16,
@@ -317,7 +316,7 @@ async function maybeCompactAssistantThread({
     hardOnly = false,
     config = {},
     now = Date.now(),
-    timestampFactory = () => Timestamp.now(),
+    timestampFactory = () => admin.firestore.Timestamp.now(),
 }) {
     const normalizedConfig = normalizeConfig(config)
     const stateSnapshot = await stateRef.get()

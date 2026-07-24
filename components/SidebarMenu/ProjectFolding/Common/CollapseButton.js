@@ -66,7 +66,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
     },
     parentFloating: {
-        boxShadow: '0px -16px 16px rgba(0,0,0,0.56)',
+        shadowColor: 'rgba(0,0,0,0.56)',
+        shadowOffset: { width: 0, height: -16 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     overlayParent: {

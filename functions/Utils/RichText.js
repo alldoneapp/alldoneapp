@@ -43,8 +43,7 @@ const parseRichText = text => {
     const hashTagRegEx = /^#[\S]+/i
     const mentionRegEx = /^@[\S]+/i
     const emailRegEx = /[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/i
-    const urlRegEx =
-        /https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}/i
+    const urlRegEx = /https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}/i
     const MENTION_SPACE_CODE_REGEX = /M2mVOSjAVPPKweL/g
     const KARMA_TRIGGER = 'pMP4SB2IsTQr8LN'
 
@@ -54,11 +53,6 @@ const parseRichText = text => {
     for (let i = 0; i < words.length; i++) {
         const word = words[i]
         const lastElementIndex = textElements.length - 1
-        const detectedEmail = word.match(emailRegEx)
-        const detectedUrl = word.match(urlRegEx)
-        // A URL beginning before an email-shaped fragment owns that fragment.
-        // Conversely, user@www.example.com starts with an email, not a web URL.
-        const isEmail = detectedEmail && (!detectedUrl || detectedEmail.index <= detectedUrl.index)
 
         if (hashTagRegEx.test(word)) {
             textElements.push({
@@ -80,7 +74,7 @@ const parseRichText = text => {
                     text: word.substring(1),
                 })
             }
-        } else if (isEmail) {
+        } else if (emailRegEx.test(word)) {
             textElements.push({
                 type: EMAIL_ELEMENT,
                 email: word,

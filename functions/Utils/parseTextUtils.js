@@ -215,9 +215,6 @@ const cleanTextMetaData = (text = '', removeLineBreaks, preserveMentionMeta = fa
 }
 
 module.exports = {
-    REGEX_ATTACHMENT,
-    REGEX_IMAGE,
-    REGEX_VIDEO,
     removeFormatTagsFromText,
     cleanTextMetaData,
     shrinkTagText,

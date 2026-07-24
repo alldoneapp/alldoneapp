@@ -27,7 +27,6 @@ import ConnectGitLabProperty from './ConnectGitLab/ConnectGitLabProperty'
 import ConnectGitHubProperty from './ConnectGitHub/ConnectGitHubProperty'
 import ConnectGCPProperty from './ConnectGCP/ConnectGCPProperty'
 import VmGoldenProperty from './VmGolden/VmGoldenProperty'
-import ProjectSkillsProperty from './ProjectSkills/ProjectSkillsProperty'
 import ColorProperty from './ColorProperty/ColorProperty'
 import PrivacyProperty from './PrivacyProperty/PrivacyProperty'
 import GuidesProperty from './GuidesProperty/GuidesProperty'
@@ -42,7 +41,6 @@ import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantMod
 import AutoEstimation from './AutoEstimation/AutoEstimation'
 import DayRateLogging from './DayRateLogging/DayRateLogging'
 import GoalMilestones from './GoalMilestones/GoalMilestones'
-import TaskGoalRouting from './TaskGoalRouting/TaskGoalRouting'
 
 const ProjectProperties = ({ project, type }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -69,11 +67,9 @@ const ProjectProperties = ({ project, type }) => {
     const cannotLeaveGuide = isGuide && loggedUser.realTemplateProjectIds.includes(project.parentTemplateId)
 
     useEffect(() => {
-        if (loggedUser.isAnonymous) {
-            setCreator(SharedHelper.createAnonymousResourceUser(project.creatorId))
-        } else {
-            getUserData(project.creatorId, false).then(setCreator)
-        }
+        getUserData(project.creatorId, false).then(user => {
+            setCreator(user)
+        })
         writeBrowserURL()
     }, [])
 
@@ -119,7 +115,6 @@ const ProjectProperties = ({ project, type }) => {
                             <ConnectGitHubProperty project={project} disabled={!accessGranted} />
                             <ConnectGCPProperty project={project} disabled={!accessGranted} />
                             <VmGoldenProperty project={project} disabled={!accessGranted} />
-                            <ProjectSkillsProperty project={project} disabled={!accessGranted} />
                             <PrivacyProperty project={project} disabled={!accessGranted || userIsNormalUserInGuide} />
                         </View>
 
@@ -141,11 +136,6 @@ const ProjectProperties = ({ project, type }) => {
                                 projectId={projectId}
                                 disabled={!accessGranted || userIsNormalUserInGuide}
                                 autoEstimation={project.autoEstimation}
-                            />
-                            <TaskGoalRouting
-                                projectId={projectId}
-                                disabled={!accessGranted || userIsNormalUserInGuide}
-                                mode={project.taskGoalRoutingMode}
                             />
                             <GoalMilestones
                                 projectId={projectId}

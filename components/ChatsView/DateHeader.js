@@ -1,5 +1,4 @@
 import React from 'react'
-import { useProjectSectionAccent } from '../TaskListView/TaskHierarchy'
 import { StyleSheet, Text, View } from 'react-native'
 import PropTypes from 'prop-types'
 import styles, { colors } from '../styles/global'
@@ -7,8 +6,7 @@ import moment from 'moment'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { translate } from '../../i18n/TranslationService'
 
-function DateHeader({ dateText = 'Today', isToday = false, isOverdue = false, date }) {
-    const accentColor = useProjectSectionAccent()
+function DateHeader({ dateText, isToday, isOverdue, date }) {
     const weekdays = [
         translate('Monday'),
         translate('Tuesday'),
@@ -45,13 +43,7 @@ function DateHeader({ dateText = 'Today', isToday = false, isOverdue = false, da
                 isOverdue && localStyles.overdueContainer,
             ]}
         >
-            <View
-                style={[
-                    localStyles.innerContainer,
-                    isOverdue && localStyles.overdueIContainer,
-                    accentColor && { backgroundColor: accentColor },
-                ]}
-            >
+            <View style={[localStyles.innerContainer, isOverdue && localStyles.overdueIContainer]}>
                 <Text style={[styles.overline, isOverdue ? localStyles.overdueText : localStyles.dateText]}>
                     {text()}
                 </Text>
@@ -101,6 +93,12 @@ DateHeader.propTypes = {
     dateText: PropTypes.string,
     isToday: PropTypes.bool,
     isOverdue: PropTypes.bool,
+}
+
+DateHeader.defaultProps = {
+    dateText: 'Today',
+    isToday: false,
+    isOverdue: false,
 }
 
 export default DateHeader

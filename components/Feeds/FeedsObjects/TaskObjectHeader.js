@@ -87,12 +87,7 @@ const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
     }
 
     const renderLeftSwipe = (progress, dragX) => {
-        // Swipeable calls this during its own render, so setting state synchronously would
-        // update this component while another one renders. dragX is stable per Swipeable
-        // instance, so deferring the swap adopts it just as reliably, one render later.
-        if (panColor !== dragX) {
-            Promise.resolve().then(() => setPanColor(dragX))
-        }
+        setPanColor(dragX)
         return <View style={{ width: 150 }} />
     }
 
@@ -106,10 +101,10 @@ const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
             return isDeleted
                 ? 'trash-2-Sub'
                 : isDone
-                  ? 'square-checked-gray-Sub'
-                  : inWorkflow
-                    ? 'clock-Sub'
-                    : 'check-square-Sub'
+                ? 'square-checked-gray-Sub'
+                : inWorkflow
+                ? 'clock-Sub'
+                : 'check-square-Sub'
         } else {
             return isDeleted ? 'trash-2' : isDone ? 'square-checked-gray' : inWorkflow ? 'clock' : 'check-square'
         }
@@ -153,7 +148,6 @@ const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
                         objectType="tasks"
                         userGettingKarmaId={userId}
                         objectName={name}
-                        object={task}
                         assistantId={assistantId}
                     />
                 )}
@@ -343,7 +337,6 @@ const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
             </View>
 
             <Swipeable
-                useNativeAnimations={false}
                 ref={itemSwipe}
                 rightThreshold={80}
                 leftThreshold={80}

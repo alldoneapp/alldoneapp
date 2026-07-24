@@ -6,22 +6,11 @@ import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import ModalHeader from '../ModalHeader'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import CheckBox from '../../../CheckBox'
-import Icon from '../../../Icon'
 import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
-import {
-    TOOL_OPTIONS,
-    TOOL_LABEL_BY_KEY,
-    BROWSER_TOOL_KEY,
-} from '../../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
+import { TOOL_OPTIONS, TOOL_LABEL_BY_KEY } from '../../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
 
-export default function AssistantToolsModal({
-    allowedTools,
-    onApply,
-    closeModal,
-    onEditBrowserAllowlist,
-    browserAllowlistCount = 0,
-}) {
+export default function AssistantToolsModal({ allowedTools, onApply, closeModal }) {
     const [selectedTools, setSelectedTools] = useState(() => new Set(allowedTools))
 
     const toggleTool = key => {
@@ -52,8 +41,8 @@ export default function AssistantToolsModal({
     const selectionSummary = noneSelected
         ? translate('No tools enabled')
         : allSelected
-          ? translate('All tools enabled')
-          : selectedArray.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
+        ? translate('All tools enabled')
+        : selectedArray.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
 
     return (
         <View style={localStyles.wrapper}>
@@ -69,29 +58,15 @@ export default function AssistantToolsModal({
                     </Text>
                     {TOOL_OPTIONS.map(option => {
                         const checked = selectedTools.has(option.key)
-                        // Browsing is the one tool that does nothing until somebody says WHICH
-                        // sites it may open (the allowlist is default deny). Ticking the box and
-                        // finding nothing works is the failure this row exists to prevent, so the
-                        // list is reachable from right here rather than only from project settings.
-                        const showAllowlistRow = option.key === BROWSER_TOOL_KEY && checked && !!onEditBrowserAllowlist
                         return (
-                            <View key={option.key}>
-                                <TouchableOpacity style={localStyles.option} onPress={() => toggleTool(option.key)}>
-                                    <CheckBox checked={checked} />
-                                    <Text style={localStyles.optionLabel}>{translate(option.labelKey)}</Text>
-                                </TouchableOpacity>
-                                {showAllowlistRow && (
-                                    <TouchableOpacity
-                                        style={localStyles.subOption}
-                                        onPress={() => onEditBrowserAllowlist(Array.from(selectedTools))}
-                                    >
-                                        <Text style={localStyles.subOptionLabel}>
-                                            {`${translate('Allowed websites')} (${browserAllowlistCount})`}
-                                        </Text>
-                                        <Icon name={'chevron-right'} size={16} color={colors.Text03} />
-                                    </TouchableOpacity>
-                                )}
-                            </View>
+                            <TouchableOpacity
+                                key={option.key}
+                                style={localStyles.option}
+                                onPress={() => toggleTool(option.key)}
+                            >
+                                <CheckBox checked={checked} />
+                                <Text style={localStyles.optionLabel}>{translate(option.labelKey)}</Text>
+                            </TouchableOpacity>
                         )
                     })}
                 </CustomScrollView>
@@ -122,7 +97,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         padding: 16,
         width: 320,
@@ -155,15 +133,5 @@ const localStyles = StyleSheet.create({
     summary: {
         color: colors.Text03,
         marginBottom: 12,
-    },
-    subOption: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 6,
-        paddingLeft: 36,
-    },
-    subOptionLabel: {
-        color: colors.Primary100,
     },
 })

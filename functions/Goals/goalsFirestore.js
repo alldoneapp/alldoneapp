@@ -9,7 +9,6 @@ const {
 const { mapMilestoneData, mapGoalData } = require('../Utils/MapDataFuncions')
 const { createGoalUpdatesChain } = require('../Feeds/goalsFeedsChains')
 const { logEvent } = require('../GAnalytics/GAnalytics')
-const { FieldValue } = require('firebase-admin/firestore')
 
 //ACCESS FUNCTIONS
 
@@ -218,7 +217,7 @@ const updateGoalLastCommentData = async (projectId, goalId, lastComment, lastCom
                 transaction.update(ref, {
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: lastCommentType,
-                    [`commentsData.amount`]: FieldValue.increment(1),
+                    [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
                 })
         })
     } catch (e) {

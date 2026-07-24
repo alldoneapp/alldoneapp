@@ -1,11 +1,4 @@
-import {
-    hasAssistantReplyToPendingSend,
-    hasLoadingAssistantMessage,
-    hasNewVisibleAssistantMessage,
-    shouldShowAssistantScrollIndicator,
-    snapshotAssistantMessageIds,
-} from './assistantWaiting'
-import { SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED } from '../../styles/global'
+import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from './assistantWaiting'
 
 const isAssistant = creatorId => creatorId === 'assistant-1'
 
@@ -27,62 +20,5 @@ describe('assistant waiting state', () => {
         ]
 
         expect(hasNewVisibleAssistantMessage(updatedMessages, existingAssistantMessageIds, isAssistant)).toBe(true)
-    })
-
-    it('only treats an assistant message as active loading UI', () => {
-        expect(
-            hasLoadingAssistantMessage(
-                [
-                    { id: 'user-loading', creatorId: 'user-1', isLoading: true },
-                    { id: 'assistant-done', creatorId: 'assistant-1', isLoading: false },
-                ],
-                isAssistant
-            )
-        ).toBe(false)
-
-        expect(
-            hasLoadingAssistantMessage(
-                [{ id: 'assistant-loading', creatorId: 'assistant-1', isLoading: true }],
-                isAssistant
-            )
-        ).toBe(true)
-    })
-
-    it('allows callers to exclude stale or unrelated loading states', () => {
-        const message = { id: 'assistant-loading', creatorId: 'assistant-1', isLoading: true }
-
-        expect(hasLoadingAssistantMessage([message], isAssistant, () => false)).toBe(false)
-    })
-
-    it('hands a fresh thread to its assistant comment regardless of progress or terminal status', () => {
-        const pending = { assistantId: 'assistant-1' }
-        const userMessage = { creatorId: 'user-1', commentText: 'Hello' }
-        expect(hasAssistantReplyToPendingSend([userMessage], pending, isAssistant)).toBe(false)
-        expect(
-            hasAssistantReplyToPendingSend(
-                [userMessage, { creatorId: 'assistant-1', commentText: '', isLoading: true }],
-                pending,
-                isAssistant
-            )
-        ).toBe(true)
-        expect(
-            hasAssistantReplyToPendingSend(
-                [userMessage, { creatorId: 'assistant-1', commentText: '', assistantRun: { status: 'cancelled' } }],
-                pending,
-                isAssistant
-            )
-        ).toBe(true)
-        expect(hasAssistantReplyToPendingSend([userMessage], null, isAssistant)).toBe(false)
-    })
-
-    test.each([320, 375, 430])('hides the loading indicator scrollbar at a %ipx mobile viewport', width => {
-        const smallScreenNavigation = width <= SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED
-
-        expect(shouldShowAssistantScrollIndicator(smallScreenNavigation, true)).toBe(false)
-        expect(shouldShowAssistantScrollIndicator(smallScreenNavigation, false)).toBe(true)
-    })
-
-    it('keeps the scroll indicator available on desktop during loading', () => {
-        expect(shouldShowAssistantScrollIndicator(false, true)).toBe(true)
     })
 })

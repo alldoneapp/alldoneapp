@@ -30,13 +30,9 @@ import {
 } from '../../../utils/TabNavigationConstants'
 import store from '../../../redux/store'
 import withSafePopover from '../../UIComponents/HOC/withSafePopover'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
-import useWindowSize from '../../../utils/useWindowSize'
-import { getSafeAreaViewportHeightCap } from '../../../utils/modalSafeArea'
-import { HEADER_POPOVER_HEIGHT_FRACTION } from '../../styles/modals'
+import Popover from 'react-tiny-popover'
 
-function UserLine({ projectIndex, projectId, user, openPopover, closePopover, isOpen, textColor }) {
-    const [, windowHeight] = useWindowSize()
+function UserLine({ projectIndex, projectId, user, openPopover, closePopover, isOpen }) {
     const selectedSidebarTab = useSelector(state => state.selectedSidebarTab)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -98,18 +94,15 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
         >
             <View style={localStyles.titleContainer}>
                 {user.uid === ALL_GOALS_ID ? (
-                    <Icon size={18} name="circle" color={textColor || colors.Text03} style={{ marginRight: 4 }} />
+                    <Icon size={18} name="circle" color={colors.Text03} style={{ marginRight: 4 }} />
                 ) : user.uid?.startsWith(WORKSTREAM_ID_PREFIX) ? (
-                    <Icon size={18} name="workstream" color={textColor || colors.Text03} style={{ marginRight: 4 }} />
+                    <Icon size={18} name="workstream" color={colors.Text03} style={{ marginRight: 4 }} />
                 ) : (
                     !!photoURL && <Image source={{ uri: photoURL }} style={localStyles.userImage} />
                 )}
 
                 {user.displayName !== undefined && !mobile && (
-                    <Text
-                        style={[styles.subtitle1, localStyles.userName, textColor && { color: textColor }]}
-                        numberOfLines={1}
-                    >
+                    <Text style={[styles.subtitle1, localStyles.userName]} numberOfLines={1}>
                         {user.uid === ALL_GOALS_ID || user.uid.startsWith(WORKSTREAM_ID_PREFIX) || !!user.temperature
                             ? user.displayName
                             : HelperFunctions.getFirstName(user.displayName)}
@@ -120,7 +113,7 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
     )
 
     return (
-        <AppPopover
+        <Popover
             isOpen={isOpen}
             positions={['bottom', 'top', 'left', 'right']}
             align="start"
@@ -136,11 +129,7 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
                         borderRadius: '8px',
                         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
                         minWidth: '300px',
-                        // AT-2339: the library nudges this popover's POSITION
-                        // into the safe rectangle, but a card capped against
-                        // the raw viewport can still be taller than that
-                        // rectangle and overflow the opposite edge.
-                        maxHeight: getSafeAreaViewportHeightCap(windowHeight, HEADER_POPOVER_HEIGHT_FRACTION),
+                        maxHeight: '80vh',
                         overflow: 'hidden',
                     }}
                 >
@@ -159,7 +148,7 @@ function UserLine({ projectIndex, projectId, user, openPopover, closePopover, is
             }
         >
             {trigger}
-        </AppPopover>
+        </Popover>
     )
 }
 

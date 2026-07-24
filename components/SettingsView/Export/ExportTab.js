@@ -11,7 +11,7 @@ import { DV_TAB_SETTINGS_EXPORT } from '../../../utils/TabNavigationConstants'
 import { getDb, notesStorage } from '../../../utils/backends/firestore'
 import { translate } from '../../../i18n/TranslationService'
 import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 export default function ExportTab() {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -322,7 +322,7 @@ export default function ExportTab() {
                 allProjectIds.map(async projectId => {
                     const snap = await db
                         .collection(`/projectsContacts/${projectId}/contacts`)
-                        .where('readerIds', 'array-contains', uid)
+                        .where('isPublicFor', 'array-contains-any', allowUserIds)
                         .get()
                     snap.forEach(doc => {
                         allContacts.push({ id: doc.id, projectId, ...doc.data() })
@@ -379,7 +379,7 @@ export default function ExportTab() {
 
                 const chatsSnap = await db
                     .collection(`chatObjects/${projectId}/chats`)
-                    .where('readerIds', 'array-contains', uid)
+                    .where('isPublicFor', 'array-contains-any', allowUserIds)
                     .get()
 
                 const chatDocs = chatsSnap.docs
@@ -618,10 +618,10 @@ export default function ExportTab() {
                         {currentExportType === 'projects' && isExporting
                             ? exportStatus
                             : lastProjectsExportInfo
-                              ? `${translate('Last export')} — ${translate('Projects')}: ${
-                                    lastProjectsExportInfo.projects
-                                }`
-                              : ''}
+                            ? `${translate('Last export')} — ${translate('Projects')}: ${
+                                  lastProjectsExportInfo.projects
+                              }`
+                            : ''}
                     </Text>
                 </View>
 
@@ -632,7 +632,7 @@ export default function ExportTab() {
                         onPress={exportAllTasks}
                         loading={isExporting && currentExportType === 'tasks'}
                     />
-                    <AppPopover
+                    <Popover
                         isOpen={tasksTfPopoverOpen}
                         onClickOutside={() => setTasksTfPopoverOpen(false)}
                         position={['bottom', 'left', 'right', 'top']}
@@ -668,15 +668,15 @@ export default function ExportTab() {
                             title={translate(tasksTimeframeLabel)}
                             buttonStyle={{ marginLeft: 12 }}
                         />
-                    </AppPopover>
+                    </Popover>
                     <Text style={localStyles.infoText}>
                         {currentExportType === 'tasks' && isExporting
                             ? exportStatus
                             : lastTasksExportInfo
-                              ? `${translate('Last export')} — ${translate('Open tasks')}: ${
-                                    lastTasksExportInfo.open
-                                } • ${translate('Done tasks')}: ${lastTasksExportInfo.done}`
-                              : ''}
+                            ? `${translate('Last export')} — ${translate('Open tasks')}: ${
+                                  lastTasksExportInfo.open
+                              } • ${translate('Done tasks')}: ${lastTasksExportInfo.done}`
+                            : ''}
                     </Text>
                 </View>
 
@@ -691,8 +691,8 @@ export default function ExportTab() {
                         {currentExportType === 'goals' && isExporting
                             ? exportStatus
                             : lastGoalsExportInfo
-                              ? `${translate('Last export')} — ${translate('Goals')}: ${lastGoalsExportInfo.goals}`
-                              : ''}
+                            ? `${translate('Last export')} — ${translate('Goals')}: ${lastGoalsExportInfo.goals}`
+                            : ''}
                     </Text>
                 </View>
 
@@ -707,10 +707,10 @@ export default function ExportTab() {
                         {currentExportType === 'notes' && isExporting
                             ? exportStatus
                             : lastNotesExportInfo
-                              ? `${translate('Last export')} — ${translate('Notes')}: ${
-                                    lastNotesExportInfo.notes
-                                } • ${translate('Embedded')}: ${lastNotesExportInfo.embedded}`
-                              : ''}
+                            ? `${translate('Last export')} — ${translate('Notes')}: ${
+                                  lastNotesExportInfo.notes
+                              } • ${translate('Embedded')}: ${lastNotesExportInfo.embedded}`
+                            : ''}
                     </Text>
                 </View>
 
@@ -725,10 +725,10 @@ export default function ExportTab() {
                         {currentExportType === 'contacts' && isExporting
                             ? exportStatus
                             : lastContactsExportInfo
-                              ? `${translate('Last export')} — ${translate('Contacts')}: ${
-                                    lastContactsExportInfo.contacts
-                                }`
-                              : ''}
+                            ? `${translate('Last export')} — ${translate('Contacts')}: ${
+                                  lastContactsExportInfo.contacts
+                              }`
+                            : ''}
                     </Text>
                 </View>
 
@@ -743,10 +743,10 @@ export default function ExportTab() {
                         {currentExportType === 'chats' && isExporting
                             ? exportStatus
                             : lastChatsExportInfo
-                              ? `${translate('Last export')} — ${translate('Chats')}: ${
-                                    lastChatsExportInfo.chats
-                                } • ${translate('Comments')}: ${lastChatsExportInfo.comments}`
-                              : ''}
+                            ? `${translate('Last export')} — ${translate('Chats')}: ${
+                                  lastChatsExportInfo.chats
+                              } • ${translate('Comments')}: ${lastChatsExportInfo.comments}`
+                            : ''}
                     </Text>
                 </View>
             </View>

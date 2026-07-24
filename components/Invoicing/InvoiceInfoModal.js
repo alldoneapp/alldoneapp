@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 
-import { applyPopoverWidth } from '../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../utils/HelperFunctions'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import { colors } from '../styles/global'
 import useWindowSize from '../../utils/useWindowSize'
@@ -13,7 +13,6 @@ import { translate } from '../../i18n/TranslationService'
 import ContinueButton from './ContinueButton'
 import { useSelector } from 'react-redux'
 import CompanyDataExtended from '../Premium/PremiumTab/CompanyInfoModal/CompanyDataExtended'
-import { getSafeAreaModalMaxHeight } from '../../utils/modalSafeArea'
 
 const FROM_STEP = 0
 export const TO_STEP = 1
@@ -78,7 +77,7 @@ export default function InvoiceInfoModal({
     const description2 = step === FROM_STEP ? translate('Legal disclaimers info 2') : undefined
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView ref={scrollRef} style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <ModalHeader
                     title={title}
@@ -132,7 +131,10 @@ const localStyles = StyleSheet.create({
     container: {
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

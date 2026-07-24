@@ -1,17 +1,9 @@
-const { SELECTABLE_ASSISTANT_MODELS } = require('../../../../../functions/Assistant/selectableAssistantModels')
-const {
-    GMAIL_ACTIONABILITY_GUIDANCE,
-    buildFirstPassClassifierPromptSections,
-} = require('../../../../../functions/Gmail/gmailClassifierPrompt')
-
 const MAX_LOOKBACK_DAYS = 30
 const MAX_MESSAGES_PER_RUN = 100
 const MIN_SYNC_INTERVAL_MINUTES = 5
 const MAX_SYNC_INTERVAL_MINUTES = 24 * 60
 const GMAIL_LABELING_PROMPT_MODE_DEFAULT = 'default'
 const GMAIL_LABELING_PROMPT_MODE_CUSTOM = 'custom'
-const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT6_LUNA'
-const GMAIL_LABELING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
 // Client mirror of the shared Ads guidance in functions/Gmail/serverSideGmailLabelingSync.js —
 // keep the texts identical, they only exist here for the default-config preview.
 const DEFAULT_ADS_LABEL_GUIDANCE =
@@ -24,8 +16,7 @@ const DEFAULT_ADS_LABEL_GUIDANCE =
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
     'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer the strongest specific project label when the evidence is clear. If the email is work-relevant but it is not clear which project label fits best, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
     DEFAULT_ADS_LABEL_GUIDANCE +
-    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead. ' +
-    GMAIL_ACTIONABILITY_GUIDANCE
+    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead.'
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = 'incoming'
 const DEFAULT_ADS_LABEL_DEFINITION = {
     key: 'ads',
@@ -74,50 +65,6 @@ function normalizePromptMode(value, fallback = GMAIL_LABELING_PROMPT_MODE_DEFAUL
         : fallback
 }
 
-function normalizeModel(value) {
-    return GMAIL_LABELING_MODEL_KEYS.has(value) ? value : DEFAULT_GMAIL_LABELING_MODEL
-}
-
-function appendLearnedRulesToPrompt(prompt = '', learnedRules = '') {
-    const rules = typeof learnedRules === 'string' ? learnedRules.trim() : ''
-    if (!rules) return prompt
-    return [prompt, `User feedback rules (always apply):\n${rules}`].filter(Boolean).join('\n\n')
-}
-
-function buildFullClassifierPromptPreview({ config = {}, defaultConfigPreview = {}, userDescription = '' }) {
-    const isDefaultMode = normalizePromptMode(config.promptMode) === GMAIL_LABELING_PROMPT_MODE_DEFAULT
-    const prompt = isDefaultMode ? defaultConfigPreview.prompt || '' : config.prompt || ''
-    const labelDefinitions = isDefaultMode ? defaultConfigPreview.labelDefinitions || [] : config.labelDefinitions || []
-    const parsedThreshold = Number(config.confidenceThreshold)
-    const confidenceThreshold = Number.isFinite(parsedThreshold) ? Math.min(Math.max(parsedThreshold, 0), 1) : 0.7
-
-    return buildFirstPassClassifierPromptSections({
-        config: {
-            ...config,
-            promptMode: isDefaultMode ? GMAIL_LABELING_PROMPT_MODE_DEFAULT : GMAIL_LABELING_PROMPT_MODE_CUSTOM,
-            prompt: appendLearnedRulesToPrompt(prompt, config.learnedRules),
-            labelDefinitions,
-            userDescription,
-        },
-        confidenceThreshold,
-        message: {
-            direction: '<incoming or outgoing>',
-            from: '<sender>',
-            to: '<recipients>',
-            cc: '<cc recipients>',
-            bcc: '<bcc recipients>',
-            date: '<message date>',
-            subject: '<subject>',
-            snippet: '<Gmail snippet>',
-            bodyText: '<email body, capped at 12,000 characters>',
-            inReplyTo: '<In-Reply-To header>',
-            references: '<References header>',
-            gmailLabelIds: ['<Gmail label IDs>'],
-            listUnsubscribe: '<List-Unsubscribe header>',
-        },
-    })
-}
-
 function buildCustomDefaultsForReset() {
     return {
         prompt: DEFAULT_CUSTOM_GMAIL_LABELING_PROMPT,
@@ -145,7 +92,7 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
         gmailEmail: config.gmailEmail || gmailEmail || '',
         promptMode: normalizePromptMode(config.promptMode, promptModeFallback),
         prompt: config.prompt || '',
-        model: normalizeModel(config.model),
+        model: config.model || 'MODEL_GPT5_4_NANO',
         processUnreadOnly: typeof config.processUnreadOnly === 'boolean' ? config.processUnreadOnly : true,
         onlyInbox: typeof config.onlyInbox === 'boolean' ? config.onlyInbox : true,
         autoArchiveAllLabeled: config.autoArchiveAllLabeled === true,
@@ -170,7 +117,7 @@ function sanitizeConfigForSave(config) {
         gmailEmail: config.gmailEmail || '',
         promptMode: normalizePromptMode(config.promptMode),
         prompt: config.prompt || '',
-        model: normalizeModel(config.model),
+        model: config.model || 'MODEL_GPT5_4_NANO',
         processUnreadOnly: !!config.processUnreadOnly,
         onlyInbox: !!config.onlyInbox,
         autoArchiveAllLabeled: config.autoArchiveAllLabeled === true,
@@ -219,9 +166,9 @@ function buildDefaultProjectLabelDescription(project = {}, labelName = '', isDef
 function buildDefaultProjectFollowUpPrompt(labelName = '') {
     const projectLabel = labelName || 'the matched project'
     return [
-        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ". This automation instruction is not an explicit end-user request to create that task. You MUST set taskOrigin to "assistant_suggestion", never "user_request", and include a concise visible comment stating the concrete email-based reason the task is worth doing; do not merely restate the task title or give a generic reason.`,
+        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
         `When followUpType is "informational", never create a task. Always add one concise comment to the topic chat "Daily emails ${projectLabel} [today's date]" with createIfMissing=true. Every informational email gets exactly one comment, including routine, promotional, automated, or redundant ones. The comment should be in this format: "Email from [sender name] ([sender email]): [one-line summary]". Do not include the Gmail web URL or any other email link in the comment; the server attaches the email metadata and the UI shows the linked email tag separately.`,
-        `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com), only use update_note when the sender already exists as a contact in the project ${projectLabel}. Set createIfMissing=false so a missing contact is never created. Update the existing contact note and include a link to the email with a space at the end.`,
+        `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
     ].join('\n')
 }
 
@@ -283,7 +230,6 @@ function formatPostLabelActionStatus(action = {}) {
 }
 
 module.exports = {
-    DEFAULT_GMAIL_LABELING_MODEL,
     DEFAULT_CUSTOM_GMAIL_LABELING_PROMPT,
     DEFAULT_ADS_LABEL_DEFINITION,
     GMAIL_LABELING_PROMPT_MODE_CUSTOM,
@@ -292,7 +238,6 @@ module.exports = {
     buildCustomDefaultsForReset,
     buildDefaultConfigPreviewFromProjects,
     buildDefaultProjectFollowUpPrompt,
-    buildFullClassifierPromptPreview,
     createEmptyLabel,
     formatPostLabelActionStatus,
     normalizeConfig,

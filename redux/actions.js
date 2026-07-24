@@ -1,5 +1,4 @@
 import { registerPopupDismiss } from '../utils/popupDismissGuard'
-import { normalizeAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 
 export const LogOut = () => {
     const action = {
@@ -229,14 +228,6 @@ export const setDismissibleComponent = dismissibleComponent => {
     return action
 }
 
-export const startTaskEditor = () => ({
-    type: 'Start task editor',
-})
-
-export const finishTaskEditor = () => ({
-    type: 'Finish task editor',
-})
-
 export const setShortcutFocusTasks = shortcutFocusTasks => {
     const action = {
         type: 'Set shortcut focus tasks',
@@ -461,15 +452,6 @@ export const setInitialUrl = url => {
     return action
 }
 
-export const setPendingWebShareTarget = payload => ({
-    type: 'Set pending web share target',
-    payload,
-})
-
-export const clearPendingWebShareTarget = () => ({
-    type: 'Clear pending web share target',
-})
-
 export const setTaskInDetailView = task => {
     const action = {
         type: 'Set task in detail view',
@@ -572,6 +554,15 @@ export const setContactsInProject = (projectId, contacts) => {
     return action
 }
 
+export const setMeetingsInProject = (projectId, meetings) => {
+    const action = {
+        type: 'Set meetings in project',
+        projectId,
+        meetings,
+    }
+    return action
+}
+
 export const setWorkstreamsInProject = (projectId, workstreams) => {
     const action = {
         type: 'Set workstreams in project',
@@ -586,18 +577,6 @@ export const setAssistantsInProject = (projectId, assistants) => {
         type: 'Set assistants in project',
         projectId,
         assistants,
-    }
-    return action
-}
-
-// AT-2430: the assistant the assistant line should use inside `projectId`, chosen with the
-// line's own switch control. Pass a falsy `assistantId` to drop the choice and fall back to the
-// project's configured assistant.
-export const setAssistantLineAssistant = (projectId, assistantId) => {
-    const action = {
-        type: 'Set assistant line assistant',
-        projectId,
-        assistantId,
     }
     return action
 }
@@ -976,22 +955,6 @@ export const setActiveChatData = (projectId, chatId, chatType) => {
     return action
 }
 
-export const setConnectionState = connectionState => {
-    const action = {
-        type: 'Set connection state',
-        connectionState,
-    }
-    return action
-}
-
-export const setConnectionHealth = connectionHealth => {
-    const action = {
-        type: 'Set connection health',
-        connectionHealth,
-    }
-    return action
-}
-
 export const setShowNewDayNotification = show => {
     const action = {
         type: 'Set show new day notification',
@@ -1160,6 +1123,30 @@ export const updateScreenRecordingModalData = (visible, projectId) => {
     const action = {
         type: 'Update screen recording modal data',
         screenRecordingModalData: { visible, projectId },
+    }
+    return action
+}
+
+export const updateChatGoogleMeetModalData = (visible, projectId, userId, userIds, title) => {
+    const action = {
+        type: 'Update chat google meet modal data',
+        chatGoogleMeetModalData: { visible, projectId, userId, userIds, title },
+    }
+    return action
+}
+
+export const updateGoogleMeetModalData = (visible, projectId, userId) => {
+    const action = {
+        type: 'Update google meet modal data',
+        googleMeetModalData: { visible, projectId, userId },
+    }
+    return action
+}
+
+export const updateGoogleMeetNotificationModalData = (visible, projectId, email, meeting) => {
+    const action = {
+        type: 'Update google meet notification modal data',
+        googleMeetNotificationModalData: { visible, projectId, email, meeting },
     }
     return action
 }
@@ -1843,19 +1830,6 @@ export const setTaskVmStateFilters = vmStates => {
     return action
 }
 
-export const clearNoteOwnerFilters = () => {
-    const action = { type: 'Clear note owner filters' }
-    return action
-}
-
-export const setNoteOwnerFilters = ownerIds => {
-    const action = {
-        type: 'Set note owner filters',
-        ownerIds,
-    }
-    return action
-}
-
 export const updateTaskVmState = (taskKey, vmState) => {
     const action = {
         type: 'Update task VM state',
@@ -2017,14 +1991,6 @@ export const setLaterTasksExpanded = laterTasksExpanded => {
     return action
 }
 
-export const setTaskListSingleLoading = (instanceKey, loading) => {
-    return {
-        type: 'Set task list single loading',
-        instanceKey,
-        loading,
-    }
-}
-
 export const setSomedayTasksExpanded = somedayTasksExpanded => {
     const action = {
         type: 'Set someday tasks expanded',
@@ -2045,27 +2011,6 @@ export const setOpenTasksAmount = openTasksAmount => {
     const action = {
         type: 'Set open tasks amount',
         openTasksAmount,
-    }
-    return action
-}
-
-export const setTaskColdStartEmptyToday = emptyToday => ({
-    type: 'Set task cold start empty today',
-    emptyToday,
-})
-
-/**
- * AT-2445 — "has every open-task count watcher delivered its first snapshot?".
- *
- * `openTasksAmount` is a running total accumulated across one Firestore listener per project, and
- * it is forced back to 0 whenever those listeners are rebuilt. Without this flag, `!openTasksAmount`
- * is true for the whole loading window of every visit to the all-projects board, which is
- * indistinguishable from a genuinely empty inbox.
- */
-export const setOpenTasksAmountLoaded = openTasksAmountLoaded => {
-    const action = {
-        type: 'Set open tasks amount loaded',
-        openTasksAmountLoaded,
     }
     return action
 }
@@ -2432,19 +2377,10 @@ export const setNewUserNeedToJoinToProject = newUserNeedToJoinToProject => {
     return action
 }
 
-// `scope` is optional and, when given, must be built with `buildAssistantEnabledScope`
-// ({ projectId, objectId }). It marks the flag as belonging to ONE chat, so a Chat DV for a
-// different chat ignores it. Callers that arm the assistant for a chat the user may never be
-// navigated to MUST pass a scope, otherwise the flag leaks into the next chat that is opened
-// and can fire an unwanted assistant run there (AT-2084). Omitting the scope keeps the legacy
-// "applies to whichever chat is currently open" meaning used by every in-chat writer.
-export const setAssistantEnabled = (assistantEnabled, scope = null) => {
+export const setAssistantEnabled = assistantEnabled => {
     const action = {
         type: 'Set assistant enabled',
         assistantEnabled,
-        // Clearing the flag always clears the scope with it, so a stale scope can never outlive
-        // the `true` it was describing.
-        assistantEnabledScope: assistantEnabled ? normalizeAssistantEnabledScope(scope) : null,
     }
     return action
 }
@@ -2457,17 +2393,10 @@ export const setNotEnabledAssistantWhenLoadComments = notEnabledAssistantWhenLoa
     return action
 }
 
-// The payload must be a chat-scoped trigger built with `buildBotSpinnerTrigger`
-// ({ projectId, chatId, createdAt }) or a falsy value to clear it. Bare booleans are
-// normalized away on purpose: an unscoped `true` leaks into the next Chat DV that mounts
-// and shows a permanent "assistant is working" placeholder there (AT-2084).
 export const setTriggerBotSpinner = triggerBotSpinner => {
     const action = {
         type: 'Set trigger bot spinner',
-        triggerBotSpinner:
-            triggerBotSpinner && typeof triggerBotSpinner === 'object' && triggerBotSpinner.chatId
-                ? triggerBotSpinner
-                : null,
+        triggerBotSpinner,
     }
     return action
 }
@@ -2719,20 +2648,6 @@ export const navigateToNewProject = (project, users, workstreams, contacts, assi
     return action
 }
 
-// Data-only sibling of 'Navigate to new project': inserts a project (plus its sub-stores) that
-// was dropped from the initial load by a transient read failure, WITHOUT navigating to it.
-export const addProjectData = (project, users, workstreams, contacts, assistants) => {
-    const action = {
-        type: 'Add project data',
-        project,
-        users,
-        workstreams,
-        contacts,
-        assistants,
-    }
-    return action
-}
-
 export const navigateToAllProjectsTasks = options => {
     const action = {
         type: 'Navigate to all projects tasks',
@@ -2761,13 +2676,6 @@ export const navigateToAllProjectsNotes = options => {
     const action = {
         type: 'Navigate to all projects notes',
         options: options || {},
-    }
-    return action
-}
-
-export const navigateToAllProjectsArtifacts = () => {
-    const action = {
-        type: 'Navigate to all projects artifacts',
     }
     return action
 }
@@ -2946,17 +2854,13 @@ export const setTaskInFocus = taskInFocus => {
  * @param {string|null} taskId - Task ID to show as focused, or null to clear
  * @param {string|null} projectId - Project ID of the task
  * @param {string|null} goalId - Goal ID to keep pinned at top during transition
- * @param {string|null} userId - Focus holder. AT-2191 uses it to tell whether a task being
- *   postponed is the one currently shown as focused, without mistaking another user's swap for
- *   this user's. Optional: callers that omit it are simply not user-scoped.
  */
-export const setOptimisticFocusTask = (taskId, projectId, goalId, userId) => {
+export const setOptimisticFocusTask = (taskId, projectId, goalId) => {
     const action = {
         type: 'Set optimistic focus task',
         optimisticFocusTaskId: taskId,
         optimisticFocusTaskProjectId: projectId,
         optimisticFocusGoalId: goalId || null,
-        optimisticFocusUserId: userId || null,
         optimisticFocusActive: true,
     }
     return action
@@ -2968,38 +2872,6 @@ export const setOptimisticFocusTask = (taskId, projectId, goalId, userId) => {
 export const clearOptimisticFocusTask = () => {
     const action = {
         type: 'Clear optimistic focus task',
-    }
-    return action
-}
-
-/**
- * AT-2160: mark a goal as being postponed so the task list can drop it from today's buckets
- * immediately, while the authoritative postpone (undo record + task cascade) still runs on the
- * server. Keyed per project + goal so two goals can be postponed in a row.
- * @param {string} projectId
- * @param {string} goalId
- * @param {number} date - target reminder date, kept for diagnostics/tests
- * @param {number} startedAt - epoch ms the postpone was requested; drives the safety TTL
- */
-export const setOptimisticGoalPostpone = (projectId, goalId, date, startedAt) => {
-    const action = {
-        type: 'Set optimistic goal postpone',
-        projectId,
-        goalId,
-        date,
-        startedAt,
-    }
-    return action
-}
-
-/**
- * Drop the optimistic postpone for a goal (server rejected it, or the entry aged out).
- */
-export const clearOptimisticGoalPostpone = (projectId, goalId) => {
-    const action = {
-        type: 'Clear optimistic goal postpone',
-        projectId,
-        goalId,
     }
     return action
 }
@@ -3084,6 +2956,20 @@ export const setShowAllProjectsByTime = showAllProjectsByTime => {
     const action = {
         type: 'Set show all projects by time',
         showAllProjectsByTime,
+    }
+    return action
+}
+
+export const showTaskCompletionAnimation = () => {
+    const action = {
+        type: 'Show task completion animation',
+    }
+    return action
+}
+
+export const hideTaskCompletionAnimation = () => {
+    const action = {
+        type: 'Hide task completion animation',
     }
     return action
 }

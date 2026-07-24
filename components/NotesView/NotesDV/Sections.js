@@ -34,6 +34,7 @@ export default function Sections({ projectId, note, project, navigation, updateO
     const mobile = useSelector(state => state.smallScreenNavigation)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const [isFullscreen, setFullscreen] = useState(false)
     const [assistantId, setAssistantId] = useState(note?.assistantId || '')
     const [sideChatOpen, setSideChatOpen] = useState(false)
@@ -55,6 +56,10 @@ export default function Sections({ projectId, note, project, navigation, updateO
         const indexBL = navigationTabs.indexOf(DV_TAB_NOTE_BACKLINKS)
         navigationTabs.splice(indexBL, 1)
     }
+
+    useEffect(() => {
+        setFullscreen(assistantEnabled)
+    }, [assistantEnabled])
 
     useEffect(() => {
         setAssistantId(note?.assistantId || '')
@@ -126,8 +131,8 @@ export default function Sections({ projectId, note, project, navigation, updateO
                                 mobile
                                     ? localStyles.navigationBarMobile
                                     : isMiddleScreen
-                                      ? localStyles.navigationBarTablet
-                                      : localStyles.navigationBar
+                                    ? localStyles.navigationBarTablet
+                                    : localStyles.navigationBar
                             }
                         >
                             <NavigationBar isSecondary tabs={navigationTabs} />
@@ -207,8 +212,6 @@ export default function Sections({ projectId, note, project, navigation, updateO
                                             assistantId={assistantId}
                                             setAssistantId={setAssistantId}
                                             objectType={'notes'}
-                                            isFullscreen={isFullscreen}
-                                            setFullscreen={setFullscreen}
                                         />
                                     </View>
                                 )

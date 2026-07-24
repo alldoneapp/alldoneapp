@@ -10,7 +10,7 @@ import PrivacyModal from '../../UIComponents/FloatModals/PrivacyModal/PrivacyMod
 import ButtonUsersGroup from '../../UIComponents/FloatModals/PrivacyModal/ButtonUsersGroup'
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
-import { applyPopoverWidth } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
 import useWindowSize from '../../../utils/useWindowSize'
 import { createOKR, deleteOKR, updateOKR } from '../../../utils/backends/OKRs/okrsFirestore'
 import { FEED_OKR_OBJECT_TYPE, FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
@@ -33,7 +33,6 @@ import { STATISTIC_RANGE_CUSTOM } from '../../StatisticsView/statisticsHelper'
 import { setSelectedNavItem, switchProject } from '../../../redux/actions'
 import { DV_TAB_PROJECT_STATISTICS } from '../../../utils/TabNavigationConstants'
 import NavigationService from '../../../utils/NavigationService'
-import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
 const CADENCE_OPTIONS = [OKR_CADENCE_DAILY, OKR_CADENCE_WEEKLY, OKR_CADENCE_MONTHLY, OKR_CADENCE_QUARTERLY]
 const TYPE_OPTIONS = [OKR_TYPE_MANUAL, OKR_TYPE_TIME_LOGGED_REVENUE]
@@ -178,7 +177,7 @@ export default function OKRModal({ projectId, okr, closePopover }) {
     }
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <Hotkeys keyName="enter" onKeyDown={save} filter={e => true}>
                     <View style={localStyles.header}>
@@ -412,7 +411,10 @@ const localStyles = StyleSheet.create({
         zIndex: 9999,
         backgroundColor: colors.Secondary400,
         borderRadius: 4,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {
@@ -482,7 +484,10 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.Secondary400,
         borderWidth: 1,
         borderColor: colors.Grey400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
         zIndex: 4,
     },

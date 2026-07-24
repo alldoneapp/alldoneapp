@@ -7,12 +7,11 @@ import CloseButton from './CloseButton'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import { useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
-import { applyPopoverWidth } from '../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../utils/HelperFunctions'
 import { FOLLOW_UP_DUE_DATE_MODAL_ID, removeModal, storeModal } from '../ModalsManager/modalsManager'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import useWindowSize from '../../utils/useWindowSize'
 import { translate } from '../../i18n/TranslationService'
-import { getSafeAreaModalMaxHeight } from '../../utils/modalSafeArea'
 
 export default function FollowUpDueDate({
     closePopover,
@@ -52,7 +51,7 @@ export default function FollowUpDueDate({
     }, [])
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
             <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                 <View style={localStyles.heading}>
                     <View style={localStyles.title}>
@@ -128,7 +127,10 @@ const localStyles = StyleSheet.create({
         width: 305,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     heading: {

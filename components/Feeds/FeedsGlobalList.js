@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import moment from 'moment'
 import { useSelector } from 'react-redux'
@@ -22,15 +22,6 @@ import {
     removeFeedObjectFromFeedsByDate,
     updateFeedsState,
 } from './Utils/FeedsHelper'
-import useLoadingMore from '../../hooks/useLoadingMore'
-import FeedsListSkeleton from './FeedsListSkeleton'
-import { resolveGhostRowCount } from '../UIComponents/Ghosts/ghostRowCount'
-
-// Retries of the first pass while its objects are unreadable (backoff 0.5s, 1s, 2s, 4s, 8s, 10s:
-// ~25s in all). An access projection normally lands within seconds; after that the unreadable
-// objects are dropped so the rows that can be read render and the unread counter clears, instead
-// of the project showing an empty header behind a badge forever.
-export const MAX_INITIAL_LOAD_RETRIES = 6
 
 export default function FeedsGlobalList({
     projectId,
@@ -42,7 +33,6 @@ export default function FeedsGlobalList({
     followedFeedsData,
     allFeeds,
     followedFeeds,
-    onRequestAllFeeds,
 }) {
     const newLocalFeedData = useSelector(state => state.newLocalFeedData)
 
@@ -56,33 +46,10 @@ export default function FeedsGlobalList({
     const [feedsByDate, setFeedsByDate] = useState({})
     const [feedsOrderedArray, setFeedsOrderedArray] = useState([])
     const [activeMode, setActiveMode] = useState(LOADING_MODE)
-    const [expandRequested, setExpandRequested] = useState(false)
-    const [initialLoadRetry, setInitialLoadRetry] = useState(0)
-    const initialLoadRetryCount = useRef(0)
-    const initialLoadRetryTimer = useRef(null)
-    const mounted = useRef(true)
-    const currentTab = useRef(feedActiveTab)
-    currentTab.current = feedActiveTab
-
-    // AT-2382 - the widened listener replaces this array on delivery, so its identity is
-    // the "the extra feeds arrived" edge that retires the ghosts. Deliberately NOT keyed on
-    // `expandRequested`: the top-up effect calls `expandFeedList` again, which re-arms that
-    // flag, so it stays true until the list is contracted and would ghost forever.
-    const feedsForActiveTab = feedActiveTab === FOLLOWED_TAB ? followedFeeds : allFeeds
-    const [loadingMoreFeeds, startLoadingMoreFeeds] = useLoadingMore(feedsForActiveTab)
-
-    // The button's handler, as opposed to the top-up effect's. Only a real press arms the
-    // ghosts; the effect re-enters `expandFeedList` and must not restart them.
-    const onPressShowMore = () => {
-        startLoadingMoreFeeds()
-        expandFeedList()
-    }
 
     const contractFeedList = () => {
         setMaxAmountOfFeedToDisplay(getLimitFeedAmountToDisplay())
         setShowShowLessButton(false)
-        // Stop topping the list back up, otherwise the next snapshot would re-expand it on its own.
-        setExpandRequested(false)
 
         const lastFeeds = displayedFeedsOrdered.slice(getLimitFeedAmountToDisplay())
         lastFeeds.forEach(feed => {
@@ -106,11 +73,6 @@ export default function FeedsGlobalList({
         }
         setMaxAmountOfFeedToDisplay(MAX_FEEDS_AMOUNT_TO_DISPLAY)
         setShowShowMoreButton(false)
-        // The listener is capped at what this list displays, so the feeds beyond the first page have
-        // to be requested before they can be rendered. Whatever is already loaded is processed right
-        // away; the effect below tops the list up when the wider snapshot arrives.
-        setExpandRequested(true)
-        if (onRequestAllFeeds) onRequestAllFeeds()
 
         const feedsToProcess = feedActiveTab === FOLLOWED_TAB ? followedFeeds : allFeeds
 
@@ -128,16 +90,12 @@ export default function FeedsGlobalList({
             setFeedsOrderedArray,
             setDisplayedFeedsOrdered,
             newFeedsIds,
-            setNewFeedsIds,
-            undefined,
-            // Widening a list that already renders: an unreadable object is skipped, not retried.
-            { dropUnreadable: true }
-        ).catch(error => console.warn('Could not expand Updates feed', { projectId, error }))
+            setNewFeedsIds
+        )
     }
 
     const processInitialFeedsInTab = () => {
         const { mode, feedsToProcess } = getInitialData(feedActiveTab, counterNewFeedsData, followedFeeds, allFeeds)
-        const isCurrent = () => mounted.current && currentTab.current === feedActiveTab
         setActiveMode(mode)
         setMaxAmountOfFeedToDisplay(
             mode === NEW_FEEDS_MODE ? MAX_FEEDS_AMOUNT_TO_DISPLAY : getLimitFeedAmountToDisplay()
@@ -152,28 +110,8 @@ export default function FeedsGlobalList({
             setFeedsOrderedArray,
             setDisplayedFeedsOrdered,
             [],
-            setNewFeedsIds,
-            isCurrent,
-            { dropUnreadable: initialLoadRetryCount.current >= MAX_INITIAL_LOAD_RETRIES }
+            setNewFeedsIds
         )
-            .then(() => {
-                if (!isCurrent()) return
-                initialLoadRetryCount.current = 0
-                clearTimeout(initialLoadRetryTimer.current)
-            })
-            .catch(error => {
-                if (!isCurrent()) return
-                // A new feed can reach feedsCount before the access-projection trigger makes its
-                // projectsFeeds object readable. Keep the counter and try again after projection.
-                if (initialLoadRetryCount.current === 0) {
-                    console.warn('Could not load Updates feed object; retrying', { projectId, error })
-                }
-                setActiveMode(LOADING_MODE)
-                const delay = Math.min(500 * 2 ** initialLoadRetryCount.current, 10000)
-                initialLoadRetryCount.current += 1
-                clearTimeout(initialLoadRetryTimer.current)
-                initialLoadRetryTimer.current = setTimeout(() => setInitialLoadRetry(retry => retry + 1), delay)
-            })
     }
 
     const changeTab = () => {
@@ -188,7 +126,6 @@ export default function FeedsGlobalList({
         setShowShowLessButton(false)
         setFeedsOrderedArray([])
         setNewFeedsIds([])
-        setExpandRequested(false)
         setInternalFeedActiveTab(feedActiveTab)
 
         processInitialFeedsInTab()
@@ -316,28 +253,10 @@ export default function FeedsGlobalList({
     }, [counterNewFeedsData])
 
     useEffect(() => {
-        if (feedsForActiveTab && counterNewFeedsData && activeMode === LOADING_MODE) {
+        if (allFeeds && followedFeeds && counterNewFeedsData && activeMode === LOADING_MODE) {
             processInitialFeedsInTab()
         }
-    }, [feedsForActiveTab, counterNewFeedsData, initialLoadRetry])
-
-    useEffect(
-        () => () => {
-            mounted.current = false
-            clearTimeout(initialLoadRetryTimer.current)
-        },
-        []
-    )
-
-    // Top the expanded list up once the widened listener delivers the feeds that were beyond the
-    // first page. Only runs after "show more" was pressed, and only while the incoming snapshot
-    // holds more feeds than are already on screen, so it cannot loop.
-    useEffect(() => {
-        if (!expandRequested || activeMode === LOADING_MODE) return
-        const feedsToProcess = feedActiveTab === FOLLOWED_TAB ? followedFeeds : allFeeds
-        if (!feedsToProcess || feedsToProcess.length <= displayedFeedsOrdered.length) return
-        expandFeedList()
-    }, [allFeeds, followedFeeds])
+    }, [allFeeds, followedFeeds, counterNewFeedsData])
 
     return (
         <View>
@@ -357,12 +276,8 @@ export default function FeedsGlobalList({
                 )
             })}
 
-            {loadingMoreFeeds && <FeedsListSkeleton rowCount={resolveGhostRowCount(MAX_FEEDS_AMOUNT_TO_DISPLAY)} />}
-
             <View style={localStyles.buttonsContainer}>
-                {showShowMoreButton ? (
-                    <ShowMoreButton forExpand={true} onPress={onPressShowMore} loading={loadingMoreFeeds} />
-                ) : null}
+                {showShowMoreButton ? <ShowMoreButton forExpand={true} onPress={expandFeedList} /> : null}
                 {showShowLessButton ? (
                     <ShowMoreButton style={localStyles.lessButton} forExpand={false} onPress={contractFeedList} />
                 ) : null}

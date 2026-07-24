@@ -3,54 +3,58 @@
  */
 
 import React from 'react'
-import { Provider } from 'react-redux'
-import store from '../../redux/store'
-import { Platform } from 'react-native'
 import renderer from 'react-test-renderer'
 import TaskItemTags from '../../components/TaskListView/TaskItemTags'
 import { Text } from 'react-native'
-
-// The backlinks-counter effect really runs under RNW and reaches the
-// uninitialized firestore `db`. Object.create keeps the real module on the
-// prototype without eagerly resolving its circular re-exports.
-jest.mock('../../utils/backends/firestore', () =>
-    Object.assign(Object.create(jest.requireActual('../../utils/backends/firestore')), {
-        watchBacklinksCount: jest.fn(),
-        unwatchBacklinksCount: jest.fn(),
-    })
-)
-
-// MyPlatform.osType only consults window.navigator off the mobile path,
-// and the react-native preset reports ios.
-Platform.OS = 'web'
 
 describe('TaskItemTags component', () => {
     describe('TaskItemTags snapshot test', () => {
         it('should render correctly', async () => {
             const tree = renderer
                 .create(
-                    <Provider store={store}>
-                        <TaskItemTags
-                            amountTags={5}
-                            task={{
-                                id: 'task-1',
-                                name: 'My task',
-                                userId: 'user-1',
-                                userIds: ['user-1'],
-                                dueDate: 0,
-                                dueDateByObserversIds: {},
-                                estimations: {},
-                                stepHistory: ['open'],
-                            }}
-                            projectId={'project-1'}
-                            setTagsExpandedHeight={() => {}}
-                        >
-                            <Text>Some text</Text>
-                        </TaskItemTags>
-                    </Provider>
+                    <TaskItemTags amountTags={5}>
+                        <Text>Some text</Text>
+                    </TaskItemTags>
                 )
                 .toJSON()
             expect(tree).toMatchSnapshot()
+        })
+    })
+
+    describe('TaskItemTags functions snapshot test', () => {
+        it('check updateState function', () => {
+            const tree = renderer.create(
+                <TaskItemTags amountTags={0}>
+                    <Text>Some text</Text>
+                </TaskItemTags>
+            )
+            expect(tree.toJSON()).toMatchSnapshot()
+
+            tree.getInstance().updateState()
+            expect(tree.toJSON()).toMatchSnapshot()
+        })
+
+        it('check toggleVisibleTags function', () => {
+            const tree = renderer.create(
+                <TaskItemTags amountTags={1}>
+                    <Text>Some text</Text>
+                </TaskItemTags>
+            )
+            expect(tree.toJSON()).toMatchSnapshot()
+            tree.getInstance().state.visible = false
+
+            tree.getInstance().toggleVisibleTags()
+            let state = tree.getInstance().state
+            expect(state.visible).toBeTruthy()
+        })
+
+        it('check the unmount action', () => {
+            const tree = renderer.create(
+                <TaskItemTags amountTags={3}>
+                    <Text>Some text</Text>
+                </TaskItemTags>
+            )
+            tree.unmount()
         })
     })
 })

@@ -1,4 +1,3 @@
-const { FieldValue } = require('firebase-admin/firestore')
 const removeObjectFromBacklinks = async (projectId, property, objectId, admin) => {
     let promises = []
     promises.push(
@@ -37,7 +36,7 @@ const removeObjectFromBacklinks = async (projectId, property, objectId, admin) =
             admin
                 .firestore()
                 .doc(`items/${projectId}/tasks/${doc.id}`)
-                .update({ [`${property}`]: FieldValue.arrayRemove(objectId) })
+                .update({ [`${property}`]: admin.firestore.FieldValue.arrayRemove(objectId) })
         )
     })
     noteDocs.forEach(doc => {
@@ -45,7 +44,7 @@ const removeObjectFromBacklinks = async (projectId, property, objectId, admin) =
             admin
                 .firestore()
                 .doc(`noteItems/${projectId}/notes/${doc.id}`)
-                .update({ [`${property}`]: FieldValue.arrayRemove(objectId) })
+                .update({ [`${property}`]: admin.firestore.FieldValue.arrayRemove(objectId) })
         )
     })
     noteWithObjectInContentDocs.forEach(doc => {
@@ -54,7 +53,7 @@ const removeObjectFromBacklinks = async (projectId, property, objectId, admin) =
                 .firestore()
                 .doc(`noteItems/${projectId}/notes/${doc.id}`)
                 .update({
-                    [`linkedParentsInContentIds.${property}`]: FieldValue.arrayRemove(objectId),
+                    [`linkedParentsInContentIds.${property}`]: admin.firestore.FieldValue.arrayRemove(objectId),
                 })
         )
     })
@@ -64,7 +63,7 @@ const removeObjectFromBacklinks = async (projectId, property, objectId, admin) =
                 .firestore()
                 .doc(`noteItems/${projectId}/notes/${doc.id}`)
                 .update({
-                    [`linkedParentsInTitleIds.${property}`]: FieldValue.arrayRemove(objectId),
+                    [`linkedParentsInTitleIds.${property}`]: admin.firestore.FieldValue.arrayRemove(objectId),
                 })
         )
     })

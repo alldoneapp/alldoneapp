@@ -7,14 +7,14 @@ import { translate } from '../../../../i18n/TranslationService'
 import ToolsAccessWrapper from './ToolsAccessWrapper'
 import { TOOL_LABEL_BY_KEY, TOOL_OPTIONS, normalizeAllowedTools } from './toolOptions'
 
-export default function ToolsAccessProperty({ disabled, projectId, configProjectId, assistant }) {
+export default function ToolsAccessProperty({ disabled, projectId, assistant }) {
     const allowedTools = normalizeAllowedTools(assistant.allowedTools)
 
     const summaryText = !allowedTools.length
         ? translate('No tools enabled')
         : allowedTools.length === TOOL_OPTIONS.length
-          ? translate('All tools enabled')
-          : allowedTools.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
+        ? translate('All tools enabled')
+        : allowedTools.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
 
     return (
         <View style={localStyles.container}>
@@ -26,12 +26,7 @@ export default function ToolsAccessProperty({ disabled, projectId, configProject
                 </Text>
             </View>
             <View style={{ marginLeft: 'auto' }}>
-                <ToolsAccessWrapper
-                    disabled={disabled}
-                    projectId={projectId}
-                    configProjectId={configProjectId}
-                    assistant={assistant}
-                />
+                <ToolsAccessWrapper disabled={disabled} projectId={projectId} assistant={assistant} />
             </View>
         </View>
     )

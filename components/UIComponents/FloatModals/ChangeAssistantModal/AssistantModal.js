@@ -3,12 +3,11 @@ import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import useWindowSize from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
 import AssistantsArea from './AssistantsArea'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function AssistantModal({
     closeModal,
@@ -23,9 +22,7 @@ export default function AssistantModal({
 
     return (
         <View>
-            <View
-                style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}
-            >
+            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <ModalHeader
                         closeModal={closeModal}
@@ -52,7 +49,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

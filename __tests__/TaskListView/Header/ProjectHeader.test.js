@@ -6,6 +6,8 @@ import { storeCurrentUser } from '../../../redux/actions'
 
 import renderer from 'react-test-renderer'
 
+jest.mock('firebase', () => ({ firestore: {} }));
+
 describe('ProjectHeader component', () => {
     describe('ProjectHeader snapshot test', () => {
         it('should render correctly', () => {
@@ -13,7 +15,10 @@ describe('ProjectHeader component', () => {
             const tree = renderer
                 .create(
                     <Provider store={store}>
-                        <ProjectHeader user={{ photoURL: 'http://url.to.photo' }} project={{ color: '#0055ff' }} />
+                        <ProjectHeader
+                            user={{ photoURL: 'http://url.to.photo' }}
+                            project={{ color: '#0055ff' }}
+                        />
                     </Provider>
                 )
                 .toJSON()

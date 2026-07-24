@@ -15,7 +15,6 @@ import {
 } from '../../redux/actions'
 
 import renderer from 'react-test-renderer'
-import { nodeMockOptions } from '../../testUtils/domNodeStub'
 
 const emptyFunction = () => {}
 
@@ -28,13 +27,13 @@ const eventFunctions = {
 describe('DismissibleModal component', () => {
     describe('DismissibleModal empty snapshot test', () => {
         it('Should render correctly', () => {
-            const tree = renderer.create(<DismissibleModal onDismiss={emptyFunction} />, nodeMockOptions).toJSON()
+            const tree = renderer.create(<DismissibleModal onDismiss={emptyFunction} />).toJSON()
             expect(tree).toMatchSnapshot()
         })
 
         xit('Should render correctly when the platform is web', () => {
             Platform.OS = 'web'
-            const tree = renderer.create(<DismissibleModal onDismiss={emptyFunction} />, nodeMockOptions).toJSON()
+            const tree = renderer.create(<DismissibleModal onDismiss={emptyFunction} />).toJSON()
             expect(tree).toMatchSnapshot()
         })
 
@@ -42,7 +41,7 @@ describe('DismissibleModal component', () => {
             // Given
             store.dispatch(showAddProjectOptions())
             store.dispatch(showProjectColorPicker())
-            renderer.create(<DismissibleModal onDismiss={emptyFunction} />, nodeMockOptions)
+            renderer.create(<DismissibleModal onDismiss={emptyFunction} />)
 
             const isComponentVisible = store.getState().showAddProjectOptions.visible
             expect(isComponentVisible).toBe(true)
@@ -64,7 +63,7 @@ describe('DismissibleModal component', () => {
             // Given
             store.dispatch(showAddProjectOptions())
             store.dispatch(hideProjectColorPicker())
-            renderer.create(<DismissibleModal onDismiss={emptyFunction} />, nodeMockOptions)
+            renderer.create(<DismissibleModal onDismiss={emptyFunction} />)
 
             const isComponentVisible = store.getState().showAddProjectOptions.visible
             expect(isComponentVisible).toBe(true)

@@ -21,10 +21,7 @@ const NavigationBarItem = (
     {
         children,
         feedAmount,
-        // A red count on the tab meaning "something here needs you". Pending project
-        // invitations were the only source until AT-2491 added broken integrations, hence
-        // the generic name — NavigationBar decides which count applies to which tab.
-        badgeAmount,
+        invitationsAmount,
         selected,
         expandPicker,
         isMobile,
@@ -80,9 +77,9 @@ const NavigationBarItem = (
             style={[isMobile ? localStyles.parentMobile : localStyles.parent, isSecondary && { marginRight: 0 }]}
             onPress={onPress}
         >
-            {badgeAmount > 0 && (
+            {invitationsAmount > 0 && (
                 <View style={localStyles.badge}>
-                    <AmountTag feedAmount={badgeAmount} isFollowedButton={true} />
+                    <AmountTag feedAmount={invitationsAmount} isFollowedButton={true} />
                 </View>
             )}
             <View
@@ -92,8 +89,8 @@ const NavigationBarItem = (
                     isMobile
                         ? localStyles.containerMobile
                         : isMiddleScreen || forceTabletMargins
-                          ? localStyles.containerTablet
-                          : localStyles.container,
+                        ? localStyles.containerTablet
+                        : localStyles.container,
                 ]}
             >
                 <Text

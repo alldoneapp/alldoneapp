@@ -8,27 +8,62 @@ import { CALENDAR_TASK_INDEX } from '../../../utils/backends/Tasks/openGoalTasks
 import GoalTasksList from './GoalTasksList'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
-import { orderCalendarTasksLast } from '../../../utils/CalendarTaskOrder'
-import CalendarSectionMoreButton from '../../UIComponents/FloatModals/PrepareMeetings/CalendarSectionMoreButton'
-import {
-    getCalendarConnectedProjectIds,
-    getCalendarProviderUrl,
-    getCalendarSectionTitle,
-} from '../../TaskListView/OpenTasksView/calendarSectionHelper'
 
-/**
- * AT-2377 - the goal detailed view's own "Calendar" section, the counterpart of
- * `TaskListView/OpenTasksView/CalendarSection`. A goal only ever lists TODAY's events; that filter
- * lives in `openGoalTasks.processTasks`, not here.
- */
 export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks, dateIndex, isActiveOrganizeMode }) {
     const apisConnected = useSelector(state => state.loggedUser.apisConnected)
 
-    const firstCalendarData = calendarTasks[0]?.calendarData
-    const connectedProjectIds = getCalendarConnectedProjectIds(calendarTasks, apisConnected, projectId)
-    const syncProjectId = connectedProjectIds[0]
+    const openLink = () => {
+        const calendarData = calendarTasks[0].calendarData
+        return window.open(
+            calendarData.provider === 'microsoft'
+                ? calendarData.link || 'https://outlook.office.com/calendar/'
+                : 'https://calendar.google.com/calendar/u/?' + `authuser=${calendarData.email}`,
+            '_blank'
+        )
+    }
 
-    const openLink = () => window.open(getCalendarProviderUrl(firstCalendarData), '_blank')
+    // Get the calendar-connected project ID from the calendar task data
+    // For syncing, we need the project with calendar API connection, not where task currently lives
+    const getCalendarConnectedProjectId = () => {
+        const firstTask = calendarTasks?.[0]
+        if (!firstTask?.calendarData) {
+            console.log('[GoalCalendarSection] No calendar task data, using current projectId:', projectId)
+            return projectId
+        }
+
+        console.log('[GoalCalendarSection] First calendar task data:', firstTask.calendarData)
+
+        // Use originalProjectId if available (the project where calendar was first connected)
+        // This is the project with the API connection, which we need for syncing
+        if (firstTask.calendarData.originalProjectId) {
+            console.log('[GoalCalendarSection] Using originalProjectId:', firstTask.calendarData.originalProjectId)
+            return firstTask.calendarData.originalProjectId
+        }
+
+        // Fallback: find which project is connected to this calendar email
+        const calendarEmail = firstTask.calendarData.email
+        console.log('[GoalCalendarSection] Looking for project with calendar email:', calendarEmail)
+        if (apisConnected && calendarEmail) {
+            for (const [projId, apis] of Object.entries(apisConnected)) {
+                if (apis.calendar && apis.calendarEmail === calendarEmail) {
+                    console.log('[GoalCalendarSection] Found matching project:', projId)
+                    return projId
+                }
+            }
+        }
+
+        console.log('[GoalCalendarSection] No matching project found, using current projectId:', projectId)
+        return projectId
+    }
+
+    const calendarConnectedProjectId = getCalendarConnectedProjectId()
+    const isConnected = !!apisConnected?.[calendarConnectedProjectId]?.calendar
+    console.log(
+        '[GoalCalendarSection] Final calendarConnectedProjectId:',
+        calendarConnectedProjectId,
+        'Current projectId:',
+        projectId
+    )
 
     return (
         <View style={localStyles.container}>
@@ -36,19 +71,20 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
                 <View style={localStyles.centeredRow}>
                     <TouchableOpacity onPress={openLink} style={{ flexDirection: 'row' }}>
                         <GoogleCalendar />
-                        <Text style={localStyles.title}>{getCalendarSectionTitle(firstCalendarData)}</Text>
+                        <Text style={localStyles.title}>Google Calendar</Text>
                     </TouchableOpacity>
-                    <CalendarSectionMoreButton projectId={projectId} tasks={calendarTasks} />
-                    {syncProjectId && <ReloadCalendar projectId={syncProjectId} Promise={checkIfCalendarConnected} />}
+                    {isConnected && (
+                        <ReloadCalendar projectId={calendarConnectedProjectId} Promise={checkIfCalendarConnected} />
+                    )}
                 </View>
             </View>
 
             <GoalTasksList
                 projectId={projectId}
+                taskList={calendarTasks}
                 dateIndex={dateIndex}
-                isActiveOrganizeMode={isActiveOrganizeMode}
-                taskList={orderCalendarTasksLast(calendarTasks)}
                 taskListIndex={CALENDAR_TASK_INDEX}
+                isActiveOrganizeMode={isActiveOrganizeMode}
             />
         </View>
     )

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 
 import ConnectCalendarModal from './ConnectCalendarModal/ConnectCalendarModal'
 import GoogleApi from '../../../../apis/google/GoogleApi'
@@ -70,7 +70,7 @@ export default function ConnectCalendarProperty({ projectId, disabled }) {
     }, [dispatch])
 
     return (
-        <AppPopover
+        <Popover
             content={
                 <ConnectCalendarModal
                     projectId={projectId}
@@ -101,6 +101,6 @@ export default function ConnectCalendarProperty({ projectId, disabled }) {
                 isSignedIn={isSignedIn}
                 onPress={openModal}
             />
-        </AppPopover>
+        </Popover>
     )
 }

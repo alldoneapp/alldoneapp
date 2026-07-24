@@ -11,22 +11,12 @@ export default function Switch({ active, activeSwitch, deactiveSwitch, disabled 
         new Animated.Value(active ? SWITCH_ACTIVE_POSTION : SWITCH_INACTIVE_POSTION)
     ).current
 
-    // A press must never throw. This component's API is `active` + `activeSwitch`/`deactiveSwitch`,
-    // and a caller that reaches for React Native's core `value`/`onValueChange` names instead gets
-    // `undefined` here — which used to surface as an uncaught `TypeError: t is not a function` from
-    // deep inside PressResponder, with no hint of which switch or which prop was wrong (AT-2518).
-    // A missing handler is now a no-op with a named warning: the toggle still does not move, but the
-    // page keeps working and the console says exactly what to fix.
     const onPresSwitch = () => {
-        const handler = active ? deactiveSwitch : activeSwitch
-        if (typeof handler !== 'function') {
-            console.warn(
-                `Switch: no ${active ? 'deactiveSwitch' : 'activeSwitch'} handler. This component takes ` +
-                    '`active`, `activeSwitch` and `deactiveSwitch`, not `value`/`onValueChange`.'
-            )
-            return
+        if (active) {
+            deactiveSwitch()
+        } else {
+            activeSwitch()
         }
-        handler()
     }
 
     useEffect(() => {
@@ -34,8 +24,6 @@ export default function Switch({ active, activeSwitch, deactiveSwitch, disabled 
         Animated.timing(switchMarginLeft, {
             toValue: nextPosition,
             duration: 300,
-            // marginLeft is a layout prop, so the native driver cannot drive it.
-            useNativeDriver: false,
         }).start()
     }, [active])
 
@@ -89,7 +77,10 @@ const localStyles = StyleSheet.create({
         height: 20,
         backgroundColor: '#FFFFFF',
         borderRadius: 100,
-        boxShadow: '0px 0px 4px rgba(138,148,166,0.50)',
+        shadowColor: colors.Text03,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 4,
         elevation: 1,
     },
 })

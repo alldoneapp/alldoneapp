@@ -1,4 +1,3 @@
-const mockBatchSet = jest.fn()
 const mockBatchUpdate = jest.fn()
 const mockBatchCommit = jest.fn()
 const mockCreateProjectDescriptionChangedFeed = jest.fn()
@@ -7,7 +6,6 @@ const mockGetFeedUserData = jest.fn()
 jest.mock('../BatchWrapper/batchWrapper', () => ({
     BatchWrapper: jest.fn().mockImplementation(() => ({
         update: mockBatchUpdate,
-        set: mockBatchSet,
         commit: mockBatchCommit,
     })),
 }))
@@ -55,10 +53,6 @@ describe('projectDescriptionUpdateHelper', () => {
             projectId: 'project-1',
             userId: 'user-1',
             description: '  New description  ',
-            completionWrite: {
-                ref: { path: 'assistantThreadState/workflow' },
-                data: { projectWorkflow: { completedIds: ['project-1'] } },
-            },
         })
 
         expect(mockBatchUpdate).toHaveBeenCalledWith({ path: 'projects/project-1' }, { description: 'New description' })
@@ -73,11 +67,6 @@ describe('projectDescriptionUpdateHelper', () => {
             expect.any(Object),
             { uid: 'user-1', name: 'User 1' },
             false
-        )
-        expect(mockBatchSet).toHaveBeenCalledWith(
-            { path: 'assistantThreadState/workflow' },
-            { projectWorkflow: { completedIds: ['project-1'] } },
-            { merge: true }
         )
         expect(mockBatchCommit).toHaveBeenCalledTimes(1)
         expect(result).toMatchObject({

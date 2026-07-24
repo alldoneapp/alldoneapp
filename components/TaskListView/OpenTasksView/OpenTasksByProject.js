@@ -1,64 +1,52 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { View } from 'react-native'
 import { useSelector, shallowEqual, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import ProjectHeader from '../Header/ProjectHeader'
 import OpenTasksByDate from '../OpenTasksView/OpenTasksByDate'
-import ProjectHelper, { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import {
     AMOUNT_TASKS_INDEX,
     DATE_TASK_INDEX,
-    TODAY_DATE,
     watchAllGoals,
     watchAllMilestones,
 } from '../../../utils/backends/openTasks'
 import NeedShowMoreOpenTasksButton from './NeedShowMoreOpenTasksButton'
+import NeedShowMoreEmptyGoalsButton from './NeedShowMoreEmptyGoalsButton'
 import OpenTasksByProjectHandler from './OpenTasksByProjectHandler'
 import BottomShowMoreButtonContainer from './BottomShowMoreButtonContainer'
 import Backend from '../../../utils/BackendBridge'
-import { setTasksArrowButtonIsExpanded } from '../../../redux/actions'
+import {
+    setTasksArrowButtonIsExpanded,
+    setDoneMilestonesInProjectInTasks,
+    setGoalsInProjectInTasks,
+    setOKRsInProjectInTasks,
+    setOpenMilestonesInProjectInTasks,
+} from '../../../redux/actions'
 import AssistantLine from '../../MyDayView/AssistantLine/AssistantLine'
-import { useProjectAssistantLine } from '../../MyDayView/AssistantLine/useAssistantLineSwitch'
 import OKRSection from '../OKRs/OKRSection'
 import UpcomingMilestoneRow from '../Header/UpcomingMilestoneRow'
 import TaskFiltersLine from '../PriorityFilters/TaskFiltersLine'
 import { watchProjectOKRs } from '../../../utils/backends/OKRs/okrsFirestore'
 import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../OKRs/okrHelper'
-import AssistantScheduleDateSection from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
-import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSchedule'
-import TaskListSkeleton from '../TaskListSkeleton'
-import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
-import useTaskCompletionProjectExit from './useTaskCompletionProjectExit'
-import NewTaskSection from './NewTaskSection'
-import SharedHelper from '../../../utils/SharedHelper'
-import { useIsUserEditing } from '../../../utils/editingGuard'
 
-function OpenTasksByProject({
+export default function OpenTasksByProject({
     firstProject,
     setProjectsHaveTasksInFirstDay,
     sortedLoggedUserProjectIds,
     projectId,
-    assistantProfileMode = false,
-    assistantScheduleOccurrences = [],
-    assistantScheduleContext = null,
-    assistantTaskCreatorContext = null,
-    taskWatchersEnabled = true,
 }) {
     const dispatch = useDispatch()
-    const projectColor = useSelector(state => state.loggedUserProjectsMap?.[projectId]?.color)
     const projectIndex = useSelector(state => state.loggedUserProjectsMap[projectId]?.index)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const loggedUser = useSelector(state => state.loggedUser)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const isAssistant = useSelector(state => !!state.currentUser.temperature)
-    const allowProjectPostpone = !isAnonymous && currentUserId === loggedUser.uid && !isAssistant
     const tasksArrowButtonIsExpanded = useSelector(state => state.tasksArrowButtonIsExpanded)
     const okrsInProject = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const [pressedShowMoreMainSection, setPressedShowMoreMainSection] = useState(false)
-    const isUserEditing = useIsUserEditing()
-    const missingDatesComposerRef = useRef(false)
 
     const instanceKey = projectId + currentUserId
 
@@ -66,12 +54,6 @@ function OpenTasksByProject({
     const taskPriorityFilters = useSelector(state => state.taskPriorityFilters, shallowEqual)
     const taskVmStateFilters = useSelector(state => state.taskVmStateFilters, shallowEqual)
     const filteredOpenTasksDates = filteredOpenTasks.map(tasksByDate => tasksByDate[DATE_TASK_INDEX])
-    const initialLoadingEndOpenTasks = useSelector(state => !!state.initialLoadingEndOpenTasks?.[instanceKey])
-    const initialLoadingEndObservedTasks = useSelector(state => !!state.initialLoadingEndObservedTasks?.[instanceKey])
-    const singleTaskIsLoading = useSelector(state => !!state.taskListSingleLoading?.[instanceKey])
-    const assistantProfileTimelineDates = assistantProfileMode
-        ? buildAssistantProfileTimelineDates(filteredOpenTasksDates, assistantScheduleOccurrences)
-        : filteredOpenTasksDates.map((dateKey, dateIndex) => ({ dateKey, dateIndex, occurrences: [] }))
     const thereAreNotTasksInFirstDay = useSelector(state =>
         state.thereAreNotTasksInFirstDay[instanceKey] ? state.thereAreNotTasksInFirstDay[instanceKey] : false
     )
@@ -83,96 +65,74 @@ function OpenTasksByProject({
     const taskFiltersActive = taskPriorityFilters.length > 0 || taskVmStateFilters.length > 0
     const hasMatchingFilteredTasks = filteredOpenTasks.some(section => section[AMOUNT_TASKS_INDEX] > 0)
     const hideProjectWithoutFilterMatches = !inSelectedProject && taskFiltersActive && !hasMatchingFilteredTasks
-    const baseHideProjectData =
+    const hideProjectData =
         hideProjectWithoutFilterMatches ||
         (!inSelectedProject &&
             visibleOkrsInAllProjects.length === 0 &&
             (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0))
 
-    /**
-     * AT-2558 — keep AT-2551's broad, coloured completion sweep disconnected, but do not let the
-     * whole card disappear abruptly after its final task row completes or leaves Today through a
-     * user-facing postpone. A row reports either eligible transition; only when the board
-     * independently confirms that this exact project is now leaving do we keep its card mounted for
-     * AT-2495's original mask, dust and sparks.
-     */
-    const taskCompletionProjectExitEnabled =
-        !inSelectedProject &&
-        !assistantProfileMode &&
-        !isAnonymous &&
-        !taskFiltersActive &&
-        currentUserId === loggedUser.uid
-    const { exitRunId, holdProjectLine } = useTaskCompletionProjectExit({
-        projectId,
-        enabled: taskCompletionProjectExitEnabled,
-        lineWouldLeave: baseHideProjectData,
-    })
-    const hideProjectData = baseHideProjectData && !holdProjectLine
-
-    // AT-2430: which assistant this project's line speaks as — the project's own, the default
-    // project's, or one the user picked with the line's switch — plus the switch's own options.
+    // Check if this project is using a different assistant than the default project
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
-    // All Projects already owns one global assistant line. Passing every preloaded project into
-    // this hook armed an assistant collection watcher even though its line could never render.
-    const { hasAssistantLine, assistantLineProps } = useProjectAssistantLine(inSelectedProject ? project : null)
-    const showAssistantLine = !assistantProfileMode && !isAnonymous && inSelectedProject && hasAssistantLine
-    const projectDecorationsReady =
-        taskWatchersEnabled &&
-        (inSelectedProject ||
-            (initialLoadingEndOpenTasks && initialLoadingEndObservedTasks) ||
-            ((initialLoadingEndOpenTasks || initialLoadingEndObservedTasks) && hasMatchingFilteredTasks))
-    const showInitialSkeleton =
-        inSelectedProject &&
-        filteredOpenTasksDates.length === 0 &&
-        !singleTaskIsLoading &&
-        (!initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks)
-    const showSingleTaskSkeleton = singleTaskIsLoading && filteredOpenTasksDates.length === 0
-    // A settled view can temporarily have no published date sections while its listeners
-    // reconnect. Its composer must not depend on a task snapshot existing. Keep an opened
-    // fallback editor mounted if a snapshot arrives while the user is still typing.
-    const missingTaskDates = filteredOpenTasksDates.length === 0 && !showInitialSkeleton && !showSingleTaskSkeleton
-    if (!isUserEditing) missingDatesComposerRef.current = missingTaskDates
-    const showMissingDatesComposer =
-        inSelectedProject &&
-        (missingTaskDates || (isUserEditing && missingDatesComposerRef.current)) &&
-        !assistantProfileMode &&
-        !isAssistant &&
-        !loggedUser.templateProjectIds.includes(projectId) &&
-        SharedHelper.checkIfUserHasAccessToProject(isAnonymous, loggedUser.projectIds, projectId, false) &&
-        (loggedUser.uid === currentUserId || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId))
+    const defaultProjectId = useSelector(state => state.loggedUser?.defaultProjectId)
+    const defaultAssistant = useSelector(state => state.defaultAssistant)
+    const defaultProject = useSelector(state => state.loggedUserProjectsMap?.[defaultProjectId])
+    const isDefaultProject = projectId === defaultProjectId
+    const defaultProjectAssistantId = defaultProject?.assistantId || defaultAssistant?.uid || ''
+    const selectedProjectAssistantId = project?.assistantId || defaultProjectAssistantId
+    const useSelectedProjectAssistantLine =
+        isDefaultProject || (!!project?.assistantId && project.assistantId !== defaultProjectAssistantId)
+    // Keep the selected project as the conversation context even when its assistant
+    // is inherited from the default project.
+    const assistantLineProject = project
+    const assistantLineAssistantId = useSelectedProjectAssistantLine
+        ? selectedProjectAssistantId
+        : defaultProjectAssistantId
+    const showAssistantSwitch =
+        !isDefaultProject &&
+        useSelectedProjectAssistantLine &&
+        !!defaultProject &&
+        !!defaultProjectAssistantId &&
+        !!selectedProjectAssistantId
+    const showAssistantLine = !isAnonymous && inSelectedProject && !!assistantLineProject && !!assistantLineAssistantId
 
     useEffect(() => {
-        if (!projectDecorationsReady) return undefined
         const watcherKey = v4()
         watchAllMilestones(projectId, watcherKey)
         return () => {
             Backend.unwatch(watcherKey)
+            dispatch([
+                setOpenMilestonesInProjectInTasks(projectId, null),
+                setDoneMilestonesInProjectInTasks(projectId, null),
+            ])
         }
-    }, [projectDecorationsReady, projectId])
+    }, [projectId])
 
     useEffect(() => {
-        if (!projectDecorationsReady) return undefined
         const watcherKey = v4()
         watchAllGoals(projectId, watcherKey)
         return () => {
             Backend.unwatch(watcherKey)
+            dispatch(setGoalsInProjectInTasks(projectId, null))
         }
-    }, [projectDecorationsReady, projectId])
+    }, [projectId])
 
     useEffect(() => {
-        if (!projectDecorationsReady) return undefined
         const watcherKey = v4()
         watchProjectOKRs(projectId, currentUserId, watcherKey)
         return () => {
             Backend.unwatch(watcherKey)
+            dispatch(setOKRsInProjectInTasks(projectId, null))
         }
-    }, [currentUserId, projectDecorationsReady, projectId])
+    }, [projectId, currentUserId])
 
     useEffect(() => {
-        if (!currentUserId || !tasksArrowButtonIsExpanded) return
-        setPressedShowMoreMainSection(true)
-        dispatch(setTasksArrowButtonIsExpanded(false))
-    }, [currentUserId, projectId, tasksArrowButtonIsExpanded])
+        if (currentUserId) {
+            setPressedShowMoreMainSection(tasksArrowButtonIsExpanded)
+            if (tasksArrowButtonIsExpanded) {
+                dispatch(setTasksArrowButtonIsExpanded(false))
+            }
+        }
+    }, [currentUserId, projectId])
 
     return (
         <>
@@ -180,108 +140,68 @@ function OpenTasksByProject({
                 projectIndex={projectIndex}
                 firstProject={firstProject}
                 setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
-                assistantProfileMode={assistantProfileMode}
-                taskWatchersEnabled={taskWatchersEnabled}
             />
             {!hideProjectData && (
-                <ProjectSection
-                    projectId={projectId}
-                    projectColor={projectColor}
-                    embedded={assistantProfileMode}
-                    selected={inSelectedProject}
-                    style={{ marginBottom: inSelectedProject ? 32 : 28 }}
-                    completedDisintegrationRunId={exitRunId}
-                    completedDisintegrationLineWillLeave={baseHideProjectData}
-                >
-                    {inSelectedProject && <NeedShowMoreOpenTasksButton projectId={projectId} />}
-                    {!assistantProfileMode && (
-                        <ProjectHeader
+                <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
+                    <NeedShowMoreOpenTasksButton projectId={projectId} />
+                    <NeedShowMoreEmptyGoalsButton projectId={projectId} />
+                    <ProjectHeader
+                        projectIndex={projectIndex}
+                        projectId={projectId}
+                        showWorkflowTag={!isAssistant}
+                        showAddTask={!isAssistant}
+                        setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                        showRootSectionNavigation={inSelectedProject}
+                        showEmailLabels={!isAssistant}
+                    />
+                    {showAssistantLine && (
+                        <View style={{ marginTop: 0 }}>
+                            <AssistantLine
+                                showLastComment={true}
+                                useAssistantProjectContext={!useSelectedProjectAssistantLine}
+                                useGlobalLatestComment={!useSelectedProjectAssistantLine}
+                                projectOverride={assistantLineProject}
+                                assistantIdOverride={assistantLineAssistantId}
+                                assistantSwitchOptions={
+                                    showAssistantSwitch
+                                        ? {
+                                              projectOverride: defaultProject,
+                                              assistantIdOverride: defaultProjectAssistantId,
+                                              useAssistantProjectContext: true,
+                                              useGlobalLatestComment: true,
+                                          }
+                                        : null
+                                }
+                            />
+                        </View>
+                    )}
+                    {inSelectedProject && !isAssistant && <TaskFiltersLine projectId={projectId} />}
+                    <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
+                    <UpcomingMilestoneRow projectId={projectId} />
+                    {filteredOpenTasksDates.map((dateFormated, index) => {
+                        return (
+                            <OpenTasksByDate
+                                key={dateFormated}
+                                projectId={projectId}
+                                projectIndex={projectIndex}
+                                dateIndex={index}
+                                instanceKey={instanceKey}
+                                sortedLoggedUserProjectIds={sortedLoggedUserProjectIds}
+                                setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
+                                pressedShowMoreMainSection={pressedShowMoreMainSection}
+                                setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                            />
+                        )
+                    })}
+                    {inSelectedProject && (
+                        <BottomShowMoreButtonContainer
+                            instanceKey={instanceKey}
                             projectIndex={projectIndex}
-                            projectId={projectId}
-                            showWorkflowTag={!isAssistant}
-                            showTaskMore={!isAssistant}
-                            showRootSectionNavigation={inSelectedProject}
-                            showEmailLabels={!isAssistant}
-                            allowProjectPostpone={allowProjectPostpone}
+                            setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
                         />
                     )}
-                    <ProjectSectionBody style={assistantProfileMode && { paddingHorizontal: 0, paddingBottom: 0 }}>
-                        {showAssistantLine && (
-                            <View style={{ marginTop: 0 }}>
-                                <AssistantLine {...assistantLineProps} />
-                            </View>
-                        )}
-                        {inSelectedProject && !isAssistant && <TaskFiltersLine projectId={projectId} />}
-                        {!assistantProfileMode && (
-                            <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
-                        )}
-                        {!assistantProfileMode && (
-                            <UpcomingMilestoneRow
-                                projectId={projectId}
-                                hidden={baseHideProjectData}
-                                allowProjectPostpone={allowProjectPostpone}
-                            />
-                        )}
-                        {showInitialSkeleton && <TaskListSkeleton showDateHeader />}
-                        {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
-                        {showMissingDatesComposer && (
-                            <NewTaskSection projectId={projectId} instanceKey={instanceKey} dateIndex={0} />
-                        )}
-                        {assistantProfileTimelineDates.map((timelineDate, timelineIndex) => {
-                            return timelineDate.dateIndex !== null ? (
-                                <OpenTasksByDate
-                                    key={timelineDate.dateKey}
-                                    projectId={projectId}
-                                    projectIndex={projectIndex}
-                                    dateIndex={timelineDate.dateIndex}
-                                    instanceKey={instanceKey}
-                                    sortedLoggedUserProjectIds={sortedLoggedUserProjectIds}
-                                    setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
-                                    pressedShowMoreMainSection={pressedShowMoreMainSection}
-                                    setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                                    assistantProfileMode={assistantProfileMode}
-                                    assistantScheduleOccurrences={timelineDate.occurrences}
-                                    assistantScheduleContext={assistantScheduleContext}
-                                    assistantTaskCreatorContext={
-                                        assistantProfileMode && timelineDate.dateKey === TODAY_DATE
-                                            ? assistantTaskCreatorContext
-                                            : null
-                                    }
-                                />
-                            ) : (
-                                <AssistantScheduleDateSection
-                                    key={timelineDate.dateKey}
-                                    projectId={projectId}
-                                    dateKey={timelineDate.dateKey}
-                                    occurrences={timelineDate.occurrences}
-                                    firstDateSection={timelineIndex === 0}
-                                    {...assistantScheduleContext}
-                                />
-                            )
-                        })}
-                        {inSelectedProject && (
-                            <BottomShowMoreButtonContainer
-                                instanceKey={instanceKey}
-                                projectIndex={projectIndex}
-                                setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
-                            />
-                        )}
-                    </ProjectSectionBody>
-                </ProjectSection>
+                </View>
             )}
         </>
     )
 }
-
-/**
- * AT-2337: "All projects" renders one of these per project - 78 on a heavy
- * dogfooding account. The parent re-renders once per project as each project's
- * first-day task count lands (`projectsHaveTasksInFirstDay`), which without
- * memoisation re-rendered ALL 78 subtrees every time (~6,000 renders for one
- * board load). Every prop below is now referentially stable (see the `useMemo`
- * on `sortedLoggedUserProjectIds` in OpenTasksViewAllProjects), so the default
- * shallow comparison lets a project block re-render only when its own props or
- * its own `useSelector` slices actually change. This changes nothing about what
- * is rendered - the component reads all of its data from the store itself.
- */
-export default React.memo(OpenTasksByProject)

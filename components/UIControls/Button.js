@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View, ViewPropTypes } from 'react-native'
 import * as PropTypes from 'prop-types'
 import Icon from '../Icon'
 import Spinner from '../UIComponents/Spinner'
@@ -223,8 +223,6 @@ class Button extends Component {
             innerRef,
             processing,
             processingTitle,
-            subtitle,
-            subtitleStyle,
             shortcutText,
             shortcutStyle,
             shortcutTextStyle,
@@ -234,7 +232,6 @@ class Button extends Component {
             onlyLayout,
             customIcon,
             iconSize,
-            iconGap,
             accessible,
             projectId,
             ...props
@@ -253,31 +250,22 @@ class Button extends Component {
                 </View>
             )
         } else {
-            // The gap between the icon and the label is part of the button's size, so a compact
-            // button (a 12px icon next to a 12px label) needs a tighter one than the default 40px
-            // button. `iconGap` stays optional and defaults to the historical 12 — every existing
-            // call site renders byte-identically.
-            const contentMargin = {
-                marginLeft:
-                    (icon == null || icon === '') && (color == null || color === '') && !customIcon ? 0 : iconGap,
-            }
-            content =
-                title != null &&
-                title !== '' &&
-                (subtitle ? (
-                    <View style={[styles.textContainer, contentMargin]}>
-                        <Text style={textStyle} numberOfLines={numberTitleLines}>
-                            {title}
-                        </Text>
-                        <Text style={[textStyle, styles.subtitle, subtitleStyle]} numberOfLines={1}>
-                            {subtitle}
-                        </Text>
-                    </View>
-                ) : (
-                    <Text style={[textStyle, contentMargin]} numberOfLines={numberTitleLines}>
-                        {title}
-                    </Text>
-                ))
+            content = title != null && title !== '' && (
+                <Text
+                    style={[
+                        textStyle,
+                        {
+                            marginLeft:
+                                (icon == null || icon === '') && (color == null || color === '') && !customIcon
+                                    ? 0
+                                    : 12,
+                        },
+                    ]}
+                    numberOfLines={numberTitleLines}
+                >
+                    {title}
+                </Text>
+            )
         }
 
         return (
@@ -330,31 +318,26 @@ class Button extends Component {
 Button.propTypes = {
     type: PropTypes.oneOf(['primary', 'danger', 'secondary', 'text', 'ghost']).isRequired,
     title: PropTypes.string,
-    subtitle: PropTypes.string,
-    subtitleStyle: PropTypes.any,
     disabled: PropTypes.bool,
     icon: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),
     textColor: PropTypes.oneOf(['blue', 'red']),
     iconColor: PropTypes.string,
     noBorder: PropTypes.bool,
     onPress: PropTypes.func,
-    buttonStyle: PropTypes.any,
-    titleStyle: PropTypes.any,
+    buttonStyle: ViewPropTypes.style,
+    titleStyle: Text.propTypes.style,
     shortcutText: PropTypes.string,
-    shortcutTextStyle: PropTypes.any,
+    shortcutTextStyle: Text.propTypes.style,
     forceShowShortcut: PropTypes.bool,
-    shortcutStyle: PropTypes.any,
+    shortcutStyle: ViewPropTypes.style,
     numberTitleLines: PropTypes.number,
     onlyLayout: PropTypes.bool,
     accessible: PropTypes.bool,
-    iconGap: PropTypes.number,
 }
 
 Button.defaultProps = {
     type: 'primary',
     title: null,
-    subtitle: null,
-    subtitleStyle: {},
     disabled: false,
     icon: null,
     iconColor: null,
@@ -366,7 +349,6 @@ Button.defaultProps = {
     numberTitleLines: 1,
     onlyLayout: false,
     accessible: false,
-    iconGap: 12,
 }
 
 const styles = StyleSheet.create({
@@ -413,18 +395,6 @@ const styles = StyleSheet.create({
         paddingVertical: 0,
         paddingHorizontal: 0,
         margin: 0,
-    },
-    textContainer: {
-        alignItems: 'center',
-        flexShrink: 1,
-        minWidth: 0,
-    },
-    subtitle: {
-        fontFamily: 'Roboto-Regular',
-        fontSize: 11,
-        letterSpacing: 0.2,
-        lineHeight: 14,
-        opacity: 0.72,
     },
     buttonMasterDisabled: {
         opacity: 0.5,

@@ -1,7 +1,6 @@
 import React, { PureComponent } from 'react'
 import { StyleSheet, TouchableOpacity, View, Animated } from 'react-native'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
-import { createSwipeCloseGuard } from '../../hooks/useSwipeCloseGuard'
 import v4 from 'uuid/v4'
 import moment from 'moment'
 
@@ -26,7 +25,6 @@ import Backend from '../../utils/BackendBridge'
 import Icon from '../Icon'
 import TaskSummarizeTags from '../Tags/TaskSummarizeTags'
 import GoalItemTagsArea from './GoalItemTagsArea'
-import GoalMobileTags from './GoalMobileTags'
 import { LINKED_OBJECT_TYPE_GOAL } from '../../utils/LinkingHelper'
 import { BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
 import { isEqual } from 'lodash'
@@ -38,16 +36,8 @@ import { PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
 import { DYNAMIC_PERCENT } from './GoalsHelper'
 import { DV_TAB_GOAL_LINKED_TASKS } from '../../utils/TabNavigationConstants'
 import { objectIsLockedForUser } from '../Guides/guidesHelper'
-import {
-    taskHierarchyStyles,
-    TaskHierarchyBackgroundContext,
-    ProjectSectionBorderContext,
-} from '../TaskListView/TaskHierarchy'
-import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
 
 export default class GoalItemPresentation extends PureComponent {
-    static contextType = TaskHierarchyBackgroundContext
-
     constructor(props) {
         super(props)
         const storeState = store.getState()
@@ -77,9 +67,6 @@ export default class GoalItemPresentation extends PureComponent {
             tasksAmount: 0,
         }
         this.itemSwipe = React.createRef()
-        // AT-2449 — Swipeable can deliver its close callbacks the wrong way round
-        // and leave the row permanently unactionable. See the hook module.
-        this.swipeCloseGuard = createSwipeCloseGuard(blockAction => this.setStateIfMounted({ blockAction }))
         this.childrenTasksWatcherKey = v4()
         this.backlinksWatcherKey = v4()
     }
@@ -176,24 +163,14 @@ export default class GoalItemPresentation extends PureComponent {
         this._isUnmounted = true
     }
 
-    // Every goal row keeps a raw `store.subscribe`, so this fires once per goal for *every* redux
-    // action in the app. In "All projects - Goals" the board settles with hundreds of dispatches,
-    // which used to mean tens of thousands of no-op `setState` calls. Bail out before touching
-    // React state when none of the four values we mirror actually changed (AT-2336).
     updateState = () => {
         const storeState = store.getState()
-        const { loggedUser, isMiddleScreen, smallScreenNavigation } = storeState
-        const { isAnonymous, unlockedKeysByGuides } = loggedUser
-        const current = this.state
-        if (
-            current.isAnonymous === isAnonymous &&
-            current.isMiddleScreen === isMiddleScreen &&
-            current.smallScreenNavigation === smallScreenNavigation &&
-            current.unlockedKeysByGuides === unlockedKeysByGuides
-        ) {
-            return
-        }
-        this.setStateIfMounted({ isAnonymous, isMiddleScreen, smallScreenNavigation, unlockedKeysByGuides })
+        this.setStateIfMounted({
+            isAnonymous: storeState.loggedUser.isAnonymous,
+            isMiddleScreen: storeState.isMiddleScreen,
+            smallScreenNavigation: storeState.smallScreenNavigation,
+            unlockedKeysByGuides: storeState.loggedUser.unlockedKeysByGuides,
+        })
     }
 
     updateParentMilestonesData = parentOpenMilestones => {
@@ -360,8 +337,6 @@ export default class GoalItemPresentation extends PureComponent {
     }
 
     needRenderTagsInNextLine = () => {
-        // The mobile summary and its expanded row determine their own height.
-        if (this.state.smallScreenNavigation) return
         const { showSummarizeTag } = this.getTagsData()
         if (showSummarizeTag) {
             this.setStateIfMounted({ showTagsInNextLine: false })
@@ -401,7 +376,9 @@ export default class GoalItemPresentation extends PureComponent {
         const { assigneesIds } = goal
         const { isMiddleScreen, smallScreenNavigation } = this.state
         const tagsAmount = this.getTagsAmount()
-        const showSummarizeTag = !smallScreenNavigation && isMiddleScreen && tagsAmount - assigneesIds.length > 3
+        const showSummarizeTag =
+            (isMiddleScreen && tagsAmount - assigneesIds.length > 3) ||
+            (smallScreenNavigation && tagsAmount - assigneesIds.length > 2)
         return { tagsAmount, showSummarizeTag }
     }
 
@@ -425,7 +402,6 @@ export default class GoalItemPresentation extends PureComponent {
             tasksAmount,
             loggedUserId,
             unlockedKeysByGuides,
-            smallScreenNavigation,
         } = this.state
         const {
             onPress,
@@ -440,8 +416,6 @@ export default class GoalItemPresentation extends PureComponent {
             parentGoaltasks,
             areObservedTask,
             inCommentPopup,
-            inHierarchyCard = !inCommentPopup,
-            hierarchyBackgroundColor = this.context,
         } = this.props
         const {
             extendedName,
@@ -458,12 +432,7 @@ export default class GoalItemPresentation extends PureComponent {
         const projectColor = ProjectHelper.getProjectColorById(projectId)
         const highLightColor = isHighlight ? goal.hasStar : PROJECT_COLOR_SYSTEM[projectColor].PROJECT_ITEM_ACTIVE
 
-        // Match the project surface while keeping the swipe actions underneath hidden at rest.
-        const restingBackgroundColor = inCommentPopup
-            ? colors.Secondary200
-            : inHierarchyCard
-              ? hierarchyBackgroundColor
-              : '#ffffff'
+        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
         const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
         const backColor = panColor.interpolate({
             inputRange: [-100, 0, 100],
@@ -494,11 +463,10 @@ export default class GoalItemPresentation extends PureComponent {
         const amountTags = tagsAmount - assigneesIds.length
 
         return (
-            <View style={[localStyles.globalContainer, inHierarchyCard && isInTaskList && { paddingTop: 0 }]}>
+            <View style={localStyles.globalContainer}>
                 <View style={localStyles.container}>
                     <GoalsSwipeBackground needToShowReminderButton={isInTaskList} />
                     <Swipeable
-                        useNativeAnimations={false}
                         ref={this.itemSwipe}
                         rightThreshold={80}
                         leftThreshold={80}
@@ -514,23 +482,25 @@ export default class GoalItemPresentation extends PureComponent {
                         friction={2}
                         containerStyle={{ overflow: 'visible' }}
                         failOffsetY={[-5, 5]}
-                        {...this.swipeCloseGuard}
+                        onSwipeableWillClose={() => {
+                            this.setState({ blockAction: true })
+                        }}
+                        onSwipeableClose={() => {
+                            this.setState({ blockAction: false })
+                        }}
                     >
                         <Animated.View
                             onLayout={this.onLayoutContainers}
                             nativeID={`goal_container_${projectId}_${goal.id}`}
                             style={[
                                 localStyles.border,
-                                inHierarchyCard && localStyles.cardHeaderCorners,
                                 { backgroundColor: backColor },
                                 activeDragGoalMode && { paddingRight: 28 },
                             ]}
                         >
-                            <ProjectMoveIndicator object={goal} />
                             <Animated.View
                                 style={[
                                     localStyles.borderInside,
-                                    inHierarchyCard && localStyles.cardHeaderCorners,
                                     { backgroundColor: backColor, borderColor: borderColor },
                                     isHighlight && localStyles.highlightBorder,
                                 ]}
@@ -541,22 +511,17 @@ export default class GoalItemPresentation extends PureComponent {
                                 progressByDoneMilestone={progressByDoneMilestone}
                                 milestoneId={milestoneId}
                                 barColor={highLightColor}
-                                style={inHierarchyCard && [localStyles.cardHeaderCorners, { overflow: 'hidden' }]}
                             />
                         ) : (
                             <GoalProgressBar
                                 progress={progress}
                                 barColor={highLightColor}
                                 dynamicProgress={dynamicProgress}
-                                style={inHierarchyCard && localStyles.cardHeaderCorners}
                             />
                         )}
 
                         <View
-                            style={[
-                                localStyles.internalContainer,
-                                smallScreenNavigation && localStyles.mobileContainer,
-                            ]}
+                            style={localStyles.internalContainer}
                             pointerEvents={
                                 isLocked || activeDragGoalMode || isActiveOrganizeModeInTasks ? 'none' : 'auto'
                             }
@@ -571,7 +536,7 @@ export default class GoalItemPresentation extends PureComponent {
                             />
                             <TouchableOpacity
                                 onPress={!blockAction ? onPress : undefined}
-                                style={[localStyles.content, smallScreenNavigation && { minWidth: 0 }]}
+                                style={localStyles.content}
                                 disabled={blockAction}
                             >
                                 <View
@@ -596,34 +561,8 @@ export default class GoalItemPresentation extends PureComponent {
                                     </SocialText>
                                 </View>
                             </TouchableOpacity>
-                            <View
-                                style={[
-                                    localStyles.tagsArea,
-                                    smallScreenNavigation && localStyles.mobileTagsArea,
-                                    activeDragGoalMode && { paddingRight: 28 },
-                                ]}
-                            >
-                                {smallScreenNavigation ? (
-                                    <GoalMobileTags
-                                        projectId={projectId}
-                                        goal={goal}
-                                        assigneesIds={assigneesIds}
-                                        assigneesCapacity={assigneesCapacity}
-                                        commentsData={goal.commentsData}
-                                        disableTagsActions={isAnonymous}
-                                        backlinksCount={backlinksCount}
-                                        backlinkObject={backlinkObject}
-                                        parentMilestonesData={parentMilestonesData}
-                                        inDoneMilestone={inDoneMilestone}
-                                        tasksAmount={tasksAmount}
-                                        isEmptyGoal={isEmptyGoal}
-                                        parentGoaltasks={parentGoaltasks}
-                                        areObservedTask={areObservedTask}
-                                        inParentGoal={inParentGoal}
-                                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
-                                        inCommentPopup={inCommentPopup}
-                                    />
-                                ) : showSummarizeTag ? (
+                            <View style={[localStyles.tagsArea, activeDragGoalMode && { paddingRight: 28 }]}>
+                                {showSummarizeTag ? (
                                     <>
                                         {amountTags > 0 && (
                                             <TaskSummarizeTags
@@ -657,7 +596,7 @@ export default class GoalItemPresentation extends PureComponent {
                                         commentsData={goal.commentsData}
                                         onLayoutTagsContainer={this.onLayoutContainers}
                                         containerStyle={
-                                            !smallScreenNavigation && showTagsInNextLine
+                                            showTagsInNextLine
                                                 ? activeDragGoalMode
                                                     ? [localStyles.tagsInNewLine, localStyles.tagsInNewLineWhenOrganize]
                                                     : localStyles.tagsInNewLine
@@ -680,7 +619,7 @@ export default class GoalItemPresentation extends PureComponent {
                                 )}
                             </View>
                         </View>
-                        {!smallScreenNavigation && tagsAmount > 0 && !showSummarizeTag && showTagsInNextLine && (
+                        {tagsAmount > 0 && !showSummarizeTag && showTagsInNextLine && (
                             <View style={{ height: 32, zIndex: -1 }} />
                         )}
                         {showSummarizeTag && showTagsSummarizeArea && (
@@ -708,21 +647,6 @@ export default class GoalItemPresentation extends PureComponent {
                                 inCommentPopup={inCommentPopup}
                             />
                         )}
-                        {inHierarchyCard && (
-                            <ProjectSectionBorderContext.Consumer>
-                                {projectBorderColor => (
-                                    <Animated.View
-                                        pointerEvents="none"
-                                        style={[
-                                            taskHierarchyStyles.goalRowOutline,
-                                            projectBorderColor && { borderColor: projectBorderColor },
-                                            !isInTaskList && { top: 0, left: 0, right: 0 },
-                                            isHighlight && { borderColor },
-                                        ]}
-                                    />
-                                )}
-                            </ProjectSectionBorderContext.Consumer>
-                        )}
                     </Swipeable>
                     <GoalSwipeDateRangeWrapper
                         goal={goal}
@@ -746,10 +670,6 @@ export default class GoalItemPresentation extends PureComponent {
 const localStyles = StyleSheet.create({
     globalContainer: {
         paddingVertical: 4,
-    },
-    cardHeaderCorners: {
-        borderTopLeftRadius: 7,
-        borderTopRightRadius: 7,
     },
     container: {
         minHeight: 40,
@@ -789,17 +709,6 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginLeft: 8,
-    },
-    mobileContainer: {
-        flexWrap: 'wrap',
-    },
-    mobileTagsArea: {
-        position: 'relative',
-        right: 'auto',
-        bottom: 'auto',
-        width: '100%',
-        marginLeft: 0,
-        paddingVertical: 8,
     },
     highlightBorder: {
         borderWidth: 2,

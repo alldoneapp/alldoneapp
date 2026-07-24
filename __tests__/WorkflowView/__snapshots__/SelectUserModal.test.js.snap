@@ -1,137 +1,238 @@
-// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+// Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`SelectUserModal component SelectUserModal snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-boxShadow-v80qx2 r-flexDirection-18u37iz"
-  dir={null}
+<View
+  style={
+    Object {
+      "elevation": 3,
+      "flexDirection": "row",
+      "shadowColor": "rgba(78, 93, 120, 0.56)",
+      "shadowOffset": Object {
+        "height": 4,
+        "width": 0,
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 16,
+    }
+  }
 >
-  <div
-    className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-eqz5dr"
-    dir={null}
+  <View
     style={
-      {
-        "maxHeight": "736px",
-        "maxWidth": "432px",
-        "minWidth": "432px",
-        "width": "432px",
+      Object {
+        "backgroundColor": "#091540",
+        "borderRadius": 4,
+        "flexDirection": "column",
       }
     }
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
+    <View
       style={
-        {
-          "flex": 1,
+        Object {
+          "flexDirection": "row",
+          "paddingLeft": 16,
+          "paddingRight": 8,
+          "paddingTop": 8,
         }
       }
     >
-      <div
-        className="css-view-g5y9jx r-WebkitOverflowScrolling-150rngu r-flexDirection-eqz5dr r-flexGrow-16y2uox r-flexShrink-1wbh5a2 r-overflowX-11yh6sk r-overflowY-1rnoaur r-transform-agouwx r-scrollbarWidth-2eszeu"
-        dir={null}
-        onScroll={[Function]}
-        onTouchEnd={[Function]}
-        onTouchMove={[Function]}
-        onTouchStart={[Function]}
-        onWheel={[Function]}
+      <View
+        style={
+          Object {
+            "flexDirection": "column",
+            "marginTop": 8,
+          }
+        }
       >
-        <div
-          className="css-view-g5y9jx"
-          dir={null}
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 18,
+                "lineHeight": 26,
+              },
+              Object {
+                "color": "white",
+              },
+            ]
+          }
         >
-          <div
-            className="css-view-g5y9jx r-flexDirection-18u37iz r-paddingLeft-1qhn6m8 r-paddingRight-1pyaxff r-paddingTop-tskmnb"
-            dir={null}
+          Choose a user
+        </Text>
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Regular",
+                "fontSize": 14,
+                "letterSpacing": 0.32,
+                "lineHeight": 22,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+            ]
+          }
+        >
+          Select who will review the step
+        </Text>
+      </View>
+      <View
+        style={
+          Object {
+            "flexDirection": "row",
+            "height": 40,
+            "justifyContent": "flex-end",
+            "marginLeft": "auto",
+            "width": 40,
+          }
+        }
+      >
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+          style={
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
+          }
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "height": 24,
+                "justifyContent": "center",
+                "opacity": 1,
+                "width": 24,
+              }
+            }
           >
-            <div
-              className="css-view-g5y9jx r-flexDirection-eqz5dr r-marginTop-knv0ih"
-              dir={null}
-            >
-              <div
-                className="css-text-146c3p1"
-                dir="auto"
+            <View>
+              <Text
                 style={
-                  {
-                    "color": "rgba(255,255,255,1.00)",
-                    "fontFamily": "Roboto-Medium",
-                    "fontSize": "18px",
-                    "lineHeight": "26px",
+                  Object {
+                    "color": "#8A94A6",
+                    "fontFamily": "alldone",
+                    "fontSize": 24,
+                    "opacity": 1,
                   }
                 }
               >
-                Choose a user
-              </div>
-              <div
-                className="css-text-146c3p1"
-                dir="auto"
-                style={
-                  {
-                    "color": "rgba(138,148,166,1.00)",
-                    "fontFamily": "Roboto-Regular",
-                    "fontSize": "14px",
-                    "letterSpacing": "0.32px",
-                    "lineHeight": "22px",
-                  }
-                }
-              >
-                Select who will review the step
-              </div>
-            </div>
-            <div
-              className="css-view-g5y9jx r-flexDirection-18u37iz r-height-eu3ka r-justifyContent-17s6mgv r-marginLeft-1jj8364 r-width-1aockid"
-              dir={null}
-            >
-              <button
-                className="css-view-g5y9jx"
-                dir={null}
-                role="button"
-                style={
-                  {
-                    "overflowX": "hidden",
-                    "overflowY": "hidden",
-                  }
-                }
-                type="button"
-              >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-height-1472mwg r-justifyContent-1777fci r-width-lrsllp"
-                  dir={null}
-                  style={
-                    {
-                      "opacity": 1,
-                    }
-                  }
-                >
-                  <div
-                    className="css-view-g5y9jx"
-                    dir={null}
-                  >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
-                      style={
-                        {
-                          "color": "rgba(138,148,166,1.00)",
-                          "fontFamily": "alldone",
-                          "fontSize": "24px",
-                          "opacity": 1,
-                        }
-                      }
-                    >
-                      
-                    </div>
-                  </div>
-                </div>
-              </button>
-            </div>
-          </div>
-          <div
-            className="css-view-g5y9jx r-flexDirection-eqz5dr r-marginTop-1x0uki6 r-paddingBottom-xd6kpl r-paddingInline-is05cd"
-            dir={null}
+                
+              </Text>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+    </View>
+    <View
+      style={
+        Object {
+          "flexDirection": "column",
+          "marginTop": 20,
+          "paddingBottom": 8,
+          "paddingHorizontal": 8,
+        }
+      }
+    >
+      <View
+        accessible={true}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+            "opacity": 1,
+            "padding": 8,
+          }
+        }
+      >
+        <View
+          style={
+            Object {
+              "alignItems": "center",
+              "flexDirection": "row",
+            }
+          }
+        >
+          <Image
+            source={
+              Object {
+                "uri": undefined,
+              }
+            }
+            style={
+              Object {
+                "borderRadius": 100,
+                "height": 32,
+                "marginRight": 8,
+                "width": 32,
+              }
+            }
           />
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+          <Text
+            style={
+              Array [
+                Object {
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 16,
+                  "letterSpacing": 0.16,
+                  "lineHeight": 24,
+                },
+                Object {
+                  "color": "white",
+                },
+              ]
+            }
+          >
+            a
+          </Text>
+        </View>
+        <View
+          style={
+            Object {
+              "marginLeft": "auto",
+              "opacity": 0,
+            }
+          }
+        >
+          <View>
+            <Text
+              style={
+                Object {
+                  "color": "white",
+                  "fontFamily": "alldone",
+                  "fontSize": 24,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  </View>
+</View>
 `;

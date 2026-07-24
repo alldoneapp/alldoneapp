@@ -3,25 +3,53 @@ import { StyleSheet, View } from 'react-native'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
 import OptionItem from './OptionItem'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
-import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
-import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import {
+    MODEL_GPT3_5,
+    MODEL_GPT4,
+    MODEL_GPT4O,
+    MODEL_GPT5_1,
+    MODEL_GPT5_5,
+    MODEL_GPT5_6_SOL,
+    MODEL_GPT5_6_TERRA,
+    MODEL_GPT5_6_LUNA,
+    MODEL_GPT5_2,
+    MODEL_SONAR,
+    MODEL_SONAR_PRO,
+    MODEL_SONAR_REASONING,
+    MODEL_SONAR_REASONING_PRO,
+    MODEL_SONAR_DEEP_RESEARCH,
+} from '../../../AdminPanel/Assistants/assistantsHelper'
 
-const options = SELECTABLE_ASSISTANT_MODELS.map(({ model, labelKey, tokensPerGold }) => ({
-    text: labelKey,
-    model,
-    tokensPerGold,
-    shortcutKey: '',
-}))
+const baseOptions = [
+    { text: 'GPT 3_5', model: MODEL_GPT3_5, shortcutKey: '1' },
+    { text: 'GPT 4', model: MODEL_GPT4, shortcutKey: '2' },
+    { text: 'GPT 4o', model: MODEL_GPT4O, shortcutKey: '3' },
+    { text: 'GPT 5_1', model: MODEL_GPT5_1, shortcutKey: '4' },
+    { text: 'GPT 5_6 Sol', model: MODEL_GPT5_6_SOL, shortcutKey: '5' },
+    { text: 'GPT 5_6 Terra', model: MODEL_GPT5_6_TERRA, shortcutKey: '' },
+    { text: 'GPT 5_6 Luna', model: MODEL_GPT5_6_LUNA, shortcutKey: '' },
+    { text: 'GPT 5_5', model: MODEL_GPT5_5, shortcutKey: '' },
+    { text: 'Sonar', model: MODEL_SONAR, shortcutKey: '6' },
+    { text: 'Sonar Pro', model: MODEL_SONAR_PRO, shortcutKey: '7' },
+    { text: 'Sonar Reasoning', model: MODEL_SONAR_REASONING, shortcutKey: '8' },
+    { text: 'Sonar Reasoning Pro', model: MODEL_SONAR_REASONING_PRO, shortcutKey: '9' },
+    { text: 'Sonar Deep Research', model: MODEL_SONAR_DEEP_RESEARCH, shortcutKey: '0' },
+]
+
+const getOptions = selectedModel => {
+    if (selectedModel !== MODEL_GPT5_2) return baseOptions
+
+    return [...baseOptions, { text: 'GPT 5_2', model: MODEL_GPT5_2, shortcutKey: '' }]
+}
 
 export default function AssistantModelModal({ closeModal, model, updateModel }) {
-    const [, height] = useWindowSize()
-    const selectedModel =
-        model === 'MODEL_GPT5_6_SOL' ? 'MODEL_GPT6_SOL' : model === 'MODEL_GPT5_6_LUNA' ? 'MODEL_GPT6_LUNA' : model
+    const [width, height] = useWindowSize()
+    const options = getOptions(model)
 
     const selectModel = model => {
         updateModel(model)
@@ -30,9 +58,7 @@ export default function AssistantModelModal({ closeModal, model, updateModel }) 
 
     return (
         <View>
-            <View
-                style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}
-            >
+            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
                 <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
                     <ModalHeader
                         closeModal={closeModal}
@@ -40,12 +66,7 @@ export default function AssistantModelModal({ closeModal, model, updateModel }) 
                         description={translate('Select the AI model')}
                     />
                     {options.map(data => (
-                        <OptionItem
-                            key={data.model}
-                            modelData={data}
-                            selectModel={selectModel}
-                            selectedModel={selectedModel}
-                        />
+                        <OptionItem key={data.model} modelData={data} selectModel={selectModel} selectedModel={model} />
                     ))}
                 </CustomScrollView>
             </View>
@@ -58,7 +79,10 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        boxShadow: '0px 4px 16px rgba(78,93,120,0.56)',
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
         elevation: 3,
     },
     scroll: {

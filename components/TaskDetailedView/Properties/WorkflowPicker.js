@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { colors } from '../../styles/global'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import StatusPicker from './StatusPicker'
 import { hideFloatPopup, showFloatPopup } from '../../../redux/actions'
 import TasksHelper, { DONE_STEP, OPEN_STEP } from '../../TaskListView/Utils/TasksHelper'
@@ -51,7 +51,6 @@ const WorkflowPicker = ({ projectId, task, disabled }) => {
 
     const getWorkflow = () => {
         let taskOwner = ownerIsWorkstream ? loggedUser : assignee || TasksHelper.getTaskOwner(task.userId, projectId)
-        if (taskOwner?.temperature && !task.workflowTask) return {}
 
         if (!taskOwner.workflow) {
             taskOwner.workflow = {}
@@ -75,7 +74,7 @@ const WorkflowPicker = ({ projectId, task, disabled }) => {
     const stepData = getStepData(workflow)
 
     return (
-        <AppPopover
+        <Popover
             content={<StatusPicker workflow={workflow} projectId={projectId} task={task} hidePopover={hidePopover} />}
             onClickOutside={hidePopover}
             isOpen={visiblePopover}
@@ -102,7 +101,7 @@ const WorkflowPicker = ({ projectId, task, disabled }) => {
                 onPress={showPopover}
                 disabled={disabled}
             />
-        </AppPopover>
+        </Popover>
     )
 }
 export default WorkflowPicker

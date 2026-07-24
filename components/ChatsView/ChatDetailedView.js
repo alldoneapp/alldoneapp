@@ -6,6 +6,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import LoadingData from '../UIComponents/LoadingData'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
 import Header from './ChatDV/Header'
+import LoadingNoteData from '../UIComponents/LoadingNoteData'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import { DV_TAB_CHAT_BOARD, DV_TAB_CHAT_NOTE, DV_TAB_CHAT_PROPERTIES } from '../../utils/TabNavigationConstants'
 import ChatBoard from './ChatDV/ChatBoard'
@@ -18,6 +19,7 @@ import {
     resetFloatPopup,
     setNavigationRoute,
     setShowAccessDeniedPopup,
+    stopLoadingData,
     storeCurrentUser,
 } from '../../redux/actions'
 import store from '../../redux/store'
@@ -30,10 +32,10 @@ import { watchChat } from '../../utils/backends/Chats/chatsFirestore'
 import { unwatch } from '../../utils/backends/firestore'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
-import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 const ChatDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
+    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const loggedUser = useSelector(state => state.loggedUser)
     const showWebSideBar = useSelector(state => state.showWebSideBar)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -47,7 +49,6 @@ const ChatDetailedView = ({ navigation }) => {
     const [assistantId, setAssistantId] = useState(chat?.assistantId || '')
     const CustomView = selectedTab === DV_TAB_CHAT_BOARD || selectedTab === DV_TAB_CHAT_NOTE ? View : CustomScrollView
     const scrollRef = useRef()
-    useResetDetailedViewScroll(selectedTab, scrollRef)
     // Members get the full tabbed view; shared-resource viewers (anonymous + logged-in non-members)
     // are locked to the specifically shared chat board.
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
@@ -61,7 +62,7 @@ const ChatDetailedView = ({ navigation }) => {
         } else {
             const { selectedTypeOfProject } = store.getState()
             NavigationService.navigate('Root')
-            dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
+            dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
             if (selectedTypeOfProject !== PROJECT_TYPE_SHARED && showAccessDeniedModal)
                 dispatch(setShowAccessDeniedPopup(true))
         }
@@ -102,6 +103,10 @@ const ChatDetailedView = ({ navigation }) => {
     }, [])
 
     useEffect(() => {
+        setFullscreen(assistantEnabled)
+    }, [assistantEnabled])
+
+    useEffect(() => {
         if (chat) {
             const isPrivateForUser = checkIfIsPrivateChat(chat.isPublicFor)
             if (isPrivateForUser) redirectOut(true)
@@ -119,6 +124,7 @@ const ChatDetailedView = ({ navigation }) => {
     return (
         <View style={localStyles.container}>
             <LoadingData />
+            <LoadingNoteData />
 
             {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
@@ -161,8 +167,6 @@ const ChatDetailedView = ({ navigation }) => {
                                             assistantId={assistantId}
                                             setAssistantId={setAssistantId}
                                             objectType={'chats'}
-                                            isFullscreen={isFullscreen}
-                                            setFullscreen={setFullscreen}
                                         />
                                     )
                                 case DV_TAB_CHAT_PROPERTIES:

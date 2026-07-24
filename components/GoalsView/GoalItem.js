@@ -5,7 +5,6 @@ import DismissibleItem from '../UIComponents/DismissibleItem'
 import GoalItemPresentation from './GoalItemPresentation'
 import EditGoal from './EditGoal'
 import { dismissAllPopups } from '../../utils/HelperFunctions'
-import { useTaskHierarchy, useTaskHierarchyBackground } from '../TaskListView/TaskHierarchy'
 
 export default function GoalItem({
     projectId,
@@ -25,8 +24,6 @@ export default function GoalItem({
     showingTasks,
     toggleTasksList,
 }) {
-    const taskHierarchy = useTaskHierarchy()
-    const hierarchyBackgroundColor = useTaskHierarchyBackground()
     const activeDragGoalMode = useSelector(state => state.activeDragGoalMode === milestoneId)
 
     const setRef = ref => {
@@ -49,8 +46,6 @@ export default function GoalItem({
             ref={setRef}
             defaultComponent={
                 <GoalItemPresentation
-                    hierarchyBackgroundColor={hierarchyBackgroundColor}
-                    inHierarchyCard={taskHierarchy}
                     projectId={projectId}
                     onPress={openEditionMode}
                     goal={goal}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import AppPopover from '../../UIComponents/ModalShell/AppPopover'
+import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../styles/global'
@@ -89,7 +89,7 @@ export default function UserInfo({ projectId, projectIndex, user, accessGranted 
                     </Text>
                 )}
 
-                <AppPopover
+                <Popover
                     content={
                         <ChangeContactInfoModal
                             projectId={projectId}
@@ -110,7 +110,7 @@ export default function UserInfo({ projectId, projectIndex, user, accessGranted 
                     contentLocation={smallScreen ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={showModal} disabled={!accessGranted} />
-                </AppPopover>
+                </Popover>
             </View>
         </View>
     )

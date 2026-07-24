@@ -20,10 +20,6 @@ export default function TaskFlowModal({
     cancelPopover,
     checkBoxIdRef,
     setVisiblePopover,
-    // AT-2495 — the row's completion animation, borrowed by whichever of these modals ends up
-    // marking the task done. `WorkflowObserverModal` gets none: it only ever hands an observed
-    // task on, it never completes one.
-    completionMotion,
 }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
@@ -45,16 +41,7 @@ export default function TaskFlowModal({
         taskOwner.workflow[projectId] &&
         !isEmpty(taskOwner.workflow[projectId])
 
-    return isSuggested ? (
-        <SuggestedModal
-            task={task}
-            projectId={projectId}
-            hidePopover={hidePopover}
-            cancelPopover={cancelPopover}
-            checkBoxId={checkBoxIdRef.current}
-            completionMotion={completionMotion}
-        />
-    ) : isObservedTask && !isToReviewTask ? (
+    return isObservedTask && !isToReviewTask ? (
         <WorkflowObserverModal
             workflow={taskOwner.workflow && taskOwner.workflow[projectId] ? taskOwner.workflow[projectId] : {}}
             projectId={projectId}
@@ -66,6 +53,14 @@ export default function TaskFlowModal({
             checkBoxId={checkBoxIdRef.current}
             isNonTeamMember={isNonTeamMember}
         />
+    ) : isSuggested ? (
+        <SuggestedModal
+            task={task}
+            projectId={projectId}
+            hidePopover={hidePopover}
+            cancelPopover={cancelPopover}
+            checkBoxId={checkBoxIdRef.current}
+        />
     ) : showWorkflowPopup ? (
         <WorkflowModal
             workflow={taskOwner.workflow[projectId]}
@@ -76,7 +71,6 @@ export default function TaskFlowModal({
             pending={pending}
             ownerIsWorkstream={ownerIsWorkstream}
             checkBoxId={checkBoxIdRef.current}
-            completionMotion={completionMotion}
         />
     ) : (
         <FollowUpModal
@@ -85,7 +79,6 @@ export default function TaskFlowModal({
             hidePopover={hidePopover}
             cancelPopover={cancelPopover}
             checkBoxId={checkBoxIdRef.current}
-            completionMotion={completionMotion}
         />
     )
 }

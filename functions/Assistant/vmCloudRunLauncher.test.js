@@ -26,20 +26,9 @@ function response(body, { ok = true, status = 200, statusText = 'OK' } = {}) {
 }
 
 describe('vmCloudRunLauncher', () => {
-    const projectEnvKeys = ['GCLOUD_PROJECT', 'GCP_PROJECT', 'GOOGLE_CLOUD_PROJECT']
-    let originalProjectEnv
     beforeEach(() => {
-        originalProjectEnv = Object.fromEntries(projectEnvKeys.map(key => [key, process.env[key]]))
-        projectEnvKeys.forEach(key => delete process.env[key])
         jest.clearAllMocks()
         global.fetch = jest.fn()
-    })
-
-    afterEach(() => {
-        for (const key of projectEnvKeys) {
-            if (originalProjectEnv[key] === undefined) delete process.env[key]
-            else process.env[key] = originalProjectEnv[key]
-        }
     })
 
     afterAll(() => {
@@ -251,36 +240,5 @@ describe('vmCloudRunLauncher', () => {
                 },
             })
         ).toContain('/executions/execution-1')
-    })
-
-    test('classifies a failed completed execution as terminal', () => {
-        expect(
-            __private__.classifyVmCloudRunExecution({
-                completionTime: '2026-08-11T08:44:36Z',
-                failedCount: 1,
-                conditions: [
-                    {
-                        type: 'Completed',
-                        state: 'CONDITION_FAILED',
-                        executionReason: 'NON_ZERO_EXIT_CODE',
-                        message: 'Container exited with error.',
-                    },
-                ],
-            })
-        ).toEqual({
-            terminal: true,
-            outcome: 'failed',
-            reason: 'NON_ZERO_EXIT_CODE',
-            message: 'Container exited with error.',
-        })
-    })
-
-    test('does not classify an in-progress execution as terminal', () => {
-        expect(
-            __private__.classifyVmCloudRunExecution({
-                runningCount: 1,
-                conditions: [{ type: 'Started', state: 'CONDITION_SUCCEEDED' }],
-            })
-        ).toEqual({ terminal: false, outcome: 'running', message: '' })
     })
 })

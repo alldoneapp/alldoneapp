@@ -188,24 +188,6 @@ describe('goldHelper ledger integration', () => {
         ])
     })
 
-    test('refundGold applies the same idempotency key only once', async () => {
-        admin.__mock.setDoc('users/user-1', { gold: 3 })
-
-        const context = {
-            source: 'vm_execution_refund',
-            channel: 'assistant',
-            idempotencyKey: 'vm_job_refund:correlation-1',
-        }
-        const first = await refundGold('user-1', 140, context)
-        const second = await refundGold('user-1', 140, context)
-
-        expect(first).toEqual(expect.objectContaining({ success: true, newBalance: 143 }))
-        expect(second).toEqual(expect.objectContaining({ success: true, alreadyProcessed: true, newBalance: 143 }))
-        expect(admin.__mock.getDoc('users/user-1').gold).toBe(143)
-        expect(admin.__mock.getDocsByPrefix('users/user-1/goldTransactions/')).toHaveLength(1)
-        expect(admin.__mock.getDocsByPrefix('users/user-1/goldChangeClaims/')).toHaveLength(1)
-    })
-
     test('addMonthlyGoldToUser records a monthly earn ledger entry', async () => {
         admin.__mock.setDoc('users/user-1', { gold: 5 })
 

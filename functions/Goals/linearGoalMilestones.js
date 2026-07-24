@@ -13,7 +13,6 @@ const {
     normalizeGoalScheduleMode,
     normalizeMilestoneType,
 } = require('../shared/goalMilestonesHelper')
-const { FieldValue } = require('firebase-admin/firestore')
 
 function getDb() {
     return admin.firestore()
@@ -202,7 +201,7 @@ async function addGoalsToDoneMilestone(projectId, milestoneId, milestoneDate, do
         await getGoalsCollection(projectId)
             .doc(goal.id)
             .update({
-                parentDoneMilestoneIds: FieldValue.arrayUnion(milestoneId),
+                parentDoneMilestoneIds: admin.firestore.FieldValue.arrayUnion(milestoneId),
                 [`progressByDoneMilestone.${milestoneId}`]: {
                     progress: goal.progress === DYNAMIC_PERCENT ? goal.dynamicProgress : goal.progress,
                     doneDate,

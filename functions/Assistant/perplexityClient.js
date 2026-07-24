@@ -9,7 +9,7 @@ class PerplexityClient {
         this.citations = []
     }
 
-    async *stream(messages, options = {}) {
+    async *stream(messages) {
         if (!Array.isArray(messages)) {
             throw new Error('Messages must be an array')
         }
@@ -37,7 +37,6 @@ class PerplexityClient {
         })
 
         const response = await fetch(this.baseUrl, {
-            ...(options.signal ? { signal: options.signal } : {}),
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -7,7 +7,6 @@ import { StyleSheet } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import MessageItemHeader from './MessageItemHeader'
-import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: value => value,
@@ -57,27 +56,6 @@ describe('MessageItemHeader', () => {
         editDisabled: true,
         accessGranted: true,
     }
-
-    test.each(['carl.png', { uri: 'carl.png' }, undefined])(
-        'uses the assistant avatar before the name (%s)',
-        photoURL => {
-            const tree = renderer.create(
-                <MessageItemHeader
-                    {...defaultProps}
-                    message={{ ...defaultProps.message, creatorId: 'carl' }}
-                    creatorData={{ displayName: 'Carl', isAssistant: true, photoURL }}
-                />
-            )
-            const header = tree.root.findByProps({ testID: 'message-item-header' })
-            expect(header.findByType(AssistantAvatar).props).toEqual(
-                expect.objectContaining({
-                    assistantId: 'carl',
-                    photoURL: photoURL?.uri || photoURL,
-                    size: 24,
-                })
-            )
-        }
-    )
 
     test('places a new email badge at the right of the comment header', () => {
         const tree = renderer.create(<MessageItemHeader {...defaultProps} linkedEmailNew />)

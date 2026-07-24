@@ -9,7 +9,6 @@ import { translate } from '../../../i18n/TranslationService'
 import GhostButton from '../../UIControls/GhostButton'
 import { execShortcutFn } from '../../../utils/HelperFunctions'
 import { updateFocusedTask } from '../../../utils/backends/Tasks/tasksFirestore'
-import { prepareTaskFocusChange } from '../../../utils/taskFocusInteraction'
 
 export default function InFocus({ projectId, taskId, disabled, task }) {
     const blockShortcuts = useSelector(state => state.blockShortcuts)
@@ -18,8 +17,7 @@ export default function InFocus({ projectId, taskId, disabled, task }) {
 
     const active = inFocusTaskId === taskId
 
-    const focusTask = event => {
-        prepareTaskFocusChange(event)
+    const focusTask = () => {
         updateFocusedTask(loggedUserId, projectId, active ? null : task, null, null)
     }
 

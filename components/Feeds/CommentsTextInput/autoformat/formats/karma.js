@@ -1,17 +1,20 @@
-import React from 'react'
+import React, { createRef } from 'react'
+import ReactQuill from 'react-quill'
+import ReactDOM from 'react-dom'
 import v4 from 'uuid/v4'
 import { Provider } from 'react-redux'
 
 import KarmaTag from '../../../../Tags/KarmaTag'
 import store from '../../../../../redux/store'
-import { renderEmbedContent } from './embedReactRoot'
-import ReactEmbedBlot from './reactEmbedBlot'
 
-export default class Karma extends ReactEmbedBlot {
+const Embed = ReactQuill.Quill.import('blots/embed')
+
+export default class Karma extends Embed {
     static create(attachmentData) {
         const { userId, editorId } = attachmentData
         const text = 'Karma'
         const node = super.create(text)
+        const refs = Karma.refs
         const id = v4()
 
         node.setAttribute('data-id', id)
@@ -21,12 +24,16 @@ export default class Karma extends ReactEmbedBlot {
         node.setAttribute('editorId', editorId)
 
         Karma.data = text
+        Karma.refs = {
+            ...refs,
+            [id]: createRef(),
+        }
 
-        renderEmbedContent(
-            node,
+        ReactDOM.render(
             <Provider store={store}>
                 <KarmaTag userId={userId} />
-            </Provider>
+            </Provider>,
+            node
         )
 
         return node
@@ -42,8 +49,8 @@ export default class Karma extends ReactEmbedBlot {
         return commentData
     }
 
-    constructor(scroll, domNode) {
-        super(scroll, domNode)
+    constructor(domNode) {
+        super(domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = Karma.data
     }

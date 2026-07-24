@@ -4,22 +4,7 @@ const { deleteRecord, CONTACTS_OBJECTS_TYPE } = require('../AlgoliaGlobalSearchH
 const { removeObjectFromBacklinks } = require('../Backlinks/backlinksHelper')
 const { deleteChat } = require('../Chats/chatsFirestoreCloud')
 const { deleteNote } = require('../Notes/notesFirestoreCloud')
-const { moveNoteToDifferentProject } = require('../shared/moveNoteToDifferentProject')
 const { deleteOpenManagedFollowUpTasks } = require('./contactFollowUpTasks')
-
-const moveContactNoteToProject = async (sourceProjectId, targetProjectId, noteId) => {
-    const { getNotesBucketName } = require('../shared/notesStorageBucket')
-    const notesBucketName = getNotesBucketName()
-
-    await moveNoteToDifferentProject({
-        database: admin.firestore(),
-        storage: admin.storage(),
-        sourceProjectId,
-        targetProjectId,
-        noteId,
-        notesBucketName,
-    })
-}
 
 const deletePictures = async (projectId, contactId) => {
     const bucket = admin.storage().bucket()
@@ -27,7 +12,7 @@ const deletePictures = async (projectId, contactId) => {
 }
 
 const onDeleteContact = async (projectId, contact) => {
-    const { uid: contactId, noteId, movingToOtherProjectId } = contact
+    const { uid: contactId, noteId } = contact
 
     console.log('[ContactFollowUp][Trigger:onDelete]', {
         projectId,
@@ -38,16 +23,8 @@ const onDeleteContact = async (projectId, contact) => {
 
     const promises = []
     promises.push(deleteChat(admin, projectId, contactId))
-    if (noteId) {
-        promises.push(
-            movingToOtherProjectId
-                ? moveContactNoteToProject(projectId, movingToOtherProjectId, noteId)
-                : deleteNote(projectId, noteId, '', admin)
-        )
-    }
-    // The moved contact intentionally keeps its existing Storage URLs. Those
-    // files remain the canonical avatar assets for the destination document.
-    if (!movingToOtherProjectId) promises.push(deletePictures(projectId, contactId))
+    if (noteId) promises.push(deleteNote(projectId, noteId, '', admin))
+    promises.push(deletePictures(projectId, contactId))
     promises.push(removeObjectFromBacklinks(projectId, 'linkedParentContactsIds', contactId, admin))
     promises.push(deleteRecord(contactId, projectId, CONTACTS_OBJECTS_TYPE))
     promises.push(deleteOpenManagedFollowUpTasks(projectId, contactId))
@@ -55,6 +32,5 @@ const onDeleteContact = async (projectId, contact) => {
 }
 
 module.exports = {
-    moveContactNoteToProject,
     onDeleteContact,
 }

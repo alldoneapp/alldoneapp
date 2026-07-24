@@ -1,8 +1,9 @@
 import React from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
 import { useSelector } from 'react-redux'
+import { WORKSTREAM_ID_PREFIX } from '../Workstreams/WorkstreamHelper'
 
 export default function DateTag({
     date,
@@ -11,7 +12,6 @@ export default function DateTag({
     isMobile = false,
     disabled = false,
     outline = false,
-    showDateOnMobile = false,
     style,
 }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -25,7 +25,7 @@ export default function DateTag({
                     color={outline ? colors.UtilityBlue200 : colors.Text03}
                     style={localStyles.icon}
                 />
-                {(showDateOnMobile || (!mobile && !isMobile)) && (
+                {!mobile && !isMobile && (
                     <Text style={[(outline ? otl : localStyles).text, windowTagStyle()]}>{date}</Text>
                 )}
             </View>

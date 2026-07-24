@@ -1,15 +1,10 @@
-export const REGEX_URL =
-    /^((https?|ftp):\/\/[\S]+|(www\.[\S]+)|([\S]+\.[a-zA-Z]{2,}[\S]*))$|^http:\/\/localhost:[0-9]+\/[^\s.]{2,}(?!\.)$/i
+export const REGEX_URL = /^((https?|ftp):\/\/[\S]+|(www\.[\S]+)|([\S]+\.[a-zA-Z]{2,}[\S]*))$|^http:\/\/localhost:[0-9]+\/[^\s.]{2,}(?!\.)$/i
 
-const REGEX_URL_START =
-    /^(?:(?:https?|ftp):\/\/|www\.|(?:[a-z0-9\u00a1-\uffff](?:[a-z0-9\-\u00a1-\uffff]*[a-z0-9\u00a1-\uffff])?\.)+[a-z\u00a1-\uffff]{2,}(?::[0-9]+)?(?:[/?#]|$))/i
+const REGEX_URL_START = /^(?:(?:https?|ftp):\/\/|www\.|(?:[a-z0-9\u00a1-\uffff](?:[a-z0-9\-\u00a1-\uffff]*[a-z0-9\u00a1-\uffff])?\.)+[a-z\u00a1-\uffff]{2,}(?::[0-9]+)?(?:[/?#]|$))/i
 
 const LEADING_BOUNDARIES = new Set(['(', '[', '{', '<', '"', "'", '“', '‘'])
 const TRAILING_BOUNDARIES = new Set(['>', '"', "'", '”', '’'])
-// An attached `?` is a valid URL query delimiter even when no query parameters follow it.
-// Treating it as prose punctuation changed the destination of pasted URLs such as
-// `https://example.com/edit?` and also added a separate character after the link embed.
-const TRAILING_PUNCTUATION = new Set(['.', ',', ';', ':', '!'])
+const TRAILING_PUNCTUATION = new Set(['.', ',', ';', ':', '!', '?'])
 const CLOSING_BOUNDARIES = {
     ')': '(',
     ']': '[',

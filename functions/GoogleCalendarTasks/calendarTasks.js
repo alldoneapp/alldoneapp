@@ -9,7 +9,6 @@ const { updateStatistics } = require('../Utils/statisticsHelper')
 const { isEqual } = require('lodash')
 const { getUserData } = require('../Users/usersFirestore')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
-const { FieldPath } = require('firebase-admin/firestore')
 
 const FIRESTORE_IN_QUERY_MAX_IDS = 30
 
@@ -90,77 +89,15 @@ const checkIfNeedToUpdateTask = (oldTask, dataToUpdate) => {
     return !isEqual(oldData, dataToUpdate)
 }
 
-// AT-2351 - where a synced meeting lands in the task list: a calendar task gets an ORDINARY
-// arrival index, exactly like any other task, and the
-// event start is never encoded into it.
-//
-// The two previous attempts both smuggled the event time in here - AT-2259 stored the raw start,
-// AT-2270 stored `-1e14 - start` - so that descending `sortIndex` would place the meeting where it
-// belonged. Neither survived contact with the ~25 code paths that legitimately rewrite `sortIndex`
-// (postpone, backlog, assignee, project, goal, un-complete, auto-postpone...), each of which
-// silently destroyed the encoding and, under AT-2270's heuristic, was then mistaken for the user
-// deliberately placing the task.
-//
-// Where a meeting renders is now decided when the group is ordered (`utils/CalendarTaskOrder.js`),
-// which needs nothing from this field. So the sync writes a plain index and, crucially, never has
-// to RE-write it: a rescheduled event moves in the list because its `calendarData.start` moved,
-// not because anything re-sorted it.
-const generateCalendarTaskSortIndex = () => moment().valueOf()
-
-const getCalendarStartDay = calendarData => {
-    const startValue = calendarData?.start?.date || calendarData?.start?.dateTime
-    if (typeof startValue !== 'string') return null
-
-    // Google and Microsoft both return ISO-style calendar values. Reading the date prefix keeps
-    // the event's own calendar day intact instead of converting an offset time through the
-    // Cloud Function's timezone first.
-    const dayMatch = startValue.match(/^(\d{4}-\d{2}-\d{2})/)
-    return dayMatch ? dayMatch[1] : null
-}
-
-const shouldReopenCompletedCalendarTask = (task, nextCalendarData) => {
-    if (!task?.done || task.completed == null) return false
-
-    const previousStartDay = getCalendarStartDay(task.calendarData)
-    const nextStartDay = getCalendarStartDay(nextCalendarData)
-    return Boolean(previousStartDay && nextStartDay && nextStartDay > previousStartDay)
-}
-
-const buildCalendarTaskReopenData = (task, userId, calendarData) => {
-    const ownerId = task.userId || userId
-    return {
-        done: false,
-        inDone: false,
-        completed: null,
-        completedDate: null,
-        completedTime: null,
-        userIds: [ownerId],
-        stepHistory: [OPEN_STEP],
-        currentReviewerId: ownerId,
-        dueDate: Date.now(),
-        sortIndex: generateCalendarTaskSortIndex(),
-        workflowAiPromptOverride: null,
+// Compute sortIndex with proper timezone handling for all-day events
+const computeSortIndex = (start, timezoneOffset = 0) => {
+    const isAllDay = start.date && !start.dateTime
+    if (isAllDay) {
+        // For all-day events, apply timezone offset to interpret the date correctly
+        return moment(start.date).utcOffset(timezoneOffset, true).valueOf()
     }
-}
-
-const queueCalendarSubtasksReopen = (batch, projectId, task, reopenData) => {
-    const subtaskIds = Array.isArray(task.subtaskIds) ? task.subtaskIds.filter(Boolean) : []
-    if (subtaskIds.length === 0) return
-
-    const subtaskReopenData = {
-        completed: null,
-        completedDate: null,
-        completedTime: null,
-        userIds: reopenData.userIds,
-        stepHistory: reopenData.stepHistory,
-        currentReviewerId: reopenData.currentReviewerId,
-        dueDate: reopenData.dueDate,
-        parentDone: false,
-        inDone: false,
-    }
-    subtaskIds.forEach(subtaskId => {
-        batch.update(admin.firestore().doc(`items/${projectId}/tasks/${subtaskId}`), subtaskReopenData)
-    })
+    // For timed events, dateTime already includes timezone info
+    return moment(start.dateTime).valueOf()
 }
 
 const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOffset = 0) => {
@@ -182,8 +119,6 @@ const generateDataToUpdate = (event, email, originalProjectId = null, timezoneOf
     }
 
     const calendarData = { link: htmlLink, start, end, email, provider: event.provider || 'google' }
-    const recurringEventId = event.recurringEventId || event.seriesMasterId || ''
-    if (recurringEventId) calendarData.recurringEventId = recurringEventId
 
     // Store the original project ID if this is a new task
     if (originalProjectId) {
@@ -229,7 +164,6 @@ const normalizeRoutingDecision = decision => {
         secondPassUsed: !!decision.tokenUsage?.auditModel,
         secondPassModel:
             typeof decision.tokenUsage?.auditModel === 'string' ? decision.tokenUsage.auditModel.trim() : '',
-        learnedFromFeedback: decision.learnedFromFeedback === true,
     }
 }
 
@@ -297,7 +231,6 @@ const addCalendarRoutingCommentIfNeeded = async ({
             tokenUsage: routingDecision.tokenUsage || null,
             secondPassUsed: routingDecision.secondPassUsed,
             secondPassModel: routingDecision.secondPassModel,
-            learnedFromFeedback: routingDecision.learnedFromFeedback,
         },
     })
 }
@@ -333,20 +266,6 @@ const addOrUpdateCalendarTask = async (
         }
     }
 
-    const reopenData = shouldReopenCompletedCalendarTask(task, dataToUpdate.calendarData)
-        ? buildCalendarTaskReopenData(task, userId, dataToUpdate.calendarData)
-        : null
-    if (reopenData) {
-        Object.assign(dataToUpdate, reopenData)
-        console.log('[addOrUpdateCalendarTask] Reopening completed task after later-day reschedule', {
-            eventId: taskId,
-            projectId: task.projectId,
-            previousStartDay: getCalendarStartDay(task.calendarData),
-            nextStartDay: getCalendarStartDay(dataToUpdate.calendarData),
-            completed: task.completed,
-        })
-    }
-
     if (task) {
         // Respect manual pinning: if pinned, never move between projects
         const isPinned = Boolean(task.calendarData && task.calendarData.pinnedToProjectId)
@@ -359,35 +278,16 @@ const addOrUpdateCalendarTask = async (
 
             // Merge existing task data with the latest calendar fields, omitting non-persisted props
             const { id, projectId: oldProjectId, ...persistableTask } = task
-            const newTaskData = { ...persistableTask, ...dataToUpdate, projectId: targetProjectId }
+            const newTaskData = { ...persistableTask, ...dataToUpdate }
 
-            // AT-2351 - the task keeps whatever ordering it had; only a task with none at all needs
-            // one. Its position among the meetings comes from the event start at render time, so
-            // there is nothing project-specific to re-derive here.
+            // Preserve sortIndex when present; otherwise compute from start with timezone
             if (!newTaskData.sortIndex) {
-                newTaskData.sortIndex = generateCalendarTaskSortIndex()
+                newTaskData.sortIndex = computeSortIndex(start, timezoneOffset)
             }
 
-            // Create in new project, delete from old. If the reschedule also reopens a completed
-            // task, roll its historical completion statistics back in the same batch.
-            if (reopenData) {
-                const batch = new BatchWrapper(admin.firestore())
-                batch.set(newRef, newTaskData, { merge: true })
-                batch.delete(oldRef)
-                await updateStatistics(
-                    task.projectId,
-                    task.userId || userId,
-                    Number(task.estimations?.[OPEN_STEP] || 0),
-                    true,
-                    false,
-                    task.completed,
-                    batch
-                )
-                await batch.commit()
-            } else {
-                await newRef.set(newTaskData, { merge: true })
-                await oldRef.delete()
-            }
+            // Create in new project, delete from old
+            await newRef.set(newTaskData, { merge: true })
+            await oldRef.delete()
             await addCalendarRoutingCommentIfNeeded({
                 userData,
                 projectId: targetProjectId,
@@ -405,26 +305,7 @@ const addOrUpdateCalendarTask = async (
             const oldEstimation = Number(task.estimations?.[OPEN_STEP] || 0)
             const newEstimation = Number(dataToUpdate.estimations?.[OPEN_STEP] || 0)
 
-            // AT-2351 - a rescheduled event needs no sortIndex write at all. It moves to its new
-            // slot among the meetings because `calendarData.start` moved, and the ordering reads
-            // that field directly. AT-2270 had to re-derive the index here, guarded by a heuristic
-            // guessing whether the user had ever dragged the task; both are gone.
-
-            if (reopenData) {
-                const batch = new BatchWrapper(admin.firestore())
-                batch.update(taskRef, dataToUpdate)
-                queueCalendarSubtasksReopen(batch, task.projectId, task, reopenData)
-                await updateStatistics(
-                    task.projectId,
-                    task.userId || userId,
-                    oldEstimation,
-                    true,
-                    false,
-                    task.completed,
-                    batch
-                )
-                await batch.commit()
-            } else if (task.done && task.completed && oldEstimation !== newEstimation) {
+            if (task.done && task.completed && oldEstimation !== newEstimation) {
                 const batch = new BatchWrapper(admin.firestore())
                 batch.update(taskRef, dataToUpdate)
                 await updateStatistics(task.projectId, task.userId, oldEstimation, true, true, task.completed, batch)
@@ -443,9 +324,8 @@ const addOrUpdateCalendarTask = async (
             syncProjectId,
         })
     } else {
-        dataToUpdate.sortIndex = generateCalendarTaskSortIndex()
+        dataToUpdate.sortIndex = computeSortIndex(start, timezoneOffset)
         const newTask = generateTask(dataToUpdate, userId)
-        newTask.projectId = targetProjectId
         await admin.firestore().doc(`items/${targetProjectId}/tasks/${taskId}`).set(newTask)
         await addCalendarRoutingCommentIfNeeded({
             userData,
@@ -558,7 +438,7 @@ const getCalendarTasksByEventIdsInProject = async (projectId, userId, eventIds =
             admin
                 .firestore()
                 .collection(`items/${projectId}/tasks`)
-                .where(FieldPath.documentId(), 'in', eventIdChunk)
+                .where(admin.firestore.FieldPath.documentId(), 'in', eventIdChunk)
                 .get()
         )
     )

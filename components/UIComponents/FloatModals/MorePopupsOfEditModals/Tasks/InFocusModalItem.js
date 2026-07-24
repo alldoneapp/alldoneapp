@@ -3,16 +3,15 @@ import { useSelector } from 'react-redux'
 
 import ModalItem from '../Common/ModalItem'
 import { updateFocusedTask } from '../../../../../utils/backends/Tasks/tasksFirestore'
-import { prepareTaskFocusChange } from '../../../../../utils/taskFocusInteraction'
 
 export default function InFocusModalItem({ shortcut, projectId, taskId, closeModal, task }) {
     const loggedUser = useSelector(state => state.loggedUser)
 
     const active = loggedUser.inFocusTaskId === taskId
 
-    const focusTask = event => {
-        prepareTaskFocusChange(event, closeModal)
+    const focusTask = () => {
         updateFocusedTask(loggedUser.uid, projectId, active ? null : task, null, null)
+        closeModal?.()
     }
 
     return (

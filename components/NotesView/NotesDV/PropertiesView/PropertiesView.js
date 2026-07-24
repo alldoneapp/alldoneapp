@@ -45,11 +45,7 @@ export default function PropertiesView({ projectId, note, project }) {
 
     useEffect(() => {
         writeBrowserURL()
-        if (loggedUser.isAnonymous) {
-            afterCreatorFetch(SharedHelper.createAnonymousResourceUser(note.creatorId))
-        } else {
-            getUserData(note.creatorId, false).then(afterCreatorFetch)
-        }
+        getUserData(note.creatorId, false).then(afterCreatorFetch)
     }, [])
 
     const afterCreatorFetch = user => {
@@ -69,8 +65,8 @@ export default function PropertiesView({ projectId, note, project }) {
                 mobile
                     ? localStyles.containerMobile
                     : isMiddleScreen
-                      ? localStyles.containerTablet
-                      : localStyles.container
+                    ? localStyles.containerTablet
+                    : localStyles.container
             }
         >
             <PropertiesHeader />

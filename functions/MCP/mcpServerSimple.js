@@ -3,7 +3,6 @@ const moment = require('moment-timezone')
 const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
 const { getEnvironmentConfig } = require('./config/environments.js')
-const { Timestamp } = require('firebase-admin/firestore')
 
 // ---------------------------------------------------------------------------
 // Native assistant tool delegation
@@ -34,17 +33,6 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'create_note',
     'update_note',
     'get_notes',
-    // Project artifacts. Listed individually like the browser tools: the `artifacts` Tools Access key
-    // belongs to an assistant document, which an MCP caller does not have.
-    'get_artifacts',
-    'read_artifact',
-    'create_artifact',
-    'update_artifact',
-    // Project wiki. In the app these come with the assistant rather than Tools Access; over MCP each
-    // one is a separate switch under Settings → MCP, so correcting can be turned off on its own.
-    'read_knowledge_page',
-    'correct_knowledge_page',
-    'undo_knowledge_correction',
     // Contacts
     'update_contact',
     'get_contacts',
@@ -63,16 +51,6 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'web_search',
     'get_route_info',
     'get_local_recommendations',
-    // Browsing. The six names are listed individually rather than through the `browser_automation`
-    // Tools Access key: an MCP caller has no assistant document, so the per-assistant toggle does
-    // not apply here — the per-user MCP config (Settings → MCP) is the switch, and the allowlist,
-    // limits and approval gates in Assistant/browser apply to this surface exactly as to the chat.
-    'browser_navigate',
-    'browser_inspect',
-    'browser_click',
-    'browser_type',
-    'browser_wait',
-    'browser_screenshot',
     // Chat attachments
     'get_chat_attachment',
     'list_recent_chat_media',
@@ -92,36 +70,6 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
 ]
 
 const MCP_DELEGATED_ASSISTANT_TOOL_SET = new Set(MCP_DELEGATED_ASSISTANT_TOOLS)
-
-const MCP_KNOWLEDGE_BASE_TOOL_SET = new Set([
-    'read_knowledge_page',
-    'correct_knowledge_page',
-    'undo_knowledge_correction',
-])
-
-// The wiki schemas are written for an assistant, which has the page index in its prompt and a
-// conversation whose project is the default. An MCP client has neither, so these are the parts of
-// their descriptions that say otherwise.
-const MCP_KNOWLEDGE_BASE_TOOL_DESCRIPTIONS = {
-    read_knowledge_page:
-        "Read a page of a project's wiki: what the project knows, compiled from its shared tasks, goals, notes and contacts. Call it without a slug first to list the pages of the project, then pass a page's slug to read it. Use get_user_projects to find the projectId.",
-}
-const MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION =
-    "The ID of the project whose wiki to use (see get_user_projects). Defaults to the user's default project."
-
-function adaptToolSchemaForMcp(schema) {
-    const { name, description, parameters } = schema.function
-    if (!MCP_KNOWLEDGE_BASE_TOOL_SET.has(name)) return { name, description, inputSchema: parameters }
-    const properties = { ...(parameters.properties || {}) }
-    if (properties.projectId) {
-        properties.projectId = { ...properties.projectId, description: MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION }
-    }
-    return {
-        name,
-        description: MCP_KNOWLEDGE_BASE_TOOL_DESCRIPTIONS[name] || description,
-        inputSchema: { ...parameters, properties },
-    }
-}
 
 // MCP-only tools that have no internal-assistant equivalent. These keep their
 // dedicated handlers on the server class and are appended to tools/list.
@@ -230,59 +178,6 @@ class RateLimiter {
     }
 
     /**
-     * Read the current window of one rate limit without counting this request.
-     * @param {{key: string, limit: number, windowMs: number, operation?: string}} check
-     * @returns {Promise<{allowed: boolean, remaining: number, resetTime: Date, current: number, docId: string, exists: boolean, firstRequest: Date}>}
-     */
-    async readWindow({ key, limit, windowMs, operation = 'request' }) {
-        const now = new Date()
-        const docId = `${key}:${Math.floor(now.getTime() / windowMs)}`
-
-        console.log(`🚦 Rate limit check: ${operation} for ${key} (limit: ${limit}/${windowMs}ms)`)
-
-        const doc = await this.db.collection(this.collection).doc(docId).get()
-        const data = doc.exists ? doc.data() : {}
-        const currentCount = data.count || 0
-        const firstRequest = data.firstRequest?.toDate() || now
-        const resetTime = new Date(firstRequest.getTime() + windowMs)
-
-        if (currentCount >= limit) {
-            console.log(`❌ Rate limit exceeded: ${key} (${currentCount}/${limit} requests)`)
-        }
-
-        return {
-            allowed: currentCount < limit,
-            remaining: Math.max(0, limit - currentCount - 1),
-            resetTime,
-            current: currentCount,
-            docId,
-            exists: doc.exists,
-            firstRequest,
-        }
-    }
-
-    /**
-     * Count one request against a window previously read with readWindow.
-     */
-    async recordRequest({ key, operation = 'request' }, window) {
-        await this.db
-            .collection(this.collection)
-            .doc(window.docId)
-            .set(
-                {
-                    key: key,
-                    count: window.current + 1,
-                    firstRequest: window.exists ? Timestamp.fromDate(window.firstRequest) : Timestamp.now(),
-                    lastRequest: Timestamp.now(),
-                    operation: operation,
-                    expiresAt: Timestamp.fromDate(window.resetTime),
-                },
-                { merge: true }
-            )
-        console.log(`✅ Rate limit OK: ${key} (${window.current + 1} requests, ${window.remaining} remaining)`)
-    }
-
-    /**
      * Check if request is within rate limit
      * @param {string} key - Rate limit key (e.g., "client:clientId" or "user:userId")
      * @param {number} limit - Maximum requests allowed
@@ -291,61 +186,92 @@ class RateLimiter {
      * @returns {Promise<{allowed: boolean, remaining: number, resetTime: Date}>}
      */
     async checkLimit(key, limit, windowMs, operation = 'request') {
-        const result = await this.checkMultipleLimits([{ key, limit, windowMs, operation }])
-        // An empty result means the check itself failed and failed open.
-        return (
-            result.details[0] || {
+        const now = new Date()
+        const windowStart = new Date(now.getTime() - windowMs)
+        const docId = `${key}:${Math.floor(now.getTime() / windowMs)}`
+
+        console.log(`🚦 Rate limit check: ${operation} for ${key} (limit: ${limit}/${windowMs}ms)`)
+
+        try {
+            const doc = await this.db.collection(this.collection).doc(docId).get()
+
+            let currentCount = 0
+            let firstRequest = now
+
+            if (doc.exists) {
+                const data = doc.data()
+                currentCount = data.count || 0
+                firstRequest = data.firstRequest?.toDate() || now
+            }
+
+            const remaining = Math.max(0, limit - currentCount - 1)
+            const resetTime = new Date(firstRequest.getTime() + windowMs)
+
+            if (currentCount >= limit) {
+                console.log(`❌ Rate limit exceeded: ${key} (${currentCount}/${limit} requests)`)
+                return {
+                    allowed: false,
+                    remaining: 0,
+                    resetTime: resetTime,
+                    current: currentCount,
+                }
+            }
+
+            // Increment counter
+            await this.db
+                .collection(this.collection)
+                .doc(docId)
+                .set(
+                    {
+                        key: key,
+                        count: currentCount + 1,
+                        firstRequest: doc.exists
+                            ? admin.firestore.Timestamp.fromDate(firstRequest)
+                            : admin.firestore.Timestamp.now(),
+                        lastRequest: admin.firestore.Timestamp.now(),
+                        operation: operation,
+                        expiresAt: admin.firestore.Timestamp.fromDate(resetTime),
+                    },
+                    { merge: true }
+                )
+
+            console.log(`✅ Rate limit OK: ${key} (${currentCount + 1}/${limit} requests, ${remaining} remaining)`)
+
+            return {
+                allowed: true,
+                remaining: remaining,
+                resetTime: resetTime,
+                current: currentCount + 1,
+            }
+        } catch (error) {
+            console.error(`❌ Rate limit check failed for ${key}:`, error.message)
+            // Fail open - allow request if rate limiting fails
+            return {
                 allowed: true,
                 remaining: limit - 1,
-                resetTime: new Date(Date.now() + windowMs),
+                resetTime: new Date(now.getTime() + windowMs),
                 current: 0,
             }
-        )
+        }
     }
 
     /**
      * Check multiple rate limits (e.g., per-client and per-user)
-     *
-     * All windows are read first and the request is counted only if every one of them allows
-     * it. Counting a refused request against the windows that did allow it used to burn the
-     * hourly budget on retries: a client blocked by the one-minute window that kept retrying
-     * would exhaust its ten-minute and hourly windows without a single request being served.
-     *
      * @param {Array} checks - Array of {key, limit, windowMs, operation} objects
      * @returns {Promise<{allowed: boolean, details: Array}>}
      */
     async checkMultipleLimits(checks) {
-        let windows
-        try {
-            windows = await Promise.all(checks.map(check => this.readWindow(check)))
-        } catch (error) {
-            console.error('❌ Rate limit check failed:', error.message)
-            // Fail open - allow request if rate limiting fails
-            return { allowed: true, details: [], blockedBy: null }
-        }
+        const results = await Promise.all(
+            checks.map(check => this.checkLimit(check.key, check.limit, check.windowMs, check.operation))
+        )
 
-        const blockedBy = windows.find(window => !window.allowed) || null
-        if (!blockedBy) {
-            await Promise.all(
-                checks.map((check, index) =>
-                    this.recordRequest(check, windows[index]).catch(error =>
-                        console.error(`❌ Rate limit update failed for ${check.key}:`, error.message)
-                    )
-                )
-            )
-        }
-
-        const details = windows.map(({ allowed, remaining, resetTime, current }) => ({
-            allowed,
-            remaining,
-            resetTime,
-            current: allowed && !blockedBy ? current + 1 : current,
-        }))
+        const allowed = results.every(result => result.allowed)
+        const blockedBy = results.find(result => !result.allowed)
 
         return {
-            allowed: !blockedBy,
-            details,
-            blockedBy: blockedBy ? details[windows.indexOf(blockedBy)] : null,
+            allowed,
+            details: results,
+            blockedBy: blockedBy ? blockedBy : null,
         }
     }
 
@@ -354,7 +280,7 @@ class RateLimiter {
      */
     async cleanup() {
         try {
-            const now = Timestamp.now()
+            const now = admin.firestore.Timestamp.now()
             const expiredQuery = this.db.collection(this.collection).where('expiresAt', '<', now).limit(100)
 
             const expiredDocs = await expiredQuery.get()
@@ -386,13 +312,10 @@ const RATE_LIMITS = {
     CLIENT_AUTHORIZE: { limit: 100, windowMs: 60 * 60 * 1000 }, // 100 auth attempts per hour
     CLIENT_TOKEN: { limit: 200, windowMs: 60 * 60 * 1000 }, // 200 token requests per hour
 
-    // MCP operations, per access token. Agent clients work in bursts: one ordinary request
-    // ("look up the project, check for duplicates, create five tasks") is seven calls inside a
-    // minute, and the previous 5/minute and 10/10 minutes refused exactly that. The per-user
-    // limits below remain the abuse bound.
-    TOOL_CALLS: { limit: 1000, windowMs: 60 * 60 * 1000 }, // 1000 tool calls per hour
-    TOOL_CALLS_10MIN: { limit: 300, windowMs: 10 * 60 * 1000 }, // 300 tool calls per 10 minutes
-    TOOL_CALLS_MINUTE: { limit: 60, windowMs: 60 * 1000 }, // 60 tool calls per minute
+    // MCP operations
+    TOOL_CALLS: { limit: 100, windowMs: 60 * 60 * 1000 }, // 100 tool calls per hour
+    TOOL_CALLS_10MIN: { limit: 10, windowMs: 10 * 60 * 1000 }, // 10 tool calls per 10 minutes
+    TOOL_CALLS_MINUTE: { limit: 5, windowMs: 60 * 1000 }, // 5 tool calls per minute
 
     // User-specific limits (when authenticated)
     USER_OPERATIONS: { limit: 2000, windowMs: 60 * 60 * 1000 }, // 2000 operations per hour per user
@@ -549,18 +472,13 @@ class AlldoneSimpleMCPServer {
             })
         }
 
-        // IP-based rate limiting (fallback for requests nobody is signed in to). An authenticated
-        // tool call is bounded per token and per user instead: hosted MCP clients (claude.ai,
-        // ChatGPT) call from shared egress addresses, so an IP window would make every one of
-        // their users share a single budget.
-        if (!(operation === 'TOOL_CALLS' && userId)) {
-            checks.push({
-                key: `ip:${ip}`,
-                limit: config.limit * 2, // More lenient for IP-based limiting
-                windowMs: config.windowMs,
-                operation: `${operation}:ip`,
-            })
-        }
+        // IP-based rate limiting (fallback)
+        checks.push({
+            key: `ip:${ip}`,
+            limit: config.limit * 2, // More lenient for IP-based limiting
+            windowMs: config.windowMs,
+            operation: `${operation}:ip`,
+        })
 
         // User-based rate limiting (if authenticated)
         if (userId) {
@@ -719,14 +637,16 @@ class AlldoneSimpleMCPServer {
                 const EXTENSION_DAYS = 30
 
                 if (tokenData.grantType === 'direct-login' && daysUntilExpiry < RENEWAL_WINDOW_DAYS) {
-                    const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + EXTENSION_DAYS * 24 * 3600 * 1000))
+                    const newExpiresAt = admin.firestore.Timestamp.fromDate(
+                        new Date(Date.now() + EXTENSION_DAYS * 24 * 3600 * 1000)
+                    )
 
                     // Non-blocking update to extend token expiration
                     db.collection('oauthTokens')
                         .doc(accessToken)
                         .update({
                             expiresAt: newExpiresAt,
-                            lastExtendedAt: Timestamp.now(),
+                            lastExtendedAt: admin.firestore.Timestamp.now(),
                         })
                         .catch(err => console.error('Failed to extend token:', err))
 
@@ -736,7 +656,7 @@ class AlldoneSimpleMCPServer {
                             .doc(tokenData.userId)
                             .update({
                                 expiresAt: newExpiresAt,
-                                lastUsed: Timestamp.now(),
+                                lastUsed: admin.firestore.Timestamp.now(),
                             })
                             .catch(() => {})
 
@@ -869,7 +789,8 @@ class AlldoneSimpleMCPServer {
                 deletedRefreshTokensCount: refreshTokensQuery.size,
                 deletedSessionsCount: mcpSessionsQuery.size,
                 totalDeleted: totalDeleted,
-                note: 'You will need to re-authenticate using the OAuth /authorize endpoint to continue using MCP tools',
+                note:
+                    'You will need to re-authenticate using the OAuth /authorize endpoint to continue using MCP tools',
             }
         } catch (error) {
             console.error('Error deleting authentication data:', error)
@@ -1006,12 +927,6 @@ class AlldoneSimpleMCPServer {
             toolArgs.projectId = contextProjectId
         }
 
-        if (MCP_KNOWLEDGE_BASE_TOOL_SET.has(name) && !contextProjectId) {
-            throw new Error(
-                'Pass the projectId of the project whose wiki you want to use; get_user_projects lists your projects.'
-            )
-        }
-
         const runtimeContext = await this.buildDelegatedToolRuntimeContext(userId)
 
         return await executeToolNatively(name, toolArgs, contextProjectId, null, userId, {}, runtimeContext)
@@ -1025,33 +940,17 @@ class AlldoneSimpleMCPServer {
      * Resolve a concrete context project id for a delegated tool call:
      * explicit projectId -> project-name match -> user's default project -> null.
      */
-    async getUserProjectList(userId, options) {
-        const { ProjectService } = require('../shared/ProjectService')
-        const projectService = new ProjectService({ database: admin.firestore() })
-        await projectService.initialize()
-        return await projectService.getUserProjects(userId, options)
-    }
-
     async resolveDelegatedToolProjectId(userId, toolArgs) {
         if (this.hasNonEmptyString(toolArgs.projectId)) {
-            // Every delegated tool runs through the Admin SDK, so Firestore rules never see what it
-            // reads or writes. A projectId the caller is not a member of has to stop here instead of
-            // becoming the context project of the tool that runs next.
-            const requestedProjectId = toolArgs.projectId.trim()
-            const projects = await this.getUserProjectList(userId, {
-                includeArchived: true,
-                includeCommunity: true,
-                activeOnly: false,
-            })
-            if (!projects.some(project => project && project.id === requestedProjectId)) {
-                throw new Error(`Target project not found or not accessible: "${requestedProjectId}"`)
-            }
-            return requestedProjectId
+            return toolArgs.projectId.trim()
         }
 
         if (this.hasNonEmptyString(toolArgs.projectName)) {
             try {
-                const projects = await this.getUserProjectList(userId, {
+                const { ProjectService } = require('../shared/ProjectService')
+                const projectService = new ProjectService({ database: admin.firestore() })
+                await projectService.initialize()
+                const projects = await projectService.getUserProjects(userId, {
                     includeArchived: false,
                     includeCommunity: false,
                 })
@@ -1379,7 +1278,7 @@ class AlldoneSimpleMCPServer {
                 const clientData = {
                     clientId: directLoginClientId,
                     clientSecret: 'direct-login-secret', // Fixed secret for direct login
-                    createdAt: Timestamp.now(),
+                    createdAt: admin.firestore.Timestamp.now(),
                     redirectUris: [], // No redirects needed for direct login
                     grantTypes: ['direct-login'], // Custom grant type
                     scopes: ['read', 'write', 'mcp:tools'],
@@ -1400,8 +1299,8 @@ class AlldoneSimpleMCPServer {
 
             console.log('🆔 Generated access token:', accessToken.substring(0, 20) + '...')
 
-            const now = Timestamp.now()
-            const accessExpiry = Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)) // 30 days
+            const now = admin.firestore.Timestamp.now()
+            const accessExpiry = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)) // 30 days
 
             // Store access token (no refresh token needed for direct login)
             const accessTokenData = {
@@ -1479,7 +1378,7 @@ class AlldoneSimpleMCPServer {
     async cleanupExpiredTokens() {
         try {
             const db = admin.firestore()
-            const now = Timestamp.now()
+            const now = admin.firestore.Timestamp.now()
 
             console.log('🧹 Starting comprehensive token cleanup...')
 
@@ -1583,27 +1482,9 @@ class AlldoneSimpleMCPServer {
     }
 
     // HTTP Transport implementation (2025-03-26 spec)
-    getOAuthChallengeHeaders() {
-        const metadataUrl = `${getBaseUrl()}/.well-known/oauth-protected-resource/mcpServer`
-        return {
-            'WWW-Authenticate': `Bearer realm="mcp-server", resource_metadata="${metadataUrl}", scope="read write mcp:tools", error="invalid_token", error_description="Authentication required"`,
-            Link: `<${metadataUrl}>; rel="oauth-protected-resource"`,
-            'Cache-Control': 'no-store',
-        }
-    }
-
     async handleHTTP(req, res) {
         try {
             if (req.method === 'GET') {
-                try {
-                    await this.getAuthenticatedUserForClient(req)
-                } catch (_) {
-                    res.status(401).set(this.getOAuthChallengeHeaders()).json({
-                        error: 'unauthorized',
-                        error_description: 'Authentication required. Please authenticate via OAuth.',
-                    })
-                    return
-                }
                 // Return proper MCP server info as per transport specification
                 res.set('Content-Type', 'application/json; charset=utf-8').json({
                     jsonrpc: '2.0',
@@ -1929,7 +1810,11 @@ class AlldoneSimpleMCPServer {
                     // But since we're in the JSON-RPC handler, we'll throw an error that the HTTP handler will catch
                     const authError = new Error('Authentication required')
                     authError.statusCode = 401
-                    authError.headers = this.getOAuthChallengeHeaders()
+                    authError.headers = {
+                        'WWW-Authenticate': `Bearer realm="mcp-server", error="invalid_token", error_description="Authentication required"`,
+                        Link: `<${baseUrl}/.well-known/oauth-protected-resource>; rel="oauth-protected-resource"`,
+                        'Cache-Control': 'no-store',
+                    }
                     authError.body = {
                         error: 'unauthorized',
                         error_description: 'Authentication required. Please authenticate via OAuth.',
@@ -2027,7 +1912,11 @@ class AlldoneSimpleMCPServer {
                 // surfaces can never drift. MCP-only tools are appended afterwards.
                 const delegatedTools = getToolSchemas(MCP_DELEGATED_ASSISTANT_TOOLS)
                     .filter(schema => !disabled.has(schema.function.name))
-                    .map(adaptToolSchemaForMcp)
+                    .map(schema => ({
+                        name: schema.function.name,
+                        description: schema.function.description,
+                        inputSchema: schema.function.parameters,
+                    }))
 
                 const tools = {
                     tools: [...delegatedTools, ...MCP_NATIVE_ONLY_TOOL_SCHEMAS],
@@ -2370,7 +2259,7 @@ class AlldoneSimpleMCPServer {
                     const clientData = {
                         clientId,
                         clientSecret,
-                        createdAt: Timestamp.now(),
+                        createdAt: admin.firestore.Timestamp.now(),
                         redirectUris: req.body.redirect_uris || ['https://claude.ai/api/mcp/auth_callback'],
                         grantTypes: ['authorization_code', 'refresh_token'],
                         scopes: ['read', 'write', 'mcp:tools'],
@@ -2528,7 +2417,7 @@ class AlldoneSimpleMCPServer {
                 if (!client_id) {
                     console.log('⚠️ Skipping recent authorization lookup because client_id is missing')
                 } else {
-                    const fiveMinutesAgo = Timestamp.fromDate(new Date(Date.now() - 5 * 60 * 1000))
+                    const fiveMinutesAgo = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 5 * 60 * 1000))
                     const recentAuthSessions = await db
                         .collection('oauthAuthSessions')
                         .where('clientId', '==', client_id)
@@ -2694,13 +2583,13 @@ class AlldoneSimpleMCPServer {
                         const autoClientData = {
                             clientId: client_id,
                             clientSecret: `auto-secret-${uuidv4()}`, // Generate secret
-                            createdAt: Timestamp.now(),
+                            createdAt: admin.firestore.Timestamp.now(),
                             redirectUris: [redirect_uri], // Only allow the requested URI
                             grantTypes: ['authorization_code', 'refresh_token'],
                             scopes: ['read', 'write', 'mcp:tools'],
                             tokenEndpointAuthMethod: 'none',
                             autoRegistered: true, // Mark as auto-registered
-                            autoRegisteredAt: Timestamp.now(),
+                            autoRegisteredAt: admin.firestore.Timestamp.now(),
                         }
 
                         console.log('🆔 Auto-registering client:', {
@@ -2809,8 +2698,8 @@ class AlldoneSimpleMCPServer {
                         // PKCE parameters
                         codeChallenge: code_challenge,
                         codeChallengeMethod: code_challenge_method,
-                        createdAt: Timestamp.now(),
-                        expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)), // 30 min
+                        createdAt: admin.firestore.Timestamp.now(),
+                        expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)), // 30 min
                         status: 'pending',
                     })
 
@@ -2879,8 +2768,15 @@ class AlldoneSimpleMCPServer {
                         console.log('⚠️ Failed to parse Basic auth header:', e.message)
                     }
 
-                    const { code, client_id, client_secret, redirect_uri, grant_type, code_verifier, refresh_token } =
-                        req.body
+                    const {
+                        code,
+                        client_id,
+                        client_secret,
+                        redirect_uri,
+                        grant_type,
+                        code_verifier,
+                        refresh_token,
+                    } = req.body
 
                     if (
                         grant_type !== 'authorization_code' &&
@@ -3126,8 +3022,10 @@ class AlldoneSimpleMCPServer {
                                 userId: authData.userId,
                                 mcpSessionId: authData.mcpSessionId,
                                 scope: authData.scope || 'read write mcp:tools',
-                                createdAt: Timestamp.now(),
-                                expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
+                                createdAt: admin.firestore.Timestamp.now(),
+                                expiresAt: admin.firestore.Timestamp.fromDate(
+                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                ), // 30 days
                             }
 
                             console.log('📝 Storing access token data:', {
@@ -3149,8 +3047,10 @@ class AlldoneSimpleMCPServer {
                                 userId: authData.userId,
                                 mcpSessionId: authData.mcpSessionId,
                                 scope: authData.scope || 'read write mcp:tools',
-                                createdAt: Timestamp.now(),
-                                expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
+                                createdAt: admin.firestore.Timestamp.now(),
+                                expiresAt: admin.firestore.Timestamp.fromDate(
+                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                ), // 30 days
                             }
 
                             console.log('📝 Storing refresh token data:', {
@@ -3173,9 +3073,11 @@ class AlldoneSimpleMCPServer {
                                     email: authData.userId, // Will be updated if we have email from auth data
                                     bearerToken: accessToken, // Store MCP access token, not Firebase token
                                     sessionId: authData.mcpSessionId,
-                                    createdAt: Timestamp.now(),
-                                    expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
-                                    lastUsed: Timestamp.now(),
+                                    createdAt: admin.firestore.Timestamp.now(),
+                                    expiresAt: admin.firestore.Timestamp.fromDate(
+                                        new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                    ), // 30 days
+                                    lastUsed: admin.firestore.Timestamp.now(),
                                 },
                                 { merge: true }
                             )
@@ -3283,8 +3185,10 @@ class AlldoneSimpleMCPServer {
                                 mcpSessionId: refreshData.mcpSessionId,
                                 scope: refreshData.scope,
                                 grantType: 'refresh_token',
-                                createdAt: Timestamp.now(),
-                                expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
+                                createdAt: admin.firestore.Timestamp.now(),
+                                expiresAt: admin.firestore.Timestamp.fromDate(
+                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                ), // 30 days
                             }
                             batch.set(db.collection('oauthTokens').doc(newAccessToken), newAccessTokenData)
 
@@ -3295,8 +3199,10 @@ class AlldoneSimpleMCPServer {
                                 userId: refreshData.userId,
                                 mcpSessionId: refreshData.mcpSessionId,
                                 scope: refreshData.scope,
-                                createdAt: Timestamp.now(),
-                                expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
+                                createdAt: admin.firestore.Timestamp.now(),
+                                expiresAt: admin.firestore.Timestamp.fromDate(
+                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                ), // 30 days
                                 previousRefreshToken: refresh_token, // Audit trail
                             }
                             batch.set(db.collection('oauthRefreshTokens').doc(newRefreshToken), newRefreshTokenData)
@@ -3327,8 +3233,10 @@ class AlldoneSimpleMCPServer {
                                     userId: refreshData.userId,
                                     bearerToken: newAccessToken, // Store new MCP access token
                                     sessionId: refreshData.mcpSessionId,
-                                    expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
-                                    lastUsed: Timestamp.now(),
+                                    expiresAt: admin.firestore.Timestamp.fromDate(
+                                        new Date(Date.now() + 30 * 24 * 3600 * 1000)
+                                    ), // 30 days
+                                    lastUsed: admin.firestore.Timestamp.now(),
                                 },
                                 { merge: true }
                             )
@@ -3385,8 +3293,10 @@ class AlldoneSimpleMCPServer {
                                     mcpSessionId: null,
                                     scope: scope,
                                     grantType: 'client_credentials',
-                                    createdAt: Timestamp.now(),
-                                    expiresAt: Timestamp.fromDate(new Date(Date.now() + 24 * 3600 * 1000)), // 24 hours for service-to-service
+                                    createdAt: admin.firestore.Timestamp.now(),
+                                    expiresAt: admin.firestore.Timestamp.fromDate(
+                                        new Date(Date.now() + 24 * 3600 * 1000)
+                                    ), // 24 hours for service-to-service
                                 })
 
                             res.json({
@@ -3477,7 +3387,10 @@ class AlldoneSimpleMCPServer {
                             const baseUrl = `${getBaseUrl()}/mcpServer`
 
                             res.status(401)
-                                .set(this.getOAuthChallengeHeaders())
+                                .set({
+                                    'WWW-Authenticate': `Bearer realm="mcp-server", error="invalid_token", error_description="Authentication required"`,
+                                    Link: `<${baseUrl}/.well-known/oauth-protected-resource>; rel="oauth-protected-resource"`,
+                                })
                                 .json({
                                     error: 'unauthorized',
                                     error_description: 'Authentication required. Please authenticate via OAuth.',
@@ -3559,4 +3472,4 @@ class AlldoneSimpleMCPServer {
 }
 
 // Export factory function for Cloud Functions
-module.exports = { AlldoneSimpleMCPServer, RateLimiter, RATE_LIMITS }
+module.exports = { AlldoneSimpleMCPServer }

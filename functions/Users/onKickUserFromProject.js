@@ -6,7 +6,6 @@ const {
     OPEN_STEP,
     generateSortIndex,
 } = require('../Utils/HelperFunctionsCloud')
-const { FieldValue } = require('firebase-admin/firestore')
 
 const processChats = async (projectId, userId, admin, superAdmin) => {
     const chatsRef = admin.firestore().collection(`chatObjects/${projectId}/chats`)
@@ -37,9 +36,9 @@ const processChats = async (projectId, userId, admin, superAdmin) => {
     chatDocsToUpdatePrivacy.forEach(doc => {
         const { isPublicFor, creatorId } = doc.data()
         const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${doc.id}`)
-        promises.push(chatRef.update({ isPublicFor: FieldValue.arrayRemove(userId) }))
+        promises.push(chatRef.update({ isPublicFor: superAdmin.firestore.FieldValue.arrayRemove(userId) }))
         if (isPublicFor.length === 1) {
-            promises.push(chatRef.update({ isPublicFor: FieldValue.arrayUnion(creatorId) }))
+            promises.push(chatRef.update({ isPublicFor: superAdmin.firestore.FieldValue.arrayUnion(creatorId) }))
         }
     })
     chatDocsToUpdateEdition.forEach(doc => {
@@ -48,11 +47,11 @@ const processChats = async (projectId, userId, admin, superAdmin) => {
     })
     chatDocsToUpdateMembers.forEach(doc => {
         const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${doc.id}`)
-        promises.push(chatRef.update({ members: FieldValue.arrayRemove(userId) }))
+        promises.push(chatRef.update({ members: superAdmin.firestore.FieldValue.arrayRemove(userId) }))
     })
     chatDocsToUpdateUsersFollowing.forEach(doc => {
         const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${doc.id}`)
-        promises.push(chatRef.update({ usersFollowing: FieldValue.arrayRemove(userId) }))
+        promises.push(chatRef.update({ usersFollowing: superAdmin.firestore.FieldValue.arrayRemove(userId) }))
     })
     chatDocsToUpdateLastCommentOwnerId.forEach(doc => {
         const chatRef = admin.firestore().doc(`chatObjects/${projectId}/chats/${doc.id}`)
@@ -68,8 +67,12 @@ const processGoals = async (projectId, userId, admin, superAdmin) => {
     promises.push(goalsRef.where('creatorId', '!=', userId).where('assigneesIds', 'array-contains-any', [userId]).get())
     promises.push(goalsRef.where('creatorId', '!=', userId).where('isPublicFor', 'array-contains-any', [userId]).get())
     promises.push(goalsRef.where('creatorId', '!=', userId).where('lastEditorId', '==', userId).get())
-    const [goalDocsToDelete, goalDocsToUpdateAssignee, goalDocsToUpdatePrivacy, goalDocsToUpdateEdition] =
-        await Promise.all(promises)
+    const [
+        goalDocsToDelete,
+        goalDocsToUpdateAssignee,
+        goalDocsToUpdatePrivacy,
+        goalDocsToUpdateEdition,
+    ] = await Promise.all(promises)
 
     promises = []
     goalDocsToDelete.forEach(doc => {
@@ -80,18 +83,18 @@ const processGoals = async (projectId, userId, admin, superAdmin) => {
         const goalRef = admin.firestore().doc(`goals/${projectId}/items/${doc.id}`)
         promises.push(
             goalRef.update({
-                assigneesIds: FieldValue.arrayRemove(userId),
-                [`assigneesCapacity.${userId}`]: FieldValue.delete(),
-                [`assigneesReminderDate.${userId}`]: FieldValue.delete(),
+                assigneesIds: superAdmin.firestore.FieldValue.arrayRemove(userId),
+                [`assigneesCapacity.${userId}`]: superAdmin.firestore.FieldValue.delete(),
+                [`assigneesReminderDate.${userId}`]: superAdmin.firestore.FieldValue.delete(),
             })
         )
         if (assigneesIds.length === 1) {
             promises.push(
                 goalRef.update({
-                    assigneesIds: FieldValue.arrayUnion(creatorId),
+                    assigneesIds: superAdmin.firestore.FieldValue.arrayUnion(creatorId),
                     [`assigneesCapacity.${creatorId}`]: CAPACITY_NONE,
                     [`assigneesReminderDate.${creatorId}`]: Date.now(),
-                    isPublicFor: FieldValue.arrayUnion(creatorId),
+                    isPublicFor: superAdmin.firestore.FieldValue.arrayUnion(creatorId),
                 })
             )
         }
@@ -101,13 +104,13 @@ const processGoals = async (projectId, userId, admin, superAdmin) => {
         const goalRef = admin.firestore().doc(`goals/${projectId}/items/${doc.id}`)
         promises.push(
             goalRef.update({
-                isPublicFor: FieldValue.arrayRemove(userId),
+                isPublicFor: superAdmin.firestore.FieldValue.arrayRemove(userId),
             })
         )
         if (isPublicFor.length === 1) {
             promises.push(
                 goalRef.update({
-                    isPublicFor: FieldValue.arrayUnion(creatorId),
+                    isPublicFor: superAdmin.firestore.FieldValue.arrayUnion(creatorId),
                 })
             )
         }
@@ -141,7 +144,7 @@ const convertSubtasksInNormalTasks = async (projectId, userId, parentId, admin, 
             inDone: false,
         }
         if (!done || (!parentDone && done)) {
-            updateData.isPublicFor = FieldValue.arrayUnion(creatorId)
+            updateData.isPublicFor = superAdmin.firestore.FieldValue.arrayUnion(creatorId)
             updateData.done = false
             updateData.inDone = false
             updateData.suggestedBy = null
@@ -252,7 +255,7 @@ const processTasks = async (projectId, userId, admin, superAdmin) => {
                     estimations: { [OPEN_STEP]: estimations[OPEN_STEP] },
                     completed: isDone ? completed : null,
                     inDone: isDone,
-                    isPublicFor: FieldValue.arrayUnion(creatorId),
+                    isPublicFor: superAdmin.firestore.FieldValue.arrayUnion(creatorId),
                     sortIndex: generateSortIndex(),
                 })
             )
@@ -263,15 +266,15 @@ const processTasks = async (projectId, userId, admin, superAdmin) => {
             })
             const newUserIds = userIds.filter(uid => uid !== userId)
             const updateData = {
-                userIds: FieldValue.arrayRemove(userId),
-                stepHistory: FieldValue.arrayRemove(...workflowStepIds),
+                userIds: superAdmin.firestore.FieldValue.arrayRemove(userId),
+                stepHistory: superAdmin.firestore.FieldValue.arrayRemove(...workflowStepIds),
                 currentReviewerId: isDone ? DONE_STEP : newUserIds[newUserIds.length - 1],
                 completed: isDone || newUserIds.length > 1 ? completed : null,
                 inDone: isDone,
                 sortIndex: generateSortIndex(),
             }
             workflowStepIds.forEach(stepId => {
-                updateData[`estimations.${stepId}`] = FieldValue.delete()
+                updateData[`estimations.${stepId}`] = superAdmin.firestore.FieldValue.delete()
             })
             promises.push(taskRef.update(updateData))
         }
@@ -280,9 +283,9 @@ const processTasks = async (projectId, userId, admin, superAdmin) => {
         const taskRef = admin.firestore().doc(`items/${projectId}/tasks/${doc.id}`)
         promises.push(
             taskRef.update({
-                observersIds: FieldValue.arrayRemove(userId),
-                [`dueDateByObserversIds.${userId}`]: FieldValue.delete(),
-                [`estimationsByObserverIds.${userId}`]: FieldValue.delete(),
+                observersIds: superAdmin.firestore.FieldValue.arrayRemove(userId),
+                [`dueDateByObserversIds.${userId}`]: superAdmin.firestore.FieldValue.delete(),
+                [`estimationsByObserverIds.${userId}`]: superAdmin.firestore.FieldValue.delete(),
             })
         )
     })
@@ -291,13 +294,13 @@ const processTasks = async (projectId, userId, admin, superAdmin) => {
         const taskRef = admin.firestore().doc(`items/${projectId}/tasks/${doc.id}`)
         promises.push(
             taskRef.update({
-                isPublicFor: FieldValue.arrayRemove(userId),
+                isPublicFor: superAdmin.firestore.FieldValue.arrayRemove(userId),
             })
         )
         if (isPublicFor.length === 1) {
             promises.push(
                 taskRef.update({
-                    isPublicFor: FieldValue.arrayUnion(creatorId),
+                    isPublicFor: superAdmin.firestore.FieldValue.arrayUnion(creatorId),
                 })
             )
         }
@@ -310,7 +313,7 @@ const processTasks = async (projectId, userId, admin, superAdmin) => {
         const taskRef = admin.firestore().doc(`items/${projectId}/tasks/${doc.id}`)
         promises.push(
             taskRef.update({
-                linkedParentContactsIds: FieldValue.arrayRemove(userId),
+                linkedParentContactsIds: superAdmin.firestore.FieldValue.arrayRemove(userId),
             })
         )
     })
@@ -362,13 +365,13 @@ const processNotes = async (projectId, userId, admin, superAdmin) => {
         const noteRef = admin.firestore().doc(`noteItems/${projectId}/notes/${doc.id}`)
         promises.push(
             noteRef.update({
-                isPublicFor: FieldValue.arrayRemove(userId),
+                isPublicFor: superAdmin.firestore.FieldValue.arrayRemove(userId),
             })
         )
         if (isPublicFor.length === 1) {
             promises.push(
                 noteRef.update({
-                    isPublicFor: FieldValue.arrayUnion(creatorId),
+                    isPublicFor: superAdmin.firestore.FieldValue.arrayUnion(creatorId),
                 })
             )
         }
@@ -379,9 +382,9 @@ const processNotes = async (projectId, userId, admin, superAdmin) => {
         promises.push(
             noteRef.update({
                 userId: creatorId,
-                isPublicFor: FieldValue.arrayUnion(creatorId),
-                followersIds: FieldValue.arrayUnion(creatorId),
-                isVisibleInFollowedFor: FieldValue.arrayUnion(creatorId),
+                isPublicFor: superAdmin.firestore.FieldValue.arrayUnion(creatorId),
+                followersIds: superAdmin.firestore.FieldValue.arrayUnion(creatorId),
+                isVisibleInFollowedFor: superAdmin.firestore.FieldValue.arrayUnion(creatorId),
             })
         )
     })
@@ -393,8 +396,8 @@ const processNotes = async (projectId, userId, admin, superAdmin) => {
         const noteRef = admin.firestore().doc(`noteItems/${projectId}/notes/${doc.id}`)
         promises.push(
             noteRef.update({
-                followersIds: FieldValue.arrayRemove(userId),
-                isVisibleInFollowedFor: FieldValue.arrayRemove(userId),
+                followersIds: superAdmin.firestore.FieldValue.arrayRemove(userId),
+                isVisibleInFollowedFor: superAdmin.firestore.FieldValue.arrayRemove(userId),
             })
         )
     })
@@ -402,7 +405,7 @@ const processNotes = async (projectId, userId, admin, superAdmin) => {
         const noteRef = admin.firestore().doc(`noteItems/${projectId}/notes/${doc.id}`)
         promises.push(
             noteRef.update({
-                linkedParentContactsIds: FieldValue.arrayRemove(userId),
+                linkedParentContactsIds: superAdmin.firestore.FieldValue.arrayRemove(userId),
             })
         )
     })
@@ -410,7 +413,9 @@ const processNotes = async (projectId, userId, admin, superAdmin) => {
         const noteRef = admin.firestore().doc(`noteItems/${projectId}/notes/${doc.id}`)
         promises.push(
             noteRef.update({
-                ['linkedParentsInContentIds.linkedParentContactsIds']: FieldValue.arrayRemove(userId),
+                ['linkedParentsInContentIds.linkedParentContactsIds']: superAdmin.firestore.FieldValue.arrayRemove(
+                    userId
+                ),
             })
         )
     })
@@ -418,7 +423,9 @@ const processNotes = async (projectId, userId, admin, superAdmin) => {
         const noteRef = admin.firestore().doc(`noteItems/${projectId}/notes/${doc.id}`)
         promises.push(
             noteRef.update({
-                ['linkedParentsInTitleIds.linkedParentContactsIds']: FieldValue.arrayRemove(userId),
+                ['linkedParentsInTitleIds.linkedParentContactsIds']: superAdmin.firestore.FieldValue.arrayRemove(
+                    userId
+                ),
             })
         )
     })
@@ -440,13 +447,15 @@ const processUsers = async (projectId, userId, admin, superAdmin) => {
     promises = []
     userDocsToUpdateLastVisitBoard.forEach(doc => {
         const userRef = admin.firestore().doc(`users/${doc.id}`)
-        promises.push(userRef.update({ [`lastVisitBoard.${projectId}.${userId}`]: FieldValue.delete() }))
+        promises.push(
+            userRef.update({ [`lastVisitBoard.${projectId}.${userId}`]: superAdmin.firestore.FieldValue.delete() })
+        )
     })
     userDocsToUpdateLastVisitBoardInGoals.forEach(doc => {
         const userRef = admin.firestore().doc(`users/${doc.id}`)
         promises.push(
             userRef.update({
-                [`lastVisitBoardInGoals.${projectId}.${userId}`]: FieldValue.delete(),
+                [`lastVisitBoardInGoals.${projectId}.${userId}`]: superAdmin.firestore.FieldValue.delete(),
             })
         )
     })
@@ -454,7 +463,7 @@ const processUsers = async (projectId, userId, admin, superAdmin) => {
         const userRef = admin.firestore().doc(`users/${doc.id}`)
         promises.push(
             userRef.update({
-                [`statisticsSelectedUsersIds.${projectId}`]: FieldValue.arrayRemove(userId),
+                [`statisticsSelectedUsersIds.${projectId}`]: superAdmin.firestore.FieldValue.arrayRemove(userId),
             })
         )
     })
@@ -488,7 +497,7 @@ const processContacts = async (projectId, userId, admin, superAdmin) => {
             const contactRef = admin.firestore().doc(`projectsContacts/${projectId}/contacts/${doc.id}`)
             promises.push(
                 contactRef.update({
-                    [`lastVisitBoard.${projectId}.${userId}`]: FieldValue.delete(),
+                    [`lastVisitBoard.${projectId}.${userId}`]: superAdmin.firestore.FieldValue.delete(),
                 })
             )
         }
@@ -498,7 +507,7 @@ const processContacts = async (projectId, userId, admin, superAdmin) => {
             const contactRef = admin.firestore().doc(`projectsContacts/${projectId}/contacts/${doc.id}`)
             promises.push(
                 contactRef.update({
-                    [`lastVisitBoardInGoals.${projectId}.${userId}`]: FieldValue.delete(),
+                    [`lastVisitBoardInGoals.${projectId}.${userId}`]: superAdmin.firestore.FieldValue.delete(),
                 })
             )
         }
@@ -508,13 +517,13 @@ const processContacts = async (projectId, userId, admin, superAdmin) => {
         const contactRef = admin.firestore().doc(`projectsContacts/${projectId}/contacts/${doc.id}`)
         promises.push(
             contactRef.update({
-                isPublicFor: FieldValue.arrayRemove(userId),
+                isPublicFor: superAdmin.firestore.FieldValue.arrayRemove(userId),
             })
         )
         if (isPublicFor.length === 1) {
             promises.push(
                 contactRef.update({
-                    isPublicFor: FieldValue.arrayUnion(recorderUserId),
+                    isPublicFor: superAdmin.firestore.FieldValue.arrayUnion(recorderUserId),
                 })
             )
         }
@@ -546,13 +555,15 @@ const processWorkstreams = async (projectId, userId, admin, superAdmin) => {
     })
     workstreamDocsToUpdateLastVisitBoard.forEach(doc => {
         const contactRef = admin.firestore().doc(`projectsWorkstreams/${projectId}/workstreams/${doc.id}`)
-        promises.push(contactRef.update({ [`lastVisitBoard.${projectId}.${userId}`]: FieldValue.delete() }))
+        promises.push(
+            contactRef.update({ [`lastVisitBoard.${projectId}.${userId}`]: superAdmin.firestore.FieldValue.delete() })
+        )
     })
     workstreamDocsToUpdateLastVisitBoardInGoals.forEach(doc => {
         const contactRef = admin.firestore().doc(`projectsWorkstreams/${projectId}/workstreams/${doc.id}`)
         promises.push(
             contactRef.update({
-                [`lastVisitBoardInGoals.${projectId}.${userId}`]: FieldValue.delete(),
+                [`lastVisitBoardInGoals.${projectId}.${userId}`]: superAdmin.firestore.FieldValue.delete(),
             })
         )
     })
@@ -576,13 +587,13 @@ const processSkills = async (projectId, userId, admin, superAdmin) => {
         const skillRef = admin.firestore().doc(`skills/${projectId}/items/${doc.id}`)
         promises.push(
             skillRef.update({
-                isPublicFor: FieldValue.arrayRemove(userId),
+                isPublicFor: superAdmin.firestore.FieldValue.arrayRemove(userId),
             })
         )
         if (isPublicFor.length === 1) {
             promises.push(
                 skillRef.update({
-                    isPublicFor: FieldValue.arrayUnion(userId),
+                    isPublicFor: superAdmin.firestore.FieldValue.arrayUnion(userId),
                 })
             )
         }
@@ -609,7 +620,7 @@ const processSkillsDefaultPrivacy = async (projectId, userId, admin, superAdmin)
                     .firestore()
                     .doc(`skillsDefaultPrivacy/${projectId}/items/${doc.id}`)
                     .update({
-                        isPublicFor: FieldValue.arrayRemove(userId),
+                        isPublicFor: superAdmin.firestore.FieldValue.arrayRemove(userId),
                     })
             )
     })
@@ -639,7 +650,7 @@ const processKarma = async (projectId, userId, admin, superAdmin) => {
         await admin
             .firestore()
             .doc(`karmaPoints/${userId}`)
-            .update({ [`projectsKarma.${projectId}`]: FieldValue.delete() })
+            .update({ [`projectsKarma.${projectId}`]: superAdmin.firestore.FieldValue.delete() })
     }
 }
 
@@ -659,7 +670,9 @@ const processProjectInvitations = async (projectId, userId, admin) => {
     await Promise.all(promises)
 }
 
-const removeUserDataFromProject = async (projectId, userId, admin, superAdmin) => {
+const removeUserDataFromProject = async (projectId, userId, admin, firebase_tools, process, superAdmin) => {
+    const { GCLOUD_PROJECT } = process.env
+
     const promises = []
     promises.push(processChats(projectId, userId, admin, superAdmin))
     promises.push(processGoals(projectId, userId, admin, superAdmin))
@@ -675,10 +688,10 @@ const removeUserDataFromProject = async (projectId, userId, admin, superAdmin) =
     promises.push(processKarma(projectId, userId, admin, superAdmin))
     promises.push(processProjectInvitations(projectId, userId, admin))
 
-    promises.push(recursiveDeleteHelper(`statistics/${projectId}/${userId}`))
-    promises.push(recursiveDeleteHelper(`feedsCount/${projectId}/${userId}`))
-    promises.push(recursiveDeleteHelper(`invoiceData/${projectId}/${userId}`))
-    promises.push(recursiveDeleteHelper(`chatNotifications/${projectId}/${userId}`))
+    promises.push(recursiveDeleteHelper(firebase_tools, GCLOUD_PROJECT, `statistics/${projectId}/${userId}`))
+    promises.push(recursiveDeleteHelper(firebase_tools, GCLOUD_PROJECT, `feedsCount/${projectId}/${userId}`))
+    promises.push(recursiveDeleteHelper(firebase_tools, GCLOUD_PROJECT, `invoiceData/${projectId}/${userId}`))
+    promises.push(recursiveDeleteHelper(firebase_tools, GCLOUD_PROJECT, `chatNotifications/${projectId}/${userId}`))
 
     await Promise.all(promises)
 }

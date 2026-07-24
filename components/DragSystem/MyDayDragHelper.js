@@ -67,8 +67,11 @@ const getDatesAndTasksByDate = () => {
 }
 
 const getTasksAcrossAllDatesAndWithExpandedSubtasksByDate = (dates, tasksByDate) => {
-    const { myDayOpenSubtasksMap, tasksIdsWithSubtasksExpandedWhenActiveDragTaskMode, draggingParentTaskId } =
-        store.getState()
+    const {
+        myDayOpenSubtasksMap,
+        tasksIdsWithSubtasksExpandedWhenActiveDragTaskMode,
+        draggingParentTaskId,
+    } = store.getState()
 
     const tasksAcrossAllDates = []
     const tasksAndExpandedSubtasksByDate = {}
@@ -91,8 +94,11 @@ const getTasksAcrossAllDatesAndWithExpandedSubtasksByDate = (dates, tasksByDate)
 
 const getDatesAndTasksAndSubtasksExpandedByDate = () => {
     const { dates, tasksByDate } = getDatesAndTasksByDate()
-    const { tasksAcrossAllDates, tasksAndExpandedSubtasksByDate, tasksAndExpandedSubtasksAcrossAllDates } =
-        getTasksAcrossAllDatesAndWithExpandedSubtasksByDate(dates, tasksByDate)
+    const {
+        tasksAcrossAllDates,
+        tasksAndExpandedSubtasksByDate,
+        tasksAndExpandedSubtasksAcrossAllDates,
+    } = getTasksAcrossAllDatesAndWithExpandedSubtasksByDate(dates, tasksByDate)
 
     return {
         dates,
@@ -130,20 +136,18 @@ const getIndexesInTasksAndExpandedSubtasksAcrossAllDates = (
     dates,
     tasksAndExpandedSubtasksByDate
 ) => {
-    const sourceIndexInDateWithExpandedSubtasksAcrossAllDates =
-        convertIndexInTasksAndExpandedSubtasksInDateToIndexInTasksAndExpandedSubtasksAcrossAllDates(
-            sourceIndexInDateWithExpandedSubtasks,
-            sourceDate,
-            dates,
-            tasksAndExpandedSubtasksByDate
-        )
-    let destinationIndexInDateWithExpandedSubtasksAcrossAllDates =
-        convertIndexInTasksAndExpandedSubtasksInDateToIndexInTasksAndExpandedSubtasksAcrossAllDates(
-            destinationIndexInDateWithExpandedSubtasks,
-            destinationDate,
-            dates,
-            tasksAndExpandedSubtasksByDate
-        )
+    const sourceIndexInDateWithExpandedSubtasksAcrossAllDates = convertIndexInTasksAndExpandedSubtasksInDateToIndexInTasksAndExpandedSubtasksAcrossAllDates(
+        sourceIndexInDateWithExpandedSubtasks,
+        sourceDate,
+        dates,
+        tasksAndExpandedSubtasksByDate
+    )
+    let destinationIndexInDateWithExpandedSubtasksAcrossAllDates = convertIndexInTasksAndExpandedSubtasksInDateToIndexInTasksAndExpandedSubtasksAcrossAllDates(
+        destinationIndexInDateWithExpandedSubtasks,
+        destinationDate,
+        dates,
+        tasksAndExpandedSubtasksByDate
+    )
     if (sourceDate !== destinationDate) {
         if (moment(sourceDate, 'YYYYMMDD').isBefore(moment(destinationDate, 'YYYYMMDD'))) {
             destinationIndexInDateWithExpandedSubtasksAcrossAllDates--
@@ -183,8 +187,12 @@ const generateSubtasksByTaskMapAcrossAllProjects = () => {
 }
 
 const getSortingData = (draggingTaskId, source, destination) => {
-    const { dates, tasksAndExpandedSubtasksByDate, tasksAndExpandedSubtasksAcrossAllDates, tasksAcrossAllDates } =
-        getDatesAndTasksAndSubtasksExpandedByDate()
+    const {
+        dates,
+        tasksAndExpandedSubtasksByDate,
+        tasksAndExpandedSubtasksAcrossAllDates,
+        tasksAcrossAllDates,
+    } = getDatesAndTasksAndSubtasksExpandedByDate()
 
     const sourceDate = source.droppableId
     const sourceIndexInDateWithExpandedSubtasks = source.index
@@ -267,8 +275,12 @@ const updateLocalData = sourceList => {
         task => !sourceListIds.includes(task.id)
     )
 
-    const { selectedTasks, otherTasks, selectedTasksForSortingMode, otherTasksForSortingMode } =
-        selectTasksAndAddTimeIntervale([...calendarAndCommunityTasks, ...sourceList], loggedUser, loggedUserProjectsMap)
+    const {
+        selectedTasks,
+        otherTasks,
+        selectedTasksForSortingMode,
+        otherTasksForSortingMode,
+    } = selectTasksAndAddTimeIntervale([...calendarAndCommunityTasks, ...sourceList], loggedUser, loggedUserProjectsMap)
 
     store.dispatch(
         setMyDaySelectedAndOtherTasks(selectedTasks, otherTasks, selectedTasksForSortingMode, otherTasksForSortingMode)

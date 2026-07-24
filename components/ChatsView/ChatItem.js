@@ -1,5 +1,4 @@
-import { useTaskHierarchyBackground } from '../TaskListView/TaskHierarchy'
-import React, { useMemo } from 'react'
+import React from 'react'
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import moment from 'moment'
@@ -21,42 +20,20 @@ import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFo
 import ChatItemLastComment from './ChatItemLastComment'
 import { getUserPresentationDataInProject } from '../ContactsView/Utils/ContactsHelper'
 import { getChatItemBackgroundColor } from './chatItemBackground'
-import { getUnreadCommentIds } from './Utils/unreadChatFilter'
-import ChatItemUnreadMessages from './ChatItemUnreadMessages'
-import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
 
 export default function ChatItem({ chat, project, openEditModal, inCommentPopup, onPress }) {
     const loggedUser = useSelector(state => state.loggedUser)
-    // Select the *boolean*, not the counter. `state.isLoadingData` is a reference count that the
-    // chats screen moves once per project listener: "All Projects" mounts one ChatsByProject per
-    // project, each starting two counted listeners, so the counter takes ~2xN steps up and ~2xN
-    // steps back down (156 for a 78-project account). Those dispatches come from Firestore snapshot
-    // callbacks, so React cannot batch them, and selecting the raw number re-rendered every mounted
-    // ChatItem on each step even though the only thing rendered from it is `!isLoadingData`
-    // (see the ChatIndicator background below). The reducer clamps the counter at 0, so
-    // `!isLoadingData` and `!(isLoadingData > 0)` are equivalent. See AT-2200.
-    const isLoadingData = useSelector(state => state.isLoadingData > 0)
+    const isLoadingData = useSelector(state => state.isLoadingData)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const chatNotifications = useSelector(state => state.projectChatNotifications[project.id][chat.id])
-    const chatsActiveTab = useSelector(state => state.chatsActiveTab)
 
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
     const notificationsAmount = totalFollowed || totalUnfollowed
 
-    // The unread messages previewed under the title (AT-2256). Never in a comment popup: that
-    // popup is a compact picker of chats, and it already renders the thread it is pointing at.
-    const unreadCommentIds = useMemo(
-        () => (inCommentPopup ? [] : getUnreadCommentIds(chatNotifications, chatsActiveTab)),
-        [chatNotifications, chatsActiveTab, inCommentPopup]
-    )
-
-    const hasUnreadPreview = unreadCommentIds.length > 0
-
     const isSticky = chat.stickyData.days > 0
     const theme = getTheme(Themes, loggedUser.themeName, 'RootView.StickyItem')
-    const projectBackgroundColor = useTaskHierarchyBackground()
-    const backgroundColor = getChatItemBackgroundColor(chat.hasStar, inCommentPopup, projectBackgroundColor)
+    const backgroundColor = getChatItemBackgroundColor(chat.hasStar, inCommentPopup)
     const usesCommentPopupBackground = inCommentPopup
 
     const onOpenEditModal = () => {
@@ -75,83 +52,73 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
                 { backgroundColor },
             ]}
         >
-            <ProjectMoveIndicator object={chat} />
             <TouchableOpacity onPress={inCommentPopup ? onPress : onOpenEditModal} accessible={false}>
                 <ChatHeaderItem members={chat.members} membersNumber={chat.members.length} />
             </TouchableOpacity>
-            {/* The unread preview is a sibling of the title touchable because each previewed
-                message owns its open-the-chat action while its nested links and email controls
-                keep their existing actions. */}
-            <View style={{ flex: 1 }}>
-                <TouchableOpacity
-                    onPress={inCommentPopup ? onPress : () => onOpenChat(project.id, chat)}
-                    accessible={false}
-                >
-                    <View style={localStyles.content}>
-                        <View style={localStyles.titleArea}>
-                            <View style={localStyles.descriptionContainer}>
-                                <SocialText
-                                    elementId={`social_text_${project.id}_${chat.id}`}
-                                    style={[
-                                        styles.body1,
-                                        localStyles.descriptionText,
-                                        { color: usesCommentPopupBackground ? colors.UtilityBlue100 : colors.Text01 },
-                                    ]}
-                                    normalStyle={{ whiteSpace: 'normal' }}
-                                    numberOfLines={3}
-                                    wrapText
-                                    projectId={project.id}
-                                    bgColor={backgroundColor}
-                                    leftCustomElement={IconToRender(chat, project)}
-                                >
-                                    {chat.title}
-                                </SocialText>
-                            </View>
-                        </View>
-                        <View style={localStyles.tagsArea}>
-                            <Text
+            <TouchableOpacity
+                onPress={inCommentPopup ? onPress : () => onOpenChat(project.id, chat)}
+                style={{ flex: 1 }}
+                accessible={false}
+            >
+                <View style={localStyles.content}>
+                    <View style={localStyles.titleArea}>
+                        <View style={localStyles.descriptionContainer}>
+                            <SocialText
+                                elementId={`social_text_${project.id}_${chat.id}`}
                                 style={[
-                                    styles.caption2,
-                                    { color: usesCommentPopupBackground ? colors.UtilityBlue125 : colors.Text03 },
+                                    styles.body1,
+                                    localStyles.descriptionText,
+                                    { color: usesCommentPopupBackground ? colors.UtilityBlue100 : colors.Text01 },
                                 ]}
+                                normalStyle={{ whiteSpace: 'normal' }}
+                                numberOfLines={3}
+                                wrapText
+                                projectId={project.id}
+                                bgColor={backgroundColor}
+                                leftCustomElement={IconToRender(chat, project)}
                             >
-                                {parseDate(chat.lastEditionDate)}
-                            </Text>
-                            {!!notificationsAmount && (
-                                <ChatIndicator
-                                    notificationsAmount={notificationsAmount}
-                                    backgroundColor={
-                                        !isLoadingData && (totalFollowed > 0 ? colors.UtilityRed200 : colors.Gray500)
-                                    }
-                                />
-                            )}
-                            <View style={{ flexDirection: 'row', marginLeft: 'auto' }}>
-                                {chat.noteId && (
-                                    <ObjectNoteTag
-                                        objectId={chat.id}
-                                        objectType="chats"
-                                        projectId={project.id}
-                                        style={{ marginLeft: 8 }}
-                                    />
-                                )}
-                            </View>
+                                {chat.title}
+                            </SocialText>
                         </View>
                     </View>
-                    {/* The one-line teaser would repeat the newest unread message that is already
-                        rendered in full just below, so it stands down while a preview is shown. */}
-                    {!!chat.commentsData && !hasUnreadPreview && (
-                        <ChatItemLastComment
-                            projectId={project.id}
-                            commentOwnerId={chat.commentsData.lastCommentOwnerId}
-                            comment={chat.commentsData.lastComment}
-                            inCommentPopup={usesCommentPopupBackground}
-                        />
-                    )}
-                </TouchableOpacity>
-                {hasUnreadPreview && (
-                    <ChatItemUnreadMessages project={project} chat={chat} unreadCommentIds={unreadCommentIds} />
+                    <View style={localStyles.tagsArea}>
+                        <Text
+                            style={[
+                                styles.caption2,
+                                { color: usesCommentPopupBackground ? colors.UtilityBlue125 : colors.Text03 },
+                            ]}
+                        >
+                            {parseDate(chat.lastEditionDate)}
+                        </Text>
+                        {!!notificationsAmount && (
+                            <ChatIndicator
+                                notificationsAmount={notificationsAmount}
+                                backgroundColor={
+                                    !isLoadingData && (totalFollowed > 0 ? colors.UtilityRed200 : colors.Gray500)
+                                }
+                            />
+                        )}
+                        <View style={{ flexDirection: 'row', marginLeft: 'auto' }}>
+                            {chat.noteId && (
+                                <ObjectNoteTag
+                                    objectId={chat.id}
+                                    objectType="chats"
+                                    projectId={project.id}
+                                    style={{ marginLeft: 8 }}
+                                />
+                            )}
+                        </View>
+                    </View>
+                </View>
+                {!!chat.commentsData && (
+                    <ChatItemLastComment
+                        projectId={project.id}
+                        commentOwnerId={chat.commentsData.lastCommentOwnerId}
+                        comment={chat.commentsData.lastComment}
+                        inCommentPopup={usesCommentPopupBackground}
+                    />
                 )}
-            </View>
+            </TouchableOpacity>
         </View>
     )
 }

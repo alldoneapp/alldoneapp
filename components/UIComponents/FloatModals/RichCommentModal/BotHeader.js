@@ -1,33 +1,21 @@
 import React from 'react'
 import { View, Text, StyleSheet } from 'react-native'
-import { shallowEqual, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
-import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
+import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 
 export default function BotHeader({ projectId, assistantId }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    useSelector(
-        state => ({
-            projectAssistants: state.projectAssistants,
-            globalAssistants: state.globalAssistants,
-            defaultAssistant: state.defaultAssistant,
-            loggedUserProjects: state.loggedUserProjects,
-            loggedUserProjectsMap: state.loggedUserProjectsMap,
-        }),
-        shallowEqual
-    )
 
-    const assistant = resolveAssistantForProjectObject(projectId, assistantId)
-    const effectiveAssistantId = assistant?.uid || assistantId
-    const { photoURL50, displayName } = assistant || {}
+    const { photoURL50, displayName } = getAssistantInProjectObject(projectId, assistantId)
 
     return (
         <View style={{ flexDirection: 'row' }}>
             <AssistantAvatar
                 photoURL={photoURL50}
-                assistantId={effectiveAssistantId}
+                assistantId={assistantId}
                 size={24}
                 containerStyle={{ marginRight: 8 }}
             />

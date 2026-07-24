@@ -2,7 +2,6 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
-import { colors } from '../../styles/global'
 import EmailLabelChip from './EmailLabelChip'
 import useEmailLabelGroups from './useEmailLabelGroups'
 import { getProjectLineEmailChipLimit, getUnassignedEmailLabelGroups } from './emailLineHelper'
@@ -22,20 +21,17 @@ export default function AllProjectsEmailLabelChips() {
 
     return (
         <View style={localStyles.row}>
-            <View style={localStyles.group}>
-                {visibleGroups.map((group, index) => (
-                    <EmailLabelChip
-                        key={group.key}
-                        group={group}
-                        allGroups={groups}
-                        labelOptionsByConnectionId={labelOptionsByConnectionId}
-                        labelingDisabledByConnectionId={labelingDisabledByConnectionId}
-                        compact
-                        showIcon={index === 0}
-                        style={localStyles.chip}
-                    />
-                ))}
-            </View>
+            {visibleGroups.map(group => (
+                <EmailLabelChip
+                    key={group.key}
+                    group={group}
+                    allGroups={groups}
+                    labelOptionsByConnectionId={labelOptionsByConnectionId}
+                    labelingDisabledByConnectionId={labelingDisabledByConnectionId}
+                    compact
+                    style={localStyles.chip}
+                />
+            ))}
         </View>
     )
 }
@@ -49,26 +45,8 @@ const localStyles = StyleSheet.create({
         flexShrink: 1,
         minWidth: 0,
     },
-    group: {
-        height: 24,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: colors.Text03,
-        backgroundColor: colors.Grey300,
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexShrink: 1,
-        minWidth: 0,
-        marginLeft: 8,
-    },
     chip: {
-        borderWidth: 0,
-        borderRadius: 0,
-        // The shared outer pill owns the opaque surface and its rounded corners.
-        backgroundColor: 'transparent',
-        flexShrink: 1,
-        minWidth: 0,
-        marginLeft: 0,
+        marginLeft: 8,
         marginRight: 0,
         marginBottom: 0,
     },
