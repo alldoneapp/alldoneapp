@@ -918,6 +918,24 @@ describe('a VM job that stops to ask the user a question', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
+    it('does not advance again after the interaction already moved the task to the next step', async () => {
+        mockStore.set(
+            `items/${PROJECT}/tasks/${TASK}`,
+            taskOnAiStep({
+                currentReviewerId: HUMAN_REVIEWER,
+                stepHistory: [-1, AI_STEP, NEXT_STEP],
+            })
+        )
+        seedVmJob('completed', { interactionExpiresAt: 0 })
+
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
+            currentReviewerId: HUMAN_REVIEWER,
+            stepHistory: [-1, AI_STEP, NEXT_STEP],
+        })
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+    })
+
     it('still abandons a job that simply hangs, with no interaction to justify waiting', async () => {
         seedVmJob('initiated')
 
