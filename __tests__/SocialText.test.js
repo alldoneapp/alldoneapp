@@ -1,5 +1,5 @@
 import React from 'react'
-import SocialText from '../components/UIControls/SocialText'
+import SocialText from '../components/UIControls/SocialText/SocialText'
 
 import renderer from 'react-test-renderer'
 

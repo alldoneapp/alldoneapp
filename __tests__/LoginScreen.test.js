@@ -1,12 +1,17 @@
 import React from 'react'
-import LoginScreen from '../components/LoginScreen'
+import LoginScreen from '../components/LoginScreen/LoginScreen'
 import store from '../redux/store'
 import { Provider } from 'react-redux'
 
 import renderer from 'react-test-renderer'
-import { setOnline } from '../redux/actions'
 
-jest.mock('../utils/backends/firestore')
+// The notes helper calls getNotesCollaborationServerData while its module is
+// still evaluating, and the automocked binding is not populated yet through
+// the import cycle, so it has to be supplied explicitly.
+jest.mock('../utils/backends/firestore', () => ({
+    ...jest.genMockFromModule('../utils/backends/firestore'),
+    getNotesCollaborationServerData: () => ({ NOTES_COLLABORATION_SERVER: 'ws://localhost:1234' }),
+}))
 
 jest.mock('../components/MyPlatform', () => {
     return {
@@ -33,6 +38,7 @@ jest.mock('../utils/BackendBridge', () => {
                 innerValues = x
             },
             mapUserData: () => {},
+            isMobileDevice: () => false,
         },
     }
 })
@@ -49,7 +55,6 @@ const initialState = {
 }
 
 describe('LoginScreen component', () => {
-    store.dispatch(setOnline(true))
     describe('method test', () => {
         xit('after call componentDidMount should render correctly', () => {
             const tree = renderer.create(<LoginScreen />)
