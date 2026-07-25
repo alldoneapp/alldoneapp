@@ -31,7 +31,11 @@ describe('NotificationModalMandatory component', () => {
 
     describe('Clicking the resfresh button works', () => {
         it('test', async () => {
-            const { findByTestId } = render(<NotificationModalMandatory />)
+            const { findByTestId } = render(
+                <Provider store={store}>
+                    <NotificationModalMandatory />
+                </Provider>
+            )
             const button = await findByTestId('refreshMandatory')
             fireEvent.press(button)
         })

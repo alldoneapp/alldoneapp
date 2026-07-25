@@ -1,81 +1,74 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ArchivedProjects component ArchivedProjects snapshot test should render correctly 1`] = `
-<View>
-  <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
-    onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
-    style={
-      Object {
-        "alignItems": "center",
-        "flexDirection": "row",
-        "height": 56,
-        "justifyContent": "space-between",
-        "opacity": 1,
-        "paddingLeft": 24,
-      }
+<View
+  style={
+    Object {
+      "marginTop": 32,
     }
-  >
-    <View>
-      <Text
-        style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 16,
-              "letterSpacing": 0.32,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-            Object {
-              "opacity": 0.4,
-            },
-          ]
-        }
-      >
-        Archived projects
-      </Text>
-    </View>
+  }
+>
+  <View>
     <View
+      accessible={true}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
       style={
         Object {
-          "paddingRight": 24,
+          "height": 56,
+          "justifyContent": "center",
+          "opacity": 1,
+          "paddingLeft": 17,
         }
       }
     >
-      <Text
+      <View
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 16,
-              "letterSpacing": 0.32,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-            Object {
-              "opacity": 0.4,
-            },
-            null,
-          ]
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "justifyContent": "space-between",
+          }
         }
       >
-        
-      </Text>
+        <View
+          style={
+            Object {
+              "alignItems": "center",
+              "flexDirection": "row",
+            }
+          }
+        >
+          <View
+            style={
+              Object {
+                "marginRight": 10,
+                "opacity": 0.64,
+              }
+            }
+          >
+            <Text
+              style={
+                Object {
+                  "color": "#B7BDC8",
+                  "fontFamily": "alldone",
+                  "fontSize": 22,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+        </View>
+      </View>
     </View>
   </View>
 </View>

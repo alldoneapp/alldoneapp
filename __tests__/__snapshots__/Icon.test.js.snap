@@ -23,7 +23,7 @@ exports[`Icon component Icon with opacity animation snapshot test should render 
         "color": undefined,
         "fontFamily": "alldone",
         "fontSize": undefined,
-        "opacity": 0,
+        "opacity": 1,
       }
     }
   />

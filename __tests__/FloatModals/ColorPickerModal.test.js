@@ -1,26 +1,35 @@
 import React from 'react'
-import ColorPickerModal from '../../components/UIComponents/FloatModals/ColorPickerModal'
-
+import { Provider } from 'react-redux'
 import renderer from 'react-test-renderer'
-import { colors } from '../../components/styles/global'
+
+import ColorPickerModal from '../../components/UIComponents/FloatModals/ColorPickerModal'
+import store from '../../redux/store'
+
+// selectColor used to be a method on the class; it is a prop now, so the
+// behaviour is driven through the rendered swatches instead of an instance.
+const render = (props = {}) =>
+    renderer.create(
+        <Provider store={store}>
+            <ColorPickerModal closePopover={() => {}} {...props} />
+        </Provider>
+    )
 
 describe('ColorPickerModal component', () => {
-    describe('ColorPickerModal snapshot test', () => {
-        it('Should render correctly', () => {
-            const tree = renderer.create(<ColorPickerModal closePopover={() => {}} />).toJSON()
-            expect(tree).toMatchSnapshot()
-        })
+    it('Should render correctly', () => {
+        expect(render().toJSON()).toMatchSnapshot()
     })
 
-    describe('Function selectColor snapshot test', () => {
-        it('Should execute and render correctly', () => {
-            const tree = renderer.create(<ColorPickerModal selectColor={() => {}} closePopover={() => {}} />)
+    it('hands the chosen colour back to its caller', () => {
+        const selectColor = jest.fn()
+        const tree = render({ selectColor })
 
-            tree.getInstance().selectColor(colors.ProjectColor400)
-            expect(tree.toJSON()).toMatchSnapshot()
+        const pressables = tree.root.findAll(node => typeof node.props.onPress === 'function')
+        expect(pressables.length).toBeGreaterThan(0)
 
-            const state = tree.getInstance().state
-            expect(state.selectedColor).toEqual(colors.ProjectColor400)
+        renderer.act(() => {
+            pressables[0].props.onPress()
         })
+
+        expect(selectColor).toHaveBeenCalled()
     })
 })

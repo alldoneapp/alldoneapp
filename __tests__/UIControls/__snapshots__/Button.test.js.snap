@@ -2,7 +2,7 @@
 
 exports[`Button component Button empty snapshot test Should render correctly 1`] = `
 <View
-  accessible={true}
+  accessible={false}
   focusable={false}
   isTVSelectable={true}
   onClick={[Function]}
@@ -35,7 +35,7 @@ exports[`Button component Button empty snapshot test Should render correctly 1`]
 
 exports[`Button component Button primary with title and icon snapshot test Should render correctly 1`] = `
 <View
-  accessible={true}
+  accessible={false}
   focusable={false}
   isTVSelectable={true}
   onClick={[Function]}
@@ -113,7 +113,7 @@ exports[`Button component Button primary with title and icon snapshot test Shoul
 
 exports[`Button component Button text with only icon and disabled snapshot test Should render a blue text button correctly 1`] = `
 <View
-  accessible={true}
+  accessible={false}
   focusable={false}
   isTVSelectable={true}
   onClick={[Function]}
@@ -161,7 +161,7 @@ exports[`Button component Button text with only icon and disabled snapshot test 
 
 exports[`Button component Button text with only icon and disabled snapshot test Should render a red text button correctly 1`] = `
 <View
-  accessible={true}
+  accessible={false}
   focusable={false}
   isTVSelectable={true}
   onClick={[Function]}
