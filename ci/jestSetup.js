@@ -14,3 +14,14 @@ jest.mock('expo-localization', () => ({
     ],
     getCalendars: () => [],
 }))
+
+// The jest `react-native` preset validates styles against the *native* prop
+// whitelist, while the app renders through react-native-web. Web-only values
+// such as `display: 'inline-flex'` (components/Tags/LinkTag.js) are legal in
+// the browser but make StyleSheet.create() throw here, which takes down every
+// suite that transitively imports the tag components.
+jest.mock('react-native/Libraries/StyleSheet/StyleSheetValidation', () => ({
+    validateStyle: () => {},
+    validateStyleProp: () => {},
+    addValidStylePropTypes: () => {},
+}))

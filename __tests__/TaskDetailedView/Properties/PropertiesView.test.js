@@ -5,7 +5,7 @@
 import React from 'react'
 import PropertiesView from '../../../components/TaskDetailedView/Properties/PropertiesView'
 import store from '../../../redux/store'
-import { storeLoggedUserProjects, setAssignee, storeCurrentUser } from '../../../redux/actions'
+import { setAssignee, storeCurrentUser } from '../../../redux/actions'
 
 import renderer from 'react-test-renderer'
 
@@ -16,7 +16,6 @@ describe('PropertiesView component', () => {
         },
     }
     const task = { id: 'id1', name: 'task1', recurrence: { type: 'never' } }
-    store.dispatch(storeLoggedUserProjects([{ id: 'id0', color: 'white' }]))
 
     describe('PropertiesView snapshot test', () => {
         xit('should render correctly', () => {
