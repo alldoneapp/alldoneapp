@@ -41,7 +41,10 @@
             "./ci/jestSetup.js"
         ],
         "moduleNameMapper": {
-            "\\.(css|less|scss)$": "<rootDir>/__mocks__/styleMock.js"
+            "\\.(css|less|scss)$": "<rootDir>/__mocks__/styleMock.js",
+            "^firebase-admin/(.*)$": "<rootDir>/functions/node_modules/firebase-admin/lib/$1",
+            "^firebase-functions/v2/(.*)$": "<rootDir>/functions/node_modules/firebase-functions/lib/v2/providers/$1",
+            "^firebase-functions/(logger|params)$": "<rootDir>/functions/node_modules/firebase-functions/lib/$1/index.js"
         },
         "testPathIgnorePatterns": [
             "/node_modules/",
