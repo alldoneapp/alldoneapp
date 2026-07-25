@@ -2,6 +2,7 @@
 
 exports[`EditContact component should render correctly when is a new contact 1`] = `
 <View
+  data-edit-contact="new-contact"
   style={
     Array [
       Object {
@@ -32,8 +33,6 @@ exports[`EditContact component should render correctly when is a new contact 1`]
     style={
       Array [
         Object {
-          "flexDirection": "row",
-          "height": 56,
           "overflow": "hidden",
         },
       ]
@@ -49,7 +48,8 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             "position": "absolute",
             "top": 15,
           },
-          undefined,
+          false,
+          false,
         ]
       }
     >
@@ -68,41 +68,38 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         </Text>
       </View>
     </View>
-    <TextInput
-      allowFontScaling={true}
+    <CustomTextInput3
       autoFocus={true}
-      multiline={false}
-      numberOfLines={1}
-      onChangeText={[Function]}
-      onKeyPress={[Function]}
-      placeholder="Type email or name to add person"
-      placeholderTextColor="#8A94A6"
-      rejectResponderTermination={true}
-      returnKeyType="done"
-      style={
+      containerStyle={
         Array [
           Object {
             "borderTopLeftRadius": 4,
             "borderTopRightRadius": 4,
             "color": "#04142F",
-            "flex": 1,
-            "flexWrap": "wrap",
             "fontFamily": "Roboto-Regular",
             "fontSize": 16,
             "letterSpacing": 0.32,
             "lineHeight": 24,
             "marginLeft": 52,
-            "paddingBottom": 16,
+            "paddingBottom": 12,
             "paddingLeft": 20,
             "paddingRight": 16,
-            "paddingTop": 16,
+            "paddingTop": 14,
             "textAlignVertical": "top",
           },
           undefined,
         ]
       }
-      underlineColorAndroid="transparent"
-      value=""
+      disabledEdition={false}
+      fixedHeight={62}
+      forceTriggerEnterActionForBreakLines={[Function]}
+      initialTextExtended=""
+      multiline={false}
+      numberOfLines={1}
+      onChangeText={[Function]}
+      placeholder="Type email or name to add person"
+      placeholderTextColor="#8A94A6"
+      returnKeyType="done"
     />
   </View>
   <View
@@ -137,8 +134,8 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         }
       >
         <View
-          accessible={true}
-          focusable={false}
+          accessible={false}
+          focusable={true}
           isTVSelectable={true}
           onClick={[Function]}
           onResponderGrant={[Function]}
@@ -157,7 +154,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
               "flexWrap": "nowrap",
               "height": 40,
               "justifyContent": "center",
-              "marginRight": 4,
+              "marginHorizontal": 2,
               "maxHeight": 40,
               "minHeight": 40,
               "opacity": 1,
@@ -214,8 +211,8 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         </View>
       </View>
       <View
-        accessible={true}
-        focusable={false}
+        accessible={false}
+        focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
         onResponderGrant={[Function]}
@@ -237,7 +234,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             "flexWrap": "nowrap",
             "height": 40,
             "justifyContent": "center",
-            "marginRight": 4,
+            "marginHorizontal": 2,
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
@@ -293,8 +290,8 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         </Text>
       </View>
       <View
-        accessible={true}
-        focusable={false}
+        accessible={false}
+        focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
         onResponderGrant={[Function]}
@@ -316,7 +313,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             "flexWrap": "nowrap",
             "height": 40,
             "justifyContent": "center",
-            "marginRight": 4,
+            "marginHorizontal": 2,
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
@@ -372,8 +369,8 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         </Text>
       </View>
       <View
-        accessible={true}
-        focusable={false}
+        accessible={false}
+        focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
         onResponderGrant={[Function]}
@@ -395,7 +392,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             "flexWrap": "nowrap",
             "height": 40,
             "justifyContent": "center",
-            "marginRight": 4,
+            "marginHorizontal": 2,
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
@@ -447,8 +444,138 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             ]
           }
         >
-          Public
+          Project-wide
         </Text>
+      </View>
+      <View
+        accessible={false}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "transparent",
+            "borderColor": "#C6CDD2",
+            "borderRadius": 4,
+            "borderStyle": "solid",
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginHorizontal": 2,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 12,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <View>
+          <Text
+            style={
+              Object {
+                "color": "#8A94A6",
+                "fontFamily": "alldone",
+                "fontSize": 24,
+                "opacity": 1,
+              }
+            }
+          >
+            
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 12,
+              },
+            ]
+          }
+        >
+          None
+        </Text>
+      </View>
+      <View>
+        <View
+          accessible={false}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "alignSelf": "flex-start",
+              "backgroundColor": "transparent",
+              "borderColor": "#C6CDD2",
+              "borderRadius": 4,
+              "borderStyle": "solid",
+              "borderWidth": 1,
+              "flexDirection": "row",
+              "flexWrap": "nowrap",
+              "height": 40,
+              "justifyContent": "center",
+              "marginHorizontal": 2,
+              "maxHeight": 40,
+              "minHeight": 40,
+              "opacity": 1,
+              "paddingLeft": 8,
+              "paddingRight": 8,
+              "paddingVertical": 8,
+            }
+          }
+        >
+          <View>
+            <Text
+              style={
+                Object {
+                  "color": "#8A94A6",
+                  "fontFamily": "alldone",
+                  "fontSize": 24,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
     <View
@@ -465,7 +592,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
       }
     >
       <View
-        accessible={true}
+        accessible={false}
         focusable={false}
         isTVSelectable={true}
         onClick={[Function]}
@@ -485,7 +612,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             "flexWrap": "nowrap",
             "height": 40,
             "justifyContent": "center",
-            "marginRight": 4,
+            "marginHorizontal": 4,
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
@@ -527,7 +654,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         </Text>
       </View>
       <View
-        accessible={true}
+        accessible={false}
         focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
@@ -594,6 +721,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
 
 exports[`EditContact component should render correctly when is not a new contact 1`] = `
 <View
+  data-edit-contact="undefined"
   style={
     Array [
       Object {
@@ -624,8 +752,6 @@ exports[`EditContact component should render correctly when is not a new contact
     style={
       Array [
         Object {
-          "flexDirection": "row",
-          "height": 56,
           "overflow": "hidden",
         },
       ]
@@ -641,59 +767,424 @@ exports[`EditContact component should render correctly when is not a new contact
             "position": "absolute",
             "top": 15,
           },
-          undefined,
+          Object {
+            "left": 15,
+            "top": 7,
+          },
+          false,
         ]
       }
     >
-      <View>
-        <Text
-          style={
-            Object {
-              "color": "#007FFF",
-              "fontFamily": "alldone",
-              "fontSize": 24,
-              "opacity": 1,
-            }
+      <View
+        style={
+          Object {
+            "borderRadius": 100,
+            "height": 48,
+            "overflow": "hidden",
+            "width": 48,
           }
+        }
+      >
+        <RNSVGSvgView
+          align="xMidYMid"
+          bbHeight={48}
+          bbWidth={48}
+          focusable={false}
+          height={48}
+          meetOrSlice={0}
+          minX={0}
+          minY={0}
+          style={
+            Array [
+              Object {
+                "backgroundColor": "transparent",
+                "borderWidth": 0,
+              },
+              Object {
+                "overflow": "visible",
+              },
+              Object {
+                "opacity": 1,
+              },
+              Object {
+                "flex": 0,
+                "height": 48,
+                "width": 48,
+              },
+            ]
+          }
+          svgid="ci_p_undefined_undefined"
+          vbHeight={343.958}
+          vbWidth={343.958}
+          width={48}
         >
-          
-        </Text>
+          <RNSVGGroup
+            fill={4278190080}
+            fillOpacity={1}
+            fillRule={1}
+            font={Object {}}
+            matrix={
+              Array [
+                1,
+                0,
+                0,
+                1,
+                0,
+                0,
+              ]
+            }
+            opacity={1}
+            originX={0}
+            originY={0}
+            propList={Array []}
+            rotation={0}
+            scaleX={1}
+            scaleY={1}
+            skewX={0}
+            skewY={0}
+            stroke={null}
+            strokeDasharray={null}
+            strokeDashoffset={null}
+            strokeLinecap={0}
+            strokeLinejoin={0}
+            strokeMiterlimit={4}
+            strokeOpacity={1}
+            strokeWidth={1}
+            vectorEffect={0}
+            x={0}
+            y={0}
+          >
+            <RNSVGDefs>
+              <RNSVGLinearGradient
+                gradient={
+                  Array [
+                    0,
+                    -16218881,
+                    0.271,
+                    -10506241,
+                    1,
+                    -2495233,
+                  ]
+                }
+                gradientTransform={
+                  Array [
+                    1,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                  ]
+                }
+                gradientUnits={0}
+                name="ci_p_undefined_undefinedprefix__c"
+                x1="0%"
+                x2="100%"
+                y1="0%"
+                y2="0%"
+              />
+              <RNSVGLinearGradient
+                gradient={
+                  Array [
+                    0,
+                    -4136705,
+                    0.705,
+                    -8208129,
+                    1,
+                    -11688193,
+                  ]
+                }
+                gradientTransform={
+                  Array [
+                    1,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                  ]
+                }
+                gradientUnits={0}
+                name="ci_p_undefined_undefinedprefix__b"
+                x1="0%"
+                x2="100%"
+                y1="0%"
+                y2="0%"
+              />
+              <RNSVGLinearGradient
+                gradient={
+                  Array [
+                    0,
+                    -10112257,
+                    1,
+                    -2495233,
+                  ]
+                }
+                gradientTransform={
+                  Array [
+                    1,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                  ]
+                }
+                gradientUnits={0}
+                name="ci_p_undefined_undefinedprefix__a"
+                x1="0%"
+                x2="100%"
+                y1="0%"
+                y2="0%"
+              />
+              <RNSVGRadialGradient
+                cx={307.173}
+                cy={102.456}
+                fx={307.173}
+                fy={102.456}
+                gradient={Array []}
+                gradientTransform={
+                  Array [
+                    -1.8597615451987388,
+                    1.8597615451987386,
+                    -1.8597615451987386,
+                    -1.8597615451987388,
+                    1079.2799190310316,
+                    -342.8403460783472,
+                  ]
+                }
+                gradientUnits={1}
+                name="ci_p_undefined_undefinedprefix__e"
+                rx={61.434}
+                ry={61.434}
+              />
+              <RNSVGRadialGradient
+                cx={647.026}
+                cy={589.924}
+                fx={647.026}
+                fy={589.924}
+                gradient={Array []}
+                gradientTransform={
+                  Array [
+                    -0.9867109446033321,
+                    0.9867109446033323,
+                    -0.986718015671144,
+                    -0.9867180156711439,
+                    1867.5386507595636,
+                    703.9041625994377,
+                  ]
+                }
+                gradientUnits={1}
+                name="ci_p_undefined_undefinedprefix__d"
+                rx={547.021}
+                ry={547.021}
+              />
+            </RNSVGDefs>
+            <RNSVGGroup
+              fill={4278190080}
+              fillOpacity={1}
+              fillRule={1}
+              font={Object {}}
+              matrix={
+                Array [
+                  1,
+                  0,
+                  0,
+                  1,
+                  -146.277,
+                  4.158,
+                ]
+              }
+              opacity={1}
+              originX={0}
+              originY={0}
+              propList={Array []}
+              rotation={0}
+              scaleX={1}
+              scaleY={1}
+              skewX={0}
+              skewY={0}
+              stroke={null}
+              strokeDasharray={null}
+              strokeDashoffset={null}
+              strokeLinecap={0}
+              strokeLinejoin={0}
+              strokeMiterlimit={4}
+              strokeOpacity={1}
+              strokeWidth={1}
+              vectorEffect={0}
+              x={0}
+              y={0}
+            >
+              <RNSVGRect
+                fill={4293389551}
+                fillOpacity={1}
+                fillRule={1}
+                height={343.958}
+                matrix={
+                  Array [
+                    1,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                  ]
+                }
+                opacity={1}
+                originX={0}
+                originY={0}
+                propList={
+                  Array [
+                    "fill",
+                  ]
+                }
+                rotation={0}
+                ry={1}
+                scaleX={1}
+                scaleY={1}
+                skewX={0}
+                skewY={0}
+                stroke={null}
+                strokeDasharray={null}
+                strokeDashoffset={null}
+                strokeLinecap={0}
+                strokeLinejoin={0}
+                strokeMiterlimit={4}
+                strokeOpacity={1}
+                strokeWidth={1}
+                vectorEffect={0}
+                width={343.958}
+                x={146.277}
+                y={-4.158}
+              />
+              <RNSVGPath
+                d="M647.025 674.781L505.076 696.5l5.557 124.754c2.673 60.035-34.896 96.585-85.863 123.238-73.407 38.388-141.01 42.63-217.688 72.768-54.044 21.242-107.076 81.064-107.076 154.387V1300h1094.04v-128.353c0-73.323-53.031-133.145-107.075-154.387-76.68-30.139-144.282-34.38-217.688-72.768-50.967-26.653-88.537-63.203-85.863-123.238l5.557-124.754z"
+                fill={
+                  Array [
+                    1,
+                    "ci_p_undefined_undefinedprefix__d",
+                  ]
+                }
+                fillOpacity={1}
+                fillRule={1}
+                matrix={
+                  Array [
+                    0.26458,
+                    0,
+                    0,
+                    0.26458,
+                    146.277,
+                    -4.158,
+                  ]
+                }
+                opacity={1}
+                originX={0}
+                originY={0}
+                propList={
+                  Array [
+                    "fill",
+                  ]
+                }
+                rotation={0}
+                scaleX={1}
+                scaleY={1}
+                skewX={0}
+                skewY={0}
+                stroke={null}
+                strokeDasharray={null}
+                strokeDashoffset={null}
+                strokeLinecap={0}
+                strokeLinejoin={0}
+                strokeMiterlimit={4}
+                strokeOpacity={1}
+                strokeWidth={1}
+                vectorEffect={0}
+                x={0}
+                y={0}
+              />
+              <RNSVGPath
+                d="M317.469 37.885c-17.27 0-32.538 2.566-46.52 15.896-8.9 8.485-13.283 20.62-13.838 33.368-.49 11.266 1.726 21.229 3.36 31.774h.007c-2.47.93-4.057 3.436-4.322 6.104-.548 5.529.868 12.494 2.08 17.385 1.644 6.63 5.33 15.219 11.21 18.435 3.504 15.13 8.366 24.986 16.51 35.427 7.844 10.057 20.703 17.471 31.513 17.471 10.81 0 23.668-7.414 31.513-17.471 8.144-10.44 13.005-20.297 16.51-35.427 5.879-3.216 9.566-11.804 11.21-18.435 1.212-4.891 2.627-11.856 2.08-17.385-.265-2.668-1.853-5.173-4.322-6.104h.006c1.634-10.545 3.85-20.508 3.36-31.774-.554-12.748-4.938-24.883-13.837-33.368-13.982-13.33-29.25-15.896-46.52-15.896z"
+                fill={
+                  Array [
+                    1,
+                    "ci_p_undefined_undefinedprefix__e",
+                  ]
+                }
+                fillOpacity={1}
+                fillRule={1}
+                matrix={
+                  Array [
+                    1,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                  ]
+                }
+                opacity={1}
+                originX={0}
+                originY={0}
+                propList={
+                  Array [
+                    "fill",
+                  ]
+                }
+                rotation={0}
+                scaleX={1}
+                scaleY={1}
+                skewX={0}
+                skewY={0}
+                stroke={null}
+                strokeDasharray={null}
+                strokeDashoffset={null}
+                strokeLinecap={0}
+                strokeLinejoin={0}
+                strokeMiterlimit={4}
+                strokeOpacity={1}
+                strokeWidth={1}
+                vectorEffect={0}
+                x={0}
+                y={0}
+              />
+            </RNSVGGroup>
+          </RNSVGGroup>
+        </RNSVGSvgView>
       </View>
     </View>
-    <TextInput
-      allowFontScaling={true}
+    <CustomTextInput3
       autoFocus={true}
-      multiline={false}
-      numberOfLines={1}
-      onChangeText={[Function]}
-      onKeyPress={[Function]}
-      placeholder="Type email or name to add person"
-      placeholderTextColor="#8A94A6"
-      rejectResponderTermination={true}
-      returnKeyType="done"
-      style={
+      containerStyle={
         Array [
           Object {
             "borderTopLeftRadius": 4,
             "borderTopRightRadius": 4,
             "color": "#04142F",
-            "flex": 1,
-            "flexWrap": "wrap",
             "fontFamily": "Roboto-Regular",
             "fontSize": 16,
             "letterSpacing": 0.32,
             "lineHeight": 24,
             "marginLeft": 52,
-            "paddingBottom": 16,
+            "paddingBottom": 12,
             "paddingLeft": 20,
             "paddingRight": 16,
-            "paddingTop": 16,
+            "paddingTop": 14,
             "textAlignVertical": "top",
           },
           undefined,
         ]
       }
-      underlineColorAndroid="transparent"
+      disabledEdition={false}
+      fixedHeight={62}
+      forceTriggerEnterActionForBreakLines={[Function]}
+      multiline={false}
+      numberOfLines={1}
+      onChangeText={[Function]}
+      onMentionSelected={[Function]}
+      placeholder="Type email or name to add person"
+      placeholderTextColor="#8A94A6"
+      returnKeyType="done"
     />
   </View>
   <View
@@ -728,8 +1219,8 @@ exports[`EditContact component should render correctly when is not a new contact
         }
       >
         <View
-          accessible={true}
-          focusable={false}
+          accessible={false}
+          focusable={true}
           isTVSelectable={true}
           onClick={[Function]}
           onResponderGrant={[Function]}
@@ -748,7 +1239,7 @@ exports[`EditContact component should render correctly when is not a new contact
               "flexWrap": "nowrap",
               "height": 40,
               "justifyContent": "center",
-              "marginRight": 4,
+              "marginHorizontal": 2,
               "maxHeight": 40,
               "minHeight": 40,
               "opacity": 1,
@@ -805,8 +1296,8 @@ exports[`EditContact component should render correctly when is not a new contact
         </View>
       </View>
       <View
-        accessible={true}
-        focusable={false}
+        accessible={false}
+        focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
         onResponderGrant={[Function]}
@@ -828,7 +1319,7 @@ exports[`EditContact component should render correctly when is not a new contact
             "flexWrap": "nowrap",
             "height": 40,
             "justifyContent": "center",
-            "marginRight": 4,
+            "marginHorizontal": 2,
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
@@ -884,8 +1375,8 @@ exports[`EditContact component should render correctly when is not a new contact
         </Text>
       </View>
       <View
-        accessible={true}
-        focusable={false}
+        accessible={false}
+        focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
         onResponderGrant={[Function]}
@@ -907,7 +1398,7 @@ exports[`EditContact component should render correctly when is not a new contact
             "flexWrap": "nowrap",
             "height": 40,
             "justifyContent": "center",
-            "marginRight": 4,
+            "marginHorizontal": 2,
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
@@ -928,6 +1419,7 @@ exports[`EditContact component should render correctly when is not a new contact
           }
         >
           <Image
+            source=""
             style={
               Object {
                 "height": 24,
@@ -967,9 +1459,90 @@ exports[`EditContact component should render correctly when is not a new contact
           Picture
         </Text>
       </View>
+      <View>
+        <View
+          accessible={false}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "alignSelf": "flex-start",
+              "backgroundColor": "transparent",
+              "borderColor": "#C6CDD2",
+              "borderRadius": 4,
+              "borderStyle": "solid",
+              "borderWidth": 1,
+              "flexDirection": "row",
+              "flexWrap": "nowrap",
+              "height": 40,
+              "justifyContent": "center",
+              "marginHorizontal": 2,
+              "maxHeight": 40,
+              "minHeight": 40,
+              "opacity": 1,
+              "paddingLeft": 12,
+              "paddingRight": 16,
+              "paddingVertical": 8,
+            }
+          }
+        >
+          <View>
+            <Text
+              style={
+                Object {
+                  "color": "#8A94A6",
+                  "fontFamily": "alldone",
+                  "fontSize": 24,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+          <Text
+            numberOfLines={1}
+            style={
+              Array [
+                Array [
+                  Object {
+                    "alignSelf": "center",
+                    "color": "#FFFFFF",
+                    "flexWrap": "nowrap",
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 14,
+                    "letterSpacing": 0.8,
+                    "lineHeight": 16,
+                    "margin": 0,
+                    "paddingHorizontal": 0,
+                    "paddingVertical": 0,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                  },
+                  Object {},
+                ],
+                Object {
+                  "marginLeft": 12,
+                },
+              ]
+            }
+          >
+            Comment
+          </Text>
+        </View>
+      </View>
       <View
-        accessible={true}
-        focusable={false}
+        accessible={false}
+        focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
         onResponderGrant={[Function]}
@@ -991,7 +1564,7 @@ exports[`EditContact component should render correctly when is not a new contact
             "flexWrap": "nowrap",
             "height": 40,
             "justifyContent": "center",
-            "marginRight": 4,
+            "marginHorizontal": 2,
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
@@ -1012,7 +1585,7 @@ exports[`EditContact component should render correctly when is not a new contact
               }
             }
           >
-            
+            
           </Text>
         </View>
         <Text
@@ -1043,8 +1616,59 @@ exports[`EditContact component should render correctly when is not a new contact
             ]
           }
         >
-          Public
+          None
         </Text>
+      </View>
+      <View>
+        <View
+          accessible={false}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
+          style={
+            Object {
+              "alignItems": "center",
+              "alignSelf": "flex-start",
+              "backgroundColor": "transparent",
+              "borderColor": "#C6CDD2",
+              "borderRadius": 4,
+              "borderStyle": "solid",
+              "borderWidth": 1,
+              "flexDirection": "row",
+              "flexWrap": "nowrap",
+              "height": 40,
+              "justifyContent": "center",
+              "marginHorizontal": 2,
+              "maxHeight": 40,
+              "minHeight": 40,
+              "opacity": 1,
+              "paddingLeft": 8,
+              "paddingRight": 8,
+              "paddingVertical": 8,
+            }
+          }
+        >
+          <View>
+            <Text
+              style={
+                Object {
+                  "color": "#8A94A6",
+                  "fontFamily": "alldone",
+                  "fontSize": 24,
+                  "opacity": 1,
+                }
+              }
+            >
+              
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
     <View
@@ -1061,7 +1685,7 @@ exports[`EditContact component should render correctly when is not a new contact
       }
     >
       <View
-        accessible={true}
+        accessible={false}
         focusable={false}
         isTVSelectable={true}
         onClick={[Function]}
@@ -1081,7 +1705,7 @@ exports[`EditContact component should render correctly when is not a new contact
             "flexWrap": "nowrap",
             "height": 40,
             "justifyContent": "center",
-            "marginRight": 4,
+            "marginHorizontal": 4,
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
@@ -1123,7 +1747,7 @@ exports[`EditContact component should render correctly when is not a new contact
         </Text>
       </View>
       <View
-        accessible={true}
+        accessible={false}
         focusable={true}
         isTVSelectable={true}
         onClick={[Function]}

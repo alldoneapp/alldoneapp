@@ -5,12 +5,9 @@ import store from '../../redux/store'
 
 import renderer from 'react-test-renderer'
 
-
 describe('WorkflowModal', () => {
     it('should render correctly', () => {
-        store.dispatch(
-            setProjectsUsers([[{ uid: 0, displayName: 'pepitp' }]])
-        )
+        store.dispatch(setProjectsUsers([[{ uid: 0, displayName: 'pepitp' }]]))
         const json = renderer.create(<WorkflowModal task={{ userIds: [0] }} />).toJSON()
         expect(json).toMatchSnapshot()
     })

@@ -9,16 +9,16 @@ import renderer from 'react-test-renderer'
 import store from '../../redux/store'
 jest.mock('react-tiny-popover')
 
-jest.mock("react-redux", () => ({
-    ...jest.requireActual("react-redux"),
+jest.mock('react-redux', () => ({
+    ...jest.requireActual('react-redux'),
     useSelector: jest.fn().mockImplementation(fnc => {
         return fnc({
-            workflowStep: { reviewerName: 'name', reviewerPhotoURL: 'url' }
+            workflowStep: { reviewerName: 'name', reviewerPhotoURL: 'url' },
         })
     }),
-    useDispatch: jest.fn().mockImplementation(() => () => { }),
-    useStore: jest.fn()
-}));
+    useDispatch: jest.fn().mockImplementation(() => () => {}),
+    useStore: jest.fn(),
+}))
 
 describe('SendTo component', () => {
     const currentUser = { uid: '0', photoURL: 'a', displayName: 'b' }

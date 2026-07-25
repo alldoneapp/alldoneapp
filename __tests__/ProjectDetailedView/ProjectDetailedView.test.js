@@ -22,7 +22,7 @@ describe('ProjectDetailedView component', () => {
         const projects = [{ name: 'My Project', userIds: [] }]
         store.dispatch(storeLoggedUserProjects(projects))
         store.dispatch(setProjectsUsers(projects))
-        const tree = renderer.create(<ProjectDetailedView navigation={navigation} />).toJSON();
+        const tree = renderer.create(<ProjectDetailedView navigation={navigation} />).toJSON()
         expect(tree).toMatchSnapshot()
     })
 })

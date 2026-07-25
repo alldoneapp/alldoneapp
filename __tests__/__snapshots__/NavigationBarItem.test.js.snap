@@ -25,13 +25,13 @@ exports[`NavigationBarItem component NavigationBarItem mobile snapshot test shou
         Object {
           "flexDirection": "row",
         },
-        undefined,
+        false,
         Object {
           "alignItems": "center",
           "height": 44,
           "justifyContent": "center",
-          "marginLeft": 20,
-          "marginRight": 20,
+          "marginLeft": 16,
+          "marginRight": 16,
           "marginTop": "auto",
         },
       ]
@@ -52,7 +52,9 @@ exports[`NavigationBarItem component NavigationBarItem mobile snapshot test shou
           },
         ]
       }
-    />
+    >
+      [missing "en." translation]
+    </Text>
   </View>
   <View
     style={
@@ -96,7 +98,7 @@ exports[`NavigationBarItem component NavigationBarItem web snapshot test should 
         Object {
           "flexDirection": "row",
         },
-        undefined,
+        false,
         Object {
           "alignItems": "center",
           "height": 44,
@@ -122,7 +124,9 @@ exports[`NavigationBarItem component NavigationBarItem web snapshot test should 
           },
         ]
       }
-    />
+    >
+      [missing "en." translation]
+    </Text>
   </View>
   <View
     style={

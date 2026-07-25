@@ -8,12 +8,12 @@ import renderer from 'react-test-renderer'
 import { ALL_PROJECTS_INDEX } from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 
 jest.mock('../../utils/NavigationService')
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
-jest.mock("react-redux", () => ({
-    ...jest.requireActual("react-redux"),
-    useSelector: jest.fn()
-}));
+jest.mock('react-redux', () => ({
+    ...jest.requireActual('react-redux'),
+    useSelector: jest.fn(),
+}))
 
 const dummyUserId = 'UUKU61Jc7ET8zE5ncN8F61HE19y1'
 const dummyProject = {
@@ -67,7 +67,7 @@ describe('ProjectItem component', () => {
         it('should correctly handle navigation with browsing history', () => {
             // Given
             const navigation = {
-                closeDrawer: () => { },
+                closeDrawer: () => {},
             }
             const tree = renderer.create(
                 <ProjectItem project={dummyProject} loggedUserId={dummyUserId} navigation={navigation} />
@@ -84,7 +84,7 @@ describe('ProjectItem component', () => {
             store.dispatch(switchProject(0))
             store.dispatch(storeLoggedUserProjects([{ name: 'Build a Stairway To Heaven', id: '0' }]))
             // When
-            instance.onPress({ preventDefault: () => { } })
+            instance.onPress({ preventDefault: () => {} })
             // Then
             expect(window.hist).toBeTruthy()
         })

@@ -5,7 +5,6 @@
 import URLsContacts from '../../../URLSystem/Contacts/URLsContacts'
 import store from '../../../redux/store'
 
-
 describe('URLsContacts', () => {
     it('replace function should work correctly', () => {
         URLsContacts.replace('CONTACT_DETAILS', null, 'p1', 'c1')

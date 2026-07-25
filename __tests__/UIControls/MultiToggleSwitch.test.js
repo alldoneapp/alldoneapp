@@ -3,7 +3,7 @@ import MultiToggleSwitch from '../../components/UIControls/MultiToggleSwitch'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 let options = [
     { icon: 'square', text: 'Open' },

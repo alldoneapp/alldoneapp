@@ -11,10 +11,7 @@ import { storeLoggedUserProjects, setProjectsUsers } from '../../../redux/action
 
 describe('UserProperties component', () => {
     beforeEach(() => {
-        store.dispatch([
-            storeLoggedUserProjects([{ usersData: {} }]),
-            setProjectsUsers([[{}]])
-        ])
+        store.dispatch([storeLoggedUserProjects([{ usersData: {} }]), setProjectsUsers([[{}]])])
     })
     it('should render correctly', () => {
         const tree = renderer.create(<UserProperties projectIndex={0} user={{}} />).toJSON()

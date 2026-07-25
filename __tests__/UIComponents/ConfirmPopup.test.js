@@ -50,7 +50,7 @@ describe('ConfirmPopup component', () => {
         it('Should execute and render correctly', () => {
             const tree = renderer.create(<ConfirmPopup />)
             const instance = tree.getInstance()
-            instance.onKeyDown({ key: 'Escape', preventDefault: () => { } })
+            instance.onKeyDown({ key: 'Escape', preventDefault: () => {} })
             expect(store.getState().showConfirmPopup.visible).toBeFalsy()
             expect(tree.toJSON()).toMatchSnapshot()
         })

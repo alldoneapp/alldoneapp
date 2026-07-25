@@ -3,7 +3,7 @@ import Privacy from '../../../components/TaskDetailedView/Properties/Privacy'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('Privacy component', () => {
     describe('Privacy snapshot test', () => {

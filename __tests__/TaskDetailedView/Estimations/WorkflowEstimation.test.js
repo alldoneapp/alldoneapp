@@ -8,19 +8,21 @@ import Backend from '../../../utils/BackendBridge'
 
 import renderer from 'react-test-renderer'
 
-jest.mock("react-redux", () => ({
-    ...jest.requireActual("react-redux"),
+jest.mock('react-redux', () => ({
+    ...jest.requireActual('react-redux'),
     useSelector: jest.fn().mockImplementation(fnc => {
         return fnc({
             selectedProjectUsers: [{ uid: 0 }],
-            loggedUserProjects: [{ id: '1' }]
+            loggedUserProjects: [{ id: '1' }],
         })
     }),
-}));
+}))
 
 describe('WorkflowEstimation component', () => {
     it('should render correctly', () => {
-        const tree = renderer.create(<WorkflowEstimation task={{ done: true, estimations: [] }} projectId={'1'} />).toJSON()
+        const tree = renderer
+            .create(<WorkflowEstimation task={{ done: true, estimations: [] }} projectId={'1'} />)
+            .toJSON()
         expect(tree).toMatchSnapshot()
     })
 

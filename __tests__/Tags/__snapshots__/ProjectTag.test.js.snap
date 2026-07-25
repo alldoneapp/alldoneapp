@@ -24,11 +24,12 @@ exports[`Project tag component Project tag snapshot test should render correctly
         Object {
           "alignItems": "center",
           "backgroundColor": "#E7ECEF",
-          "borderRadius": 12,
+          "borderRadius": 100,
           "flexDirection": "row",
           "height": 24,
           "justifyContent": "center",
         },
+        undefined,
         Object {
           "marginHorizontal": 16,
         },
@@ -37,24 +38,25 @@ exports[`Project tag component Project tag snapshot test should render correctly
   >
     <View
       style={
-        Object {
-          "marginHorizontal": 4,
-        }
-      }
-    >
-      <Text
-        style={
+        Array [
           Object {
-            "color": "#fff000",
-            "fontFamily": "alldone",
-            "fontSize": 16,
-            "opacity": 1,
-          }
-        }
-      >
-        
-      </Text>
-    </View>
+            "alignItems": "center",
+            "borderRadius": 100,
+            "height": 16,
+            "justifyContent": "center",
+            "width": 16,
+          },
+          Object {
+            "backgroundColor": "#fff000",
+            "height": 12,
+            "width": 12,
+          },
+          Object {
+            "marginHorizontal": 6,
+          },
+        ]
+      }
+    />
     <Text
       style={
         Array [
@@ -71,6 +73,7 @@ exports[`Project tag component Project tag snapshot test should render correctly
             "marginRight": 10,
             "marginVertical": 1,
           },
+          undefined,
         ]
       }
     >

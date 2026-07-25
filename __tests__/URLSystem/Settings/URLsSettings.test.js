@@ -4,12 +4,16 @@
 
 import store from '../../../redux/store'
 import URLsSettings, {
-    URL_SETTINGS, URL_SETTINGS_PROJECTS, URL_SETTINGS_PROJECTS_ARCHIVED, URL_SETTINGS_PROJECTS_FOLLOWING, URL_SETTINGS_INVITATIONS
+    URL_SETTINGS,
+    URL_SETTINGS_PROJECTS,
+    URL_SETTINGS_PROJECTS_ARCHIVED,
+    URL_SETTINGS_PROJECTS_FOLLOWING,
+    URL_SETTINGS_INVITATIONS,
 } from '../../../URLSystem/Settings/URLsSettings'
 
 jest.mock('../../../components/MyPlatform', () => {
     return {
-        isMobile: false
+        isMobile: false,
     }
 })
 
@@ -20,13 +24,12 @@ describe('URLsSettings class', () => {
             [URL_SETTINGS_PROJECTS, '/settings/projects'],
             [URL_SETTINGS_PROJECTS_ARCHIVED, '/settings/projects/archived'],
             [URL_SETTINGS_PROJECTS_FOLLOWING, '/settings/projects/following'],
-            [URL_SETTINGS_INVITATIONS, '/settings/invitations']]
-        )
-            ('should set the value for lastVisitedScreen for %p', (constant, url) => {
-                URLsSettings.replace(constant)
-                const storeState = store.getState()
-                expect(storeState.lastVisitedScreen).toEqual([url])
-            })
+            [URL_SETTINGS_INVITATIONS, '/settings/invitations'],
+        ])('should set the value for lastVisitedScreen for %p', (constant, url) => {
+            URLsSettings.replace(constant)
+            const storeState = store.getState()
+            expect(storeState.lastVisitedScreen).toEqual([url])
+        })
     })
 
     describe('Function push', () => {

@@ -5,7 +5,7 @@ import renderer from 'react-test-renderer'
 
 jest.mock('../../../utils/BackendBridge')
 jest.mock('../../../utils/NavigationService')
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('DeleteTaskButton component', () => {
     describe('DeleteTaskButton snapshot test', () => {

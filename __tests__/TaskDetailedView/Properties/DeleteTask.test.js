@@ -3,7 +3,7 @@ import DeleteTask from '../../../components/TaskDetailedView/Properties/DeleteTa
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('DeleteTask component', () => {
     describe('DeleteTask snapshot test', () => {

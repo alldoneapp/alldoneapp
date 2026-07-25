@@ -11,9 +11,7 @@ describe('TagList component', () => {
     describe('TagList snapshot test', () => {
         xit('should render correctly', () => {
             const tree = renderer
-                .create(
-                    <TagList projectId={'0'} task={{ isPrivate: true, recurrence: { type: 'never' } }} />
-                )
+                .create(<TagList projectId={'0'} task={{ isPrivate: true, recurrence: { type: 'never' } }} />)
                 .toJSON()
             expect(tree).toMatchSnapshot()
         })
