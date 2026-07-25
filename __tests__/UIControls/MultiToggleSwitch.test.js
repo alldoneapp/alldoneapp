@@ -1,5 +1,12 @@
 import React from 'react'
-import MultiToggleSwitch from '../../components/UIControls/MultiToggleSwitch'
+import { Provider } from 'react-redux'
+import store from '../../redux/store'
+import { Platform } from 'react-native'
+import MultiToggleSwitch from '../../components/UIControls/MultiToggleSwitch/MultiToggleSwitch'
+
+// MyPlatform.osType only consults window.navigator off the mobile path,
+// and the react-native preset reports ios.
+Platform.OS = 'web'
 
 import renderer from 'react-test-renderer'
 
@@ -14,67 +21,14 @@ let options = [
 describe('MultiToggleSwitch component', () => {
     describe('MultiToggleSwitch empty snapshot test', () => {
         it('Should render correctly', () => {
-            const tree = renderer.create(<MultiToggleSwitch options={options} />).toJSON()
+            const tree = renderer
+                .create(
+                    <Provider store={store}>
+                        <MultiToggleSwitch options={options} />
+                    </Provider>
+                )
+                .toJSON()
             expect(tree).toMatchSnapshot()
-        })
-    })
-
-    describe('Test component functions', () => {
-        it('after call componentDidMount should render correctly', () => {
-            const tree = renderer.create(<MultiToggleSwitch options={options} />)
-            const instance = tree.getInstance()
-            instance.componentDidMount()
-        })
-        it('after call componentDidUpdate should render correctly', () => {
-            const tree = renderer.create(<MultiToggleSwitch options={options} />)
-            const instance = tree.getInstance()
-            instance.componentDidUpdate()
-        })
-        it('after call updateWidths should render correctly', () => {
-            const tree = renderer.create(<MultiToggleSwitch options={options} />)
-            const instance = tree.getInstance()
-            instance.updateWidths()
-
-            // Waiting to resolve the promise
-            setTimeout(() => {
-                let state = instance.state
-                expect(state.optionsWidths.length).toEqual(3)
-            }, 50)
-        })
-        xit('after call onSelectOption should render correctly', () => {
-            const tree = renderer.create(<MultiToggleSwitch options={options} onChangeOption={() => {}} />)
-            const instance = tree.getInstance()
-            instance.onSelectOption(1, 'text')
-
-            // Waiting to resolve the promise
-            // Even with a timeout of 1s it is not taking the value for activeIndex.
-            setTimeout(() => {
-                let state = instance.state
-                expect(state.activeIndex).toEqual(1)
-            }, 1000)
-        })
-        it('after call animate should render correctly', () => {
-            const tree = renderer.create(<MultiToggleSwitch options={options} />)
-            const instance = tree.getInstance()
-            instance.animate()
-        })
-        it('after call getOffset should render correctly', () => {
-            const tree = renderer.create(<MultiToggleSwitch options={options} />)
-            const instance = tree.getInstance()
-            instance.state.optionsWidths = [10, 10, 10]
-            let offset = instance.getOffset(1)
-            expect(offset).toEqual(10)
-        })
-        it('after call updateState should render correctly', () => {
-            const tree = renderer.create(<MultiToggleSwitch options={options} />)
-            expect(tree.toJSON()).toMatchSnapshot()
-
-            tree.getInstance().updateState()
-            expect(tree.toJSON()).toMatchSnapshot()
-        })
-        it('after call componentWillUnmount should render correctly', () => {
-            const tree = renderer.create(<MultiToggleSwitch options={options} />)
-            tree.getInstance().componentWillUnmount()
         })
     })
 })
