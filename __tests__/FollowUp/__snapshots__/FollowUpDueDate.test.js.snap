@@ -3,681 +3,1465 @@
 exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render correctly 1`] = `
 <View
   style={
-    Object {
-      "backgroundColor": "#091540",
-      "borderRadius": 4,
-      "elevation": 3,
-      "shadowColor": "rgba(78, 93, 120, 0.56)",
-      "shadowOffset": Object {
-        "height": 4,
-        "width": 0,
+    Array [
+      Object {
+        "backgroundColor": "#091540",
+        "borderRadius": 4,
+        "elevation": 3,
+        "shadowColor": "rgba(78, 93, 120, 0.56)",
+        "shadowOffset": Object {
+          "height": 4,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 16,
+        "width": 305,
       },
-      "shadowOpacity": 1,
-      "shadowRadius": 16,
-      "width": 305,
-    }
+      Object {
+        "maxWidth": 432,
+        "minWidth": 432,
+        "width": 432,
+      },
+      Object {
+        "maxHeight": 736,
+      },
+    ]
   }
 >
   <View
     style={
-      Object {
-        "flexDirection": "row",
-        "paddingLeft": 16,
-        "paddingRight": 8,
-        "paddingTop": 8,
-      }
+      Array [
+        Object {
+          "flex": 1,
+        },
+        undefined,
+        undefined,
+      ]
     }
   >
-    <View
-      style={
-        Object {
-          "flexDirection": "column",
-          "marginTop": 8,
-        }
-      }
+    <RCTScrollView
+      onContentSizeChange={[Function]}
+      onLayout={[Function]}
+      onScroll={[Function]}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
     >
-      <Text
-        style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 18,
-              "lineHeight": 26,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        Select Follow up reminder
-      </Text>
-      <Text
-        style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 14,
-              "letterSpacing": 0.32,
-              "lineHeight": 22,
-            },
-            Object {
-              "color": "#8A94A6",
-              "width": 273,
-            },
-          ]
-        }
-      >
-        Select from the options below
-      </Text>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "paddingBottom": 8,
-        "paddingHorizontal": 16,
-        "paddingTop": 20,
-      }
-    }
-  >
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        Today
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+      <View>
+        <View
           style={
-            Array [
-              Object {
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 16,
-                "letterSpacing": 0.16,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "white",
-              },
-            ]
+            Object {
+              "flex": 1,
+              "flexDirection": "row",
+              "paddingLeft": 16,
+              "paddingRight": 8,
+              "paddingTop": 8,
+            }
           }
         >
-          22 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        Tomorrow
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            style={
+              Object {
+                "flex": 1,
+                "flexDirection": "column",
+                "marginTop": 8,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 18,
+                    "lineHeight": 26,
+                  },
+                  Object {
+                    "color": "white",
+                    "flex": 1,
+                    "paddingRight": 16,
+                  },
+                ]
+              }
+            >
+              Select Follow up reminder
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 14,
+                    "letterSpacing": 0.32,
+                    "lineHeight": 22,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                    "flex": 1,
+                  },
+                ]
+              }
+            >
+              Select from the options below
+            </Text>
+          </View>
+        </View>
+        <View
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+            Object {
+              "paddingBottom": 8,
+              "paddingHorizontal": 16,
+              "paddingTop": 20,
+            }
           }
         >
-          23 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        This next Saturday
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Today
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "white",
+                    },
+                  ]
+                }
+              >
+                 • 
+                22 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    1
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Tomorrow
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                23 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    2
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              This next Saturday
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                04 May
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    3
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              This next Monday
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                29 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    4
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+            Object {
+              "borderBottomColor": "rgba(255,255,255,0.2)",
+              "borderBottomWidth": 1,
+              "borderTopColor": "rgba(255,255,255,0.2)",
+              "borderTopWidth": 1,
+              "paddingHorizontal": 16,
+              "paddingVertical": 8,
+            }
           }
         >
-          04 May
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        This next Monday
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              In 2 days
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                24 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    5
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              In 4 days
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                26 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    6
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              In 7 days
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                29 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    7
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              In 30 days
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                22 May
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    8
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+            Object {
+              "paddingHorizontal": 16,
+              "paddingVertical": 8,
+            }
           }
         >
-          29 Apr
-        </Text>
-      </View>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "borderBottomColor": "rgba(255,255,255,0.2)",
-        "borderBottomWidth": 1,
-        "borderTopColor": "rgba(255,255,255,0.2)",
-        "borderTopWidth": 1,
-        "paddingHorizontal": 16,
-        "paddingVertical": 8,
-      }
-    }
-  >
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        In 2 days
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Someday
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    9
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+            Object {
+              "borderBottomColor": "rgba(255,255,255,0.2)",
+              "borderBottomWidth": 1,
+              "borderTopColor": "rgba(255,255,255,0.2)",
+              "borderTopWidth": 1,
+              "paddingHorizontal": 16,
+              "paddingVertical": 8,
+            }
           }
         >
-          24 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        In 4 days
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Last selected
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                22 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    0
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Custom date
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    Q
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
-          }
-        >
-          26 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
             Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        In 7 days
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
-          }
-        >
-          29 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        In 30 days
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
-          }
-        >
-          22 May
-        </Text>
-      </View>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "borderBottomColor": "rgba(255,255,255,0.2)",
-        "borderBottomWidth": 1,
-        "borderTopColor": "rgba(255,255,255,0.2)",
-        "borderTopWidth": 1,
-        "paddingHorizontal": 16,
-        "paddingVertical": 8,
-      }
-    }
-  >
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        Pick a date
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+              "flexDirection": "row",
+              "opacity": 1,
+              "paddingLeft": 16,
+              "paddingVertical": 16,
+            }
           }
         >
           <View>
@@ -691,118 +1475,144 @@ exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render c
                 }
               }
             >
-              
+              
             </Text>
           </View>
-        </Text>
-      </View>
-    </View>
-  </View>
-  <RNGestureHandlerButton
-    collapsable={false}
-    onGestureEvent={[Function]}
-    onGestureHandlerEvent={[Function]}
-    onGestureHandlerStateChange={[Function]}
-    onHandlerStateChange={[Function]}
-    rippleColor={0}
-    style={
-      Array [
-        Object {
-          "overflow": "hidden",
-        },
-        undefined,
-      ]
-    }
-  >
-    <View
-      accessible={true}
-      style={
-        Object {
-          "flexDirection": "row",
-          "opacity": 1,
-          "paddingLeft": 16,
-          "paddingVertical": 16,
-        }
-      }
-    >
-      <View>
-        <Text
-          style={
-            Object {
-              "color": "#8A94A6",
-              "fontFamily": "alldone",
-              "fontSize": 24,
-              "opacity": 1,
+          <Text
+            style={
+              Array [
+                Object {
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 16,
+                  "letterSpacing": 0.16,
+                  "lineHeight": 24,
+                },
+                Object {
+                  "color": "#FFFFFF",
+                  "fontWeight": "500",
+                  "marginLeft": 8,
+                },
+              ]
             }
+          >
+            Back
+          </Text>
+          <View
+            style={
+              Object {
+                "marginTop": 4,
+                "position": "absolute",
+                "right": 16,
+              }
+            }
+          >
+            <View
+              style={
+                Array [
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "justifyContent": "center",
+                  },
+                  undefined,
+                  undefined,
+                ]
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "backgroundColor": "#091540",
+                      "borderRadius": 4,
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                      "minHeight": 16,
+                      "minWidth": 16,
+                      "paddingHorizontal": 4,
+                      "paddingVertical": 2,
+                    },
+                    Object {
+                      "borderColor": "#8A94A6",
+                      "borderWidth": 1,
+                    },
+                    undefined,
+                  ]
+                }
+              >
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "color": "#04142F",
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 12,
+                        "letterSpacing": 0.48,
+                        "lineHeight": 12,
+                      },
+                      Object {
+                        "color": "#8A94A6",
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  B
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
+          style={
+            Array [
+              Object {
+                "position": "absolute",
+                "right": 13,
+                "top": 13,
+              },
+              undefined,
+            ]
           }
         >
-          
-        </Text>
-      </View>
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "#FFFFFF",
-              "fontWeight": "500",
-              "marginLeft": 8,
-            },
-          ]
-        }
-      >
-        Back
-      </Text>
-    </View>
-  </RNGestureHandlerButton>
-  <View
-    style={
-      Object {
-        "position": "absolute",
-        "right": 13,
-        "top": 13,
-      }
-    }
-  >
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "justifyContent": "center",
-          "opacity": 1,
-        }
-      }
-    >
-      <View>
-        <Text
-          style={
-            Object {
-              "color": "#8A94A6",
-              "fontFamily": "alldone",
-              "fontSize": 24,
-              "opacity": 1,
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "justifyContent": "center",
+                "opacity": 1,
+              }
             }
-          }
-        >
-          
-        </Text>
+          >
+            <View>
+              <Text
+                style={
+                  Object {
+                    "color": "#8A94A6",
+                    "fontFamily": "alldone",
+                    "fontSize": 24,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
+              </Text>
+            </View>
+          </View>
+        </View>
       </View>
-    </View>
+    </RCTScrollView>
   </View>
 </View>
 `;
@@ -810,681 +1620,1465 @@ exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render c
 exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render correctly 2`] = `
 <View
   style={
-    Object {
-      "backgroundColor": "#091540",
-      "borderRadius": 4,
-      "elevation": 3,
-      "shadowColor": "rgba(78, 93, 120, 0.56)",
-      "shadowOffset": Object {
-        "height": 4,
-        "width": 0,
+    Array [
+      Object {
+        "backgroundColor": "#091540",
+        "borderRadius": 4,
+        "elevation": 3,
+        "shadowColor": "rgba(78, 93, 120, 0.56)",
+        "shadowOffset": Object {
+          "height": 4,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 16,
+        "width": 305,
       },
-      "shadowOpacity": 1,
-      "shadowRadius": 16,
-      "width": 305,
-    }
+      Object {
+        "maxWidth": 432,
+        "minWidth": 432,
+        "width": 432,
+      },
+      Object {
+        "maxHeight": 736,
+      },
+    ]
   }
 >
   <View
     style={
-      Object {
-        "flexDirection": "row",
-        "paddingLeft": 16,
-        "paddingRight": 8,
-        "paddingTop": 8,
-      }
+      Array [
+        Object {
+          "flex": 1,
+        },
+        undefined,
+        undefined,
+      ]
     }
   >
-    <View
-      style={
-        Object {
-          "flexDirection": "column",
-          "marginTop": 8,
-        }
-      }
+    <RCTScrollView
+      onContentSizeChange={[Function]}
+      onLayout={[Function]}
+      onScroll={[Function]}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
     >
-      <Text
-        style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 18,
-              "lineHeight": 26,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        Select Follow up reminder
-      </Text>
-      <Text
-        style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 14,
-              "letterSpacing": 0.32,
-              "lineHeight": 22,
-            },
-            Object {
-              "color": "#8A94A6",
-              "width": 273,
-            },
-          ]
-        }
-      >
-        Select from the options below
-      </Text>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "paddingBottom": 8,
-        "paddingHorizontal": 16,
-        "paddingTop": 20,
-      }
-    }
-  >
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        Today
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+      <View>
+        <View
           style={
-            Array [
-              Object {
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 16,
-                "letterSpacing": 0.16,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "white",
-              },
-            ]
+            Object {
+              "flex": 1,
+              "flexDirection": "row",
+              "paddingLeft": 16,
+              "paddingRight": 8,
+              "paddingTop": 8,
+            }
           }
         >
-          22 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        Tomorrow
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            style={
+              Object {
+                "flex": 1,
+                "flexDirection": "column",
+                "marginTop": 8,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 18,
+                    "lineHeight": 26,
+                  },
+                  Object {
+                    "color": "white",
+                    "flex": 1,
+                    "paddingRight": 16,
+                  },
+                ]
+              }
+            >
+              Select Follow up reminder
+            </Text>
+            <Text
+              style={
+                Array [
+                  Object {
+                    "color": "#04142F",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": 14,
+                    "letterSpacing": 0.32,
+                    "lineHeight": 22,
+                  },
+                  Object {
+                    "color": "#8A94A6",
+                    "flex": 1,
+                  },
+                ]
+              }
+            >
+              Select from the options below
+            </Text>
+          </View>
+        </View>
+        <View
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+            Object {
+              "paddingBottom": 8,
+              "paddingHorizontal": 16,
+              "paddingTop": 20,
+            }
           }
         >
-          23 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        This next Saturday
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Today
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 16,
+                      "letterSpacing": 0.16,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "white",
+                    },
+                  ]
+                }
+              >
+                 • 
+                22 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    1
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Tomorrow
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                23 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    2
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              This next Saturday
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                04 May
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    3
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              This next Monday
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                29 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    4
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+            Object {
+              "borderBottomColor": "rgba(255,255,255,0.2)",
+              "borderBottomWidth": 1,
+              "borderTopColor": "rgba(255,255,255,0.2)",
+              "borderTopWidth": 1,
+              "paddingHorizontal": 16,
+              "paddingVertical": 8,
+            }
           }
         >
-          04 May
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        This next Monday
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              In 2 days
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                24 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    5
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              In 4 days
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                26 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    6
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              In 7 days
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                29 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    7
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              In 30 days
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                22 May
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    8
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+            Object {
+              "paddingHorizontal": 16,
+              "paddingVertical": 8,
+            }
           }
         >
-          29 Apr
-        </Text>
-      </View>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "borderBottomColor": "rgba(255,255,255,0.2)",
-        "borderBottomWidth": 1,
-        "borderTopColor": "rgba(255,255,255,0.2)",
-        "borderTopWidth": 1,
-        "paddingHorizontal": 16,
-        "paddingVertical": 8,
-      }
-    }
-  >
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        In 2 days
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Someday
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    9
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+            Object {
+              "borderBottomColor": "rgba(255,255,255,0.2)",
+              "borderBottomWidth": 1,
+              "borderTopColor": "rgba(255,255,255,0.2)",
+              "borderTopWidth": 1,
+              "paddingHorizontal": 16,
+              "paddingVertical": 8,
+            }
           }
         >
-          24 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        In 4 days
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Last selected
+              <Text
+                style={
+                  Array [
+                    Object {
+                      "color": "#04142F",
+                      "fontFamily": "Roboto-Regular",
+                      "fontSize": 16,
+                      "letterSpacing": 0.32,
+                      "lineHeight": 24,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                  ]
+                }
+              >
+                 • 
+                22 Apr
+              </Text>
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    0
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 40,
+                "opacity": 1,
+              }
+            }
+          >
+            <Text
+              style={
+                Array [
+                  Object {
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": 16,
+                    "letterSpacing": 0.16,
+                    "lineHeight": 24,
+                  },
+                  Object {
+                    "color": "white",
+                  },
+                ]
+              }
+            >
+              Custom date
+            </Text>
+            <View
+              style={
+                Object {
+                  "marginLeft": "auto",
+                }
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                    },
+                    undefined,
+                    undefined,
+                  ]
+                }
+              >
+                <View
+                  style={
+                    Array [
+                      Object {
+                        "alignItems": "center",
+                        "backgroundColor": "#091540",
+                        "borderRadius": 4,
+                        "flexDirection": "row",
+                        "justifyContent": "center",
+                        "minHeight": 16,
+                        "minWidth": 16,
+                        "paddingHorizontal": 4,
+                        "paddingVertical": 2,
+                      },
+                      Object {
+                        "borderColor": "#8A94A6",
+                        "borderWidth": 1,
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      Array [
+                        Object {
+                          "color": "#04142F",
+                          "fontFamily": "Roboto-Medium",
+                          "fontSize": 12,
+                          "letterSpacing": 0.48,
+                          "lineHeight": 12,
+                        },
+                        Object {
+                          "color": "#8A94A6",
+                        },
+                        undefined,
+                      ]
+                    }
+                  >
+                    Q
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
+          accessible={true}
+          focusable={true}
+          isTVSelectable={true}
+          onClick={[Function]}
+          onResponderGrant={[Function]}
+          onResponderMove={[Function]}
+          onResponderRelease={[Function]}
+          onResponderTerminate={[Function]}
+          onResponderTerminationRequest={[Function]}
+          onStartShouldSetResponder={[Function]}
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
-          }
-        >
-          26 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
             Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        In 7 days
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
-          }
-        >
-          29 Apr
-        </Text>
-      </View>
-    </View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        In 30 days
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
-          }
-        >
-          22 May
-        </Text>
-      </View>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "borderBottomColor": "rgba(255,255,255,0.2)",
-        "borderBottomWidth": 1,
-        "borderTopColor": "rgba(255,255,255,0.2)",
-        "borderTopWidth": 1,
-        "paddingHorizontal": 16,
-        "paddingVertical": 8,
-      }
-    }
-  >
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "opacity": 1,
-        }
-      }
-    >
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "white",
-            },
-          ]
-        }
-      >
-        Pick a date
-      </Text>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+              "flexDirection": "row",
+              "opacity": 1,
+              "paddingLeft": 16,
+              "paddingVertical": 16,
+            }
           }
         >
           <View>
@@ -1498,118 +3092,144 @@ exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render c
                 }
               }
             >
-              
+              
             </Text>
           </View>
-        </Text>
-      </View>
-    </View>
-  </View>
-  <RNGestureHandlerButton
-    collapsable={false}
-    onGestureEvent={[Function]}
-    onGestureHandlerEvent={[Function]}
-    onGestureHandlerStateChange={[Function]}
-    onHandlerStateChange={[Function]}
-    rippleColor={0}
-    style={
-      Array [
-        Object {
-          "overflow": "hidden",
-        },
-        undefined,
-      ]
-    }
-  >
-    <View
-      accessible={true}
-      style={
-        Object {
-          "flexDirection": "row",
-          "opacity": 1,
-          "paddingLeft": 16,
-          "paddingVertical": 16,
-        }
-      }
-    >
-      <View>
-        <Text
-          style={
-            Object {
-              "color": "#8A94A6",
-              "fontFamily": "alldone",
-              "fontSize": 24,
-              "opacity": 1,
+          <Text
+            style={
+              Array [
+                Object {
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 16,
+                  "letterSpacing": 0.16,
+                  "lineHeight": 24,
+                },
+                Object {
+                  "color": "#FFFFFF",
+                  "fontWeight": "500",
+                  "marginLeft": 8,
+                },
+              ]
             }
+          >
+            Back
+          </Text>
+          <View
+            style={
+              Object {
+                "marginTop": 4,
+                "position": "absolute",
+                "right": 16,
+              }
+            }
+          >
+            <View
+              style={
+                Array [
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "justifyContent": "center",
+                  },
+                  undefined,
+                  undefined,
+                ]
+              }
+            >
+              <View
+                style={
+                  Array [
+                    Object {
+                      "alignItems": "center",
+                      "backgroundColor": "#091540",
+                      "borderRadius": 4,
+                      "flexDirection": "row",
+                      "justifyContent": "center",
+                      "minHeight": 16,
+                      "minWidth": 16,
+                      "paddingHorizontal": 4,
+                      "paddingVertical": 2,
+                    },
+                    Object {
+                      "borderColor": "#8A94A6",
+                      "borderWidth": 1,
+                    },
+                    undefined,
+                  ]
+                }
+              >
+                <Text
+                  style={
+                    Array [
+                      Object {
+                        "color": "#04142F",
+                        "fontFamily": "Roboto-Medium",
+                        "fontSize": 12,
+                        "letterSpacing": 0.48,
+                        "lineHeight": 12,
+                      },
+                      Object {
+                        "color": "#8A94A6",
+                      },
+                      undefined,
+                    ]
+                  }
+                >
+                  B
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        <View
+          style={
+            Array [
+              Object {
+                "position": "absolute",
+                "right": 13,
+                "top": 13,
+              },
+              undefined,
+            ]
           }
         >
-          
-        </Text>
-      </View>
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 16,
-              "letterSpacing": 0.16,
-              "lineHeight": 24,
-            },
-            Object {
-              "color": "#FFFFFF",
-              "fontWeight": "500",
-              "marginLeft": 8,
-            },
-          ]
-        }
-      >
-        Back
-      </Text>
-    </View>
-  </RNGestureHandlerButton>
-  <View
-    style={
-      Object {
-        "position": "absolute",
-        "right": 13,
-        "top": 13,
-      }
-    }
-  >
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
-      onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        Object {
-          "alignItems": "center",
-          "justifyContent": "center",
-          "opacity": 1,
-        }
-      }
-    >
-      <View>
-        <Text
-          style={
-            Object {
-              "color": "#8A94A6",
-              "fontFamily": "alldone",
-              "fontSize": 24,
-              "opacity": 1,
+          <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "justifyContent": "center",
+                "opacity": 1,
+              }
             }
-          }
-        >
-          
-        </Text>
+          >
+            <View>
+              <Text
+                style={
+                  Object {
+                    "color": "#8A94A6",
+                    "fontFamily": "alldone",
+                    "fontSize": 24,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
+              </Text>
+            </View>
+          </View>
+        </View>
       </View>
-    </View>
+    </RCTScrollView>
   </View>
 </View>
 `;
