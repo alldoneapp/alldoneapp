@@ -1,6 +1,8 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`Task Sub Tasks tag component Function updateState snapshot test should execute and render correctly 1`] = `
+exports[`Task Sub Tasks tag component Task Estimation snapshot test should render correctly 1`] = `null`;
+
+exports[`Task Sub Tasks tag component Task Estimation snapshot test should render correctly for amount 1 1`] = `
 <View
   accessible={true}
   focusable={false}
@@ -57,18 +59,16 @@ exports[`Task Sub Tasks tag component Function updateState snapshot test should 
       style={
         Array [
           Object {
-            "color": "#04142F",
+            "color": "#8A94A6",
             "fontFamily": "Roboto-Medium",
             "fontSize": 14,
             "letterSpacing": 0.16,
             "lineHeight": 22,
-          },
-          Object {
-            "color": "#8A94A6",
             "marginLeft": 2,
             "marginRight": 10,
             "marginVertical": 1,
           },
+          undefined,
         ]
       }
     >
@@ -78,7 +78,7 @@ exports[`Task Sub Tasks tag component Function updateState snapshot test should 
 </View>
 `;
 
-exports[`Task Sub Tasks tag component Function updateState snapshot test should execute and render correctly 2`] = `
+exports[`Task Sub Tasks tag component Task Estimation snapshot test should render correctly for amount 2 1`] = `
 <View
   accessible={true}
   focusable={false}
@@ -135,22 +135,20 @@ exports[`Task Sub Tasks tag component Function updateState snapshot test should 
       style={
         Array [
           Object {
-            "color": "#04142F",
+            "color": "#8A94A6",
             "fontFamily": "Roboto-Medium",
             "fontSize": 14,
             "letterSpacing": 0.16,
             "lineHeight": 22,
-          },
-          Object {
-            "color": "#8A94A6",
             "marginLeft": 2,
             "marginRight": 10,
             "marginVertical": 1,
           },
+          undefined,
         ]
       }
     >
-      1 Subtask
+      2 Subtasks
     </Text>
   </View>
 </View>

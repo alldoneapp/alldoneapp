@@ -18,7 +18,7 @@ exports[`AddContact component AddContact snapshot test should render correctly 1
       "flexDirection": "row",
       "height": 56,
       "opacity": 1,
-      "paddingLeft": 8,
+      "paddingLeft": 12,
     }
   }
 >
