@@ -144,6 +144,11 @@ test:web:changed:
         # GitLab's checkout may not contain the default-branch ref. Fetch only
         # that ref so Jest can select tests affected by the complete branch diff.
         - git fetch --no-tags origin "+refs/heads/$CI_DEFAULT_BRANCH:refs/remotes/origin/$CI_DEFAULT_BRANCH"
+        # Unlike the web builds, this job never substitutes the BEGIN-ENVS block,
+        # and .env is not in the repository. react-native-dotenv resolves those
+        # imports during transform, so without placeholders every suite reaching
+        # utils/backends/firestore.js fails to parse.
+        - node ci/writeTestEnv.js
     script:
         # Functions have their own dependency tree and tests. Exclude them from
         # this root/web check when a commit happens to change both surfaces.
