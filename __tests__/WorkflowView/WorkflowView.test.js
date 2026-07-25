@@ -7,19 +7,19 @@ import renderer from 'react-test-renderer'
 import Backend from '../../utils/BackendBridge'
 
 jest.mock('../../utils/BackendBridge')
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
-jest.mock("react-redux", () => ({
-    ...jest.requireActual("react-redux"),
+jest.mock('react-redux', () => ({
+    ...jest.requireActual('react-redux'),
     useSelector: jest.fn().mockImplementation(fnc => {
         return fnc({
-            workflowStep: { reviewerName: 'name', reviewerPhotoURL: 'url' }
+            workflowStep: { reviewerName: 'name', reviewerPhotoURL: 'url' },
         })
     }),
     useStore: jest.fn().mockImplementation(() => ({
-        getState: () => ({ loggedUser: { displayName: 'name' } })
-    }))
-}));
+        getState: () => ({ loggedUser: { displayName: 'name' } }),
+    })),
+}))
 
 describe('WorkflowView component', () => {
     describe('WorkflowView snapshot test', () => {
@@ -36,7 +36,8 @@ describe('WorkflowView component', () => {
             const tree = renderer.create(
                 <Provider store={store}>
                     <WorkflowView projectId="0" user={{ displayName: 'asd b' }} projectIndex={0} />
-                </Provider>)
+                </Provider>
+            )
             const instance = tree.root.findByType(WorkflowView).instance
             instance.onNewStep({
                 val: () => null,

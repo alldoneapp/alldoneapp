@@ -3,7 +3,7 @@ import Indicator from '../../../components/TaskDetailedView/Header/Indicator'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('Indicator component', () => {
     describe('Indicator snapshot test', () => {

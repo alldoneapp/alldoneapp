@@ -7,18 +7,18 @@ import EditStep from '../../components/WorkflowView/EditStep'
 import renderer from 'react-test-renderer'
 jest.mock('../../utils/BackendBridge')
 
-jest.mock("react-redux", () => ({
-    ...jest.requireActual("react-redux"),
+jest.mock('react-redux', () => ({
+    ...jest.requireActual('react-redux'),
     useSelector: jest.fn().mockImplementation(fnc => {
         return fnc({
-            workflowStep: { reviewerName: 'name', reviewerPhotoURL: 'url' }
+            workflowStep: { reviewerName: 'name', reviewerPhotoURL: 'url' },
         })
     }),
-    useDispatch: jest.fn().mockImplementation(() => () => { }),
+    useDispatch: jest.fn().mockImplementation(() => () => {}),
     useStore: jest.fn().mockImplementation(() => ({
-        getState: () => ({ loggedUser: {} })
-    }))
-}));
+        getState: () => ({ loggedUser: {} }),
+    })),
+}))
 
 describe('EditStep component', () => {
     const onCancelAction = jest.fn()

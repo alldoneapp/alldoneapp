@@ -2,294 +2,47 @@
 
 exports[`NavigationBar component NavigationBar mobile snapshot test should render correctly 1`] = `
 <View
+  onLayout={[Function]}
   style={
     Array [
       Object {
-        "backgroundColor": "#0A44A5",
-        "flex": 1,
-        "flexDirection": "column",
-        "justifyContent": "center",
+        "alignItems": "flex-end",
+        "borderBottomColor": "#0A44A5",
+        "borderBottomWidth": 1,
+        "flexDirection": "row",
+        "height": 64,
+        "justifyContent": "space-between",
         "overflow": "hidden",
-        "paddingLeft": 18,
       },
-      Object {},
+      undefined,
+      undefined,
     ]
   }
 >
-  <View
-    style={
-      Object {
-        "alignItems": "center",
-        "backgroundColor": "#0A44A5",
-        "flexDirection": "row",
-        "height": 56,
-        "justifyContent": "space-between",
-      }
-    }
-  >
-    <View
-      style={
+  <View>
+    <RCTScrollView
+      contentContainerStyle={
         Object {
-          "alignItems": "center",
+          "alignItems": "flex-end",
           "flexDirection": "row",
         }
       }
-    >
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "marginRight": 36,
-            "opacity": 1,
-          }
-        }
-      >
-        <View>
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 20,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-      </View>
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "alignItems": "center",
-            "flexDirection": "row",
-            "height": 46,
-            "justifyContent": "space-between",
-            "opacity": 1,
-            "paddingLeft": 16,
-            "paddingRight": 21,
-            "width": 102,
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.16,
-                "lineHeight": 22,
-              },
-              Object {
-                "color": "white",
-                "marginRight": 4,
-              },
-            ]
-          }
-        >
-          Tasks
-        </Text>
-        <View>
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-      </View>
-    </View>
-    <View
-      style={
-        Array [
-          Object {
-            "alignItems": "flex-end",
-            "flex": 1,
-            "marginBottom": 8,
-            "marginRight": 16,
-          },
-          Object {
-            "marginBottom": 0,
-          },
-          undefined,
-        ]
-      }
-    >
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "alignItems": "center",
-            "backgroundColor": "transparent",
-            "borderRadius": 30,
-            "flexDirection": "row",
-            "height": 36,
-            "opacity": 1,
-            "width": 166,
-          }
-        }
-      >
-        <View
-          style={
-            Array [
-              Object {
-                "backgroundColor": "#C7E3FF",
-                "borderRadius": 4,
-                "height": 8,
-                "marginLeft": 16,
-                "width": 128,
-              },
-              Object {
-                "width": 84,
-              },
-            ]
-          }
-        >
-          <View
-            style={
-              Array [
-                Object {
-                  "backgroundColor": "#007FFF",
-                  "borderRadius": 4,
-                  "height": 8,
-                },
-                Object {
-                  "width": NaN,
-                },
-              ]
-            }
-          />
-        </View>
-        <View
-          style={
-            Object {
-              "marginLeft": 17,
-            }
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "#5AACFF",
-                "fontFamily": "alldone",
-                "fontSize": 16,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-        <Text
-          style={
-            Object {
-              "color": "#5AACFF",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 11,
-              "letterSpacing": 1.5,
-              "lineHeight": 20,
-              "marginLeft": 4,
-            }
-          }
-        />
-        <View
-          style={
-            Array [
-              Object {
-                "alignItems": "center",
-                "backgroundColor": "#EBF5FF",
-                "borderColor": "#007FFF",
-                "borderRadius": 40,
-                "borderWidth": 2,
-                "height": 18,
-                "justifyContent": "center",
-                "minWidth": 18,
-                "paddingHorizontal": 4,
-                "position": "absolute",
-                "top": 9,
-              },
-              Object {
-                "left": NaN,
-              },
-            ]
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "#007FFF",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 11,
-                "letterSpacing": 0.48,
-                "lineHeight": 11,
-              }
-            }
-          />
-        </View>
-      </View>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "backgroundColor": "#0A44A5",
-        "flexDirection": "row",
-        "height": 0,
-        "justifyContent": "space-between",
-        "marginLeft": -18,
-      }
-    }
-  >
-    <RCTScrollView
       horizontal={true}
+      onContentSizeChange={[Function]}
+      onLayout={[Function]}
+      onScroll={[Function]}
       overScrollMode="never"
+      scrollEventThrottle={16}
       showsHorizontalScrollIndicator={false}
+      style={
+        Object {
+          "flex": 1,
+        }
+      }
     >
       <View>
-        <View
-          style={
-            Object {
-              "flexDirection": "row",
-            }
-          }
-        >
+        <View />
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -303,7 +56,9 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -314,14 +69,13 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -337,12 +91,12 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                a
+                [missing "en.a" translation]
               </Text>
             </View>
             <View
@@ -358,6 +112,8 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
               }
             />
           </View>
+        </View>
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -371,7 +127,9 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -382,14 +140,13 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -405,12 +162,12 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                b
+                [missing "en.b" translation]
               </Text>
             </View>
             <View
@@ -426,6 +183,8 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
               }
             />
           </View>
+        </View>
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -439,7 +198,9 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -450,14 +211,13 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -473,12 +233,12 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                c
+                [missing "en.c" translation]
               </Text>
             </View>
             <View
@@ -494,6 +254,8 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
               }
             />
           </View>
+        </View>
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -507,7 +269,9 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -518,14 +282,13 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -541,12 +304,12 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                d
+                [missing "en.d" translation]
               </Text>
             </View>
             <View
@@ -571,294 +334,47 @@ exports[`NavigationBar component NavigationBar mobile snapshot test should rende
 
 exports[`NavigationBar component NavigationBar web snapshot test should render correctly 1`] = `
 <View
+  onLayout={[Function]}
   style={
     Array [
       Object {
-        "backgroundColor": "#0A44A5",
-        "flex": 1,
-        "flexDirection": "column",
-        "justifyContent": "center",
+        "alignItems": "flex-end",
+        "borderBottomColor": "#0A44A5",
+        "borderBottomWidth": 1,
+        "flexDirection": "row",
+        "height": 64,
+        "justifyContent": "space-between",
         "overflow": "hidden",
-        "paddingLeft": 18,
       },
-      Object {},
+      undefined,
+      undefined,
     ]
   }
 >
-  <View
-    style={
-      Object {
-        "alignItems": "center",
-        "backgroundColor": "#0A44A5",
-        "flexDirection": "row",
-        "height": 56,
-        "justifyContent": "space-between",
-      }
-    }
-  >
-    <View
-      style={
+  <View>
+    <RCTScrollView
+      contentContainerStyle={
         Object {
-          "alignItems": "center",
+          "alignItems": "flex-end",
           "flexDirection": "row",
         }
       }
-    >
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "marginRight": 36,
-            "opacity": 1,
-          }
-        }
-      >
-        <View>
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 20,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-      </View>
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "alignItems": "center",
-            "flexDirection": "row",
-            "height": 46,
-            "justifyContent": "space-between",
-            "opacity": 1,
-            "paddingLeft": 16,
-            "paddingRight": 21,
-            "width": 102,
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.16,
-                "lineHeight": 22,
-              },
-              Object {
-                "color": "white",
-                "marginRight": 4,
-              },
-            ]
-          }
-        >
-          Tasks
-        </Text>
-        <View>
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-      </View>
-    </View>
-    <View
-      style={
-        Array [
-          Object {
-            "alignItems": "flex-end",
-            "flex": 1,
-            "marginBottom": 8,
-            "marginRight": 16,
-          },
-          Object {
-            "marginBottom": 0,
-          },
-          undefined,
-        ]
-      }
-    >
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "alignItems": "center",
-            "backgroundColor": "transparent",
-            "borderRadius": 30,
-            "flexDirection": "row",
-            "height": 36,
-            "opacity": 1,
-            "width": 166,
-          }
-        }
-      >
-        <View
-          style={
-            Array [
-              Object {
-                "backgroundColor": "#C7E3FF",
-                "borderRadius": 4,
-                "height": 8,
-                "marginLeft": 16,
-                "width": 128,
-              },
-              Object {
-                "width": 84,
-              },
-            ]
-          }
-        >
-          <View
-            style={
-              Array [
-                Object {
-                  "backgroundColor": "#007FFF",
-                  "borderRadius": 4,
-                  "height": 8,
-                },
-                Object {
-                  "width": NaN,
-                },
-              ]
-            }
-          />
-        </View>
-        <View
-          style={
-            Object {
-              "marginLeft": 17,
-            }
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "#5AACFF",
-                "fontFamily": "alldone",
-                "fontSize": 16,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-        <Text
-          style={
-            Object {
-              "color": "#5AACFF",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 11,
-              "letterSpacing": 1.5,
-              "lineHeight": 20,
-              "marginLeft": 4,
-            }
-          }
-        />
-        <View
-          style={
-            Array [
-              Object {
-                "alignItems": "center",
-                "backgroundColor": "#EBF5FF",
-                "borderColor": "#007FFF",
-                "borderRadius": 40,
-                "borderWidth": 2,
-                "height": 18,
-                "justifyContent": "center",
-                "minWidth": 18,
-                "paddingHorizontal": 4,
-                "position": "absolute",
-                "top": 9,
-              },
-              Object {
-                "left": NaN,
-              },
-            ]
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "#007FFF",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 11,
-                "letterSpacing": 0.48,
-                "lineHeight": 11,
-              }
-            }
-          />
-        </View>
-      </View>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "backgroundColor": "#0A44A5",
-        "flexDirection": "row",
-        "height": 0,
-        "justifyContent": "space-between",
-        "marginLeft": -18,
-      }
-    }
-  >
-    <RCTScrollView
       horizontal={true}
+      onContentSizeChange={[Function]}
+      onLayout={[Function]}
+      onScroll={[Function]}
       overScrollMode="never"
+      scrollEventThrottle={16}
       showsHorizontalScrollIndicator={false}
+      style={
+        Object {
+          "flex": 1,
+        }
+      }
     >
       <View>
-        <View
-          style={
-            Object {
-              "flexDirection": "row",
-            }
-          }
-        >
+        <View />
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -872,7 +388,9 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -883,14 +401,13 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -906,12 +423,12 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                a
+                [missing "en.a" translation]
               </Text>
             </View>
             <View
@@ -927,6 +444,8 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
               }
             />
           </View>
+        </View>
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -940,7 +459,9 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -951,14 +472,13 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -974,12 +494,12 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                b
+                [missing "en.b" translation]
               </Text>
             </View>
             <View
@@ -995,6 +515,8 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
               }
             />
           </View>
+        </View>
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -1008,7 +530,9 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -1019,14 +543,13 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -1042,12 +565,12 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                c
+                [missing "en.c" translation]
               </Text>
             </View>
             <View
@@ -1063,6 +586,8 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
               }
             />
           </View>
+        </View>
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -1076,7 +601,9 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -1087,14 +614,13 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -1110,12 +636,12 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                d
+                [missing "en.d" translation]
               </Text>
             </View>
             <View
@@ -1140,294 +666,47 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
 
 exports[`NavigationBar component NavigationBar web snapshot test should render correctly when likeWeb is true 1`] = `
 <View
+  onLayout={[Function]}
   style={
     Array [
       Object {
-        "backgroundColor": "#0A44A5",
-        "flex": 1,
-        "flexDirection": "column",
-        "justifyContent": "center",
+        "alignItems": "flex-end",
+        "borderBottomColor": "#0A44A5",
+        "borderBottomWidth": 1,
+        "flexDirection": "row",
+        "height": 64,
+        "justifyContent": "space-between",
         "overflow": "hidden",
-        "paddingLeft": 18,
       },
-      Object {},
+      undefined,
+      undefined,
     ]
   }
 >
-  <View
-    style={
-      Object {
-        "alignItems": "center",
-        "backgroundColor": "#0A44A5",
-        "flexDirection": "row",
-        "height": 56,
-        "justifyContent": "space-between",
-      }
-    }
-  >
-    <View
-      style={
+  <View>
+    <RCTScrollView
+      contentContainerStyle={
         Object {
-          "alignItems": "center",
+          "alignItems": "flex-end",
           "flexDirection": "row",
         }
       }
-    >
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "marginRight": 36,
-            "opacity": 1,
-          }
-        }
-      >
-        <View>
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 20,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-      </View>
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "alignItems": "center",
-            "flexDirection": "row",
-            "height": 46,
-            "justifyContent": "space-between",
-            "opacity": 1,
-            "paddingLeft": 16,
-            "paddingRight": 21,
-            "width": 102,
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.16,
-                "lineHeight": 22,
-              },
-              Object {
-                "color": "white",
-                "marginRight": 4,
-              },
-            ]
-          }
-        >
-          Tasks
-        </Text>
-        <View>
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-      </View>
-    </View>
-    <View
-      style={
-        Array [
-          Object {
-            "alignItems": "flex-end",
-            "flex": 1,
-            "marginBottom": 8,
-            "marginRight": 16,
-          },
-          Object {
-            "marginBottom": 0,
-          },
-          undefined,
-        ]
-      }
-    >
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "alignItems": "center",
-            "backgroundColor": "transparent",
-            "borderRadius": 30,
-            "flexDirection": "row",
-            "height": 36,
-            "opacity": 1,
-            "width": 166,
-          }
-        }
-      >
-        <View
-          style={
-            Array [
-              Object {
-                "backgroundColor": "#C7E3FF",
-                "borderRadius": 4,
-                "height": 8,
-                "marginLeft": 16,
-                "width": 128,
-              },
-              Object {
-                "width": 84,
-              },
-            ]
-          }
-        >
-          <View
-            style={
-              Array [
-                Object {
-                  "backgroundColor": "#007FFF",
-                  "borderRadius": 4,
-                  "height": 8,
-                },
-                Object {
-                  "width": NaN,
-                },
-              ]
-            }
-          />
-        </View>
-        <View
-          style={
-            Object {
-              "marginLeft": 17,
-            }
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "#5AACFF",
-                "fontFamily": "alldone",
-                "fontSize": 16,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-        <Text
-          style={
-            Object {
-              "color": "#5AACFF",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 11,
-              "letterSpacing": 1.5,
-              "lineHeight": 20,
-              "marginLeft": 4,
-            }
-          }
-        />
-        <View
-          style={
-            Array [
-              Object {
-                "alignItems": "center",
-                "backgroundColor": "#EBF5FF",
-                "borderColor": "#007FFF",
-                "borderRadius": 40,
-                "borderWidth": 2,
-                "height": 18,
-                "justifyContent": "center",
-                "minWidth": 18,
-                "paddingHorizontal": 4,
-                "position": "absolute",
-                "top": 9,
-              },
-              Object {
-                "left": NaN,
-              },
-            ]
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "#007FFF",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 11,
-                "letterSpacing": 0.48,
-                "lineHeight": 11,
-              }
-            }
-          />
-        </View>
-      </View>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "backgroundColor": "#0A44A5",
-        "flexDirection": "row",
-        "height": 0,
-        "justifyContent": "space-between",
-        "marginLeft": -18,
-      }
-    }
-  >
-    <RCTScrollView
       horizontal={true}
+      onContentSizeChange={[Function]}
+      onLayout={[Function]}
+      onScroll={[Function]}
       overScrollMode="never"
+      scrollEventThrottle={16}
       showsHorizontalScrollIndicator={false}
+      style={
+        Object {
+          "flex": 1,
+        }
+      }
     >
       <View>
-        <View
-          style={
-            Object {
-              "flexDirection": "row",
-            }
-          }
-        >
+        <View />
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -1441,7 +720,9 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -1452,14 +733,13 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -1475,12 +755,12 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                a
+                [missing "en.a" translation]
               </Text>
             </View>
             <View
@@ -1496,6 +776,8 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
               }
             />
           </View>
+        </View>
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -1509,7 +791,9 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -1520,14 +804,13 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -1543,12 +826,12 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                b
+                [missing "en.b" translation]
               </Text>
             </View>
             <View
@@ -1564,6 +847,8 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
               }
             />
           </View>
+        </View>
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -1577,7 +862,9 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -1588,14 +875,13 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -1611,12 +897,12 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                c
+                [missing "en.c" translation]
               </Text>
             </View>
             <View
@@ -1632,6 +918,8 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
               }
             />
           </View>
+        </View>
+        <View>
           <View
             accessible={true}
             focusable={true}
@@ -1645,7 +933,9 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "flex": 1,
                 "flexDirection": "column",
+                "marginRight": 12,
                 "opacity": 1,
               }
             }
@@ -1656,14 +946,13 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                   Object {
                     "flexDirection": "row",
                   },
-                  undefined,
+                  false,
                   Object {
                     "alignItems": "center",
                     "height": 44,
                     "justifyContent": "center",
-                    "marginLeft": 20,
-                    "marginRight": 20,
-                    "marginTop": "auto",
+                    "marginLeft": 24,
+                    "marginRight": 24,
                   },
                 ]
               }
@@ -1679,12 +968,12 @@ exports[`NavigationBar component NavigationBar web snapshot test should render c
                       "lineHeight": 22,
                     },
                     Object {
-                      "color": "white",
+                      "color": "#8A94A6",
                     },
                   ]
                 }
               >
-                d
+                [missing "en.d" translation]
               </Text>
             </View>
             <View

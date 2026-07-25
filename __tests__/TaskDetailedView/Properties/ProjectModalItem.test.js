@@ -7,12 +7,10 @@ import { setProject } from '../../../redux/actions'
 import Backend from '../../../utils/BackendBridge'
 
 jest.mock('../../../utils/BackendBridge')
-jest.mock('firebase', () => ({ firestore: {} }));
-jest.mock('../../../components/TaskListView/Utils/TasksHelper',
-    () => ({
-        getTaskOwner: () => ({ uid: 0 })
-    }));
-
+jest.mock('firebase', () => ({ firestore: {} }))
+jest.mock('../../../components/TaskListView/Utils/TasksHelper', () => ({
+    getTaskOwner: () => ({ uid: 0 }),
+}))
 
 describe('ProjectModalItem component', () => {
     const task = { id: 'id0', name: 'task1', recurrence: { type: 'never' }, userIds: [{}] }
@@ -31,7 +29,9 @@ describe('ProjectModalItem component', () => {
             const project = { id: 'id0', name: 'Running out of cool names', color: 'the same with colors', userIds: [] }
             const currentProject = { id: 'id1', name: 'Fotuto', color: 'Pirulí', userIds: [] }
 
-            const tree = renderer.create(<ProjectModalItem project={project} task={task} newProject={project} closePopover={() => { }} />)
+            const tree = renderer.create(
+                <ProjectModalItem project={project} task={task} newProject={project} closePopover={() => {}} />
+            )
             const instance = tree.getInstance()
 
             store.dispatch(setProject(currentProject))

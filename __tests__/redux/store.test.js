@@ -51,7 +51,7 @@ import {
 import theStore, { initialState, resetCircularStructures, theReducer } from '../../redux/store'
 import { PROJECT_TYPE_ARCHIVED } from '../../components/SettingsView/ProjectsSettings/ProjectsSettings'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('Redux Reducers', () => {
     it('should return the initial state', () => {

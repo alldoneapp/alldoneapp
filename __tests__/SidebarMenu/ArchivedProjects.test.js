@@ -3,7 +3,7 @@ import ArchivedProjects from '../../components/SidebarMenu/ArchivedProjects'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('ArchivedProjects component', () => {
     describe('ArchivedProjects snapshot test', () => {

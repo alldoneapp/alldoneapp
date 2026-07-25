@@ -8,7 +8,7 @@ import store from '../../redux/store'
 import ActionButton from '../../components/FeedView/ActionButton'
 
 import renderer from 'react-test-renderer'
-import { render, fireEvent } from 'react-native-testing-library';
+import { render, fireEvent } from 'react-native-testing-library'
 
 describe('ActionButton component', () => {
     it('should render correctly', () => {
@@ -36,9 +36,7 @@ describe('ActionButton component', () => {
     it('should invoke onPress correctly', () => {
         // Given
         const mockFn = jest.fn()
-        const { getByTestId } = render(
-            <ActionButton icon={{ icon: null }} text={{ text: null }} onPress={mockFn} />
-        );
+        const { getByTestId } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} onPress={mockFn} />)
         const touchableOpacity = getByTestId('touchableOpacity')
         // When
         fireEvent.press(touchableOpacity)
@@ -49,9 +47,7 @@ describe('ActionButton component', () => {
     it('should not invoke onPress', () => {
         // Given
         const mockFn = jest.fn()
-        const { getByTestId } = render(
-            <ActionButton icon={{ icon: null }} text={{ text: null }}/>
-        );
+        const { getByTestId } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} />)
         const touchableOpacity = getByTestId('touchableOpacity')
         // When
         fireEvent.press(touchableOpacity)
@@ -67,7 +63,7 @@ describe('ActionButton component', () => {
         // When
         instance.hidePopover()
         // Then
-        setTimeout(()=> {
+        setTimeout(() => {
             expect(instance.state.visiblePopover).toEqual(false)
         }, 1000)
     })

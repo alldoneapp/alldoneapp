@@ -5,58 +5,57 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
   style={
     Object {
       "backgroundColor": "transparent",
+      "elevation": 3,
       "height": "100%",
+      "left": 0,
+      "overflow": "hidden",
       "position": "absolute",
-      "width": "100%",
-      "zIndex": 5,
+      "shadowColor": "rgba(4, 20, 47, 0.24)",
+      "shadowOffset": Object {
+        "height": 0,
+        "width": 0,
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 6,
+      "top": 0,
+      "width": 0,
+      "zIndex": 10000,
     }
   }
 >
   <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
-    onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+    onMouseEnter={[Function]}
     style={
       Object {
-        "backgroundColor": "transparent",
-        "height": "100%",
-        "opacity": 1,
+        "backgroundColor": "#F5F5F5",
+        "height": "calc(100% - 56px)",
+        "left": 0,
+        "overflow": "hidden",
         "position": "absolute",
-        "width": "100%",
-        "zIndex": 5,
-      }
-    }
-  />
-  <View
-    style={
-      Object {
-        "backgroundColor": "#0A44A5",
-        "height": "100%",
-        "width": 263,
+        "width": 0,
+        "zIndex": 100,
       }
     }
   >
     <View
       style={
-        Object {
-          "alignItems": "center",
-          "flex": 1,
-          "flexDirection": "row",
-          "height": 72,
-          "justifyContent": "space-between",
-          "maxHeight": 72,
-          "minHeight": 72,
-          "paddingBottom": 16,
-          "paddingHorizontal": 28,
-          "paddingTop": 32,
-        }
+        Array [
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+            "height": 72,
+            "justifyContent": "space-between",
+            "maxHeight": 72,
+            "minHeight": 72,
+            "paddingBottom": 16,
+            "paddingHorizontal": 24,
+            "paddingTop": 32,
+          },
+          Object {
+            "paddingHorizontal": 16,
+          },
+        ]
       }
     >
       <View
@@ -83,7 +82,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
           <Text
             style={
               Object {
-                "color": "white",
+                "color": "#007FFF",
                 "fontFamily": "alldone",
                 "fontSize": 24,
                 "opacity": 1,
@@ -93,71 +92,17 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
             
           </Text>
         </View>
-        <View
-          style={
-            Object {
-              "marginLeft": 9,
-            }
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-      </View>
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "opacity": 1,
-          }
-        }
-      >
-        <View
-          style={
-            Object {
-              "marginLeft": 9,
-            }
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
       </View>
     </View>
     <View
       style={
-        Object {
-          "flex": 1,
-        }
+        Array [
+          Object {
+            "flex": 1,
+          },
+          undefined,
+          undefined,
+        ]
       }
     >
       <RCTScrollView
@@ -176,103 +121,67 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
                   "marginBottom": 12,
                   "marginTop": 32,
                 },
-                undefined,
+                Array [
+                  Object {
+                    "borderBottomWidth": 2,
+                  },
+                  Object {
+                    "borderBottomColor": "#D6EBFF",
+                  },
+                ],
               ]
             }
           >
-            <View
-              accessible={true}
-              focusable={true}
-              isTVSelectable={true}
-              onClick={[Function]}
-              onResponderGrant={[Function]}
-              onResponderMove={[Function]}
-              onResponderRelease={[Function]}
-              onResponderTerminate={[Function]}
-              onResponderTerminationRequest={[Function]}
-              onStartShouldSetResponder={[Function]}
-              style={
-                Object {
-                  "alignItems": "center",
-                  "backgroundColor": "#0A44A5",
-                  "flexDirection": "row",
-                  "height": 56,
-                  "justifyContent": "space-between",
-                  "opacity": 0.8,
-                  "paddingLeft": 24,
-                }
-              }
-            >
+            <View>
               <View
+                accessible={true}
+                focusable={true}
+                isTVSelectable={true}
+                onClick={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
                 style={
                   Object {
                     "alignItems": "center",
+                    "backgroundColor": "#D6EBFF",
                     "flexDirection": "row",
+                    "height": 56,
+                    "justifyContent": "space-between",
+                    "opacity": 1,
+                    "paddingLeft": 17,
                   }
                 }
               >
-                <Image
-                  source={
-                    Object {
-                      "uri": undefined,
-                    }
-                  }
+                <View
                   style={
                     Object {
-                      "borderRadius": 100,
-                      "height": 22,
-                      "marginRight": 10,
-                      "width": 22,
+                      "alignItems": "center",
+                      "flexDirection": "row",
                     }
                   }
-                />
-                <Text
-                  style={
-                    Array [
-                      Object {
-                        "color": "#04142F",
-                        "fontFamily": "Roboto-Regular",
-                        "fontSize": 16,
-                        "letterSpacing": 0.32,
-                        "lineHeight": 24,
-                      },
-                      Object {
-                        "color": "white",
-                        "opacity": 0.8,
-                      },
-                    ]
-                  }
                 >
-                  All projects
-                </Text>
-              </View>
-              <View
-                style={
-                  Object {
-                    "paddingRight": 24,
-                  }
-                }
-              >
-                <Text
-                  style={
-                    Array [
+                  <Image
+                    source={
                       Object {
-                        "color": "#04142F",
-                        "fontFamily": "Roboto-Regular",
-                        "fontSize": 16,
-                        "letterSpacing": 0.32,
-                        "lineHeight": 24,
-                      },
+                        "uri": undefined,
+                      }
+                    }
+                    style={
                       Object {
-                        "color": "white",
-                        "opacity": 0.8,
-                      },
-                    ]
-                  }
-                >
-                  
-                </Text>
+                        "borderRadius": 100,
+                        "height": 22,
+                        "marginRight": 10,
+                        "width": 22,
+                      }
+                    }
+                  />
+                </View>
               </View>
+              <View />
             </View>
           </View>
           <View>
@@ -281,7 +190,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
               disableVirtualization={false}
               extraData={
                 Array [
-                  true,
+                  false,
                 ]
               }
               getItem={[Function]}
@@ -311,62 +220,98 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
             </RCTScrollView>
           </View>
           <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
             style={
               Object {
-                "zIndex": 30,
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 56,
+                "opacity": 1,
+                "paddingHorizontal": 24,
+                "paddingLeft": 17,
               }
             }
           >
             <View
-              accessible={true}
-              focusable={true}
-              isTVSelectable={true}
-              onClick={[Function]}
-              onResponderGrant={[Function]}
-              onResponderMove={[Function]}
-              onResponderRelease={[Function]}
-              onResponderTerminate={[Function]}
-              onResponderTerminationRequest={[Function]}
-              onStartShouldSetResponder={[Function]}
+              style={Object {}}
+            >
+              <Text
+                style={
+                  Object {
+                    "color": "#B7BDC8",
+                    "fontFamily": "alldone",
+                    "fontSize": 22,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
+              </Text>
+            </View>
+          </View>
+          <View />
+          <View
+            accessible={false}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "backgroundColor": "transparent",
+                "flexDirection": "row",
+                "height": 56,
+                "justifyContent": "space-between",
+                "marginTop": 32,
+                "opacity": 1,
+                "paddingLeft": 17,
+              }
+            }
+          >
+            <View
               style={
                 Object {
                   "alignItems": "center",
+                  "flex": 1,
                   "flexDirection": "row",
-                  "height": 56,
-                  "marginHorizontal": 12,
-                  "opacity": 1,
-                  "paddingHorizontal": 12,
                 }
               }
             >
-              <View>
+              <View
+                style={
+                  Object {
+                    "marginRight": 10,
+                  }
+                }
+              >
                 <Text
                   style={
                     Object {
-                      "color": "#6C8FC9",
+                      "color": "#8A94A6",
                       "fontFamily": "alldone",
                       "fontSize": 22,
                       "opacity": 1,
                     }
                   }
                 >
-                  
+                  
                 </Text>
               </View>
-              <Text
-                style={
-                  Object {
-                    "color": "#6C8FC9",
-                    "fontFamily": "Roboto-Regular",
-                    "fontSize": 16,
-                    "letterSpacing": 0.32,
-                    "lineHeight": 24,
-                    "paddingLeft": 8,
-                  }
-                }
-              >
-                Add new project
-              </Text>
             </View>
           </View>
           <View
@@ -390,115 +335,123 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
                 onStartShouldSetResponder={[Function]}
                 style={
                   Object {
-                    "alignItems": "center",
-                    "flexDirection": "row",
                     "height": 56,
-                    "justifyContent": "space-between",
+                    "justifyContent": "center",
                     "opacity": 1,
-                    "paddingLeft": 24,
+                    "paddingLeft": 17,
                   }
                 }
               >
-                <View>
-                  <Text
-                    style={
-                      Array [
-                        Object {
-                          "color": "#04142F",
-                          "fontFamily": "Roboto-Regular",
-                          "fontSize": 16,
-                          "letterSpacing": 0.32,
-                          "lineHeight": 24,
-                        },
-                        Object {
-                          "color": "white",
-                        },
-                        Object {
-                          "opacity": 0.4,
-                        },
-                      ]
-                    }
-                  >
-                    Archived projects
-                  </Text>
-                </View>
                 <View
                   style={
                     Object {
-                      "paddingRight": 24,
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "space-between",
                     }
                   }
                 >
-                  <Text
+                  <View
                     style={
-                      Array [
-                        Object {
-                          "color": "#04142F",
-                          "fontFamily": "Roboto-Regular",
-                          "fontSize": 16,
-                          "letterSpacing": 0.32,
-                          "lineHeight": 24,
-                        },
-                        Object {
-                          "color": "white",
-                        },
-                        Object {
-                          "opacity": 0.4,
-                        },
-                        null,
-                      ]
+                      Object {
+                        "alignItems": "center",
+                        "flexDirection": "row",
+                      }
                     }
                   >
-                    
-                  </Text>
+                    <View
+                      style={
+                        Object {
+                          "marginRight": 10,
+                          "opacity": 0.64,
+                        }
+                      }
+                    >
+                      <Text
+                        style={
+                          Object {
+                            "color": "#B7BDC8",
+                            "fontFamily": "alldone",
+                            "fontSize": 22,
+                            "opacity": 1,
+                          }
+                        }
+                      >
+                        
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View>
+            <View>
+              <View
+                accessible={true}
+                focusable={true}
+                isTVSelectable={true}
+                onClick={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  Object {
+                    "height": 56,
+                    "justifyContent": "center",
+                    "opacity": 1,
+                    "paddingLeft": 17,
+                  }
+                }
+              >
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "space-between",
+                    }
+                  }
+                >
+                  <View
+                    style={
+                      Object {
+                        "alignItems": "center",
+                        "flexDirection": "row",
+                      }
+                    }
+                  >
+                    <View
+                      style={
+                        Object {
+                          "marginRight": 10,
+                          "opacity": 0.64,
+                        }
+                      }
+                    >
+                      <Text
+                        style={
+                          Object {
+                            "color": "#B7BDC8",
+                            "fontFamily": "alldone",
+                            "fontSize": 22,
+                            "opacity": 1,
+                          }
+                        }
+                      >
+                        
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </View>
             </View>
           </View>
           <View
-            style={
-              Object {
-                "paddingBottom": 96,
-              }
-            }
-          />
-          <View
-            style={
-              Object {
-                "alignItems": "center",
-                "flexDirection": "row",
-                "height": 48,
-                "paddingHorizontal": 24,
-                "width": "100%",
-              }
-            }
-          >
-            <Text
-              style={
-                Array [
-                  Object {
-                    "color": "#04142F",
-                    "fontFamily": "Roboto-Regular",
-                    "fontSize": 14,
-                    "letterSpacing": 0.32,
-                    "lineHeight": 22,
-                  },
-                  Object {
-                    "color": "#FFFFFF",
-                    "flex": 1,
-                    "opacity": 0.4,
-                  },
-                ]
-              }
-            >
-              Alldone.app v
-              0
-              .
-              0
-            </Text>
-          </View>
-          <View
-            accessible={true}
+            accessible={false}
             focusable={true}
             isTVSelectable={true}
             onClick={[Function]}
@@ -510,7 +463,13 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "alignItems": "center",
+                "backgroundColor": "transparent",
+                "flexDirection": "row",
+                "height": 56,
+                "justifyContent": "space-between",
                 "opacity": 1,
+                "paddingLeft": 17,
               }
             }
           >
@@ -518,36 +477,173 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
               style={
                 Object {
                   "alignItems": "center",
+                  "flex": 1,
                   "flexDirection": "row",
-                  "height": 48,
-                  "paddingHorizontal": 24,
-                  "width": "100%",
                 }
               }
             >
-              <Text
+              <View
                 style={
-                  Array [
-                    Object {
-                      "color": "#04142F",
-                      "fontFamily": "Roboto-Regular",
-                      "fontSize": 14,
-                      "letterSpacing": 0.32,
-                      "lineHeight": 22,
-                    },
-                    Object {
-                      "color": "#FFFFFF",
-                      "opacity": 0.4,
-                    },
-                  ]
+                  Object {
+                    "marginRight": 10,
+                    "opacity": 0.64,
+                  }
                 }
               >
-                Impressum
+                <Text
+                  style={
+                    Object {
+                      "color": "#B7BDC8",
+                      "fontFamily": "alldone",
+                      "fontSize": 22,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={false}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "backgroundColor": "transparent",
+                "flexDirection": "row",
+                "height": 56,
+                "justifyContent": "space-between",
+                "opacity": 1,
+                "paddingLeft": 17,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "marginRight": 10,
+                    "opacity": 0.64,
+                  }
+                }
+              >
+                <Text
+                  style={
+                    Object {
+                      "color": "#B7BDC8",
+                      "fontFamily": "alldone",
+                      "fontSize": 22,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View
+            style={
+              Array [
+                Object {
+                  "height": 56,
+                  "paddingLeft": 17,
+                  "paddingVertical": 17,
+                },
+                Object {
+                  "opacity": 0.64,
+                },
+              ]
+            }
+          >
+            <View>
+              <Text
+                style={
+                  Object {
+                    "color": "#B7BDC8",
+                    "fontFamily": "alldone",
+                    "fontSize": 22,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
               </Text>
             </View>
           </View>
         </View>
       </RCTScrollView>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#F5F5F5",
+        "bottom": 0,
+        "flexDirection": "row",
+        "height": 56,
+        "left": 0,
+        "position": "absolute",
+        "width": 0,
+      }
+    }
+  >
+    <View
+      accessible={false}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "flexDirection": "row",
+          "height": 56,
+          "opacity": 0.64,
+          "overflow": "hidden",
+          "paddingHorizontal": 24,
+          "paddingLeft": 17,
+          "paddingVertical": 16,
+          "width": "100%",
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 22,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
     </View>
   </View>
 </View>
@@ -558,58 +654,57 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
   style={
     Object {
       "backgroundColor": "transparent",
+      "elevation": 3,
       "height": "100%",
+      "left": 0,
+      "overflow": "hidden",
       "position": "absolute",
-      "width": "100%",
-      "zIndex": 5,
+      "shadowColor": "rgba(4, 20, 47, 0.24)",
+      "shadowOffset": Object {
+        "height": 0,
+        "width": 0,
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 6,
+      "top": 0,
+      "width": 0,
+      "zIndex": 10000,
     }
   }
 >
   <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
-    onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+    onMouseEnter={[Function]}
     style={
       Object {
-        "backgroundColor": "transparent",
-        "height": "100%",
-        "opacity": 1,
+        "backgroundColor": "#F5F5F5",
+        "height": "calc(100% - 56px)",
+        "left": 0,
+        "overflow": "hidden",
         "position": "absolute",
-        "width": "100%",
-        "zIndex": 5,
-      }
-    }
-  />
-  <View
-    style={
-      Object {
-        "backgroundColor": "#0A44A5",
-        "height": "100%",
-        "width": 263,
+        "width": 0,
+        "zIndex": 100,
       }
     }
   >
     <View
       style={
-        Object {
-          "alignItems": "center",
-          "flex": 1,
-          "flexDirection": "row",
-          "height": 72,
-          "justifyContent": "space-between",
-          "maxHeight": 72,
-          "minHeight": 72,
-          "paddingBottom": 16,
-          "paddingHorizontal": 28,
-          "paddingTop": 32,
-        }
+        Array [
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+            "height": 72,
+            "justifyContent": "space-between",
+            "maxHeight": 72,
+            "minHeight": 72,
+            "paddingBottom": 16,
+            "paddingHorizontal": 24,
+            "paddingTop": 32,
+          },
+          Object {
+            "paddingHorizontal": 16,
+          },
+        ]
       }
     >
       <View
@@ -636,7 +731,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
           <Text
             style={
               Object {
-                "color": "white",
+                "color": "#007FFF",
                 "fontFamily": "alldone",
                 "fontSize": 24,
                 "opacity": 1,
@@ -646,71 +741,17 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
             
           </Text>
         </View>
-        <View
-          style={
-            Object {
-              "marginLeft": 9,
-            }
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-      </View>
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "opacity": 1,
-          }
-        }
-      >
-        <View
-          style={
-            Object {
-              "marginLeft": 9,
-            }
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
       </View>
     </View>
     <View
       style={
-        Object {
-          "flex": 1,
-        }
+        Array [
+          Object {
+            "flex": 1,
+          },
+          undefined,
+          undefined,
+        ]
       }
     >
       <RCTScrollView
@@ -729,103 +770,67 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
                   "marginBottom": 12,
                   "marginTop": 32,
                 },
-                undefined,
+                Array [
+                  Object {
+                    "borderBottomWidth": 2,
+                  },
+                  Object {
+                    "borderBottomColor": "#D6EBFF",
+                  },
+                ],
               ]
             }
           >
-            <View
-              accessible={true}
-              focusable={true}
-              isTVSelectable={true}
-              onClick={[Function]}
-              onResponderGrant={[Function]}
-              onResponderMove={[Function]}
-              onResponderRelease={[Function]}
-              onResponderTerminate={[Function]}
-              onResponderTerminationRequest={[Function]}
-              onStartShouldSetResponder={[Function]}
-              style={
-                Object {
-                  "alignItems": "center",
-                  "backgroundColor": "#0A44A5",
-                  "flexDirection": "row",
-                  "height": 56,
-                  "justifyContent": "space-between",
-                  "opacity": 0.8,
-                  "paddingLeft": 24,
-                }
-              }
-            >
+            <View>
               <View
+                accessible={true}
+                focusable={true}
+                isTVSelectable={true}
+                onClick={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
                 style={
                   Object {
                     "alignItems": "center",
+                    "backgroundColor": "#D6EBFF",
                     "flexDirection": "row",
+                    "height": 56,
+                    "justifyContent": "space-between",
+                    "opacity": 1,
+                    "paddingLeft": 17,
                   }
                 }
               >
-                <Image
-                  source={
-                    Object {
-                      "uri": undefined,
-                    }
-                  }
+                <View
                   style={
                     Object {
-                      "borderRadius": 100,
-                      "height": 22,
-                      "marginRight": 10,
-                      "width": 22,
+                      "alignItems": "center",
+                      "flexDirection": "row",
                     }
                   }
-                />
-                <Text
-                  style={
-                    Array [
-                      Object {
-                        "color": "#04142F",
-                        "fontFamily": "Roboto-Regular",
-                        "fontSize": 16,
-                        "letterSpacing": 0.32,
-                        "lineHeight": 24,
-                      },
-                      Object {
-                        "color": "white",
-                        "opacity": 0.8,
-                      },
-                    ]
-                  }
                 >
-                  All projects
-                </Text>
-              </View>
-              <View
-                style={
-                  Object {
-                    "paddingRight": 24,
-                  }
-                }
-              >
-                <Text
-                  style={
-                    Array [
+                  <Image
+                    source={
                       Object {
-                        "color": "#04142F",
-                        "fontFamily": "Roboto-Regular",
-                        "fontSize": 16,
-                        "letterSpacing": 0.32,
-                        "lineHeight": 24,
-                      },
+                        "uri": undefined,
+                      }
+                    }
+                    style={
                       Object {
-                        "color": "white",
-                        "opacity": 0.8,
-                      },
-                    ]
-                  }
-                >
-                  
-                </Text>
+                        "borderRadius": 100,
+                        "height": 22,
+                        "marginRight": 10,
+                        "width": 22,
+                      }
+                    }
+                  />
+                </View>
               </View>
+              <View />
             </View>
           </View>
           <View>
@@ -834,7 +839,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
               disableVirtualization={false}
               extraData={
                 Array [
-                  true,
+                  false,
                 ]
               }
               getItem={[Function]}
@@ -864,62 +869,98 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
             </RCTScrollView>
           </View>
           <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
             style={
               Object {
-                "zIndex": 30,
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 56,
+                "opacity": 1,
+                "paddingHorizontal": 24,
+                "paddingLeft": 17,
               }
             }
           >
             <View
-              accessible={true}
-              focusable={true}
-              isTVSelectable={true}
-              onClick={[Function]}
-              onResponderGrant={[Function]}
-              onResponderMove={[Function]}
-              onResponderRelease={[Function]}
-              onResponderTerminate={[Function]}
-              onResponderTerminationRequest={[Function]}
-              onStartShouldSetResponder={[Function]}
+              style={Object {}}
+            >
+              <Text
+                style={
+                  Object {
+                    "color": "#B7BDC8",
+                    "fontFamily": "alldone",
+                    "fontSize": 22,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
+              </Text>
+            </View>
+          </View>
+          <View />
+          <View
+            accessible={false}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "backgroundColor": "transparent",
+                "flexDirection": "row",
+                "height": 56,
+                "justifyContent": "space-between",
+                "marginTop": 32,
+                "opacity": 1,
+                "paddingLeft": 17,
+              }
+            }
+          >
+            <View
               style={
                 Object {
                   "alignItems": "center",
+                  "flex": 1,
                   "flexDirection": "row",
-                  "height": 56,
-                  "marginHorizontal": 12,
-                  "opacity": 1,
-                  "paddingHorizontal": 12,
                 }
               }
             >
-              <View>
+              <View
+                style={
+                  Object {
+                    "marginRight": 10,
+                  }
+                }
+              >
                 <Text
                   style={
                     Object {
-                      "color": "#6C8FC9",
+                      "color": "#8A94A6",
                       "fontFamily": "alldone",
                       "fontSize": 22,
                       "opacity": 1,
                     }
                   }
                 >
-                  
+                  
                 </Text>
               </View>
-              <Text
-                style={
-                  Object {
-                    "color": "#6C8FC9",
-                    "fontFamily": "Roboto-Regular",
-                    "fontSize": 16,
-                    "letterSpacing": 0.32,
-                    "lineHeight": 24,
-                    "paddingLeft": 8,
-                  }
-                }
-              >
-                Add new project
-              </Text>
             </View>
           </View>
           <View
@@ -943,115 +984,123 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
                 onStartShouldSetResponder={[Function]}
                 style={
                   Object {
-                    "alignItems": "center",
-                    "flexDirection": "row",
                     "height": 56,
-                    "justifyContent": "space-between",
+                    "justifyContent": "center",
                     "opacity": 1,
-                    "paddingLeft": 24,
+                    "paddingLeft": 17,
                   }
                 }
               >
-                <View>
-                  <Text
-                    style={
-                      Array [
-                        Object {
-                          "color": "#04142F",
-                          "fontFamily": "Roboto-Regular",
-                          "fontSize": 16,
-                          "letterSpacing": 0.32,
-                          "lineHeight": 24,
-                        },
-                        Object {
-                          "color": "white",
-                        },
-                        Object {
-                          "opacity": 0.4,
-                        },
-                      ]
-                    }
-                  >
-                    Archived projects
-                  </Text>
-                </View>
                 <View
                   style={
                     Object {
-                      "paddingRight": 24,
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "space-between",
                     }
                   }
                 >
-                  <Text
+                  <View
                     style={
-                      Array [
-                        Object {
-                          "color": "#04142F",
-                          "fontFamily": "Roboto-Regular",
-                          "fontSize": 16,
-                          "letterSpacing": 0.32,
-                          "lineHeight": 24,
-                        },
-                        Object {
-                          "color": "white",
-                        },
-                        Object {
-                          "opacity": 0.4,
-                        },
-                        null,
-                      ]
+                      Object {
+                        "alignItems": "center",
+                        "flexDirection": "row",
+                      }
                     }
                   >
-                    
-                  </Text>
+                    <View
+                      style={
+                        Object {
+                          "marginRight": 10,
+                          "opacity": 0.64,
+                        }
+                      }
+                    >
+                      <Text
+                        style={
+                          Object {
+                            "color": "#B7BDC8",
+                            "fontFamily": "alldone",
+                            "fontSize": 22,
+                            "opacity": 1,
+                          }
+                        }
+                      >
+                        
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View>
+            <View>
+              <View
+                accessible={true}
+                focusable={true}
+                isTVSelectable={true}
+                onClick={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  Object {
+                    "height": 56,
+                    "justifyContent": "center",
+                    "opacity": 1,
+                    "paddingLeft": 17,
+                  }
+                }
+              >
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "space-between",
+                    }
+                  }
+                >
+                  <View
+                    style={
+                      Object {
+                        "alignItems": "center",
+                        "flexDirection": "row",
+                      }
+                    }
+                  >
+                    <View
+                      style={
+                        Object {
+                          "marginRight": 10,
+                          "opacity": 0.64,
+                        }
+                      }
+                    >
+                      <Text
+                        style={
+                          Object {
+                            "color": "#B7BDC8",
+                            "fontFamily": "alldone",
+                            "fontSize": 22,
+                            "opacity": 1,
+                          }
+                        }
+                      >
+                        
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </View>
             </View>
           </View>
           <View
-            style={
-              Object {
-                "paddingBottom": 96,
-              }
-            }
-          />
-          <View
-            style={
-              Object {
-                "alignItems": "center",
-                "flexDirection": "row",
-                "height": 48,
-                "paddingHorizontal": 24,
-                "width": "100%",
-              }
-            }
-          >
-            <Text
-              style={
-                Array [
-                  Object {
-                    "color": "#04142F",
-                    "fontFamily": "Roboto-Regular",
-                    "fontSize": 14,
-                    "letterSpacing": 0.32,
-                    "lineHeight": 22,
-                  },
-                  Object {
-                    "color": "#FFFFFF",
-                    "flex": 1,
-                    "opacity": 0.4,
-                  },
-                ]
-              }
-            >
-              Alldone.app v
-              0
-              .
-              0
-            </Text>
-          </View>
-          <View
-            accessible={true}
+            accessible={false}
             focusable={true}
             isTVSelectable={true}
             onClick={[Function]}
@@ -1063,7 +1112,13 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "alignItems": "center",
+                "backgroundColor": "transparent",
+                "flexDirection": "row",
+                "height": 56,
+                "justifyContent": "space-between",
                 "opacity": 1,
+                "paddingLeft": 17,
               }
             }
           >
@@ -1071,36 +1126,173 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
               style={
                 Object {
                   "alignItems": "center",
+                  "flex": 1,
                   "flexDirection": "row",
-                  "height": 48,
-                  "paddingHorizontal": 24,
-                  "width": "100%",
                 }
               }
             >
-              <Text
+              <View
                 style={
-                  Array [
-                    Object {
-                      "color": "#04142F",
-                      "fontFamily": "Roboto-Regular",
-                      "fontSize": 14,
-                      "letterSpacing": 0.32,
-                      "lineHeight": 22,
-                    },
-                    Object {
-                      "color": "#FFFFFF",
-                      "opacity": 0.4,
-                    },
-                  ]
+                  Object {
+                    "marginRight": 10,
+                    "opacity": 0.64,
+                  }
                 }
               >
-                Impressum
+                <Text
+                  style={
+                    Object {
+                      "color": "#B7BDC8",
+                      "fontFamily": "alldone",
+                      "fontSize": 22,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={false}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "backgroundColor": "transparent",
+                "flexDirection": "row",
+                "height": 56,
+                "justifyContent": "space-between",
+                "opacity": 1,
+                "paddingLeft": 17,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "marginRight": 10,
+                    "opacity": 0.64,
+                  }
+                }
+              >
+                <Text
+                  style={
+                    Object {
+                      "color": "#B7BDC8",
+                      "fontFamily": "alldone",
+                      "fontSize": 22,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View
+            style={
+              Array [
+                Object {
+                  "height": 56,
+                  "paddingLeft": 17,
+                  "paddingVertical": 17,
+                },
+                Object {
+                  "opacity": 0.64,
+                },
+              ]
+            }
+          >
+            <View>
+              <Text
+                style={
+                  Object {
+                    "color": "#B7BDC8",
+                    "fontFamily": "alldone",
+                    "fontSize": 22,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
               </Text>
             </View>
           </View>
         </View>
       </RCTScrollView>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#F5F5F5",
+        "bottom": 0,
+        "flexDirection": "row",
+        "height": 56,
+        "left": 0,
+        "position": "absolute",
+        "width": 0,
+      }
+    }
+  >
+    <View
+      accessible={false}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "flexDirection": "row",
+          "height": 56,
+          "opacity": 0.64,
+          "overflow": "hidden",
+          "paddingHorizontal": 24,
+          "paddingLeft": 17,
+          "paddingVertical": 16,
+          "width": "100%",
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 22,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
     </View>
   </View>
 </View>
@@ -1111,58 +1303,57 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
   style={
     Object {
       "backgroundColor": "transparent",
+      "elevation": 3,
       "height": "100%",
+      "left": 0,
+      "overflow": "hidden",
       "position": "absolute",
-      "width": "100%",
-      "zIndex": 5,
+      "shadowColor": "rgba(4, 20, 47, 0.24)",
+      "shadowOffset": Object {
+        "height": 0,
+        "width": 0,
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 6,
+      "top": 0,
+      "width": 0,
+      "zIndex": 10000,
     }
   }
 >
   <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
-    onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+    onMouseEnter={[Function]}
     style={
       Object {
-        "backgroundColor": "transparent",
-        "height": "100%",
-        "opacity": 1,
+        "backgroundColor": "#F5F5F5",
+        "height": "calc(100% - 56px)",
+        "left": 0,
+        "overflow": "hidden",
         "position": "absolute",
-        "width": "100%",
-        "zIndex": 5,
-      }
-    }
-  />
-  <View
-    style={
-      Object {
-        "backgroundColor": "#0A44A5",
-        "height": "100%",
-        "width": 263,
+        "width": 0,
+        "zIndex": 100,
       }
     }
   >
     <View
       style={
-        Object {
-          "alignItems": "center",
-          "flex": 1,
-          "flexDirection": "row",
-          "height": 72,
-          "justifyContent": "space-between",
-          "maxHeight": 72,
-          "minHeight": 72,
-          "paddingBottom": 16,
-          "paddingHorizontal": 28,
-          "paddingTop": 32,
-        }
+        Array [
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+            "height": 72,
+            "justifyContent": "space-between",
+            "maxHeight": 72,
+            "minHeight": 72,
+            "paddingBottom": 16,
+            "paddingHorizontal": 24,
+            "paddingTop": 32,
+          },
+          Object {
+            "paddingHorizontal": 16,
+          },
+        ]
       }
     >
       <View
@@ -1189,7 +1380,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
           <Text
             style={
               Object {
-                "color": "white",
+                "color": "#007FFF",
                 "fontFamily": "alldone",
                 "fontSize": 24,
                 "opacity": 1,
@@ -1199,71 +1390,17 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
             
           </Text>
         </View>
-        <View
-          style={
-            Object {
-              "marginLeft": 9,
-            }
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
-      </View>
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
-        onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          Object {
-            "opacity": 1,
-          }
-        }
-      >
-        <View
-          style={
-            Object {
-              "marginLeft": 9,
-            }
-          }
-        >
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
       </View>
     </View>
     <View
       style={
-        Object {
-          "flex": 1,
-        }
+        Array [
+          Object {
+            "flex": 1,
+          },
+          undefined,
+          undefined,
+        ]
       }
     >
       <RCTScrollView
@@ -1282,103 +1419,67 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
                   "marginBottom": 12,
                   "marginTop": 32,
                 },
-                undefined,
+                Array [
+                  Object {
+                    "borderBottomWidth": 2,
+                  },
+                  Object {
+                    "borderBottomColor": "#D6EBFF",
+                  },
+                ],
               ]
             }
           >
-            <View
-              accessible={true}
-              focusable={true}
-              isTVSelectable={true}
-              onClick={[Function]}
-              onResponderGrant={[Function]}
-              onResponderMove={[Function]}
-              onResponderRelease={[Function]}
-              onResponderTerminate={[Function]}
-              onResponderTerminationRequest={[Function]}
-              onStartShouldSetResponder={[Function]}
-              style={
-                Object {
-                  "alignItems": "center",
-                  "backgroundColor": "#0A44A5",
-                  "flexDirection": "row",
-                  "height": 56,
-                  "justifyContent": "space-between",
-                  "opacity": 0.8,
-                  "paddingLeft": 24,
-                }
-              }
-            >
+            <View>
               <View
+                accessible={true}
+                focusable={true}
+                isTVSelectable={true}
+                onClick={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
                 style={
                   Object {
                     "alignItems": "center",
+                    "backgroundColor": "#D6EBFF",
                     "flexDirection": "row",
+                    "height": 56,
+                    "justifyContent": "space-between",
+                    "opacity": 1,
+                    "paddingLeft": 17,
                   }
                 }
               >
-                <Image
-                  source={
-                    Object {
-                      "uri": undefined,
-                    }
-                  }
+                <View
                   style={
                     Object {
-                      "borderRadius": 100,
-                      "height": 22,
-                      "marginRight": 10,
-                      "width": 22,
+                      "alignItems": "center",
+                      "flexDirection": "row",
                     }
                   }
-                />
-                <Text
-                  style={
-                    Array [
-                      Object {
-                        "color": "#04142F",
-                        "fontFamily": "Roboto-Regular",
-                        "fontSize": 16,
-                        "letterSpacing": 0.32,
-                        "lineHeight": 24,
-                      },
-                      Object {
-                        "color": "white",
-                        "opacity": 0.8,
-                      },
-                    ]
-                  }
                 >
-                  All projects
-                </Text>
-              </View>
-              <View
-                style={
-                  Object {
-                    "paddingRight": 24,
-                  }
-                }
-              >
-                <Text
-                  style={
-                    Array [
+                  <Image
+                    source={
                       Object {
-                        "color": "#04142F",
-                        "fontFamily": "Roboto-Regular",
-                        "fontSize": 16,
-                        "letterSpacing": 0.32,
-                        "lineHeight": 24,
-                      },
+                        "uri": undefined,
+                      }
+                    }
+                    style={
                       Object {
-                        "color": "white",
-                        "opacity": 0.8,
-                      },
-                    ]
-                  }
-                >
-                  
-                </Text>
+                        "borderRadius": 100,
+                        "height": 22,
+                        "marginRight": 10,
+                        "width": 22,
+                      }
+                    }
+                  />
+                </View>
               </View>
+              <View />
             </View>
           </View>
           <View>
@@ -1387,7 +1488,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
               disableVirtualization={false}
               extraData={
                 Array [
-                  true,
+                  false,
                 ]
               }
               getItem={[Function]}
@@ -1417,62 +1518,98 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
             </RCTScrollView>
           </View>
           <View
+            accessible={true}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
             style={
               Object {
-                "zIndex": 30,
+                "alignItems": "center",
+                "flexDirection": "row",
+                "height": 56,
+                "opacity": 1,
+                "paddingHorizontal": 24,
+                "paddingLeft": 17,
               }
             }
           >
             <View
-              accessible={true}
-              focusable={true}
-              isTVSelectable={true}
-              onClick={[Function]}
-              onResponderGrant={[Function]}
-              onResponderMove={[Function]}
-              onResponderRelease={[Function]}
-              onResponderTerminate={[Function]}
-              onResponderTerminationRequest={[Function]}
-              onStartShouldSetResponder={[Function]}
+              style={Object {}}
+            >
+              <Text
+                style={
+                  Object {
+                    "color": "#B7BDC8",
+                    "fontFamily": "alldone",
+                    "fontSize": 22,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
+              </Text>
+            </View>
+          </View>
+          <View />
+          <View
+            accessible={false}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "backgroundColor": "transparent",
+                "flexDirection": "row",
+                "height": 56,
+                "justifyContent": "space-between",
+                "marginTop": 32,
+                "opacity": 1,
+                "paddingLeft": 17,
+              }
+            }
+          >
+            <View
               style={
                 Object {
                   "alignItems": "center",
+                  "flex": 1,
                   "flexDirection": "row",
-                  "height": 56,
-                  "marginHorizontal": 12,
-                  "opacity": 1,
-                  "paddingHorizontal": 12,
                 }
               }
             >
-              <View>
+              <View
+                style={
+                  Object {
+                    "marginRight": 10,
+                  }
+                }
+              >
                 <Text
                   style={
                     Object {
-                      "color": "#6C8FC9",
+                      "color": "#8A94A6",
                       "fontFamily": "alldone",
                       "fontSize": 22,
                       "opacity": 1,
                     }
                   }
                 >
-                  
+                  
                 </Text>
               </View>
-              <Text
-                style={
-                  Object {
-                    "color": "#6C8FC9",
-                    "fontFamily": "Roboto-Regular",
-                    "fontSize": 16,
-                    "letterSpacing": 0.32,
-                    "lineHeight": 24,
-                    "paddingLeft": 8,
-                  }
-                }
-              >
-                Add new project
-              </Text>
             </View>
           </View>
           <View
@@ -1496,115 +1633,123 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
                 onStartShouldSetResponder={[Function]}
                 style={
                   Object {
-                    "alignItems": "center",
-                    "flexDirection": "row",
                     "height": 56,
-                    "justifyContent": "space-between",
+                    "justifyContent": "center",
                     "opacity": 1,
-                    "paddingLeft": 24,
+                    "paddingLeft": 17,
                   }
                 }
               >
-                <View>
-                  <Text
-                    style={
-                      Array [
-                        Object {
-                          "color": "#04142F",
-                          "fontFamily": "Roboto-Regular",
-                          "fontSize": 16,
-                          "letterSpacing": 0.32,
-                          "lineHeight": 24,
-                        },
-                        Object {
-                          "color": "white",
-                        },
-                        Object {
-                          "opacity": 0.4,
-                        },
-                      ]
-                    }
-                  >
-                    Archived projects
-                  </Text>
-                </View>
                 <View
                   style={
                     Object {
-                      "paddingRight": 24,
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "space-between",
                     }
                   }
                 >
-                  <Text
+                  <View
                     style={
-                      Array [
-                        Object {
-                          "color": "#04142F",
-                          "fontFamily": "Roboto-Regular",
-                          "fontSize": 16,
-                          "letterSpacing": 0.32,
-                          "lineHeight": 24,
-                        },
-                        Object {
-                          "color": "white",
-                        },
-                        Object {
-                          "opacity": 0.4,
-                        },
-                        null,
-                      ]
+                      Object {
+                        "alignItems": "center",
+                        "flexDirection": "row",
+                      }
                     }
                   >
-                    
-                  </Text>
+                    <View
+                      style={
+                        Object {
+                          "marginRight": 10,
+                          "opacity": 0.64,
+                        }
+                      }
+                    >
+                      <Text
+                        style={
+                          Object {
+                            "color": "#B7BDC8",
+                            "fontFamily": "alldone",
+                            "fontSize": 22,
+                            "opacity": 1,
+                          }
+                        }
+                      >
+                        
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+          <View>
+            <View>
+              <View
+                accessible={true}
+                focusable={true}
+                isTVSelectable={true}
+                onClick={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  Object {
+                    "height": 56,
+                    "justifyContent": "center",
+                    "opacity": 1,
+                    "paddingLeft": 17,
+                  }
+                }
+              >
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flexDirection": "row",
+                      "justifyContent": "space-between",
+                    }
+                  }
+                >
+                  <View
+                    style={
+                      Object {
+                        "alignItems": "center",
+                        "flexDirection": "row",
+                      }
+                    }
+                  >
+                    <View
+                      style={
+                        Object {
+                          "marginRight": 10,
+                          "opacity": 0.64,
+                        }
+                      }
+                    >
+                      <Text
+                        style={
+                          Object {
+                            "color": "#B7BDC8",
+                            "fontFamily": "alldone",
+                            "fontSize": 22,
+                            "opacity": 1,
+                          }
+                        }
+                      >
+                        
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </View>
             </View>
           </View>
           <View
-            style={
-              Object {
-                "paddingBottom": 96,
-              }
-            }
-          />
-          <View
-            style={
-              Object {
-                "alignItems": "center",
-                "flexDirection": "row",
-                "height": 48,
-                "paddingHorizontal": 24,
-                "width": "100%",
-              }
-            }
-          >
-            <Text
-              style={
-                Array [
-                  Object {
-                    "color": "#04142F",
-                    "fontFamily": "Roboto-Regular",
-                    "fontSize": 14,
-                    "letterSpacing": 0.32,
-                    "lineHeight": 22,
-                  },
-                  Object {
-                    "color": "#FFFFFF",
-                    "flex": 1,
-                    "opacity": 0.4,
-                  },
-                ]
-              }
-            >
-              Alldone.app v
-              0
-              .
-              0
-            </Text>
-          </View>
-          <View
-            accessible={true}
+            accessible={false}
             focusable={true}
             isTVSelectable={true}
             onClick={[Function]}
@@ -1616,7 +1761,13 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
             onStartShouldSetResponder={[Function]}
             style={
               Object {
+                "alignItems": "center",
+                "backgroundColor": "transparent",
+                "flexDirection": "row",
+                "height": 56,
+                "justifyContent": "space-between",
                 "opacity": 1,
+                "paddingLeft": 17,
               }
             }
           >
@@ -1624,36 +1775,173 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
               style={
                 Object {
                   "alignItems": "center",
+                  "flex": 1,
                   "flexDirection": "row",
-                  "height": 48,
-                  "paddingHorizontal": 24,
-                  "width": "100%",
                 }
               }
             >
-              <Text
+              <View
                 style={
-                  Array [
-                    Object {
-                      "color": "#04142F",
-                      "fontFamily": "Roboto-Regular",
-                      "fontSize": 14,
-                      "letterSpacing": 0.32,
-                      "lineHeight": 22,
-                    },
-                    Object {
-                      "color": "#FFFFFF",
-                      "opacity": 0.4,
-                    },
-                  ]
+                  Object {
+                    "marginRight": 10,
+                    "opacity": 0.64,
+                  }
                 }
               >
-                Impressum
+                <Text
+                  style={
+                    Object {
+                      "color": "#B7BDC8",
+                      "fontFamily": "alldone",
+                      "fontSize": 22,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View
+            accessible={false}
+            focusable={true}
+            isTVSelectable={true}
+            onClick={[Function]}
+            onResponderGrant={[Function]}
+            onResponderMove={[Function]}
+            onResponderRelease={[Function]}
+            onResponderTerminate={[Function]}
+            onResponderTerminationRequest={[Function]}
+            onStartShouldSetResponder={[Function]}
+            style={
+              Object {
+                "alignItems": "center",
+                "backgroundColor": "transparent",
+                "flexDirection": "row",
+                "height": 56,
+                "justifyContent": "space-between",
+                "opacity": 1,
+                "paddingLeft": 17,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "flexDirection": "row",
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "marginRight": 10,
+                    "opacity": 0.64,
+                  }
+                }
+              >
+                <Text
+                  style={
+                    Object {
+                      "color": "#B7BDC8",
+                      "fontFamily": "alldone",
+                      "fontSize": 22,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View
+            style={
+              Array [
+                Object {
+                  "height": 56,
+                  "paddingLeft": 17,
+                  "paddingVertical": 17,
+                },
+                Object {
+                  "opacity": 0.64,
+                },
+              ]
+            }
+          >
+            <View>
+              <Text
+                style={
+                  Object {
+                    "color": "#B7BDC8",
+                    "fontFamily": "alldone",
+                    "fontSize": 22,
+                    "opacity": 1,
+                  }
+                }
+              >
+                
               </Text>
             </View>
           </View>
         </View>
       </RCTScrollView>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#F5F5F5",
+        "bottom": 0,
+        "flexDirection": "row",
+        "height": 56,
+        "left": 0,
+        "position": "absolute",
+        "width": 0,
+      }
+    }
+  >
+    <View
+      accessible={false}
+      focusable={true}
+      isTVSelectable={true}
+      onClick={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        Object {
+          "flexDirection": "row",
+          "height": 56,
+          "opacity": 0.64,
+          "overflow": "hidden",
+          "paddingHorizontal": 24,
+          "paddingLeft": 17,
+          "paddingVertical": 16,
+          "width": "100%",
+        }
+      }
+    >
+      <View>
+        <Text
+          style={
+            Object {
+              "color": "#8A94A6",
+              "fontFamily": "alldone",
+              "fontSize": 22,
+              "opacity": 1,
+            }
+          }
+        >
+          
+        </Text>
+      </View>
     </View>
   </View>
 </View>

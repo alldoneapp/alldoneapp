@@ -19,9 +19,9 @@ const projects = [
         name: 'My Project',
         userIds: [],
         usersData: {
-            '-Asd1': { role: 'role1' }
-        }
-    }
+            '-Asd1': { role: 'role1' },
+        },
+    },
 ]
 
 describe('ProjectMemberItem component', () => {

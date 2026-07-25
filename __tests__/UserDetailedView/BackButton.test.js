@@ -3,7 +3,7 @@ import BackButton from '../../components/UserDetailedView/Header/BackButton'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('BackButton component', () => {
     describe('BackButton snapshot test', () => {

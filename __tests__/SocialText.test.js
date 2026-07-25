@@ -3,7 +3,7 @@ import SocialText from '../components/UIControls/SocialText'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 const testString = '@mention #hashtag email@gmail.com https://a.com Normal text'
 describe('SocialText component', () => {

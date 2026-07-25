@@ -6,12 +6,12 @@ import { Provider } from 'react-redux'
 import renderer from 'react-test-renderer'
 import { storeLoggedUser } from '../../redux/actions'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('CustomSideMenu component', () => {
     beforeEach(() => {
         jest.useFakeTimers()
-        store.dispatch(storeLoggedUser({displayName: "Pepe el loco"}))
+        store.dispatch(storeLoggedUser({ displayName: 'Pepe el loco' }))
     })
 
     describe('CustomSideMenu empty snapshot test', () => {

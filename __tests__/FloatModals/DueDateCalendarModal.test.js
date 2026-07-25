@@ -4,7 +4,7 @@ import DueDateCalendarModal from '../../components/UIComponents/FloatModals/DueD
 import renderer from 'react-test-renderer'
 import moment from 'moment'
 
-jest.mock('firebase', () => ({ firestore: {} }));
+jest.mock('firebase', () => ({ firestore: {} }))
 
 const dummyProjectId = '-LcRVRo6mhbC0oXCcZ2F'
 const dummyTaskId = '-LcRVT6MEWlqGQRkE2xw'
