@@ -11,9 +11,17 @@
 // so this is a no-op for anyone running the tests locally.
 
 const { execFileSync } = require('child_process')
-const { existsSync, writeFileSync } = require('fs')
+const { existsSync, writeFileSync, readFileSync } = require('fs')
+const path = require('path')
 
-const envPath = '.env'
+// babel-plugin-dotenv resolves .env against path.resolve(__dirname, '../../')
+// of the react-native-dotenv package, not the working directory. The CI job
+// symlinks node_modules to /app/node_modules and Node resolves symlinks, so the
+// plugin looks for /app/.env while the checkout sits in /builds. Ask the
+// resolver where the package actually lives instead of assuming the repository
+// root, which is only correct when node_modules is a real directory.
+const configDir = path.resolve(path.dirname(require.resolve('react-native-dotenv')), '..', '..')
+const envPath = path.join(configDir, '.env')
 
 if (existsSync(envPath)) {
     process.stdout.write(`${envPath} already exists, leaving it untouched\n`)
@@ -34,7 +42,7 @@ const importPattern = /import\s*\{([^}]*)\}\s*from\s*['"]react-native-dotenv['"]
 const names = new Set()
 
 for (const file of trackedFiles) {
-    const source = require('fs').readFileSync(file, 'utf8')
+    const source = readFileSync(file, 'utf8')
     if (!source.includes('react-native-dotenv')) continue
 
     let match
