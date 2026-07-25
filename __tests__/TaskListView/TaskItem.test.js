@@ -3,204 +3,214 @@
  */
 
 import React from 'react'
-import TaskItem from '../../components/TaskListView/TaskItem'
-import Lock from '../../components/Lock'
-import store from '../../redux/store'
-import { Provider } from 'react-redux'
-import { SubTaskList } from '../../__mocks__/MockData/SubTaskList'
-
 import renderer from 'react-test-renderer'
+import { useDispatch, useSelector } from 'react-redux'
 
-const sampleTask = { id: 'dsa', name: 'Some random text', userIds: [], recurrence: { type: 'never' } }
+import TaskItem from '../../components/TaskListView/TaskItem'
+import store from '../../redux/store'
+import { setCheckTaskItem } from '../../redux/actions'
+import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
+import { objectIsLockedForUser } from '../../components/Guides/guidesHelper'
+
+jest.mock('react-redux', () => ({
+    useDispatch: jest.fn(),
+    useSelector: jest.fn(),
+    shallowEqual: jest.fn(),
+}))
+// Swallow the forwarded ref: the test supplies its own dismissibleRef handle
+// and a host component would overwrite it with a null instance.
+jest.mock('../../components/UIComponents/DismissibleItem', () => {
+    const mockReact = require('react')
+    return mockReact.forwardRef((props, ref) => mockReact.createElement('DismissibleItem', props))
+})
+jest.mock('../../components/TaskListView/TaskPresentationContainer', () => 'TaskPresentationContainer')
+jest.mock('../../components/TaskListView/TaskItem/EditTask', () => 'EditTask')
+jest.mock('../../redux/store', () => ({
+    __esModule: true,
+    default: { getState: jest.fn() },
+}))
+jest.mock('../../redux/actions', () => ({
+    setCheckTaskItem: jest.fn((id, isObserved) => ({ type: 'Set check task item', id, isObserved })),
+}))
+jest.mock('../../components/SettingsView/ProjectsSettings/ProjectHelper', () => ({
+    __esModule: true,
+    default: { checkIfLoggedUserIsNormalUserInGuide: jest.fn(() => false) },
+}))
+jest.mock('../../components/Guides/guidesHelper', () => ({
+    objectIsLockedForUser: jest.fn(() => false),
+}))
+
+const projectId = 'project-1'
+const userId = 'user-1'
+const task = { id: 'task-1', name: 'Some random text', userId, userIds: [], recurrence: { type: 'never' } }
+
+const dispatch = jest.fn()
+
+const createState = ({ isCheckedTaskItem = false, swipeDueDatePopupVisible = false } = {}) => ({
+    checkTaskItem: { id: isCheckedTaskItem ? task.id : '', isObserved: false },
+    showSwipeDueDatePopup: { visible: swipeDueDatePopupVisible },
+})
+
+const createStoreState = ({ isAnonymous = false, activeEditMode = false } = {}) => ({
+    activeEditMode,
+    loggedUser: { isAnonymous, uid: userId, unlockedKeysByGuides: {} },
+    showSwipeDueDatePopup: { visible: false },
+})
+
+const renderTaskItem = (state = createState(), props = {}) => {
+    useSelector.mockImplementation(selector => selector(state))
+
+    const dismissibleRef = { current: { toggleModal: jest.fn(), closeModal: jest.fn() } }
+    const taskItemRef = { current: { onCheckboxPress: jest.fn() } }
+    const setInEditMode = jest.fn()
+    const setShowSubTaskIndicator = jest.fn()
+
+    let tree
+    renderer.act(() => {
+        tree = renderer.create(
+            <TaskItem
+                projectId={projectId}
+                task={task}
+                dismissibleRef={dismissibleRef}
+                taskItemRef={taskItemRef}
+                setInEditMode={setInEditMode}
+                setShowSubTaskIndicator={setShowSubTaskIndicator}
+                subtaskList={[]}
+                {...props}
+            />
+        )
+    })
+
+    return { tree, dismissibleRef, taskItemRef, setInEditMode, setShowSubTaskIndicator }
+}
 
 describe('TaskItem component', () => {
-    describe('TaskItem empty snapshot test', () => {
-        it('should render correctly', () => {
-            const tree = renderer
-                .create(
-                    <Provider store={store}>
-                        <TaskItem
-                            task={{
-                                id: '1',
-                                name: 'Some random text',
-                                subtaskIds: ['-Asd'],
-                                recurrence: { type: 'never' },
-                                userIds: [],
-                            }}
-                            tags={[]}
-                            projectId={'1'}
-                        />
-                    </Provider>
-                )
-                .toJSON()
-            expect(tree).toMatchSnapshot()
+    beforeEach(() => {
+        jest.clearAllMocks()
+        useDispatch.mockReturnValue(dispatch)
+        store.getState.mockReturnValue(createStoreState())
+        objectIsLockedForUser.mockReturnValue(false)
+        ProjectHelper.checkIfLoggedUserIsNormalUserInGuide.mockReturnValue(false)
+    })
+
+    describe('rendering', () => {
+        it('renders the presentation and the edit modal for its task', () => {
+            const { tree } = renderTaskItem()
+
+            const [dismissible] = tree.root.findAllByType('DismissibleItem')
+            expect(dismissible.props.defaultComponent.type).toBe('TaskPresentationContainer')
+            expect(dismissible.props.defaultComponent.props.task).toBe(task)
+            expect(dismissible.props.defaultComponent.props.projectId).toBe(projectId)
+            expect(dismissible.props.modalComponent.type).toBe('EditTask')
+            expect(dismissible.props.modalComponent.props.task).toBe(task)
         })
 
-        it('should render correctly for a sub task', () => {
-            const tree = renderer
-                .create(
-                    <Provider store={store}>
-                        <TaskItem
-                            task={{ id: '1', name: 'Some random text', userIds: [], recurrence: { type: 'never' } }}
-                            projectId={'1'}
-                            isSubTask={true}
-                        />
-                    </Provider>
-                )
-                .toJSON()
-            expect(tree).toMatchSnapshot()
-        })
+        it('passes the pending and observed flags through to both components', () => {
+            const { tree } = renderTaskItem(createState(), { isPending: true, isObservedTask: true })
 
-        it('should render correctly when showPhoto is true', () => {
-            const tree = renderer
-                .create(
-                    <Provider store={store}>
-                        <TaskItem
-                            task={{ id: '1', name: 'Some random text', userIds: [], recurrence: { type: 'never' } }}
-                            tags={[]}
-                            projectId={'1'}
-                            showPhoto={true}
-                        />
-                    </Provider>
-                )
-                .toJSON()
-            expect(tree).toMatchSnapshot()
+            const [dismissible] = tree.root.findAllByType('DismissibleItem')
+            expect(dismissible.props.defaultComponent.props.isPending).toBe(true)
+            expect(dismissible.props.defaultComponent.props.isObservedTask).toBe(true)
+            expect(dismissible.props.modalComponent.props.isPending).toBe(true)
         })
     })
 
-    describe('TaskItem with text snapshot test', () => {
-        it('should render correctly', () => {
-            const tree = renderer
-                .create(
-                    <Provider store={store}>
-                        <TaskItem task={sampleTask} tags={[]} projectId={'1'} />
-                    </Provider>
-                )
-                .toJSON()
-            expect(tree).toMatchSnapshot()
+    describe('toggleModal', () => {
+        it('opens the edit modal', () => {
+            const { tree, dismissibleRef } = renderTaskItem()
+
+            const [dismissible] = tree.root.findAllByType('DismissibleItem')
+            dismissible.props.defaultComponent.props.toggleModal()
+
+            expect(dismissibleRef.current.toggleModal).toHaveBeenCalled()
+        })
+
+        it('does nothing while the swipe due date popup is visible', () => {
+            const { tree, dismissibleRef } = renderTaskItem(createState({ swipeDueDatePopupVisible: true }))
+
+            const [dismissible] = tree.root.findAllByType('DismissibleItem')
+            dismissible.props.defaultComponent.props.toggleModal()
+
+            expect(dismissibleRef.current.toggleModal).not.toHaveBeenCalled()
         })
     })
 
-    describe('TaskItem with text and tag snapshot test', () => {
-        it('should render correctly', () => {
-            const tree = renderer
-                .create(
-                    <Provider store={store}>
-                        <TaskItem task={sampleTask} tags={[<Lock isLocked />]} projectId={'1'} />
-                    </Provider>
-                )
-                .toJSON()
-            expect(tree).toMatchSnapshot()
+    describe('onToggleModal', () => {
+        it('toggles the subtask indicator and the edit mode', () => {
+            const { tree, setInEditMode, setShowSubTaskIndicator } = renderTaskItem()
+
+            const [dismissible] = tree.root.findAllByType('DismissibleItem')
+            dismissible.props.onToggleModal(true)
+
+            expect(setShowSubTaskIndicator).toHaveBeenCalledWith(true)
+            expect(setInEditMode).toHaveBeenCalled()
+        })
+
+        it('leaves the subtask indicator alone for an anonymous user', () => {
+            store.getState.mockReturnValue(createStoreState({ isAnonymous: true }))
+            const { tree, setInEditMode, setShowSubTaskIndicator } = renderTaskItem()
+
+            const [dismissible] = tree.root.findAllByType('DismissibleItem')
+            dismissible.props.onToggleModal(true)
+
+            expect(setShowSubTaskIndicator).not.toHaveBeenCalled()
+            expect(setInEditMode).toHaveBeenCalled()
+        })
+
+        it('keeps the indicator visible while the subtask list has entries', () => {
+            const { tree, setShowSubTaskIndicator } = renderTaskItem(createState(), { subtaskList: [{ id: 'sub-1' }] })
+
+            const [dismissible] = tree.root.findAllByType('DismissibleItem')
+            dismissible.props.onToggleModal(false)
+
+            expect(setShowSubTaskIndicator).toHaveBeenCalledWith(true)
         })
     })
 
-    describe('Function toggleCheckAction snapshot test', () => {
-        it('should execute and render correctly', () => {
-            const tree = renderer.create(<TaskItem task={sampleTask} tags={[<Lock isLocked />]} projectId={'1'} />)
-            expect(tree.toJSON()).toMatchSnapshot()
+    describe('checked task item', () => {
+        it('checks the task off and clears the flag', () => {
+            const { taskItemRef } = renderTaskItem(createState({ isCheckedTaskItem: true }))
 
-            tree.getInstance().toggleCheckAction()
-            expect(tree.toJSON()).toMatchSnapshot()
+            expect(taskItemRef.current.onCheckboxPress).toHaveBeenCalled()
+            expect(dispatch).toHaveBeenCalledWith(setCheckTaskItem('', false))
         })
-    })
 
-    describe('Function onEditTaskSuccessAction snapshot test', () => {
-        it('should execute and render correctly', () => {
-            const tree = renderer.create(
-                <TaskItem
-                    newItem={true}
-                    task={sampleTask}
-                    tags={[<Lock isLocked />]}
-                    projectId={'1'}
-                    onCreateTask={() => {}}
-                />
-            )
-            expect(tree.toJSON()).toMatchSnapshot()
+        it('only clears the flag for a locked task', () => {
+            objectIsLockedForUser.mockReturnValue(true)
+            const { taskItemRef } = renderTaskItem(createState({ isCheckedTaskItem: true }))
 
-            tree.getInstance().onEditTaskSuccessAction()
-            expect(tree.toJSON()).toMatchSnapshot()
+            expect(taskItemRef.current.onCheckboxPress).not.toHaveBeenCalled()
+            expect(dispatch).toHaveBeenCalledWith(setCheckTaskItem('', false))
         })
-    })
 
-    describe('Function setTaskStatus snapshot test', () => {
-        it('should execute and render correctly', () => {
-            const tree = renderer.create(
-                <TaskItem
-                    newItem={true}
-                    task={{ id: '123', name: 'Some random text', userIds: [], recurrence: { type: 'never' } }}
-                    tags={[<Lock isLocked />]}
-                    projectId={'1'}
-                    onCreateTask={() => {}}
-                />
-            )
-            expect(tree.toJSON()).toMatchSnapshot()
+        it('does not check the task off for a guide user who does not own it', () => {
+            ProjectHelper.checkIfLoggedUserIsNormalUserInGuide.mockReturnValue(true)
+            const { taskItemRef } = renderTaskItem(createState({ isCheckedTaskItem: true }), {
+                task: { ...task, userId: 'someone-else' },
+            })
 
-            tree.getInstance().setTaskStatus({ id: '123', name: 'Some random text', done: false })
-            expect(tree.toJSON()).toMatchSnapshot()
+            expect(taskItemRef.current.onCheckboxPress).not.toHaveBeenCalled()
         })
-    })
 
-    describe('Function onCheckboxPress snapshot test', () => {
-        // This test is failing because an error inside the Popover.
-        xit('should execute correctly', () => {
-            const tree = renderer.create(
-                <TaskItem
-                    task={{
-                        id: 'dsa',
-                        name: 'Some random text',
-                        userIds: [],
-                        done: false,
-                        recurrence: { type: 'never' },
-                    }}
-                    tags={[<Lock isLocked />]}
-                    projectId={'1'}
-                />
-            )
-            expect(tree.toJSON()).toMatchSnapshot()
+        it('closes the edit mode before checking the task off', () => {
+            jest.useFakeTimers()
+            store.getState.mockReturnValue(createStoreState({ activeEditMode: true }))
 
-            tree.getInstance().onCheckboxPress()
-            expect(tree.toJSON()).toMatchSnapshot()
+            const { dismissibleRef, taskItemRef } = renderTaskItem(createState({ isCheckedTaskItem: true }))
 
-            let state = tree.getInstance().state
-            expect(state.done).toBeTruthy()
+            expect(dismissibleRef.current.toggleModal).toHaveBeenCalled()
+            expect(taskItemRef.current.onCheckboxPress).not.toHaveBeenCalled()
+
+            jest.runAllTimers()
+            expect(taskItemRef.current.onCheckboxPress).toHaveBeenCalled()
+            jest.useRealTimers()
         })
-    })
 
-    describe('Function quickSetAsPublic snapshot test', () => {
-        it('should execute correctly', () => {
-            const tree = renderer.create(<TaskItem task={sampleTask} projectId={'1'} />)
-            expect(tree.toJSON()).toMatchSnapshot()
+        it('does nothing while the task is not checked', () => {
+            const { taskItemRef } = renderTaskItem()
 
-            tree.getInstance().quickSetAsPublic()
-            expect(tree.toJSON()).toMatchSnapshot()
-
-            let state = tree.getInstance().state
-            expect(state.isPrivate).toBeFalsy()
-        })
-    })
-
-    describe('Function onLayoutChange snapshot test', () => {
-        it('after call onLayoutChange should render correctly', () => {
-            const tree = renderer.create(<TaskItem task={sampleTask} projectId={'1'} />)
-            const instance = tree.getInstance()
-            let layout = { nativeEvent: { layout: { width: 100 } } }
-            instance.state.taskTagsWidth = 150
-            instance.onLayoutChange(layout)
-
-            // Waiting to resolve the promise
-            setTimeout(() => {
-                let state = instance.state
-                expect(state.forceTagsMobile).toBeTruthy()
-            }, 50)
-
-            instance.state.taskTagsWidth = 90
-            instance.onLayoutChange(layout)
-
-            // Waiting to resolve the promise
-            setTimeout(() => {
-                let state = instance.state
-                expect(state.forceTagsMobile).toBeFalsy()
-            }, 50)
+            expect(taskItemRef.current.onCheckboxPress).not.toHaveBeenCalled()
+            expect(dispatch).not.toHaveBeenCalled()
         })
     })
 })

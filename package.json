@@ -37,8 +37,15 @@
         "setupFiles": [
             "./node_modules/react-native-gesture-handler/jestSetup.js"
         ],
+        "setupFilesAfterEnv": [
+            "./ci/jestSetup.js"
+        ],
+        "moduleNameMapper": {
+            "\\.(css|less|scss)$": "<rootDir>/__mocks__/styleMock.js"
+        },
         "testPathIgnorePatterns": [
             "/node_modules/",
+            "/.claude/",
             "__tests__/SidebarMenu/UserItem.test.js",
             "__tests__/LandingPage/Imprint.test.js",
             "__tests__/ContactDetailedView/ContactDetailedView.test.js",
@@ -72,6 +79,7 @@
         }
     },
     "dependencies": {
+        "@babel/runtime": "7.17.9",
         "@ipregistry/client": "^4.5.0",
         "@manaflair/redux-batch": "1.0.0",
         "@react-native-async-storage/async-storage": "1.15.14",
