@@ -26,8 +26,6 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
         "borderRadius": 4,
         "flexDirection": "row",
         "opacity": 1,
-        "paddingLeft": 16,
-        "paddingRight": 24,
       }
     }
   >
@@ -37,6 +35,8 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
           "alignItems": "center",
           "flexDirection": "row",
           "height": 40,
+          "paddingHorizontal": 10,
+          "width": 40,
         }
       }
     >
@@ -50,29 +50,8 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
               "opacity": 1,
             }
           }
-        >
-          
-        </Text>
+        />
       </View>
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 14,
-              "fontStyle": "normal",
-              "letterSpacing": 0.8,
-              "lineHeight": 14,
-            },
-            Object {
-              "color": "#FAFBFB",
-              "paddingLeft": 14,
-            },
-          ]
-        }
-      >
-        Public
-      </Text>
     </View>
   </View>
 </RNGestureHandlerButton>
@@ -104,8 +83,6 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
         "borderRadius": 4,
         "flexDirection": "row",
         "opacity": 1,
-        "paddingLeft": 16,
-        "paddingRight": 24,
       }
     }
   >
@@ -115,6 +92,8 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
           "alignItems": "center",
           "flexDirection": "row",
           "height": 40,
+          "paddingHorizontal": 10,
+          "width": 40,
         }
       }
     >
@@ -128,29 +107,8 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
               "opacity": 1,
             }
           }
-        >
-          
-        </Text>
+        />
       </View>
-      <Text
-        style={
-          Array [
-            Object {
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 14,
-              "fontStyle": "normal",
-              "letterSpacing": 0.8,
-              "lineHeight": 14,
-            },
-            Object {
-              "color": "#FAFBFB",
-              "paddingLeft": 14,
-            },
-          ]
-        }
-      >
-        Public
-      </Text>
     </View>
   </View>
 </RNGestureHandlerButton>

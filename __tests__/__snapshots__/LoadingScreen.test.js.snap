@@ -4,6 +4,7 @@ exports[`LoadingScreen component LoadingScreen snapshot test should render corre
 <View
   style={
     Object {
+      "alignContent": "center",
       "alignItems": "center",
       "backgroundColor": "white",
       "flex": 1,
@@ -62,13 +63,19 @@ exports[`LoadingScreen component LoadingScreen snapshot test should render corre
   </View>
   <Text
     style={
-      Object {
-        "fontFamily": "Roboto-Regular",
-        "fontSize": 30,
-        "marginBottom": 30,
-        "paddingTop": 40,
-        "textAlign": "justify",
-      }
+      Array [
+        Object {
+          "fontFamily": "Roboto-Regular",
+          "fontSize": 30,
+          "textAlign": "center",
+        },
+        Object {
+          "paddingTop": 40,
+        },
+        Object {
+          "marginBottom": 30,
+        },
+      ]
     }
   />
 </View>

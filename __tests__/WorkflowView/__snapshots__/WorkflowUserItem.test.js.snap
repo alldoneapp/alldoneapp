@@ -37,12 +37,15 @@ exports[`WorkflowUserItem component WorkflowUserItem snapshot test should render
         }
       }
       style={
-        Object {
-          "borderRadius": 100,
-          "height": 32,
-          "marginRight": 8,
-          "width": 32,
-        }
+        Array [
+          Object {
+            "borderRadius": 100,
+            "height": 32,
+            "marginRight": 8,
+            "width": 32,
+          },
+          undefined,
+        ]
       }
     />
     <Text
@@ -57,34 +60,12 @@ exports[`WorkflowUserItem component WorkflowUserItem snapshot test should render
           Object {
             "color": "white",
           },
+          undefined,
         ]
       }
     >
       asd
     </Text>
-  </View>
-  <View
-    style={
-      Object {
-        "marginLeft": "auto",
-        "opacity": 0,
-      }
-    }
-  >
-    <View>
-      <Text
-        style={
-          Object {
-            "color": "white",
-            "fontFamily": "alldone",
-            "fontSize": 24,
-            "opacity": 1,
-          }
-        }
-      >
-        
-      </Text>
-    </View>
   </View>
 </View>
 `;

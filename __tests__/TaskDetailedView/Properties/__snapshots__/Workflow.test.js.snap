@@ -7,8 +7,10 @@ exports[`Workflow component Workflow snapshot test should render correctly 1`] =
       "alignItems": "center",
       "flex": 1,
       "flexDirection": "row",
+      "height": 56,
       "maxHeight": 56,
-      "paddingLeft": 11,
+      "minHeight": 56,
+      "paddingLeft": 8,
       "paddingVertical": 8,
     }
   }
@@ -16,7 +18,7 @@ exports[`Workflow component Workflow snapshot test should render correctly 1`] =
   <View
     style={
       Object {
-        "marginRight": 11,
+        "marginRight": 8,
       }
     }
   >
@@ -26,7 +28,7 @@ exports[`Workflow component Workflow snapshot test should render correctly 1`] =
           Object {
             "color": "#8A94A6",
             "fontFamily": "alldone",
-            "fontSize": 20,
+            "fontSize": 24,
             "opacity": 1,
           }
         }
@@ -61,7 +63,7 @@ exports[`Workflow component Workflow snapshot test should render correctly 1`] =
     }
   >
     <View
-      accessible={true}
+      accessible={false}
       focusable={true}
       isTVSelectable={true}
       onClick={[Function]}

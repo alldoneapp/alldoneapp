@@ -61,7 +61,10 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
                 Object {
                   "width": 0,
                 },
-                undefined,
+                Object {
+                  "caretColor": "#0C66FF",
+                  "outlineWidth": 0,
+                },
                 undefined,
               ]
             }

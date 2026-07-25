@@ -20,8 +20,10 @@ exports[`DateHeader component DateHeader with text snapshot test should render c
           "alignItems": "center",
           "backgroundColor": "#FAFBFB",
           "borderRadius": 4,
+          "flex": 1,
           "flexDirection": "row",
           "height": 24,
+          "justifyContent": "space-between",
         },
         false,
       ]
@@ -30,34 +32,33 @@ exports[`DateHeader component DateHeader with text snapshot test should render c
     <View
       style={
         Object {
-          "backgroundColor": "#EBF5FF",
-          "borderRadius": 4,
-          "height": 24,
-          "position": "absolute",
-          "width": "0%",
+          "flex": 1,
+          "flexDirection": "row",
+          "justifyContent": "flex-start",
         }
       }
-    />
-    <Text
-      style={
-        Array [
-          Object {
-            "color": "#04142F",
-            "fontFamily": "Roboto-Regular",
-            "fontSize": 11,
-            "letterSpacing": 1.5,
-            "lineHeight": 20,
-          },
-          Object {
-            "color": "#4E5D78",
-            "paddingLeft": 12,
-            "zIndex": 1,
-          },
-        ]
-      }
     >
-      TODAY • 
-    </Text>
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 11,
+              "letterSpacing": 1.5,
+              "lineHeight": 20,
+            },
+            Object {
+              "color": "#4E5D78",
+              "paddingLeft": 12,
+              "zIndex": 1,
+            },
+          ]
+        }
+      >
+        TODAY • 
+      </Text>
+    </View>
   </View>
 </View>
 `;

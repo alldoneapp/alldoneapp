@@ -7,7 +7,7 @@ exports[`Following component Following snapshot test should render correctly 1`]
       "alignItems": "center",
       "flex": 1,
       "flexDirection": "row",
-      "maxHeight": 56,
+      "minHeight": 56,
       "paddingLeft": 11,
       "paddingVertical": 8,
     }

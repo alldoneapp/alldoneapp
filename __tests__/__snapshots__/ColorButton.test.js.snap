@@ -2,7 +2,7 @@
 
 exports[`ColorButton component ColorButton empty snapshot test should render correctly 1`] = `
 <View
-  accessible={true}
+  accessible={false}
   focusable={true}
   isTVSelectable={true}
   onClick={[Function]}
@@ -15,12 +15,16 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
   style={
     Object {
       "alignItems": "center",
-      "backgroundColor": "#1A3289",
+      "backgroundColor": "#FAFBFB",
+      "borderColor": "#C6CDD2",
       "borderRadius": 4,
+      "borderWidth": 1,
+      "flexDirection": "row",
       "height": 40,
       "justifyContent": "center",
       "opacity": 1,
-      "paddingHorizontal": 12,
+      "paddingLeft": 12,
+      "paddingRight": 16,
     }
   }
 >
@@ -33,17 +37,36 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
           "width": 16,
         },
         Object {
-          "backgroundColor": "#00CEC9",
+          "backgroundColor": "#47DEFF",
         },
       ]
     }
   />
+  <Text
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.8,
+          "lineHeight": 14,
+          "marginLeft": 12,
+        },
+        Object {
+          "color": "#8A94A6",
+        },
+      ]
+    }
+  >
+    Color
+  </Text>
 </View>
 `;
 
 exports[`ColorButton component ColorButton empty snapshot test should render correctly when platform is web 1`] = `
 <View
-  accessible={true}
+  accessible={false}
   focusable={true}
   isTVSelectable={true}
   onClick={[Function]}
@@ -56,12 +79,16 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
   style={
     Object {
       "alignItems": "center",
-      "backgroundColor": "#1A3289",
+      "backgroundColor": "#FAFBFB",
+      "borderColor": "#C6CDD2",
       "borderRadius": 4,
+      "borderWidth": 1,
+      "flexDirection": "row",
       "height": 40,
       "justifyContent": "center",
       "opacity": 1,
-      "paddingHorizontal": 12,
+      "paddingLeft": 12,
+      "paddingRight": 16,
     }
   }
 >
@@ -74,10 +101,29 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
           "width": 16,
         },
         Object {
-          "backgroundColor": "#00CEC9",
+          "backgroundColor": "#47DEFF",
         },
       ]
     }
   />
+  <Text
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.8,
+          "lineHeight": 14,
+          "marginLeft": 12,
+        },
+        Object {
+          "color": "#8A94A6",
+        },
+      ]
+    }
+  >
+    Color
+  </Text>
 </View>
 `;
