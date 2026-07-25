@@ -18,11 +18,10 @@ exports[`AddButton component AddButton empty snapshot test should render correct
   }
 >
   <View
-    accessible={true}
+    accessible={false}
     style={
       Object {
         "alignItems": "center",
-        "backgroundColor": "#1A3289",
         "borderRadius": 4,
         "height": 40,
         "justifyContent": "center",
@@ -67,11 +66,10 @@ exports[`AddButton component AddButton empty snapshot test should render correct
   }
 >
   <View
-    accessible={true}
+    accessible={false}
     style={
       Object {
         "alignItems": "center",
-        "backgroundColor": "#1A3289",
         "borderRadius": 4,
         "height": 40,
         "justifyContent": "center",

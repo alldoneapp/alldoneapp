@@ -17,17 +17,19 @@ exports[`AddProject component AddProject empty snapshot test should render corre
       "alignItems": "center",
       "flexDirection": "row",
       "height": 56,
-      "marginHorizontal": 12,
       "opacity": 1,
-      "paddingHorizontal": 12,
+      "paddingHorizontal": 24,
+      "paddingLeft": 17,
     }
   }
 >
-  <View>
+  <View
+    style={Object {}}
+  >
     <Text
       style={
         Object {
-          "color": "#6C8FC9",
+          "color": "#B7BDC8",
           "fontFamily": "alldone",
           "fontSize": 22,
           "opacity": 1,
@@ -37,20 +39,6 @@ exports[`AddProject component AddProject empty snapshot test should render corre
       
     </Text>
   </View>
-  <Text
-    style={
-      Object {
-        "color": "#6C8FC9",
-        "fontFamily": "Roboto-Regular",
-        "fontSize": 16,
-        "letterSpacing": 0.32,
-        "lineHeight": 24,
-        "paddingLeft": 8,
-      }
-    }
-  >
-    Add new project
-  </Text>
 </View>
 `;
 
@@ -71,17 +59,19 @@ exports[`AddProject component AddProject empty snapshot test should render corre
       "alignItems": "center",
       "flexDirection": "row",
       "height": 56,
-      "marginHorizontal": 12,
       "opacity": 1,
-      "paddingHorizontal": 12,
+      "paddingHorizontal": 24,
+      "paddingLeft": 17,
     }
   }
 >
-  <View>
+  <View
+    style={Object {}}
+  >
     <Text
       style={
         Object {
-          "color": "#6C8FC9",
+          "color": "#B7BDC8",
           "fontFamily": "alldone",
           "fontSize": 22,
           "opacity": 1,
@@ -91,19 +81,5 @@ exports[`AddProject component AddProject empty snapshot test should render corre
       
     </Text>
   </View>
-  <Text
-    style={
-      Object {
-        "color": "#6C8FC9",
-        "fontFamily": "Roboto-Regular",
-        "fontSize": 16,
-        "letterSpacing": 0.32,
-        "lineHeight": 24,
-        "paddingLeft": 8,
-      }
-    }
-  >
-    Add new project
-  </Text>
 </View>
 `;

@@ -3,11 +3,14 @@
 exports[`CloseButton component CloseButton snapshot test should render correctly 1`] = `
 <View
   style={
-    Object {
-      "position": "absolute",
-      "right": 13,
-      "top": 13,
-    }
+    Array [
+      Object {
+        "position": "absolute",
+        "right": 13,
+        "top": 13,
+      },
+      undefined,
+    ]
   }
 >
   <View

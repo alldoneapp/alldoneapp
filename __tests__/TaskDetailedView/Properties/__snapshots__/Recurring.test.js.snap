@@ -7,8 +7,10 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
       "alignItems": "center",
       "flex": 1,
       "flexDirection": "row",
+      "height": 56,
       "maxHeight": 56,
-      "paddingLeft": 11,
+      "minHeight": 56,
+      "paddingLeft": 8,
       "paddingVertical": 8,
     }
   }
@@ -16,7 +18,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
   <View
     style={
       Object {
-        "marginRight": 11,
+        "marginRight": 8,
       }
     }
   >
@@ -26,7 +28,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
           Object {
             "color": "#8A94A6",
             "fontFamily": "alldone",
-            "fontSize": 22,
+            "fontSize": 24,
             "opacity": 1,
           }
         }
@@ -61,7 +63,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
     }
   >
     <View
-      accessible={true}
+      accessible={false}
       focusable={true}
       isTVSelectable={true}
       onClick={[Function]}
@@ -87,8 +89,8 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
           "maxHeight": 40,
           "minHeight": 40,
           "opacity": 1,
-          "paddingLeft": 8,
-          "paddingRight": 8,
+          "paddingLeft": 12,
+          "paddingRight": 16,
           "paddingVertical": 8,
         }
       }
@@ -107,6 +109,36 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
           
         </Text>
       </View>
+      <Text
+        numberOfLines={1}
+        style={
+          Array [
+            Array [
+              Object {
+                "alignSelf": "center",
+                "color": "#FFFFFF",
+                "flexWrap": "nowrap",
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 14,
+                "letterSpacing": 0.8,
+                "lineHeight": 16,
+                "margin": 0,
+                "paddingHorizontal": 0,
+                "paddingVertical": 0,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+              Object {},
+            ],
+            Object {
+              "marginLeft": 12,
+            },
+          ]
+        }
+      >
+        Never
+      </Text>
     </View>
   </View>
 </View>

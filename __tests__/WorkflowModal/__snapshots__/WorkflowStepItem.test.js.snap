@@ -19,7 +19,7 @@ exports[`WorkflowStepItem should render correctly 1`] = `
       "height": 40,
       "justifyContent": "space-between",
       "opacity": 1,
-      "paddingBottom": 8,
+      "paddingVertical": 8,
     }
   }
 >
@@ -95,7 +95,7 @@ exports[`WorkflowStepItem should render correctly 1`] = `
     <Image
       source={
         Object {
-          "uri": undefined,
+          "uri": "http://localhost/icons/Generic-User32px.png",
         }
       }
       style={

@@ -2,7 +2,7 @@
 
 exports[`WorkflowPicker component WorkflowPicker snapshot test should render correctly 1`] = `
 <View
-  accessible={true}
+  accessible={false}
   focusable={true}
   isTVSelectable={true}
   onClick={[Function]}
