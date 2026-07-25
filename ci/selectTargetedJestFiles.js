@@ -17,15 +17,20 @@ const excludedRoots = [
     'firestore-backups/',
     'functions/',
     'migration/',
+    // Shared manual mocks are test scaffolding, not application sources. Jest
+    // relates them to every suite that touches the module they stand in for, so
+    // handing one to --findRelatedTests selects a large arbitrary slice of the
+    // suite and defeats the point of a targeted run. The suites that matter for
+    // a mock change are reached through the sources and tests changed with it.
+    '__mocks__/',
 ]
 const testPattern = /(?:^|\/)__tests__\/|[.](?:test|spec)[.][jt]sx?$/
 const codePattern = /[.][jt]sx?$/
 
-const changedFiles = execFileSync(
-    'git',
-    ['diff', '--name-only', '-z', `${baseRef}...${headRef}`, '--'],
-    { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
-)
+const changedFiles = execFileSync('git', ['diff', '--name-only', '-z', `${baseRef}...${headRef}`, '--'], {
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+})
     .split('\0')
     .filter(Boolean)
     .filter(file => existsSync(file))
