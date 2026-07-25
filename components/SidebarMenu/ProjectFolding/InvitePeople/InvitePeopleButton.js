@@ -2,7 +2,7 @@ import React from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
 
-import { colors } from '../../../styles/global'
+import styles, { colors } from '../../../styles/global'
 import useOnHover from '../../../../hooks/UseOnHover'
 import { getTheme } from '../../../../Themes/Themes'
 import { Themes } from '../../Themes'
@@ -59,7 +59,7 @@ const localStyles = StyleSheet.create({
         opacity: 0.5,
     },
     placeholderText: {
-        ...style.body2,
+        ...styles.body2,
         lineHeight: 20,
         flexWrap: 'nowrap',
         opacity: 0.5,
