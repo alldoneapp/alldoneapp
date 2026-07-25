@@ -15,6 +15,13 @@ jest.mock('expo-localization', () => ({
     getCalendars: () => [],
 }))
 
+// jsdom does not put TextEncoder/TextDecoder on the global in this Jest
+// version, but Node has had both in `util` since 8. Cloud Functions code
+// reaches them through its JOSE dependency while merely being imported.
+const { TextEncoder, TextDecoder } = require('util')
+if (typeof global.TextEncoder === 'undefined') global.TextEncoder = TextEncoder
+if (typeof global.TextDecoder === 'undefined') global.TextDecoder = TextDecoder
+
 // String.prototype.replaceAll landed in Node 15. The test runtime is older than
 // either place this code actually runs - Cloud Functions deploy to Node 20 and
 // every browser the web app supports has it - so the calls are legitimate and
