@@ -25,6 +25,8 @@ exports[`ProjectModalItem component ProjectModalItem snapshot test should render
           Object {
             "alignItems": "center",
             "flexDirection": "row",
+            "paddingLeft": 8,
+            "paddingRight": 8,
           },
           false,
         ]
@@ -45,13 +47,19 @@ exports[`ProjectModalItem component ProjectModalItem snapshot test should render
           style={
             Array [
               Object {
+                "alignItems": "center",
                 "borderRadius": 100,
                 "height": 16,
-                "marginRight": 12,
+                "justifyContent": "center",
                 "width": 16,
               },
               Object {
                 "backgroundColor": "the same with colors",
+                "height": 16,
+                "width": 16,
+              },
+              Object {
+                "marginRight": 12,
               },
             ]
           }
@@ -81,7 +89,6 @@ exports[`ProjectModalItem component ProjectModalItem snapshot test should render
           Array [
             Object {
               "marginLeft": "auto",
-              "marginRight": 8,
             },
           ]
         }
