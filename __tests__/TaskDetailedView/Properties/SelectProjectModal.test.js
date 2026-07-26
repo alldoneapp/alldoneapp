@@ -16,20 +16,32 @@ jest.mock('react-redux', () => ({
     ...jest.requireActual('react-redux'),
     useSelector: jest.fn().mockImplementation(fnc => {
         return fnc({
-            loggedUser: { id: '0' },
+            loggedUser: {
+                id: '0',
+                uid: '0',
+                projectIds: [],
+                archivedProjectIds: [],
+                templateProjectIds: [],
+                guideProjectIds: [],
+            },
             screenDimensions: { height: 1024 },
+            // The picker filters the projects it can move the item to.
+            loggedUserProjects: [],
         })
     }),
 }))
 
 describe('SelectProjectModal component', () => {
+    // The modal takes the item being moved - a { type, data } pair - rather
+    // than a bare task, and titles itself from that type.
     const task = { id: 'id1', name: 'task1' }
+    const item = { type: 'task', data: task }
     describe('SelectProjectModal snapshot test', () => {
         it('should render correctly', () => {
             const tree = renderer
                 .create(
                     <Provider store={store}>
-                        <SelectProjectModal task={task} />
+                        <SelectProjectModal item={item} project={{ id: 'project-1', name: 'My project' }} />
                     </Provider>
                 )
                 .toJSON()

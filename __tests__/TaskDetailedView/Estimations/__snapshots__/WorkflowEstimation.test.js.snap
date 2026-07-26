@@ -93,7 +93,10 @@ exports[`WorkflowEstimation component should render correctly 1`] = `
         ]
       }
     >
-      Here you can estimate each workflow step and choose to which step the task will move. Follow this 
+      Here you can estimate each workflow step and choose to which step the task will move.
+       
+      Follow this
+       
       <View
         accessible={true}
         focusable={true}
@@ -132,7 +135,7 @@ exports[`WorkflowEstimation component should render correctly 1`] = `
         </Text>
       </View>
        
-      if you want to edit  workflow steps for undefined project
+      if you want to edit  workflow steps for [missing %{project} value] project
     </Text>
   </View>
   <View>
@@ -209,7 +212,7 @@ exports[`WorkflowEstimation component should render correctly 1`] = `
         }
       >
         <View
-          accessible={true}
+          accessible={false}
           focusable={true}
           isTVSelectable={true}
           onClick={[Function]}
@@ -283,7 +286,7 @@ exports[`WorkflowEstimation component should render correctly 1`] = `
               ]
             }
           >
-            Points
+            No estimation
           </Text>
         </View>
       </View>
@@ -298,7 +301,7 @@ exports[`WorkflowEstimation component should render correctly 1`] = `
     }
   />
   <View
-    accessible={true}
+    accessible={false}
     focusable={true}
     isTVSelectable={true}
     onClick={[Function]}
@@ -311,7 +314,6 @@ exports[`WorkflowEstimation component should render correctly 1`] = `
     style={
       Object {
         "alignItems": "center",
-        "backgroundColor": "#EBF5FF",
         "borderColor": "#E7ECEF",
         "borderRadius": 4,
         "borderWidth": 1,
