@@ -16,6 +16,7 @@ import renderer from 'react-test-renderer'
 
 jest.mock('react-redux', () => ({
     ...jest.requireActual('react-redux'),
+    useDispatch: jest.fn(() => () => {}),
     useSelector: jest.fn().mockImplementation(fnc => {
         return fnc({
             projectsUsers: [
@@ -27,6 +28,8 @@ jest.mock('react-redux', () => ({
                 ],
             ],
             selectedProjectIndex: 0,
+            // The modal tracks which nested picker is on top now.
+            mentionModalStack: [],
         })
     }),
 }))
