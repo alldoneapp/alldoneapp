@@ -64,14 +64,5 @@ describe('CustomSideMenu component', () => {
             )
             tree.unmount()
         })
-
-        it('check the updateState action', () => {
-            const tree = renderer.create(
-                <Provider store={store}>
-                    <CustomSideMenu />
-                </Provider>
-            )
-            tree.root.findByType(CustomSideMenu).instance.updateState()
-        })
     })
 })

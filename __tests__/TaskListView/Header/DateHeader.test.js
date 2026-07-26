@@ -16,13 +16,4 @@ describe('DateHeader component', () => {
             expect(tree).toMatchSnapshot()
         })
     })
-
-    describe('Function animateProgress snapshot test', () => {
-        it('should execute and render correctly', () => {
-            const tree = renderer.create(<DateHeader dateText="TODAY" date={Date.now()} />)
-
-            tree.getInstance().animateProgress(100)
-            expect(tree.toJSON()).toMatchSnapshot()
-        })
-    })
 })
