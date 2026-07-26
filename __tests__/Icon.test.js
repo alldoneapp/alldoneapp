@@ -3,6 +3,21 @@ import Icon from '../components/Icon'
 
 import renderer from 'react-test-renderer'
 
+// Icon is a function component and the name-to-glyph map is module-private, so
+// the mapping is checked the way it is actually consumed: render the icon and
+// read the character it puts on screen.
+const firstString = node => {
+    if (typeof node === 'string') return node
+    if (!node || !node.children) return ''
+    for (const child of node.children) {
+        const found = firstString(child)
+        if (found) return found
+    }
+    return ''
+}
+
+const charFor = name => firstString(renderer.create(<Icon name={name} />).toJSON())
+
 describe('Icon component', () => {
     describe('Icon snapshot test', () => {
         it('should render correctly', () => {
@@ -20,1013 +35,1011 @@ describe('Icon component', () => {
 
     describe('mapNameToChar() test', () => {
         it('should return the correct text character for a given icon name', () => {
-            const ico = new Icon()
-
-            let char = ico.mapNameToChar('feed')
+            let char = charFor('feed')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('square-checked-gray')
+            char = charFor('square-checked-gray')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('multi-selection')
+            char = charFor('multi-selection')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('status')
+            char = charFor('status')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('workflow')
+            char = charFor('workflow')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('folder-open')
+            char = charFor('folder-open')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('story-point')
+            char = charFor('story-point')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('sticky-note')
+            char = charFor('sticky-note')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('activity')
+            char = charFor('activity')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('airplay')
+            char = charFor('airplay')
             expect(char).toBe('')
-            char = ico.mapNameToChar('alert-circle')
+            char = charFor('alert-circle')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('alert-octagon')
+            char = charFor('alert-octagon')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('alert-triangle')
+            char = charFor('alert-triangle')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('align-center')
+            char = charFor('align-center')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('align-justify')
+            char = charFor('align-justify')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('align-left')
+            char = charFor('align-left')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('align-right')
+            char = charFor('align-right')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('anchor')
+            char = charFor('anchor')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('aperture')
+            char = charFor('aperture')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('archive')
+            char = charFor('archive')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-down')
+            char = charFor('arrow-down')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-down-circle')
+            char = charFor('arrow-down-circle')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-down-left')
+            char = charFor('arrow-down-left')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-down-right')
+            char = charFor('arrow-down-right')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-left')
+            char = charFor('arrow-left')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-left-circle')
+            char = charFor('arrow-left-circle')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-right')
+            char = charFor('arrow-right')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-right-circle')
+            char = charFor('arrow-right-circle')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-up')
+            char = charFor('arrow-up')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-up-circle')
+            char = charFor('arrow-up-circle')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-up-left')
+            char = charFor('arrow-up-left')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('arrow-up-right')
+            char = charFor('arrow-up-right')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('at-sign')
+            char = charFor('at-sign')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('award')
+            char = charFor('award')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('bar-chart')
+            char = charFor('bar-chart')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('bar-chart-2')
+            char = charFor('bar-chart-2')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('bar-chart-3')
+            char = charFor('bar-chart-3')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('bar-chart-4')
+            char = charFor('bar-chart-4')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('battery')
+            char = charFor('battery')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('battery-charging')
+            char = charFor('battery-charging')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('bell')
+            char = charFor('bell')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('bell-off')
+            char = charFor('bell-off')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('bluetooth')
+            char = charFor('bluetooth')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('bold')
+            char = charFor('bold')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('book')
+            char = charFor('book')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('bookmark')
+            char = charFor('bookmark')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('book-open')
+            char = charFor('book-open')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('box')
+            char = charFor('box')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('briefcase')
+            char = charFor('briefcase')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('calendar')
+            char = charFor('calendar')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('camera')
+            char = charFor('camera')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('camera-off')
+            char = charFor('camera-off')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('cast')
+            char = charFor('cast')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('check')
+            char = charFor('check')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('check-circle')
+            char = charFor('check-circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('check-square')
+            char = charFor('check-square')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('chevron-down')
+            char = charFor('chevron-down')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('chevron-left')
+            char = charFor('chevron-left')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('chevron-right')
+            char = charFor('chevron-right')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('chevrons-down')
+            char = charFor('chevrons-down')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('chevrons-left')
+            char = charFor('chevrons-left')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('chevrons-right')
+            char = charFor('chevrons-right')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('chevrons-up')
+            char = charFor('chevrons-up')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('chevron-up')
+            char = charFor('chevron-up')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('chrome')
+            char = charFor('chrome')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('circle')
+            char = charFor('circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('circle-poject_color')
+            char = charFor('circle-poject_color')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('clear-formatting')
+            char = charFor('clear-formatting')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('clipboard')
+            char = charFor('clipboard')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('clock')
+            char = charFor('clock')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('cloud')
+            char = charFor('cloud')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('cloud-drizzle')
+            char = charFor('cloud-drizzle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('cloud-lightning')
+            char = charFor('cloud-lightning')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('cloud-off')
+            char = charFor('cloud-off')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('cloud-rain')
+            char = charFor('cloud-rain')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('cloud-snow')
+            char = charFor('cloud-snow')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('code')
+            char = charFor('code')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('codepen')
+            char = charFor('codepen')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('codesandbox')
+            char = charFor('codesandbox')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('coffee')
+            char = charFor('coffee')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('columns')
+            char = charFor('columns')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('command')
+            char = charFor('command')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('compass')
+            char = charFor('compass')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('copy')
+            char = charFor('copy')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('corner-down-left')
+            char = charFor('corner-down-left')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('corner-down-right')
+            char = charFor('corner-down-right')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('corner-left-down')
+            char = charFor('corner-left-down')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('corner-left-up')
+            char = charFor('corner-left-up')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('corner-right-down')
+            char = charFor('corner-right-down')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('corner-right-up')
+            char = charFor('corner-right-up')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('corner-up-left')
+            char = charFor('corner-up-left')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('corner-up-right')
+            char = charFor('corner-up-right')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-circle-0')
+            char = charFor('count-circle-0')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-circle-1')
+            char = charFor('count-circle-1')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-circle-2')
+            char = charFor('count-circle-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-circle-3')
+            char = charFor('count-circle-3')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-circle-5')
+            char = charFor('count-circle-5')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-circle-8')
+            char = charFor('count-circle-8')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-circle-13')
+            char = charFor('count-circle-13')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-circle-21')
+            char = charFor('count-circle-21')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('cpu')
+            char = charFor('cpu')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('credit-card')
+            char = charFor('credit-card')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('crop')
+            char = charFor('crop')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('crosshair')
+            char = charFor('crosshair')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('cross-out-text')
+            char = charFor('cross-out-text')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('database')
+            char = charFor('database')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('decrease-ident')
+            char = charFor('decrease-ident')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('delete')
+            char = charFor('delete')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('disc')
+            char = charFor('disc')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('dollar-sign')
+            char = charFor('dollar-sign')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('dot')
+            char = charFor('dot')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('download')
+            char = charFor('download')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('download-cloud')
+            char = charFor('download-cloud')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('droplet')
+            char = charFor('droplet')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('dumbbell')
+            char = charFor('dumbbell')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('ear')
+            char = charFor('ear')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('edit')
+            char = charFor('edit')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('edit-2')
+            char = charFor('edit-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('edit-3')
+            char = charFor('edit-3')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('edit-4')
+            char = charFor('edit-4')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('edit-5')
+            char = charFor('edit-5')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('edit-6')
+            char = charFor('edit-6')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('envelope-open')
+            char = charFor('envelope-open')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('external-link')
+            char = charFor('external-link')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('eye')
+            char = charFor('eye')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('eye-off')
+            char = charFor('eye-off')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('facebook')
+            char = charFor('facebook')
             expect(char).toBe('')
-            char = ico.mapNameToChar('fast-forward')
+            char = charFor('fast-forward')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('feather')
+            char = charFor('feather')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('figma')
+            char = charFor('figma')
 
             expect(char).toBe('')
-            char = ico.mapNameToChar('file')
+            char = charFor('file')
 
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('file-minus')
+            char = charFor('file-minus')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('file-plus')
+            char = charFor('file-plus')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('file-text')
+            char = charFor('file-text')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('film')
+            char = charFor('film')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('filter')
+            char = charFor('filter')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('flag')
+            char = charFor('flag')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('folder')
+            char = charFor('folder')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('folder-minus')
+            char = charFor('folder-minus')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('folder-plus')
+            char = charFor('folder-plus')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('framer')
+            char = charFor('framer')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('frown')
+            char = charFor('frown')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('gift')
+            char = charFor('gift')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('git-branch')
+            char = charFor('git-branch')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('git-commit')
+            char = charFor('git-commit')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('github')
+            char = charFor('github')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('gitlab')
+            char = charFor('gitlab')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('git-merge')
+            char = charFor('git-merge')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('git-pull-request')
+            char = charFor('git-pull-request')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('globe')
+            char = charFor('globe')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('grid')
+            char = charFor('grid')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('hard-drive')
+            char = charFor('hard-drive')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('hash')
+            char = charFor('hash')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('headphones')
+            char = charFor('headphones')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('heart')
+            char = charFor('heart')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('help-circle')
+            char = charFor('help-circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('hexagon')
+            char = charFor('hexagon')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('highlight')
+            char = charFor('highlight')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-0')
+            char = charFor('count-0')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-1')
+            char = charFor('count-1')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-2')
+            char = charFor('count-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-3')
+            char = charFor('count-3')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-5')
+            char = charFor('count-5')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-8')
+            char = charFor('count-8')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-13')
+            char = charFor('count-13')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('count-21')
+            char = charFor('count-21')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('home')
+            char = charFor('home')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('image')
+            char = charFor('image')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('inbox')
+            char = charFor('inbox')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('increase-ident')
+            char = charFor('increase-ident')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('info')
+            char = charFor('info')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('instagram')
+            char = charFor('instagram')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('italic')
+            char = charFor('italic')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('key')
+            char = charFor('key')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('kick')
+            char = charFor('kick')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('layers')
+            char = charFor('layers')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('layout')
+            char = charFor('layout')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('life-buoy')
+            char = charFor('life-buoy')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('line-spacing')
+            char = charFor('line-spacing')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('link')
+            char = charFor('link')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('link-2')
+            char = charFor('link-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('linkedin')
+            char = charFor('linkedin')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('list')
+            char = charFor('list')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('list-bulleted')
+            char = charFor('list-bulleted')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('list-numbered')
+            char = charFor('list-numbered')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('loader')
+            char = charFor('loader')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('lock')
+            char = charFor('lock')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('log-in')
+            char = charFor('log-in')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('log-out')
+            char = charFor('log-out')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('mail')
+            char = charFor('mail')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('map')
+            char = charFor('map')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('map-pin')
+            char = charFor('map-pin')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('maximize')
+            char = charFor('maximize')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('maximize-2')
+            char = charFor('maximize-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('meh')
+            char = charFor('meh')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('menu')
+            char = charFor('menu')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('message-circle')
+            char = charFor('message-circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('message-square')
+            char = charFor('message-square')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('mic')
+            char = charFor('mic')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('mic-off')
+            char = charFor('mic-off')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('minimize')
+            char = charFor('minimize')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('minimize-2')
+            char = charFor('minimize-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('minus')
+            char = charFor('minus')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('minus-circle')
+            char = charFor('minus-circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('minus-square')
+            char = charFor('minus-square')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('monitor')
+            char = charFor('monitor')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('moon')
+            char = charFor('moon')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('more-horizontal')
+            char = charFor('more-horizontal')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('more-vertical')
+            char = charFor('more-vertical')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('more-vertical-smaller')
+            char = charFor('more-vertical-smaller')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('mouse-pointer')
+            char = charFor('mouse-pointer')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('move')
+            char = charFor('move')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('music')
+            char = charFor('music')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('navigation')
+            char = charFor('navigation')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('navigation-2')
+            char = charFor('navigation-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('octagon')
+            char = charFor('octagon')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('package')
+            char = charFor('package')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('paintbrush')
+            char = charFor('paintbrush')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('paperclip')
+            char = charFor('paperclip')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('pause')
+            char = charFor('pause')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('pause-circle')
+            char = charFor('pause-circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('pen-tool')
+            char = charFor('pen-tool')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('percent')
+            char = charFor('percent')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('phone')
+            char = charFor('phone')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('phone-call')
+            char = charFor('phone-call')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('phone-forwarded')
+            char = charFor('phone-forwarded')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('phone-incoming')
+            char = charFor('phone-incoming')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('phone-missed')
+            char = charFor('phone-missed')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('phone-off')
+            char = charFor('phone-off')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('phone-outgoing')
+            char = charFor('phone-outgoing')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('pie-chart')
+            char = charFor('pie-chart')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('pill')
+            char = charFor('pill')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('play')
+            char = charFor('play')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('play-circle')
+            char = charFor('play-circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('plus')
+            char = charFor('plus')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('plus-circle')
+            char = charFor('plus-circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('plus-square')
+            char = charFor('plus-square')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('pocket')
+            char = charFor('pocket')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('power')
+            char = charFor('power')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('printer')
+            char = charFor('printer')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('radio')
+            char = charFor('radio')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('refresh-ccw')
+            char = charFor('refresh-ccw')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('refresh-cw')
+            char = charFor('refresh-cw')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('repeat')
+            char = charFor('repeat')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('rewind')
+            char = charFor('rewind')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('rotate-ccw')
+            char = charFor('rotate-ccw')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('rotate-cw')
+            char = charFor('rotate-cw')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('rss')
+            char = charFor('rss')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('save')
+            char = charFor('save')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('scissors')
+            char = charFor('scissors')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('search')
+            char = charFor('search')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('send')
+            char = charFor('send')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('server')
+            char = charFor('server')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('settings')
+            char = charFor('settings')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('share')
+            char = charFor('share')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('share-2')
+            char = charFor('share-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('shield')
+            char = charFor('shield')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('shield-off')
+            char = charFor('shield-off')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('shoe')
+            char = charFor('shoe')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('shopping-bag')
+            char = charFor('shopping-bag')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('shopping-cart')
+            char = charFor('shopping-cart')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('shuffle')
+            char = charFor('shuffle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('sidebar')
+            char = charFor('sidebar')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('skip-back')
+            char = charFor('skip-back')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('skip-forward')
+            char = charFor('skip-forward')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('slack')
+            char = charFor('slack')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('slack-2')
+            char = charFor('slack-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('slash')
+            char = charFor('slash')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('sliders')
+            char = charFor('sliders')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('smartphone')
+            char = charFor('smartphone')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('smile')
+            char = charFor('smile')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('sort-arrow')
+            char = charFor('sort-arrow')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('sort-list')
-            expect(char).toBe('')
+            char = charFor('sort-list')
+            expect(char).toBe('')
 
-            char = ico.mapNameToChar('speaker')
+            char = charFor('speaker')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('square')
+            char = charFor('square')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('star')
+            char = charFor('star')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('stop-circle')
+            char = charFor('stop-circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('summation')
+            char = charFor('summation')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('sun')
+            char = charFor('sun')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('sunrise')
+            char = charFor('sunrise')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('sunset')
+            char = charFor('sunset')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('tablet')
+            char = charFor('tablet')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('tag')
+            char = charFor('tag')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('target')
+            char = charFor('target')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('terminal')
+            char = charFor('terminal')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('text-color')
+            char = charFor('text-color')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('thermometer')
+            char = charFor('thermometer')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('thumbs-down')
+            char = charFor('thumbs-down')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('thumbs-up')
+            char = charFor('thumbs-up')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('timestamp')
+            char = charFor('timestamp')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('toggle-left')
+            char = charFor('toggle-left')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('toggle-right')
+            char = charFor('toggle-right')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('tool')
+            char = charFor('tool')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('tooth')
+            char = charFor('tooth')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('trash')
+            char = charFor('trash')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('trash-2')
+            char = charFor('trash-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('trello')
+            char = charFor('trello')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('trending-down')
+            char = charFor('trending-down')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('trending-up')
+            char = charFor('trending-up')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('triangle')
+            char = charFor('triangle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('truck')
+            char = charFor('truck')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('tv')
+            char = charFor('tv')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('twitch')
+            char = charFor('twitch')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('twitter')
+            char = charFor('twitter')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('type')
+            char = charFor('type')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('umbrella')
+            char = charFor('umbrella')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('underline')
+            char = charFor('underline')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('unlock')
+            char = charFor('unlock')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('upload')
+            char = charFor('upload')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('upload-cloud')
+            char = charFor('upload-cloud')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('user')
+            char = charFor('user')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('user-check')
+            char = charFor('user-check')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('user-minus')
+            char = charFor('user-minus')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('user-plus')
+            char = charFor('user-plus')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('users')
+            char = charFor('users')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('user-x')
+            char = charFor('user-x')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('video')
+            char = charFor('video')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('video-off')
+            char = charFor('video-off')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('voicemail')
+            char = charFor('voicemail')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('volume')
+            char = charFor('volume')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('volume-1')
+            char = charFor('volume-1')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('volume-2')
+            char = charFor('volume-2')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('volume-x')
+            char = charFor('volume-x')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('watch')
+            char = charFor('watch')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('wifi')
+            char = charFor('wifi')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('wifi-off')
+            char = charFor('wifi-off')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('wind')
+            char = charFor('wind')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('x')
+            char = charFor('x')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('x-circle')
+            char = charFor('x-circle')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('x-octagon')
+            char = charFor('x-octagon')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('x-square')
+            char = charFor('x-square')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('youtube')
+            char = charFor('youtube')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('zap')
+            char = charFor('zap')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('zap-off')
+            char = charFor('zap-off')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('zoom-in')
+            char = charFor('zoom-in')
             expect(char).toBe('')
 
-            char = ico.mapNameToChar('zoom-out')
+            char = charFor('zoom-out')
             expect(char).toBe('')
         })
     })
