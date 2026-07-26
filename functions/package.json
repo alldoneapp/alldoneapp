@@ -10,7 +10,7 @@
         "setup_functions": "./service_accounts/setup_functions.sh"
     },
     "engines": {
-        "node": "20"
+        "node": "22"
     },
     "dependencies": {
         "@deepgram/sdk": "^4.11.3",
@@ -40,7 +40,6 @@
         "googleapis": "^166.0.0",
         "handlebars": "^4.7.6",
         "html-pdf": "^3.0.1",
-        "http2": "^3.3.7",
         "isomorphic-fetch": "^3.0.0",
         "lodash": "^4.17.21",
         "mammoth": "^1.8.0",
