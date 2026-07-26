@@ -331,6 +331,9 @@ deploy:cloud:functions:staging:
             - develop
         changes:
             - functions/**/*
+            # firebase.json carries the functions runtime, region and ignore list,
+            # so a change there has to redeploy them too.
+            - firebase.json
 
 deploy:cloud:functions:production:
     image: $CI_REGISTRY_IMAGE/build_functions:latest
@@ -372,6 +375,9 @@ deploy:cloud:functions:production:
             - master
         changes:
             - functions/**/*
+            # firebase.json carries the functions runtime, region and ignore list,
+            # so a change there has to redeploy them too.
+            - firebase.json
 
 # Rebuild the vm-job-runner Cloud Run Job image whenever functions code changes, so VM
 # jobs run the current functions/ code (esp. vmJobRunner.js). The job runs from this image,
