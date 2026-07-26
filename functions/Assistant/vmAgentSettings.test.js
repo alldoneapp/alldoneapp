@@ -3,13 +3,9 @@ const mockUpdate = jest.fn(async () => {})
 const mockDoc = jest.fn(() => ({ get: mockGet, update: mockUpdate }))
 const mockFirestore = jest.fn(() => ({ doc: mockDoc }))
 
-jest.mock(
-    'firebase-admin',
-    () => ({
-        firestore: mockFirestore,
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-admin', () => ({
+    firestore: mockFirestore,
+}))
 
 jest.mock(
     'firebase-functions/v2/https',
