@@ -1,7 +1,10 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`ProjectItem component ProjectItem snapshot test should render correctly 1`] = `
-<View>
+exports[`ProjectItem component should render correctly 1`] = `
+<View
+  accessibilityLabel="sidebar-project-undefined"
+  nativeID="sidebar-project--LcRVRo6mhbC0oXCcZ2F-0"
+>
   <View
     accessible={true}
     focusable={true}
@@ -20,15 +23,25 @@ exports[`ProjectItem component ProjectItem snapshot test should render correctly
     }
   >
     <View
+      onMouseEnter={[Function]}
+      onMouseLeave={[Function]}
       style={
-        Object {
-          "alignItems": "center",
-          "backgroundColor": "#0A44A5",
-          "flexDirection": "row",
-          "height": 56,
-          "justifyContent": "space-between",
-          "paddingLeft": 24,
-        }
+        Array [
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "height": 56,
+            "justifyContent": "space-between",
+            "paddingLeft": 24,
+          },
+          Object {
+            "backgroundColor": "#F5F5F5",
+          },
+          false,
+          Object {
+            "paddingLeft": 17,
+          },
+        ]
       }
     >
       <View
@@ -44,76 +57,31 @@ exports[`ProjectItem component ProjectItem snapshot test should render correctly
           style={
             Array [
               Object {
+                "alignItems": "center",
                 "borderRadius": 100,
                 "height": 22,
+                "justifyContent": "center",
                 "marginRight": 10,
                 "width": 22,
               },
               Object {
-                "backgroundColor": "#39CCCC",
+                "backgroundColor": "#47A3FF",
+                "opacity": 0.4,
               },
             ]
           }
         />
-        <Text
-          numberOfLines={1}
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#C6CDD2",
-              },
-              Object {
-                "marginRight": 10,
-              },
-            ]
-          }
-        >
-          Another one
-        </Text>
-      </View>
-      <View
-        style={
-          Object {
-            "flexDirection": "row",
-            "paddingLeft": 8,
-            "paddingRight": 24,
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.16,
-                "lineHeight": 22,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-              null,
-            ]
-          }
-        >
-          
-        </Text>
       </View>
     </View>
   </View>
 </View>
 `;
 
-exports[`ProjectItem component ProjectItem snapshot test should render correctly when it is highlighted 1`] = `
-<View>
+exports[`ProjectItem component should render correctly when it is the selected project 1`] = `
+<View
+  accessibilityLabel="sidebar-project-undefined"
+  nativeID="sidebar-project--LcRVRo6mhbC0oXCcZ2F-0"
+>
   <View
     accessible={true}
     focusable={true}
@@ -132,15 +100,25 @@ exports[`ProjectItem component ProjectItem snapshot test should render correctly
     }
   >
     <View
+      onMouseEnter={[Function]}
+      onMouseLeave={[Function]}
       style={
-        Object {
-          "alignItems": "center",
-          "backgroundColor": "#0A44A5",
-          "flexDirection": "row",
-          "height": 56,
-          "justifyContent": "space-between",
-          "paddingLeft": 24,
-        }
+        Array [
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "height": 56,
+            "justifyContent": "space-between",
+            "paddingLeft": 24,
+          },
+          Object {
+            "backgroundColor": "#D6EBFF",
+          },
+          false,
+          Object {
+            "paddingLeft": 17,
+          },
+        ]
       }
     >
       <View
@@ -156,70 +134,35 @@ exports[`ProjectItem component ProjectItem snapshot test should render correctly
           style={
             Array [
               Object {
+                "alignItems": "center",
                 "borderRadius": 100,
                 "height": 22,
+                "justifyContent": "center",
                 "marginRight": 10,
                 "width": 22,
               },
               Object {
-                "backgroundColor": "#39CCCC",
+                "backgroundColor": "#47A3FF",
+                "opacity": 1,
               },
             ]
           }
         />
-        <Text
-          numberOfLines={1}
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#C6CDD2",
-              },
-              Object {
-                "marginRight": 10,
-              },
-            ]
-          }
-        >
-          Another one
-        </Text>
-      </View>
-      <View
-        style={
-          Object {
-            "flexDirection": "row",
-            "paddingLeft": 8,
-            "paddingRight": 24,
-          }
-        }
-      >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.16,
-                "lineHeight": 22,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-              null,
-            ]
-          }
-        >
-          
-        </Text>
       </View>
     </View>
   </View>
+  <ProjectSectionList
+    projectData={
+      Object {
+        "color": "#39CCCC",
+        "id": "-LcRVRo6mhbC0oXCcZ2F",
+        "index": 0,
+        "name": "Another one",
+        "userIds": Array [
+          "UUKU61Jc7ET8zE5ncN8F61HE19y1",
+        ],
+      }
+    }
+  />
 </View>
 `;
