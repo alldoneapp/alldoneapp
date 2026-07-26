@@ -25,31 +25,29 @@ exports[`SocialTextInput component SocialTextInput snapshot test should render c
       ]
     }
   >
-    <div>
-      <CustomTextInput3
-        autoFocus={true}
-        containerStyle={
-          Array [
-            Object {
-              "height": 24,
-              "paddingLeft": 0,
-              "paddingRight": 0,
-            },
-            Object {
-              "minWidth": 0,
-            },
-          ]
-        }
-        forceTriggerEnterActionForBreakLines={[Function]}
-        horizontalScroll={true}
-        initialMentions={Array []}
-        initialTextExtended=" "
-        onChangeText={[Function]}
-        placeholder="Write the name of the task"
-        setMentionsModalActive={[Function]}
-        updateMentions={[Function]}
-      />
-    </div>
+    <CustomTextInput3
+      autoFocus={true}
+      containerStyle={
+        Array [
+          Object {
+            "height": 24,
+            "paddingLeft": 0,
+            "paddingRight": 0,
+          },
+          Object {
+            "minWidth": 0,
+          },
+        ]
+      }
+      forceTriggerEnterActionForBreakLines={[Function]}
+      horizontalScroll={true}
+      initialMentions={Array []}
+      initialTextExtended=" "
+      onChangeText={[Function]}
+      placeholder="Write the name of the task"
+      setMentionsModalActive={[Function]}
+      updateMentions={[Function]}
+    />
   </View>
 </View>
 `;

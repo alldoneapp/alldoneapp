@@ -15,6 +15,18 @@ jest.mock('expo-localization', () => ({
     getCalendars: () => [],
 }))
 
+// The react-tiny-popover build in replacement_node_modules - which CI copies
+// over node_modules before running, per the note in CLAUDE.md - constructs a
+// ResizeObserver in its constructor. jsdom implements no such API, so any suite
+// rendering a component behind a popover dies before it renders anything.
+if (typeof global.ResizeObserver === 'undefined') {
+    global.ResizeObserver = class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    }
+}
+
 // jsdom does not put TextEncoder/TextDecoder on the global in this Jest
 // version, but Node has had both in `util` since 8. Cloud Functions code
 // reaches them through its JOSE dependency while merely being imported.
