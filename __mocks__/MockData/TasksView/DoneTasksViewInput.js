@@ -20,7 +20,7 @@ export const DoneTasksViewInput = [
             inReview: null,
             toReview: null,
             receivedFrom: {},
-            normalTasks: []
+            normalTasks: [],
         },
         {
             id: '-LcRZz0eNJkx7QZn_gti3',
@@ -40,7 +40,7 @@ export const DoneTasksViewInput = [
             inReview: null,
             toReview: null,
             receivedFrom: {},
-            normalTasks: []
+            normalTasks: [],
         },
     ],
     [
@@ -64,7 +64,7 @@ export const DoneTasksViewInput = [
             inReview: null,
             toReview: null,
             receivedFrom: {},
-            normalTasks: []
+            normalTasks: [],
         },
         {
             //
@@ -86,7 +86,7 @@ export const DoneTasksViewInput = [
             inReview: null,
             toReview: null,
             receivedFrom: {},
-            normalTasks: []
+            normalTasks: [],
         },
     ],
 ]
