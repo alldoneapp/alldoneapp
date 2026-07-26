@@ -321,11 +321,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
   }
 >
   <Image
-    source={
-      Object {
-        "testUri": "../../../web/images/illustrations/LoginBg.svg",
-      }
-    }
+    source="test-asset"
     style={
       Array [
         Object {
