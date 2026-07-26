@@ -389,11 +389,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
   >
     <picture>
       <source
-        srcSet={
-          Object {
-            "testUri": "../../../web/images/illustrations/Nothing-To-Show.webp",
-          }
-        }
+        srcSet="test-asset"
         type="image/webp"
       />
       <source
@@ -403,20 +399,12 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
         type="image/jp2"
       />
       <source
-        srcSet={
-          Object {
-            "testUri": "../../../web/images/illustrations/Nothing-To-Show.png",
-          }
-        }
+        srcSet="test-asset"
         type="image/png"
       />
       <img
         alt="Ups, looks like there is nothing to show over here"
-        src={
-          Object {
-            "testUri": "../../../web/images/illustrations/Nothing-To-Show.png",
-          }
-        }
+        src="test-asset"
         style={
           Object {
             "flex": 1,
