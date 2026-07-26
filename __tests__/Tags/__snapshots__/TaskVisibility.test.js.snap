@@ -69,10 +69,11 @@ exports[`Task Visibility Tag component Function updateState snapshot test should
             "marginRight": 10,
             "marginVertical": 1,
           },
+          undefined,
         ]
       }
     >
-      Public
+      Project-wide
     </Text>
   </View>
 </View>
@@ -147,10 +148,11 @@ exports[`Task Visibility Tag component Function updateState snapshot test should
             "marginRight": 10,
             "marginVertical": 1,
           },
+          undefined,
         ]
       }
     >
-      Public
+      Project-wide
     </Text>
   </View>
 </View>
@@ -225,6 +227,7 @@ exports[`Task Visibility Tag component Task Visibility snapshot test should rend
             "marginRight": 10,
             "marginVertical": 1,
           },
+          undefined,
         ]
       }
     >

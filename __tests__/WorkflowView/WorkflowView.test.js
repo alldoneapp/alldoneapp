@@ -1,7 +1,8 @@
 import React from 'react'
+import { seedProjects } from '../../testUtils/seedStore'
 import WorkflowView from '../../components/WorkflowView/WorkflowView'
 import store from '../../redux/store'
-import { storeLoggedUserProjects } from '../../redux/actions'
+
 import { Provider } from 'react-redux'
 import renderer from 'react-test-renderer'
 import Backend from '../../utils/BackendBridge'
@@ -31,7 +32,7 @@ describe('WorkflowView component', () => {
 
     describe('WorkflowView methods', () => {
         xit('onNewStep should set the steps returned from the backend', () => {
-            store.dispatch(storeLoggedUserProjects([{}]))
+            store.dispatch([...seedProjects([{}])])
 
             const tree = renderer.create(
                 <Provider store={store}>
