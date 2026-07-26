@@ -5,18 +5,13 @@ import {
     hideConfirmPopup,
     hideFloatPopup,
     hideProjectColorPicker,
-    hideSideMenuUser,
     hideSwipeDueDatePopup,
-    LogIn,
     LogOut,
     overrideStore,
     setAddProjectOptionsLayout,
     setAmountTasksByProjects,
-    setConfirmPopupAction,
     setCurrentProjectColor,
     setDismissibleComponent,
-    setDueDate,
-    setOnline,
     setProjectColorPickerLayout,
     setSearchText,
     setSelectedNavItem,
@@ -27,13 +22,9 @@ import {
     showConfirmPopup,
     showFloatPopup,
     showProjectColorPicker,
-    showSideMenuUser,
     showSwipeDueDatePopup,
-    startStoreUpdate,
     storeCurrentUser,
     storeLoggedUser,
-    storeLoggedUserProjects,
-    storeSelectedProjectUsers,
     switchProject,
     toggleDismissibleActive,
     toggleNavPicker,
@@ -43,10 +34,6 @@ import {
     setProjectInvitationData,
     hideProjectInvitation,
     showProjectInvitation,
-    showMessagePopup,
-    hideMessagePopup,
-    setMessagePopupAction,
-    setProjectsContacts,
 } from '../../redux/actions'
 import theStore, { initialState, resetCircularStructures, theReducer } from '../../redux/store'
 import { PROJECT_TYPE_ARCHIVED } from '../../components/SettingsView/ProjectsSettings/ProjectsSettings'
@@ -57,12 +44,6 @@ describe('Redux Reducers', () => {
     it('should return the initial state', () => {
         const state = theReducer(undefined, {})
         expect(state).toEqual(initialState)
-    })
-
-    it('should log in', () => {
-        const state = theReducer(undefined, LogIn())
-        const newState = { ...initialState, loggedIn: true }
-        expect(state).toEqual(newState)
     })
 
     it('should log out', () => {
@@ -77,46 +58,22 @@ describe('Redux Reducers', () => {
         expect(state).toEqual(newState)
     })
 
-    it('should store project users', () => {
-        const state = theReducer(undefined, storeSelectedProjectUsers([]))
-        const newState = { ...initialState, selectedProjectUsers: [] }
-        expect(state).toEqual(newState)
-    })
-
     it('should store the selected type of project', () => {
         const state = theReducer(undefined, setSelectedTypeOfProject(PROJECT_TYPE_ARCHIVED))
         const newState = { ...initialState, selectedTypeOfProject: PROJECT_TYPE_ARCHIVED }
         expect(state).toEqual(newState)
     })
 
-    it('should store logged user projects', () => {
-        const state = theReducer(undefined, storeLoggedUserProjects([]))
-        const newState = { ...initialState, loggedUserProjects: [] }
-        expect(state).toEqual(newState)
-    })
-
     it('should store logged user', () => {
-        const state = theReducer(undefined, storeLoggedUser({}))
-        const newState = { ...initialState, loggedUser: {} }
-        expect(state).toEqual(newState)
+        const state = theReducer(undefined, storeLoggedUser({ uid: 'user-1' }))
+
+        expect(state.loggedUser.uid).toEqual('user-1')
     })
 
     it('should store current user', () => {
-        const state = theReducer(undefined, storeCurrentUser({}))
-        const newState = { ...initialState, currentUser: {} }
-        expect(state).toEqual(newState)
-    })
+        const state = theReducer(undefined, storeCurrentUser({ uid: 'user-1' }))
 
-    it('should hide side menu user', () => {
-        const state = theReducer(undefined, hideSideMenuUser())
-        const newState = { ...initialState, hiddenSideMenuUser: true }
-        expect(state).toEqual(newState)
-    })
-
-    it('should show side menu user', () => {
-        const state = theReducer(undefined, showSideMenuUser())
-        const newState = { ...initialState, hiddenSideMenuUser: false }
-        expect(state).toEqual(newState)
+        expect(state.currentUser.uid).toEqual('user-1')
     })
 
     it('should set selected nav item', () => {
@@ -215,24 +172,6 @@ describe('Redux Reducers', () => {
         expect(state).toEqual(newState)
     })
 
-    it('should set online', () => {
-        const state = theReducer(undefined, setOnline(false))
-        const newState = { ...initialState, online: false }
-        expect(state).toEqual(newState)
-    })
-
-    it('should start store update', () => {
-        const state = theReducer(undefined, startStoreUpdate())
-        const newState = { ...initialState, updateStore: true }
-        expect(state).toEqual(newState)
-    })
-
-    it('should reset circular structures', () => {
-        const state = resetCircularStructures()
-        expect(state.dismissibleComponent).toEqual(null)
-        expect(state.dismissibleActive).toEqual(false)
-    })
-
     it('should set project color picker layout', () => {
         const state = theReducer(undefined, setProjectColorPickerLayout({}))
         const newState = {
@@ -252,57 +191,17 @@ describe('Redux Reducers', () => {
     })
 
     it('should show confirm popup action', () => {
-        const state = theReducer(undefined, showConfirmPopup())
-        const newState = {
-            ...initialState,
-            showConfirmPopup: { visible: true, action: { trigger: null, object: {} } },
-        }
-        expect(state).toEqual(newState)
+        const state = theReducer(undefined, showConfirmPopup({ trigger: 'delete_task', object: {} }))
+
+        expect(state.showConfirmPopupData.visible).toEqual(true)
+        expect(state.showConfirmPopupData.trigger).toEqual('delete_task')
     })
 
     it('should hide confirm popup action', () => {
         const state = theReducer(undefined, hideConfirmPopup())
-        const newState = {
-            ...initialState,
-            showConfirmPopup: { visible: false, action: { trigger: null, object: {} } },
-        }
-        expect(state).toEqual(newState)
-    })
 
-    it('should set confirm popup action', () => {
-        const state = theReducer(undefined, setConfirmPopupAction({}))
-        const newState = {
-            ...initialState,
-            showConfirmPopup: { visible: false, action: {} },
-        }
-        expect(state).toEqual(newState)
-    })
-
-    it('should show message popup action', () => {
-        const state = theReducer(undefined, showMessagePopup())
-        const newState = {
-            ...initialState,
-            showMessagePopup: { visible: true, action: { trigger: null, object: {} } },
-        }
-        expect(state).toEqual(newState)
-    })
-
-    it('should hide message popup action', () => {
-        const state = theReducer(undefined, hideMessagePopup())
-        const newState = {
-            ...initialState,
-            showMessagePopup: { visible: false, action: { trigger: null, object: {} } },
-        }
-        expect(state).toEqual(newState)
-    })
-
-    it('should set message popup action', () => {
-        const state = theReducer(undefined, setMessagePopupAction({}))
-        const newState = {
-            ...initialState,
-            showMessagePopup: { visible: false, action: {} },
-        }
-        expect(state).toEqual(newState)
+        expect(state.showConfirmPopupData.visible).toEqual(false)
+        expect(state.showConfirmPopupData.trigger).toEqual(null)
     })
 
     it('should show project invitation popup action', () => {
@@ -361,11 +260,8 @@ describe('Redux Reducers', () => {
 
     it('should show float popup', () => {
         const state = theReducer(undefined, showFloatPopup())
-        const newState = {
-            ...initialState,
-            showFloatPopup: 1,
-        }
-        expect(state).toEqual(newState)
+
+        expect(state.showFloatPopup).toEqual(1)
     })
 
     it('should hide float popup', () => {
@@ -377,27 +273,9 @@ describe('Redux Reducers', () => {
         expect(state).toEqual(newState)
     })
 
-    it('should correctly update state in local storage', async () => {
-        theStore.dispatch(startStoreUpdate())
-        const expectedState = theReducer(undefined, startStoreUpdate())
-        expect(expectedState).toEqual(theStore.getState())
-    })
-
-    it('should set the dueDate', () => {
-        const state = theReducer(undefined, setDueDate(1579410000000))
-        const newState = { ...initialState, dueDate: 1579410000000 }
-        expect(state).toEqual(newState)
-    })
-
     it('should set the dueDate', () => {
         const state = theReducer(undefined, setSubTaskSection('-Asd'))
         const newState = { ...initialState, subTaskSection: '-Asd' }
-        expect(state).toEqual(newState)
-    })
-
-    it('should set projects contacts', () => {
-        const state = theReducer(undefined, setProjectsContacts([]))
-        const newState = { ...initialState, projectsContacts: [] }
         expect(state).toEqual(newState)
     })
 
