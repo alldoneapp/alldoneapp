@@ -12,7 +12,7 @@ export const SubTaskList = [
         isPrivate: false,
         parentId: '-LyzhG-xGsc74qaNARtB',
         subtaskIds: [],
-        recurrence: { type: 'never' }
+        recurrence: { type: 'never' },
     },
     {
         id: '-LyzhG-dfgr563tbeh4g5tf',
@@ -27,7 +27,7 @@ export const SubTaskList = [
         isPrivate: false,
         parentId: '-LyzhG-xGsc74qaNARtB',
         subtaskIds: [],
-        recurrence: { type: 'never' }
+        recurrence: { type: 'never' },
     },
     {
         id: '-LyzhG-6534tfryj8567j',
@@ -42,6 +42,6 @@ export const SubTaskList = [
         isPrivate: false,
         parentId: '-LyzhG-xGsc74qaNARtB',
         subtaskIds: [],
-        recurrence: { type: 'never' }
+        recurrence: { type: 'never' },
     },
 ]
