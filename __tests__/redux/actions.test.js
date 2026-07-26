@@ -5,18 +5,13 @@ import {
     hideConfirmPopup,
     hideFloatPopup,
     hideProjectColorPicker,
-    hideSideMenuUser,
     hideSwipeDueDatePopup,
-    LogIn,
     LogOut,
     overrideStore,
     setAddProjectOptionsLayout,
     setAmountTasksByProjects,
-    setConfirmPopupAction,
     setCurrentProjectColor,
     setDismissibleComponent,
-    setDueDate,
-    setOnline,
     setProjectColorPickerLayout,
     setSearchText,
     setSelectedNavItem,
@@ -27,13 +22,9 @@ import {
     showConfirmPopup,
     showFloatPopup,
     showProjectColorPicker,
-    showSideMenuUser,
     showSwipeDueDatePopup,
-    startStoreUpdate,
     storeCurrentUser,
     storeLoggedUser,
-    storeLoggedUserProjects,
-    storeSelectedProjectUsers,
     switchProject,
     toggleDismissibleActive,
     toggleNavPicker,
@@ -43,23 +34,12 @@ import {
     showProjectInvitation,
     hideProjectInvitation,
     setProjectInvitationData,
-    showMessagePopup,
-    hideMessagePopup,
-    setMessagePopupAction,
-    setProjectsContacts,
 } from '../../redux/actions'
 import { PROJECT_TYPE_ARCHIVED } from '../../components/SettingsView/ProjectsSettings/ProjectsSettings'
 
 jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('Redux Actions', () => {
-    it('should create an action to log in', () => {
-        const expectedAction = {
-            type: 'Log in',
-        }
-        expect(LogIn()).toEqual(expectedAction)
-    })
-
     it('should create an action to log out', () => {
         const expectedAction = {
             type: 'Log out',
@@ -75,14 +55,6 @@ describe('Redux Actions', () => {
         expect(switchProject(5)).toEqual(expectedAction)
     })
 
-    it('should create an action to store the users of a project', () => {
-        const expectedAction = {
-            type: 'Store project users',
-            users: [],
-        }
-        expect(storeSelectedProjectUsers([])).toEqual(expectedAction)
-    })
-
     it('should create an action to store the selected type of project', () => {
         const expectedAction = {
             type: 'Set selected type of project',
@@ -91,18 +63,10 @@ describe('Redux Actions', () => {
         expect(setSelectedTypeOfProject(PROJECT_TYPE_ARCHIVED)).toEqual(expectedAction)
     })
 
-    it('should create an action to store the projects of the logged user', () => {
-        const expectedAction = {
-            type: 'Store logged user projects',
-            projects: [],
-        }
-        expect(storeLoggedUserProjects([])).toEqual(expectedAction)
-    })
-
     it('should create an action to store the logged user', () => {
         const expectedAction = {
             type: 'Store logged user',
-            user: {},
+            loggedUser: {},
         }
         expect(storeLoggedUser({})).toEqual(expectedAction)
     })
@@ -110,23 +74,9 @@ describe('Redux Actions', () => {
     it('should create an action to store the current user', () => {
         const expectedAction = {
             type: 'Store current user',
-            user: {},
+            currentUser: {},
         }
         expect(storeCurrentUser({})).toEqual(expectedAction)
-    })
-
-    it('should create an action to hide the logged user from the side menu', () => {
-        const expectedAction = {
-            type: 'Hide side menu user',
-        }
-        expect(hideSideMenuUser()).toEqual(expectedAction)
-    })
-
-    it('should create an action to show the logged user from the side menu', () => {
-        const expectedAction = {
-            type: 'Show side menu user',
-        }
-        expect(showSideMenuUser()).toEqual(expectedAction)
     })
 
     it('should create an action to set the selected navigation bar item', () => {
@@ -221,21 +171,6 @@ describe('Redux Actions', () => {
         expect(overrideStore({})).toEqual(expectedAction)
     })
 
-    it('should create an action to set the value of the online status flag', () => {
-        const expectedAction = {
-            type: 'Set online',
-            status: false,
-        }
-        expect(setOnline(false)).toEqual(expectedAction)
-    })
-
-    it('should create an action to set the store update flag', () => {
-        const expectedAction = {
-            type: 'Start store update',
-        }
-        expect(startStoreUpdate()).toEqual(expectedAction)
-    })
-
     it('should create an action to set the project color picker layout', () => {
         const expectedAction = {
             type: 'Set project color picker layout',
@@ -251,10 +186,13 @@ describe('Redux Actions', () => {
     })
 
     it('should create an action to show the confirm popup', () => {
+        // The creator carries the popup's trigger and subject now.
         const expectedAction = {
             type: 'Show confirm popup',
+            trigger: 'delete_task',
+            object: { taskId: 'task-1' },
         }
-        expect(showConfirmPopup()).toEqual(expectedAction)
+        expect(showConfirmPopup({ trigger: 'delete_task', object: { taskId: 'task-1' } })).toEqual(expectedAction)
     })
 
     it('should create an action to hide the confirm popup', () => {
@@ -262,34 +200,6 @@ describe('Redux Actions', () => {
             type: 'Hide confirm popup',
         }
         expect(hideConfirmPopup()).toEqual(expectedAction)
-    })
-
-    it('should create an action to set the confirm popup action', () => {
-        const expectedAction = {
-            type: 'Set confirm popup action',
-        }
-        expect(setConfirmPopupAction()).toEqual(expectedAction)
-    })
-
-    it('should create an action to show the message popup', () => {
-        const expectedAction = {
-            type: 'Show message popup',
-        }
-        expect(showMessagePopup()).toEqual(expectedAction)
-    })
-
-    it('should create an action to hide the message popup', () => {
-        const expectedAction = {
-            type: 'Hide message popup',
-        }
-        expect(hideMessagePopup()).toEqual(expectedAction)
-    })
-
-    it('should create an action to set the message popup action', () => {
-        const expectedAction = {
-            type: 'Set message popup action',
-        }
-        expect(setMessagePopupAction()).toEqual(expectedAction)
     })
 
     it('should create an action to show the project invitation popup', () => {
@@ -348,28 +258,12 @@ describe('Redux Actions', () => {
         expect(hideFloatPopup()).toEqual(expectedAction)
     })
 
-    it('should create an action to set the dueDate', () => {
-        const expectedAction = {
-            type: 'Set dueDate',
-            dueDate: 1579410000000,
-        }
-        expect(setDueDate(1579410000000)).toEqual(expectedAction)
-    })
-
     it('should create an action to set sub task section', () => {
         const expectedAction = {
             type: 'Set sub task section',
             subTaskSection: '-Asd',
         }
         expect(setSubTaskSection('-Asd')).toEqual(expectedAction)
-    })
-
-    it('should create an action to set projects contacts', () => {
-        const expectedAction = {
-            type: 'Set projects contacts',
-            contacts: [],
-        }
-        expect(setProjectsContacts([])).toEqual(expectedAction)
     })
 
     it('should create an action to set task view toggle index', () => {

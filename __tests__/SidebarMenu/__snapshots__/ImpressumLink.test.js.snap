@@ -2,52 +2,271 @@
 
 exports[`ImpressumLink component ImpressumLink snapshot test should render correctly 1`] = `
 <View
-  accessible={true}
-  focusable={true}
-  isTVSelectable={true}
-  onClick={[Function]}
-  onResponderGrant={[Function]}
-  onResponderMove={[Function]}
-  onResponderRelease={[Function]}
-  onResponderTerminate={[Function]}
-  onResponderTerminationRequest={[Function]}
-  onStartShouldSetResponder={[Function]}
   style={
     Object {
-      "opacity": 1,
+      "alignItems": "center",
+      "flexDirection": "row",
+      "flexWrap": "nowrap",
+      "maxHeight": 30,
+      "overflow": "hidden",
+      "paddingHorizontal": 24,
+      "width": "100%",
     }
   }
 >
   <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
     style={
       Object {
-        "alignItems": "center",
-        "flexDirection": "row",
-        "height": 48,
-        "paddingHorizontal": 24,
-        "width": "100%",
+        "opacity": 1,
       }
     }
   >
-    <Text
+    <View
       style={
-        Array [
-          Object {
-            "color": "#04142F",
-            "fontFamily": "Roboto-Regular",
-            "fontSize": 14,
-            "letterSpacing": 0.32,
-            "lineHeight": 22,
-          },
-          Object {
-            "color": "#FFFFFF",
-            "opacity": 0.4,
-          },
-        ]
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 48,
+        }
       }
     >
-      Impressum
-    </Text>
+      <Text
+        numberOfLines={1}
+        style={
+          Array [
+            Object {
+              "color": "#FFFFFF",
+              "flexWrap": "nowrap",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "opacity": 0.4,
+            },
+            Object {
+              "color": "#8A94A6",
+              "opacity": 0.4,
+            },
+          ]
+        }
+      >
+        Impressum
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Array [
+        Object {
+          "backgroundColor": "#ffffff",
+          "borderRadius": 50,
+          "height": 4,
+          "marginHorizontal": 8,
+          "opacity": 0.4,
+          "width": 4,
+        },
+        Object {
+          "backgroundColor": "#8A94A6",
+          "opacity": 0.4,
+        },
+      ]
+    }
+  />
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "opacity": 1,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 48,
+        }
+      }
+    >
+      <Text
+        numberOfLines={1}
+        style={
+          Array [
+            Object {
+              "color": "#FFFFFF",
+              "flexWrap": "nowrap",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "opacity": 0.4,
+            },
+            Object {
+              "color": "#8A94A6",
+              "opacity": 0.4,
+            },
+          ]
+        }
+      >
+        Privacy
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Array [
+        Object {
+          "backgroundColor": "#ffffff",
+          "borderRadius": 50,
+          "height": 4,
+          "marginHorizontal": 8,
+          "opacity": 0.4,
+          "width": 4,
+        },
+        Object {
+          "backgroundColor": "#8A94A6",
+          "opacity": 0.4,
+        },
+      ]
+    }
+  />
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "opacity": 1,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 48,
+        }
+      }
+    >
+      <Text
+        numberOfLines={1}
+        style={
+          Array [
+            Object {
+              "color": "#FFFFFF",
+              "flexWrap": "nowrap",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "opacity": 0.4,
+            },
+            Object {
+              "color": "#8A94A6",
+              "opacity": 0.4,
+            },
+          ]
+        }
+      >
+        Terms
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      Array [
+        Object {
+          "backgroundColor": "#ffffff",
+          "borderRadius": 50,
+          "height": 4,
+          "marginHorizontal": 8,
+          "opacity": 0.4,
+          "width": 4,
+        },
+        Object {
+          "backgroundColor": "#8A94A6",
+          "opacity": 0.4,
+        },
+      ]
+    }
+  />
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "opacity": 1,
+      }
+    }
+  >
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 48,
+        }
+      }
+    >
+      <Text
+        numberOfLines={1}
+        style={
+          Array [
+            Object {
+              "color": "#FFFFFF",
+              "flexWrap": "nowrap",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "opacity": 0.4,
+            },
+            Object {
+              "color": "#8A94A6",
+              "opacity": 0.4,
+            },
+          ]
+        }
+      >
+        Cookie settings
+      </Text>
+    </View>
   </View>
 </View>
 `;
