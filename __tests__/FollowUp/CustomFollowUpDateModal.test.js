@@ -5,6 +5,14 @@ import { Platform } from 'react-native'
 import CustomFollowUpDateModal from '../../components/FollowUp/CustomFollowUpDateModal'
 import renderer from 'react-test-renderer'
 
+// The modal hands react-native-calendars a default locale taken from
+// loggedUser.language, which only the login flow populates. Without it xdate
+// looks up an undefined locale and throws while formatting month names.
+jest.mock('react-native-calendars', () => ({
+    Calendar: 'Calendar',
+    LocaleConfig: { locales: {}, defaultLocale: 'en' },
+}))
+
 // MyPlatform.osType only consults window.navigator off the mobile path,
 // and the react-native preset reports ios.
 Platform.OS = 'web'
