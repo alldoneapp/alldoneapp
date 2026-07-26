@@ -21,37 +21,33 @@ function mockMakeRef(path) {
 
 const mockLaunchQueuedVmJob = jest.fn(async () => ({ success: true, outcome: 'launched' }))
 
-jest.mock(
-    'firebase-admin',
-    () => ({
-        firestore: () => ({
-            doc: path => mockMakeRef(path),
-            collection: name => ({
-                where: (field, op, value) => ({
-                    get: async () => {
-                        const docs = Object.keys(mockStore)
-                            .filter(p => p.startsWith(`${name}/`))
-                            .filter(p => {
-                                const v = mockStore[p][field]
-                                if (op === '>') return Number(v) > value
-                                return true
-                            })
-                            .map(p => ({ id: p.slice(name.length + 1), ref: mockMakeRef(p), data: () => mockStore[p] }))
-                        return { docs }
-                    },
-                }),
+jest.mock('firebase-admin', () => ({
+    firestore: () => ({
+        doc: path => mockMakeRef(path),
+        collection: name => ({
+            where: (field, op, value) => ({
+                get: async () => {
+                    const docs = Object.keys(mockStore)
+                        .filter(p => p.startsWith(`${name}/`))
+                        .filter(p => {
+                            const v = mockStore[p][field]
+                            if (op === '>') return Number(v) > value
+                            return true
+                        })
+                        .map(p => ({ id: p.slice(name.length + 1), ref: mockMakeRef(p), data: () => mockStore[p] }))
+                    return { docs }
+                },
             }),
-            runTransaction: async updateFn =>
-                updateFn({
-                    get: async ref => ref.get(),
-                    set: (ref, data, options) => ref.set(data, options),
-                    update: (ref, data) => ref.update(data),
-                    delete: ref => ref.delete(),
-                }),
         }),
+        runTransaction: async updateFn =>
+            updateFn({
+                get: async ref => ref.get(),
+                set: (ref, data, options) => ref.set(data, options),
+                update: (ref, data) => ref.update(data),
+                delete: ref => ref.delete(),
+            }),
     }),
-    { virtual: true }
-)
+}))
 
 jest.mock('./vmJob', () => ({ launchQueuedVmJob: mockLaunchQueuedVmJob }))
 
