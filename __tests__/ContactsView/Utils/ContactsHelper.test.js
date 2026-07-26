@@ -1,5 +1,8 @@
 import ContactsHelper, { getNewDefaultUser } from '../../../components/ContactsView/Utils/ContactsHelper'
-import URLsPeople, { URL_ALL_PROJECTS_PEOPLE } from '../../../URLSystem/People/URLsPeople'
+import URLsPeople, {
+    URL_ALL_PROJECTS_PEOPLE_FOLLOWED,
+    URL_PROJECT_PEOPLE_FOLLOWED,
+} from '../../../URLSystem/People/URLsPeople'
 
 // expo-localization loads a native module that is unavailable in the JSDOM test env (see CLAUDE.md).
 // Mock it so the pure getNewDefaultUser logic can be exercised.
@@ -21,14 +24,17 @@ describe('ContactsHelper class', () => {
         const navigation = { navigate: () => {} }
         URLsPeople.replace = jest.fn()
         ContactsHelper.processURLAllProjectsPeople(navigation)
-        expect(URLsPeople.replace).toBeCalledWith(URL_ALL_PROJECTS_PEOPLE)
+        expect(URLsPeople.replace).toBeCalledWith(URL_ALL_PROJECTS_PEOPLE_FOLLOWED)
     })
 
     it('should execute processURLProjectPeople correctly', () => {
         const navigation = { navigate: () => {} }
         URLsPeople.replace = jest.fn()
         ContactsHelper.processURLProjectPeople(navigation, 0)
-        expect(URLsPeople.replace).toBeCalledWith(URL_ALL_PROJECTS_PEOPLE)
+
+        // A concrete project takes the per-project branch, which passes route
+        // data alongside the constant; the URL is what this test is about.
+        expect(URLsPeople.replace.mock.calls[0][0]).toBe(URL_PROJECT_PEOPLE_FOLLOWED)
     })
 
     it('should execute processURLPeopleDetails correctly', () => {
