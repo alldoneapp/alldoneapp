@@ -1,9 +1,439 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`ConfirmPopup component ConfirmPopup snapshot test Should render correctly 1`] = `null`;
+exports[`ConfirmPopup component renders nothing while there is nothing to confirm 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "backgroundColor": "rgba(138,148,166,0.24)",
+      "bottom": 0,
+      "justifyContent": "center",
+      "left": 0,
+      "position": "absolute",
+      "right": 0,
+      "top": 0,
+      "zIndex": 10000,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#091540",
+          "borderRadius": 4,
+          "padding": 16,
+          "shadowColor": "rgba(0,0,0,0.04)",
+          "shadowOffset": Object {
+            "height": 16,
+            "width": 0,
+          },
+          "shadowOpacity": 1,
+          "shadowRadius": 24,
+        },
+        false,
+        null,
+      ]
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "marginBottom": 20,
+          },
+          null,
+        ]
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 18,
+              "lineHeight": 26,
+            },
+            Object {
+              "color": "#ffffff",
+            },
+          ]
+        }
+      >
+        Be careful with this action
+      </Text>
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+            },
+            Object {
+              "color": "#8A94A6",
+            },
+          ]
+        }
+      >
+        Do you really want to perform this action?
+      </Text>
+    </View>
+    <View
+      style={
+        Object {
+          "flex": 0,
+          "flexDirection": "row",
+        }
+      }
+    >
+      <View
+        accessible={false}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#EAF0F5",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 16,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#04142F",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Cancel
+        </Text>
+      </View>
+      <View
+        accessible={false}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#E00000",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#ffffff",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Proceed
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;
 
-exports[`ConfirmPopup component Function executeTrigger snapshot test Should execute and render correctly 1`] = `null`;
-
-exports[`ConfirmPopup component Function hidePopup snapshot test Should execute and render correctly 1`] = `null`;
-
-exports[`ConfirmPopup component Function onKeyDown snapshot test Should execute and render correctly 1`] = `null`;
+exports[`ConfirmPopup component renders once a confirmation is requested 1`] = `
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "backgroundColor": "rgba(138,148,166,0.24)",
+      "bottom": 0,
+      "justifyContent": "center",
+      "left": 0,
+      "position": "absolute",
+      "right": 0,
+      "top": 0,
+      "zIndex": 10000,
+    }
+  }
+>
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#091540",
+          "borderRadius": 4,
+          "padding": 16,
+          "shadowColor": "rgba(0,0,0,0.04)",
+          "shadowOffset": Object {
+            "height": 16,
+            "width": 0,
+          },
+          "shadowOpacity": 1,
+          "shadowRadius": 24,
+        },
+        false,
+        null,
+      ]
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "marginBottom": 20,
+          },
+          null,
+        ]
+      }
+    >
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 18,
+              "lineHeight": 26,
+            },
+            Object {
+              "color": "#ffffff",
+            },
+          ]
+        }
+      >
+        Be careful with this action
+      </Text>
+      <Text
+        style={
+          Array [
+            Object {
+              "color": "#04142F",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+            },
+            Object {
+              "color": "#8A94A6",
+            },
+          ]
+        }
+      >
+        Do you really want to perform this action?
+      </Text>
+    </View>
+    <View
+      style={
+        Object {
+          "flex": 0,
+          "flexDirection": "row",
+        }
+      }
+    >
+      <View
+        accessible={false}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#EAF0F5",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 16,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#04142F",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Cancel
+        </Text>
+      </View>
+      <View
+        accessible={false}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          Object {
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#E00000",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#ffffff",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
+          }
+        >
+          Proceed
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;
