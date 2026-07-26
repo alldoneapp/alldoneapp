@@ -1,4 +1,8 @@
 'use strict'
+// Runtime: Node 22, pinned by `runtime` in firebase.json and mirrored by
+// engines.node in package.json. firebase-tools skips a function whose source
+// hash is unchanged, and the runtime is not part of that hash, so moving the
+// runtime alone deploys nothing - it needs a source change to land.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { onTaskDispatched } = require('firebase-functions/v2/tasks')

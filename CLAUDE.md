@@ -73,7 +73,11 @@ places: `runtime` in `firebase.json` is what firebase-tools actually obeys, and
 `engines.node` in `functions/package.json` is what everything else reads. Changing only
 the latter deploys on the old runtime while reporting success - the log says
 `updating Node.js <old> ...` for every function and nothing fails, so check that line
-rather than the summary. `ci/Dockerfile_functions` builds on the matching `node:22-alpine`
+rather than the summary. Worse, once both pins agree, firebase-tools still skips every
+function whose **source hash** is unchanged - the runtime is not part of that hash - and
+logs `Skipping the deploy of unchanged functions` / `Skipped (No changes detected)`. A
+runtime move therefore needs a source change under `functions/` to land at all, and
+`firebase.json` must be in the deploy job's `changes` list or the job never runs. `ci/Dockerfile_functions` builds on the matching `node:22-alpine`
 so `npm ci` runs on the same major it deploys to. Google decommissions a runtime about
 eighteen months after deprecating it - Node 20 goes on 2026-10-31, Node 22 on 2027-10-31 -
 and the pinned `firebase-tools@13.29.3` carries that table, so check it there before moving.
