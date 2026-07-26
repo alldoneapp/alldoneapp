@@ -20,27 +20,23 @@ function mockGetDoc(path) {
     return mockDocs[path]
 }
 
-jest.mock(
-    'firebase-admin',
-    () => ({
-        app: jest.fn(() => ({ options: { projectId: 'test-project' } })),
-        firestore: Object.assign(
-            jest.fn(() => ({
-                collection: jest.fn(() => mockCollectionQuery),
-                doc: jest.fn(path => mockGetDoc(path)),
-                runTransaction: async updateFn =>
-                    updateFn({
-                        get: async ref => ref.get(),
-                        set: (ref, data, options) => ref.set(data, options),
-                        update: (ref, data) => ref.update(data),
-                        delete: ref => (ref.delete ? ref.delete() : undefined),
-                    }),
-            })),
-            { Timestamp: { now: () => ({ seconds: 0, nanoseconds: 0 }) } }
-        ),
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-admin', () => ({
+    app: jest.fn(() => ({ options: { projectId: 'test-project' } })),
+    firestore: Object.assign(
+        jest.fn(() => ({
+            collection: jest.fn(() => mockCollectionQuery),
+            doc: jest.fn(path => mockGetDoc(path)),
+            runTransaction: async updateFn =>
+                updateFn({
+                    get: async ref => ref.get(),
+                    set: (ref, data, options) => ref.set(data, options),
+                    update: (ref, data) => ref.update(data),
+                    delete: ref => (ref.delete ? ref.delete() : undefined),
+                }),
+        })),
+        { Timestamp: { now: () => ({ seconds: 0, nanoseconds: 0 }) } }
+    ),
+}))
 
 jest.mock('./vmCloudRunLauncher', () => ({
     launchVmCloudRunJob: mockQueueEnqueue,
