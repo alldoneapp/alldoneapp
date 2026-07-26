@@ -1,6 +1,100 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`ProjectModalItem component ProjectModalItem snapshot test should render correctly 1`] = `
+exports[`ProjectModalItem component renders differently once it is the active row 1`] = `
+<View>
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
+    onClick={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      Object {
+        "opacity": 1,
+      }
+    }
+  >
+    <View
+      style={
+        Array [
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "paddingLeft": 8,
+            "paddingRight": 8,
+          },
+          Object {
+            "backgroundColor": "rgba(138,148,166,0.16)",
+            "borderRadius": 4,
+          },
+        ]
+      }
+    >
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+            "paddingLeft": 4,
+            "paddingVertical": 16,
+          }
+        }
+      >
+        <View
+          style={
+            Array [
+              Object {
+                "alignItems": "center",
+                "borderRadius": 100,
+                "height": 16,
+                "justifyContent": "center",
+                "width": 16,
+              },
+              Object {
+                "backgroundColor": "#FF0000",
+                "height": 16,
+                "width": 16,
+              },
+              Object {
+                "marginRight": 12,
+              },
+            ]
+          }
+        />
+        <Text
+          numberOfLines={1}
+          style={
+            Array [
+              Object {
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 16,
+                "letterSpacing": 0.16,
+                "lineHeight": 24,
+              },
+              Object {
+                "color": "#ffffff",
+              },
+              Object {
+                "color": "#007FFF",
+              },
+            ]
+          }
+        >
+          Fotuto
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
+`;
+
+exports[`ProjectModalItem component should render correctly 1`] = `
 <View>
   <View
     accessible={true}
@@ -54,7 +148,7 @@ exports[`ProjectModalItem component ProjectModalItem snapshot test should render
                 "width": 16,
               },
               Object {
-                "backgroundColor": "the same with colors",
+                "backgroundColor": "#FF0000",
                 "height": 16,
                 "width": 16,
               },
@@ -81,32 +175,8 @@ exports[`ProjectModalItem component ProjectModalItem snapshot test should render
             ]
           }
         >
-          Running out of cool names
+          Fotuto
         </Text>
-      </View>
-      <View
-        style={
-          Array [
-            Object {
-              "marginLeft": "auto",
-            },
-          ]
-        }
-      >
-        <View>
-          <Text
-            style={
-              Object {
-                "color": "white",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
       </View>
     </View>
   </View>

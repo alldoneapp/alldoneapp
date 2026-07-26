@@ -3,56 +3,65 @@
  */
 
 import React from 'react'
-import ConfirmPopup, { CONFIRM_POPUP_TRIGGER_DELETE_TASK } from '../../components/UIComponents/ConfirmPopup'
-
+import { Provider } from 'react-redux'
 import renderer from 'react-test-renderer'
+
+import ConfirmPopup, { CONFIRM_POPUP_TRIGGER_DELETE_TASK } from '../../components/UIComponents/ConfirmPopup'
 import store from '../../redux/store'
-import { setConfirmPopupAction } from '../../redux/actions'
+import { hideConfirmPopup, showConfirmPopup } from '../../redux/actions'
 
 jest.mock('firebase', () => ({ firestore: {} }))
 
 const dummyProjectId = '-LcRVRo6mhbC0oXCcZ2F'
 const dummyTaskId = '-LcRVT6MEWlqGQRkE2xw'
 
+// The popup is a function component now, so hidePopup, executeTrigger and
+// onKeyDown are internal. What a caller can observe is the store: showing the
+// popup renders it, and dismissing it clears the visible flag.
+const render = () =>
+    renderer.create(
+        <Provider store={store}>
+            <ConfirmPopup />
+        </Provider>
+    )
+
+const showDeleteTaskPopup = () =>
+    store.dispatch(
+        showConfirmPopup({
+            trigger: CONFIRM_POPUP_TRIGGER_DELETE_TASK,
+            object: { taskId: dummyTaskId, projectId: dummyProjectId },
+        })
+    )
+
 describe('ConfirmPopup component', () => {
-    describe('ConfirmPopup snapshot test', () => {
-        it('Should render correctly', () => {
-            const tree = renderer.create(<ConfirmPopup />).toJSON()
-            expect(tree).toMatchSnapshot()
-        })
+    afterEach(() => {
+        store.dispatch(hideConfirmPopup())
     })
 
-    describe('Function hidePopup snapshot test', () => {
-        it('Should execute and render correctly', () => {
-            const tree = renderer.create(<ConfirmPopup />)
-
-            tree.getInstance().hidePopup()
-            expect(tree.toJSON()).toMatchSnapshot()
-        })
+    it('renders nothing while there is nothing to confirm', () => {
+        expect(render().toJSON()).toMatchSnapshot()
     })
 
-    describe('Function executeTrigger snapshot test', () => {
-        it('Should execute and render correctly', () => {
-            store.dispatch(
-                setConfirmPopupAction({
-                    trigger: CONFIRM_POPUP_TRIGGER_DELETE_TASK,
-                    object: { taskId: dummyTaskId, projectId: dummyProjectId },
-                })
-            )
-            const tree = renderer.create(<ConfirmPopup />)
+    it('renders once a confirmation is requested', () => {
+        showDeleteTaskPopup()
 
-            tree.getInstance().executeTrigger()
-            expect(tree.toJSON()).toMatchSnapshot()
-        })
+        expect(render().toJSON()).toMatchSnapshot()
     })
 
-    describe('Function onKeyDown snapshot test', () => {
-        it('Should execute and render correctly', () => {
-            const tree = renderer.create(<ConfirmPopup />)
-            const instance = tree.getInstance()
-            instance.onKeyDown({ key: 'Escape', preventDefault: () => {} })
-            expect(store.getState().showConfirmPopup.visible).toBeFalsy()
-            expect(tree.toJSON()).toMatchSnapshot()
-        })
+    it('keeps the requested trigger and subject on the store', () => {
+        showDeleteTaskPopup()
+
+        const { showConfirmPopupData } = store.getState()
+        expect(showConfirmPopupData.visible).toBe(true)
+        expect(showConfirmPopupData.trigger).toBe(CONFIRM_POPUP_TRIGGER_DELETE_TASK)
+        expect(showConfirmPopupData.object.taskId).toBe(dummyTaskId)
+    })
+
+    it('clears the popup when it is dismissed', () => {
+        showDeleteTaskPopup()
+
+        store.dispatch(hideConfirmPopup())
+
+        expect(store.getState().showConfirmPopupData.visible).toBe(false)
     })
 })

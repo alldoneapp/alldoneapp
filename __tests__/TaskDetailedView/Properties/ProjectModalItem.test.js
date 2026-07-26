@@ -1,67 +1,38 @@
 import React from 'react'
+import renderer from 'react-test-renderer'
+
 import ProjectModalItem from '../../../components/UIComponents/FloatModals/SelectProjectModal/ProjectModalItem'
 
-import renderer from 'react-test-renderer'
-import store from '../../../redux/store'
-import { setProject } from '../../../redux/actions'
-import Backend from '../../../utils/BackendBridge'
-
-jest.mock('../../../utils/BackendBridge')
 jest.mock('firebase', () => ({ firestore: {} }))
-jest.mock('../../../components/TaskListView/Utils/TasksHelper', () => ({
-    getTaskOwner: () => ({ uid: 0 }),
-}))
+
+// The row no longer writes the choice into the store through setProject, nor
+// calls Backend.setTaskProject itself - it reports the selection upwards via
+// onProjectSelect and lets the caller decide. It also takes no task any more.
+const project = { id: 'id0', name: 'Running out of cool names', color: '#0055ff' }
+const newProject = { id: 'id1', name: 'Fotuto', color: '#FF0000' }
+
+const render = (props = {}) =>
+    renderer.create(
+        <ProjectModalItem project={project} newProject={newProject} onProjectSelect={() => {}} {...props} />
+    )
 
 describe('ProjectModalItem component', () => {
-    const task = { id: 'id0', name: 'task1', recurrence: { type: 'never' }, userIds: [{}] }
-
-    describe('ProjectModalItem snapshot test', () => {
-        it('should render correctly', () => {
-            const project = { name: 'Running out of cool names', color: 'the same with colors' }
-
-            const tree = renderer.create(<ProjectModalItem project={project} newProject={project} />).toJSON()
-            expect(tree).toMatchSnapshot()
-        })
+    it('should render correctly', () => {
+        expect(render().toJSON()).toMatchSnapshot()
     })
 
-    describe('ProjectModalItem methods', () => {
-        it('should set the new project for the task', () => {
-            const project = { id: 'id0', name: 'Running out of cool names', color: 'the same with colors', userIds: [] }
-            const currentProject = { id: 'id1', name: 'Fotuto', color: 'Pirulí', userIds: [] }
+    it('renders differently once it is the active row', () => {
+        expect(render({ active: true }).toJSON()).toMatchSnapshot()
+    })
 
-            const tree = renderer.create(
-                <ProjectModalItem project={project} task={task} newProject={project} closePopover={() => {}} />
-            )
-            const instance = tree.getInstance()
+    it('reports the selected project to its caller', () => {
+        const onProjectSelect = jest.fn()
+        const tree = render({ onProjectSelect })
 
-            store.dispatch(setProject(currentProject))
-            instance.onPress()
-            expect(Backend.setTaskProject.mock.calls.length).toEqual(1)
-            expect(Backend.setTaskProject.mock.calls[0][0]['id']).toEqual(project.id)
-            expect(Backend.setTaskProject.mock.calls[0][1]['id']).toEqual(project.id)
-            expect(Backend.setTaskProject.mock.calls[0][2]['id']).toEqual(task.id)
-            expect(store.getState().project).toEqual(project)
-            expect(store.getState().showProjectPicker.visible).toEqual(false)
-        })
+        const [pressable] = tree.root.findAll(node => typeof node.props.onPress === 'function')
+        const event = {}
+        pressable.props.onPress(event)
 
-        it('should hide the project picker', () => {
-            const project = { id: 'id0', name: 'Running out of cool names', color: 'the same with colors' }
-            const currentProject = { id: 'id1', name: 'Fotuto', color: 'Pirulí' }
-
-            const tree = renderer.create(<ProjectModalItem project={project} task={task} newProject={project} />)
-            const instance = tree.getInstance()
-
-            store.dispatch(setProject(currentProject))
-            instance.whenDone()
-            expect(store.getState().showProjectPicker.visible).toEqual(false)
-        })
-
-        it('should attempt to animate', () => {
-            const project = { id: 'id0', name: 'Running out of cool names', color: 'the same with colors' }
-            const tree = renderer.create(<ProjectModalItem project={project} task={task} newProject={project} />)
-            const instance = tree.getInstance()
-            instance.tryAnimate()
-            expect(store.getState().showProjectPicker.visible).toEqual(false)
-        })
+        expect(onProjectSelect).toHaveBeenCalledWith(event, project, newProject)
     })
 })

@@ -7,7 +7,7 @@ import { seedProjectUsers, seedProjects } from '../../../testUtils/seedStore'
 import ContactProperties from '../../../components/ContactDetailedView/ContactProperties/ContactProperties'
 import renderer from 'react-test-renderer'
 import store from '../../../redux/store'
-import { setProjectsContacts } from '../../../redux/actions'
+import { setContactsInProject } from '../../../redux/actions'
 
 jest.mock('../../../components/SettingsView/ProjectsSettings/ProjectHelper', () => {
     return {
@@ -50,7 +50,7 @@ describe('ContactProperties component', () => {
         store.dispatch([
             ...seedProjects([{ name: 'My Project', userIds: [], usersData: [] }]),
             ...seedProjectUsers([[{ displayName: 'pepitp' }]]),
-            setProjectsContacts({ 0: [{ uid: 'uid1' }] }),
+            setContactsInProject('seeded-project-0', [{ uid: 'uid1' }]),
         ])
     })
 
