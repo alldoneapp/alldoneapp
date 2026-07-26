@@ -20,7 +20,20 @@ describe('TaskItemTags component', () => {
             const tree = renderer
                 .create(
                     <Provider store={store}>
-                        <TaskItemTags amountTags={5}>
+                        <TaskItemTags
+                            amountTags={5}
+                            task={{
+                                id: 'task-1',
+                                name: 'My task',
+                                userId: 'user-1',
+                                userIds: ['user-1'],
+                                dueDate: 0,
+                                dueDateByObserversIds: {},
+                                estimations: {},
+                                stepHistory: ['open'],
+                            }}
+                            projectId={'project-1'}
+                        >
                             <Text>Some text</Text>
                         </TaskItemTags>
                     </Provider>

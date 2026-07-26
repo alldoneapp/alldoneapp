@@ -33,8 +33,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
       Array [
         Object {
           "flexDirection": "row",
-          "height": 72,
-          "overflow": "hidden",
+          "minHeight": 72,
         },
       ]
     }
@@ -70,45 +69,37 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
         </Text>
       </View>
     </View>
-    <TextInput
-      allowFontScaling={true}
+    <CustomTextInput3
       autoFocus={true}
-      defaultValue="a"
-      multiline={true}
-      numberOfLines={2}
-      onChangeText={[Function]}
-      onKeyPress={[Function]}
-      placeholder="Type to add new step"
-      placeholderTextColor="#8A94A6"
-      rejectResponderTermination={true}
-      returnKeyType="done"
-      style={
+      containerStyle={
         Array [
           Object {
             "borderTopLeftRadius": 4,
             "borderTopRightRadius": 4,
-            "bottom": -1,
             "color": "#04142F",
-            "flexWrap": "wrap",
             "fontFamily": "Roboto-Regular",
             "fontSize": 16,
-            "left": -1,
             "letterSpacing": 0.32,
             "lineHeight": 24,
             "paddingBottom": 16,
-            "paddingLeft": 64,
+            "paddingLeft": 63,
             "paddingRight": 16,
-            "paddingTop": 12,
-            "position": "absolute",
-            "right": -1,
-            "textAlignVertical": "top",
-            "top": -1,
-            "width": "101%",
+            "paddingTop": 6,
           },
+          null,
           undefined,
+          null,
         ]
       }
-      underlineColorAndroid="transparent"
+      disabledTags={true}
+      forceTriggerEnterActionForBreakLines={[Function]}
+      initialTextExtended="a"
+      multiline={true}
+      numberOfLines={2}
+      onChangeText={[Function]}
+      placeholder="Type to add new step"
+      placeholderTextColor="#8A94A6"
+      returnKeyType="done"
     />
   </View>
   <View
@@ -156,7 +147,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
           }
         >
           <View
-            accessible={true}
+            accessible={false}
             focusable={true}
             isTVSelectable={true}
             onClick={[Function]}
@@ -169,48 +160,76 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
             style={
               Object {
                 "alignItems": "center",
+                "alignSelf": "flex-start",
+                "backgroundColor": "transparent",
                 "borderColor": "#C6CDD2",
                 "borderRadius": 4,
+                "borderStyle": "solid",
                 "borderWidth": 1,
                 "flexDirection": "row",
+                "flexWrap": "nowrap",
                 "height": 40,
+                "justifyContent": "center",
+                "maxHeight": 40,
+                "minHeight": 40,
                 "opacity": 1,
-                "paddingHorizontal": 16,
+                "paddingLeft": 12,
+                "paddingRight": 16,
+                "paddingVertical": 8,
               }
             }
           >
-            <Image
-              source={
-                Object {
-                  "uri": "url",
-                }
-              }
+            <View
               style={
                 Object {
-                  "borderRadius": 100,
-                  "height": 24,
                   "marginRight": 10,
-                  "width": 24,
                 }
               }
-            />
+            >
+              <View>
+                <Text
+                  style={
+                    Object {
+                      "color": "#8A94A6",
+                      "fontFamily": "alldone",
+                      "fontSize": 24,
+                      "opacity": 1,
+                    }
+                  }
+                >
+                  
+                </Text>
+              </View>
+            </View>
             <Text
+              numberOfLines={1}
               style={
                 Array [
+                  Array [
+                    Object {
+                      "alignSelf": "center",
+                      "color": "#FFFFFF",
+                      "flexWrap": "nowrap",
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": 14,
+                      "letterSpacing": 0.8,
+                      "lineHeight": 16,
+                      "margin": 0,
+                      "paddingHorizontal": 0,
+                      "paddingVertical": 0,
+                    },
+                    Object {
+                      "color": "#8A94A6",
+                    },
+                    Object {},
+                  ],
                   Object {
-                    "fontFamily": "Roboto-Medium",
-                    "fontSize": 14,
-                    "fontStyle": "normal",
-                    "letterSpacing": 0.8,
-                    "lineHeight": 14,
-                  },
-                  Object {
-                    "color": "#8A94A6",
+                    "marginLeft": 12,
                   },
                 ]
               }
             >
-              Send to name
+              Select step reviewer
             </Text>
           </View>
         </View>
@@ -230,7 +249,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
       }
     >
       <View
-        accessible={true}
+        accessible={false}
         focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
@@ -254,7 +273,8 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
-            "paddingHorizontal": 16,
+            "paddingLeft": 16,
+            "paddingRight": 16,
             "paddingVertical": 8,
           }
         }
@@ -263,22 +283,27 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
           numberOfLines={1}
           style={
             Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#04142F",
+                },
+                Object {},
+              ],
               Object {
-                "alignSelf": "center",
-                "color": "#FFFFFF",
-                "flexWrap": "nowrap",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.8,
-                "lineHeight": 16,
-                "margin": 0,
-                "paddingHorizontal": 8,
-                "paddingVertical": 0,
+                "marginLeft": 0,
               },
-              Object {
-                "color": "#04142F",
-              },
-              Object {},
             ]
           }
         >
@@ -287,7 +312,7 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
       </View>
       <View
         accessible={false}
-        focusable={false}
+        focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
         onResponderGrant={[Function]}
@@ -309,7 +334,8 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
-            "paddingHorizontal": 16,
+            "paddingLeft": 16,
+            "paddingRight": 16,
             "paddingVertical": 8,
           }
         }
@@ -318,22 +344,27 @@ exports[`EditStep component EditStep snapshot test should render correctly 1`] =
           numberOfLines={1}
           style={
             Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#ffffff",
+                },
+                Object {},
+              ],
               Object {
-                "alignSelf": "center",
-                "color": "#FFFFFF",
-                "flexWrap": "nowrap",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.8,
-                "lineHeight": 16,
-                "margin": 0,
-                "paddingHorizontal": 8,
-                "paddingVertical": 0,
+                "marginLeft": 0,
               },
-              Object {
-                "color": "#ffffff",
-              },
-              Object {},
             ]
           }
         >

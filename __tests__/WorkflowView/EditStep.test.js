@@ -6,12 +6,16 @@ import React from 'react'
 import EditStep from '../../components/WorkflowView/EditStep'
 import renderer from 'react-test-renderer'
 jest.mock('../../utils/BackendBridge')
+// The description field embeds the Quill editor, which needs a real editing area.
+jest.mock('../../components/Feeds/CommentsTextInput/CustomTextInput3', () => 'CustomTextInput3')
 
 jest.mock('react-redux', () => ({
     ...jest.requireActual('react-redux'),
     useSelector: jest.fn().mockImplementation(fnc => {
         return fnc({
             workflowStep: { reviewerName: 'name', reviewerPhotoURL: 'url' },
+            // The editor shows the user's gold balance now.
+            loggedUser: { gold: 0, uid: 'user-1' },
         })
     }),
     useDispatch: jest.fn().mockImplementation(() => () => {}),
