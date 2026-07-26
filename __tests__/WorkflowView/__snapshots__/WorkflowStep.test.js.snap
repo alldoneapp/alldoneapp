@@ -73,6 +73,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
       a
     </Text>
     <Text
+      numberOfLines={1}
       style={
         Array [
           Object {
@@ -88,7 +89,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
         ]
       }
     >
-      Step added by b, 22.04.2019
+      Step added by Unknown user, 22.04.2019
     </Text>
   </View>
   <View
@@ -120,7 +121,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
         ]
       }
     >
-      Send to :
+      Send to:
     </Text>
     <View
       style={
@@ -157,7 +158,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
             <Image
               source={
                 Object {
-                  "uri": undefined,
+                  "uri": "http://localhost/icons/Generic-User32px.png",
                 }
               }
               style={
@@ -188,10 +189,11 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
                     Object {
                       "color": "#8A94A6",
                     },
+                    undefined,
                   ]
                 }
               >
-                c
+                Unknown
               </Text>
             </View>
           </View>

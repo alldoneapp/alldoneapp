@@ -27,7 +27,7 @@ exports[`ProjectMembersHeader component ProjectMembersHeader snapshot test shoul
       ]
     }
   >
-    Team members
+    Project members
   </Text>
   <View
     style={

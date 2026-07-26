@@ -85,7 +85,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
               },
             ]
           }
-          svgid="ut_p_undefined_0"
+          svgid="ut_p_undefined_undefined"
           vbHeight={343.958}
           vbWidth={343.958}
           width={26}
@@ -149,7 +149,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
                   ]
                 }
                 gradientUnits={0}
-                name="ut_p_undefined_0prefix__c"
+                name="ut_p_undefined_undefinedprefix__c"
                 x1="0%"
                 x2="100%"
                 y1="0%"
@@ -177,7 +177,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
                   ]
                 }
                 gradientUnits={0}
-                name="ut_p_undefined_0prefix__b"
+                name="ut_p_undefined_undefinedprefix__b"
                 x1="0%"
                 x2="100%"
                 y1="0%"
@@ -203,7 +203,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
                   ]
                 }
                 gradientUnits={0}
-                name="ut_p_undefined_0prefix__a"
+                name="ut_p_undefined_undefinedprefix__a"
                 x1="0%"
                 x2="100%"
                 y1="0%"
@@ -226,7 +226,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
                   ]
                 }
                 gradientUnits={1}
-                name="ut_p_undefined_0prefix__e"
+                name="ut_p_undefined_undefinedprefix__e"
                 rx={61.434}
                 ry={61.434}
               />
@@ -247,7 +247,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
                   ]
                 }
                 gradientUnits={1}
-                name="ut_p_undefined_0prefix__d"
+                name="ut_p_undefined_undefinedprefix__d"
                 rx={547.021}
                 ry={547.021}
               />
@@ -335,7 +335,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
                 fill={
                   Array [
                     1,
-                    "ut_p_undefined_0prefix__d",
+                    "ut_p_undefined_undefinedprefix__d",
                   ]
                 }
                 fillOpacity={1}
@@ -380,7 +380,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
                 fill={
                   Array [
                     1,
-                    "ut_p_undefined_0prefix__e",
+                    "ut_p_undefined_undefinedprefix__e",
                   ]
                 }
                 fillOpacity={1}
@@ -428,59 +428,51 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
     <View
       style={
         Object {
+          "flexShrink": 1,
+          "flexWrap": "nowrap",
           "marginLeft": 12,
+          "maxWidth": "50%",
         }
       }
     >
-      <Text
-        numberOfLines={1}
+      <View
+        accessible={true}
+        focusable={true}
+        isTVSelectable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
         style={
-          Array [
+          Object {
+            "opacity": 1,
+          }
+        }
+      >
+        <Text
+          numberOfLines={1}
+          style={
             Object {
               "color": "#04142F",
               "fontFamily": "Roboto-Medium",
               "fontSize": 24,
               "lineHeight": 32,
-            },
-            Object {
-              "color": "#04142F",
-            },
-          ]
-        }
-      >
-        a b
-      </Text>
+              "whiteSpace": "pre",
+            }
+          }
+        >
+          a b
+        </Text>
+      </View>
     </View>
     <View
       style={
         Object {
-          "backgroundColor": "#8A94A6",
-          "borderRadius": 16,
-          "height": 8,
-          "marginHorizontal": 8,
-          "width": 8,
-        }
-      }
-    />
-    <Text
-      numberOfLines={1}
-      style={
-        Array [
-          Object {
-            "color": "#04142F",
-            "fontFamily": "Roboto-Medium",
-            "fontSize": 24,
-            "lineHeight": 32,
-          },
-        ]
-      }
-    >
-      Build a Stairway To Heaven
-    </Text>
-    <View
-      style={
-        Object {
           "alignSelf": "flex-end",
+          "flexShrink": 1,
           "height": 24,
           "justifyContent": "center",
           "marginRight": 8,
@@ -505,7 +497,7 @@ exports[`UserTitle component UserTitle snapshot test should render correctly 1`]
           ]
         }
       >
-        undefined • undefined
+         • 
       </Text>
     </View>
   </View>

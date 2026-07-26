@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { seedProjects } from '../../../testUtils/seedStore'
 import { TasksDone_1, TasksOpen_1, TasksPending_1 } from '../../../__mocks__/MockData/TasksView/TasksListInput_1'
 import TasksHelper, {
     RECURRENCE_TEXT_VALUES,
@@ -11,7 +12,7 @@ import TasksHelper, {
     TASK_TYPE_PENDING,
 } from '../../../components/TaskListView/Utils/TasksHelper'
 import store from '../../../redux/store'
-import { storeCurrentUser, storeLoggedUser, storeLoggedUserProjects } from '../../../redux/actions'
+import { storeCurrentUser, storeLoggedUser } from '../../../redux/actions'
 import { ALL_PROJECTS_INDEX } from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { DV_TAB_ROOT_TASKS } from '../../../utils/TabNavigationConstants'
 
@@ -23,11 +24,7 @@ const navigation = { navigate: route => route }
 
 describe('TasksHelper class', () => {
     beforeEach(() => {
-        store.dispatch([
-            storeLoggedUserProjects([{ id: 'id1' }]),
-            storeLoggedUser(dummyUser),
-            storeCurrentUser(dummyUser),
-        ])
+        store.dispatch([...seedProjects([{ id: 'id1' }]), storeLoggedUser(dummyUser), storeCurrentUser(dummyUser)])
     })
     describe('Function getTodayProgressByProject', () => {
         it('Should execute correctly', async () => {

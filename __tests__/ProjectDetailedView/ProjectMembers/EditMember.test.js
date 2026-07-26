@@ -9,6 +9,9 @@ import { Platform } from 'react-native'
 import EditMember from '../../../components/ProjectDetailedView/ProjectMembers/EditMember'
 import renderer from 'react-test-renderer'
 
+// The member form embeds the Quill editor, which needs a real editing area.
+jest.mock('../../../components/Feeds/CommentsTextInput/CustomTextInput3', () => 'CustomTextInput3')
+
 // MyPlatform.osType only consults window.navigator off the mobile path,
 // and the react-native preset reports ios.
 Platform.OS = 'web'

@@ -33,8 +33,7 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
       Array [
         Object {
           "flexDirection": "row",
-          "height": 56,
-          "overflow": "hidden",
+          "minHeight": 56,
         },
       ]
     }
@@ -68,44 +67,33 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
         </Text>
       </View>
     </View>
-    <TextInput
-      allowFontScaling={true}
+    <CustomTextInput3
       autoFocus={true}
-      multiline={false}
-      numberOfLines={1}
-      onChangeText={[Function]}
-      onKeyPress={[Function]}
-      placeholder="Type an email to send invitation"
-      placeholderTextColor="#8A94A6"
-      rejectResponderTermination={true}
-      returnKeyType="done"
-      style={
+      containerStyle={
         Array [
           Object {
             "borderTopLeftRadius": 4,
             "borderTopRightRadius": 4,
-            "bottom": -1,
             "color": "#04142F",
-            "flexWrap": "wrap",
             "fontFamily": "Roboto-Regular",
             "fontSize": 16,
-            "left": -1,
             "letterSpacing": 0.32,
             "lineHeight": 24,
-            "paddingBottom": 16,
-            "paddingLeft": 68,
+            "paddingBottom": 11,
+            "paddingLeft": 67,
             "paddingRight": 16,
-            "paddingTop": 16,
-            "position": "absolute",
-            "right": -1,
-            "textAlignVertical": "top",
-            "top": -1,
-            "width": "101%",
+            "paddingTop": 11,
           },
           undefined,
         ]
       }
-      underlineColorAndroid="transparent"
+      disabledTags={true}
+      forceTriggerEnterActionForBreakLines={[Function]}
+      multiline={false}
+      numberOfLines={1}
+      onChangeText={[Function]}
+      placeholder="Type an email to send invitation"
+      placeholderTextColor="#8A94A6"
     />
   </View>
   <View
@@ -154,7 +142,7 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
       }
     >
       <View
-        accessible={true}
+        accessible={false}
         focusable={false}
         isTVSelectable={true}
         onClick={[Function]}
@@ -216,8 +204,8 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
         </Text>
       </View>
       <View
-        accessible={true}
-        focusable={false}
+        accessible={false}
+        focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
         onResponderGrant={[Function]}

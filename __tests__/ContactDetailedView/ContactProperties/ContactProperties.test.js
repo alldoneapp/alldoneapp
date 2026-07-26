@@ -3,10 +3,11 @@
  */
 
 import React from 'react'
+import { seedProjectUsers, seedProjects } from '../../../testUtils/seedStore'
 import ContactProperties from '../../../components/ContactDetailedView/ContactProperties/ContactProperties'
 import renderer from 'react-test-renderer'
 import store from '../../../redux/store'
-import { setProjectsUsers, storeLoggedUserProjects, setProjectsContacts } from '../../../redux/actions'
+import { setProjectsContacts } from '../../../redux/actions'
 
 jest.mock('../../../components/SettingsView/ProjectsSettings/ProjectHelper', () => {
     return {
@@ -47,8 +48,8 @@ jest.mock('../../../utils/HelperFunctions', () => {
 describe('ContactProperties component', () => {
     beforeEach(() => {
         store.dispatch([
-            storeLoggedUserProjects([{ name: 'My Project', userIds: [], usersData: [] }]),
-            setProjectsUsers([[{ displayName: 'pepitp' }]]),
+            ...seedProjects([{ name: 'My Project', userIds: [], usersData: [] }]),
+            ...seedProjectUsers([[{ displayName: 'pepitp' }]]),
             setProjectsContacts({ 0: [{ uid: 'uid1' }] }),
         ])
     })
