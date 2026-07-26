@@ -175,7 +175,7 @@
     },
     "functions": {
         "source": "functions",
-        "runtime": "nodejs20",
+        "runtime": "nodejs22",
         "region": "europe-west1",
         "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "e2b-template/**"]
     },
