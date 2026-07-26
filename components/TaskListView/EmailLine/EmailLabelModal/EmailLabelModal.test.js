@@ -43,6 +43,10 @@ jest.mock('../emailLineHelper', () => ({
     getEmailAccountWebUrl: jest.fn((provider, emailAddress) => `https://account/${provider}/${emailAddress}`),
     getLabelWebUrl: jest.fn(() => 'https://mail'),
     openUrlInNewTab: jest.fn(),
+    // EmailRow resolves an unsubscribe destination and stamps the picker
+    // interaction that stops the parent popover dismissing on the trailing click.
+    resolveUnsubscribeUrl: jest.fn(() => null),
+    markEmailLabelPickerInteraction: jest.fn(),
 }))
 
 // EmailRow's task link imports transitively pull in the redux store.
