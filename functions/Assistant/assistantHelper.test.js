@@ -250,15 +250,12 @@ jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     })),
 }))
 
-jest.mock(
-    'openai',
-    () =>
-        jest.fn().mockImplementation(() => ({
-            responses: {
-                create: mockResponsesCreate,
-            },
-        })),
-    { virtual: true }
+jest.mock('openai', () =>
+    jest.fn().mockImplementation(() => ({
+        responses: {
+            create: mockResponsesCreate,
+        },
+    }))
 )
 jest.mock(
     '@dqbd/tiktoken/lite',
