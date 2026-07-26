@@ -68,8 +68,12 @@ Redux store in `redux/store.js` (~116k lines) with actions in `redux/actions.js`
 
 ### Firebase Functions
 
-Located in `functions/`. Deploys to the **Node 22** runtime, set by `engines.node` in
-`functions/package.json`; `ci/Dockerfile_functions` builds on the matching `node:22-alpine`
+Located in `functions/`. Deploys to the **Node 22** runtime, and that is pinned in **two**
+places: `runtime` in `firebase.json` is what firebase-tools actually obeys, and
+`engines.node` in `functions/package.json` is what everything else reads. Changing only
+the latter deploys on the old runtime while reporting success - the log says
+`updating Node.js <old> ...` for every function and nothing fails, so check that line
+rather than the summary. `ci/Dockerfile_functions` builds on the matching `node:22-alpine`
 so `npm ci` runs on the same major it deploys to. Google decommissions a runtime about
 eighteen months after deprecating it - Node 20 goes on 2026-10-31, Node 22 on 2027-10-31 -
 and the pinned `firebase-tools@13.29.3` carries that table, so check it there before moving.
