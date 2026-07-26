@@ -5,6 +5,10 @@ import store from '../redux/store'
 // SocialTextInput wraps the Quill editor, whose refs never resolve against
 // react-test-renderer's virtual tree; this suite covers the wrapper.
 jest.mock('../components/Feeds/CommentsTextInput/CustomTextInput3', () => 'CustomTextInput3')
+
+// The Dismissible from replacement_node_modules attaches listeners to a DOM
+// node from a ref, which react-test-renderer never provides.
+jest.mock('react-dismissible', () => ({ Dismissible: ({ children }) => children || null }))
 import SocialTextInput from '../components/SocialTextInput'
 import renderer from 'react-test-renderer'
 
