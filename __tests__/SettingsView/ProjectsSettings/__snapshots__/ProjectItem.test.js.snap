@@ -3,11 +3,18 @@
 exports[`ProjectItem component ProjectItem snapshot test should render correctly 1`] = `
 <View
   style={
-    Object {
-      "alignItems": "center",
-      "flexDirection": "row",
-      "height": 56,
-    }
+    Array [
+      Object {
+        "alignItems": "center",
+        "flexDirection": "row",
+        "height": 56,
+      },
+      Object {
+        "backgroundColor": "#ffffff",
+        "borderRadius": 4,
+      },
+      undefined,
+    ]
   }
 >
   <View
@@ -28,6 +35,7 @@ exports[`ProjectItem component ProjectItem snapshot test should render correctly
         "flexDirection": "row",
         "height": 56,
         "opacity": 1,
+        "paddingRight": 4,
       }
     }
   >
@@ -39,20 +47,27 @@ exports[`ProjectItem component ProjectItem snapshot test should render correctly
         }
       }
     >
-      <View>
-        <Text
-          style={
+      <View
+        style={
+          Array [
             Object {
-              "color": "#39CCCC",
-              "fontFamily": "alldone",
-              "fontSize": 24,
-              "opacity": 1,
-            }
-          }
-        >
-          
-        </Text>
-      </View>
+              "alignItems": "center",
+              "borderRadius": 100,
+              "height": 16,
+              "justifyContent": "center",
+              "width": 16,
+            },
+            Object {
+              "backgroundColor": "#39CCCC",
+              "height": 16,
+              "width": 16,
+            },
+            Object {
+              "margin": 4,
+            },
+          ]
+        }
+      />
       <Text
         numberOfLines={1}
         style={
@@ -149,6 +164,7 @@ exports[`ProjectItem component ProjectItem snapshot test should render correctly
                   "marginRight": 10,
                   "marginVertical": 1,
                 },
+                undefined,
               ]
             }
           >
@@ -159,7 +175,7 @@ exports[`ProjectItem component ProjectItem snapshot test should render correctly
     </View>
     <View>
       <View
-        accessible={true}
+        accessible={false}
         focusable={true}
         isTVSelectable={true}
         onClick={[Function]}
@@ -185,49 +201,41 @@ exports[`ProjectItem component ProjectItem snapshot test should render correctly
             "maxHeight": 40,
             "minHeight": 40,
             "opacity": 1,
-            "paddingHorizontal": 16,
+            "paddingLeft": 16,
+            "paddingRight": 16,
             "paddingVertical": 8,
           }
         }
       >
-        <View>
-          <Text
-            style={
-              Object {
-                "color": "#8A94A6",
-                "fontFamily": "alldone",
-                "fontSize": 24,
-                "opacity": 1,
-              }
-            }
-          >
-            
-          </Text>
-        </View>
         <Text
           numberOfLines={1}
           style={
             Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+                Object {},
+              ],
               Object {
-                "alignSelf": "center",
-                "color": "#FFFFFF",
-                "flexWrap": "nowrap",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.8,
-                "lineHeight": 16,
-                "margin": 0,
-                "paddingHorizontal": 8,
-                "paddingVertical": 0,
+                "marginLeft": 0,
               },
-              Object {
-                "color": "#8A94A6",
-              },
-              Object {},
             ]
           }
         >
-          Archive
+          Update status
         </Text>
       </View>
     </View>

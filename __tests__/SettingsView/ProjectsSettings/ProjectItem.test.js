@@ -5,6 +5,7 @@
 import React from 'react'
 import { Provider } from 'react-redux'
 import store from '../../../redux/store'
+import { seedLoggedUser } from '../../../testUtils/seedStore'
 import { Platform } from 'react-native'
 import ProjectItem from '../../../components/SettingsView/ProjectsSettings/ProjectItem'
 import renderer from 'react-test-renderer'
@@ -27,6 +28,12 @@ const dummyProject = {
         'kTpVkeDAGMO7qIHvQ2uAbEUu0As1',
     ],
 }
+
+// getTypeOfProject reads the logged user's uid and project id lists straight
+// from the store and dereferences them unguarded.
+beforeAll(() => {
+    store.dispatch(seedLoggedUser())
+})
 
 describe('ProjectItem component', () => {
     describe('ProjectItem snapshot test', () => {
