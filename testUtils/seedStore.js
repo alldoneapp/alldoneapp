@@ -1,4 +1,4 @@
-import { setSharedData, setUsersInProject } from '../redux/actions'
+import { setSharedData, setUsersInProject, storeLoggedUser } from '../redux/actions'
 
 // storeLoggedUserProjects was removed from the action set. setSharedData is what
 // fills loggedUserProjects and loggedUserProjectsMap now, and it takes a single
@@ -19,3 +19,15 @@ export const seedProjects = (projects = []) =>
 
 export const seedProjectUsers = (usersByProject = []) =>
     usersByProject.map((users, index) => setUsersInProject(`seeded-project-${index}`, users))
+
+// Helpers all over the app read the logged user straight out of the store and
+// assume the fields the login flow would have filled in - projectIds in
+// particular is dereferenced without a guard.
+export const seedLoggedUser = (loggedUser = {}) =>
+    storeLoggedUser({
+        uid: 'seeded-user',
+        projectIds: [],
+        realProjectIds: [],
+        unlockedKeysByGuides: {},
+        ...loggedUser,
+    })
