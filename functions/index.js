@@ -2048,10 +2048,16 @@ exports.menubarProjects = onRequest(
     }
 )
 
+// 1GiB, not the 256MiB the other read-only menubar endpoints use: this one pulls
+// in assistantCalendarTools, and with it the full googleapis client, on top of
+// the tiktoken encoder index.js preloads at module load. At 256MiB it died with
+// "Memory limit of 256 MiB exceeded with 279 MiB used" on nearly every call —
+// and because the client retries 500s, that surfaced as a silently dead
+// reminder rather than an error anyone could see.
 exports.menubarUpcoming = onRequest(
     {
         timeoutSeconds: 60,
-        memory: '256MiB',
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async (req, res) => {
