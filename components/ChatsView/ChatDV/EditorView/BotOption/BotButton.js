@@ -4,7 +4,7 @@ import Hotkeys from 'react-hot-keys'
 
 import Button from '../../../../UIControls/Button'
 import { execShortcutFn } from '../../../../../utils/HelperFunctions'
-import { resolveAssistantForProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
+import { getAssistantInProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../../../../AdminPanel/Assistants/AssistantAvatar'
 
 export default function BotButton({ onPress, projectId, assistantId, isAssistantEnabled }) {
@@ -12,9 +12,7 @@ export default function BotButton({ onPress, projectId, assistantId, isAssistant
     const assistantEnabled = isAssistantEnabled !== undefined ? isAssistantEnabled : defaultAssistantEnabled
     const blockShortcuts = useSelector(state => state.blockShortcuts)
 
-    const assistant = resolveAssistantForProjectObject(projectId, assistantId)
-    const effectiveAssistantId = assistant?.uid || assistantId
-    const photoURL = assistant?.photoURL50 || assistant?.photoURL || assistant?.photoURL300
+    const { photoURL50 } = getAssistantInProjectObject(projectId, assistantId)
 
     return (
         <Hotkeys
@@ -32,8 +30,8 @@ export default function BotButton({ onPress, projectId, assistantId, isAssistant
                 shortcutText={'B'}
                 customIcon={
                     <AssistantAvatar
-                        photoURL={photoURL}
-                        assistantId={effectiveAssistantId}
+                        photoURL={photoURL50}
+                        assistantId={assistantId}
                         size={24}
                         containerStyle={{ opacity: assistantEnabled ? 1 : 0.5 }}
                     />

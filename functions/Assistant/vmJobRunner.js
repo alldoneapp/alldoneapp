@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { advanceVmThreadQueue, requeueVmJobToThreadFront } = require('./vmThreadQueue')
+const { buildVmChatPath, summarizeVmObjectiveForSession } = require('./vmHostTaskHelper')
 const {
     ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
     FEED_PUBLIC_FOR_ALL,
@@ -523,7 +524,7 @@ function getVmParentObjectPath(projectId, objectType, objectId) {
 }
 
 function buildVmChatLink(projectId, objectType, objectId) {
-    return `${getBaseUrl()}/projects/${projectId}/${objectType === 'topics' ? 'chats' : objectType}/${objectId}/chat`
+    return `${getBaseUrl()}${buildVmChatPath(projectId, objectType, objectId)}`
 }
 
 function getNonEmptyString(...values) {
@@ -2498,6 +2499,9 @@ async function keepVmSessionAlive(sessionRef, sandbox, vmJob, e2bApiKey, leaseOw
         lastUsedAt: Date.now(),
         lastRunStatus,
         lastRunAt: Date.now(),
+        // What the last run was about, so an assistant looking for a thread to continue can
+        // recognize it without joining back to vmJobs (which would need a composite index).
+        lastObjective: summarizeVmObjectiveForSession(vmJob.objective),
     }
     try {
         await sandbox.setTimeout(KEEP_ALIVE_KILL_MS) // stays alive ~15 min unless reused/paused

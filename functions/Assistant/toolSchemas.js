@@ -2241,6 +2241,19 @@ const toolSchemas = {
                             'Optional. IDs of tasks, notes or goals in the current project whose content should be packaged and ' +
                             'sent to the VM as background context. Use this to give the agent the source material it needs.',
                     },
+                    continue_in_object_id: {
+                        type: 'string',
+                        description:
+                            'Optional. Continue an earlier VM run instead of starting a fresh one. The job is hosted in ' +
+                            'that thread and reuses its VM, so the agent keeps the files it created and the conversation ' +
+                            'it already had — use it whenever the user refers to carrying on, fixing, or extending work a ' +
+                            'previous VM task did. Pass "latest" to continue the most recent VM run in this project, which ' +
+                            'is usually what "keep going" / "continue what you were doing" means. Otherwise pass the ID of ' +
+                            'the specific task/topic that hosted the earlier run. Only threads in the current project that ' +
+                            'already ran a VM task can be continued; if the ID is wrong the tool replies with the list of ' +
+                            'continuable threads, so retry with one of those rather than starting over. ' +
+                            'Omit it for genuinely new work.',
+                    },
                     deliverable: {
                         type: 'string',
                         description:
