@@ -134,6 +134,7 @@ const {
     resolveAwaitingVmRuns,
     runWorkflowAiStep,
 } = require('./workflowAiStep')
+const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('../Assistant/assistantRunLimits')
 
 const PROJECT = 'p1'
 const TASK = 't1'
@@ -592,8 +593,12 @@ describe('runWorkflowAiStep', () => {
 
         // The trigger message is what makes generatePreConfigTaskResult assemble the full task and
         // thread context instead of running on the bare prompt.
+        // The wall clock is the scheduled one: this run executes inside runWorkflowAiStepsSecondGen,
+        // whose Cloud Scheduler attempt deadline would otherwise retry it into a second concurrent
+        // invocation.
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
             triggerMessageId: 'trigger-comment-1',
+            maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
         })
     })
 
@@ -603,7 +608,10 @@ describe('runWorkflowAiStep', () => {
         await runWorkflowAiStep(RUN_ID, run)
 
         expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
-        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({ triggerMessageId: null })
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
+            triggerMessageId: null,
+            maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+        })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
