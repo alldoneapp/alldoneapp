@@ -19,6 +19,7 @@ const { VM_JOB_QUEUE_RATE_LIMITS, VM_JOB_WORKER_TIMEOUT_SECONDS } = require('./A
 const {
     ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
     HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
+    SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
 } = require('./Assistant/assistantRunLimits')
 
 // Helper function to get the correct base URL based on environment
@@ -3369,17 +3370,20 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
 // Runs the assistant for tasks that landed on an AI workflow step, then moves each task on.
 // Queued by enqueueWorkflowAiRunIfNeeded from onUpdateTask into workflowAiRuns.
 //
-// A poller rather than an onDocumentCreated trigger on that collection: an assistant run is given a
-// 55-minute wall clock, and event-triggered functions are capped at 540s, so a trigger cannot host
-// one — a 3600s trigger is rejected outright at deploy time while the rest of the deploy succeeds,
-// which is exactly how these runs silently stopped executing in production. Scheduled execution is
-// how checkRecurringAssistantTasks already runs assistant work on the same budget. Every minute, so
-// a task waits at most ~60s for its step to start.
+// A poller rather than an onDocumentCreated trigger on that collection: event-triggered functions are
+// capped at 540s, so a trigger cannot host an assistant run at all — a longer one is rejected outright
+// at deploy time while the rest of the deploy succeeds, which is exactly how these runs silently
+// stopped executing in production. Scheduled execution is how checkRecurringAssistantTasks already
+// runs assistant work. Every minute, so a task waits at most ~60s for its step to start.
+//
+// The run here is sized to SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS (25 min), not the full interactive
+// 55: Cloud Scheduler's attempt deadline caps at 1800s and then retries, so a longer run would be
+// invoked a second time concurrently rather than simply finishing.
 exports.runWorkflowAiStepsSecondGen = onSchedule(
     {
         schedule: '* * * * *',
         timeZone: 'UTC',
-        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB',
         region: 'europe-west1',
     },
@@ -4207,10 +4211,12 @@ exports.getLinkPreviewDataSecondGen = onRequest(
 )
 
 // RECURRING ASSISTANT TASKS
+// Executes recurring assistant prompts inline (executeBatch awaits each run), so it is an assistant
+// run host and its runs are sized to the scheduled ceiling — see runWorkflowAiStepsSecondGen above.
 exports.checkRecurringAssistantTasks = onSchedule(
     {
         schedule: '*/5 * * * *', // Run every 5 minutes
-        timeoutSeconds: ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
         memory: '512MiB',
         region: 'europe-west1',
     },
@@ -4221,10 +4227,12 @@ exports.checkRecurringAssistantTasks = onSchedule(
 )
 
 // ASSISTANT HEARTBEAT
+// Only enqueues due heartbeats onto Cloud Tasks; the run itself lives in runAssistantHeartbeat. The
+// scheduled ceiling applies all the same — Cloud Scheduler would retry a dispatch that ran past it.
 exports.checkAssistantHeartbeats = onSchedule(
     {
         schedule: '*/5 * * * *',
-        timeoutSeconds: 3600,
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
         memory: '512MiB',
         region: 'europe-west1',
     },
@@ -4252,7 +4260,7 @@ exports.reconcileAssistantHeartbeatSchedules = onSchedule(
     {
         schedule: '17 2 * * *',
         timeZone: 'UTC',
-        timeoutSeconds: 3600,
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
         memory: '512MiB',
         region: 'europe-west1',
     },

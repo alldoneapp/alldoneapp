@@ -13,6 +13,7 @@ const {
     buildOriginalScheduledMoment,
     normalizeTimezoneOffset,
 } = require('./timezoneResolver')
+const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
 // Removed createTaskCreatedFeed import - now using TaskService for unified task creation
 
 const RECURRENCE_NEVER = 'never'
@@ -741,6 +742,10 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                 sendWhatsApp: task.sendWhatsApp,
                 name: task.name,
                 recurrence: taskWithActivator.recurrence,
+                // These runs execute inline inside checkRecurringAssistantTasks, an onSchedule
+                // function whose Cloud Scheduler attempt deadline caps at 30 minutes, so they get
+                // the scheduled wall clock rather than the interactive 55 minutes.
+                maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
             }
         )
 

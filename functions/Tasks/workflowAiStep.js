@@ -8,7 +8,7 @@ const {
     WORKSTREAM_ID_PREFIX,
 } = require('../Utils/HelperFunctionsCloud')
 const { buildWorkflowStepAdvanceUpdate, isAiWorkflowStep, buildAiStepPrompt } = require('./workflowStepHelper')
-const { ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = require('../Assistant/assistantRunLimits')
+const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = require('../Assistant/assistantRunLimits')
 const { TARGET_MAX_VM_RUNTIME_MS, VM_JOB_FINALIZATION_HEADROOM_MS } = require('../Assistant/vmJobConfig')
 const { acquireAssistantTaskRunLock, releaseAssistantTaskRunLock } = require('../Assistant/assistantRunIdempotency')
 
@@ -16,8 +16,10 @@ const RUNS_COLLECTION = 'workflowAiRuns'
 
 // A claimed run occupies its slot for a whole assistant wall clock plus the work either side of it,
 // so the lease has to outlast a healthy run or a second tick would start it again while it is still
-// going.
-const RUN_LEASE_MS = ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS + TRANSPORT_HEADROOM_MS
+// going. Sized off the scheduled wall clock because this dispatcher runs inside an onSchedule
+// function: leasing for longer than that host can live would park a task behind a run whose process
+// Cloud Scheduler had already given up on.
+const RUN_LEASE_MS = SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS + TRANSPORT_HEADROOM_MS
 
 // A run that never reports back leaves its task parked on the AI step. The sweeper is the crash
 // backstop, so it force-advances only past the point where a healthy run must already have settled.
@@ -395,7 +397,10 @@ const runWorkflowAiStep = async (runId, run) => {
                         null,
                         'tasks',
                         // Grounds the run in the task it is about; see postWorkflowStepPrompt.
-                        { triggerMessageId }
+                        // The wall clock is the scheduled one, not the interactive 55 minutes: this
+                        // run executes inside runWorkflowAiStepsSecondGen, whose Cloud Scheduler
+                        // attempt deadline is 30 minutes.
+                        { triggerMessageId, maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS }
                     )
                 }
             } catch (error) {
