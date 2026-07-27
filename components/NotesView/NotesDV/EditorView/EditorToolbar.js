@@ -1461,10 +1461,16 @@ export const EditorToolbar = ({
                     <span className={'ql-toolbar-item'} style={{ pointerEvents: commentPointerEvents }}>
                         {shortcutAlt && <Shortcut text={'C'} parentStyle={localStyles.shortcuts.regular} />}
                         <button className="ql-comment">
-                            {!tablet && (
-                                <Text style={[styles.caption1, localStyles.barIconText]}>{translate('Comment')}</Text>
-                            )}
-                            <Comment />
+                            <TouchableOpacity style={{ flexDirection: 'row', maxHeight: 20 }}>
+                                <View style={{ width: 20 }}>
+                                    <Comment />
+                                </View>
+                                {!tablet && (
+                                    <Text style={[styles.caption1, localStyles.barIconText]}>
+                                        {translate('Comment')}
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
                         </button>
                     </span>
 
