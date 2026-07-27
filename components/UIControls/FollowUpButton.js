@@ -2,18 +2,22 @@ import React, { Component } from 'react'
 import Popover from 'react-tiny-popover'
 import store from '../../redux/store'
 import Button from './Button'
-import { hideFloatPopup, setLastSelectedDueDate, showFloatPopup } from '../../redux/actions'
+import { setLastSelectedDueDate } from '../../redux/actions'
 import FollowUpDueDate from '../FollowUp/FollowUpDueDate'
 import CustomFollowUpDateModal from '../FollowUp/CustomFollowUpDateModal'
 import Hotkeys from 'react-hot-keys'
 import { execShortcutFn } from '../../utils/HelperFunctions'
 import { translate } from '../../i18n/TranslationService'
 import { BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
+import { createFloatPopupLock } from '../../hooks/useFloatPopupLock'
 
 class FollowUpButton extends Component {
     constructor(props) {
         super(props)
         const storeState = store.getState()
+        this._isUnmounted = false
+        this._timeouts = []
+        this.popupLock = createFloatPopupLock(store.dispatch)
         this.state = {
             inDueDate: true,
             inCalendar: false,
@@ -24,6 +28,10 @@ class FollowUpButton extends Component {
     }
 
     componentWillUnmount() {
+        this._isUnmounted = true
+        this._timeouts.forEach(timeout => clearTimeout(timeout))
+        this._timeouts = []
+        this.popupLock.release()
         this.state.unsubscribe()
     }
 
@@ -38,18 +46,20 @@ class FollowUpButton extends Component {
     hidePopover = () => {
         // This timeout is necessary to stop the propagation of the click
         // to close the Modal, and reach the dismiss event of the EditTask
-        setTimeout(async () => {
+        const timeout = setTimeout(async () => {
+            if (this._isUnmounted) return
             const { onDismissPopup } = this.props
             this.setState({ visiblePopover: false })
-            store.dispatch(hideFloatPopup())
+            this.popupLock.release()
             if (onDismissPopup) onDismissPopup()
         })
+        this._timeouts.push(timeout)
     }
 
     showPopover = () => {
         if (!this.state.visiblePopover) {
             this.setState({ visiblePopover: true })
-            store.dispatch(showFloatPopup())
+            this.popupLock.acquire()
         }
     }
 

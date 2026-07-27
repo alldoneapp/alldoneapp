@@ -2,14 +2,14 @@ import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import moment from 'moment'
 import Hotkeys from 'react-hot-keys'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 
 import Button from './Button'
-import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import { execShortcutFn } from '../../utils/HelperFunctions'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { translate } from '../../i18n/TranslationService'
 import DueDateModal from '../UIComponents/FloatModals/DueDateModal/DueDateModal'
+import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function DueDateButton({
     onDismissPopup,
@@ -23,12 +23,12 @@ export default function DueDateButton({
     setToBacklogBeforeSaveTask,
     shortcutText,
 }) {
-    const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const [visiblePopover, setVisiblePopover] = useState(false)
     const isUnmountedRef = useRef(false)
     const timeoutsRef = useRef([])
+    const popupLock = useFloatPopupLock()
 
     useEffect(() => {
         return () => {
@@ -46,7 +46,7 @@ export default function DueDateButton({
 
     const hidePopover = () => {
         safeSetVisiblePopover(false)
-        dispatch(hideFloatPopup())
+        popupLock.release()
         if (onDismissPopup) onDismissPopup()
     }
 
@@ -62,7 +62,7 @@ export default function DueDateButton({
     const showPopover = () => {
         if (!visiblePopover) {
             safeSetVisiblePopover(true)
-            dispatch(showFloatPopup())
+            popupLock.acquire()
             document.activeElement.blur()
         }
     }

@@ -2,7 +2,6 @@ import React, { Component } from 'react'
 import Popover from 'react-tiny-popover'
 import store from '../../redux/store'
 import PropTypes from 'prop-types'
-import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import GhostButton from './GhostButton'
 import Hotkeys from 'react-hot-keys'
 import { execShortcutFn, popoverToTop } from '../../utils/HelperFunctions'
@@ -17,6 +16,7 @@ import {
 import { translate } from '../../i18n/TranslationService'
 import { STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
+import { createFloatPopupLock } from '../../hooks/useFloatPopupLock'
 
 class CommentButton extends Component {
     constructor(props) {
@@ -25,6 +25,7 @@ class CommentButton extends Component {
 
         this._isUnmounted = false
         this._timeouts = []
+        this.popupLock = createFloatPopupLock(store.dispatch)
         this.setStateIfMounted = (updater, callback) => {
             if (!this._isUnmounted) {
                 this.setState(updater, callback)
@@ -44,6 +45,7 @@ class CommentButton extends Component {
         // Clear any pending timeouts
         this._timeouts.forEach(t => clearTimeout(t))
         this._timeouts = []
+        this.popupLock.release()
     }
 
     updateState = () => {
@@ -70,7 +72,7 @@ class CommentButton extends Component {
             const t = setTimeout(async () => {
                 const { onDismissPopup } = this.props
                 this.setStateIfMounted({ visiblePopover: false })
-                store.dispatch(hideFloatPopup())
+                this.popupLock.release()
                 if (onDismissPopup) onDismissPopup()
             })
             this._timeouts.push(t)
@@ -80,7 +82,7 @@ class CommentButton extends Component {
     showPopover = () => {
         if (!this.state.visiblePopover) {
             this.setStateIfMounted({ visiblePopover: true })
-            store.dispatch(showFloatPopup())
+            this.popupLock.acquire()
         }
     }
 
