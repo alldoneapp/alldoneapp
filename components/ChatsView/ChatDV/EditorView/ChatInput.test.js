@@ -25,6 +25,7 @@ const mockState = {
 }
 
 jest.mock('react-redux', () => ({
+    shallowEqual: jest.fn(),
     useDispatch: () => jest.fn(),
     useSelector: selector => selector(mockState),
 }))
@@ -109,7 +110,7 @@ jest.mock('../../../../utils/assistantHelper', () => ({
 }))
 
 jest.mock('../../../AdminPanel/Assistants/assistantsHelper', () => ({
-    getAssistantInProjectObject: (projectId, assistantId) => ({
+    resolveAssistantForProjectObject: (projectId, assistantId) => ({
         uid: assistantId || 'anna-assistant',
     }),
 }))

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Keyboard, StyleSheet, View } from 'react-native'
-import { useSelector, useDispatch } from 'react-redux'
+import { shallowEqual, useSelector, useDispatch } from 'react-redux'
 import { firebase } from '@firebase/app'
 import ReactQuill from 'react-quill'
 
@@ -25,7 +25,7 @@ import {
 import ChatInputButtons from './ChatInputButtons'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
-import { getAssistantInProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
+import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
 
 const Delta = ReactQuill.Quill.import('delta')
@@ -59,6 +59,16 @@ export default function ChatInput({
     const gold = useSelector(state => state.loggedUser.gold)
     const disableAutoFocusInChat = useSelector(state => state.disableAutoFocusInChat)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
+    useSelector(
+        state => ({
+            projectAssistants: state.projectAssistants,
+            globalAssistants: state.globalAssistants,
+            defaultAssistant: state.defaultAssistant,
+            loggedUserProjects: state.loggedUserProjects,
+            loggedUserProjectsMap: state.loggedUserProjectsMap,
+        }),
+        shallowEqual
+    )
     const [autoFocusDisabled, setAutoFocusDisabled] = useState(disableAutoFocusInChat)
     const [chatEditor, setChatEditor] = useState(null)
     const [inputText, setInputText] = useState('')
@@ -66,7 +76,7 @@ export default function ChatInput({
     const [showRunOutGoalModal, setShowRunOutGoalModal] = useState(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
-    const displayedAssistantId = getAssistantInProjectObject(projectId, assistantId)?.uid || assistantId
+    const displayedAssistantId = resolveAssistantForProjectObject(projectId, assistantId)?.uid || assistantId
     const selectedAssistantIdRef = useRef(displayedAssistantId)
 
     const { id: objectId, type: chatType } = chat
