@@ -2,6 +2,7 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
+import { colors } from '../../styles/global'
 import EmailLabelChip from './EmailLabelChip'
 import useEmailLabelGroups from './useEmailLabelGroups'
 import { getProjectLineEmailChipLimit, getUnassignedEmailLabelGroups } from './emailLineHelper'
@@ -21,17 +22,19 @@ export default function AllProjectsEmailLabelChips() {
 
     return (
         <View style={localStyles.row}>
-            {visibleGroups.map(group => (
-                <EmailLabelChip
-                    key={group.key}
-                    group={group}
-                    allGroups={groups}
-                    labelOptionsByConnectionId={labelOptionsByConnectionId}
-                    labelingDisabledByConnectionId={labelingDisabledByConnectionId}
-                    compact
-                    style={localStyles.chip}
-                />
-            ))}
+            <View style={localStyles.group}>
+                {visibleGroups.map(group => (
+                    <EmailLabelChip
+                        key={group.key}
+                        group={group}
+                        allGroups={groups}
+                        labelOptionsByConnectionId={labelOptionsByConnectionId}
+                        labelingDisabledByConnectionId={labelingDisabledByConnectionId}
+                        compact
+                        style={localStyles.chip}
+                    />
+                ))}
+            </View>
         </View>
     )
 }
@@ -45,8 +48,23 @@ const localStyles = StyleSheet.create({
         flexShrink: 1,
         minWidth: 0,
     },
-    chip: {
+    group: {
+        height: 24,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.Text03,
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+        minWidth: 0,
         marginLeft: 8,
+    },
+    chip: {
+        borderWidth: 0,
+        borderRadius: 0,
+        flexShrink: 1,
+        minWidth: 0,
+        marginLeft: 0,
         marginRight: 0,
         marginBottom: 0,
     },
