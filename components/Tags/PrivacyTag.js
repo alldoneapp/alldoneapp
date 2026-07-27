@@ -1,24 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Popover from 'react-tiny-popover'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 
 import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
 import PrivacyModal from '../UIComponents/FloatModals/PrivacyModal/PrivacyModal'
-import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import ButtonUsersGroup from '../UIComponents/FloatModals/PrivacyModal/ButtonUsersGroup'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { FEED_PUBLIC_FOR_ALL, FEED_USER_OBJECT_TYPE } from '../Feeds/Utils/FeedsConstants'
 import ContactsHelper from '../ContactsView/Utils/ContactsHelper'
 import { translate } from '../../i18n/TranslationService'
+import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function PrivacyTag({ projectId, object, objectType, isMobile, style, disabled, callback, outline }) {
-    const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [visiblePopover, setVisiblePopover] = useState(false)
     const isUnmountedRef = useRef(false)
     const hideTimeoutRef = useRef(null)
+    const popupLock = useFloatPopupLock()
 
     useEffect(() => {
         return () => {
@@ -33,7 +33,7 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
     const hidePopover = () => {
         if (isUnmountedRef.current) return
         setVisiblePopover(false)
-        dispatch(hideFloatPopup())
+        popupLock.release()
     }
 
     const delayHidePopover = e => {
@@ -43,14 +43,19 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
         }
 
         hideTimeoutRef.current = setTimeout(async () => {
+            hideTimeoutRef.current = null
             hidePopover()
         })
     }
 
     const showPopover = () => {
         if (isUnmountedRef.current) return
+        if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current)
+            hideTimeoutRef.current = null
+        }
         setVisiblePopover(true)
-        dispatch(showFloatPopup())
+        popupLock.acquire()
     }
 
     if (objectType === FEED_USER_OBJECT_TYPE) {

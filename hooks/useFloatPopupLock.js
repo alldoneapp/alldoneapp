@@ -6,7 +6,8 @@ import { hideFloatPopup, showFloatPopup } from '../redux/actions'
 export const createFloatPopupLock = dispatch => {
     let acquired = false
 
-    // The main mobile list uses the global popup count as a scroll lock.
+    // The main list uses the global popup count as a scroll lock in every compact
+    // content layout, including phone, tablet, and narrower desktop windows.
     // Keep each owner's contribution idempotent so an unmount can safely release it.
     return {
         acquire: () => {
