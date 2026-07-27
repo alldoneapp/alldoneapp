@@ -71,7 +71,12 @@ const {
     DEFAULT_PROMPT,
 } = require('./heartbeatSettingsHelper')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
-const { buildVmJobTaskName, buildVmJobTaskDescription } = require('./vmHostTaskHelper')
+const {
+    buildVmJobTaskName,
+    buildVmJobTaskDescription,
+    normalizeStartedVmJob,
+    ensureVmHostThreadLinksInResponse,
+} = require('./vmHostTaskHelper')
 const {
     addTimestampToContextContent,
     formatContextMessageTimestamp,
@@ -2286,6 +2291,7 @@ async function collectAssistantTextWithToolCalls({
     const executedToolNames = []
     const createdTaskResults = []
     const createdNoteResults = []
+    const startedVmJobResults = []
     let pendingAttachmentPayload = null
     const maxToolCallRounds = Math.max(
         1,
@@ -2368,6 +2374,10 @@ async function collectAssistantTextWithToolCalls({
                 const createdNote = normalizeCreatedNote(toolResult)
                 if (createdNote) createdNoteResults.push(createdNote)
             }
+            if (toolName === 'execute_task_in_vm') {
+                const startedVmJob = normalizeStartedVmJob(toolResult)
+                if (startedVmJob) startedVmJobResults.push(startedVmJob)
+            }
             const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
             pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
             toolExecutions.push({
@@ -2403,11 +2413,16 @@ async function collectAssistantTextWithToolCalls({
     }
 
     return {
-        assistantResponse: ensureCreatedNoteLinksInResponse(responseText, createdNoteResults),
+        assistantResponse: ensureVmHostThreadLinksInResponse(
+            ensureCreatedNoteLinksInResponse(responseText, createdNoteResults),
+            startedVmJobResults,
+            { projectId: toolRuntimeContext?.projectId, objectId: toolRuntimeContext?.objectId }
+        ),
         executedToolCallsCount,
         executedToolNames,
         createdTaskResults,
         createdNoteResults,
+        startedVmJobResults,
         reachedMaxToolIterations,
         finalConversation: currentConversation,
     }
@@ -4489,6 +4504,10 @@ async function executeDelegatedAssistantRequest({
         targetProjectId: target.projectId,
         targetProjectName: target.projectName,
         assistantResponse,
+        // Host threads of any VM jobs the delegate started, so the calling assistant can link the
+        // user to the work even if the delegate's prose didn't. The link is already appended to
+        // assistantResponse by ensureVmHostThreadLinksInResponse.
+        startedVmJobResults: Array.isArray(delegationRun?.startedVmJobResults) ? delegationRun.startedVmJobResults : [],
         warning,
         requiresToolExecution,
         targetAllowedToolsCount: targetAllowedTools.length,
@@ -9114,6 +9133,35 @@ async function executeToolNatively(
                 let effectiveObjectType = toolRuntimeContext?.objectType || 'tasks'
                 let effectiveObjectId = toolRuntimeContext?.objectId || ''
 
+                // Explicit continuation wins over the ambient thread: the assistant is telling us
+                // to carry on an earlier VM run, which means hosting this job on that thread so the
+                // runner resumes its sandbox (same vmSessions/{projectId}__{objectId} key) instead
+                // of starting cold. This is also the only way a delegated assistant — which is
+                // deliberately given no ambient objectId — can continue existing work rather than
+                // spawning yet another host task.
+                const requestedContinuationObjectId =
+                    typeof toolArgs.continue_in_object_id === 'string' ? toolArgs.continue_in_object_id.trim() : ''
+                if (requestedContinuationObjectId) {
+                    const { resolveVmContinuationThread } = require('./vmContinuationThread')
+                    const continuation = await resolveVmContinuationThread({
+                        db: admin.firestore(),
+                        projectId: effectiveProjectId,
+                        objectId: requestedContinuationObjectId,
+                        requestUserId,
+                    })
+                    if (!continuation.ok) {
+                        return { success: false, message: continuation.message }
+                    }
+                    effectiveObjectType = continuation.objectType
+                    effectiveObjectId = continuation.objectId
+                    console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Continuing earlier VM run in existing thread', {
+                        projectId: effectiveProjectId,
+                        objectType: effectiveObjectType,
+                        objectId: effectiveObjectId,
+                        hadAmbientThread: !!toolRuntimeContext?.objectId,
+                    })
+                }
+
                 // When we host the job in a freshly-created task, the originating request (the
                 // user's message text + any attached images) is posted as the task's first chat
                 // entry inside ensureVmJobThread — so buildVmThreadContext's normal
@@ -9270,6 +9318,7 @@ async function storeChunks(
         let answerContent = ''
         let toolAlreadyExecuted = false
         const createdNoteResults = []
+        const startedVmJobResults = []
 
         const silentModeEnabled = typeof silentModeMarker === 'string' && silentModeMarker.length > 0
         let committed = false
@@ -9781,6 +9830,14 @@ async function storeChunks(
                                 }
                             }
                         }
+                        if (toolName === 'execute_task_in_vm') {
+                            const startedVmJob = normalizeStartedVmJob(toolResult)
+                            if (
+                                startedVmJob &&
+                                !startedVmJobResults.some(job => job.objectId === startedVmJob.objectId)
+                            )
+                                startedVmJobResults.push(startedVmJob)
+                        }
                         const toolResultString = JSON.stringify(toolResult, null, 2)
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
@@ -10132,12 +10189,16 @@ async function storeChunks(
             // Tools are only available for GPT models that support native tool calling
         }
 
-        if (createdNoteResults.length > 0) {
+        if (createdNoteResults.length > 0 || startedVmJobResults.length > 0) {
             await flushPendingUpdate()
-            const responseWithNoteLinks = ensureCreatedNoteLinksInResponse(commentText, createdNoteResults)
-            if (responseWithNoteLinks !== commentText) {
-                commentText = responseWithNoteLinks
-                answerContent = responseWithNoteLinks
+            const responseWithLinks = ensureVmHostThreadLinksInResponse(
+                ensureCreatedNoteLinksInResponse(commentText, createdNoteResults),
+                startedVmJobResults,
+                { projectId, objectId }
+            )
+            if (responseWithLinks !== commentText) {
+                commentText = responseWithLinks
+                answerContent = responseWithLinks
                 await safeCommentUpdate({
                     commentText,
                     isThinking: false,

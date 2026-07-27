@@ -6,16 +6,14 @@ import Button from '../../../../UIControls/Button'
 import { execShortcutFn } from '../../../../../utils/HelperFunctions'
 import { colors } from '../../../../styles/global'
 import AssistantAvatar from '../../../../AdminPanel/Assistants/AssistantAvatar'
-import { resolveAssistantForProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
+import { getAssistantInProjectObject } from '../../../../AdminPanel/Assistants/assistantsHelper'
 
 export default function BotButtonInModal({ onPress, projectId, assistantId, isAssistantEnabled }) {
     const defaultAssistantEnabled = useSelector(state => state.assistantEnabled)
     const assistantEnabled = isAssistantEnabled !== undefined ? isAssistantEnabled : defaultAssistantEnabled
     const blockShortcuts = useSelector(state => state.blockShortcuts)
 
-    const assistant = resolveAssistantForProjectObject(projectId, assistantId)
-    const effectiveAssistantId = assistant?.uid || assistantId
-    const photoURL = assistant?.photoURL50 || assistant?.photoURL || assistant?.photoURL300
+    const { photoURL50 } = getAssistantInProjectObject(projectId, assistantId)
 
     return (
         <Hotkeys
@@ -32,8 +30,8 @@ export default function BotButtonInModal({ onPress, projectId, assistantId, isAs
                 forceShowShortcut={true}
                 customIcon={
                     <AssistantAvatar
-                        photoURL={photoURL}
-                        assistantId={effectiveAssistantId}
+                        photoURL={photoURL50}
+                        assistantId={assistantId}
                         size={24}
                         containerStyle={{ opacity: assistantEnabled ? 1 : 0.5 }}
                     />
