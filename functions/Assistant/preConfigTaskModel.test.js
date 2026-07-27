@@ -4,6 +4,7 @@ const {
     getPreConfigTaskModelOverride,
     getPreConfigTaskModelSelection,
 } = require('./preConfigTaskModel')
+const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
 
 describe('pre-configured task model selection', () => {
     test('legacy copied aiModel values inherit from the assistant', () => {
@@ -25,9 +26,10 @@ describe('pre-configured task model selection', () => {
         expect(getPreConfigTaskModelSelection({ aiModelOverride: '' })).toBe(INHERIT_ASSISTANT_MODEL)
     })
 
-    test('offers Sol, Terra, and Luna as explicit overrides', () => {
+    test('only offers Sol, Terra, and Luna in every model picker', () => {
         const values = PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => option.value)
 
-        expect(values).toEqual(expect.arrayContaining(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA']))
+        expect(values).toEqual(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'])
+        expect(SELECTABLE_ASSISTANT_MODELS.map(option => option.name)).toEqual(['Sol', 'Terra', 'Luna'])
     })
 })

@@ -8,48 +8,16 @@ import OptionItem from './OptionItem'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
-import {
-    MODEL_GPT3_5,
-    MODEL_GPT4,
-    MODEL_GPT4O,
-    MODEL_GPT5_1,
-    MODEL_GPT5_5,
-    MODEL_GPT5_6_SOL,
-    MODEL_GPT5_6_TERRA,
-    MODEL_GPT5_6_LUNA,
-    MODEL_GPT5_2,
-    MODEL_SONAR,
-    MODEL_SONAR_PRO,
-    MODEL_SONAR_REASONING,
-    MODEL_SONAR_REASONING_PRO,
-    MODEL_SONAR_DEEP_RESEARCH,
-} from '../../../AdminPanel/Assistants/assistantsHelper'
+import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
 
-const baseOptions = [
-    { text: 'GPT 3_5', model: MODEL_GPT3_5, shortcutKey: '1' },
-    { text: 'GPT 4', model: MODEL_GPT4, shortcutKey: '2' },
-    { text: 'GPT 4o', model: MODEL_GPT4O, shortcutKey: '3' },
-    { text: 'GPT 5_1', model: MODEL_GPT5_1, shortcutKey: '4' },
-    { text: 'GPT 5_6 Sol', model: MODEL_GPT5_6_SOL, shortcutKey: '5' },
-    { text: 'GPT 5_6 Terra', model: MODEL_GPT5_6_TERRA, shortcutKey: '' },
-    { text: 'GPT 5_6 Luna', model: MODEL_GPT5_6_LUNA, shortcutKey: '' },
-    { text: 'GPT 5_5', model: MODEL_GPT5_5, shortcutKey: '' },
-    { text: 'Sonar', model: MODEL_SONAR, shortcutKey: '6' },
-    { text: 'Sonar Pro', model: MODEL_SONAR_PRO, shortcutKey: '7' },
-    { text: 'Sonar Reasoning', model: MODEL_SONAR_REASONING, shortcutKey: '8' },
-    { text: 'Sonar Reasoning Pro', model: MODEL_SONAR_REASONING_PRO, shortcutKey: '9' },
-    { text: 'Sonar Deep Research', model: MODEL_SONAR_DEEP_RESEARCH, shortcutKey: '0' },
-]
-
-const getOptions = selectedModel => {
-    if (selectedModel !== MODEL_GPT5_2) return baseOptions
-
-    return [...baseOptions, { text: 'GPT 5_2', model: MODEL_GPT5_2, shortcutKey: '' }]
-}
+const options = SELECTABLE_ASSISTANT_MODELS.map(({ model, labelKey }) => ({
+    text: labelKey,
+    model,
+    shortcutKey: '',
+}))
 
 export default function AssistantModelModal({ closeModal, model, updateModel }) {
-    const [width, height] = useWindowSize()
-    const options = getOptions(model)
+    const [, height] = useWindowSize()
 
     const selectModel = model => {
         updateModel(model)

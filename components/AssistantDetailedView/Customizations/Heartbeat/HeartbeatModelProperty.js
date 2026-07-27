@@ -8,34 +8,18 @@ import Icon from '../../../Icon'
 import Button from '../../../UIControls/Button'
 import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
-import {
-    MODEL_GPT5_6_LUNA,
-    MODEL_GPT5_6_SOL,
-    MODEL_GPT5_6_TERRA,
-} from '../../../AdminPanel/Assistants/assistantsHelper'
+import { SELECTABLE_ASSISTANT_MODELS } from '../../../../functions/Assistant/selectableAssistantModels'
 
-const HEARTBEAT_MODELS = [
-    {
-        key: MODEL_GPT5_6_SOL,
-        name: 'Sol',
-        description: 'Most capable',
-    },
-    {
-        key: MODEL_GPT5_6_TERRA,
-        name: 'Terra',
-        description: 'Balanced cost and capability',
-    },
-    {
-        key: MODEL_GPT5_6_LUNA,
-        name: 'Luna',
-        description: 'Efficient for high-volume work',
-    },
-]
+const HEARTBEAT_MODELS = SELECTABLE_ASSISTANT_MODELS.map(({ model, name, descriptionKey }) => ({
+    key: model,
+    name,
+    description: descriptionKey,
+}))
 
 export default function HeartbeatModelProperty({ disabled, projectId, assistant }) {
     const mobile = useSelector(state => state.smallScreen)
     const [open, setOpen] = useState(false)
-    const currentModel = assistant.heartbeatModel || assistant.model || MODEL_GPT5_6_SOL
+    const currentModel = assistant.heartbeatModel || assistant.model || SELECTABLE_ASSISTANT_MODELS[0].model
     const currentOption = HEARTBEAT_MODELS.find(option => option.key === currentModel)
 
     const onSelectModel = model => {
