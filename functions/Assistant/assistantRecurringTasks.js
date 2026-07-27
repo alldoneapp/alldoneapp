@@ -2,6 +2,8 @@ const admin = require('firebase-admin')
 const moment = require('moment')
 const { getAssistantTasks } = require('../Firestore/templatesFirestore')
 const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
+const { getAssistantForChat } = require('./assistantHelper')
+const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
@@ -24,6 +26,18 @@ const RECURRENCE_EVERY_3_MONTHS = 'every3Months'
 const RECURRENCE_EVERY_6_MONTHS = 'every6Months'
 const RECURRENCE_ANNUALLY = 'annually'
 const RECURRENCE_CUSTOM = 'custom'
+
+function buildRecurringTaskAiSettings(task, assistant, assistantId) {
+    const taskModelOverride = getPreConfigTaskModelOverride(task)
+    return {
+        model: taskModelOverride || assistant?.model || 'MODEL_GPT5_6_SOL',
+        temperature: task.aiTemperature || assistant?.temperature || 'TEMPERATURE_NORMAL',
+        systemMessage: task.aiSystemMessage || assistant?.instructions || 'You are a helpful assistant.',
+        assistantDisplayName: assistant?.displayName || 'Assistant',
+        assistantUid: assistant?.uid || assistantId,
+        allowedTools: Array.isArray(assistant?.allowedTools) ? assistant.allowedTools : [],
+    }
+}
 
 // Custom recurrence is stored as `custom:<days>` (e.g. `custom:28`). Returns the day count or null.
 function getCustomRecurrenceDays(recurrence) {
@@ -463,7 +477,7 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                             isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
                             // Task-level AI settings that override assistant settings
                             genericData: {
-                                aiModel: task.aiModel || null,
+                                aiModel: getPreConfigTaskModelOverride(task),
                                 aiTemperature: task.aiTemperature || null,
                                 aiSystemMessage: task.aiSystemMessage || null,
                             },
@@ -690,7 +704,12 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         const isPublicFor = task.isPublicFor || [FEED_PUBLIC_FOR_ALL]
 
         // Get follower IDs for proper notifications
-        const followerIds = await getTaskFollowerIds(executionProjectId, task.id, taskWithActivator)
+        const [followerIds, assistant] = await Promise.all([
+            getTaskFollowerIds(executionProjectId, task.id, taskWithActivator),
+            getAssistantForChat(executionProjectId, assistantId, activatorUserId, { forceRefresh: true }),
+        ])
+        const taskModelOverride = getPreConfigTaskModelOverride(task)
+        const resolvedAiSettings = buildRecurringTaskAiSettings(task, assistant, assistantId)
 
         // Log parameters for debugging
         console.log('Calling generatePreConfigTaskResult with parameters:', {
@@ -701,8 +720,9 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             isPublicFor,
             assistantId,
             promptLength: task.prompt?.length,
-            aiModel: task.aiModel,
-            aiTemperature: task.aiTemperature,
+            aiModel: resolvedAiSettings.model,
+            aiModelSource: taskModelOverride ? 'task_override' : 'assistant',
+            aiTemperature: resolvedAiSettings.temperature,
         })
 
         // Execute the task using the activator's user ID for gold deduction and notifications
@@ -716,11 +736,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             assistantId,
             task.prompt,
             'en', // Default to English
-            {
-                model: task.aiModel,
-                temperature: task.aiTemperature,
-                instructions: task.aiSystemMessage,
-            },
+            resolvedAiSettings,
             {
                 sendWhatsApp: task.sendWhatsApp,
                 name: task.name,
@@ -1396,6 +1412,7 @@ module.exports = {
     __private__: {
         completeGeneratedAssistantTask,
         finalizeGeneratedAssistantTask,
+        buildRecurringTaskAiSettings,
         resolveTimezoneContext: (task, userData = {}, options = {}) =>
             resolveTimezoneContext(task, userData, options, getNextExecutionTime),
         buildOriginalScheduledMoment,

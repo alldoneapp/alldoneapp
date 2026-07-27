@@ -19,6 +19,10 @@ import {
     GLOBAL_PROJECT_ID,
 } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
+import {
+    INHERIT_ASSISTANT_MODEL,
+    getPreConfigTaskModelSelection,
+} from '../../../../functions/Assistant/preConfigTaskModel'
 
 export default function PreConfigTaskModal({ disabled, projectId, closeModal, adding, assistantId, task }) {
     const dispatch = useDispatch()
@@ -71,7 +75,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             link: task ? task.link : '',
             taskType: task ? task.type : TASK_TYPE_PROMPT,
             variables: task ? task.variables : [],
-            aiModel: task ? task.aiModel : currentAssistant ? currentAssistant.model : '',
+            aiModel: task ? getPreConfigTaskModelSelection(task) : INHERIT_ASSISTANT_MODEL,
             aiTemperature: task ? task.aiTemperature : currentAssistant ? currentAssistant.temperature : '',
             aiSystemMessage: task ? task.aiSystemMessage : currentAssistant ? currentAssistant.instructions : '',
             recurrence: task ? task.recurrence : RECURRENCE_NEVER,
@@ -254,6 +258,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
         // Convert startDate to UTC by removing the local timezone offset
         const utcStartDate = moment(startDate).utc().valueOf()
         const iframeTaskMetadata = taskType === TASK_TYPE_IFRAME ? await getIframeTaskMetadata() : null
+        const aiModelOverride = aiModel === INHERIT_ASSISTANT_MODEL ? null : aiModel
 
         const newTask =
             taskType === TASK_TYPE_PROMPT
@@ -263,7 +268,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       prompt,
                       variables,
                       link: '',
-                      aiModel: aiModel || currentAssistant?.model || 'MODEL_GPT3_5',
+                      ...(aiModelOverride ? { aiModelOverride } : {}),
                       aiTemperature: aiTemperature || currentAssistant?.temperature || 'TEMPERATURE_NORMAL',
                       aiSystemMessage: aiSystemMessage || currentAssistant?.instructions || '',
                       recurrence,
@@ -327,6 +332,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
         const utcStartDate = moment(startDate).utc().valueOf()
         const iframeTaskMetadata =
             taskType === TASK_TYPE_IFRAME ? await getIframeTaskMetadata(task?.taskMetadata || {}) : null
+        const aiModelOverride = aiModel === INHERIT_ASSISTANT_MODEL ? null : aiModel
 
         const updatedTask =
             taskType === TASK_TYPE_PROMPT
@@ -337,7 +343,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       prompt,
                       variables,
                       link: '',
-                      aiModel: aiModel || currentAssistant?.model || 'MODEL_GPT3_5',
+                      aiModelOverride,
                       aiTemperature: aiTemperature || currentAssistant?.temperature || 'TEMPERATURE_NORMAL',
                       aiSystemMessage: aiSystemMessage || currentAssistant?.instructions || '',
                       recurrence: recurrence ?? null,

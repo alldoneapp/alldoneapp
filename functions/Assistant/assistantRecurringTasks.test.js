@@ -20,6 +20,10 @@ jest.mock('./assistantPreConfigTaskTopic', () => ({
     generatePreConfigTaskResult: jest.fn(),
 }))
 
+jest.mock('./assistantHelper', () => ({
+    getAssistantForChat: jest.fn(),
+}))
+
 jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 0,
     STAYWARD_COMMENT: 'STAYWARD_COMMENT',
@@ -152,5 +156,42 @@ describe('recurring assistant generated task completion', () => {
             )
         ).rejects.toThrow('did not return a successful execution result')
         expect(completeTask).not.toHaveBeenCalled()
+    })
+
+    test('inherits the current assistant model instead of a legacy copied task model', () => {
+        expect(
+            __private__.buildRecurringTaskAiSettings(
+                {
+                    aiModel: 'MODEL_GPT5_5',
+                    aiTemperature: 'TEMPERATURE_LOW',
+                },
+                {
+                    uid: 'assistant-1',
+                    model: 'MODEL_GPT5_6_SOL',
+                    temperature: 'TEMPERATURE_NORMAL',
+                    instructions: 'Assistant instructions',
+                    displayName: 'Anna',
+                    allowedTools: ['get_tasks'],
+                },
+                'assistant-1'
+            )
+        ).toEqual({
+            model: 'MODEL_GPT5_6_SOL',
+            temperature: 'TEMPERATURE_LOW',
+            systemMessage: 'Assistant instructions',
+            assistantDisplayName: 'Anna',
+            assistantUid: 'assistant-1',
+            allowedTools: ['get_tasks'],
+        })
+    })
+
+    test('uses a deliberately saved recurring-task model override', () => {
+        const settings = __private__.buildRecurringTaskAiSettings(
+            { aiModelOverride: 'MODEL_GPT5_6_LUNA' },
+            { model: 'MODEL_GPT5_6_SOL' },
+            'assistant-1'
+        )
+
+        expect(settings.model).toBe('MODEL_GPT5_6_LUNA')
     })
 })

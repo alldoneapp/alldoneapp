@@ -5,25 +5,19 @@ import styles, { colors } from '../../../styles/global'
 import DropDown from './DropDown'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { NEW_TOPIC_MODAL_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
-
-const MODEL_OPTIONS = [
-    { label: 'GPT-3.5', value: 'MODEL_GPT3_5' },
-    { label: 'GPT-4', value: 'MODEL_GPT4' },
-    { label: 'GPT-4o', value: 'MODEL_GPT4O' },
-    { label: 'GPT-5.1', value: 'MODEL_GPT5_1' },
-    { label: 'GPT-5.6 Sol', value: 'MODEL_GPT5_6_SOL' },
-    { label: 'GPT-5.5', value: 'MODEL_GPT5_5' },
-    { label: 'Sonar', value: 'MODEL_SONAR' },
-    { label: 'Sonar Pro', value: 'MODEL_SONAR_PRO' },
-    { label: 'Sonar Reasoning', value: 'MODEL_SONAR_REASONING' },
-    { label: 'Sonar Reasoning Pro', value: 'MODEL_SONAR_REASONING_PRO' },
-    { label: 'Sonar Deep Research', value: 'MODEL_SONAR_DEEP_RESEARCH' },
-]
+import {
+    INHERIT_ASSISTANT_MODEL,
+    PRE_CONFIG_TASK_MODEL_OPTIONS,
+} from '../../../../functions/Assistant/preConfigTaskModel'
 
 const getModelOptions = selectedModel => {
-    if (selectedModel !== 'MODEL_GPT5_2') return MODEL_OPTIONS
+    const options = [
+        { label: translate('Use assistant model'), value: INHERIT_ASSISTANT_MODEL },
+        ...PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => ({ ...option, label: translate(option.labelKey) })),
+    ]
+    if (selectedModel !== 'MODEL_GPT5_2') return options
 
-    return [...MODEL_OPTIONS, { label: 'GPT-5.2', value: 'MODEL_GPT5_2' }]
+    return [...options, { label: translate('GPT 5_2'), value: 'MODEL_GPT5_2' }]
 }
 
 const TEMPERATURE_OPTIONS = [

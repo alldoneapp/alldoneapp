@@ -82,6 +82,7 @@ const { updateProjectDescription } = require('../shared/projectDescriptionUpdate
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
+const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -10649,7 +10650,8 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     const task = taskDoc.data()
     console.log('⚙️ ASSISTANT SETTINGS: Task data:', {
         hasTask: !!task,
-        taskAiModel: task?.aiModel,
+        legacyTaskAiModel: task?.aiModel,
+        taskAiModelOverride: getPreConfigTaskModelOverride(task),
         taskAiTemperature: task?.aiTemperature,
         hasTaskAiSystemMessage: !!task?.aiSystemMessage,
     })
@@ -10663,8 +10665,9 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     })
 
     // Return task settings if they exist, otherwise use assistant settings with defaults
+    const taskModelOverride = getPreConfigTaskModelOverride(task)
     const settings = {
-        model: normalizeModelKey((task && task.aiModel) || assistant.model || MODEL_GPT5_6_SOL),
+        model: normalizeModelKey(taskModelOverride || assistant.model || MODEL_GPT5_6_SOL),
         temperature: (task && task.aiTemperature) || assistant.temperature || 'TEMPERATURE_NORMAL',
         instructions: (task && task.aiSystemMessage) || assistant.instructions || 'You are a helpful assistant.',
         displayName: assistant.displayName, // Always use assistant's display name
@@ -10680,7 +10683,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
         allowedTools: settings.allowedTools,
         modelTokensPerGold: getTokensPerGold(settings.model),
         settingsSource: {
-            model: task && task.aiModel ? 'task' : 'assistant',
+            model: taskModelOverride ? 'task_override' : 'assistant',
             temperature: task && task.aiTemperature ? 'task' : 'assistant',
             instructions: task && task.aiSystemMessage ? 'task' : 'assistant',
         },

@@ -38,6 +38,7 @@ import { updateChatTitleWithoutFeeds } from '../Chats/chatsFirestore'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { RECURRENCE_NEVER } from '../../../components/TaskListView/Utils/TasksHelper'
 import { getAssistantPreConfigSearchRows, sortPreConfigTaskSearchItems } from './preConfigTaskSearchHelper'
+import { getPreConfigTaskModelOverride } from '../../../functions/Assistant/preConfigTaskModel'
 
 const MAX_ASSISTANT_PROMPT_HISTORY = 10
 export const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
@@ -120,6 +121,12 @@ const getAssistantTasksCache = (projectId, assistantId) => {
 
 const clearAssistantTasksCache = (projectId, assistantId) => {
     delete assistantTasksCache[getAssistantTasksCacheKey(projectId, assistantId)]
+}
+
+const mapAssistantTaskData = (id, data) => {
+    const task = { ...(data || {}), id }
+    task.aiModel = getPreConfigTaskModelOverride(task)
+    return task
 }
 
 function getAssistantTaskDocRef(projectId, assistantId, taskId) {
@@ -226,9 +233,7 @@ export function watchAssistantTasks(projectId, assistantId, watcherKey, callback
     globalWatcherUnsub[watcherKey] = query.onSnapshot(assistantDocs => {
         const tasks = []
         assistantDocs.forEach(doc => {
-            const task = doc.data()
-            task.id = doc.id
-            tasks.push(task)
+            tasks.push(mapAssistantTaskData(doc.id, doc.data()))
         })
 
         sortAssistantTasks(tasks)
@@ -287,9 +292,7 @@ async function getAssistantTasks(projectId, assistantId) {
     const snapshot = await query.get()
     const tasks = []
     snapshot.forEach(doc => {
-        const task = doc.data()
-        task.id = doc.id
-        tasks.push(task)
+        tasks.push(mapAssistantTaskData(doc.id, doc.data()))
     })
 
     sortAssistantTasks(tasks)
@@ -350,7 +353,7 @@ export async function getPreConfigTask(projectId, assistantId, taskId) {
     const taskRef = getAssistantTaskDocRef(projectId, assistantId, taskId)
     const doc = await taskRef.get()
     if (doc.exists) {
-        return { ...doc.data(), id: doc.id }
+        return mapAssistantTaskData(doc.id, doc.data())
     }
     return null
 }
@@ -839,6 +842,8 @@ export function uploadNewPreConfigTask(projectId, assistantId, task) {
 
     const taskToStore = { ...task }
     delete taskToStore.id
+    delete taskToStore.aiModel
+    if (!getPreConfigTaskModelOverride(taskToStore)) delete taskToStore.aiModelOverride
     taskToStore.assistantId = assistantId
 
     const collectionPath = getAssistantTasksCollectionPath(projectId, assistantId)
@@ -915,6 +920,9 @@ export function updatePreConfigTask(projectId, assistantId, task) {
     clearAssistantTasksCache(projectId, assistantId)
     const taskToStore = { ...task }
     delete taskToStore.id
+    const aiModelOverride = getPreConfigTaskModelOverride(taskToStore)
+    delete taskToStore.aiModel
+    if (!aiModelOverride) delete taskToStore.aiModelOverride
     taskToStore.assistantId = assistantId
 
     // Get the current task data to compare changes
@@ -936,7 +944,12 @@ export function updatePreConfigTask(projectId, assistantId, task) {
             })
         }
 
-        const payload = { ...taskToStore, id: task.id }
+        const payload = {
+            ...taskToStore,
+            id: task.id,
+            aiModel: firebase.firestore.FieldValue.delete(),
+            ...(!aiModelOverride ? { aiModelOverride: firebase.firestore.FieldValue.delete() } : { aiModelOverride }),
+        }
 
         if (!payload.creatorUserId) {
             payload.creatorUserId = currentTask?.creatorUserId || task?.creatorUserId
@@ -1405,7 +1418,7 @@ export async function syncPreConfigTasksFromTemplate(globalAssistantId, localPro
         const getTemplateTaskPayload = globalTask => {
             const payload = {}
             Object.keys(globalTask || {}).forEach(key => {
-                if (!localOnlyFields.has(key)) payload[key] = globalTask[key]
+                if (!localOnlyFields.has(key) && key !== 'aiModel') payload[key] = globalTask[key]
             })
             return payload
         }
