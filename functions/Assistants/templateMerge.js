@@ -58,6 +58,10 @@ function getAssistantTemplateState(assistant) {
 
 function getTaskTemplateState(task) {
     const state = copyTemplateFields(task, TASK_LOCAL_FIELDS)
+    // aiModel was historically copied from the assistant into every task, so it
+    // cannot represent an intentional override. New explicit choices use
+    // aiModelOverride instead.
+    delete state.aiModel
     if (task?.recurrence && task.recurrence !== 'never') {
         delete state.startDate
         delete state.startTime

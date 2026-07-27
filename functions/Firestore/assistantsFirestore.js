@@ -95,9 +95,14 @@ const updateAssistantData = async (appAdmin, projectId, assistantId, data) => {
 }
 
 const uploadNewAssistantTask = async (appAdmin, projectId, assistantId, assistantTask) => {
-    const assistantTaskId = assistantTask.id
-    delete assistantTask.id
-    await appAdmin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${assistantTaskId}`).set(assistantTask)
+    const assistantTaskCopy = { ...assistantTask }
+    const assistantTaskId = assistantTaskCopy.id
+    delete assistantTaskCopy.id
+    delete assistantTaskCopy.aiModel
+    await appAdmin
+        .firestore()
+        .doc(`assistantTasks/${projectId}/${assistantId}/${assistantTaskId}`)
+        .set(assistantTaskCopy)
 }
 
 const deleteAssistant = async (appAdmin, projectId, assistantId) => {

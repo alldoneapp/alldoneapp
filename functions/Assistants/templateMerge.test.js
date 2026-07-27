@@ -51,15 +51,28 @@ describe('templateMerge', () => {
     })
 
     test('preserves execution state and recurring schedule times in task comparisons', () => {
-        const template = { title: 'Run', recurrence: 'daily', startTime: 8, lastExecuted: 1 }
+        const template = {
+            title: 'Run',
+            recurrence: 'daily',
+            startTime: 8,
+            lastExecuted: 1,
+            aiModel: 'MODEL_GPT5_5',
+            aiModelOverride: 'MODEL_GPT5_6_TERRA',
+        }
         const local = {
             title: 'Run',
             recurrence: 'daily',
             startTime: 12,
             lastExecuted: 999,
             activatedUserIds: ['user'],
+            aiModel: 'MODEL_GPT5_6_SOL',
+            aiModelOverride: 'MODEL_GPT5_6_TERRA',
         }
-        expect(getTaskTemplateState(local)).toEqual({ title: 'Run', recurrence: 'daily' })
+        expect(getTaskTemplateState(local)).toEqual({
+            title: 'Run',
+            recurrence: 'daily',
+            aiModelOverride: 'MODEL_GPT5_6_TERRA',
+        })
         expect(isTaskUnmodified(template, local)).toBe(true)
     })
 

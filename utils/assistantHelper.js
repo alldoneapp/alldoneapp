@@ -408,6 +408,9 @@ const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings) => {
     const assistantDetails = getAssistantInProjectObject(projectId, assistantId)
     return {
         ...aiSettings,
+        model: aiSettings.model || assistantDetails?.model,
+        temperature: aiSettings.temperature || assistantDetails?.temperature,
+        systemMessage: aiSettings.systemMessage || assistantDetails?.instructions,
         assistantUid: aiSettings.assistantUid || assistantDetails?.uid || assistantId,
         assistantDisplayName:
             aiSettings.assistantDisplayName || assistantDetails?.displayName || assistantDetails?.name || '',
