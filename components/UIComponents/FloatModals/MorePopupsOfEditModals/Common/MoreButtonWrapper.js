@@ -2,7 +2,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { View } from 'react-native'
 import Popover from 'react-tiny-popover'
 import MoreButton from './MoreButton'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 import {
     MORE_BUTTON_EDITS_MODAL_ID,
     MENTION_MODAL_ID,
@@ -11,8 +11,8 @@ import {
     TASK_PARENT_GOAL_MODAL_ID,
 } from '../../../../ModalsManager/modalsManager'
 import MoreButtonModal from './MoreButtonModal'
-import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
 import { popoverToCenter } from '../../../../../utils/HelperFunctions'
+import useFloatPopupLock from '../../../../../hooks/useFloatPopupLock'
 
 function MoreButtonWrapper(
     {
@@ -37,9 +37,10 @@ function MoreButtonWrapper(
 ) {
     const openModals = useSelector(state => state.openModals)
     const [isOpen, setIsOpen] = useState(false)
-    const dispatch = useDispatch()
     const timeoutsRef = useRef([])
     const isUnmountedRef = useRef(false)
+    const ownsModalRef = useRef(false)
+    const popupLock = useFloatPopupLock()
 
     useImperativeHandle(ref, () => ({
         close: () => closeModal(),
@@ -50,6 +51,10 @@ function MoreButtonWrapper(
             isUnmountedRef.current = true
             timeoutsRef.current.forEach(id => clearTimeout(id))
             timeoutsRef.current = []
+            if (ownsModalRef.current) {
+                ownsModalRef.current = false
+                removeModal(MORE_BUTTON_EDITS_MODAL_ID)
+            }
         }
     }, [])
 
@@ -61,14 +66,16 @@ function MoreButtonWrapper(
 
     const openModal = () => {
         storeModal(MORE_BUTTON_EDITS_MODAL_ID)
-        dispatch(showFloatPopup())
+        ownsModalRef.current = true
+        popupLock.acquire()
         safeSetIsOpen(true)
         onOpenModal?.()
     }
 
     const closeModal = () => {
         removeModal(MORE_BUTTON_EDITS_MODAL_ID)
-        dispatch(hideFloatPopup())
+        ownsModalRef.current = false
+        popupLock.release()
         safeSetIsOpen(false)
         onCloseModal?.()
     }

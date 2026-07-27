@@ -1,11 +1,11 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import DueDateModal from '../UIComponents/FloatModals/DueDateModal/DueDateModal'
 import Popover from 'react-tiny-popover'
 import moment from 'moment'
-import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 import DateTag from '../Tags/DateTag'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
+import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function DateTagButton({
     task,
@@ -21,7 +21,9 @@ export default function DateTagButton({
     const smallScreen = useSelector(state => state.smallScreen)
     const currentUser = useSelector(state => state.currentUser)
     const [visiblePopover, setVisiblePopover] = useState(false)
-    const dispatch = useDispatch()
+    const isUnmountedRef = useRef(false)
+    const hideTimeoutRef = useRef(null)
+    const popupLock = useFloatPopupLock()
     const date = task.done
         ? task.completed
         : isObservedTask
@@ -29,16 +31,26 @@ export default function DateTagButton({
         : task.dueDate
     const icon = task.done ? 'square-checked-gray' : isObservedTask ? 'calendar-observer' : 'calendar'
 
+    useEffect(() => {
+        return () => {
+            isUnmountedRef.current = true
+            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
+        }
+    }, [])
+
     const hidePopover = () => {
+        if (isUnmountedRef.current) return
         setVisiblePopover(false)
-        dispatch(hideFloatPopup())
+        popupLock.release()
         if (onDismissPopup) onDismissPopup()
     }
 
     const delayHidePopover = () => {
         // This timeout is necessary to stop the propagation of the click
         // to close the Modal, and reach the dismiss event of the EditTask
-        setTimeout(async () => {
+        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
+        hideTimeoutRef.current = setTimeout(() => {
+            hideTimeoutRef.current = null
             hidePopover()
         })
     }
@@ -46,8 +58,12 @@ export default function DateTagButton({
     const showPopover = () => {
         /* istanbul ignore next */
         if (!visiblePopover) {
+            if (hideTimeoutRef.current) {
+                clearTimeout(hideTimeoutRef.current)
+                hideTimeoutRef.current = null
+            }
             setVisiblePopover(true)
-            dispatch(showFloatPopup())
+            popupLock.acquire()
         }
     }
 

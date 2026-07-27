@@ -2,8 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
 
 import TaskCommentsTag from './TaskCommentsTag'
-import { useDispatch, useSelector } from 'react-redux'
-import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
+import { useSelector } from 'react-redux'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
 import { popoverToTop } from '../../utils/HelperFunctions'
@@ -15,6 +14,7 @@ import {
     RUN_OUT_OF_GOLD_MODAL_ID,
 } from '../ModalsManager/modalsManager'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
+import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 export default function TaskCommentsWrapper({
     commentsData,
@@ -39,12 +39,14 @@ export default function TaskCommentsWrapper({
     const isQuillTagEditorOpen = useSelector(state => state.isQuillTagEditorOpen)
     const [showModal, setShowModal] = useState(false)
     const isUnmountedRef = useRef(false)
-    const dispatch = useDispatch()
+    const hideTimeoutRef = useRef(null)
+    const popupLock = useFloatPopupLock()
 
     useEffect(() => {
         isUnmountedRef.current = false
         return () => {
             isUnmountedRef.current = true
+            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
         }
     }, [])
 
@@ -62,8 +64,12 @@ export default function TaskCommentsWrapper({
     }
 
     const openModal = () => {
+        if (hideTimeoutRef.current) {
+            clearTimeout(hideTimeoutRef.current)
+            hideTimeoutRef.current = null
+        }
         safeSetShowModal(true)
-        dispatch(showFloatPopup())
+        popupLock.acquire()
         if (unsubscribeClickObserver) {
             unsubscribeClickObserver()
         }
@@ -79,8 +85,9 @@ export default function TaskCommentsWrapper({
             !openModals[BOT_WARNING_MODAL_ID]
         ) {
             safeSetShowModal(false)
-            setTimeout(() => {
-                dispatch(hideFloatPopup())
+            hideTimeoutRef.current = setTimeout(() => {
+                hideTimeoutRef.current = null
+                popupLock.release()
             })
             if (subscribeClickObserver) {
                 subscribeClickObserver()
