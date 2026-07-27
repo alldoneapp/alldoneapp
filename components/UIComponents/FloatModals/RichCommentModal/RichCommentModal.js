@@ -120,7 +120,7 @@ export default function RichCommentModal({
         projectId,
         objectId,
         objectType === 'users' ? 'contacts' : objectType,
-        2
+        3
     )
 
     disableDoneButton = !!botOptionModalIsOpen
