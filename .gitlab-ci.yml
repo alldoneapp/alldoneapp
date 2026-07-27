@@ -5,11 +5,11 @@ workflow:
         # A newer commit may stop builds/checks, but never a deployment.
         on_new_commit: interruptible
     rules:
-        # Keep one pipeline per branch commit. API, web/manual, schedule, tag,
-        # parent/child and MR-event pipelines need an explicit future opt-in;
-        # otherwise change-based jobs can unexpectedly become a full pipeline.
-        - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH'
-        - when: never
+        # Keep the existing branch-pipeline model. Enabling MR pipelines here
+        # would create a second pipeline for the same feature-branch commit.
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+          when: never
+        - when: always
 
 default:
     # Build, test, and read-only jobs are safe to supersede. Every job that
@@ -74,11 +74,10 @@ modules_cache:
         - mkdir -p /kaniko/.docker
         - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
         - /kaniko/executor --cache=true --push-retry 10 --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/ci/Dockerfile_base --destination $CI_REGISTRY_IMAGE/build_base:latest
-    rules:
-        - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes:
-              - package.json
-              - package-lock.json
+    only:
+        changes:
+            - package.json
+            - package-lock.json
 
 firebase_cmd_cache:
     stage: build_base
@@ -89,10 +88,9 @@ firebase_cmd_cache:
         - mkdir -p /kaniko/.docker
         - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
         - /kaniko/executor --cache=true --push-retry 10 --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/ci/Dockerfile_firebase --destination $CI_REGISTRY_IMAGE/build_firebase:latest
-    rules:
-        - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes:
-              - ci/Dockerfile_firebase
+    only:
+        changes:
+            - ci/Dockerfile_firebase
 
 functions_cache:
     stage: build_base
@@ -103,12 +101,11 @@ functions_cache:
         - mkdir -p /kaniko/.docker
         - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
         - /kaniko/executor --cache=true --push-retry 10 --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/ci/Dockerfile_functions --destination $CI_REGISTRY_IMAGE/build_functions:latest
-    rules:
-        - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes:
-              - ci/Dockerfile_functions
-              - functions/package.json
-              - functions/package-lock.json
+    only:
+        changes:
+            - ci/Dockerfile_functions
+            - functions/package.json
+            - functions/package-lock.json
 
 build_web_preview:
     stage: build_web
@@ -334,13 +331,14 @@ deploy:cloud:functions:staging:
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
         - rm -rf tmp_project_name
-    rules:
-        - if: '$CI_COMMIT_BRANCH == "develop"'
-          changes:
-              - functions/**/*
-              # firebase.json carries the functions runtime, region and ignore list,
-              # so a change there has to redeploy them too.
-              - firebase.json
+    only:
+        refs:
+            - develop
+        changes:
+            - functions/**/*
+            # firebase.json carries the functions runtime, region and ignore list,
+            # so a change there has to redeploy them too.
+            - firebase.json
 
 deploy:cloud:functions:production:
     image: $CI_REGISTRY_IMAGE/build_functions:latest
@@ -377,13 +375,14 @@ deploy:cloud:functions:production:
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
         - rm -rf tmp_project_name
-    rules:
-        - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes:
-              - functions/**/*
-              # firebase.json carries the functions runtime, region and ignore list,
-              # so a change there has to redeploy them too.
-              - firebase.json
+    only:
+        refs:
+            - master
+        changes:
+            - functions/**/*
+            # firebase.json carries the functions runtime, region and ignore list,
+            # so a change there has to redeploy them too.
+            - firebase.json
 
 # Rebuild the vm-job-runner Cloud Run Job image whenever functions code changes, so VM
 # jobs run the current functions/ code (esp. vmJobRunner.js). The job runs from this image,
@@ -414,10 +413,11 @@ deploy:cloud:runner:staging:
     script:
         - cd functions/Assistant/cloud-run-job
         - CI_MODE=1 bash deploy.sh alldonestaging firebase-adminsdk-9idaq@alldonestaging.iam.gserviceaccount.com
-    rules:
-        - if: '$CI_COMMIT_BRANCH == "develop"'
-          changes:
-              - functions/**/*
+    only:
+        refs:
+            - develop
+        changes:
+            - functions/**/*
 
 deploy:cloud:runner:production:
     image: google/cloud-sdk:slim
@@ -441,10 +441,11 @@ deploy:cloud:runner:production:
     script:
         - cd functions/Assistant/cloud-run-job
         - CI_MODE=1 bash deploy.sh alldonealeph firebase-adminsdk-mpg7p@alldonealeph.iam.gserviceaccount.com
-    rules:
-        - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-          changes:
-              - functions/**/*
+    only:
+        refs:
+            - master
+        changes:
+            - functions/**/*
 
 # Report drift between firestore.indexes.json and the live Firestore indexes.
 #
@@ -473,8 +474,9 @@ check:firestore:indexes:staging:
         - node ci/check-firestore-indexes.js $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV --warn-only
     environment:
         name: staging
-    rules:
-        - if: '$CI_COMMIT_BRANCH == "develop"'
+    only:
+        refs:
+            - develop
 
 check:firestore:indexes:production:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
@@ -486,14 +488,16 @@ check:firestore:indexes:production:
         - node ci/check-firestore-indexes.js $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD
     environment:
         name: production
-    rules:
-        - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    only:
+        refs:
+            - master
 
 update:version:staging:
     image: curlimages/curl
     stage: 'update_version'
-    rules:
-        - if: '$CI_COMMIT_BRANCH == "develop"'
+    only:
+        refs:
+            - develop
     interruptible: false
     script:
         - curl "$NEW_APP_VERSION_FUNCTION_DEV"
@@ -501,8 +505,9 @@ update:version:staging:
 update:version:production:
     image: curlimages/curl
     stage: 'update_version'
-    rules:
-        - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    only:
+        refs:
+            - master
     interruptible: false
     script:
         - curl "$NEW_APP_VERSION_FUNCTION_PROD"
