@@ -8,8 +8,6 @@ const {
     resolveVmAgentSettings,
 } = require('./vmAgentSettings')
 const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
-const { buildVmChatPath } = require('./vmHostTaskHelper')
-const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 
 // Hybrid Gold pricing for a VM run:
 //   total = VM_JOB_BASE_GOLD + ceil(runtimeMinutes) * VM_GOLD_PER_MINUTE
@@ -491,21 +489,6 @@ async function startVmJob({
 
     const pendingRef = admin.firestore().doc(`pendingWebhooks/${correlationId}`)
 
-    // The thread hosting this job. Returned to the calling assistant so it can link the user to
-    // where the work actually lives — which the caller cannot otherwise know when the job is hosted
-    // in a freshly-created task (contextless / delegated dispatch), and which is also the id to
-    // pass back as continue_in_object_id to carry this run on later.
-    const hostThread = {
-        hostProjectId: projectId,
-        hostObjectType: objectType,
-        hostObjectId: objectId,
-        hostThreadUrl: `${getBaseUrl()}${buildVmChatPath(projectId, objectType, objectId)}`,
-    }
-    const hostThreadHint =
-        `The work lives in this thread: ${hostThread.hostThreadUrl} — include that link in your answer so the user ` +
-        `can follow progress, check the source, or continue there. To continue this same VM later (keeping its files ` +
-        `and conversation), call execute_task_in_vm again with continue_in_object_id="${objectId}".`
-
     // Queued follow-up: don't launch a Cloud Run execution now. The running job's drain (or the
     // stalled-queue sweeper) flips this to 'pending' and launches it on the same thread sandbox when
     // the current task finishes.
@@ -516,10 +499,7 @@ async function startVmJob({
             correlationId,
             agent: selectedAgent,
             credentialMode,
-            ...hostThread,
-            message:
-                `That VM is still working on the previous task on this thread. I've queued this — it will run on the ` +
-                `same VM as soon as the current one finishes. ${hostThreadHint}`,
+            message: `That VM is still working on the previous task on this thread. I've queued this — it will run on the same VM as soon as the current one finishes.`,
         }
     }
 
@@ -537,8 +517,7 @@ async function startVmJob({
             success: true,
             status: 'started',
             correlationId,
-            ...hostThread,
-            message: `VM task launch is being confirmed. The result will be posted into the host thread when it finishes. ${hostThreadHint}`,
+            message: `VM task launch is being confirmed. I'll post the result here when it finishes.`,
         }
     }
     if (launch.outcome === 'failed') {
@@ -554,7 +533,6 @@ async function startVmJob({
         correlationId,
         agent: selectedAgent,
         credentialMode,
-        ...hostThread,
         message: `VM task started with ${selectedAgentLabel} using ${
             subscriptionUsed
                 ? 'your subscription'
@@ -563,11 +541,11 @@ async function startVmJob({
                 : 'Alldone API billing'
         }. ${
             executionMode === 'plan_first'
-                ? 'It will prepare a plan in the host thread and wait for approval before making changes.'
+                ? 'It will prepare a plan here and wait for your approval before making changes.'
                 : executionMode === 'interactive'
-                ? 'It will approve routine in-VM work automatically and pause in the host thread only for questions or risky operations.'
-                : 'It will work autonomously and post the finished result into the host thread when ready.'
-        } ${hostThreadHint}`,
+                ? 'It will approve routine in-VM work automatically and pause here only for questions or risky operations.'
+                : 'It will work autonomously and post the finished result back into this conversation when ready.'
+        }`,
     }
 }
 

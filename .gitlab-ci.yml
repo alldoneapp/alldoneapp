@@ -152,12 +152,16 @@ test:web:changed:
     script:
         # Functions have their own dependency tree and tests. Exclude them from
         # this root/web check when a commit happens to change both surfaces.
+        # The selector keeps them out of the input; ci/jest.web.config.js keeps
+        # them out of what --findRelatedTests selects, which the input filter
+        # cannot do on its own because functions/shared imports utils/backends.
         # Jest's dependency graph treats shared data such as every translation
         # JSON as related to most of the application. The selector keeps data
         # and infrastructure out, while preferring a changed co-located test
         # over traversing the source file's entire legacy dependency graph.
         - node --check ci/selectTargetedJestFiles.js
-        - node ci/selectTargetedJestFiles.js "origin/$CI_DEFAULT_BRANCH" | xargs -0 -r npm test -- --setupFilesAfterEnv ./ci/jestSetup.js --runInBand --findRelatedTests --passWithNoTests
+        - node --check ci/jest.web.config.js
+        - node ci/selectTargetedJestFiles.js "origin/$CI_DEFAULT_BRANCH" | xargs -0 -r npm test -- --config ci/jest.web.config.js --runInBand --findRelatedTests --passWithNoTests
     rules:
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
           changes:
@@ -169,6 +173,7 @@ test:web:changed:
               paths:
                   - .gitlab-ci.yml
                   - ci/jestSetup.js
+                  - ci/jest.web.config.js
                   - ci/selectTargetedJestFiles.js
 
 build_web_staging:
