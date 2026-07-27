@@ -2,6 +2,7 @@
 
 const { getUserLocalDayBounds } = require('../Assistant/contextTimestampHelper')
 const { getMenubarLastComment } = require('./menubarLastComment')
+const { listCalendarConnections } = require('../Integrations/providerConnections')
 
 const FEED_PUBLIC_FOR_ALL = 0
 const WORKSTREAM_ID_PREFIX = 'ws@'
@@ -216,6 +217,14 @@ async function getMenubarAccountSummary(
             unreadNotifications: { followed: 0, all: 0 },
         }
     )
+
+    // Drives Anna's "remind me before meetings" default: the reminder turns
+    // itself on for users who already connected a calendar. Derived from
+    // userData we already hold, so it costs no extra Firestore read. Connections
+    // whose OAuth has gone stale do not count — they cannot produce events, so
+    // defaulting the reminder on for them would be a feature that silently
+    // never fires.
+    summary.calendarConnected = listCalendarConnections(userData).some(connection => !connection.authInvalid)
 
     try {
         summary.lastComment = await getMenubarLastComment(
