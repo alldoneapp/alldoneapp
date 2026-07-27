@@ -4776,6 +4776,119 @@ describe('assistant project description tool', () => {
     })
 })
 
+describe('execute_task_in_vm existing task routing', () => {
+    let vmJob
+    let vmTargetTask
+    let assistantStatusHelper
+    let countActiveJobsSpy
+    let startVmJobSpy
+    let resolveTargetTaskSpy
+    let ensureChatExistsSpy
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockResolvedValue({ exists: false, data: () => ({}) })
+        mockCollectionGet.mockResolvedValue({ docs: [] })
+
+        vmJob = require('./vmJob')
+        vmTargetTask = require('./vmTargetTask')
+        assistantStatusHelper = require('./assistantStatusHelper')
+        countActiveJobsSpy = jest.spyOn(vmJob, 'countActiveVmJobsForUser').mockResolvedValue(0)
+        startVmJobSpy = jest.spyOn(vmJob, 'startVmJob').mockResolvedValue({
+            success: true,
+            hostObjectId: 'task-1',
+        })
+        resolveTargetTaskSpy = jest.spyOn(vmTargetTask, 'resolveVmTargetTask').mockResolvedValue({
+            ok: true,
+            objectType: 'tasks',
+            objectId: 'task-1',
+            isPublicFor: [0, 'user-1'],
+        })
+        ensureChatExistsSpy = jest.spyOn(assistantStatusHelper, 'ensureChatExists').mockResolvedValue(undefined)
+    })
+
+    afterEach(() => {
+        countActiveJobsSpy.mockRestore()
+        startVmJobSpy.mockRestore()
+        resolveTargetTaskSpy.mockRestore()
+        ensureChatExistsSpy.mockRestore()
+    })
+
+    test('hosts a delegated VM run on target_task_id instead of creating a wrapper task', async () => {
+        const result = await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Fix the Comment button layout.',
+                task_type: 'prototype',
+                target_task_id: 'task-1',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Please do that task' },
+            {
+                originProjectId: 'origin-project',
+                originObjectType: 'topics',
+                originObjectId: 'menubar-chat',
+                originAssistantId: 'origin-assistant',
+            }
+        )
+
+        expect(result).toMatchObject({ success: true, hostObjectId: 'task-1' })
+        expect(resolveTargetTaskSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                taskId: 'task-1',
+                requestUserId: 'user-1',
+            })
+        )
+        expect(ensureChatExistsSpy).toHaveBeenCalledWith(
+            'project-1',
+            'tasks',
+            'task-1',
+            'assistant-1',
+            ['user-1'],
+            [0, 'user-1']
+        )
+        expect(startVmJobSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                originProjectId: 'origin-project',
+                originObjectId: 'menubar-chat',
+            })
+        )
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('rejects ambiguous target and continuation arguments before launching', async () => {
+        const result = await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Continue fixing the Comment button.',
+                task_type: 'prototype',
+                target_task_id: 'task-1',
+                continue_in_object_id: 'task-1',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result).toEqual({
+            success: false,
+            message:
+                'Use either target_task_id for a new VM run on an existing task or ' +
+                'continue_in_object_id to resume an earlier VM run, not both.',
+        })
+        expect(resolveTargetTaskSpy).not.toHaveBeenCalled()
+        expect(startVmJobSpy).not.toHaveBeenCalled()
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+})
+
 describe('assistant user description tool', () => {
     beforeEach(() => {
         jest.clearAllMocks()

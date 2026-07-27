@@ -2174,6 +2174,8 @@ const toolSchemas = {
                 'research and a written report, generating a document/spreadsheet/slide deck, or pulling and analyzing data. ' +
                 'This is asynchronous: the tool returns immediately with a "started" ' +
                 'status, the VM works on its own, and the finished result is posted back into this conversation when it is ready. ' +
+                'When the user asks to execute an existing task and its ID is known, pass target_task_id so the VM runs on that ' +
+                'task instead of creating a duplicate host task. ' +
                 'Do NOT use this for quick answers, simple lookups, or anything the other tools already cover unless the user is asking for coding work — it is slower and costs Gold. ' +
                 'Give a clear, self-contained objective; the VM does not have access to the app, only to the context you pass and the public internet. ' +
                 'Do not ask the VM to create an output file for a normal text answer; files should only be created when the user requested an artifact or the work genuinely produces one.',
@@ -2240,6 +2242,15 @@ const toolSchemas = {
                         description:
                             'Optional. IDs of tasks, notes or goals in the current project whose content should be packaged and ' +
                             'sent to the VM as background context. Use this to give the agent the source material it needs.',
+                    },
+                    target_task_id: {
+                        type: 'string',
+                        description:
+                            'Optional. ID of an existing task in the current project that should host this new VM run. Use this ' +
+                            'whenever the user asks to do, execute, implement, or work on an existing task and its ID is known — ' +
+                            'especially after create_task, get_tasks, or search returned that task. This keeps VM status and the ' +
+                            'finished result on the original task instead of creating a duplicate host task. This starts a new VM ' +
+                            'run; use continue_in_object_id instead when continuing work from an earlier VM run. Never pass both.',
                     },
                     continue_in_object_id: {
                         type: 'string',
