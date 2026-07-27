@@ -114,6 +114,13 @@
                 }
             },
             {
+                "source": "/api/menubar/upcoming",
+                "function": {
+                    "functionId": "menubarUpcoming",
+                    "region": "europe-west1"
+                }
+            },
+            {
                 "source": "/api/menubar/notes",
                 "function": {
                     "functionId": "menubarPushNote",

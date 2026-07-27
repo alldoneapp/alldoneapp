@@ -2047,6 +2047,18 @@ exports.menubarProjects = onRequest(
     }
 )
 
+exports.menubarUpcoming = onRequest(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleMenubarUpcoming } = require('./MenubarApp/menubarApp')
+        return await handleMenubarUpcoming(req, res)
+    }
+)
+
 exports.menubarPushNote = onRequest(
     {
         timeoutSeconds: 120,

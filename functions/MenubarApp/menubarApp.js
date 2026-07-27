@@ -628,6 +628,214 @@ async function handleMenubarProjects(req, res) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Upcoming meetings (Anna's "meeting starts in a minute" reminder)
+// ---------------------------------------------------------------------------
+
+const UPCOMING_DEFAULT_WINDOW_MINUTES = 180
+const UPCOMING_MAX_WINDOW_MINUTES = 720
+const UPCOMING_MAX_EVENTS = 20
+const UPCOMING_MAX_ATTENDEES = 50
+// Anna polls every ~10 minutes and re-polls shortly before a known meeting; a
+// short cache only collapses retries and multiple Macs on one account, so it
+// never makes the reminder itself stale.
+const UPCOMING_CACHE_TTL_MS = 60 * 1000
+// Events that started very recently are still worth showing — the user may have
+// woken the Mac mid-meeting. Anna decides on its own whether to pop for them.
+const UPCOMING_STARTED_GRACE_MS = 5 * 60 * 1000
+
+const upcomingCache = new Map()
+
+function readUpcomingCache(cacheKey, now) {
+    const entry = upcomingCache.get(cacheKey)
+    if (!entry || entry.expiresAt <= now) return null
+    return entry.payload
+}
+
+function writeUpcomingCache(cacheKey, payload, now) {
+    if (upcomingCache.size > 5000) {
+        for (const [key, entry] of upcomingCache.entries()) {
+            if (entry.expiresAt <= now) upcomingCache.delete(key)
+        }
+    }
+    upcomingCache.set(cacheKey, { expiresAt: now + UPCOMING_CACHE_TTL_MS, payload })
+}
+
+// Normalized events carry Google's shape: { dateTime, timeZone } for timed
+// events, { date } for all-day ones. Only timed events can have a "starts in a
+// minute" moment, so an unparseable or all-day value returns null and the event
+// is dropped.
+function parseEventInstant(value) {
+    if (!value?.dateTime) return null
+    const parsed = Date.parse(value.dateTime)
+    return Number.isFinite(parsed) ? parsed : null
+}
+
+function findSelfAttendee(event, accountEmails) {
+    const attendees = Array.isArray(event?.attendees) ? event.attendees : []
+    return attendees.find(attendee => accountEmails.has(normalizeEmail(attendee?.email))) || null
+}
+
+function collectAttendeeEmails(event) {
+    const attendees = Array.isArray(event?.attendees) ? event.attendees : []
+    const emails = []
+    const seen = new Set()
+    attendees.forEach(attendee => {
+        // Meeting rooms and equipment are attendees too; they would only pollute
+        // the backend's attendee-email project match.
+        if (attendee?.resource) return
+        const email = normalizeEmail(attendee?.email)
+        if (!email || seen.has(email)) return
+        seen.add(email)
+        emails.push(email)
+    })
+    return emails.slice(0, UPCOMING_MAX_ATTENDEES)
+}
+
+function toUpcomingMeeting(event, accountEmails) {
+    if (event?.status === 'cancelled') return null
+
+    const startsAt = parseEventInstant(event?.start)
+    if (startsAt === null) return null
+    const endsAt = parseEventInstant(event?.end)
+
+    // The user already said no — reminding them would be worse than silence.
+    const self = findSelfAttendee(event, accountEmails)
+    if (self && self.responseStatus === 'declined') return null
+
+    const { extractMeetingJoinUrl } = require('../Calendar/meetingJoinUrl')
+    const joinLink = extractMeetingJoinUrl(event)
+    if (!joinLink) return null
+
+    return {
+        id: event.eventId || '',
+        recurringKey: event.recurringEventId || null,
+        title: event.summary || 'Meeting',
+        startsAt,
+        endsAt: endsAt === null ? null : endsAt,
+        joinUrl: joinLink.joinUrl,
+        joinProvider: joinLink.joinProvider,
+        calendarUrl: event.htmlLink || null,
+        calendarEmail: normalizeEmail(event.calendarEmail) || null,
+        attendeeEmails: collectAttendeeEmails(event),
+    }
+}
+
+// The same meeting shows up once per connected calendar that was invited. Keep
+// the first instance of each (joinUrl, startsAt) pair so Anna prompts once.
+function dedupeUpcomingMeetings(meetings) {
+    const seen = new Set()
+    return meetings.filter(meeting => {
+        const key = `${meeting.joinUrl}__${meeting.startsAt}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+    })
+}
+
+async function loadUpcomingMeetings(userId, userData, windowMinutes, now) {
+    const { listCalendarConnections } = require('../Integrations/providerConnections')
+    const connections = listCalendarConnections(userData).filter(connection => !connection.authInvalid)
+    if (connections.length === 0) {
+        return { calendarConnected: false, meetings: [] }
+    }
+
+    const { searchCalendarEventsForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
+    const result = await searchCalendarEventsForAssistantRequest({
+        userId,
+        timeMin: new Date(now - UPCOMING_STARTED_GRACE_MS).toISOString(),
+        timeMax: new Date(now + windowMinutes * 60 * 1000).toISOString(),
+        limit: UPCOMING_MAX_EVENTS,
+        // The description is where a pasted Zoom/Teams link usually lives.
+        includeDescription: true,
+    })
+
+    const accountEmails = new Set(
+        [normalizeEmail(userData.email), ...connections.map(connection => connection.emailAddress)].filter(Boolean)
+    )
+
+    const meetings = dedupeUpcomingMeetings(
+        (Array.isArray(result?.results) ? result.results : [])
+            .map(event => toUpcomingMeeting(event, accountEmails))
+            .filter(Boolean)
+    ).sort((a, b) => a.startsAt - b.startsAt)
+
+    return {
+        calendarConnected: true,
+        meetings,
+        // True when at least one calendar answered but another failed — Anna
+        // keeps its previously scheduled reminders rather than treating a short
+        // list as "the meeting was cancelled".
+        partialFailure: result?.partialFailure === true,
+    }
+}
+
+// POST /api/menubar/upcoming  { token, windowMinutes? } ->
+//   200 { success: true, calendarConnected, partialFailure, meetings: [
+//           { id, recurringKey, title, startsAt, endsAt, joinUrl, joinProvider,
+//             calendarUrl, calendarEmail, attendeeEmails } ] }
+//
+// Read live from the connected providers rather than from the synced calendar
+// tasks: that sync only covers the current day, only runs when the web client
+// asks for it, and drops conferenceData — none of which a menubar-only user can
+// rely on.
+async function handleMenubarUpcoming(req, res) {
+    res.set('Cache-Control', 'no-store')
+
+    if (req.method !== 'POST') {
+        res.status(405).json({ success: false, error: 'Method not allowed' })
+        return
+    }
+
+    const token = req.body?.token
+    const ip = getRequestIp(req)
+    const tokenKey = typeof token === 'string' ? hashToken(token).slice(0, 16) : 'invalid'
+    if (isRateLimited(`mbu:ip:${ip}`, 120, 60 * 1000) || isRateLimited(`mbu:token:${tokenKey}`, 60, 60 * 1000)) {
+        res.status(429).json({ success: false, error: 'Rate limit exceeded' })
+        return
+    }
+
+    try {
+        const tokenUser = await resolveTokenUser(token)
+        if (!tokenUser) {
+            res.status(401).json({ success: false, error: 'Invalid token' })
+            return
+        }
+
+        const requestedWindow = parseInt(req.body?.windowMinutes, 10)
+        const windowMinutes = Number.isFinite(requestedWindow)
+            ? Math.min(Math.max(requestedWindow, 5), UPCOMING_MAX_WINDOW_MINUTES)
+            : UPCOMING_DEFAULT_WINDOW_MINUTES
+
+        const now = Date.now()
+        const cacheKey = `${tokenUser.userId}__${windowMinutes}`
+        const cached = readUpcomingCache(cacheKey, now)
+        if (cached) {
+            res.status(200).json({ ...cached, cached: true })
+            return
+        }
+
+        const { calendarConnected, meetings, partialFailure } = await loadUpcomingMeetings(
+            tokenUser.userId,
+            tokenUser.userData,
+            windowMinutes,
+            now
+        )
+
+        const payload = {
+            success: true,
+            calendarConnected,
+            partialFailure: partialFailure === true,
+            meetings,
+        }
+        writeUpcomingCache(cacheKey, payload, now)
+        res.status(200).json(payload)
+    } catch (error) {
+        console.error('menubarUpcoming: error', error)
+        res.status(500).json({ success: false, error: 'Internal error' })
+    }
+}
+
 function buildNotePushDocId(userId, externalId, projectId) {
     return hashToken(`${userId}__${externalId}__${projectId}`)
 }
@@ -2347,11 +2555,16 @@ module.exports = {
     handleMenubarSession,
     handleMenubarGoldWebhook,
     handleMenubarProjects,
+    handleMenubarUpcoming,
     handleMenubarPushNote,
     handleMenubarAssistantMessage,
     handleMenubarAssistantThread,
     processMenubarAssistantRun,
     __private__: {
+        collectAttendeeEmails,
+        dedupeUpcomingMeetings,
+        parseEventInstant,
+        toUpcomingMeeting,
         buildNotePushDocId,
         buildLegacyNotePushDocId,
         normalizeNoteMove,
