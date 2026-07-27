@@ -9133,6 +9133,9 @@ async function executeToolNatively(
                 let effectiveObjectType = toolRuntimeContext?.objectType || 'tasks'
                 let effectiveObjectId = toolRuntimeContext?.objectId || ''
 
+                const requestedTargetTaskId =
+                    typeof toolArgs.target_task_id === 'string' ? toolArgs.target_task_id.trim() : ''
+
                 // Explicit continuation wins over the ambient thread: the assistant is telling us
                 // to carry on an earlier VM run, which means hosting this job on that thread so the
                 // runner resumes its sandbox (same vmSessions/{projectId}__{objectId} key) instead
@@ -9141,6 +9144,14 @@ async function executeToolNatively(
                 // spawning yet another host task.
                 const requestedContinuationObjectId =
                     typeof toolArgs.continue_in_object_id === 'string' ? toolArgs.continue_in_object_id.trim() : ''
+                if (requestedTargetTaskId && requestedContinuationObjectId) {
+                    return {
+                        success: false,
+                        message:
+                            'Use either target_task_id for a new VM run on an existing task or ' +
+                            'continue_in_object_id to resume an earlier VM run, not both.',
+                    }
+                }
                 if (requestedContinuationObjectId) {
                     const { resolveVmContinuationThread } = require('./vmContinuationThread')
                     const continuation = await resolveVmContinuationThread({
@@ -9155,6 +9166,42 @@ async function executeToolNatively(
                     effectiveObjectType = continuation.objectType
                     effectiveObjectId = continuation.objectId
                     console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Continuing earlier VM run in existing thread', {
+                        projectId: effectiveProjectId,
+                        objectType: effectiveObjectType,
+                        objectId: effectiveObjectId,
+                        hadAmbientThread: !!toolRuntimeContext?.objectId,
+                    })
+                }
+
+                // A delegated/project-routed assistant deliberately has no ambient objectId. When
+                // it knows the ordinary task the user asked it to execute, explicitly host the new
+                // VM run there rather than materializing a duplicate wrapper task.
+                if (requestedTargetTaskId) {
+                    const { resolveVmTargetTask } = require('./vmTargetTask')
+                    const target = await resolveVmTargetTask({
+                        db: admin.firestore(),
+                        projectId: effectiveProjectId,
+                        taskId: requestedTargetTaskId,
+                        requestUserId,
+                    })
+                    if (!target.ok) {
+                        return { success: false, message: target.message }
+                    }
+                    effectiveObjectType = target.objectType
+                    effectiveObjectId = target.objectId
+
+                    // Existing tasks do not necessarily have a chat yet. Create it with the task's
+                    // visibility before startVmJob reads that chat to address status notifications.
+                    const { ensureChatExists } = require('./assistantStatusHelper')
+                    await ensureChatExists(
+                        effectiveProjectId,
+                        effectiveObjectType,
+                        effectiveObjectId,
+                        assistantId,
+                        [requestUserId],
+                        target.isPublicFor
+                    )
+                    console.log('🖥️ EXECUTE_TASK_IN_VM TOOL: Using existing task as VM host', {
                         projectId: effectiveProjectId,
                         objectType: effectiveObjectType,
                         objectId: effectiveObjectId,

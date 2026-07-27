@@ -349,6 +349,7 @@ describe('VM assistant tool schema', () => {
             'Always use this when the user wants coding work done'
         )
         expect(toolSchemas.execute_task_in_vm.function.description).toContain('single-file HTML/CSS/JS page')
+        expect(toolSchemas.execute_task_in_vm.function.description).toContain('pass target_task_id')
         expect(toolSchemas.execute_task_in_vm.function.parameters.properties.task_type.description).toContain(
             'Always use "prototype" for coding tasks'
         )
@@ -363,6 +364,10 @@ describe('VM assistant tool schema', () => {
         expect(properties.executionMode.enum).toEqual(['automatic', 'plan_first', 'interactive'])
         expect(properties.executionMode.description).toContain('existing non-interactive runner')
         expect(properties.executionMode.description).toContain('never silently downgrade')
+        expect(properties.target_task_id.type).toBe('string')
+        expect(properties.target_task_id.description).toContain('existing task')
+        expect(properties.target_task_id.description).toContain('instead of creating a duplicate host task')
+        expect(properties.target_task_id.description).toContain('Never pass both')
     })
 })
 
