@@ -1,21 +1,21 @@
 import React, { useState } from 'react'
 import { TouchableOpacity } from 'react-native'
 import Popover from 'react-tiny-popover'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 
-import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import { setTaskPriority } from '../../utils/backends/Tasks/tasksFirestore'
 import { normalizeTaskPriority, TASK_PRIORITY_NONE } from '../../utils/TaskPriority'
 import TaskPriorityModal from '../UIComponents/FloatModals/TaskPriorityModal/TaskPriorityModal'
 import TaskPriorityTag from '../Tags/TaskPriorityTag'
+import useFloatPopupLock from '../../hooks/useFloatPopupLock'
 
 // Clickable version of the task list priority chip. It reuses the same selector
 // (TaskPriorityModal) and update helper (setTaskPriority) as the detailed view, so
 // picking a priority here behaves exactly like doing it on the task detail page.
 export default function TaskPriorityTagButton({ task, projectId, disabled, style }) {
-    const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [isOpen, setIsOpen] = useState(false)
+    const popupLock = useFloatPopupLock()
 
     // No tag is rendered for tasks without a priority, so there is nothing to open.
     if (normalizeTaskPriority(task.priority) === TASK_PRIORITY_NONE) return null
@@ -25,12 +25,12 @@ export default function TaskPriorityTagButton({ task, projectId, disabled, style
 
     const openModal = () => {
         setIsOpen(true)
-        dispatch(showFloatPopup())
+        popupLock.acquire()
     }
 
     const closeModal = () => {
         setIsOpen(false)
-        dispatch(hideFloatPopup())
+        popupLock.release()
     }
 
     return (

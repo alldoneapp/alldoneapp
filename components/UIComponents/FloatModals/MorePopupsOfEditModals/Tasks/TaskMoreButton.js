@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react'
 import MoreButtonWrapper from '../Common/MoreButtonWrapper'
 import { FEED_TASK_OBJECT_TYPE } from '../../../../Feeds/Utils/FeedsConstants'
 import DeleteModalItem from './DeleteModalItem'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 import { Keyboard } from 'react-native'
 import {
     ESTIMATIONS_MODAL_ID,
@@ -16,7 +16,6 @@ import {
     TASK_PARENT_GOAL_MODAL_ID,
     TASK_WORKFLOW_MODAL_ID,
 } from '../../../../ModalsManager/modalsManager'
-import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
 import DescriptionModal from '../../DescriptionModal/DescriptionModal'
 import PrivacyModal from '../../PrivacyModal/PrivacyModal'
 import RecurrenceModal from '../../RecurrenceModal'
@@ -45,6 +44,7 @@ import { translate } from '../../../../../i18n/TranslationService'
 import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 import ModalItem from '../Common/ModalItem'
 import TaskPriorityModal from '../../TaskPriorityModal/TaskPriorityModal'
+import useFloatPopupLock from '../../../../../hooks/useFloatPopupLock'
 
 export default function TaskMoreButton({
     formType,
@@ -67,7 +67,6 @@ export default function TaskMoreButton({
     setPriorityBeforeSave,
     createSubtask,
 }) {
-    const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const [showDescription, setShowDescription] = useState(false)
     const [showParentGoal, setShowParentGoal] = useState(false)
@@ -80,6 +79,7 @@ export default function TaskMoreButton({
     const [showPriority, setShowPriority] = useState(false)
     const [activeGoal, setActiveGoal] = useState(null)
     const modalRef = useRef()
+    const popupLock = useFloatPopupLock()
 
     const hidePrivacyButton = !task.isSubtask && !task.done && task.userIds.length > 1
     const isLockedGmailTask = isInboxSummaryGmailTask(task)
@@ -98,13 +98,13 @@ export default function TaskMoreButton({
         e?.stopPropagation()
         Keyboard.dismiss()
         if (constant) storeModal(constant)
-        dispatch(showFloatPopup())
+        popupLock.acquire()
         setVisibilityModal(true)
     }
 
     const hidePopups = (setVisibilityModal, modalId) => {
         if (modalId) removeModal(modalId)
-        dispatch(hideFloatPopup())
+        popupLock.release()
         setVisibilityModal(false)
     }
 
@@ -165,11 +165,11 @@ export default function TaskMoreButton({
         if (showHighlight) {
             setShowHighlight(false)
             removeModal(HIGHLIGHT_MODAL_ID)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
         if (showPriority) {
             setShowPriority(false)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
     }
 
@@ -185,39 +185,39 @@ export default function TaskMoreButton({
         if (showDescription) {
             setShowDescription(false)
             removeModal(TASK_DESCRIPTION_MODAL_ID)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
         if (showPrivacy) {
             setShowPrivacy(false)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
         if (showParentGoal) {
             setShowParentGoal(false)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
         if (showRecurrence) {
             setShowRecurrence(false)
             removeModal(RECURRING_MODAL_ID)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
         if (showProject) {
             setShowProject(false)
             removeModal(PROJECT_MODAL_ID)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
         if (showWorkflow) {
             setShowWorkflow(false)
             removeModal(TASK_WORKFLOW_MODAL_ID)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
         if (showHighlight) {
             setShowHighlight(false)
             removeModal(HIGHLIGHT_MODAL_ID)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
         if (showPriority) {
             setShowPriority(false)
-            dispatch(hideFloatPopup())
+            popupLock.release()
         }
     }
 

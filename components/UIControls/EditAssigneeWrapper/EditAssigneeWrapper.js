@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Popover from 'react-tiny-popover'
-import { useSelector, useDispatch } from 'react-redux'
+import { useSelector } from 'react-redux'
 import { View, StyleSheet } from 'react-native'
 
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import { hideFloatPopup, showFloatPopup } from '../../../redux/actions'
 import AssigneeAndObserversModal from '../../UIComponents/FloatModals/AssigneeAndObserversModal/AssigneeAndObserversModal'
 import AssigneeButton from './AssigneeButton'
 import ObserversModal from '../../UIComponents/FloatModals/AssigneeAndObserversModal/ObserversModal'
+import useFloatPopupLock from '../../../hooks/useFloatPopupLock'
 
 export default function EditAssigneeWrapper({
     onDismissPopup,
@@ -17,10 +17,10 @@ export default function EditAssigneeWrapper({
     saveAssigneeBeforeSaveTask,
     isAssistant,
 }) {
-    const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const [isOpen, setIsOpen] = useState(false)
     const isUnmountedRef = useRef(false)
+    const popupLock = useFloatPopupLock()
 
     useEffect(() => {
         return () => {
@@ -36,12 +36,12 @@ export default function EditAssigneeWrapper({
 
     const showPopover = () => {
         safeSetIsOpen(true)
-        dispatch(showFloatPopup())
+        popupLock.acquire()
     }
 
     const hidePopover = () => {
         safeSetIsOpen(false)
-        dispatch(hideFloatPopup())
+        popupLock.release()
         if (onDismissPopup) onDismissPopup()
     }
 

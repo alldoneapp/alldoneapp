@@ -11,7 +11,7 @@ import FollowUpButton from '../../UIControls/FollowUpButton'
 import TranscribeButton from '../../UIControls/TranscribeButton'
 import { FEED_PUBLIC_FOR_ALL, FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import { translate } from '../../../i18n/TranslationService'
-import { useSelector, useDispatch } from 'react-redux'
+import { useSelector } from 'react-redux'
 import OpenDvButton from './OpenDvButton'
 import GhostButton from '../../UIControls/GhostButton'
 import { updateFocusedTask } from '../../../utils/backends/Tasks/tasksFirestore'
@@ -20,12 +20,12 @@ import { execShortcutFn, popoverToTop } from '../../../utils/HelperFunctions'
 import { colors } from '../../styles/global'
 
 import TaskParentGoalModal from '../../UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal'
-import { showFloatPopup, hideFloatPopup } from '../../../redux/actions'
 import { Keyboard } from 'react-native'
 import Backend from '../../../utils/BackendBridge'
 import { objectIsPublicForLoggedUser } from '../../TaskListView/Utils/TasksHelper'
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
 import { prepareTaskFocusChange } from '../../../utils/taskFocusInteraction'
+import useFloatPopupLock from '../../../hooks/useFloatPopupLock'
 
 export default function SecondaryButtonsArea({
     tmpTask,
@@ -57,7 +57,6 @@ export default function SecondaryButtonsArea({
     parentInTaskOutOfOpen,
     createSubtask,
 }) {
-    const dispatch = useDispatch()
     const smallScreen = useSelector(state => state.smallScreen)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
@@ -91,6 +90,7 @@ export default function SecondaryButtonsArea({
     const [isLoadingGoal, setIsLoadingGoal] = useState(false)
     const [goalForModalAtOpen, setGoalForModalAtOpen] = useState(null)
     const isUnmountedRef = useRef(false)
+    const popupLock = useFloatPopupLock()
 
     useEffect(() => {
         return () => {
@@ -139,12 +139,12 @@ export default function SecondaryButtonsArea({
             safeSetActiveGoalForModal(null)
         }
 
-        dispatch(showFloatPopup())
+        popupLock.acquire()
         safeSetShowParentGoalModalUI(true)
     }
 
     const hideParentGoalPopup = () => {
-        dispatch(hideFloatPopup())
+        popupLock.release()
         safeSetShowParentGoalModalUI(false)
         dismissEditMode?.()
     }
