@@ -10,14 +10,11 @@ import {
     PRE_CONFIG_TASK_MODEL_OPTIONS,
 } from '../../../../functions/Assistant/preConfigTaskModel'
 
-const getModelOptions = selectedModel => {
-    const options = [
+const getModelOptions = () => {
+    return [
         { label: translate('Use assistant model'), value: INHERIT_ASSISTANT_MODEL },
         ...PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => ({ ...option, label: translate(option.labelKey) })),
     ]
-    if (selectedModel !== 'MODEL_GPT5_2') return options
-
-    return [...options, { label: translate('GPT 5_2'), value: 'MODEL_GPT5_2' }]
 }
 
 const TEMPERATURE_OPTIONS = [
@@ -39,7 +36,7 @@ export default function AISettingsArea({
     isMiddleScreen,
     smallScreenNavigation,
 }) {
-    const modelOptions = getModelOptions(aiModel)
+    const modelOptions = getModelOptions()
 
     console.log('AISettingsArea render:', {
         aiModel,

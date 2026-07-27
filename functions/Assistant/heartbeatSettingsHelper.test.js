@@ -1,5 +1,6 @@
 const {
     DEFAULT_PROMPT,
+    HEARTBEAT_MODEL_OPTIONS,
     normalizeHeartbeatIntervalMs,
     normalizeHeartbeatChancePercent,
     parseHeartbeatTimeString,
@@ -9,6 +10,10 @@ const {
 } = require('./heartbeatSettingsHelper')
 
 describe('heartbeatSettingsHelper', () => {
+    test('only allows Sol, Terra, and Luna as heartbeat selections', () => {
+        expect(HEARTBEAT_MODEL_OPTIONS).toEqual(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'])
+    })
+
     test('rounds and clamps heartbeat interval to the supported range', () => {
         expect(normalizeHeartbeatIntervalMs(17 * 60 * 1000)).toBe(15 * 60 * 1000)
         expect(normalizeHeartbeatIntervalMs(63 * 60 * 1000)).toBe(60 * 60 * 1000)
