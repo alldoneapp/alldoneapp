@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import ReactDOM from 'react-dom'
 import { act } from 'react-dom/test-utils'
 
-import RichCommentDismissSurface from './RichCommentDismissSurface'
+import PopupDismissSurface from '../../PopupDismissSurface'
 
 jest.mock('react-native', () => {
     const React = require('react')
@@ -16,7 +16,7 @@ jest.mock('react-native', () => {
     return { Platform: { OS: 'web' }, View }
 })
 
-describe('RichCommentDismissSurface browser interactions', () => {
+describe('PopupDismissSurface browser interactions', () => {
     let appRoot
     let portalRoot
 
@@ -55,7 +55,7 @@ describe('RichCommentDismissSurface browser interactions', () => {
                     </button>
                     {popupIsOpen &&
                         ReactDOM.createPortal(
-                            <RichCommentDismissSurface
+                            <PopupDismissSurface
                                 onDismiss={event => {
                                     dismiss(event)
                                     setPopupIsOpen(false)
@@ -64,7 +64,7 @@ describe('RichCommentDismissSurface browser interactions', () => {
                                 <button data-testid="inside-button" onClick={insideAction}>
                                     Popup action
                                 </button>
-                            </RichCommentDismissSurface>,
+                            </PopupDismissSurface>,
                             portalRoot
                         )}
                 </React.Fragment>
@@ -141,14 +141,14 @@ describe('RichCommentDismissSurface browser interactions', () => {
                     </button>
                     {popupIsOpen &&
                         ReactDOM.createPortal(
-                            <RichCommentDismissSurface
+                            <PopupDismissSurface
                                 onDismiss={event => {
                                     dismiss(event)
                                     setPopupIsOpen(false)
                                 }}
                             >
                                 <button data-testid="inside-button">Popup action</button>
-                            </RichCommentDismissSurface>,
+                            </PopupDismissSurface>,
                             portalRoot
                         )}
                     <button data-testid="underlying-button" onClick={underlyingAction}>

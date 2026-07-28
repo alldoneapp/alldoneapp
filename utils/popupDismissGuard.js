@@ -99,9 +99,9 @@ export const protectModalDismissFromClickThrough = event => {
 
 // react-tiny-popover detects outside clicks on window during the bubble phase.
 // By then, React Native Web has already delivered the release to an underlying
-// Touchable. Capture the complete pointer gesture while the rich-comment popup
-// is open, then dismiss on release and block the trailing browser click.
-export const installRichCommentOutsideDismissGuard = (popupElement, onDismiss) => {
+// Touchable. Capture the complete pointer gesture while a popup is open, then
+// dismiss on release and block the trailing browser click.
+export const installPopupOutsideDismissGuard = (popupElement, onDismiss) => {
     if (
         !popupElement ||
         typeof popupElement.contains !== 'function' ||
@@ -147,3 +147,6 @@ export const installRichCommentOutsideDismissGuard = (popupElement, onDismiss) =
         releaseEventTypes.forEach(type => window.removeEventListener(type, captureGestureRelease, true))
     }
 }
+
+// Keep the previous export for existing callers and tests.
+export const installRichCommentOutsideDismissGuard = installPopupOutsideDismissGuard

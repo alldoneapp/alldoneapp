@@ -7,6 +7,8 @@ import v4 from 'uuid/v4'
 import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import Button from '../UIControls/Button'
+import SocialText from '../UIControls/SocialText/SocialText'
+import PopupDismissSurface from '../UIComponents/PopupDismissSurface'
 import TaskParentGoalModal from '../UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal'
 import { translate } from '../../i18n/TranslationService'
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
@@ -76,7 +78,7 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
 
     const goalName = goal?.extendedName || goal?.name || translate('Loading')
     const popoverLayout = getSuggestedGoalPopoverLayout(windowWidth)
-    const content = choosingAnother ? (
+    const popupContent = choosingAnother ? (
         <TaskParentGoalModal
             activeGoal={null}
             setActiveGoal={chooseGoal}
@@ -99,9 +101,15 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
                 </View>
                 <View style={localStyles.headingText}>
                     <Text style={localStyles.eyebrow}>{translate('Suggested goal')}</Text>
-                    <Text style={localStyles.goalName} numberOfLines={4} ellipsizeMode="tail">
+                    <SocialText
+                        style={localStyles.goalName}
+                        normalStyle={localStyles.goalNameText}
+                        numberOfLines={4}
+                        wrapText={true}
+                        projectId={projectId}
+                    >
                         {goalName}
-                    </Text>
+                    </SocialText>
                 </View>
             </View>
             {!!task.goalSuggestion?.reason && (
@@ -148,6 +156,7 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
             </View>
         </View>
     )
+    const content = <PopupDismissSurface onDismiss={close}>{popupContent}</PopupDismissSurface>
 
     return (
         <Popover
@@ -156,10 +165,11 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
             position={['bottom', 'left', 'right', 'top']}
             padding={4}
             align="end"
-            onClickOutside={close}
+            onClickOutside={Platform.OS === 'web' ? undefined : close}
             contentLocation={smallScreen ? null : undefined}
         >
             <TouchableOpacity
+                testID="suggested-goal-trigger"
                 disabled={disabled}
                 onPress={() => setOpen(true)}
                 style={[propertyButton ? localStyles.propertyButton : localStyles.tag, containerStyle]}
@@ -248,6 +258,10 @@ const localStyles = StyleSheet.create({
         color: '#FFFFFF',
         marginTop: 4,
         flexShrink: 1,
+    },
+    goalNameText: {
+        color: '#FFFFFF',
+        whiteSpace: 'normal',
     },
     reasonContainer: {
         marginTop: 16,
