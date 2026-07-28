@@ -35,6 +35,17 @@ import GmailTag from '../../../Tags/GmailTag'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
 
+const INLINE_COMMENT_ELEMENT_TYPES = new Set([TEXT_ELEMENT, HASH_ELEMENT, URL_ELEMENT, MENTION_ELEMENT, EMAIL_ELEMENT])
+
+const canRenderInline = segments => {
+    const elements = segments.reduce(
+        (parsedElements, segment) => parsedElements.concat(parseFeedComment(segment.text, false, segment.bold)),
+        []
+    )
+
+    return elements.length > 0 && elements.every(element => INLINE_COMMENT_ELEMENT_TYPES.has(element.type))
+}
+
 // Render inline formatted text segments with link/tag parsing
 const renderFormattedText = (segments, baseStyle, projectId, getLinkCounter) => {
     if (!segments || segments.length === 0) return null
@@ -334,13 +345,20 @@ export default function Comment({
                             </View>
                         )
                     } else {
-                        // For regular text, check if it has inline formatting
                         const segments = parseInlineFormatting(line.text)
                         const hasFormatting = segments.some(s => s.bold || s.italic || s.strikethrough)
 
-                        if (hasFormatting) {
+                        // Keep normal prose in one inline formatting context. The legacy
+                        // element parser uses a flex item and margin for every word, which
+                        // leaves unselectable gaps and loses semantic spaces when copied.
+                        // Media and attachment tokens still need its block renderer.
+                        if (hasFormatting || canRenderInline(segments)) {
                             return (
-                                <Text key={`text-${lineIndex}`} style={[localStyles.comment, marginStyle]}>
+                                <Text
+                                    key={`text-${lineIndex}`}
+                                    testID="comment-inline-text"
+                                    style={[localStyles.comment, marginStyle]}
+                                >
                                     {renderFormattedText(segments, localStyles.comment, projectId, getLinkCounter)}
                                 </Text>
                             )
