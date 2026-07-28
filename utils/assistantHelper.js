@@ -31,7 +31,6 @@ import { DV_TAB_TASK_CHAT } from './TabNavigationConstants'
 import { createChat } from './backends/Chats/chatsComments'
 import { STAYWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from './backends/Chats/chatsComments'
-import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinnerTrigger'
 
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 
@@ -219,11 +218,8 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
         }
 
         const postCreateActions = [stopLoadingData()]
-        // Only arm the spinner when we actually take the user to this thread. With
-        // `skipNavigation` nobody is watching this chat, and an unscoped trigger would be
-        // picked up by whatever Chat DV the user opens next (AT-2084).
-        if (enableAssistant && trimmedMessage && !skipNavigation) {
-            postCreateActions.push(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, chatId)))
+        if (enableAssistant && trimmedMessage) {
+            postCreateActions.push(setTriggerBotSpinner(true))
         }
         store.dispatch(postCreateActions)
 
@@ -588,13 +584,10 @@ export const generateTaskFromPreConfig = async (
             })
         }, delay)
 
-        if (!skipNavigation) {
-            // Trigger the bot spinner to show assistant is working (without toggling
-            // assistantEnabled), scoped to the task chat we are about to open. When we do not
-            // navigate there is no chat to show it in, and an unscoped trigger would surface
-            // in an unrelated Chat DV instead (AT-2084).
-            store.dispatch(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, taskWithPublicFor.id)))
+        // Trigger the bot spinner to show assistant is working (without toggling assistantEnabled)
+        store.dispatch(setTriggerBotSpinner(true))
 
+        if (!skipNavigation) {
             NavigationService.navigate('TaskDetailedView', {
                 task: taskWithPublicFor,
                 projectId: projectId,
