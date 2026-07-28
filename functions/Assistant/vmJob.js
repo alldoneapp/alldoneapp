@@ -61,12 +61,25 @@ function getAgentLabel(agent) {
 
 /**
  * Human-readable "(model · effort)" suffix appended to the VM status messages so the user
- * can see which model and effort level the agent is running with (e.g. "(opus · high effort)").
+ * can see which model and effort level the agent is running with (e.g. "(Opus 5.0 · high effort)").
  * Returns an empty string when neither is known, so older callers stay unchanged.
  */
+function formatAgentModelLabel(model) {
+    if (model === 'opus') return 'Opus latest; resolving version…'
+
+    const opusVersion = /^claude-opus-(\d+)(?:-(\d+))?(?:-\d{8})?$/.exec(model)
+    if (opusVersion) {
+        const [, major, minorOrDate] = opusVersion
+        const minor = minorOrDate && !/^\d{8}$/.test(minorOrDate) ? minorOrDate : '0'
+        return `Opus ${major}.${minor}`
+    }
+
+    return model
+}
+
 function formatAgentRunSuffix(model, effort) {
     const parts = []
-    if (model) parts.push(model)
+    if (model) parts.push(formatAgentModelLabel(model))
     if (effort) parts.push(`${effort} effort`)
     return parts.length ? ` (${parts.join(' · ')})` : ''
 }
@@ -901,6 +914,7 @@ module.exports = {
     VALID_VM_EXECUTION_MODES,
     VALID_TASK_TYPES,
     getAgentLabel,
+    formatAgentModelLabel,
     formatAgentRunSuffix,
     formatVmBillingStatus,
     DEFAULT_CLAUDE_MODEL,

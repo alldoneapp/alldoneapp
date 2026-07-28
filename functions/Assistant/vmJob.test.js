@@ -58,7 +58,13 @@ jest.mock('./vmApiKeyAuth', () => ({
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { deductGold } = require('../Gold/goldHelper')
-const { startVmJob, launchQueuedVmJob, MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJob')
+const {
+    startVmJob,
+    launchQueuedVmJob,
+    MAX_CONCURRENT_VM_JOBS_PER_USER,
+    DEFAULT_CLAUDE_MODEL,
+    formatAgentModelLabel,
+} = require('./vmJob')
 const { MAX_CONCURRENT_VM_JOBS, VM_JOB_QUEUE_RATE_LIMITS } = require('./vmJobConfig')
 
 describe('startVmJob', () => {
@@ -250,6 +256,16 @@ describe('startVmJob', () => {
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
             expect.objectContaining({ agent: 'claude', agentModel: 'opus', agentReasoningEffort: 'xhigh' })
         )
+        expect(createInitialStatusMessage).toHaveBeenCalledWith(
+            'project-1',
+            'topics',
+            'chat-1',
+            'assistant-1',
+            '🖥️ Spinning up Claude (Opus latest; resolving version… · xhigh effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            expect.any(Array),
+            expect.any(Array),
+            expect.any(Array)
+        )
     })
 
     test('uses Codex with medium effort for users without a preference', async () => {
@@ -394,8 +410,10 @@ describe('startVmJob', () => {
     })
 
     test.each([
+        ['opus', 'opus'],
         ['fable', 'claude-fable-5'],
         ['claude-fable-5', 'claude-fable-5'],
+        ['claude-opus-5', 'claude-opus-5'],
     ])('accepts Claude model %s and persists it as %s', async (agentModel, expectedModel) => {
         await startVmJob({
             objective: 'Research this',
@@ -412,6 +430,20 @@ describe('startVmJob', () => {
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
             expect.objectContaining({ agentModel: expectedModel })
         )
+    })
+
+    test('uses Claude Code moving Opus alias as the default', () => {
+        expect(DEFAULT_CLAUDE_MODEL).toBe('opus')
+    })
+
+    test.each([
+        ['opus', 'Opus latest; resolving version…'],
+        ['claude-opus-5', 'Opus 5.0'],
+        ['claude-opus-4-8', 'Opus 4.8'],
+        ['claude-opus-4-1-20250805', 'Opus 4.1'],
+        ['claude-opus-4-20250514', 'Opus 4.0'],
+    ])('derives the displayed Opus version from %s', (model, expectedLabel) => {
+        expect(formatAgentModelLabel(model)).toBe(expectedLabel)
     })
 
     test('clamps legacy Codex minimal effort requests to low', async () => {

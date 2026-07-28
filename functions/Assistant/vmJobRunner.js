@@ -74,6 +74,7 @@ const MAX_BOOTSTRAP_DIAGNOSTIC_CHARS = 16 * 1024
 const VM_AGENT_BRIDGE_DIR = '/home/user/.alldone/agent-bridge'
 const VM_AGENT_BRIDGE_INPUT_PATH = `${VM_AGENT_BRIDGE_DIR}/input.json`
 const VM_INTERACTIVE_EXECUTION_MODES = ['plan_first', 'interactive']
+const RUNTIME_MODEL_SAFE_PATTERN = /^[A-Za-z0-9._-]+$/
 
 // Persistent per-thread VM session: after a run we PAUSE the sandbox (snapshotting its
 // filesystem + the agent's session store) and save its id on a vmSessions doc keyed by the
@@ -1484,11 +1485,44 @@ function resolveAgentRunDetails(vmJob) {
     const effort =
         (vmJob && vmJob.agentReasoningEffort) ||
         (agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL)
-    return { model, effort }
+    const persistedResolvedModel = vmJob?.resolvedAgentModel
+    const resolvedModel =
+        typeof persistedResolvedModel === 'string' &&
+        persistedResolvedModel.startsWith('claude-') &&
+        RUNTIME_MODEL_SAFE_PATTERN.test(persistedResolvedModel)
+            ? persistedResolvedModel
+            : null
+    return { model, effort, ...(resolvedModel ? { resolvedModel } : {}) }
+}
+
+// Claude Code and the Agent SDK both emit a system/init event whose model is the
+// concrete ID selected for an alias. A primary assistant response carries the actual
+// API model too, which confirms the init value and covers older streams without init.
+function resolveRuntimeAgentModel(evt, agent) {
+    if (agent !== 'claude' || !evt || typeof evt !== 'object') return null
+
+    let model = null
+    if (evt.type === 'system' && evt.subtype === 'init') {
+        model = evt.model
+    } else if (evt.type === 'assistant' && (evt.parent_tool_use_id === null || evt.parent_tool_use_id === undefined)) {
+        model = evt.message?.model
+    }
+
+    return typeof model === 'string' && RUNTIME_MODEL_SAFE_PATTERN.test(model) && model.startsWith('claude-')
+        ? model
+        : null
+}
+
+function applyRuntimeAgentModel(evt, agent, runDetails) {
+    const resolvedModel = resolveRuntimeAgentModel(evt, agent)
+    if (!resolvedModel || !runDetails || resolvedModel === runDetails.resolvedModel) return null
+    runDetails.resolvedModel = resolvedModel
+    return resolvedModel
 }
 
 function renderVmWorkingHeader(agentLabel, runDetails, credentialMode) {
-    const suffix = runDetails ? formatAgentRunSuffix(runDetails.model, runDetails.effort) : ''
+    const displayModel = runDetails?.resolvedModel || runDetails?.model
+    const suffix = runDetails ? formatAgentRunSuffix(displayModel, runDetails.effort) : ''
     const header = `🖥️ Working with ${agentLabel}${suffix} in a VM…`
     return credentialMode !== undefined ? `${header}\n\n${formatVmBillingStatus(agentLabel, credentialMode)}` : header
 }
@@ -1783,44 +1817,23 @@ function buildVmSubscriptionAuthFailureText(agentLabel) {
     return `❌ The VM task could not continue because the ${agentLabel} subscription login needs to be refreshed. Reconnect it in Settings → Integrations, then try again.`
 }
 
-function renderAgentCliCheckStatus(agentLabel, isResume) {
-    return isResume
-        ? `🔄 Resuming VM and checking ${agentLabel} for updates…`
-        : `🆕 Starting a fresh VM and checking ${agentLabel}…`
-}
-
-function parseAgentCliInstallingMarker(output) {
-    const match = String(output || '').match(/AGENT_CLI_INSTALLING from=(\S+) to=(\S+)/)
-    return match ? { fromVersion: match[1], toVersion: match[2] } : null
-}
-
-function renderAgentCliChangeStatus(agentLabel, marker) {
-    if (!marker || marker.fromVersion === 'missing-or-invalid') return `📦 Installing ${agentLabel}…`
-    return `⬆️ Updating ${agentLabel} from ${marker.fromVersion} to ${marker.toVersion}…`
-}
-
-async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header, { isResume = false } = {}) {
+async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header) {
     const command = typeof config.installGuard === 'function' ? config.installGuard() : config.installGuard
     if (!command) return
 
     let stdout = ''
     let stderr = ''
-    let cliChange = null
-    if (typeof onActivity === 'function') {
-        onActivity(`${header}\n\n${renderAgentCliCheckStatus(agentLabel, isResume)}`)
-    }
+    let installationAnnounced = false
     const appendDiagnostic = (current, data) => `${current}${data}`.slice(-MAX_BOOTSTRAP_DIAGNOSTIC_CHARS)
     const handleStdout = data => {
-        stdout = appendDiagnostic(stdout, data)
-        if (!cliChange) {
-            cliChange = parseAgentCliInstallingMarker(stdout)
-            if (cliChange && typeof onActivity === 'function') {
-                onActivity(`${header}\n\n${renderAgentCliChangeStatus(agentLabel, cliChange)}`)
-            }
+        if (!installationAnnounced && String(data).includes('AGENT_CLI_INSTALLING')) {
+            installationAnnounced = true
+            if (typeof onActivity === 'function') onActivity(`${header}\n\n📦 Installing ${agentLabel}…`)
         }
+        stdout = appendDiagnostic(stdout, data)
     }
 
-    console.log('🖥️ VM JOB: checking agent CLI for updates', { agent: agentLabel, version: 'latest', isResume })
+    console.log('🖥️ VM JOB: updating agent CLI', { agent: agentLabel, version: 'latest' })
     try {
         await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
             envs: buildSandboxCommandEnv(),
@@ -1831,9 +1844,7 @@ async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, 
             },
         })
     } catch (error) {
-        const stage = cliChange
-            ? `${agentLabel} ${cliChange.fromVersion === 'missing-or-invalid' ? 'installation' : 'update'}`
-            : `${agentLabel} update check`
+        const stage = installationAnnounced ? `${agentLabel} installation` : `${agentLabel} bootstrap`
         const stageError = buildStageError(stage, error, stdout, stderr)
         console.error('🖥️ VM JOB: agent CLI bootstrap failed', {
             agent: agentLabel,
@@ -2727,12 +2738,13 @@ async function runAgentInSandbox(
     pendingWebhook = null,
     pendingRef = null,
     subscriptionAuth = null,
-    allowAuthRecovery = true
+    allowAuthRecovery = true,
+    sharedRunDetails = null
 ) {
     const { Sandbox } = require('e2b')
     const agentLabel = config.displayName || config.label || getAgentLabel(vmJob.agent || DEFAULT_AGENT)
     // Model + effort the agent runs with, surfaced in the live status header.
-    const runDetails = resolveAgentRunDetails(vmJob)
+    const runDetails = sharedRunDetails || resolveAgentRunDetails(vmJob)
     const credentialMode = subscriptionAuth ? 'subscription' : vmJob.credentialMode === 'byok' ? 'byok' : 'api'
     // Always use E2B's managed prebuilt template for the selected agent.
     const template = config.defaultTemplate
@@ -2980,8 +2992,7 @@ async function runAgentInSandbox(
             config,
             agentLabel,
             onActivity,
-            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth),
-            { isResume }
+            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
         )
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
@@ -3003,6 +3014,7 @@ async function runAgentInSandbox(
             interaction: null,
             providerState: null,
             bridgeError: null,
+            resolvedModelUpdatePromise: null,
         }
         let stdoutBuf = ''
         let stderr = ''
@@ -3018,6 +3030,39 @@ async function runAgentInSandbox(
                 evt = JSON.parse(line)
             } catch (_) {
                 return // non-JSON noise (e.g. stray install output) — ignore
+            }
+            const resolvedModel = applyRuntimeAgentModel(evt, vmJob.agent || DEFAULT_AGENT, runDetails)
+            if (resolvedModel) {
+                vmJob.resolvedAgentModel = resolvedModel
+                const resolvedModelUpdate = {
+                    resolvedAgentModel: resolvedModel,
+                    resolvedAgentModelAt: Date.now(),
+                }
+                const previousUpdate = state.resolvedModelUpdatePromise || Promise.resolve()
+                state.resolvedModelUpdatePromise = previousUpdate
+                    .then(() => {
+                        const persistResolvedModel = Promise.all([
+                            pendingRef?.set(resolvedModelUpdate, { merge: true }),
+                            admin
+                                .firestore()
+                                .doc(`vmJobs/${vmJob.correlationId}`)
+                                .set(resolvedModelUpdate, { merge: true }),
+                        ])
+                        const publishResolvedModel =
+                            publishActivity && typeof onActivity === 'function'
+                                ? onActivity(renderVmWorkingHeader(agentLabel, runDetails, credentialMode), {
+                                      force: true,
+                                  })
+                                : null
+                        return Promise.all([persistResolvedModel, publishResolvedModel])
+                    })
+                    .catch(error => {
+                        console.warn('🖥️ VM JOB: failed publishing runtime-resolved model', {
+                            correlationId: vmJob.correlationId,
+                            resolvedModel,
+                            error: error.message,
+                        })
+                    })
             }
             if (evt.type === 'alldone.interaction') {
                 state.interaction = evt.interaction || null
@@ -3201,6 +3246,7 @@ async function runAgentInSandbox(
             }
         } catch (runError) {
             if (stdoutBuf.trim()) handleLine(stdoutBuf)
+            if (state.resolvedModelUpdatePromise) await state.resolvedModelUpdatePromise
             if (isVmGoldExhaustedError(runError) || isVmJobCancelledError(runError)) throw runError
             // The command was killed (e.g. timeout) before returning — log whatever it
             // produced so we can see where the agent got stuck, then rethrow.
@@ -3254,6 +3300,7 @@ async function runAgentInSandbox(
             if (stdoutBuf.trim()) handleLine(stdoutBuf)
         }
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
+        if (state.resolvedModelUpdatePromise) await state.resolvedModelUpdatePromise
         console.log('🖥️ VM JOB: command finished', {
             correlationId: vmJob.correlationId,
             agent: config.label,
@@ -3766,11 +3813,11 @@ async function runVmJobByCorrelationId(correlationId) {
     // Throttled live-activity updates to the single status comment. The worker passes
     // a fully-rendered activity log; we just rate-limit the Firestore writes.
     let lastProgressAt = 0
-    const onActivity = text => {
+    const onActivity = (text, { force = false } = {}) => {
         const now = Date.now()
-        if (now - lastProgressAt < PROGRESS_UPDATE_INTERVAL_MS) return
+        if (!force && now - lastProgressAt < PROGRESS_UPDATE_INTERVAL_MS) return
         lastProgressAt = now
-        writeStatusComment(pendingWebhook, text).catch(() => {})
+        return writeStatusComment(pendingWebhook, text).catch(() => {})
     }
 
     // For a coding ("prototype") task, surface the project's connected repo (GitHub or GitLab)
@@ -3827,7 +3874,8 @@ async function runVmJobByCorrelationId(correlationId) {
                 pendingWebhook,
                 pendingRef,
                 subscriptionAuth,
-                allowAuthRecovery
+                allowAuthRecovery,
+                runDetails
             )
         let agentResult
         try {
@@ -4150,6 +4198,7 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
+        buildClaudeRunCommand,
         isInteractiveVmExecutionEnabled,
         resolveVmInteractionPhase,
         formatVmInteractionAnswers,
@@ -4171,14 +4220,13 @@ module.exports = {
         buildVmSubscriptionAuthWaitingText,
         buildVmSubscriptionAuthFailureText,
         ensureAgentCliAvailable,
-        renderAgentCliCheckStatus,
-        parseAgentCliInstallingMarker,
-        renderAgentCliChangeStatus,
         appendClaudeActivity,
         appendCodexActivity,
         renderActivityLog,
         renderVmWorkingHeader,
         resolveAgentRunDetails,
+        resolveRuntimeAgentModel,
+        applyRuntimeAgentModel,
         calculateAccruedRuntimeGold,
         calculateCompletionGoldCharges,
         checkAndChargeVmRuntimeGold,
