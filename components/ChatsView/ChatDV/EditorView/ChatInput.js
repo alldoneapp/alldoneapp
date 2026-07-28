@@ -26,7 +26,7 @@ import ChatInputButtons from './ChatInputButtons'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelper'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
 import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
-import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
+import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -381,7 +381,7 @@ export default function ChatInput({
     }
 
     return (
-        <AttachmentDropZone
+        <ChatImageDropZone
             testID="full-chat-image-drop-zone"
             style={[localStyles.inputContainer, containerStyle]}
             disabled={disabledEdition}
@@ -434,7 +434,7 @@ export default function ChatInput({
                 objectType={objectType}
                 assistantEnabled={isAssistantActive}
             />
-        </AttachmentDropZone>
+        </ChatImageDropZone>
     )
 }
 
