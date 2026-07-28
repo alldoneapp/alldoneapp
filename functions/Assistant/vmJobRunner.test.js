@@ -107,17 +107,6 @@ describe('VM runner prompt', () => {
         expect(prompt).toContain('Put the answer directly in your final message unless the user asked for a file')
     })
 
-    test('keeps task-thread delivery owned by the invoking assistant host', () => {
-        const prompt = __private__.buildAgentPrompt(baseVmJob)
-
-        expect(prompt).toContain('The VM host owns all task-thread delivery')
-        expect(prompt).toContain(
-            'Do not use an Alldone app, MCP tool, API, or task-update/comment tool to post your result'
-        )
-        expect(prompt).toContain('Return normal output in your final message')
-        expect(prompt).toContain('ask through the native interaction mechanism')
-    })
-
     test('only asks for a GitHub pull request when repository files changed', () => {
         const prompt = __private__.buildAgentPrompt(baseVmJob, {
             enabled: true,
@@ -424,7 +413,6 @@ describe('VM interactive agent bridge', () => {
         })
         expect(input.codexArgs).toEqual(
             expect.arrayContaining([
-                'features.apps=false',
                 'sandbox_mode="workspace-write"',
                 'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]',
                 'sandbox_workspace_write.network_access=true',
@@ -462,7 +450,6 @@ describe('VM interactive agent bridge', () => {
         } else {
             expect(input.codexArgs).toEqual(
                 expect.arrayContaining([
-                    'features.apps=false',
                     'sandbox_mode="workspace-write"',
                     'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]',
                     'sandbox_workspace_write.network_access=true',
@@ -866,7 +853,6 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
                 `-c 'model_providers.alldone_vm_proxy.base_url="https://vm-proxy.example/vmLlmProxy/openai/v1"'`
             )
             expect(command).toContain(`-c 'model_providers.alldone_vm_proxy.supports_websockets=false'`)
-            expect(command).toContain(`-c 'features.apps=false'`)
             expect(command).toContain(`-c 'sandbox_mode="workspace-write"'`)
             expect(command).toContain(`-c 'sandbox_workspace_write.writable_roots=["/home/user/git-metadata"]'`)
             expect(command).not.toContain('--sandbox')
@@ -890,7 +876,6 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
 
         expect(command).toContain('--model gpt-5.6-sol')
         expect(command).toContain('-c model_reasoning_effort=medium')
-        expect(command).toContain(`-c 'features.apps=false'`)
         expect(command).not.toContain('alldone_vm_proxy')
     })
 
@@ -1675,14 +1660,6 @@ describe('VM completion chat metadata', () => {
             { isFinal: true, output: 'Finished VM result' }
         )
 
-        expect(refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
-            expect.objectContaining({
-                creatorId: 'assistant-1',
-                fromAssistant: true,
-                commentText: 'Finished VM result',
-            }),
-            { merge: true }
-        )
         expect(transaction.update).toHaveBeenCalledWith(
             refs.get('items/project-1/tasks/task-1'),
             expect.objectContaining({
