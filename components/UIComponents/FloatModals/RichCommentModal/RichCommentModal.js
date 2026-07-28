@@ -335,12 +335,6 @@ export default function RichCommentModal({
         setInputCursorIndex(inputCursorIndex + 3)
     }
 
-    const getSelectionText = event => {
-        const selection = document.getSelection()
-        event.clipboardData.setData('text/plain', selection.toString().replaceAll('\n', ' '))
-        event.preventDefault()
-    }
-
     useEffect(() => {
         if (waitingForBotAnswer && hasNewAssistantMessage) setWaitingForBotAnswer(false)
     }, [waitingForBotAnswer, hasNewAssistantMessage])
@@ -376,11 +370,9 @@ export default function RichCommentModal({
 
     useEffect(() => {
         storeModal(COMMENT_MODAL_ID)
-        commentListRef.current.addEventListener('copy', getSelectionText)
 
         return () => {
             removeModal(COMMENT_MODAL_ID)
-            commentListRef?.current?.removeEventListener('copy', getSelectionText)
         }
     }, [])
 
