@@ -10,7 +10,6 @@ const {
 const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
 const { buildVmChatPath } = require('./vmHostTaskHelper')
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
-const { sanitizeTaskDescriptionText, buildTaskDescriptionMediaContextLines } = require('./taskDescriptionContext')
 
 // Hybrid Gold pricing for a VM run:
 //   total = VM_JOB_BASE_GOLD + ceil(runtimeMinutes) * VM_GOLD_PER_MINUTE
@@ -44,7 +43,7 @@ const DEFAULT_VM_EXECUTION_MODE = 'automatic'
 const VALID_VM_EXECUTION_MODES = [DEFAULT_VM_EXECUTION_MODE, 'plan_first', 'interactive']
 
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
-const DEFAULT_CLAUDE_MODEL = 'opus'
+const DEFAULT_CLAUDE_MODEL = 'claude-opus-5'
 const DEFAULT_CODEX_MODEL = 'gpt-5.6-sol'
 const DEFAULT_CLAUDE_EFFORT_LEVEL = 'high'
 const DEFAULT_CODEX_REASONING_EFFORT = 'medium'
@@ -62,12 +61,25 @@ function getAgentLabel(agent) {
 
 /**
  * Human-readable "(model · effort)" suffix appended to the VM status messages so the user
- * can see which model and effort level the agent is running with (e.g. "(opus · high effort)").
+ * can see which model and effort level the agent is running with (e.g. "(Opus 5.0 · high effort)").
  * Returns an empty string when neither is known, so older callers stay unchanged.
  */
+function formatAgentModelLabel(model) {
+    if (model === 'opus') return formatAgentModelLabel(DEFAULT_CLAUDE_MODEL)
+
+    const opusVersion = /^claude-opus-(\d+)(?:-(\d+))?(?:-\d{8})?$/.exec(model)
+    if (opusVersion) {
+        const [, major, minorOrDate] = opusVersion
+        const minor = minorOrDate && !/^\d{8}$/.test(minorOrDate) ? minorOrDate : '0'
+        return `Opus ${major}.${minor}`
+    }
+
+    return model
+}
+
 function formatAgentRunSuffix(model, effort) {
     const parts = []
-    if (model) parts.push(model)
+    if (model) parts.push(formatAgentModelLabel(model))
     if (effort) parts.push(`${effort} effort`)
     return parts.length ? ` (${parts.join(' · ')})` : ''
 }
@@ -100,7 +112,7 @@ function normalizeAgentModel(agent, agentModel) {
         return { error: 'agentModel contains invalid characters.' }
     }
     if (agent === 'claude') {
-        const model = trimmed === 'fable' ? 'claude-fable-5' : trimmed
+        const model = trimmed === 'fable' ? 'claude-fable-5' : trimmed === 'opus' ? DEFAULT_CLAUDE_MODEL : trimmed
         return isClaudeModelId(model)
             ? { value: model }
             : { error: 'agentModel must be a Claude model id when agent="claude".' }
@@ -169,15 +181,10 @@ async function packageContextObjects(projectId, objectIds) {
                 if (!doc.exists) continue
                 const data = doc.data() || {}
                 const title = data.extendedName || data.name || data.title || objectId
-                // Descriptions embed media as opaque sentinel tokens. Render the readable text and
-                // list the media as downloadable URLs the agent can actually fetch in the sandbox.
-                const rawBody = typeof data.description === 'string' ? data.description : ''
-                const body = sanitizeTaskDescriptionText(rawBody)
-                const mediaLines = buildTaskDescriptionMediaContextLines(rawBody)
-                const section = `### ${candidate.type}: ${title}\n${body ? body : '(no text description available)'}${
-                    mediaLines ? `\n${mediaLines}` : ''
-                }`
-                sections.push(section.trim())
+                const body = typeof data.description === 'string' ? data.description : ''
+                sections.push(
+                    `### ${candidate.type}: ${title}\n${body ? body : '(no text description available)'}`.trim()
+                )
                 break
             } catch (error) {
                 console.warn('🖥️ VM JOB: Failed reading context object', {
@@ -907,11 +914,12 @@ module.exports = {
     VALID_VM_EXECUTION_MODES,
     VALID_TASK_TYPES,
     getAgentLabel,
+    formatAgentModelLabel,
     formatAgentRunSuffix,
     formatVmBillingStatus,
     DEFAULT_CLAUDE_MODEL,
     DEFAULT_CODEX_MODEL,
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
-    __private__: { packageContextObjects },
+    __private__: {},
 }
