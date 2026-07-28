@@ -6,11 +6,13 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { Platform, Text } from 'react-native'
 
-import AttachmentDropZone, { addDroppedFilesToEditor } from './AttachmentDropZone'
+import ChatImageDropZone, { addDroppedImagesToEditor } from './ChatImageDropZone'
 import { insertAttachmentInsideEditor } from './textInputHelper'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
 
 jest.mock('./textInputHelper', () => ({
+    fileIsImage: fileName => ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'].includes(fileName.split('.').pop()),
+    imageExtensionsSupported: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'],
     insertAttachmentInsideEditor: jest.fn(),
 }))
 
@@ -19,14 +21,14 @@ jest.mock('../../Premium/PremiumHelper', () => ({
 }))
 
 jest.mock('../../../i18n/TranslationService', () => ({
-    translate: text => text,
+    translate: (text, values = {}) => `${text}${values.formats ? `: ${values.formats}` : ''}`,
 }))
 
 jest.mock('../../styles/global', () => ({
     colors: { UtilityBlue125: '#0066ff' },
 }))
 
-describe('AttachmentDropZone', () => {
+describe('ChatImageDropZone', () => {
     const originalPlatform = Platform.OS
 
     beforeAll(() => {
@@ -43,7 +45,7 @@ describe('AttachmentDropZone', () => {
         global.URL.createObjectURL = jest.fn(file => `blob:${file.name}`)
     })
 
-    it('adds every dropped image and file through the existing editor attachment path', () => {
+    it('adds every supported dropped image through the existing editor attachment path', () => {
         const editor = { focus: jest.fn() }
         const setInputCursorIndex = jest.fn()
         const files = [
@@ -52,14 +54,14 @@ describe('AttachmentDropZone', () => {
             { name: 'notes.pdf', size: 1024 },
         ]
 
-        const addedFiles = addDroppedFilesToEditor({
+        const addedFiles = addDroppedImagesToEditor({
             files,
             editor,
             inputCursorIndex: 7,
             setInputCursorIndex,
         })
 
-        expect(addedFiles).toEqual(files)
+        expect(addedFiles).toEqual(files.slice(0, 2))
         expect(insertAttachmentInsideEditor).toHaveBeenNthCalledWith(
             1,
             7,
@@ -68,10 +70,9 @@ describe('AttachmentDropZone', () => {
             'blob:first image.png'
         )
         expect(insertAttachmentInsideEditor).toHaveBeenNthCalledWith(2, 10, editor, 'second.jpg', 'blob:second.jpg')
-        expect(insertAttachmentInsideEditor).toHaveBeenNthCalledWith(3, 13, editor, 'notes.pdf', 'blob:notes.pdf')
-        expect(setInputCursorIndex).toHaveBeenCalledWith(16)
+        expect(setInputCursorIndex).toHaveBeenCalledWith(13)
         expect(editor.focus).toHaveBeenCalled()
-        expect(global.alert).not.toHaveBeenCalled()
+        expect(global.alert).toHaveBeenCalledWith(expect.stringContaining('Unsupported dropped image format'))
     })
 
     it('shows drag feedback, prevents browser file navigation, and inserts the drop', () => {
@@ -87,9 +88,9 @@ describe('AttachmentDropZone', () => {
 
         act(() => {
             tree = renderer.create(
-                <AttachmentDropZone testID="drop-zone" editor={editor} inputCursorIndex={0} projectId="project-1">
+                <ChatImageDropZone testID="drop-zone" editor={editor} inputCursorIndex={0} projectId="project-1">
                     <Text>Message</Text>
-                </AttachmentDropZone>
+                </ChatImageDropZone>
             )
         })
 
@@ -100,20 +101,20 @@ describe('AttachmentDropZone', () => {
         expect(dragEvent.preventDefault).toHaveBeenCalled()
         expect(dragEvent.stopPropagation).toHaveBeenCalled()
         expect(dataTransfer.dropEffect).toBe('copy')
-        expect(tree.root.findByProps({ testID: 'attachment-drop-feedback' })).toBeTruthy()
+        expect(tree.root.findByProps({ testID: 'chat-image-drop-feedback' })).toBeTruthy()
 
         act(() => getDropZone().props.onDrop(dragEvent))
 
         expect(checkIsLimitedByTraffic).toHaveBeenCalledWith('project-1')
         expect(insertAttachmentInsideEditor).toHaveBeenCalledWith(0, editor, 'screen.webp', 'blob:screen.webp')
-        expect(tree.root.findAllByProps({ testID: 'attachment-drop-feedback' })).toHaveLength(0)
+        expect(tree.root.findAllByProps({ testID: 'chat-image-drop-feedback' })).toHaveLength(0)
     })
 
-    it('blocks oversized files using the same limit as click-to-upload', () => {
+    it('blocks oversized images using the same limit as click-to-upload', () => {
         const editor = { focus: jest.fn() }
 
-        const addedFiles = addDroppedFilesToEditor({
-            files: [{ name: 'huge.zip', size: 51 * 1024 * 1024 }],
+        const addedFiles = addDroppedImagesToEditor({
+            files: [{ name: 'huge.gif', size: 51 * 1024 * 1024 }],
             editor,
         })
 
@@ -133,9 +134,9 @@ describe('AttachmentDropZone', () => {
 
         act(() => {
             tree = renderer.create(
-                <AttachmentDropZone testID="drop-zone" projectId="project-1">
+                <ChatImageDropZone testID="drop-zone" projectId="project-1">
                     <Text>Message</Text>
-                </AttachmentDropZone>
+                </ChatImageDropZone>
             )
         })
 
