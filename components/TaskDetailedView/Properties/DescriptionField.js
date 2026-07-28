@@ -19,6 +19,7 @@ import { translate } from '../../../i18n/TranslationService'
 import { exitsOpenModals } from '../../ModalsManager/modalsManager'
 import { updateAssistantDescription } from '../../../utils/backends/Assistants/assistantsFirestore'
 import { setTaskDescription } from '../../../utils/backends/Tasks/tasksFirestore'
+import AttachmentDropZone from '../../Feeds/CommentsTextInput/AttachmentDropZone'
 
 export default function DescriptionField({ projectId, object, disabled, objectType, isCalendarTask, helperText }) {
     const blockShortcuts = useSelector(state => state.blockShortcuts)
@@ -93,7 +94,15 @@ export default function DescriptionField({ projectId, object, disabled, objectTy
     return (
         <View style={localStyles.container}>
             <Text style={localStyles.header}>{translate('Description')}</Text>
-            <View style={localStyles.inputContainer}>
+            <AttachmentDropZone
+                testID="task-description-attachment-drop-zone"
+                style={localStyles.inputContainer}
+                disabled={disabled}
+                editor={editor}
+                inputCursorIndex={inputCursorIndex}
+                projectId={projectId}
+                setInputCursorIndex={setInputCursorIndex}
+            >
                 <CustomTextInput3
                     ref={inputRef}
                     placeholder={getPlaceholder()}
@@ -114,7 +123,7 @@ export default function DescriptionField({ projectId, object, disabled, objectTy
                     isCalendarTask={isCalendarTask}
                     keepBreakLines={true}
                 />
-            </View>
+            </AttachmentDropZone>
             {!!helperText && <Text style={localStyles.helperText}>{translate(helperText)}</Text>}
 
             {!disabled && (
