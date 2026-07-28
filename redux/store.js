@@ -318,7 +318,7 @@ export const initialState = {
     showNotificationAboutTheBotBehavior: false,
     assistantEnabled: false,
     notEnabledAssistantWhenLoadComments: false,
-    triggerBotSpinner: false,
+    triggerBotSpinner: null,
     preConfigTaskExecuting: null,
     disableAutoFocusInChat: false,
     mainChatEditor: null,
