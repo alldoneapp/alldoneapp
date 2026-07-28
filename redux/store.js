@@ -317,11 +317,8 @@ export const initialState = {
     ],
     showNotificationAboutTheBotBehavior: false,
     assistantEnabled: false,
-    // `null` = the flag applies to whichever chat is currently open. `{ projectId, objectId }` =
-    // it was armed for that one chat only, and other Chat DVs must ignore it (AT-2084).
-    assistantEnabledScope: null,
     notEnabledAssistantWhenLoadComments: false,
-    triggerBotSpinner: null,
+    triggerBotSpinner: false,
     preConfigTaskExecuting: null,
     disableAutoFocusInChat: false,
     mainChatEditor: null,
@@ -2189,11 +2186,7 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set assistant enabled': {
-            return {
-                ...state,
-                assistantEnabled: action.assistantEnabled,
-                assistantEnabledScope: action.assistantEnabledScope ?? null,
-            }
+            return { ...state, assistantEnabled: action.assistantEnabled }
         }
 
         case 'Set not enabled assistant when load comments': {

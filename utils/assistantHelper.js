@@ -31,8 +31,6 @@ import { DV_TAB_TASK_CHAT } from './TabNavigationConstants'
 import { createChat } from './backends/Chats/chatsComments'
 import { STAYWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from './backends/Chats/chatsComments'
-import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinnerTrigger'
-import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 
@@ -207,15 +205,10 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
             loggedUser.uid
         )
 
-        // Enable assistant BEFORE creating the message so the trigger condition is met.
-        // Scoped to the chat we just created: `createObjectMessage` below resolves the trigger
-        // from the `isAssistantEnabled: true` we persist on the line above (`getParentObjectData`
-        // returns this chat doc for 'topics'), so the Redux flag is UI state only. With
-        // `skipNavigation` the user stays where they are, and an unscoped flag would follow them
-        // into the next Chat DV they open (AT-2084).
+        // Enable assistant BEFORE creating the message so the trigger condition is met
         if (enableAssistant) {
             await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).update({ isAssistantEnabled: true })
-            store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, chatId)))
+            store.dispatch(setAssistantEnabled(true))
             console.log('🔧 [createBotQuickTopic] Assistant enabled before message creation')
         }
 
@@ -225,11 +218,8 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
         }
 
         const postCreateActions = [stopLoadingData()]
-        // Only arm the spinner when we actually take the user to this thread. With
-        // `skipNavigation` nobody is watching this chat, and an unscoped trigger would be
-        // picked up by whatever Chat DV the user opens next (AT-2084).
-        if (enableAssistant && trimmedMessage && !skipNavigation) {
-            postCreateActions.push(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, chatId)))
+        if (enableAssistant && trimmedMessage) {
+            postCreateActions.push(setTriggerBotSpinner(true))
         }
         store.dispatch(postCreateActions)
 
@@ -541,14 +531,7 @@ export const generateTaskFromPreConfig = async (
     })
 
     uploadNewTask(projectId, generatedTask, null, true, false, false, false).then(task => {
-        // Purely UI state for the task chat we are about to open: the assistant run itself is
-        // triggered from the task's persisted `isAssistantEnabled: true` (and
-        // `createTopicForPreConfigTask` calls `createObjectMessage` with skipAssistantTrigger,
-        // dispatching `generatePreConfigTaskResultSecondGen` explicitly). Scoping it to this task
-        // keeps the navigating case identical while stopping a `skipNavigation: true` run — the
-        // My Day assistant line and the pre-config task search modal — from switching the
-        // assistant on in whatever unrelated chat the user opens next (AT-2084).
-        store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, task.id)))
+        store.dispatch(setAssistantEnabled(true))
 
         // Ensure task has isPublicFor set
         const taskWithPublicFor = {
@@ -601,13 +584,10 @@ export const generateTaskFromPreConfig = async (
             })
         }, delay)
 
-        if (!skipNavigation) {
-            // Trigger the bot spinner to show assistant is working (without toggling
-            // assistantEnabled), scoped to the task chat we are about to open. When we do not
-            // navigate there is no chat to show it in, and an unscoped trigger would surface
-            // in an unrelated Chat DV instead (AT-2084).
-            store.dispatch(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, taskWithPublicFor.id)))
+        // Trigger the bot spinner to show assistant is working (without toggling assistantEnabled)
+        store.dispatch(setTriggerBotSpinner(true))
 
+        if (!skipNavigation) {
             NavigationService.navigate('TaskDetailedView', {
                 task: taskWithPublicFor,
                 projectId: projectId,
