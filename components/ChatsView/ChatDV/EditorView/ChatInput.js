@@ -27,6 +27,7 @@ import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../../../utils/assistantHelpe
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
 import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
+import { selectAssistantEnabledFor } from '../../Utils/assistantEnabledScope'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -58,7 +59,12 @@ export default function ChatInput({
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const gold = useSelector(state => state.loggedUser.gold)
     const disableAutoFocusInChat = useSelector(state => state.disableAutoFocusInChat)
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
+    // Read the global flag through the chat scope: a flag armed for a different chat must not
+    // reactivate the assistant here. `isAssistantActive` ORs this with the persisted state and
+    // feeds `explicitAssistantEnabled`, which OVERRIDES the object's own `isAssistantEnabled`
+    // inside `createObjectMessage` — so an unscoped leak would fire a real (Gold-spending)
+    // assistant run in a chat where the user had switched the assistant off (AT-2084).
+    const assistantEnabled = useSelector(state => selectAssistantEnabledFor(state, projectId, chat?.id))
     useSelector(
         state => ({
             projectAssistants: state.projectAssistants,

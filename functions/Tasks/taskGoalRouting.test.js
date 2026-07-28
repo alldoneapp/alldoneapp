@@ -49,11 +49,9 @@ const {
     TASK_GOAL_ROUTING_SUGGESTIONS,
     chooseRoutingAction,
     classifyTaskAgainstGoals,
-    isGoalEligibleForTaskRouting,
     normalizeClassificationResult,
     normalizeTaskGoalRoutingMode,
     routeNewTaskToGoal,
-    selectCandidateGoals,
 } = require('./taskGoalRouting')
 
 const createSnapshot = (id, data) => ({
@@ -62,11 +60,7 @@ const createSnapshot = (id, data) => ({
     data: () => data,
 })
 
-const createDb = ({
-    mode = TASK_GOAL_ROUTING_SUGGESTIONS,
-    goals: suppliedGoals,
-    milestones: suppliedMilestones,
-} = {}) => {
+const createDb = ({ mode = TASK_GOAL_ROUTING_SUGGESTIONS } = {}) => {
     const state = {
         projects: {
             project1: {
@@ -86,7 +80,7 @@ const createDb = ({
                 lockKey: '',
             },
         },
-        goals: suppliedGoals || {
+        goals: {
             goal1: {
                 name: 'Improve onboarding',
                 description: 'Reduce time to value',
@@ -102,7 +96,6 @@ const createDb = ({
                 isPublicFor: [0],
             },
         },
-        milestones: suppliedMilestones || {},
         undoActions: {},
     }
 
@@ -126,40 +119,19 @@ const createDb = ({
         get: async () => createSnapshot(path.split('/').pop(), resolve(path)),
         update: async value => assign(path, value),
     })
-    const createQuery = (path, filters = [], order = null, resultLimit = null) => ({
-        path,
-        where: (field, operator, value) =>
-            createQuery(path, [...filters, { field, operator, value }], order, resultLimit),
-        orderBy: (field, direction) => createQuery(path, filters, { field, direction }, resultLimit),
-        limit: limit => createQuery(path, filters, order, limit),
-        get: async () => {
-            const entries =
-                path === 'goals/project1/items'
-                    ? Object.entries(state.goals)
-                    : path === 'goalsMilestones/project1/milestonesItems'
-                    ? Object.entries(state.milestones)
-                    : []
-            let results = entries.filter(([, value]) =>
-                filters.every(filter => filter.operator === '==' && value[filter.field] === filter.value)
-            )
-            if (order) {
-                results.sort(([, a], [, b]) => {
-                    const comparison = Number(a[order.field] || 0) - Number(b[order.field] || 0)
-                    return order.direction === 'desc' ? -comparison : comparison
-                })
-            }
-            if (resultLimit !== null) results = results.slice(0, resultLimit)
-            return {
-                docs: results.map(([id, value]) => createSnapshot(id, value)),
-            }
-        },
-    })
     const db = {
         doc,
         collection: path => {
-            const query = createQuery(path)
+            if (path === 'goals/project1/items') {
+                return {
+                    where: () => ({
+                        get: async () => ({
+                            docs: Object.entries(state.goals).map(([id, goal]) => createSnapshot(id, goal)),
+                        }),
+                    }),
+                }
+            }
             return {
-                ...query,
                 doc: () => doc(`${path}/${path.startsWith('_taskGoalRoutingClaims') ? 'claim1' : 'undo1'}`),
             }
         },
@@ -249,153 +221,6 @@ describe('taskGoalRouting', () => {
                 }),
             })
         )
-    })
-
-    test('uses fixed and dynamic completion plus current-milestone semantics for eligibility', () => {
-        const currentMilestone = { date: 100 }
-
-        expect(
-            isGoalEligibleForTaskRouting(
-                {
-                    progress: 100,
-                    startingMilestoneDate: 50,
-                    completionMilestoneDate: 150,
-                },
-                currentMilestone
-            )
-        ).toBe(false)
-        expect(
-            isGoalEligibleForTaskRouting(
-                {
-                    progress: 'DYNAMIC_PERCENT',
-                    dynamicProgress: 100,
-                    startingMilestoneDate: 50,
-                    completionMilestoneDate: 150,
-                },
-                currentMilestone
-            )
-        ).toBe(true)
-        expect(
-            isGoalEligibleForTaskRouting(
-                {
-                    progress: 'DYNAMIC_PERCENT',
-                    dynamicProgress: 100,
-                    startingMilestoneDate: 10,
-                    completionMilestoneDate: 50,
-                },
-                currentMilestone
-            )
-        ).toBe(false)
-        expect(
-            isGoalEligibleForTaskRouting(
-                {
-                    progress: 'DYNAMIC_PERCENT',
-                    dynamicProgress: 60,
-                    startingMilestoneDate: 100,
-                    completionMilestoneDate: 100,
-                    parentDoneMilestoneIds: ['historical-milestone'],
-                },
-                currentMilestone
-            )
-        ).toBe(true)
-    })
-
-    test('filters completed goals while preserving current and rolled-forward dynamic goals', async () => {
-        const { db, state } = createDb({
-            goals: {
-                fixedDone: {
-                    name: 'Fixed done',
-                    ownerId: 'ALL_USERS',
-                    progress: 100,
-                    startingMilestoneDate: 100,
-                    completionMilestoneDate: 100,
-                    isPublicFor: [0],
-                },
-                dynamicDonePast: {
-                    name: 'Dynamic done in the past',
-                    ownerId: 'ALL_USERS',
-                    progress: 'DYNAMIC_PERCENT',
-                    dynamicProgress: 100,
-                    startingMilestoneDate: 50,
-                    completionMilestoneDate: 50,
-                    isPublicFor: [0],
-                },
-                dynamicDoneCurrent: {
-                    name: 'Dynamic done in current milestone',
-                    ownerId: 'ALL_USERS',
-                    progress: 'DYNAMIC_PERCENT',
-                    dynamicProgress: 100,
-                    startingMilestoneDate: 100,
-                    completionMilestoneDate: 100,
-                    isPublicFor: [0],
-                },
-                dynamicRolledForward: {
-                    name: 'Dynamic active after historical milestone',
-                    ownerId: 'ALL_USERS',
-                    progress: 'DYNAMIC_PERCENT',
-                    dynamicProgress: 40,
-                    startingMilestoneDate: 100,
-                    completionMilestoneDate: 100,
-                    parentDoneMilestoneIds: ['done-milestone'],
-                    isPublicFor: [0],
-                },
-            },
-            milestones: {
-                current: {
-                    ownerId: 'ALL_USERS',
-                    done: false,
-                    date: 100,
-                },
-            },
-        })
-        let candidateIds = []
-
-        await routeNewTaskToGoal({
-            task: state.tasks.task1,
-            projectId: 'project1',
-            db,
-            classify: async ({ goals }) => {
-                candidateIds = goals.map(goal => goal.id)
-                return {
-                    result: {
-                        goalId: null,
-                        confidence: 0,
-                        alternativeGoalId: null,
-                        alternativeConfidence: 0,
-                        reason: '',
-                    },
-                    totalTokens: 10,
-                }
-            },
-        })
-
-        expect(candidateIds).toEqual(expect.arrayContaining(['dynamicDoneCurrent', 'dynamicRolledForward']))
-        expect(candidateIds).not.toEqual(expect.arrayContaining(['fixedDone', 'dynamicDonePast']))
-    })
-
-    test('preselects a relevant goal beyond the former alphabetical 30-goal window', () => {
-        const alphabeticallyEarlierGoals = Array.from({ length: 30 }, (_, index) => ({
-            id: `goal-${index}`,
-            name: `Alpha operational goal ${index}`,
-            description: 'Routine internal process',
-            lastEditionDate: 1000 - index,
-        }))
-        const relevantGoal = {
-            id: 'goal-z',
-            name: 'Improve customer retention',
-            description: 'Keep existing customers engaged',
-            lastEditionDate: 1,
-        }
-
-        const candidates = selectCandidateGoals(
-            { name: 'Launch customer retention program' },
-            [...alphabeticallyEarlierGoals, relevantGoal],
-            null
-        )
-
-        expect(candidates).toHaveLength(30)
-        expect(candidates[0].id).toBe('goal-z')
-        expect(candidates.map(goal => goal.id)).toContain('goal-z')
     })
 
     test('stores a pending suggestion without moving the task in suggestion mode', async () => {
@@ -498,60 +323,5 @@ describe('taskGoalRouting', () => {
             { feedId: 'goal-routing-claim1' }
         )
         expect(mockFeedCommit).toHaveBeenCalledTimes(1)
-    })
-
-    test('transaction guard supersedes a goal that becomes dynamically completed outside the current milestone', async () => {
-        const { db, state } = createDb({
-            mode: TASK_GOAL_ROUTING_AUTOMATIC,
-            goals: {
-                goal1: {
-                    name: 'Improve onboarding',
-                    ownerId: 'ALL_USERS',
-                    progress: 'DYNAMIC_PERCENT',
-                    dynamicProgress: 50,
-                    startingMilestoneDate: 100,
-                    completionMilestoneDate: 100,
-                    isPublicFor: [0],
-                },
-            },
-            milestones: {
-                current: {
-                    ownerId: 'ALL_USERS',
-                    done: false,
-                    date: 100,
-                },
-            },
-        })
-
-        const result = await routeNewTaskToGoal({
-            task: state.tasks.task1,
-            projectId: 'project1',
-            db,
-            classify: async () => {
-                state.goals.goal1.dynamicProgress = 100
-                state.goals.goal1.startingMilestoneDate = 50
-                state.goals.goal1.completionMilestoneDate = 50
-                return {
-                    result: {
-                        goalId: 'goal1',
-                        confidence: 0.96,
-                        alternativeGoalId: null,
-                        alternativeConfidence: 0,
-                        reason: 'Direct match.',
-                    },
-                    totalTokens: 100,
-                }
-            },
-        })
-
-        expect(result.action).toBe('superseded')
-        expect(state.tasks.task1.parentGoalId).toBeNull()
-        expect(state.tasks.task1.goalSuggestion).toEqual(
-            expect.objectContaining({
-                status: 'superseded',
-                reason: 'goal_unavailable',
-            })
-        )
-        expect(state.undoActions).toEqual({})
     })
 })

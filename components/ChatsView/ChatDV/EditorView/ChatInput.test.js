@@ -20,6 +20,7 @@ const mockState = {
     loggedUser: { uid: 'user-1', gold: 100 },
     disableAutoFocusInChat: false,
     assistantEnabled: true,
+    assistantEnabledScope: null,
     triggerChatSubmit: null,
     triggerChatDraft: null,
 }
@@ -208,6 +209,109 @@ describe('ChatInput assistant selection', () => {
             true,
             'anna-assistant'
         )
+
+        tree.unmount()
+    })
+})
+
+// AT-2084: `generateTaskFromPreConfig` / `createBotQuickTopic` with `skipNavigation: true` arm the
+// global assistant-enabled flag for a chat the user is never taken to. Because ChatInput ORs that
+// flag with the persisted state and passes the result to `createObjectMessage` as
+// `explicitAssistantEnabled` — which OVERRIDES the object's own `isAssistantEnabled` — an unscoped
+// leak fired a real, Gold-spending assistant run in an unrelated chat.
+describe('ChatInput assistant-enabled scoping', () => {
+    const submit = async chat => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <ChatInput
+                    chat={chat}
+                    projectId="project-1"
+                    assistantId="anna-assistant"
+                    setWaitingForBotAnswer={jest.fn()}
+                    setAmountOfNewCommentsToHighligth={jest.fn()}
+                />
+            )
+        })
+
+        await act(async () => {
+            tree.root.findByProps({ testID: 'chat-input-buttons' }).props.onSubmit('Hello')
+            await Promise.resolve()
+        })
+
+        const buttons = tree.root.findByProps({ testID: 'chat-input-buttons' }).props
+        return { tree, buttons, explicitAssistantEnabled: createObjectMessage.mock.calls[0][8] }
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockState.assistantEnabled = true
+        mockState.assistantEnabledScope = null
+    })
+
+    afterEach(() => {
+        mockState.assistantEnabled = true
+        mockState.assistantEnabledScope = null
+    })
+
+    it('does not trigger the assistant in a chat the flag was not armed for', async () => {
+        mockState.assistantEnabledScope = { projectId: 'project-1', objectId: 'task-created-from-my-day' }
+
+        const { tree, buttons, explicitAssistantEnabled } = await submit({
+            id: 'chat-1',
+            type: 'topics',
+            isAssistantEnabled: false,
+        })
+
+        expect(explicitAssistantEnabled).toBe(false)
+        expect(buttons.assistantEnabled).toBe(false)
+
+        tree.unmount()
+    })
+
+    it('does not trigger the assistant when the flag belongs to another project', async () => {
+        mockState.assistantEnabledScope = { projectId: 'other-project', objectId: 'chat-1' }
+
+        const { tree, explicitAssistantEnabled } = await submit({
+            id: 'chat-1',
+            type: 'topics',
+            isAssistantEnabled: false,
+        })
+
+        expect(explicitAssistantEnabled).toBe(false)
+
+        tree.unmount()
+    })
+
+    // Preserved behavior: when the pre-config flow DOES navigate, the chat it armed the flag for
+    // is exactly the one that mounts, and it must still come up with the assistant switched on.
+    it('triggers the assistant in the chat the flag was armed for', async () => {
+        mockState.assistantEnabledScope = { projectId: 'project-1', objectId: 'chat-1' }
+
+        const { tree, buttons, explicitAssistantEnabled } = await submit({
+            id: 'chat-1',
+            type: 'topics',
+            isAssistantEnabled: false,
+        })
+
+        expect(explicitAssistantEnabled).toBe(true)
+        expect(buttons.assistantEnabled).toBe(true)
+
+        tree.unmount()
+    })
+
+    // Preserved behavior: every in-chat writer (bot button, start chatting, …) dispatches without
+    // a scope, meaning "the chat that is open right now".
+    it('still honors an unscoped flag', async () => {
+        mockState.assistantEnabledScope = null
+
+        const { tree, explicitAssistantEnabled } = await submit({
+            id: 'chat-1',
+            type: 'topics',
+            isAssistantEnabled: false,
+        })
+
+        expect(explicitAssistantEnabled).toBe(true)
 
         tree.unmount()
     })

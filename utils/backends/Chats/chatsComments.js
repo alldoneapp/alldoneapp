@@ -60,6 +60,7 @@ import {
     resetContactLastCommentData,
 } from '../Contacts/contactsFirestore'
 import { getLinkedParentChatUrl } from '../../../components/ChatsView/Utils/ChatHelper'
+import { selectAssistantEnabledFor } from '../../../components/ChatsView/Utils/assistantEnabledScope'
 import { PROJECT_TYPE_GUIDE } from '../../../components/SettingsView/ProjectsSettings/ProjectsSettings'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { setProjectLastChatActionDate } from '../Projects/projectsFirestore'
@@ -485,8 +486,12 @@ export async function createObjectMessage(
     assistantId = explicitAssistantId || assistantId
 
     if (object) {
-        const { loggedUser, assistantEnabled } = store.getState()
+        const { loggedUser } = store.getState()
         const { uid: creatorId } = loggedUser
+        // Last-resort fallback for `isThreadAssistantEnabled` below. Scoped so a flag armed for a
+        // different chat (e.g. a `skipNavigation: true` pre-config run) cannot trigger an
+        // assistant answer in this one (AT-2084).
+        const assistantEnabled = selectAssistantEnabledFor(store.getState(), projectId, objectId)
 
         const chatIsAlreadyCreated = !!chat
         const commentId = editingCommentId || getId()

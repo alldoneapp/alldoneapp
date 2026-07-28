@@ -3,7 +3,6 @@
 const { ProjectService } = require('./ProjectService')
 const { mapGoalData, mapMilestoneData } = require('../Utils/MapDataFuncions')
 const { ALL_USERS, BACKLOG_DATE_NUMERIC, BACKLOG_MILESTONE_ID } = require('../Utils/HelperFunctionsCloud')
-const { goalIsVisibleInOpenMilestone } = require('./goalMilestonesHelper')
 
 const DEFAULT_GOAL_LIMIT = 100
 const MAX_GOAL_LIMIT = 1000
@@ -224,6 +223,10 @@ class GoalRetrievalService {
         return milestones
     }
 
+    goalIsVisibleInOpenMilestone(goal, milestone) {
+        return goal.startingMilestoneDate <= milestone.date && goal.completionMilestoneDate >= milestone.date
+    }
+
     buildGoalBase(goal, project) {
         return {
             id: goal.id,
@@ -255,7 +258,7 @@ class GoalRetrievalService {
         return goals
             .map(goal => {
                 const visibleOpenMilestones = openMilestones.filter(milestone =>
-                    goalIsVisibleInOpenMilestone(goal, milestone)
+                    this.goalIsVisibleInOpenMilestone(goal, milestone)
                 )
                 const isBacklog =
                     goal.completionMilestoneDate === BACKLOG_DATE_NUMERIC &&
@@ -263,7 +266,7 @@ class GoalRetrievalService {
                     goal.progress !== 100
 
                 if (currentMilestoneOnly) {
-                    if (!currentMilestone || !goalIsVisibleInOpenMilestone(goal, currentMilestone)) {
+                    if (!currentMilestone || !this.goalIsVisibleInOpenMilestone(goal, currentMilestone)) {
                         return null
                     }
 
