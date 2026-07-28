@@ -200,6 +200,7 @@ function mapTaskData(taskId, task) {
         suggestedBy: task.suggestedBy ? task.suggestedBy : null,
         parentGoalId: task.parentGoalId ? task.parentGoalId : null,
         parentGoalIsPublicFor: task.parentGoalIsPublicFor ? task.parentGoalIsPublicFor : null,
+        goalSuggestion: task.goalSuggestion ? task.goalSuggestion : null,
         noteId: task.noteId ? task.noteId : null,
         containerNotesIds: task.containerNotesIds ? task.containerNotesIds : [],
         calendarData: task.calendarData ? task.calendarData : null,
@@ -251,6 +252,7 @@ function mapProjectData(projectId, project, customData) {
         usersData: project.usersData ? project.usersData : {},
         workstreamIds: project.workstreamIds ? project.workstreamIds : [],
         globalAssistantIds: project.globalAssistantIds ? project.globalAssistantIds : [],
+        taskGoalRoutingMode: project.taskGoalRoutingMode ? project.taskGoalRoutingMode : 'automatic',
         lastLoggedUserDate: project.lastLoggedUserDate
             ? project.lastLoggedUserDate
             : moment().subtract(1, 'year').valueOf(),
