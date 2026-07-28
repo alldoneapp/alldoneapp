@@ -10,6 +10,7 @@ const {
 const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
 const { buildVmChatPath } = require('./vmHostTaskHelper')
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
+const { sanitizeTaskDescriptionText, buildTaskDescriptionMediaContextLines } = require('./taskDescriptionContext')
 
 // Hybrid Gold pricing for a VM run:
 //   total = VM_JOB_BASE_GOLD + ceil(runtimeMinutes) * VM_GOLD_PER_MINUTE
@@ -168,10 +169,15 @@ async function packageContextObjects(projectId, objectIds) {
                 if (!doc.exists) continue
                 const data = doc.data() || {}
                 const title = data.extendedName || data.name || data.title || objectId
-                const body = typeof data.description === 'string' ? data.description : ''
-                sections.push(
-                    `### ${candidate.type}: ${title}\n${body ? body : '(no text description available)'}`.trim()
-                )
+                // Descriptions embed media as opaque sentinel tokens. Render the readable text and
+                // list the media as downloadable URLs the agent can actually fetch in the sandbox.
+                const rawBody = typeof data.description === 'string' ? data.description : ''
+                const body = sanitizeTaskDescriptionText(rawBody)
+                const mediaLines = buildTaskDescriptionMediaContextLines(rawBody)
+                const section = `### ${candidate.type}: ${title}\n${body ? body : '(no text description available)'}${
+                    mediaLines ? `\n${mediaLines}` : ''
+                }`
+                sections.push(section.trim())
                 break
             } catch (error) {
                 console.warn('🖥️ VM JOB: Failed reading context object', {
@@ -907,5 +913,5 @@ module.exports = {
     DEFAULT_CODEX_MODEL,
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
-    __private__: {},
+    __private__: { packageContextObjects },
 }
