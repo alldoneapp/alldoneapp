@@ -536,7 +536,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(childProcess.execFileSync(binaryPath, ['--version'], { encoding: 'utf8' })).toBe('2.0.0 (Claude Code)\n')
     })
 
-    test('reports the separate installation stage with sanitized npm diagnostics', async () => {
+    test('reports a fresh VM check before a separate installation stage', async () => {
         const onActivity = jest.fn()
         const sandbox = {
             commands: {
@@ -561,6 +561,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         ).rejects.toThrow(
             'Claude installation failed. stdout: npm notice package metadata stderr: npm ERR! Authorization: Bearer [REDACTED] registry unavailable'
         )
+        expect(onActivity).toHaveBeenNthCalledWith(1, 'Working\n\n🆕 Starting a fresh VM and checking Claude…')
         expect(onActivity).toHaveBeenCalledWith('Working\n\n📦 Installing Claude…')
         expect(sandbox.commands.run).toHaveBeenCalledWith(
             expect.any(String),
@@ -571,6 +572,56 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
                 },
             })
         )
+    })
+
+    test('reports an update, rather than an install, when a resumed VM has an older CLI', async () => {
+        const onActivity = jest.fn()
+        const sandbox = {
+            commands: {
+                run: jest.fn(async (_command, options) => {
+                    // Exercise markers split across command-stream chunks too.
+                    options.onStdout('AGENT_CLI_INSTALLING from=1.9')
+                    options.onStdout('.0 to=2.1.0\nAGENT_CLI_READY installed 2.1.0\n')
+                }),
+            },
+        }
+
+        await __private__.ensureAgentCliAvailable(
+            sandbox,
+            { installGuard: 'check-agent-cli' },
+            'Codex',
+            onActivity,
+            'Working',
+            { isResume: true }
+        )
+
+        expect(onActivity.mock.calls).toEqual([
+            ['Working\n\n🔄 Resuming VM and checking Codex for updates…'],
+            ['Working\n\n⬆️ Updating Codex from 1.9.0 to 2.1.0…'],
+        ])
+    })
+
+    test('only reports the update check when a resumed VM already has the latest CLI', async () => {
+        const onActivity = jest.fn()
+        const sandbox = {
+            commands: {
+                run: jest.fn(async (_command, options) => {
+                    options.onStdout('AGENT_CLI_READY existing 2.1.0\n')
+                }),
+            },
+        }
+
+        await __private__.ensureAgentCliAvailable(
+            sandbox,
+            { installGuard: 'check-agent-cli' },
+            'Claude',
+            onActivity,
+            'Working',
+            { isResume: true }
+        )
+
+        expect(onActivity).toHaveBeenCalledTimes(1)
+        expect(onActivity).toHaveBeenCalledWith('Working\n\n🔄 Resuming VM and checking Claude for updates…')
     })
 
     test('reports Node ENOSPC exit status 228 as exhausted VM temporary storage', () => {
