@@ -2393,10 +2393,17 @@ export const setNotEnabledAssistantWhenLoadComments = notEnabledAssistantWhenLoa
     return action
 }
 
+// The payload must be a chat-scoped trigger built with `buildBotSpinnerTrigger`
+// ({ projectId, chatId, createdAt }) or a falsy value to clear it. Bare booleans are
+// normalized away on purpose: an unscoped `true` leaks into the next Chat DV that mounts
+// and shows a permanent "assistant is working" placeholder there (AT-2084).
 export const setTriggerBotSpinner = triggerBotSpinner => {
     const action = {
         type: 'Set trigger bot spinner',
-        triggerBotSpinner,
+        triggerBotSpinner:
+            triggerBotSpinner && typeof triggerBotSpinner === 'object' && triggerBotSpinner.chatId
+                ? triggerBotSpinner
+                : null,
     }
     return action
 }
