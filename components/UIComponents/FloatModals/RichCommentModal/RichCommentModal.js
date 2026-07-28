@@ -53,7 +53,7 @@ import {
 } from '../../../ChatsView/ChatDV/linkedEmailActions'
 import Icon from '../../../Icon'
 import SharedHelper from '../../../../utils/SharedHelper'
-import ChatImageDropZone from '../../../Feeds/CommentsTextInput/ChatImageDropZone'
+import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentIds'
 import CommentPopupObjectHeader from './CommentPopupObjectHeader'
 import shouldAutoFocusChatInput from '../../../ChatsView/Utils/shouldAutoFocusChatInput'
@@ -486,7 +486,7 @@ export default function RichCommentModal({
                             </View>
                         )}
 
-                        <ChatImageDropZone
+                        <AttachmentDropZone
                             testID="modal-chat-image-drop-zone"
                             disabled={loggedUser.isAnonymous}
                             editor={editor}
@@ -531,7 +531,7 @@ export default function RichCommentModal({
                                 updateObjectState={updateObjectState}
                                 autoFocus={shouldAutoFocusInput}
                             />
-                        </ChatImageDropZone>
+                        </AttachmentDropZone>
                         {waitingForBotAnswer && !hasNewAssistantMessage && (
                             <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
                         )}
