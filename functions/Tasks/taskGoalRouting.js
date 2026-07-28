@@ -3,9 +3,7 @@
 const crypto = require('crypto')
 const admin = require('firebase-admin')
 
-const { ALL_USERS, DYNAMIC_PERCENT, getTaskNameWithoutMeta } = require('../Utils/HelperFunctionsCloud')
-const { isGoalCompleted } = require('../Goals/linearGoalMilestones')
-const { goalIsVisibleInOpenMilestone } = require('../shared/goalMilestonesHelper')
+const { ALL_USERS, getTaskNameWithoutMeta } = require('../Utils/HelperFunctionsCloud')
 
 const TASK_GOAL_ROUTING_OFF = 'off'
 const TASK_GOAL_ROUTING_SUGGESTIONS = 'suggestions'
@@ -25,96 +23,6 @@ const normalizeTaskGoalRoutingMode = mode => (VALID_MODES.has(mode) ? mode : TAS
 const isVisibleToUser = (goal, userId) => {
     const isPublicFor = Array.isArray(goal?.isPublicFor) ? goal.isPublicFor : [0]
     return isPublicFor.includes(0) || isPublicFor.includes(userId)
-}
-
-const isGoalEligibleForTaskRouting = (goal, currentMilestone) => {
-    if (!isGoalCompleted(goal)) return true
-
-    return (
-        goal.progress === DYNAMIC_PERCENT && !!currentMilestone && goalIsVisibleInOpenMilestone(goal, currentMilestone)
-    )
-}
-
-const normalizeRoutingText = value =>
-    String(value || '')
-        .normalize('NFKD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}]+/gu, ' ')
-        .trim()
-
-const tokenizeRoutingText = value =>
-    normalizeRoutingText(value)
-        .split(' ')
-        .filter(token => token.length >= 2 && !/^\d+$/.test(token))
-
-const countTokens = tokens => {
-    const counts = new Map()
-    tokens.forEach(token => counts.set(token, (counts.get(token) || 0) + 1))
-    return counts
-}
-
-const buildGoalRelevanceScore = (goal, taskTokenCounts, documentFrequency, goalCount, normalizedTaskTitle) => {
-    const goalTitle = normalizeRoutingText(goal.extendedName || goal.name)
-    const titleTokenCounts = countTokens(tokenizeRoutingText(goalTitle))
-    const descriptionTokenCounts = countTokens(tokenizeRoutingText(goal.description))
-    let score = 0
-
-    taskTokenCounts.forEach((taskFrequency, token) => {
-        const goalFrequency = (titleTokenCounts.get(token) || 0) * 3 + (descriptionTokenCounts.get(token) || 0)
-        if (!goalFrequency) return
-
-        const inverseDocumentFrequency = Math.log((goalCount + 1) / ((documentFrequency.get(token) || 0) + 1)) + 1
-        score += taskFrequency * goalFrequency * inverseDocumentFrequency
-    })
-
-    if (normalizedTaskTitle.length >= 4 && goalTitle.includes(normalizedTaskTitle)) score += 10
-    if (goalTitle.length >= 4 && normalizedTaskTitle.includes(goalTitle)) score += 8
-    return score
-}
-
-const selectCandidateGoals = (task, goals, currentMilestone, limit = MAX_CANDIDATE_GOALS) => {
-    if (goals.length <= limit) return goals
-
-    const taskTitle = task.extendedName || task.name || ''
-    const normalizedTaskTitle = normalizeRoutingText(taskTitle)
-    const taskTokenCounts = countTokens([
-        ...tokenizeRoutingText(taskTitle),
-        ...tokenizeRoutingText(taskTitle),
-        ...tokenizeRoutingText(task.description),
-    ])
-    const documentFrequency = new Map()
-
-    goals.forEach(goal => {
-        const tokens = new Set([
-            ...tokenizeRoutingText(goal.extendedName || goal.name),
-            ...tokenizeRoutingText(goal.description),
-        ])
-        tokens.forEach(token => documentFrequency.set(token, (documentFrequency.get(token) || 0) + 1))
-    })
-
-    return goals
-        .map(goal => ({
-            goal,
-            relevance: buildGoalRelevanceScore(
-                goal,
-                taskTokenCounts,
-                documentFrequency,
-                goals.length,
-                normalizedTaskTitle
-            ),
-            isCurrent: goalIsVisibleInOpenMilestone(goal, currentMilestone),
-            recency: Number(goal.lastEditionDate || goal.created) || 0,
-        }))
-        .sort(
-            (a, b) =>
-                b.relevance - a.relevance ||
-                Number(b.isCurrent) - Number(a.isCurrent) ||
-                b.recency - a.recency ||
-                String(a.goal.id).localeCompare(String(b.goal.id))
-        )
-        .slice(0, limit)
-        .map(candidate => candidate.goal)
 }
 
 const normalizeConfidence = value => {
@@ -211,31 +119,15 @@ const getRoutingUserId = (task, project) => {
     return [task.creatorId, task.lastEditorId].find(userId => userId && projectUserIds.includes(userId)) || null
 }
 
-const buildCurrentMilestoneQuery = (db, projectId, ownerId) =>
-    db
-        .collection(`goalsMilestones/${projectId}/milestonesItems`)
-        .where('done', '==', false)
-        .where('ownerId', '==', ownerId)
-        .orderBy('date', 'asc')
-        .limit(1)
-
-const getFirstMilestone = snapshot => {
-    const doc = snapshot?.docs?.[0]
-    return doc ? { id: doc.id, ...doc.data() } : null
-}
-
-async function loadCandidateGoals(db, projectId, project, userId, task) {
+async function loadCandidateGoals(db, projectId, project, userId) {
     const ownerId = project.parentTemplateId ? userId : ALL_USERS
-    const [goalsSnapshot, milestoneSnapshot] = await Promise.all([
-        db.collection(`goals/${projectId}/items`).where('ownerId', '==', ownerId).get(),
-        buildCurrentMilestoneQuery(db, projectId, ownerId).get(),
-    ])
-    const currentMilestone = getFirstMilestone(milestoneSnapshot)
-    const eligibleGoals = goalsSnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(goal => isGoalEligibleForTaskRouting(goal, currentMilestone) && isVisibleToUser(goal, userId))
+    const snapshot = await db.collection(`goals/${projectId}/items`).where('ownerId', '==', ownerId).get()
 
-    return selectCandidateGoals(task, eligibleGoals, currentMilestone)
+    return snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(goal => goal.progress !== 100 && isVisibleToUser(goal, userId))
+        .sort((a, b) => String(a.extendedName || a.name || '').localeCompare(String(b.extendedName || b.name || '')))
+        .slice(0, MAX_CANDIDATE_GOALS)
 }
 
 const createSuggestion = ({ classification, action, claimId, projectId, now, goldSpent }) => ({
@@ -384,7 +276,7 @@ async function routeNewTaskToGoal({
         return { action: 'insufficient_gold' }
     }
 
-    const goals = await loadCandidateGoals(db, projectId, project, userId, task)
+    const goals = await loadCandidateGoals(db, projectId, project, userId)
     if (goals.length === 0) return { action: 'no_goals' }
 
     const taskRef = db.doc(`items/${projectId}/tasks/${task.id}`)
@@ -460,21 +352,10 @@ async function routeNewTaskToGoal({
 
         const applied = await db.runTransaction(async transaction => {
             const selectedGoalRef = selectedGoal ? db.doc(`goals/${projectId}/items/${selectedGoal.id}`) : null
-            const currentMilestoneQuery = buildCurrentMilestoneQuery(
-                db,
-                projectId,
-                project.parentTemplateId ? userId : ALL_USERS
-            )
-            const [
-                snapshot,
-                currentProjectSnapshot,
-                currentGoalSnapshot,
-                currentMilestoneSnapshot,
-            ] = await Promise.all([
+            const [snapshot, currentProjectSnapshot, currentGoalSnapshot] = await Promise.all([
                 transaction.get(taskRef),
                 transaction.get(projectRef),
                 selectedGoalRef ? transaction.get(selectedGoalRef) : Promise.resolve(null),
-                selectedGoalRef ? transaction.get(currentMilestoneQuery) : Promise.resolve(null),
             ])
             const currentTask = snapshot.data()
             if (!snapshot.exists || currentTask.goalSuggestion?.claimId !== claimId) return false
@@ -499,12 +380,9 @@ async function routeNewTaskToGoal({
             }
 
             const currentGoal = currentGoalSnapshot?.data()
-            const currentMilestone = getFirstMilestone(currentMilestoneSnapshot)
             if (
                 classification.goalId &&
-                (!currentGoalSnapshot?.exists ||
-                    !isGoalEligibleForTaskRouting(currentGoal, currentMilestone) ||
-                    !isVisibleToUser(currentGoal, userId))
+                (!currentGoalSnapshot?.exists || currentGoal.progress === 100 || !isVisibleToUser(currentGoal, userId))
             ) {
                 transaction.update(taskRef, {
                     goalSuggestion: {
@@ -619,7 +497,5 @@ module.exports = {
     normalizeClassificationResult,
     normalizeTaskGoalRoutingMode,
     routeNewTaskToGoal,
-    isGoalEligibleForTaskRouting,
-    selectCandidateGoals,
     writeAutomaticGoalRoutingArtifacts,
 }
