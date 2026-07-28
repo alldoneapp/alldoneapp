@@ -441,6 +441,7 @@ class TasksHelper {
             suggestedBy: null,
             parentGoalId: null,
             parentGoalIsPublicFor: null,
+            goalSuggestion: null,
             noteId: null,
             containerNotesIds: [],
             calendarData: null,

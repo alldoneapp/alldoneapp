@@ -5,6 +5,7 @@ const { TASKS_OBJECTS_TYPE, createRecord } = require('../AlgoliaGlobalSearchHelp
 const { checkIfObjectIsLocked } = require('../Utils/HelperFunctionsCloud')
 const { updateContactOpenTasksAmount } = require('../Firestore/contactsFirestore')
 const { getNextTaskId } = require('../shared/taskIdGenerator')
+const { routeNewTaskToGoal } = require('./taskGoalRouting')
 
 const proccessAlgoliaRecord = async (task, projectId) => {
     const isLocked = await checkIfObjectIsLocked(projectId, task.lockKey, task.userId)
@@ -117,6 +118,7 @@ const onCreateTask = async (task, projectId) => {
     // Generate human readable ID asynchronously (non-blocking)
     console.log(`[HumanReadableID] Starting generateHumanReadableIdAsync for task ${task.id}`)
     promises.push(generateHumanReadableIdAsync(task, projectId))
+    promises.push(routeNewTaskToGoal({ task, projectId }))
 
     await Promise.all(promises)
     console.log(`[HumanReadableID] onCreateTask completed for task ${task.id}`)

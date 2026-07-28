@@ -2415,5 +2415,14 @@
     "Most capable": "El más capaz",
     "Balanced cost and capability": "Equilibrio entre coste y capacidad",
     "Efficient for high-volume work": "Eficiente para cargas de trabajo de gran volumen",
-    "Choose which version to use for this setting.": "Elige qué versión utilizar para esta configuración."
+    "Choose which version to use for this setting.": "Elige qué versión utilizar para esta configuración.",
+    "Task goal routing": "Asignación de objetivos para tareas",
+    "Suggestions": "Sugerencias",
+    "Do not suggest goals": "No sugerir objetivos",
+    "Suggest a goal without moving the task": "Sugerir un objetivo sin mover la tarea",
+    "Automatically assign only high-confidence matches": "Asignar automáticamente solo coincidencias muy seguras",
+    "Uses Gold for each classified task": "Usa Gold por cada tarea clasificada",
+    "Suggested goal": "Objetivo sugerido",
+    "Choose another": "Elegir otro",
+    "Not relevant": "No es relevante"
 }

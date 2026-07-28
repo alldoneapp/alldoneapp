@@ -125,7 +125,7 @@ import {
     MAX_UNDO_OPERATIONS,
     queueUndoAction,
 } from '../../undo/undoActions'
-import { buildTaskStateUndoOperations } from '../../undo/taskStateUndo'
+import { buildTaskStateUndoOperation, buildTaskStateUndoOperations } from '../../undo/taskStateUndo'
 
 import { getDvMainTabLink } from '../../LinkingHelper'
 import { isPrivateNote } from '../../../components/NotesView/NotesHelper'
@@ -2208,6 +2208,14 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
     taskCopy.parentGoalId = goal.id
     taskCopy.parentGoalIsPublicFor = goal.isPublicFor
     taskCopy.lockKey = goal.lockKey || ''
+    if (taskCopy.goalSuggestion?.status === 'pending' || taskCopy.goalSuggestion?.status === 'classifying') {
+        taskCopy.goalSuggestion = {
+            ...taskCopy.goalSuggestion,
+            status: 'superseded',
+            resolvedAt: Date.now(),
+            resolvedBy: loggedUser.uid,
+        }
+    }
 
     // Preserve the sortIndex for calendar tasks based on their start time
     if (taskCopy.calendarData && taskCopy.calendarData.start) {
@@ -2263,11 +2271,21 @@ export async function setTaskProjectWithGoal(currentProject, newProject, task, g
     setTaskProjectFeedsChain(currentProject, newProject, task, null, null)
 }
 
-export async function setTaskParentGoal(projectId, taskId, task, goal, externalBatch) {
+export async function setTaskParentGoal(projectId, taskId, task, goal, externalBatch, options = {}) {
     const goalId = goal ? goal.id : null
     const parentGoalIsPublicFor = goal ? goal.isPublicFor : null
     const lockKey = goal && goal.lockKey ? goal.lockKey : ''
     const batch = externalBatch ? externalBatch : new BatchWrapper(getDb())
+    const resolvedGoalSuggestion = options.goalSuggestion
+        ? options.goalSuggestion
+        : task.goalSuggestion?.status === 'pending' || task.goalSuggestion?.status === 'classifying'
+        ? {
+              ...task.goalSuggestion,
+              status: 'superseded',
+              resolvedAt: Date.now(),
+              resolvedBy: store.getState().loggedUser.uid,
+          }
+        : task.goalSuggestion
 
     // Determine the sortIndex based on whether it's a calendar task
     let sortIndex
@@ -2278,38 +2296,66 @@ export async function setTaskParentGoal(projectId, taskId, task, goal, externalB
         sortIndex = generateSortIndex()
     }
 
+    const updateData = {
+        parentGoalId: goalId,
+        parentGoalIsPublicFor,
+        lockKey,
+        sortIndex,
+        ...(resolvedGoalSuggestion ? { goalSuggestion: resolvedGoalSuggestion } : {}),
+    }
+
     if (task.parentId) {
         await deleteSubTaskFromParent(projectId, taskId, task, batch)
-        updateTaskData(
-            projectId,
-            taskId,
-            {
-                parentId: null,
-                isSubtask: false,
-                parentGoalId: goalId,
-                parentGoalIsPublicFor,
-                lockKey,
-                sortIndex,
-            },
-            batch
-        )
+        updateData.parentId = null
+        updateData.isSubtask = false
+        updateTaskData(projectId, taskId, updateData, batch)
     } else {
-        updateTaskData(
-            projectId,
-            taskId,
-            {
-                parentGoalId: goalId,
-                parentGoalIsPublicFor,
-                lockKey,
-                sortIndex,
-            },
-            batch
-        )
+        updateTaskData(projectId, taskId, updateData, batch)
     }
 
     if (!externalBatch) batch.commit()
 
     setTaskParentGoalFeedsChain(projectId, taskId, goalId, task.parentGoalId, task)
+    return updateData
+}
+
+export async function acceptTaskGoalSuggestion(projectId, task, goal) {
+    if (!task?.goalSuggestion || task.goalSuggestion.status !== 'pending' || task.goalSuggestion.goalId !== goal?.id) {
+        return
+    }
+
+    const batch = new BatchWrapper(getDb())
+    const goalSuggestion = {
+        ...task.goalSuggestion,
+        status: 'accepted',
+        resolvedAt: Date.now(),
+        resolvedBy: store.getState().loggedUser.uid,
+    }
+    const afterChanges = await setTaskParentGoal(projectId, task.id, task, goal, batch, { goalSuggestion })
+    const operation = buildTaskStateUndoOperation(projectId, task.id, task, afterChanges)
+
+    if (operation) {
+        queueUndoAction({
+            label: `Added “${task.name}” to “${goal.name || goal.extendedName}”`,
+            operations: [operation],
+            batch,
+            source: 'task_goal_suggestion',
+        })
+    }
+    await batch.commit()
+}
+
+export function dismissTaskGoalSuggestion(projectId, task) {
+    if (!task?.goalSuggestion || task.goalSuggestion.status !== 'pending') return
+
+    return updateTaskData(projectId, task.id, {
+        goalSuggestion: {
+            ...task.goalSuggestion,
+            status: 'dismissed',
+            resolvedAt: Date.now(),
+            resolvedBy: store.getState().loggedUser.uid,
+        },
+    })
 }
 
 export async function setTaskDueDate(

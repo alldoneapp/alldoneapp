@@ -346,7 +346,8 @@ async function createTaskParentGoalChangedFeed(
     turnedToTask,
     batch,
     feedUser,
-    needGenerateNotification
+    needGenerateNotification,
+    options = {}
 ) {
     const { currentDateFormated, currentMilliseconds } = generateCurrentDateObject()
     const taskFeedObject = await loadFeedObject(projectId, taskId, 'tasks', currentMilliseconds, batch)
@@ -354,7 +355,7 @@ async function createTaskParentGoalChangedFeed(
 
     const isSubtask = taskFeedObject.parentId ? true : false
 
-    const { feed, feedId } = generateFeedModel({
+    const { feed, feedId: generatedFeedId } = generateFeedModel({
         feedType: FEED_TASK_PARENT_GOAL,
         lastChangeDate: currentMilliseconds,
         entryText: '',
@@ -362,6 +363,7 @@ async function createTaskParentGoalChangedFeed(
         objectId: taskId,
         isPublicFor: taskFeedObject.isPublicFor,
     })
+    const feedId = options.feedId || generatedFeedId
 
     feed.newParentGoalId = newParentGoalId
     feed.oldParentGoalId = oldParentGoalId

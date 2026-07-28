@@ -41,6 +41,7 @@ import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantMod
 import AutoEstimation from './AutoEstimation/AutoEstimation'
 import DayRateLogging from './DayRateLogging/DayRateLogging'
 import GoalMilestones from './GoalMilestones/GoalMilestones'
+import TaskGoalRouting from './TaskGoalRouting/TaskGoalRouting'
 
 const ProjectProperties = ({ project, type }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -136,6 +137,11 @@ const ProjectProperties = ({ project, type }) => {
                                 projectId={projectId}
                                 disabled={!accessGranted || userIsNormalUserInGuide}
                                 autoEstimation={project.autoEstimation}
+                            />
+                            <TaskGoalRouting
+                                projectId={projectId}
+                                disabled={!accessGranted || userIsNormalUserInGuide}
+                                mode={project.taskGoalRoutingMode}
                             />
                             <GoalMilestones
                                 projectId={projectId}

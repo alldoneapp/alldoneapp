@@ -9,6 +9,7 @@ import { DV_TAB_GOAL_LINKED_TASKS } from '../../../utils/TabNavigationConstants'
 import { WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
 import Backend from '../../../utils/BackendBridge'
 import { checkIfInMyDay } from '../../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
+import { hasPendingGoalSuggestion } from '../../../utils/TaskGoalSuggestion'
 
 export default function useTagsAmount({
     task,
@@ -71,6 +72,7 @@ export default function useTagsAmount({
 
         if (task.vmMergeRequest?.status && task.vmMergeRequest?.url) counter++
         if (inMyDayAndNotSubtask && task.parentGoalId) counter++
+        if (!isSubtask && hasPendingGoalSuggestion(task)) counter++
         if (!!task.commentsData && !inCommentPopup) counter++
         if (subtaskList && subtaskList.length > 0) counter++
         if (isToReviewTask && currentReviewerEstimation > 0) counter++
