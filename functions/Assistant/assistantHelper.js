@@ -60,6 +60,11 @@ const {
     injectCurrentMessageImagesIntoCreateTaskArgs,
 } = require('./createTaskImageHelper')
 const {
+    sanitizeTaskDescriptionText,
+    extractTaskDescriptionImageUrls,
+    buildTaskDescriptionMediaContextLines,
+} = require('./taskDescriptionContext')
+const {
     normalizeHeartbeatIntervalMs,
     normalizeHeartbeatChancePercent,
     parseHeartbeatTimeString,
@@ -12586,7 +12591,11 @@ function buildCurrentObjectContextMessage({
     const task = objectData || {}
     const title = task.extendedName || task.name || chatData?.title || ''
     const name = task.name || title
-    const description = typeof task.description === 'string' ? task.description : ''
+    const rawDescription = typeof task.description === 'string' ? task.description : ''
+    // Descriptions carry embedded media as opaque sentinel tokens. Render the readable text here
+    // and surface the media separately, so neither the assistant nor a VM run sees raw tokens.
+    const description = sanitizeTaskDescriptionText(rawDescription)
+    const descriptionMediaLines = buildTaskDescriptionMediaContextLines(rawDescription)
     const metadata = getRelevantTaskContextMetadata(task)
     const lines = [
         'The current conversation is attached to the task below. When the user says "this task", they mean this exact task.',
@@ -12597,6 +12606,7 @@ function buildCurrentObjectContextMessage({
 
     if (name && name !== title) lines.push(`Task name: ${name}`)
     lines.push(`Task description: ${description || '(empty)'}`)
+    if (descriptionMediaLines) lines.push(descriptionMediaLines)
     const parentGoalTitle = parentGoalData?.extendedName || parentGoalData?.name || ''
     if (parentGoalTitle) lines.push(`Parent goal title: ${parentGoalTitle}`)
     if (Object.keys(metadata).length > 0) lines.push(`Relevant task metadata: ${JSON.stringify(metadata)}`)
@@ -12814,6 +12824,22 @@ async function getOptimizedContextMessages(
     })
     if (currentObjectContextMessage) {
         volatileContextMessages.push(['system', parseTextForUseLiKePrompt(currentObjectContextMessage)])
+    }
+
+    // Images embedded in the task description are part of the brief just as much as images pasted
+    // into the thread. The canonical task context above is a system message and cannot carry image
+    // blocks, so attach them as a user message the vision-capable models can actually look at.
+    if (objectType === 'tasks') {
+        const descriptionImageUrls = extractTaskDescriptionImageUrls(currentObjectContextData?.objectData?.description)
+        if (descriptionImageUrls.length > 0) {
+            volatileContextMessages.push([
+                'user',
+                buildMultimodalUserContent(
+                    'Images embedded in the description of the task this conversation is attached to:',
+                    descriptionImageUrls
+                ),
+            ])
+        }
     }
 
     const currentNoteContextMessage = formatCurrentNoteContextMessage(currentNoteContext)

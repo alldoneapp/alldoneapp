@@ -58,13 +58,7 @@ jest.mock('./vmApiKeyAuth', () => ({
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
 const { deductGold } = require('../Gold/goldHelper')
-const {
-    startVmJob,
-    launchQueuedVmJob,
-    MAX_CONCURRENT_VM_JOBS_PER_USER,
-    DEFAULT_CLAUDE_MODEL,
-    formatAgentModelLabel,
-} = require('./vmJob')
+const { startVmJob, launchQueuedVmJob, MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJob')
 const { MAX_CONCURRENT_VM_JOBS, VM_JOB_QUEUE_RATE_LIMITS } = require('./vmJobConfig')
 
 describe('startVmJob', () => {
@@ -254,21 +248,7 @@ describe('startVmJob', () => {
         })
 
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({
-                agent: 'claude',
-                agentModel: 'claude-opus-5',
-                agentReasoningEffort: 'xhigh',
-            })
-        )
-        expect(createInitialStatusMessage).toHaveBeenCalledWith(
-            'project-1',
-            'topics',
-            'chat-1',
-            'assistant-1',
-            '🖥️ Spinning up Claude (Opus 5.0 · xhigh effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
-            expect.any(Array),
-            expect.any(Array),
-            expect.any(Array)
+            expect.objectContaining({ agent: 'claude', agentModel: 'opus', agentReasoningEffort: 'xhigh' })
         )
     })
 
@@ -414,10 +394,8 @@ describe('startVmJob', () => {
     })
 
     test.each([
-        ['opus', 'claude-opus-5'],
         ['fable', 'claude-fable-5'],
         ['claude-fable-5', 'claude-fable-5'],
-        ['claude-opus-5', 'claude-opus-5'],
     ])('accepts Claude model %s and persists it as %s', async (agentModel, expectedModel) => {
         await startVmJob({
             objective: 'Research this',
@@ -434,19 +412,6 @@ describe('startVmJob', () => {
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
             expect.objectContaining({ agentModel: expectedModel })
         )
-    })
-
-    test('uses the exact Claude Opus 5 model ID as the default', () => {
-        expect(DEFAULT_CLAUDE_MODEL).toBe('claude-opus-5')
-    })
-
-    test.each([
-        ['claude-opus-5', 'Opus 5.0'],
-        ['claude-opus-4-8', 'Opus 4.8'],
-        ['claude-opus-4-1-20250805', 'Opus 4.1'],
-        ['claude-opus-4-20250514', 'Opus 4.0'],
-    ])('derives the displayed Opus version from %s', (model, expectedLabel) => {
-        expect(formatAgentModelLabel(model)).toBe(expectedLabel)
     })
 
     test('clamps legacy Codex minimal effort requests to low', async () => {
@@ -663,5 +628,57 @@ describe('startVmJob', () => {
 
         expect(result).toEqual({ success: false, reason: 'settled', status: 'cancelled' })
         expect(mockQueueEnqueue).not.toHaveBeenCalled()
+    })
+})
+
+describe('packageContextObjects', () => {
+    const { packageContextObjects } = require('./vmJob').__private__
+    const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
+    const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
+
+    beforeEach(() => {
+        Object.keys(mockDocs).forEach(key => delete mockDocs[key])
+        jest.clearAllMocks()
+    })
+
+    test('renders description media as readable text plus downloadable urls', async () => {
+        const imageUrl = 'https://storage.example/mock.png'
+        const description =
+            `${IMAGE_TRIGGER}${imageUrl}${IMAGE_TRIGGER}https://storage.example/mock-small.png${IMAGE_TRIGGER}mock.png${IMAGE_TRIGGER}0\n` +
+            'Build this screen.\n' +
+            `${ATTACHMENT_TRIGGER}https://storage.example/spec.pdf${ATTACHMENT_TRIGGER}spec.pdf${ATTACHMENT_TRIGGER}false`
+
+        mockDocs['items/project-1/tasks/task-1'] = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({ extendedName: 'Build screen', description }),
+            })),
+            set: jest.fn(async () => {}),
+            update: jest.fn(async () => {}),
+        }
+
+        const packaged = await packageContextObjects('project-1', ['task-1'])
+
+        expect(packaged).not.toContain(IMAGE_TRIGGER)
+        expect(packaged).not.toContain(ATTACHMENT_TRIGGER)
+        expect(packaged).toContain('### task: Build screen')
+        expect(packaged).toContain('mock.png\nBuild this screen.\nspec.pdf')
+        expect(packaged).toContain('Files embedded in the task description (downloadable via the URLs):')
+        expect(packaged).toContain(`- mock.png (image/png): ${imageUrl}`)
+    })
+
+    test('still reports an empty description', async () => {
+        mockDocs['items/project-1/tasks/task-2'] = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({ extendedName: 'Empty task', description: '' }),
+            })),
+            set: jest.fn(async () => {}),
+            update: jest.fn(async () => {}),
+        }
+
+        const packaged = await packageContextObjects('project-1', ['task-2'])
+
+        expect(packaged).toBe('### task: Empty task\n(no text description available)')
     })
 })

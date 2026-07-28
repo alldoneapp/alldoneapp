@@ -377,6 +377,33 @@ describe('Current task context', () => {
         expect(context).toContain('"taskMetadata":{"source":"predefined","execution":"vm"}')
     })
 
+    test('renders embedded description media as readable text plus downloadable urls', () => {
+        const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
+        const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
+        const imageUrl = 'https://storage.example/mock.png'
+        const previewUrl = 'https://storage.example/mock-small.png'
+        const description =
+            `${IMAGE_TRIGGER}${imageUrl}${IMAGE_TRIGGER}${previewUrl}${IMAGE_TRIGGER}mock.png${IMAGE_TRIGGER}0\n` +
+            'Build this screen.\n' +
+            `${ATTACHMENT_TRIGGER}https://storage.example/spec.pdf${ATTACHMENT_TRIGGER}spec.pdf${ATTACHMENT_TRIGGER}false`
+
+        const context = buildCurrentObjectContextMessage({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            projectData: { name: 'Alldone Product' },
+            objectData: { id: 'task-1', name: 'build screen', extendedName: 'Build screen', description },
+        })
+
+        // The opaque sentinel tokens must never reach the model.
+        expect(context).not.toContain(IMAGE_TRIGGER)
+        expect(context).not.toContain(ATTACHMENT_TRIGGER)
+        expect(context).toContain('Task description: mock.png\nBuild this screen.\nspec.pdf')
+        expect(context).toContain('Files embedded in the task description (downloadable via the URLs):')
+        expect(context).toContain(`- mock.png (image/png): ${imageUrl}`)
+        expect(context).toContain('- spec.pdf (application/pdf): https://storage.example/spec.pdf')
+    })
+
     test('does not change context for a task without a parent goal', () => {
         const context = buildCurrentObjectContextMessage({
             projectId: 'project-1',
@@ -4285,6 +4312,105 @@ describe('assistant thread compaction tool', () => {
         expect(vmContext).toContain('Task description: Show the assistant avatar and preserve full context.')
         expect(vmContext).toContain('Parent goal title: Improve assistant context')
         expect(vmContext).toContain('Task ID: task-1')
+    })
+
+    test('passes description images to the chat as vision blocks and to the VM as urls', async () => {
+        const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
+        const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
+        const imageUrl = 'https://storage.example/mock.png'
+        const previewUrl = 'https://storage.example/mock-small.png'
+        const description =
+            `${IMAGE_TRIGGER}${imageUrl}${IMAGE_TRIGGER}${previewUrl}${IMAGE_TRIGGER}mock.png${IMAGE_TRIGGER}0\n` +
+            'Build this screen.\n' +
+            `${ATTACHMENT_TRIGGER}https://storage.example/spec.pdf${ATTACHMENT_TRIGGER}spec.pdf${ATTACHMENT_TRIGGER}false`
+
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+
+            if (path === 'projects/project-1') {
+                return Promise.resolve({
+                    exists: true,
+                    id: 'project-1',
+                    data: () => ({ name: 'Alldone Product' }),
+                })
+            }
+
+            if (path === 'items/project-1/tasks/task-1') {
+                return Promise.resolve({
+                    exists: true,
+                    id: 'task-1',
+                    data: () => ({ name: 'build screen', extendedName: 'Build screen', description }),
+                })
+            }
+
+            return Promise.resolve({ exists: false, data: () => ({}) })
+        })
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'message-1',
+                    ref: { path: 'message-1-ref' },
+                    data: () => ({
+                        commentText: 'Please build it',
+                        fromAssistant: false,
+                        created: 300,
+                        lastChangeDate: 300,
+                    }),
+                },
+            ],
+        })
+
+        const contextMessages = await getOptimizedContextMessages(
+            'message-1',
+            'project-1',
+            'tasks',
+            'task-1',
+            'en',
+            'Project Bot',
+            'Be helpful.',
+            [],
+            null,
+            null,
+            'assistant-1'
+        )
+
+        // The chat assistant can literally see the image embedded in the description.
+        const imageParts = contextMessages
+            .filter(message => Array.isArray(message[1]))
+            .flatMap(message => message[1])
+            .filter(part => part?.type === 'image_url')
+        expect(imageParts).toEqual([expect.objectContaining({ image_url: { url: imageUrl } })])
+
+        const flattened = contextMessages
+            .map(message => (Array.isArray(message[1]) ? JSON.stringify(message[1]) : message[1]))
+            .join('\n')
+        expect(flattened).toContain('Task description: mock.png')
+        expect(flattened).toContain('Build this screen.')
+        expect(flattened).toContain('Files embedded in the task description (downloadable via the URLs):')
+
+        // The VM prompt has no vision channel, so it must at least receive usable URLs.
+        const vmContext = await buildVmThreadContext({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            options: {
+                currentObject: true,
+                userDescription: false,
+                projectDescription: false,
+                userMemory: false,
+                assistantPersona: false,
+                conversationHistory: false,
+                chatAttachments: false,
+                dateTime: false,
+                language: false,
+            },
+        })
+
+        expect(vmContext).not.toContain(IMAGE_TRIGGER)
+        expect(vmContext).not.toContain(ATTACHMENT_TRIGGER)
+        expect(vmContext).toContain('Task description: mock.png\nBuild this screen.\nspec.pdf')
+        expect(vmContext).toContain(`- mock.png (image/png): ${imageUrl}`)
+        expect(vmContext).toContain('- spec.pdf (application/pdf): https://storage.example/spec.pdf')
     })
 
     test('rebuilds continuation conversation from compacted state after the tool runs', () => {

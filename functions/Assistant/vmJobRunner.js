@@ -1480,12 +1480,7 @@ function appendCodexActivity(evt, state) {
 // real values even when the assistant omitted agentModel / agentReasoningEffort on the tool call.
 function resolveAgentRunDetails(vmJob) {
     const agent = (vmJob && vmJob.agent) || DEFAULT_AGENT
-    const selectedModel =
-        (vmJob && vmJob.agentModel) || (agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
-    // Jobs queued before Opus 5 was pinned can still contain Claude Code's moving `opus`
-    // alias. Pin them at execution time as well, so the model sent to Claude matches the
-    // exact version rendered in the live status header.
-    const model = agent === 'claude' && selectedModel === 'opus' ? DEFAULT_CLAUDE_MODEL : selectedModel
+    const model = (vmJob && vmJob.agentModel) || (agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
     const effort =
         (vmJob && vmJob.agentReasoningEffort) ||
         (agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL)
