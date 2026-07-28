@@ -1783,23 +1783,44 @@ function buildVmSubscriptionAuthFailureText(agentLabel) {
     return `❌ The VM task could not continue because the ${agentLabel} subscription login needs to be refreshed. Reconnect it in Settings → Integrations, then try again.`
 }
 
-async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header) {
+function renderAgentCliCheckStatus(agentLabel, isResume) {
+    return isResume
+        ? `🔄 Resuming VM and checking ${agentLabel} for updates…`
+        : `🆕 Starting a fresh VM and checking ${agentLabel}…`
+}
+
+function parseAgentCliInstallingMarker(output) {
+    const match = String(output || '').match(/AGENT_CLI_INSTALLING from=(\S+) to=(\S+)/)
+    return match ? { fromVersion: match[1], toVersion: match[2] } : null
+}
+
+function renderAgentCliChangeStatus(agentLabel, marker) {
+    if (!marker || marker.fromVersion === 'missing-or-invalid') return `📦 Installing ${agentLabel}…`
+    return `⬆️ Updating ${agentLabel} from ${marker.fromVersion} to ${marker.toVersion}…`
+}
+
+async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, header, { isResume = false } = {}) {
     const command = typeof config.installGuard === 'function' ? config.installGuard() : config.installGuard
     if (!command) return
 
     let stdout = ''
     let stderr = ''
-    let installationAnnounced = false
+    let cliChange = null
+    if (typeof onActivity === 'function') {
+        onActivity(`${header}\n\n${renderAgentCliCheckStatus(agentLabel, isResume)}`)
+    }
     const appendDiagnostic = (current, data) => `${current}${data}`.slice(-MAX_BOOTSTRAP_DIAGNOSTIC_CHARS)
     const handleStdout = data => {
-        if (!installationAnnounced && String(data).includes('AGENT_CLI_INSTALLING')) {
-            installationAnnounced = true
-            if (typeof onActivity === 'function') onActivity(`${header}\n\n📦 Installing ${agentLabel}…`)
-        }
         stdout = appendDiagnostic(stdout, data)
+        if (!cliChange) {
+            cliChange = parseAgentCliInstallingMarker(stdout)
+            if (cliChange && typeof onActivity === 'function') {
+                onActivity(`${header}\n\n${renderAgentCliChangeStatus(agentLabel, cliChange)}`)
+            }
+        }
     }
 
-    console.log('🖥️ VM JOB: updating agent CLI', { agent: agentLabel, version: 'latest' })
+    console.log('🖥️ VM JOB: checking agent CLI for updates', { agent: agentLabel, version: 'latest', isResume })
     try {
         await sandbox.commands.run(`bash -lc '${command.replace(/'/g, `'\\''`)}'`, {
             envs: buildSandboxCommandEnv(),
@@ -1810,7 +1831,9 @@ async function ensureAgentCliAvailable(sandbox, config, agentLabel, onActivity, 
             },
         })
     } catch (error) {
-        const stage = installationAnnounced ? `${agentLabel} installation` : `${agentLabel} bootstrap`
+        const stage = cliChange
+            ? `${agentLabel} ${cliChange.fromVersion === 'missing-or-invalid' ? 'installation' : 'update'}`
+            : `${agentLabel} update check`
         const stageError = buildStageError(stage, error, stdout, stderr)
         console.error('🖥️ VM JOB: agent CLI bootstrap failed', {
             agent: agentLabel,
@@ -2957,7 +2980,8 @@ async function runAgentInSandbox(
             config,
             agentLabel,
             onActivity,
-            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
+            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth),
+            { isResume }
         )
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
 
@@ -4147,6 +4171,9 @@ module.exports = {
         buildVmSubscriptionAuthWaitingText,
         buildVmSubscriptionAuthFailureText,
         ensureAgentCliAvailable,
+        renderAgentCliCheckStatus,
+        parseAgentCliInstallingMarker,
+        renderAgentCliChangeStatus,
         appendClaudeActivity,
         appendCodexActivity,
         renderActivityLog,
