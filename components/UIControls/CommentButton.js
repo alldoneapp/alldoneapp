@@ -17,6 +17,7 @@ import { translate } from '../../i18n/TranslationService'
 import { STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { createFloatPopupLock } from '../../hooks/useFloatPopupLock'
+import { selectAssistantEnabledFor } from '../ChatsView/Utils/assistantEnabledScope'
 
 class CommentButton extends Component {
     constructor(props) {
@@ -87,8 +88,19 @@ class CommentButton extends Component {
     }
 
     changeValue = (comment, mentions, isPrivate, hasKarma, explicitAssistantEnabled) => {
-        const { isQuillTagEditorOpen, openModals, assistantEnabled } = store.getState()
+        const storeState = store.getState()
+        const { isQuillTagEditorOpen, openModals } = storeState
         const { projectId, task } = this.props
+
+        // AT-2084: read the assistant flag through THIS task's identity instead of the raw global
+        // `state.assistantEnabled`. CommentButton lives in the inline task editor, outside any Chat
+        // DV, so nothing here re-armed the flag; a `true` left over from a chat created elsewhere
+        // (`createBotQuickTopic` / `generateTaskFromPreConfig` with `skipNavigation: true`) made the
+        // comment get posted immediately instead of being deferred until the task edit is saved.
+        // An UNSCOPED flag is still honored — that is what RichCommentModal itself dispatches for
+        // this very object, and what every in-chat writer produces — so the normal path is unchanged.
+        const assistantEnabled = selectAssistantEnabledFor(storeState, projectId, task ? task.id : null)
+
         if (
             !isQuillTagEditorOpen &&
             !openModals[RECORD_VIDEO_MODAL_ID] &&
