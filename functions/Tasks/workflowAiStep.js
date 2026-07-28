@@ -239,6 +239,24 @@ const postWorkflowStepPrompt = async (projectId, taskId, assigneeUserId, prompt)
 }
 
 /**
+ * Makes the workflow reviewer the task's active thread assistant before its prompt is posted.
+ *
+ * The client can source assistant state from either the task or an existing chat object, so both
+ * records must change together. This also lets a user comment while the workflow assistant or its
+ * VM work is still running and have that comment enter the normal assistant/VM queue.
+ */
+const activateWorkflowTaskAssistant = async (projectId, taskId, assistantId) => {
+    const db = admin.firestore()
+    const assistantState = { assistantId, isAssistantEnabled: true }
+    const batch = db.batch()
+
+    batch.set(db.doc(`items/${projectId}/tasks/${taskId}`), assistantState, { merge: true })
+    batch.set(db.doc(`chatObjects/${projectId}/chats/${taskId}`), assistantState, { merge: true })
+
+    await batch.commit()
+}
+
+/**
  * Resolves the prompt for an AI step. The pre-config task is read live so later edits to it take
  * effect; the snapshot stored on the step is the fallback for a deleted task.
  */
@@ -377,6 +395,7 @@ const runWorkflowAiStep = async (runId, run) => {
 
                     const { ensureChatExists } = require('../Assistant/assistantStatusHelper')
                     await ensureChatExists(projectId, 'tasks', taskId, assistantId, followerIds, isPublicFor)
+                    await activateWorkflowTaskAssistant(projectId, taskId, assistantId)
 
                     const triggerMessageId = await postWorkflowStepPrompt(projectId, taskId, assigneeUserId, prompt)
 
