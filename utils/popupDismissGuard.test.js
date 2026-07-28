@@ -1,6 +1,6 @@
-import { installRichCommentOutsideDismissGuard, protectModalDismissFromClickThrough } from './popupDismissGuard'
+import { installPopupOutsideDismissGuard, protectModalDismissFromClickThrough } from './popupDismissGuard'
 
-describe('rich comment outside-dismiss guard', () => {
+describe('popup outside-dismiss guard', () => {
     let popup
     let insideButton
     let underlyingButton
@@ -34,7 +34,7 @@ describe('rich comment outside-dismiss guard', () => {
         const underlyingAction = jest.fn()
         underlyingButton.addEventListener(releaseType, underlyingAction)
         underlyingButton.addEventListener('click', underlyingAction)
-        cleanup = installRichCommentOutsideDismissGuard(popup, dismiss)
+        cleanup = installPopupOutsideDismissGuard(popup, dismiss)
 
         dispatch(underlyingButton, startType)
         dispatch(underlyingButton, releaseType)
@@ -53,7 +53,7 @@ describe('rich comment outside-dismiss guard', () => {
         const dismiss = jest.fn()
         const insideAction = jest.fn()
         insideButton.addEventListener('click', insideAction)
-        cleanup = installRichCommentOutsideDismissGuard(popup, dismiss)
+        cleanup = installPopupOutsideDismissGuard(popup, dismiss)
 
         dispatch(insideButton, 'mousedown')
         dispatch(insideButton, 'mouseup')
@@ -77,7 +77,7 @@ describe('rich comment outside-dismiss guard', () => {
         const dismiss = jest.fn()
         const nestedAction = jest.fn()
         nestedButton.addEventListener('click', nestedAction)
-        cleanup = installRichCommentOutsideDismissGuard(popup, dismiss)
+        cleanup = installPopupOutsideDismissGuard(popup, dismiss)
 
         dispatch(nestedButton, 'mousedown')
         dispatch(nestedButton, 'mouseup')
