@@ -43,10 +43,7 @@ jest.mock('./vmJob', () => ({
     getAgentLabel: jest.fn(agent => (agent === 'codex' ? 'Codex' : 'Claude')),
     formatAgentRunSuffix: (model, effort) => {
         const parts = []
-        if (model) {
-            const opusVersion = /^claude-opus-(\d+)(?:-(\d+))?/.exec(model)
-            parts.push(opusVersion ? `Opus ${opusVersion[1]}.${opusVersion[2] || '0'}` : model)
-        }
+        if (model) parts.push(model)
         if (effort) parts.push(`${effort} effort`)
         return parts.length ? ` (${parts.join(' · ')})` : ''
     },
@@ -56,7 +53,7 @@ jest.mock('./vmJob', () => ({
         if (mode === 'byok') return `🔐 Using your personal ${agentLabel} API key.`
         return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
     },
-    DEFAULT_CLAUDE_MODEL: 'claude-opus-5',
+    DEFAULT_CLAUDE_MODEL: 'opus',
     DEFAULT_CODEX_MODEL: 'gpt-5.6-sol',
     DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
     DEFAULT_CODEX_REASONING_EFFORT: 'medium',
@@ -187,8 +184,8 @@ describe('VM runner prompt', () => {
     })
 
     test('header includes the model and effort the agent is running with', () => {
-        expect(__private__.renderVmWorkingHeader('Claude', { model: 'claude-opus-5', effort: 'high' })).toBe(
-            '🖥️ Working with Claude (Opus 5.0 · high effort) in a VM…'
+        expect(__private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' })).toBe(
+            '🖥️ Working with Claude (opus · high effort) in a VM…'
         )
         expect(
             __private__.renderActivityLog(['💻 npm run lint'], 'Codex', { model: 'gpt-5.5', effort: 'medium' })
@@ -202,16 +199,13 @@ describe('VM runner prompt', () => {
     })
 
     test('header identifies personal API-key routing without exposing a key', () => {
-        const header = __private__.renderVmWorkingHeader('Claude', { model: 'claude-opus-5', effort: 'high' }, 'byok')
+        const header = __private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' }, 'byok')
         expect(header).toContain('Using your personal Claude API key')
         expect(header).not.toContain('sk-')
     })
 
     test('resolveAgentRunDetails falls back to per-agent defaults when the job omits them', () => {
-        expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({
-            model: 'claude-opus-5',
-            effort: 'high',
-        })
+        expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({ model: 'opus', effort: 'high' })
         expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({
             model: 'gpt-5.6-sol',
             effort: 'medium',
@@ -222,16 +216,6 @@ describe('VM runner prompt', () => {
         expect(
             __private__.resolveAgentRunDetails({ agent: 'codex', agentModel: 'gpt-5.4', agentReasoningEffort: 'low' })
         ).toEqual({ model: 'gpt-5.4', effort: 'low' })
-    })
-
-    test('resolveAgentRunDetails pins the legacy Opus alias before execution', () => {
-        expect(
-            __private__.resolveAgentRunDetails({
-                agent: 'claude',
-                agentModel: 'opus',
-                agentReasoningEffort: 'high',
-            })
-        ).toEqual({ model: 'claude-opus-5', effort: 'high' })
     })
 })
 
@@ -287,13 +271,11 @@ describe('VM interactive agent bridge', () => {
             pendingWebhook: {},
             workdir: '/repo',
             prompt: 'Plan this',
-            runDetails: { model: 'claude-opus-5', effort: 'high' },
+            runDetails: { model: 'opus', effort: 'high' },
             agentCredentials: { mode: 'subscription' },
             additionalWritableRoots: ['/home/user/git-metadata'],
         })
         expect(planning).toMatchObject({
-            model: 'claude-opus-5',
-            effort: 'high',
             phase: 'planning',
             permissionMode: 'plan',
             additionalDirectories: ['/home/user/git-metadata'],
@@ -309,7 +291,7 @@ describe('VM interactive agent bridge', () => {
             },
             workdir: '/repo',
             prompt: 'Plan this',
-            runDetails: { model: 'claude-opus-5', effort: 'high' },
+            runDetails: { model: 'opus', effort: 'high' },
             agentCredentials: { mode: 'subscription' },
             additionalWritableRoots: ['/home/user/git-metadata'],
         })
@@ -365,7 +347,7 @@ describe('VM interactive agent bridge', () => {
             pendingWebhook,
             workdir: '/home/user/repo',
             prompt: 'Implement this',
-            runDetails: { model: agent === 'claude' ? 'claude-opus-5' : 'gpt-5.6-sol', effort: 'medium' },
+            runDetails: { model: agent === 'claude' ? 'opus' : 'gpt-5.6-sol', effort: 'medium' },
             agentCredentials: { mode: 'subscription' },
             additionalWritableRoots: [' /home/user/git-metadata ', '/home/user/git-metadata', '', null],
         })

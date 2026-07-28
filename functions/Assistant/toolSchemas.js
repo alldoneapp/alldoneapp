@@ -2212,10 +2212,9 @@ const toolSchemas = {
                     agentModel: {
                         type: 'string',
                         description:
-                            'Optional. The specific model to use inside the VM agent. Defaults to an exact model per agent ' +
-                            '(Claude Code: "claude-opus-5"; Codex: latest GPT model). ' +
-                            'Use Claude model ids or aliases (e.g. "opus", "sonnet", "haiku", "fable", "claude-opus-5") only when agent="claude"; ' +
-                            'the "opus" alias is pinned to "claude-opus-5" so the selected version remains visible. ' +
+                            'Optional. The specific model to use inside the VM agent. Defaults to the best available model per agent ' +
+                            '(Claude Code: Opus alias; Codex: latest GPT model). ' +
+                            'Use Claude model ids or aliases (e.g. "opus", "sonnet", "haiku", "claude-opus-4-8") only when agent="claude". ' +
                             'Use OpenAI model ids (e.g. "gpt-5.6-sol", "gpt-5.5", "gpt-5.4") only when agent="codex".',
                     },
                     agentReasoningEffort: {
