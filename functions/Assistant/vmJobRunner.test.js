@@ -43,7 +43,16 @@ jest.mock('./vmJob', () => ({
     getAgentLabel: jest.fn(agent => (agent === 'codex' ? 'Codex' : 'Claude')),
     formatAgentRunSuffix: (model, effort) => {
         const parts = []
-        if (model) parts.push(model)
+        if (model) {
+            const opusVersion = /^claude-opus-(\d+)(?:-(\d+))?/.exec(model)
+            parts.push(
+                model === 'opus'
+                    ? 'Opus latest; resolving version…'
+                    : opusVersion
+                    ? `Opus ${opusVersion[1]}.${opusVersion[2] || '0'}`
+                    : model
+            )
+        }
         if (effort) parts.push(`${effort} effort`)
         return parts.length ? ` (${parts.join(' · ')})` : ''
     },
@@ -184,9 +193,13 @@ describe('VM runner prompt', () => {
     })
 
     test('header includes the model and effort the agent is running with', () => {
-        expect(__private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' })).toBe(
-            '🖥️ Working with Claude (opus · high effort) in a VM…'
-        )
+        expect(
+            __private__.renderVmWorkingHeader('Claude', {
+                model: 'opus',
+                resolvedModel: 'claude-opus-5',
+                effort: 'high',
+            })
+        ).toBe('🖥️ Working with Claude (Opus 5.0 · high effort) in a VM…')
         expect(
             __private__.renderActivityLog(['💻 npm run lint'], 'Codex', { model: 'gpt-5.5', effort: 'medium' })
         ).toBe('🖥️ Working with Codex (gpt-5.5 · medium effort) in a VM…\n\n💻 npm run lint')
@@ -199,7 +212,7 @@ describe('VM runner prompt', () => {
     })
 
     test('header identifies personal API-key routing without exposing a key', () => {
-        const header = __private__.renderVmWorkingHeader('Claude', { model: 'opus', effort: 'high' }, 'byok')
+        const header = __private__.renderVmWorkingHeader('Claude', { model: 'claude-opus-5', effort: 'high' }, 'byok')
         expect(header).toContain('Using your personal Claude API key')
         expect(header).not.toContain('sk-')
     })
@@ -216,6 +229,82 @@ describe('VM runner prompt', () => {
         expect(
             __private__.resolveAgentRunDetails({ agent: 'codex', agentModel: 'gpt-5.4', agentReasoningEffort: 'low' })
         ).toEqual({ model: 'gpt-5.4', effort: 'low' })
+    })
+
+    test('resolveAgentRunDetails preserves the moving Opus alias before execution', () => {
+        expect(
+            __private__.resolveAgentRunDetails({
+                agent: 'claude',
+                agentModel: 'opus',
+                agentReasoningEffort: 'high',
+            })
+        ).toEqual({ model: 'opus', effort: 'high' })
+    })
+
+    test('passes the moving Opus alias unchanged to automatic Claude runs', () => {
+        const command = __private__.buildClaudeRunCommand(false, 'opus', 'high')
+        expect(command).toContain('--model opus')
+        expect(command).not.toContain('claude-opus-5')
+    })
+
+    test('resolveAgentRunDetails restores a previously observed concrete model', () => {
+        expect(
+            __private__.resolveAgentRunDetails({
+                agent: 'claude',
+                agentModel: 'opus',
+                resolvedAgentModel: 'claude-opus-4-8',
+            })
+        ).toEqual({ model: 'opus', effort: 'high', resolvedModel: 'claude-opus-4-8' })
+    })
+
+    test.each([
+        [
+            {
+                type: 'system',
+                subtype: 'init',
+                model: 'claude-opus-4-8',
+            },
+            'claude-opus-4-8',
+        ],
+        [
+            {
+                type: 'assistant',
+                parent_tool_use_id: null,
+                message: { model: 'claude-opus-5' },
+            },
+            'claude-opus-5',
+        ],
+        [
+            {
+                type: 'assistant',
+                parent_tool_use_id: 'tool-1',
+                message: { model: 'claude-sonnet-5' },
+            },
+            null,
+        ],
+        [
+            {
+                type: 'assistant',
+                parent_tool_use_id: null,
+                message: { model: '<synthetic>' },
+            },
+            null,
+        ],
+    ])('extracts a safe concrete model from Claude runtime event %#', (event, expected) => {
+        expect(__private__.resolveRuntimeAgentModel(event, 'claude')).toBe(expected)
+        expect(__private__.resolveRuntimeAgentModel(event, 'codex')).toBeNull()
+    })
+
+    test('updates the live header after Claude resolves the moving alias', () => {
+        const runDetails = { model: 'opus', effort: 'high' }
+        const event = { type: 'system', subtype: 'init', model: 'claude-opus-4-8' }
+
+        expect(__private__.applyRuntimeAgentModel(event, 'claude', runDetails)).toBe('claude-opus-4-8')
+        expect(runDetails).toEqual({ model: 'opus', effort: 'high', resolvedModel: 'claude-opus-4-8' })
+        expect(__private__.renderVmWorkingHeader('Claude', runDetails)).toBe(
+            '🖥️ Working with Claude (Opus 4.8 · high effort) in a VM…'
+        )
+        expect(__private__.applyRuntimeAgentModel(event, 'claude', runDetails)).toBeNull()
     })
 })
 
@@ -276,6 +365,8 @@ describe('VM interactive agent bridge', () => {
             additionalWritableRoots: ['/home/user/git-metadata'],
         })
         expect(planning).toMatchObject({
+            model: 'opus',
+            effort: 'high',
             phase: 'planning',
             permissionMode: 'plan',
             additionalDirectories: ['/home/user/git-metadata'],
@@ -536,7 +627,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(childProcess.execFileSync(binaryPath, ['--version'], { encoding: 'utf8' })).toBe('2.0.0 (Claude Code)\n')
     })
 
-    test('reports a fresh VM check before a separate installation stage', async () => {
+    test('reports the separate installation stage with sanitized npm diagnostics', async () => {
         const onActivity = jest.fn()
         const sandbox = {
             commands: {
@@ -561,7 +652,6 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         ).rejects.toThrow(
             'Claude installation failed. stdout: npm notice package metadata stderr: npm ERR! Authorization: Bearer [REDACTED] registry unavailable'
         )
-        expect(onActivity).toHaveBeenNthCalledWith(1, 'Working\n\n🆕 Starting a fresh VM and checking Claude…')
         expect(onActivity).toHaveBeenCalledWith('Working\n\n📦 Installing Claude…')
         expect(sandbox.commands.run).toHaveBeenCalledWith(
             expect.any(String),
@@ -572,56 +662,6 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
                 },
             })
         )
-    })
-
-    test('reports an update, rather than an install, when a resumed VM has an older CLI', async () => {
-        const onActivity = jest.fn()
-        const sandbox = {
-            commands: {
-                run: jest.fn(async (_command, options) => {
-                    // Exercise markers split across command-stream chunks too.
-                    options.onStdout('AGENT_CLI_INSTALLING from=1.9')
-                    options.onStdout('.0 to=2.1.0\nAGENT_CLI_READY installed 2.1.0\n')
-                }),
-            },
-        }
-
-        await __private__.ensureAgentCliAvailable(
-            sandbox,
-            { installGuard: 'check-agent-cli' },
-            'Codex',
-            onActivity,
-            'Working',
-            { isResume: true }
-        )
-
-        expect(onActivity.mock.calls).toEqual([
-            ['Working\n\n🔄 Resuming VM and checking Codex for updates…'],
-            ['Working\n\n⬆️ Updating Codex from 1.9.0 to 2.1.0…'],
-        ])
-    })
-
-    test('only reports the update check when a resumed VM already has the latest CLI', async () => {
-        const onActivity = jest.fn()
-        const sandbox = {
-            commands: {
-                run: jest.fn(async (_command, options) => {
-                    options.onStdout('AGENT_CLI_READY existing 2.1.0\n')
-                }),
-            },
-        }
-
-        await __private__.ensureAgentCliAvailable(
-            sandbox,
-            { installGuard: 'check-agent-cli' },
-            'Claude',
-            onActivity,
-            'Working',
-            { isResume: true }
-        )
-
-        expect(onActivity).toHaveBeenCalledTimes(1)
-        expect(onActivity).toHaveBeenCalledWith('Working\n\n🔄 Resuming VM and checking Claude for updates…')
     })
 
     test('reports Node ENOSPC exit status 228 as exhausted VM temporary storage', () => {

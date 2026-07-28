@@ -357,6 +357,8 @@ describe('VM assistant tool schema', () => {
         expect(properties.agent.description).toContain("user's default VM agent")
         expect(properties.agent.description).toContain('explicit choice overrides')
         expect(properties.agentModel.type).toBe('string')
+        expect(properties.agentModel.description).toContain('moving "opus" alias')
+        expect(properties.agentModel.description).toContain('runtime-resolved concrete Claude model')
         expect(properties.agentReasoningEffort.enum).toEqual(['low', 'medium', 'high', 'xhigh'])
         expect(properties.agentReasoningEffort.description).toContain("user's default VM effort")
         expect(properties.agent.description).toContain('falling back to "codex"')
