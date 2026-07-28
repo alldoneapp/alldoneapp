@@ -13,11 +13,11 @@ jest.mock('./useEmailLabelGroups', () => ({ __esModule: true, default: jest.fn()
 
 jest.mock('./EmailLabelChip', () => ({
     __esModule: true,
-    default: ({ group, showIcon, style }) => {
+    default: ({ group, style }) => {
         const React = require('react')
         const { Text, View } = require('react-native')
         return (
-            <View testID="chip" showIcon={showIcon} style={style}>
+            <View testID="chip" style={style}>
                 <Text>{group.displayName}</Text>
             </View>
         )
@@ -75,17 +75,6 @@ describe('AllProjectsEmailLabelChips', () => {
         expect(sharedGroupStyle.borderWidth).toBe(1)
         expect(chipStyles).toHaveLength(3)
         expect(chipStyles.every(style => style.borderWidth === 0)).toBe(true)
-    })
-
-    test('shows the email icon only on the first label in the group', () => {
-        const tree = render([
-            { key: 'inbox', displayName: 'Inbox', isInbox: true, projectId: null, threadCount: 9 },
-            { key: 'ads', displayName: 'Ads', isInbox: false, projectId: null, threadCount: 2 },
-            { key: 'no', displayName: 'No label', isInbox: false, projectId: null, threadCount: 4 },
-        ])
-        const chips = tree.root.findAll(node => node.type === View && node.props.testID === 'chip')
-
-        expect(chips.map(chip => chip.props.showIcon)).toEqual([true, false, false])
     })
 
     test('renders only Inbox on mobile', () => {

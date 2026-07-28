@@ -20,7 +20,6 @@ export default function EmailLabelChip({
     labelingDisabledByConnectionId,
     style,
     compact = false,
-    showIcon = true,
 }) {
     const [isOpen, setIsOpen] = useState(false)
     const smallScreen = useSelector(state => state.smallScreen)
@@ -29,7 +28,7 @@ export default function EmailLabelChip({
     // On the tight header lines (compact chips) mobile drops the label name and keeps just the
     // mail icon + count. The full-width standalone Email line keeps its names so labels stay
     // distinguishable.
-    const iconOnly = compact && mobile && showIcon
+    const iconOnly = compact && mobile
 
     const trigger = (
         <TouchableOpacity
@@ -37,14 +36,12 @@ export default function EmailLabelChip({
             onPress={() => setIsOpen(true)}
             accessibilityLabel={`${group.displayName}: ${group.threadCount}`}
         >
-            {showIcon && (
-                <Icon
-                    name="mail"
-                    size={13}
-                    color={colors.Text03}
-                    style={[localStyles.mailIcon, iconOnly && localStyles.mailIconOnly]}
-                />
-            )}
+            <Icon
+                name="mail"
+                size={13}
+                color={colors.Text03}
+                style={[localStyles.mailIcon, iconOnly && localStyles.mailIconOnly]}
+            />
             {!iconOnly && (
                 <Text style={[styles.caption1, localStyles.name]} numberOfLines={1}>
                     {group.displayName}
