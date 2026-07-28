@@ -23,7 +23,7 @@ export default function AllProjectsEmailLabelChips() {
     return (
         <View style={localStyles.row}>
             <View style={localStyles.group}>
-                {visibleGroups.map(group => (
+                {visibleGroups.map((group, index) => (
                     <EmailLabelChip
                         key={group.key}
                         group={group}
@@ -31,6 +31,7 @@ export default function AllProjectsEmailLabelChips() {
                         labelOptionsByConnectionId={labelOptionsByConnectionId}
                         labelingDisabledByConnectionId={labelingDisabledByConnectionId}
                         compact
+                        showIcon={index === 0}
                         style={localStyles.chip}
                     />
                 ))}
