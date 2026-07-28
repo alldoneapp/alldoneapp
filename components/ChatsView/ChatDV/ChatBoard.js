@@ -39,8 +39,6 @@ import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
 import { getChatCommentsWithLinkedEmails, markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
 import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../Utils/assistantWaiting'
-import { shouldConsumeBotSpinnerTrigger } from '../Utils/botSpinnerTrigger'
-import { ASSISTANT_LOADING_TIMEOUT_MS } from './EditorView/messageLoadingState'
 import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
 import {
     getLinkedEmailFromMessage,
@@ -239,21 +237,15 @@ export default function ChatBoard({
         dispatch(setChatPagesAmount(0))
     }, [])
 
-    // Only the chat the trigger was created for may show the placeholder, and it consumes the
-    // trigger immediately so a later Chat DV mount can never replay it (AT-2084).
     useEffect(() => {
-        if (!shouldConsumeBotSpinnerTrigger(triggerBotSpinner, projectId, chat.id)) return
-        startWaitingForBotAnswer()
-        dispatch(setTriggerBotSpinner(null))
-    }, [triggerBotSpinner, projectId, chat.id])
+        if (triggerBotSpinner) startWaitingForBotAnswer()
+    }, [triggerBotSpinner])
 
-    // Safety net: never leave the "assistant is working" placeholder up forever when the
-    // answer never arrives (failed run, assistant not actually triggered, lost subscription).
     useEffect(() => {
-        if (!waitingForBotAnswer) return undefined
-        const timeout = setTimeout(() => setWaitingForBotAnswer(false), ASSISTANT_LOADING_TIMEOUT_MS)
-        return () => clearTimeout(timeout)
-    }, [waitingForBotAnswer])
+        return () => {
+            dispatch(setTriggerBotSpinner(false))
+        }
+    }, [dispatch])
 
     useEffect(() => {
         if (!isAnonymous) {
