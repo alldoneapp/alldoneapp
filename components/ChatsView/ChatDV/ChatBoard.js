@@ -39,9 +39,6 @@ import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
 import { getChatCommentsWithLinkedEmails, markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
 import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../Utils/assistantWaiting'
-import { shouldConsumeBotSpinnerTrigger } from '../Utils/botSpinnerTrigger'
-import { isAssistantEnabledScopeMatch } from '../Utils/assistantEnabledScope'
-import { ASSISTANT_LOADING_TIMEOUT_MS } from './EditorView/messageLoadingState'
 import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
 import {
     getLinkedEmailFromMessage,
@@ -66,8 +63,6 @@ export default function ChatBoard({
 }) {
     const dispatch = useDispatch()
     const triggerBotSpinner = useSelector(state => state.triggerBotSpinner)
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
-    const assistantEnabledScope = useSelector(state => state.assistantEnabledScope)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const loggedUser = useSelector(state => state.loggedUser)
     // Only members can post. Anonymous viewers and logged-in non-members see this chat read-only.
@@ -242,32 +237,15 @@ export default function ChatBoard({
         dispatch(setChatPagesAmount(0))
     }, [])
 
-    // Only the chat the trigger was created for may show the placeholder, and it consumes the
-    // trigger immediately so a later Chat DV mount can never replay it (AT-2084).
     useEffect(() => {
-        if (!shouldConsumeBotSpinnerTrigger(triggerBotSpinner, projectId, chat.id)) return
-        startWaitingForBotAnswer()
-        dispatch(setTriggerBotSpinner(null))
-    }, [triggerBotSpinner, projectId, chat.id])
+        if (triggerBotSpinner) startWaitingForBotAnswer()
+    }, [triggerBotSpinner])
 
-    // A scoped assistant-enabled flag belongs to exactly one chat. Clearing a foreign one here,
-    // in the component that owns the chat currently on screen, protects every reader of the raw
-    // `state.assistantEnabled` (DV fullscreen, the "keep the comment popover open" checks) without
-    // each of them having to know about scopes (AT-2084). An unscoped flag is left alone: that is
-    // what the in-chat writers produce and it always refers to the open chat.
     useEffect(() => {
-        if (!assistantEnabled) return
-        if (isAssistantEnabledScopeMatch(assistantEnabledScope, projectId, chat.id)) return
-        dispatch(setAssistantEnabled(false))
-    }, [assistantEnabled, assistantEnabledScope, projectId, chat.id])
-
-    // Safety net: never leave the "assistant is working" placeholder up forever when the
-    // answer never arrives (failed run, assistant not actually triggered, lost subscription).
-    useEffect(() => {
-        if (!waitingForBotAnswer) return undefined
-        const timeout = setTimeout(() => setWaitingForBotAnswer(false), ASSISTANT_LOADING_TIMEOUT_MS)
-        return () => clearTimeout(timeout)
-    }, [waitingForBotAnswer])
+        return () => {
+            dispatch(setTriggerBotSpinner(false))
+        }
+    }, [dispatch])
 
     useEffect(() => {
         if (!isAnonymous) {

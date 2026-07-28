@@ -1,5 +1,4 @@
 import { registerPopupDismiss } from '../utils/popupDismissGuard'
-import { normalizeAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 
 export const LogOut = () => {
     const action = {
@@ -2378,19 +2377,10 @@ export const setNewUserNeedToJoinToProject = newUserNeedToJoinToProject => {
     return action
 }
 
-// `scope` is optional and, when given, must be built with `buildAssistantEnabledScope`
-// ({ projectId, objectId }). It marks the flag as belonging to ONE chat, so a Chat DV for a
-// different chat ignores it. Callers that arm the assistant for a chat the user may never be
-// navigated to MUST pass a scope, otherwise the flag leaks into the next chat that is opened
-// and can fire an unwanted assistant run there (AT-2084). Omitting the scope keeps the legacy
-// "applies to whichever chat is currently open" meaning used by every in-chat writer.
-export const setAssistantEnabled = (assistantEnabled, scope = null) => {
+export const setAssistantEnabled = assistantEnabled => {
     const action = {
         type: 'Set assistant enabled',
         assistantEnabled,
-        // Clearing the flag always clears the scope with it, so a stale scope can never outlive
-        // the `true` it was describing.
-        assistantEnabledScope: assistantEnabled ? normalizeAssistantEnabledScope(scope) : null,
     }
     return action
 }
@@ -2403,17 +2393,10 @@ export const setNotEnabledAssistantWhenLoadComments = notEnabledAssistantWhenLoa
     return action
 }
 
-// The payload must be a chat-scoped trigger built with `buildBotSpinnerTrigger`
-// ({ projectId, chatId, createdAt }) or a falsy value to clear it. Bare booleans are
-// normalized away on purpose: an unscoped `true` leaks into the next Chat DV that mounts
-// and shows a permanent "assistant is working" placeholder there (AT-2084).
 export const setTriggerBotSpinner = triggerBotSpinner => {
     const action = {
         type: 'Set trigger bot spinner',
-        triggerBotSpinner:
-            triggerBotSpinner && typeof triggerBotSpinner === 'object' && triggerBotSpinner.chatId
-                ? triggerBotSpinner
-                : null,
+        triggerBotSpinner,
     }
     return action
 }
