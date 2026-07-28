@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Dimensions, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Popover from 'react-tiny-popover'
 import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -10,7 +10,6 @@ import Button from '../UIControls/Button'
 import TaskParentGoalModal from '../UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal'
 import { translate } from '../../i18n/TranslationService'
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
-import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import { unwatch } from '../../utils/backends/firestore'
 import { watchGoal } from '../../utils/backends/Goals/goalsFirestore'
 import {
@@ -20,12 +19,14 @@ import {
     setTaskProjectWithGoal,
 } from '../../utils/backends/Tasks/tasksFirestore'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
+import { getSuggestedGoalPopoverLayout } from './suggestedGoalPopoverHelper'
 
 export default function SuggestedGoalTag({ projectId, task, containerStyle, disabled, propertyButton = false }) {
     const smallScreen = useSelector(state => state.smallScreenNavigation)
     const [goal, setGoal] = useState(null)
     const [open, setOpen] = useState(false)
     const [choosingAnother, setChoosingAnother] = useState(false)
+    const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
     const goalId = task.goalSuggestion?.goalId
 
     useEffect(() => {
@@ -34,6 +35,12 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
         watchGoal(projectId, goalId, watcherKey, setGoal)
         return () => unwatch(watcherKey)
     }, [goalId, projectId])
+
+    useEffect(() => {
+        const updateWindowWidth = ({ window }) => setWindowWidth(window.width)
+        Dimensions.addEventListener('change', updateWindowWidth)
+        return () => Dimensions.removeEventListener('change', updateWindowWidth)
+    }, [])
 
     const close = () => {
         setOpen(false)
@@ -68,6 +75,7 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
     }
 
     const goalName = goal?.extendedName || goal?.name || translate('Loading')
+    const popoverLayout = getSuggestedGoalPopoverLayout(windowWidth)
     const content = choosingAnother ? (
         <TaskParentGoalModal
             activeGoal={null}
@@ -77,15 +85,32 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
             ownerId={task.userId}
         />
     ) : (
-        <View style={[localStyles.popover, applyPopoverWidth()]}>
+        <View
+            testID="suggested-goal-popover"
+            style={[
+                localStyles.popover,
+                { width: popoverLayout.width },
+                popoverLayout.stackActions && localStyles.compactPopover,
+            ]}
+        >
             <View style={localStyles.heading}>
-                <Icon name="target" size={20} color={colors.UtilityGreen300} />
+                <View style={localStyles.iconContainer}>
+                    <Icon name="target" size={18} color={colors.UtilityGreen300} />
+                </View>
                 <View style={localStyles.headingText}>
                     <Text style={localStyles.eyebrow}>{translate('Suggested goal')}</Text>
-                    <Text style={localStyles.goalName}>{goalName}</Text>
+                    <Text style={localStyles.goalName} numberOfLines={4} ellipsizeMode="tail">
+                        {goalName}
+                    </Text>
                 </View>
             </View>
-            {!!task.goalSuggestion?.reason && <Text style={localStyles.reason}>{task.goalSuggestion.reason}</Text>}
+            {!!task.goalSuggestion?.reason && (
+                <View style={localStyles.reasonContainer}>
+                    <Text style={localStyles.reason} numberOfLines={5} ellipsizeMode="tail">
+                        {task.goalSuggestion.reason}
+                    </Text>
+                </View>
+            )}
             <Button
                 title={translate('Add to goal')}
                 icon="target"
@@ -93,13 +118,24 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
                 disabled={!goal || disabled}
                 buttonStyle={localStyles.primaryButton}
             />
-            <View style={localStyles.secondaryActions}>
+            <View
+                style={[
+                    localStyles.secondaryActions,
+                    popoverLayout.stackActions && localStyles.stackedSecondaryActions,
+                ]}
+            >
                 <Button
                     title={translate('Choose another')}
                     type="text"
                     onPress={() => setChoosingAnother(true)}
                     disabled={disabled}
-                    buttonStyle={localStyles.secondaryButton}
+                    titleStyle={localStyles.secondaryButtonText}
+                    buttonStyle={[
+                        localStyles.secondaryButton,
+                        popoverLayout.stackActions
+                            ? localStyles.stackedSecondaryButtonFirst
+                            : localStyles.secondaryButtonFirst,
+                    ]}
                 />
                 <Button
                     title={translate('Not relevant')}
@@ -107,6 +143,7 @@ export default function SuggestedGoalTag({ projectId, task, containerStyle, disa
                     onPress={dismiss}
                     disabled={disabled}
                     buttonStyle={localStyles.secondaryButton}
+                    titleStyle={localStyles.secondaryButtonText}
                 />
             </View>
         </View>
@@ -172,46 +209,82 @@ const localStyles = StyleSheet.create({
         marginLeft: 8,
     },
     popover: {
-        width: 320,
-        padding: 16,
+        padding: 20,
         borderRadius: 4,
         backgroundColor: colors.Secondary400,
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+        elevation: 3,
+    },
+    compactPopover: {
+        padding: 16,
     },
     heading: {
         flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    iconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: colors.UtilityGreen100,
         alignItems: 'center',
+        justifyContent: 'center',
     },
     headingText: {
         flex: 1,
-        marginLeft: 8,
+        minWidth: 0,
+        marginLeft: 12,
     },
     eyebrow: {
         ...styles.caption1,
-        color: colors.Text03,
+        color: colors.Text04,
     },
     goalName: {
         ...styles.subtitle1,
-        color: colors.Text01,
-        marginTop: 2,
+        ...Platform.select({ web: { wordBreak: 'break-word' }, default: {} }),
+        color: '#FFFFFF',
+        marginTop: 4,
+        flexShrink: 1,
+    },
+    reasonContainer: {
+        marginTop: 16,
+        padding: 12,
+        borderRadius: 4,
+        backgroundColor: colors.Secondary300,
     },
     reason: {
         ...styles.body2,
-        color: colors.Text02,
-        marginTop: 12,
-        marginBottom: 12,
+        ...Platform.select({ web: { wordBreak: 'break-word' }, default: {} }),
+        color: colors.Text04,
+        flexShrink: 1,
     },
     primaryButton: {
-        marginTop: 12,
+        alignSelf: 'stretch',
+        width: '100%',
+        marginTop: 16,
     },
     secondaryActions: {
         flexDirection: 'row',
-        marginTop: 4,
+        alignItems: 'stretch',
+        marginTop: 8,
+    },
+    stackedSecondaryActions: {
+        flexDirection: 'column',
     },
     secondaryButton: {
+        flex: 1,
+        alignSelf: 'stretch',
+    },
+    secondaryButtonFirst: {
         marginRight: 8,
+    },
+    stackedSecondaryButtonFirst: {
+        marginBottom: 4,
+    },
+    secondaryButtonText: {
+        color: colors.UtilityBlue125,
     },
 })
