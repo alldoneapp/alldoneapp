@@ -552,7 +552,7 @@ describe('runWorkflowAiStep', () => {
         })
     })
 
-    it('preserves the task thread assistant state after the workflow assistant runs', async () => {
+    it('activates the workflow reviewer as the task thread assistant', async () => {
         mockStore.set(
             `items/${PROJECT}/tasks/${TASK}`,
             taskOnAiStep({ assistantId: 'previous-assistant', isAssistantEnabled: false })
@@ -567,18 +567,30 @@ describe('runWorkflowAiStep', () => {
 
         expect(mockGeneratePreConfigTaskResult).toHaveBeenCalledTimes(1)
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            assistantId: 'previous-assistant',
-            isAssistantEnabled: false,
+            assistantId: ASSISTANT,
+            isAssistantEnabled: true,
             currentReviewerId: HUMAN_REVIEWER,
         })
         expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
-            assistantId: 'previous-assistant',
-            isAssistantEnabled: false,
+            assistantId: ASSISTANT,
+            isAssistantEnabled: true,
             title: 'Write the spec',
         })
     })
 
     it('grounds the run in the task by seeding the thread with the prompt', async () => {
+        mockPostUserRequestComment.mockImplementationOnce(async () => {
+            expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
+                assistantId: ASSISTANT,
+                isAssistantEnabled: true,
+            })
+            expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
+                assistantId: ASSISTANT,
+                isAssistantEnabled: true,
+            })
+            return 'trigger-comment-1'
+        })
+
         await runWorkflowAiStep(RUN_ID, run)
 
         // Posted as the workflow owner, so it reads as their request and the user can see what the
@@ -636,8 +648,14 @@ describe('runWorkflowAiStep', () => {
             status: 'failed',
             failureReason: 'out of gold',
         })
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).isAssistantEnabled).toBeUndefined()
-        expect(mockStore.has(`chatObjects/${PROJECT}/chats/${TASK}`)).toBe(false)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
+            assistantId: ASSISTANT,
+            isAssistantEnabled: true,
+        })
+        expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
+            assistantId: ASSISTANT,
+            isAssistantEnabled: true,
+        })
     })
 
     it('does not run or advance when the task already moved off the step', async () => {
@@ -820,13 +838,13 @@ describe('a step whose assistant dispatched VM work', () => {
         expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
 
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
-            assistantId: 'previous-assistant',
-            isAssistantEnabled: false,
+            assistantId: ASSISTANT,
+            isAssistantEnabled: true,
             currentReviewerId: HUMAN_REVIEWER,
         })
         expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
-            assistantId: 'previous-assistant',
-            isAssistantEnabled: false,
+            assistantId: ASSISTANT,
+            isAssistantEnabled: true,
         })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
