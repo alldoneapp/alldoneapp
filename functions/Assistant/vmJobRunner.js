@@ -1217,7 +1217,6 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
     parts.push(
         '',
         'Work autonomously to completion. Your final message will be delivered verbatim to the user as the result, so make it a complete, self-contained answer.',
-        'The VM host owns all task-thread delivery and attributes it to the invoking assistant. Do not use an Alldone app, MCP tool, API, or task-update/comment tool to post your result, progress, status, or questions into the originating task/thread yourself; that would create a duplicate user-authored comment. Return normal output in your final message. In interactive mode, ask through the native interaction mechanism so the host can present the question with the correct assistant identity.',
         'IMPORTANT: Do not create an output file just to return a normal text/chat answer. Put the answer directly in your final message unless the user asked for a file or you genuinely produced an artifact.',
         'If you produce any deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) that are NOT part of the repository, SAVE them into the /home/user/output/ directory (an absolute path). Every file there is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in /home/user/output/ instead.'
     )
@@ -1600,12 +1599,6 @@ function normalizeAdditionalWritableRoots(additionalWritableRoots = []) {
 function buildCodexSandboxConfigOverrides(additionalWritableRoots = []) {
     const writableRoots = normalizeAdditionalWritableRoots(additionalWritableRoots)
     return [
-        // A personal ChatGPT subscription can expose the user's connected apps to Codex. Those
-        // app calls are authenticated only as the human user and carry no Alldone VM/assistant
-        // identity, so an agent calling update_task(comment=...) would create a second comment
-        // attributed to that user. VM output and interactions have dedicated host-owned delivery
-        // paths below; keep personal apps out of both automatic exec and app-server bridge runs.
-        'features.apps=false',
         'sandbox_mode="workspace-write"',
         `sandbox_workspace_write.writable_roots=${JSON.stringify(writableRoots)}`,
         'sandbox_workspace_write.network_access=true',

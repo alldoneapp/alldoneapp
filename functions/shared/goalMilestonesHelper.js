@@ -52,6 +52,16 @@ function normalizeMilestoneType(milestoneType) {
     return milestoneType === MILESTONE_TYPE_LINEAR ? MILESTONE_TYPE_LINEAR : MILESTONE_TYPE_FIXED
 }
 
+function goalIsVisibleInOpenMilestone(goal, milestone) {
+    return (
+        Number.isFinite(Number(goal?.startingMilestoneDate)) &&
+        Number.isFinite(Number(goal?.completionMilestoneDate)) &&
+        Number.isFinite(Number(milestone?.date)) &&
+        Number(goal.startingMilestoneDate) <= Number(milestone.date) &&
+        Number(goal.completionMilestoneDate) >= Number(milestone.date)
+    )
+}
+
 function getPeriodStartForTimestamp(timestamp, config) {
     const normalizedConfig = normalizeGoalMilestonesConfig(config)
     const date = moment.tz(timestamp, normalizedConfig.timezone)
@@ -143,6 +153,7 @@ module.exports = {
     normalizeGoalMilestonesConfig,
     normalizeGoalScheduleMode,
     normalizeMilestoneType,
+    goalIsVisibleInOpenMilestone,
     getLinearMilestonePeriod,
     getLinearMilestonePeriods,
     getLinearMilestoneTitle,
