@@ -260,7 +260,7 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
                 />
                 <View style={localStyles.actions}>
                     <Button
-                        title={translate(subscriptionConnected ? 'Replace credential' : 'Connect subscription')}
+                        title={translate(subscriptionConnected ? 'Reconnect subscription' : 'Connect subscription')}
                         onPress={connect}
                         processing={processing}
                         processingTitle={translate('Saving')}
