@@ -2423,6 +2423,7 @@
     "Paste the complete contents of ~/.codex/auth.json": "Paste the complete contents of ~/.codex/auth.json",
     "Treat this credential like a password. Alldone stores it in your private account data and only supplies it to your own VM run.": "Treat this credential like a password. Alldone stores it in your private account data and only supplies it to your own VM run.",
     "Replace credential": "Replace credential",
+    "Reconnect subscription": "Reconnect subscription",
     "Connect subscription": "Connect subscription",
     "Could not load subscription connections.": "Could not load subscription connections.",
     "Default VM agent": "Default VM agent",
