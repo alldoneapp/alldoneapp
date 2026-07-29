@@ -1788,6 +1788,21 @@ function markSafeVmSubscriptionAuthRetry(error, provider, state) {
     return error
 }
 
+function buildAgentExitErrorWithAuthRetry(
+    agentLabel,
+    result,
+    state,
+    stderr = '',
+    provider = null,
+    fallbackError = null
+) {
+    return markSafeVmSubscriptionAuthRetry(
+        buildAgentExitError(agentLabel, result, state, stderr, fallbackError),
+        provider,
+        state
+    )
+}
+
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -3344,11 +3359,7 @@ async function runAgentInSandbox(
 
         const output = (state.finalResult || state.assistantText || '').trim()
         if (result?.exitCode !== undefined && result.exitCode !== 0) {
-            throw markSafeVmSubscriptionAuthRetry(
-                buildAgentExitError(agentLabel, result, state, stderr),
-                subscriptionAuth?.provider,
-                state
-            )
+            throw buildAgentExitErrorWithAuthRetry(agentLabel, result, state, stderr, subscriptionAuth?.provider)
         }
         if (state.bridgeError) {
             throw new Error(`${agentLabel} interactive bridge failed: ${state.bridgeError}`)
@@ -3392,7 +3403,14 @@ async function runAgentInSandbox(
             }
         }
         if (!output) {
-            throw buildAgentExitError(agentLabel, result, state, stderr, new Error('Agent produced no output.'))
+            throw buildAgentExitErrorWithAuthRetry(
+                agentLabel,
+                result,
+                state,
+                stderr,
+                subscriptionAuth?.provider,
+                new Error('Agent produced no output.')
+            )
         }
         // Collect deliverable files written during THIS run (while the sandbox is still alive).
         const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
@@ -4247,6 +4265,7 @@ module.exports = {
         buildAgentExitError,
         isVmSubscriptionAuthError,
         markSafeVmSubscriptionAuthRetry,
+        buildAgentExitErrorWithAuthRetry,
         waitForVmSubscriptionAuthChange,
         buildVmSubscriptionAuthWaitingText,
         buildVmSubscriptionAuthFailureText,
