@@ -3,7 +3,13 @@ import renderer, { act } from 'react-test-renderer'
 import { TextInput } from 'react-native'
 
 import { ProviderAuthCard } from './AgentSubscriptionsSection'
-import { removeVmApiKey, saveVmApiKey, setVmCredentialMode, testVmApiKey } from '../../../utils/backends/firestore'
+import {
+    connectVmSubscription,
+    removeVmApiKey,
+    saveVmApiKey,
+    setVmCredentialMode,
+    testVmApiKey,
+} from '../../../utils/backends/firestore'
 
 jest.mock('../../UIControls/Button', () => {
     const React = require('react')
@@ -132,5 +138,36 @@ describe('AgentSubscriptionsSection provider BYOK states', () => {
         )
         const byokButton = tree.root.findAllByType('MockButton').find(node => node.props.title === 'Personal API key')
         expect(byokButton.props.disabled).toBe(true)
+    })
+
+    test('reconnects a connected subscription with a fresh credential', async () => {
+        const tree = renderer.create(
+            <ProviderAuthCard
+                provider="codex"
+                connection={{ connected: true, activeMode: 'subscription', apiKey: { connected: false } }}
+                onChanged={onChanged}
+            />
+        )
+        const input = tree.root
+            .findAllByType(TextInput)
+            .find(node => node.props.placeholder === 'Paste the complete contents of ~/.codex/auth.json')
+        const freshCredential = '{"auth_mode":"chatgpt","tokens":{"refresh_token":"fresh-token"}}'
+
+        await act(async () => {
+            input.props.onChangeText(freshCredential)
+        })
+        const reconnectButton = tree.root
+            .findAllByType('MockButton')
+            .find(node => node.props.title === 'Reconnect subscription')
+        await act(async () => {
+            await reconnectButton.props.onPress()
+        })
+
+        expect(connectVmSubscription).toHaveBeenCalledWith({
+            provider: 'codex',
+            credential: freshCredential,
+        })
+        expect(input.props.value).toBe('')
+        expect(onChanged).toHaveBeenCalled()
     })
 })

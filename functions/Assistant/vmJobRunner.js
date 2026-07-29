@@ -1776,14 +1776,22 @@ function isVmSubscriptionAuthError(error, provider) {
 
 function markSafeVmSubscriptionAuthRetry(error, provider, state) {
     if (!isVmSubscriptionAuthError(error, provider)) return error
+    const usage = state?.usage || {}
+    const hasUsage = ['inputTokens', 'outputTokens', 'cacheTokens', 'totalTokens', 'costUsd'].some(
+        key => Number(usage[key]) > 0
+    )
     const hasAgentWork = !!(
         state?.finalResult ||
         state?.assistantText ||
-        state?.usage ||
+        hasUsage ||
         state?.interaction ||
         state?.providerState
     )
-    const hasNonAuthActivity = (state?.activity || []).some(activity => !isVmSubscriptionAuthError(activity, provider))
+    const hasNonAuthActivity = (state?.activity || []).some(activity => {
+        const text = String(activity || '').trim()
+        if (!text || text.startsWith('⚠️')) return false
+        return !isVmSubscriptionAuthError(text, provider)
+    })
     error.vmAuthRetrySafe = !hasAgentWork && !hasNonAuthActivity
     return error
 }

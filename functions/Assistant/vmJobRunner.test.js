@@ -785,14 +785,35 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
             'codex',
             { activity: ['Failed to refresh token: refresh token was already used'] }
         )
+        const warningOnlyError = __private__.markSafeVmSubscriptionAuthRetry(
+            new Error('401 Unauthorized: {"code":"refresh_token_reused"}'),
+            'codex',
+            {
+                activity: ['⚠️ Unexpected status 401 Unauthorized'],
+                usage: {
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cacheTokens: 0,
+                    totalTokens: 0,
+                    costUsd: null,
+                },
+            }
+        )
         const afterWorkError = __private__.markSafeVmSubscriptionAuthRetry(
             new Error('OAuth token has expired'),
             'claude',
             { activity: ['💻 Created a pull request'] }
         )
+        const afterUsageError = __private__.markSafeVmSubscriptionAuthRetry(
+            new Error('refresh token was already used'),
+            'codex',
+            { activity: [], usage: { totalTokens: 1 } }
+        )
 
         expect(preWorkError.vmAuthRetrySafe).toBe(true)
+        expect(warningOnlyError.vmAuthRetrySafe).toBe(true)
         expect(afterWorkError.vmAuthRetrySafe).toBe(false)
+        expect(afterUsageError.vmAuthRetrySafe).toBe(false)
     })
 
     test('marks a zero-exit no-output subscription auth failure as safe to retry', () => {
