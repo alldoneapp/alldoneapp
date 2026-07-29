@@ -795,6 +795,27 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(afterWorkError.vmAuthRetrySafe).toBe(false)
     })
 
+    test('marks a zero-exit no-output subscription auth failure as safe to retry', () => {
+        const state = {
+            activity: ['Failed to refresh token: refresh token was already used'],
+            finalResult: '',
+            assistantText: '',
+            usage: null,
+        }
+        const error = __private__.buildAgentExitErrorWithAuthRetry(
+            'Codex',
+            { exitCode: 0 },
+            state,
+            '401 Unauthorized: {"code":"refresh_token_reused"}',
+            'codex',
+            new Error('Agent produced no output.')
+        )
+
+        expect(error.message).toContain('Codex exited with exit status 0.')
+        expect(error.message).toContain('refresh_token_reused')
+        expect(error.vmAuthRetrySafe).toBe(true)
+    })
+
     test('waits for a newer subscription credential before retrying', async () => {
         let clock = 0
         const loadAuth = jest
