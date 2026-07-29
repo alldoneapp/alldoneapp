@@ -30,7 +30,6 @@ import UserDataCache from '../../../utils/UserDataCache'
 import {
     ESTIMATION_TYPE_POINTS,
     ESTIMATION_TYPE_TIME,
-    getDoneTimeValue,
     getEstimationTypeByProjectId,
 } from '../../../utils/EstimationHelper'
 import { setUserStatisticsModalDate } from '../../../utils/backends/Users/usersFirestore'
@@ -43,6 +42,7 @@ import HappinessRatingPicker from '../../ProjectHappiness/HappinessRatingPicker'
 import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { getSafeStatisticNumber, getSafeTextValue } from '../../../utils/StatisticDataHelper'
+import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
 
 const getActiveProjectsInSidebarOrder = (projects, user) =>
     ProjectHelper.sortProjects(
@@ -74,12 +74,12 @@ export default function EndDayStatisticsModal() {
     const [doneTasks, setDoneTasks] = useState(0)
     const [xp, setXp] = useState(0)
     const [donePoints, setDonePoints] = useState(0)
-    const [doneTime, setDoneTime] = useState(0)
     const [gold, setGold] = useState(0)
     const [showEmptyInbox, setShowEmptyInbox] = useState(true)
     const [dataLoaded, setDataLoaded] = useState(null)
     const [statsDate, setStatsDate] = useState(statisticsModalDate)
     const [doneTasksByProject, setDoneTasksByProject] = useState({})
+    const [statisticsByProject, setStatisticsByProject] = useState({})
     const [happinessRatings, setHappinessRatings] = useState({})
     const [happinessComments, setHappinessComments] = useState({})
     const [visibleComments, setVisibleComments] = useState({})
@@ -102,6 +102,7 @@ export default function EndDayStatisticsModal() {
         setDonePoints(0)
         setGold(0)
         setDoneTasksByProject({})
+        setStatisticsByProject({})
         setShowEmptyInbox(true)
         setDataLoaded(null)
         setStatsDate(statisticsModalDate)
@@ -199,9 +200,14 @@ export default function EndDayStatisticsModal() {
             const xp = getSafeStatisticNumber(statistics.xp)
 
             setDoneTasksByProject(state => ({ ...state, [projectId]: doneTasks }))
+            setStatisticsByProject(state => ({
+                ...state,
+                [projectId]: {
+                    doneTime: estimationType === ESTIMATION_TYPE_TIME ? doneTime : 0,
+                },
+            }))
             setDoneTasks(state => state + doneTasks)
             setDonePoints(state => state + (estimationType === ESTIMATION_TYPE_POINTS ? donePoints : 0))
-            setDoneTime(state => state + (estimationType === ESTIMATION_TYPE_TIME ? doneTime : 0))
             setGold(state => state + gold)
             setXp(state => state + xp)
             setDataLoaded(dataLoaded => {
@@ -246,6 +252,7 @@ export default function EndDayStatisticsModal() {
             const statisticsDate = endDayStatisticsDate.format('DDMMYYYY')
             const dataLoaded = {}
             setDoneTasksByProject({})
+            setStatisticsByProject({})
             const { loggedUserProjects, loggedUser } = store.getState()
             const { templateProjectIds } = loggedUser
             for (let i = 0; i < loggedUserProjects.length; i++) {
@@ -454,6 +461,12 @@ export default function EndDayStatisticsModal() {
     const { dayName, dateFormated } = getDate()
     const { rewardTitle, rewardDescription } = getRewardTexts()
     const happinessProjects = getHappinessProjects()
+    const moneyEarnedSummary = getEndDayMoneyEarnedSummary(
+        loggedUserProjects,
+        statisticsByProject,
+        loggedUserId,
+        loggedUser.defaultCurrency || 'EUR'
+    )
     const compactModalLayout = smallScreenNavigation || isMiddleScreen
     const getProjectDoneTasks = projectId => getSafeStatisticNumber(doneTasksByProject[projectId])
     const maxProjectDoneTasks = happinessProjects.reduce(
@@ -487,12 +500,13 @@ export default function EndDayStatisticsModal() {
             translate('Points earned:'),
             donePoints
         ),
-        renderStatItem(
-            'time',
-            <Icon name="clock" size={24} color="#ffffff" />,
-            `${translate('Time logged')}:`,
-            getDoneTimeValue(doneTime)
-        ),
+        moneyEarnedSummary &&
+            renderStatItem(
+                'money',
+                <Icon name="credit-card" size={24} color="#ffffff" />,
+                `${translate('Money earned')}:`,
+                moneyEarnedSummary.formattedValue
+            ),
         renderStatItem('xp', <Icon name="trending-up" size={24} color="#ffffff" />, translate('XP earned:'), xp),
         renderStatItem(
             'gold',
@@ -500,7 +514,7 @@ export default function EndDayStatisticsModal() {
             translate('Gold earned:'),
             Math.floor(gold)
         ),
-    ]
+    ].filter(Boolean)
 
     return (
         !showNewVersionMandtoryNotifcation &&
