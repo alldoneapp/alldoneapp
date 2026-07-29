@@ -1949,6 +1949,7 @@
     "Paste the complete contents of ~/.codex/auth.json": "Vollständigen Inhalt von ~/.codex/auth.json einfügen",
     "Treat this credential like a password. Alldone stores it in your private account data and only supplies it to your own VM run.": "Behandle diese Zugangsdaten wie ein Passwort. Alldone speichert sie in deinen privaten Kontodaten und stellt sie nur deinem eigenen VM-Lauf bereit.",
     "Replace credential": "Zugangsdaten ersetzen",
+    "Reconnect subscription": "Abonnement erneut verbinden",
     "Connect subscription": "Abonnement verbinden",
     "Could not load subscription connections.": "Abonnementverbindungen konnten nicht geladen werden.",
     "Default VM agent": "Standard-VM-Agent",
