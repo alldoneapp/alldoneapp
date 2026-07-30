@@ -6,7 +6,7 @@ import { colors } from '../../../styles/global'
 import Button from '../../../UIControls/Button'
 import RichCommentModal from '../RichCommentModal/RichCommentModal'
 import { execShortcutFn } from '../../ShortcutCheatSheet/HelperFunctions'
-import { getManageTaskCommentAssistantProps } from './manageTaskCommentAssistant'
+import { getTaskCommentAssistantProps } from '../RichCommentModal/taskCommentAssistant'
 
 export default function CommentWrapper({ task, projectId, setComment }) {
     const [isOpen, setIsOpen] = useState(false)
@@ -40,7 +40,7 @@ export default function CommentWrapper({ task, projectId, setComment }) {
                     currentKarma={false}
                     userGettingKarmaId={task.userId}
                     inTaskModal={true}
-                    {...getManageTaskCommentAssistantProps(task)}
+                    {...getTaskCommentAssistantProps(task)}
                     objectName={task.name}
                 />
             }

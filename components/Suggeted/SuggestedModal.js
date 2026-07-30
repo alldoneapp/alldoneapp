@@ -8,6 +8,7 @@ import Button from '../UIControls/Button'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import Hotkeys from 'react-hot-keys'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
+import { getTaskCommentAssistantProps } from '../UIComponents/FloatModals/RichCommentModal/taskCommentAssistant'
 import FileTag from '../Tags/FileTag'
 import { applyPopoverWidth, getWorkflowStepsIdsSorted } from '../../utils/HelperFunctions'
 import { FORDWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
@@ -268,7 +269,7 @@ export default class SuggestedModal extends Component {
                 currentKarma={hasKarma}
                 inTaskModal={true}
                 userGettingKarmaId={task.userId}
-                externalAssistantId={task.assistantId}
+                {...getTaskCommentAssistantProps(task)}
                 objectName={task.name}
             />
         ) : inEstimation ? (
