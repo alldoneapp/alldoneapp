@@ -9,6 +9,7 @@ import TasksHelper, {
     TASK_ASSIGNEE_ASSISTANT_TYPE,
 } from '../../../TaskListView/Utils/TasksHelper'
 import RichCommentModal from '../RichCommentModal/RichCommentModal'
+import { getTaskCommentAssistantProps } from '../RichCommentModal/taskCommentAssistant'
 import { MENTION_MODAL_ID, removeModal, storeModal, WORKFLOW_MODAL_ID } from '../../../ModalsManager/modalsManager'
 import MainModal from './MainModal'
 import { useSelector } from 'react-redux'
@@ -171,7 +172,7 @@ export default function WorkflowObserverModal({
             currentKarma={commentHasKarma}
             inTaskModal={true}
             userGettingKarmaId={task.userId}
-            externalAssistantId={task.assistantId}
+            {...getTaskCommentAssistantProps(task)}
             objectName={task.name}
         />
     ) : inEstimation ? (
