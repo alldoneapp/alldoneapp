@@ -14,6 +14,8 @@ export default function MainButtons({
     shortcutsEnabled = true,
     compact = false,
     narrow = false,
+    backwardStepName,
+    forwardStepName,
 }) {
     return (
         <View
@@ -30,6 +32,7 @@ export default function MainButtons({
                     direction={WORKFLOW_BACKWARD}
                     disabled={disabled}
                     shortcutsEnabled={shortcutsEnabled}
+                    targetStepName={backwardStepName}
                     buttonStyle={[
                         compact && localStyles.compactBackwardButton,
                         narrow && localStyles.narrowBackwardButton,
@@ -43,6 +46,7 @@ export default function MainButtons({
                 currentStep={currentStep}
                 disabled={disabled}
                 shortcutsEnabled={shortcutsEnabled}
+                targetStepName={forwardStepName}
                 buttonStyle={[compact && localStyles.compactButton, narrow && localStyles.narrowButton]}
             />
         </View>

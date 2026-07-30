@@ -74,7 +74,23 @@ describe('CommentPopupWorkflowControls', () => {
         expect(buttons.props.shortcutsEnabled).toBe(false)
         expect(buttons.props.compact).toBe(true)
         expect(buttons.props.narrow).toBe(false)
+        expect(buttons.props.backwardStepName).toBe('Open')
+        expect(buttons.props.forwardStepName).toBe('Second review')
         expect(tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })).toBeTruthy()
+    })
+
+    it('uses Done as the forward destination from the last workflow step', () => {
+        const tree = renderer.create(
+            <CommentPopupWorkflowControls
+                projectId="project-1"
+                task={{ ...task, stepHistory: [-1, 'step1', 'step2'] }}
+                workflow={workflow}
+            />
+        )
+        const buttons = tree.root.findByType('MainButtons')
+
+        expect(buttons.props.backwardStepName).toBe('First review')
+        expect(buttons.props.forwardStepName).toBe('Done')
     })
 
     it('keeps long step names usable in a narrow mobile layout', async () => {

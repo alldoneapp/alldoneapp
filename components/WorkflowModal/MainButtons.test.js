@@ -66,4 +66,20 @@ describe('MainButtons layout', () => {
             width: '100%',
         })
     })
+
+    it('passes adjacent workflow step names to the direction buttons', () => {
+        const tree = renderer.create(
+            <MainButtons
+                compact
+                currentStep={0}
+                selectedCustomStep={false}
+                onDonePress={jest.fn()}
+                backwardStepName="Open"
+                forwardStepName="Review"
+            />
+        )
+
+        expect(tree.root.findByType('BackwardButton').props.targetStepName).toBe('Open')
+        expect(tree.root.findByType('ForwardButton').props.targetStepName).toBe('Review')
+    })
 })
