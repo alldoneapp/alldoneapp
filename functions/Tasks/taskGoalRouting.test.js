@@ -398,6 +398,129 @@ describe('taskGoalRouting', () => {
         expect(candidates.map(goal => goal.id)).toContain('goal-z')
     })
 
+    test.each(['pending', 'classifying'])(
+        'resets a stale %s suggestion and routes the moved task against destination goals',
+        async status => {
+            const { db, state } = createDb()
+            state.tasks.task1.goalSuggestion = {
+                goalId: 'old-project-goal',
+                status,
+                projectId: 'old-project',
+                claimId: 'old-claim',
+            }
+            const classify = jest.fn(async ({ goals }) => ({
+                result: {
+                    goalId: 'goal1',
+                    confidence: 0.94,
+                    alternativeGoalId: 'goal2',
+                    alternativeConfidence: 0.4,
+                    reason: 'Matches a destination goal.',
+                },
+                totalTokens: 100,
+            }))
+
+            const result = await routeNewTaskToGoal({
+                task: state.tasks.task1,
+                projectId: 'project1',
+                db,
+                now: 1000,
+                classify,
+            })
+
+            expect(result.action).toBe('suggest')
+            expect(classify.mock.calls[0][0].goals.map(goal => goal.id)).toEqual(['goal1', 'goal2'])
+            expect(state.tasks.task1.goalSuggestion).toEqual(
+                expect.objectContaining({
+                    goalId: 'goal1',
+                    status: 'pending',
+                    projectId: 'project1',
+                    claimId: 'claim1',
+                })
+            )
+            expect(state.tasks.task1.goalSuggestion.goalId).not.toBe('old-project-goal')
+        }
+    )
+
+    test('does not rerun an unresolved suggestion that already belongs to the current project', async () => {
+        const { db, state } = createDb()
+        const currentSuggestion = {
+            goalId: 'goal1',
+            status: 'pending',
+            projectId: 'project1',
+            claimId: 'current-claim',
+        }
+        state.tasks.task1.goalSuggestion = currentSuggestion
+        const classify = jest.fn()
+
+        const result = await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify,
+        })
+
+        expect(result.action).toBe('skipped')
+        expect(classify).not.toHaveBeenCalled()
+        expect(state.tasks.task1.goalSuggestion).toEqual(currentSuggestion)
+    })
+
+    test('does not clear a destination claim when a stale create event is retried', async () => {
+        const { db, state } = createDb()
+        const destinationClaim = {
+            status: 'classifying',
+            projectId: 'project1',
+            claimId: 'destination-claim',
+        }
+        state.tasks.task1.goalSuggestion = destinationClaim
+        const staleEventTask = {
+            ...state.tasks.task1,
+            goalSuggestion: {
+                goalId: 'old-project-goal',
+                status: 'pending',
+                projectId: 'old-project',
+                claimId: 'old-claim',
+            },
+        }
+        const classify = jest.fn()
+
+        const result = await routeNewTaskToGoal({
+            task: staleEventTask,
+            projectId: 'project1',
+            db,
+            classify,
+        })
+
+        expect(result.action).toBe('skipped')
+        expect(classify).not.toHaveBeenCalled()
+        expect(state.tasks.task1.goalSuggestion).toEqual(destinationClaim)
+    })
+
+    test.each(['none', 'dismissed', 'failed', 'superseded'])(
+        'does not rerun resolved %s routing state after a project move',
+        async status => {
+            const { db, state } = createDb()
+            const resolvedSuggestion = {
+                goalId: 'old-project-goal',
+                status,
+                projectId: 'old-project',
+                claimId: 'old-claim',
+            }
+            state.tasks.task1.goalSuggestion = resolvedSuggestion
+            const classify = jest.fn()
+
+            const result = await routeNewTaskToGoal({
+                task: state.tasks.task1,
+                projectId: 'project1',
+                db,
+                classify,
+            })
+
+            expect(result.action).toBe('skipped')
+            expect(classify).not.toHaveBeenCalled()
+            expect(state.tasks.task1.goalSuggestion).toEqual(resolvedSuggestion)
+        }
+    )
+
     test('stores a pending suggestion without moving the task in suggestion mode', async () => {
         const { db, state } = createDb()
         const result = await routeNewTaskToGoal({

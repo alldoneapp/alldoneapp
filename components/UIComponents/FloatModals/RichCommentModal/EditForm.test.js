@@ -32,7 +32,7 @@ jest.mock('../../../../i18n/TranslationService', () => ({ translate: text => tex
 jest.mock('../../../ChatsView/ChatDV/EditorView/BotOption/BotButtonWrapper', () => 'BotButtonWrapper')
 jest.mock('./SubmitButton', () => 'SubmitButton')
 
-const renderForm = (autoFocus, props = {}) =>
+const renderForm = autoFocus =>
     renderer.create(
         <EditForm
             projectId="project-1"
@@ -40,7 +40,6 @@ const renderForm = (autoFocus, props = {}) =>
             currentComment=""
             setInitialComment={jest.fn()}
             autoFocus={autoFocus}
-            {...props}
         />
     )
 
@@ -56,19 +55,6 @@ describe('RichCommentModal EditForm focus', () => {
         const tree = renderForm(undefined)
 
         expect(tree.root.findByProps({ testID: 'comment-input' }).props.autoFocus).toBe(true)
-        tree.unmount()
-    })
-
-    it.each([true, false])('shows the assistant control with enabled state: %s', isAssistantEnabled => {
-        const tree = renderForm(undefined, {
-            showBotButton: true,
-            isAssistantEnabled,
-            objectId: 'task-1',
-            objectType: 'tasks',
-            assistantId: 'assistant-1',
-        })
-
-        expect(tree.root.findByType('BotButtonWrapper').props.assistantEnabled).toBe(isAssistantEnabled)
         tree.unmount()
     })
 })

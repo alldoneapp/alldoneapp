@@ -16,7 +16,6 @@ import CustomFollowUpDateModal from './CustomFollowUpDateModal'
 import { OPEN_STEP, DONE_STEP, getTaskAutoEstimation, BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
-import { getTaskCommentAssistantProps } from '../UIComponents/FloatModals/RichCommentModal/taskCommentAssistant'
 import { setLastSelectedDueDate, showTaskCompletionAnimation } from '../../redux/actions'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import { updateNewAttachmentsData, STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
@@ -246,7 +245,7 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
             currentKarma={hasKarma}
             inTaskModal={true}
             userGettingKarmaId={task.userId}
-            {...getTaskCommentAssistantProps(task)}
+            externalAssistantId={task.assistantId}
             objectName={task.name}
         />
     ) : inEstimation ? (

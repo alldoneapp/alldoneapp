@@ -253,6 +253,37 @@ const createSuggestion = ({ classification, action, claimId, projectId, now, gol
     createdAt: now,
 })
 
+const isStaleUnresolvedGoalSuggestion = (task, projectId) => {
+    const suggestion = task?.goalSuggestion
+    return (
+        (suggestion?.status === 'pending' || suggestion?.status === 'classifying') && suggestion.projectId !== projectId
+    )
+}
+
+async function resetStaleGoalSuggestion(db, projectId, task) {
+    if (!isStaleUnresolvedGoalSuggestion(task, projectId)) {
+        return { task, canRoute: true }
+    }
+
+    const taskRef = db.doc(`items/${projectId}/tasks/${task.id}`)
+    const resetResult = await db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(taskRef)
+        if (!snapshot.exists) return 'missing'
+
+        const currentTask = snapshot.data()
+        if (isStaleUnresolvedGoalSuggestion(currentTask, projectId)) {
+            transaction.update(taskRef, { goalSuggestion: null })
+            return 'reset'
+        }
+        return currentTask.goalSuggestion ? 'already_routed' : 'already_reset'
+    })
+
+    return {
+        task: resetResult === 'reset' || resetResult === 'already_reset' ? { ...task, goalSuggestion: null } : task,
+        canRoute: resetResult === 'reset' || resetResult === 'already_reset',
+    }
+}
+
 async function writeAutomaticGoalRoutingArtifacts({
     db,
     projectId,
@@ -355,6 +386,10 @@ async function routeNewTaskToGoal({
     classify = classifyTaskAgainstGoals,
     now = Date.now(),
 }) {
+    const resetResult = task?.id ? await resetStaleGoalSuggestion(db, projectId, task) : { task, canRoute: true }
+    task = resetResult.task
+
+    if (!resetResult.canRoute) return { action: 'skipped' }
     if (
         !task?.id ||
         task.parentId ||
