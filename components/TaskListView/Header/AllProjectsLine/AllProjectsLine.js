@@ -43,6 +43,7 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
                             sourceType={FEED_TASK_OBJECT_TYPE}
                             expandTaskListIfNeeded={true}
                             showProjectSelector={true}
+                            primary={true}
                         />
                         <TaskHeaderMoreButton
                             userId={loggedUserId}

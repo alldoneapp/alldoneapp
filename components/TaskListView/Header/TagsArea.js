@@ -89,6 +89,7 @@ export default function TagsArea({
                         setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                         sourceType={FEED_TASK_OBJECT_TYPE}
                         expandTaskListIfNeeded={true}
+                        primary={true}
                     />
                     {taskViewToggleSection === 'Open' && (
                         <TaskHeaderMoreButton

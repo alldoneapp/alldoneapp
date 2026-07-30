@@ -24,6 +24,7 @@ function AddTaskTag({
     showProjectSelector,
     forceShrink,
     expandTaskListIfNeeded,
+    primary,
     openPopover,
     closePopover,
     isOpen,
@@ -47,15 +48,27 @@ function AddTaskTag({
 
     const trigger = (
         <TouchableOpacity
-            style={[localStyles.tag, (smallScreenNavigation || forceShrink) && localStyles.tagMobile, style]}
+            style={[
+                localStyles.tag,
+                primary && localStyles.tagPrimary,
+                (smallScreenNavigation || forceShrink) && localStyles.tagMobile,
+                style,
+            ]}
             onPress={handleOpen}
             disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel={translate('Add task')}
+            accessibilityState={{ disabled: !!disabled, expanded: isOpen }}
         >
             <View style={localStyles.icon}>
-                <Icon name={'check-square'} size={16} color={colors.Text03} />
+                <Icon name={'check-square'} size={16} color={primary ? '#ffffff' : colors.Text03} />
             </View>
             {!smallScreenNavigation && !forceShrink && (
-                <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{translate('Add task')}</Text>
+                <Text
+                    style={[styles.subtitle2, localStyles.text, primary && localStyles.textPrimary, windowTagStyle()]}
+                >
+                    {translate('Add task')}
+                </Text>
             )}
         </TouchableOpacity>
     )
@@ -113,6 +126,10 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Text03,
         paddingHorizontal: 4,
     },
+    tagPrimary: {
+        backgroundColor: colors.Primary300,
+        borderColor: colors.Primary300,
+    },
     tagMobile: {
         width: 24,
         height: 24,
@@ -121,6 +138,9 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginLeft: 6,
         marginRight: 4,
+    },
+    textPrimary: {
+        color: '#ffffff',
     },
     icon: {
         flexDirection: 'row',
