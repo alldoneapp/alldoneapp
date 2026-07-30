@@ -28,7 +28,6 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false }
         <View style={localStyles.emptyInbox}>
             <AllProjectsEmptyInboxText />
             <AllProjectsEmptyInboxTags />
-            <AllProjectsEmptyInboxPicture />
             {showEmptyInboxOverview && (
                 <EmptyInboxOverview
                     user={loggedUser}
@@ -37,6 +36,7 @@ export default function AllProjectsEmptyInbox({ showEmptyInboxOverview = false }
                     celebrateNewDay
                 />
             )}
+            <AllProjectsEmptyInboxPicture />
         </View>
     )
 }

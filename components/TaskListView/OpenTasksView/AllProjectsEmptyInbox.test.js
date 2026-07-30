@@ -53,7 +53,7 @@ describe('AllProjectsEmptyInbox', () => {
             options: settingsOptions,
         })
         expect(NavigationService.navigate).toHaveBeenCalledWith('SettingsView')
-        expect(children[children.length - 2].type).toBe('AllProjectsEmptyInboxPicture')
-        expect(children[children.length - 1].type).toBe('EmptyInboxOverview')
+        expect(children[children.length - 2].type).toBe('EmptyInboxOverview')
+        expect(children[children.length - 1].type).toBe('AllProjectsEmptyInboxPicture')
     })
 })
