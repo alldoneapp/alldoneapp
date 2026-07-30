@@ -223,8 +223,6 @@ class Button extends Component {
             innerRef,
             processing,
             processingTitle,
-            subtitle,
-            subtitleStyle,
             shortcutText,
             shortcutStyle,
             shortcutTextStyle,
@@ -252,26 +250,22 @@ class Button extends Component {
                 </View>
             )
         } else {
-            const contentMargin = {
-                marginLeft: (icon == null || icon === '') && (color == null || color === '') && !customIcon ? 0 : 12,
-            }
-            content =
-                title != null &&
-                title !== '' &&
-                (subtitle ? (
-                    <View style={[styles.textContainer, contentMargin]}>
-                        <Text style={textStyle} numberOfLines={numberTitleLines}>
-                            {title}
-                        </Text>
-                        <Text style={[textStyle, styles.subtitle, subtitleStyle]} numberOfLines={1}>
-                            {subtitle}
-                        </Text>
-                    </View>
-                ) : (
-                    <Text style={[textStyle, contentMargin]} numberOfLines={numberTitleLines}>
-                        {title}
-                    </Text>
-                ))
+            content = title != null && title !== '' && (
+                <Text
+                    style={[
+                        textStyle,
+                        {
+                            marginLeft:
+                                (icon == null || icon === '') && (color == null || color === '') && !customIcon
+                                    ? 0
+                                    : 12,
+                        },
+                    ]}
+                    numberOfLines={numberTitleLines}
+                >
+                    {title}
+                </Text>
+            )
         }
 
         return (
@@ -324,8 +318,6 @@ class Button extends Component {
 Button.propTypes = {
     type: PropTypes.oneOf(['primary', 'danger', 'secondary', 'text', 'ghost']).isRequired,
     title: PropTypes.string,
-    subtitle: PropTypes.string,
-    subtitleStyle: Text.propTypes.style,
     disabled: PropTypes.bool,
     icon: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),
     textColor: PropTypes.oneOf(['blue', 'red']),
@@ -346,8 +338,6 @@ Button.propTypes = {
 Button.defaultProps = {
     type: 'primary',
     title: null,
-    subtitle: null,
-    subtitleStyle: {},
     disabled: false,
     icon: null,
     iconColor: null,
@@ -405,18 +395,6 @@ const styles = StyleSheet.create({
         paddingVertical: 0,
         paddingHorizontal: 0,
         margin: 0,
-    },
-    textContainer: {
-        alignItems: 'center',
-        flexShrink: 1,
-        minWidth: 0,
-    },
-    subtitle: {
-        fontFamily: 'Roboto-Regular',
-        fontSize: 11,
-        letterSpacing: 0.2,
-        lineHeight: 14,
-        opacity: 0.72,
     },
     buttonMasterDisabled: {
         opacity: 0.5,

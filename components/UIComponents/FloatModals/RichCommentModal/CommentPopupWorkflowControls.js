@@ -110,10 +110,6 @@ export default function CommentPopupWorkflowControls({
     if (!targets) return null
 
     const currentStepLabel = workflow[targets.currentStepId]?.description
-    const backwardStepName =
-        targets.backwardStepId === OPEN_STEP ? translate('Open') : workflow[targets.backwardStepId]?.description
-    const forwardStepName =
-        targets.forwardStepId === DONE_STEP ? translate('Done') : workflow[targets.forwardStepId]?.description
 
     const moveTaskToStep = async (stepToMoveId, source) => {
         if (disabled || submittingRef.current) return
@@ -246,8 +242,6 @@ export default function CommentPopupWorkflowControls({
                 shortcutsEnabled={false}
                 compact
                 narrow={narrow}
-                backwardStepName={backwardStepName}
-                forwardStepName={forwardStepName}
             />
         </View>
     )

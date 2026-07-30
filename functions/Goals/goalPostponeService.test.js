@@ -148,6 +148,65 @@ describe('GoalPostponeService', () => {
         expect(writes.filter(write => write.type === 'update')).toHaveLength(1)
     })
 
+    test('postpones a task-list goal when the target is connected through a linked backlog task', async () => {
+        const workstreamGoal = {
+            ...goal,
+            assigneesIds: ['ws@default'],
+            assigneesReminderDate: { 'user-1': 1000, 'ws@default': 1500 },
+        }
+        const linkedTask = {
+            id: 'task-overdue',
+            parentGoalId: 'goal-1',
+            userId: 'user-1',
+            userIds: ['user-1'],
+            dueDate: Number.MAX_SAFE_INTEGER,
+            sortIndex: 10,
+            timesPostponed: 1,
+            isPublicFor: [0],
+        }
+        const { db, writes } = buildDb({ goal: workstreamGoal, tasks: [linkedTask] })
+
+        const result = await executeGoalPostpone({
+            actorUserId: 'user-1',
+            data: request,
+            db,
+            createSortIndex: () => 101,
+            now: 1234,
+        })
+
+        expect(result).toMatchObject({ updatedTaskCount: 0, duplicate: false })
+        expect(writes).toContainEqual({
+            type: 'update',
+            path: 'goals/project-1/items/goal-1',
+            data: { 'assigneesReminderDate.user-1': 5000, timesPostponed: 3 },
+        })
+        expect(writes.some(write => write.path.endsWith('task-overdue'))).toBe(false)
+    })
+
+    test('rejects a target who is unrelated to the goal and its linked tasks', async () => {
+        const workstreamGoal = {
+            ...goal,
+            assigneesIds: ['ws@default'],
+            assigneesReminderDate: { 'ws@default': 1500 },
+        }
+        const unrelatedTask = {
+            id: 'task-overdue',
+            parentGoalId: 'goal-1',
+            userId: 'user-2',
+            userIds: ['user-2'],
+            dueDate: 1000,
+            isPublicFor: [0],
+        }
+        const { db, writes } = buildDb({ goal: workstreamGoal, tasks: [unrelatedTask] })
+
+        await expect(
+            executeGoalPostpone({ actorUserId: 'user-1', data: request, db, now: 1234 })
+        ).rejects.toMatchObject({
+            code: 'failed-precondition',
+        })
+        expect(writes).toEqual([])
+    })
+
     test('does not apply or register the same request twice', async () => {
         const { db, writes } = buildDb({
             goal,
