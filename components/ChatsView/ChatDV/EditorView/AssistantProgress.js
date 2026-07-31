@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 
 import global, { colors } from '../../../styles/global'
+import { TOOL_LABEL_BY_KEY } from '../../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
 import { translate } from '../../../../i18n/TranslationService'
 
 export const ASSISTANT_PROGRESS_ROTATION_MS = 2800
@@ -69,6 +70,27 @@ const normalizeToolName = toolName =>
         .trim()
         .toLowerCase()
 
+const humanizeToolName = toolName => {
+    const normalized = normalizeToolName(toolName)
+    if (!normalized) return ''
+    const words = normalized.replace(/[_-]+/g, ' ')
+    return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+export const getAssistantProgressToolLabel = toolName => {
+    const normalized = normalizeToolName(toolName)
+    if (!normalized) return ''
+
+    const canonicalToolName = normalized === 'get_note' ? 'get_notes' : normalized
+    const labelKey =
+        TOOL_LABEL_BY_KEY[canonicalToolName] ||
+        (normalized.startsWith('talk_to_assistant_') && TOOL_LABEL_BY_KEY.talk_to_assistant) ||
+        (normalized.startsWith('external_tool_') && TOOL_LABEL_BY_KEY.external_tools) ||
+        (normalized.startsWith('mcp_') && TOOL_LABEL_BY_KEY.mcp_servers)
+
+    return labelKey ? translate(labelKey) : humanizeToolName(toolName)
+}
+
 export const getAssistantProgressKind = activity => {
     const phase = String(activity?.phase || '').toLowerCase()
     if (phase === 'preparing' || phase === 'thinking' || phase === 'composing') return phase
@@ -85,10 +107,15 @@ export const getAssistantProgressKind = activity => {
 
 export const getAssistantProgressSequence = activity => ACTIVITY_SEQUENCES[getAssistantProgressKind(activity)]
 
-export default function AssistantProgress({ activity = { phase: 'preparing' }, compact = false }) {
+export default function AssistantProgress({
+    activity = { phase: 'preparing' },
+    compact = false,
+    appearance = 'light',
+}) {
     const sequence = useMemo(() => getAssistantProgressSequence(activity), [activity?.phase, activity?.toolName])
     const activityKey = `${activity?.phase || 'preparing'}:${activity?.toolName || ''}:${activity?.startedAt || ''}`
     const [stepIndex, setStepIndex] = useState(0)
+    const darkAppearance = appearance === 'dark'
 
     useEffect(() => {
         setStepIndex(0)
@@ -100,29 +127,63 @@ export default function AssistantProgress({ activity = { phase: 'preparing' }, c
 
     const visibleSteps = sequence.slice(Math.max(0, stepIndex - 2), stepIndex + 1)
     const footerKey = stepIndex >= 3 ? 'assistant_progress_reassurance_slow' : 'assistant_progress_reassurance'
+    const activeToolLabel =
+        normalizeToolName(activity?.phase) === 'tool' ? getAssistantProgressToolLabel(activity?.toolName) : ''
+    const footerText = activeToolLabel
+        ? `${translate('assistant_progress_using_tool')}: ${activeToolLabel}`
+        : translate(footerKey)
 
     return (
         <View
-            style={[localStyles.container, compact && localStyles.compactContainer]}
+            style={[
+                localStyles.container,
+                compact && localStyles.compactContainer,
+                darkAppearance && localStyles.darkContainer,
+            ]}
             testID="assistant-progress"
             accessibilityLiveRegion="polite"
-            accessibilityLabel={translate(sequence[stepIndex][1])}
+            accessibilityLabel={`${translate(sequence[stepIndex][1])}. ${footerText}`}
         >
-            {visibleSteps.map(([emoji, textKey], index) => {
-                const isCurrent = index === visibleSteps.length - 1
-                return (
-                    <View key={textKey} style={[localStyles.stepRow, !isCurrent && localStyles.previousStep]}>
-                        <Text style={localStyles.emoji}>{isCurrent ? emoji : '•'}</Text>
-                        <Text style={[localStyles.stepText, isCurrent && localStyles.currentStepText]}>
-                            {translate(textKey)}
-                        </Text>
-                        {isCurrent && (
-                            <ActivityIndicator style={localStyles.indicator} size="small" color={colors.Primary100} />
-                        )}
-                    </View>
-                )
-            })}
-            <Text style={localStyles.reassurance}>{translate(footerKey)}</Text>
+            <View style={localStyles.trail} testID="assistant-progress-trail">
+                {visibleSteps.map(([emoji, textKey], index) => {
+                    const isCurrent = index === visibleSteps.length - 1
+                    return (
+                        <View key={textKey} style={[localStyles.stepRow, !isCurrent && localStyles.previousStep]}>
+                            <Text style={[localStyles.emoji, darkAppearance && localStyles.darkEmoji]}>
+                                {isCurrent ? emoji : '•'}
+                            </Text>
+                            <Text
+                                style={[
+                                    localStyles.stepText,
+                                    darkAppearance && localStyles.darkStepText,
+                                    isCurrent && localStyles.currentStepText,
+                                    isCurrent && darkAppearance && localStyles.darkCurrentStepText,
+                                ]}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                                testID="assistant-progress-step-text"
+                            >
+                                {translate(textKey)}
+                            </Text>
+                            {isCurrent && (
+                                <ActivityIndicator
+                                    style={localStyles.indicator}
+                                    size="small"
+                                    color={darkAppearance ? colors.UtilityBlue200 : colors.Primary100}
+                                />
+                            )}
+                        </View>
+                    )
+                })}
+            </View>
+            <Text
+                style={[localStyles.reassurance, darkAppearance && localStyles.darkReassurance]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                testID="assistant-progress-reassurance"
+            >
+                {footerText}
+            </Text>
         </View>
     )
 }
@@ -143,8 +204,17 @@ const localStyles = StyleSheet.create({
         marginTop: 4,
         paddingVertical: 8,
     },
+    darkContainer: {
+        backgroundColor: colors.Secondary300,
+        borderColor: colors.Secondary200,
+    },
+    trail: {
+        height: 72,
+        justifyContent: 'flex-end',
+        overflow: 'hidden',
+    },
     stepRow: {
-        minHeight: 24,
+        height: 24,
         flexDirection: 'row',
         alignItems: 'center',
     },
@@ -156,14 +226,23 @@ const localStyles = StyleSheet.create({
         ...global.body2,
         color: colors.UtilityGreen300,
     },
+    darkEmoji: {
+        color: colors.ProjectColor100,
+    },
     stepText: {
         flex: 1,
         ...global.body2,
         color: colors.Text02,
     },
+    darkStepText: {
+        color: colors.UtilityBlue150,
+    },
     currentStepText: {
         ...global.subtitle2,
         color: colors.Text01,
+    },
+    darkCurrentStepText: {
+        color: '#FFFFFF',
     },
     indicator: {
         marginLeft: 8,
@@ -174,5 +253,9 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginTop: 6,
         marginLeft: 24,
+        height: 20,
+    },
+    darkReassurance: {
+        color: colors.Text04,
     },
 })

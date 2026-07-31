@@ -10,7 +10,7 @@ export default function BotMessagePlaceholder({ projectId, assistantId }) {
             <View style={localStyles.headerContainer}>
                 <BotHeader projectId={projectId} assistantId={assistantId} />
             </View>
-            <AssistantProgress activity={{ phase: 'preparing' }} compact={true} />
+            <AssistantProgress activity={{ phase: 'preparing' }} compact={true} appearance="dark" />
         </View>
     )
 }

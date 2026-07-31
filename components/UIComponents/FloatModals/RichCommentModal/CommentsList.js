@@ -42,7 +42,11 @@ export default function CommentsList({
                             onArchiveLinkedEmail={onArchiveLinkedEmail}
                             contentOverride={
                                 showAssistantProgress ? (
-                                    <AssistantProgress activity={item.assistantRun?.activity} compact={true} />
+                                    <AssistantProgress
+                                        activity={item.assistantRun?.activity}
+                                        compact={true}
+                                        appearance="dark"
+                                    />
                                 ) : null
                             }
                             containerStyle={{
