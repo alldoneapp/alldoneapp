@@ -3770,6 +3770,32 @@ async function notifyVmResultChannels(pendingWebhook, text, opts = {}) {
     await postVmOriginConversationNote(pendingWebhook, text, { notificationType: opts.notificationType })
 }
 
+// A workflow step parked on this VM can move as soon as all of the job's own finalization has
+// finished. Read the authoritative status back first: a failed status write must leave the workflow
+// parked for the minute poller's recovery path, not advance on an in-memory assumption.
+async function resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook) {
+    try {
+        const snapshot = await pendingRef.get()
+        if (!snapshot.exists) return 0
+
+        // pendingWebhook was already restored from the immutable vmJobs snapshot at runner start;
+        // pass it as the authoritative callback context rather than letting a mutable status record
+        // override routing fields during this final read.
+        const settledJob = {
+            ...pendingWebhook,
+            ...resolveVmCallbackContext(snapshot.data() || {}, pendingWebhook),
+        }
+        const { resolveWorkflowRunsForSettledVmJob } = require('../Tasks/workflowAiStep')
+        return await resolveWorkflowRunsForSettledVmJob(settledJob)
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Immediate workflow completion failed; poller will retry', {
+            correlationId: pendingWebhook.correlationId,
+            error: error.message,
+        })
+        return 0
+    }
+}
+
 /**
  * Worker entry point: run a queued VM job to completion and post the result back
  * into the conversation. Invoked by the runVmJob onTaskDispatched function.
@@ -3811,6 +3837,7 @@ async function runVmJobByCorrelationId(correlationId) {
         await refundVmJob(pendingWebhook, 'VM task stopped before execution')
         // This job held the thread's dispatch lease; hand off to any queued follow-up.
         await drainThreadAfterRun(threadSessionRef)
+        await resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook)
         return
     }
 
@@ -3864,6 +3891,7 @@ async function runVmJobByCorrelationId(correlationId) {
         heartbeat.stop()
         // This job held the thread's dispatch lease (it never reached runAgentInSandbox); hand off.
         await drainThreadAfterRun(threadSessionRef)
+        await resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook)
         return
     }
 
@@ -4237,6 +4265,7 @@ async function runVmJobByCorrelationId(correlationId) {
         await refundVmJob(pendingWebhook, 'VM task failed during execution', runtimeGoldCharged + proxyTokenGoldCharged)
     } finally {
         heartbeat.stop()
+        await resolveWorkflowAfterVmJobSettlement(pendingRef, pendingWebhook)
     }
 }
 
@@ -4325,6 +4354,7 @@ module.exports = {
         sendWhatsAppVmResultNotification,
         postVmOriginConversationNote,
         notifyVmResultChannels,
+        resolveWorkflowAfterVmJobSettlement,
         writeStatusComment,
         buildAttachmentTokens,
         buildVmFinalCommentText,
