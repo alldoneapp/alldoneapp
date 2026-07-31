@@ -48,15 +48,15 @@ describe('AddTaskTag', () => {
         )
     })
 
-    it('uses the established primary action colors when requested', () => {
+    it('uses the assistant Search button colors when requested', () => {
         const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
         const button = tree.root.findByType(TouchableOpacity)
         const icon = tree.root.findByType(Icon)
         const label = tree.root.find(node => node.type === Text && node.props.children === 'Add task')
 
         expect(StyleSheet.flatten(button.props.style)).toMatchObject({
-            backgroundColor: colors.Primary300,
-            borderColor: colors.Primary300,
+            backgroundColor: colors.UtilityBlue200,
+            borderColor: colors.UtilityBlue150,
         })
         expect(icon.props.color).toBe('#ffffff')
         expect(StyleSheet.flatten(label.props.style).color).toBe('#ffffff')
