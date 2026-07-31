@@ -8,16 +8,16 @@ import OptionItem from './OptionItem'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
+import { SELECTABLE_ASSISTANT_REASONING_EFFORTS } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
 
-const options = [
-    { text: 'Model default', reasoningEffort: null, shortcutKey: '1' },
-    { text: 'Low', reasoningEffort: 'low', shortcutKey: '2' },
-    { text: 'Medium', reasoningEffort: 'medium', shortcutKey: '3' },
-    { text: 'High', reasoningEffort: 'high', shortcutKey: '4' },
-]
+const options = SELECTABLE_ASSISTANT_REASONING_EFFORTS.map((option, index) => ({
+    text: option.labelKey,
+    reasoningEffort: option.value,
+    shortcutKey: String(index + 1),
+}))
 
 export default function AssistantReasoningEffortModal({ closeModal, reasoningEffort, updateReasoningEffort }) {
-    const [width, height] = useWindowSize()
+    const [, height] = useWindowSize()
 
     const selectReasoningEffort = value => {
         updateReasoningEffort(value)

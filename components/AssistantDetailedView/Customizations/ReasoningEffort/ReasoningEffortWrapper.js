@@ -9,6 +9,10 @@ import { execShortcutFn } from '../../../UIComponents/ShortcutCheatSheet/HelperF
 import { updateAssistantReasoningEffort } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import AssistantReasoningEffortModal from '../../../UIComponents/FloatModals/AssistantReasoningEffortModal/AssistantReasoningEffortModal'
 import { translate } from '../../../../i18n/TranslationService'
+import {
+    getAssistantReasoningEffortLabelKey,
+    normalizeAssistantReasoningEffort,
+} from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
 
 export default function ReasoningEffortWrapper({ disabled, projectId, assistant }) {
     const dispatch = useDispatch()
@@ -16,9 +20,7 @@ export default function ReasoningEffortWrapper({ disabled, projectId, assistant 
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [isOpen, setIsOpen] = useState(false)
     const isOpenRef = useRef(false)
-    const reasoningEffort = ['low', 'medium', 'high'].includes(assistant.reasoningEffort)
-        ? assistant.reasoningEffort
-        : null
+    const reasoningEffort = normalizeAssistantReasoningEffort(assistant.reasoningEffort)
 
     const openModal = () => {
         setIsOpen(true)
@@ -39,11 +41,6 @@ export default function ReasoningEffortWrapper({ disabled, projectId, assistant 
             if (isOpenRef.current) dispatch(hideFloatPopup())
         }
     }, [])
-
-    const getEffortText = () => {
-        if (!reasoningEffort) return 'Model default'
-        return reasoningEffort[0].toUpperCase() + reasoningEffort.slice(1)
-    }
 
     return (
         <Popover
@@ -73,7 +70,7 @@ export default function ReasoningEffortWrapper({ disabled, projectId, assistant 
                     onPress={openModal}
                     disabled={isOpen || disabled}
                     shortcutText={'E'}
-                    title={translate(getEffortText())}
+                    title={translate(getAssistantReasoningEffortLabelKey(reasoningEffort))}
                 />
             </Hotkeys>
         </Popover>

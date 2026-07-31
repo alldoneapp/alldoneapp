@@ -5,6 +5,7 @@ import Button from '../../../UIControls/Button'
 import styles, { colors } from '../../../styles/global'
 import { resolveAssistantTemplateConflicts } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { translate } from '../../../../i18n/TranslationService'
+import { getAssistantReasoningEffortLabelKey } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
 
 const FIELD_LABEL_KEYS = {
     displayName: 'Name',
@@ -36,8 +37,7 @@ export const formatTemplateConflictField = field => {
 export const formatTemplateConflictValue = (field, value, exists) => {
     if (!exists) return translate('(removed)')
     if (field === 'model' || field === 'heartbeatModel') return MODEL_LABELS[value] || value
-    if (field === 'reasoningEffort')
-        return value ? translate(value[0].toUpperCase() + value.slice(1)) : translate('Model default')
+    if (field === 'reasoningEffort') return translate(getAssistantReasoningEffortLabelKey(value))
     if (typeof value === 'string') return value || translate('(empty)')
     try {
         return JSON.stringify(value, null, 2)
