@@ -181,5 +181,6 @@ describe('RichCommentModal CommentsList VM interactions', () => {
             toolName: 'web_search',
             startedAt: 123,
         })
+        expect(comment.props.contentOverride.props.appearance).toBe('dark')
     })
 })
