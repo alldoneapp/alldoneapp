@@ -44,7 +44,12 @@ import {
     getParentObjectData,
 } from '../../../../utils/backends/Chats/chatsComments'
 import { translate } from '../../../../i18n/TranslationService'
-import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../../../ChatsView/Utils/assistantWaiting'
+import {
+    hasLoadingAssistantMessage,
+    hasNewVisibleAssistantMessage,
+    shouldShowAssistantScrollIndicator,
+    snapshotAssistantMessageIds,
+} from '../../../ChatsView/Utils/assistantWaiting'
 import { performEmailLineAction } from '../../../../utils/backends/EmailLine/emailLineBackend'
 import {
     getLinkedEmailFromMessage,
@@ -58,6 +63,8 @@ import useNewEmailCommentIds from '../../../ChatsView/ChatDV/useNewEmailCommentI
 import CommentPopupObjectHeader from './CommentPopupObjectHeader'
 import shouldAutoFocusChatInput from '../../../ChatsView/Utils/shouldAutoFocusChatInput'
 import RichCommentDismissSurface from './RichCommentDismissSurface'
+import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
+import { resolveEffectiveMessageLoading } from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
 
 export default function RichCommentModal({
     projectId,
@@ -140,6 +147,15 @@ export default function RichCommentModal({
         assistantMessageIdsAtWaitStartRef.current,
         getAssistant
     )
+    const assistantResponseIsLoading =
+        waitingForBotAnswer ||
+        hasLoadingAssistantMessage(
+            comments,
+            creatorId => !!getAssistant(creatorId),
+            message =>
+                message.assistantRun?.kind === 'chat' &&
+                resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate))
+        )
 
     const toggleShowFileSelector = () => {
         if (showFileSelector || !checkIsLimitedByTraffic(projectId)) {
@@ -433,6 +449,10 @@ export default function RichCommentModal({
                         { maxHeight: height - MODAL_MAX_HEIGHT_GAP - 64 },
                     ]}
                     showsVerticalScrollIndicator={false}
+                    showIndicator={shouldShowAssistantScrollIndicator(
+                        smallScreenNavigation,
+                        assistantResponseIsLoading
+                    )}
                     fixedChildren={
                         <CloseButton closeModal={closeModal} comments={comments} openChat={processShowMore} />
                     }
