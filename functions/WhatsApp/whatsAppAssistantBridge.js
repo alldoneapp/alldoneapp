@@ -88,7 +88,6 @@ async function processWhatsAppAssistantMessage(
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
-        openAiReasoningEffort: assistant.reasoningEffort || null,
         objectType: 'topics',
         objectId: chatId,
         messageId: typeof options?.messageId === 'string' ? options.messageId.trim() : '',

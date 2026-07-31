@@ -47,7 +47,6 @@ import {
     buildAssistantWorkflowFirstStep,
     getAssistantWorkflow,
 } from '../../assistantWorkflow'
-import { normalizeAssistantReasoningEffort } from '../../../functions/Assistant/selectableAssistantReasoningEfforts'
 
 const MAX_ASSISTANT_PROMPT_HISTORY = 10
 export const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
@@ -904,11 +903,6 @@ export function updateAssistantModel(projectId, assistant, model) {
         assistantModelChangedUpdatesChain(projectId, assistant, assistant.model, model)
 }
 
-export function updateAssistantReasoningEffort(projectId, assistant, reasoningEffort) {
-    const normalizedEffort = normalizeAssistantReasoningEffort(reasoningEffort)
-    updateAssistantData(projectId, assistant.uid, { reasoningEffort: normalizedEffort }, null)
-}
-
 export function updateAssistantTemperature(projectId, assistant, temperature) {
     updateAssistantData(projectId, assistant.uid, { temperature }, null)
     if (!isGlobalAssistant(assistant.uid))
@@ -1526,7 +1520,6 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
                 : DEFAULT_EMAIL_SIGNATURE,
         model: globalAssistant.model,
         heartbeatModel: globalAssistant.heartbeatModel ?? globalAssistant.model,
-        reasoningEffort: normalizeAssistantReasoningEffort(globalAssistant.reasoningEffort),
         temperature: globalAssistant.temperature,
         allowedTools: Array.isArray(globalAssistant.allowedTools) ? globalAssistant.allowedTools : [],
         enabledSkillIds: Array.isArray(globalAssistant.enabledSkillIds) ? globalAssistant.enabledSkillIds : [],

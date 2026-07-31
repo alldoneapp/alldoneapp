@@ -109,7 +109,6 @@ async function createRecapTopic({ projectId, ownerId, project, user, okrs }) {
         projectId,
         assistantId: resolvedAssistantId,
         requestUserId: ownerId,
-        openAiReasoningEffort: assistant.reasoningEffort || null,
         objectType: 'topics',
         objectId: chatId,
     }

@@ -307,6 +307,37 @@ describe('resolveVmContinuationThread with the "latest" sentinel', () => {
         ).resolves.toEqual({ ok: true, objectType: 'topics', objectId: 'recent' })
     })
 
+    it('prefers the ambient thread over a newer unrelated project VM', async () => {
+        const db = makeSessionsDb([
+            { objectId: 'ambient', lastUsedAt: 100, objectType: 'tasks' },
+            { objectId: 'unrelated-newer', lastUsedAt: 900, objectType: 'topics' },
+        ])
+
+        await expect(
+            resolveVmContinuationThread({
+                db,
+                projectId: PROJECT_ID,
+                objectId: 'latest',
+                preferredObjectId: 'ambient',
+                requestUserId: USER_ID,
+            })
+        ).resolves.toEqual({ ok: true, objectType: 'tasks', objectId: 'ambient' })
+    })
+
+    it('falls back to the project-wide latest VM when the ambient thread has no session', async () => {
+        const db = makeSessionsDb([{ objectId: 'recent', lastUsedAt: 900, objectType: 'topics' }])
+
+        await expect(
+            resolveVmContinuationThread({
+                db,
+                projectId: PROJECT_ID,
+                objectId: 'latest',
+                preferredObjectId: 'ordinary-task-without-vm',
+                requestUserId: USER_ID,
+            })
+        ).resolves.toEqual({ ok: true, objectType: 'topics', objectId: 'recent' })
+    })
+
     it('is case-insensitive and tolerates whitespace', async () => {
         const db = makeSessionsDb([{ objectId: 'recent', lastUsedAt: 900 }])
 

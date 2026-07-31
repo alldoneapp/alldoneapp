@@ -11,7 +11,6 @@ import TypeOfAssistantProperty from './TypeOfAssistant/TypeOfAssistantProperty'
 import InstructionsProperty from './Instructions/InstructionsProperty'
 import ModelProperty from './Model/ModelProperty'
 import TemperatureProperty from './Temperature/TemperatureProperty'
-import ReasoningEffortProperty from './ReasoningEffort/ReasoningEffortProperty'
 import RealtimeVoiceProperty from './RealtimeVoice/RealtimeVoiceProperty'
 import ToolsAccessProperty from './ToolsAccess/ToolsAccessProperty'
 import SkillsAccessProperty from './SkillsAccess/SkillsAccessProperty'
@@ -155,7 +154,6 @@ export default function AssistantCustomizations({
                 <View style={{ flex: 1, marginRight: smallScreen ? 0 : 72, width: smallScreen ? '100%' : '50%' }}>
                     <InstructionsProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <ModelProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
-                    <ReasoningEffortProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
                     <TemperatureProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
@@ -197,7 +195,11 @@ export default function AssistantCustomizations({
                         projectId={projectId}
                         assistant={assistant}
                     />
-                    <HeartbeatModelProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    <HeartbeatModelProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        assistant={assistant}
+                    />
                     <HeartbeatChanceProperty
                         disabled={!canEditAssitant}
                         projectId={projectId}

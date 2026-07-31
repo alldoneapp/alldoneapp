@@ -452,6 +452,12 @@ function isReusableVmSession(session) {
     return !!session && ['paused', 'idle_running'].includes(session.status || 'paused')
 }
 
+function shouldResumeVmSession(session) {
+    // Missing status is the legacy paused shape. `idle_running` is deliberately still live during
+    // the keep-alive window and must be connected directly; POST /resume returns 409 for it.
+    return !!session && (session.status || 'paused') === 'paused'
+}
+
 function isUnhealthyVmSessionError(error) {
     const message = String(error?.message || error || '')
     return isE2bSandboxTimeout(error) || /exited with exit status -1\b/i.test(message)
@@ -2448,8 +2454,12 @@ async function resumeE2bSandbox(sandboxId, e2bApiKey, timeoutSec) {
     })
     if (!resp.ok) {
         const body = await resp.text().catch(() => '')
+        // Firestore can lag the E2B lifecycle briefly. If E2B says the sandbox is already running,
+        // connecting to it is exactly the desired continuation behavior.
+        if (resp.status === 409 && /already running/i.test(body)) return false
         throw new Error(`E2B resume ${resp.status}: ${body.substring(0, 200)}`)
     }
+    return true
 }
 
 function startVmSliceTimer(runtimeMs) {
@@ -2856,7 +2866,8 @@ async function runAgentInSandbox(
             try {
                 // A paused sandbox must be explicitly resumed first (connect alone won't
                 // auto-resume it on e2b@1.x); a still-running one (keep-alive) just connects.
-                if (sess.status !== 'running') {
+                const wasPaused = shouldResumeVmSession(sess)
+                if (wasPaused) {
                     await resumeE2bSandbox(sess.sandboxId, e2bApiKey, Math.ceil(E2B_SANDBOX_TIMEOUT_MS / 1000))
                 }
                 const resumedSandbox = await Sandbox.connect(sess.sandboxId, {
@@ -2877,7 +2888,7 @@ async function runAgentInSandbox(
                 console.log('🖥️ VM JOB: resumed session', {
                     correlationId: vmJob.correlationId,
                     sandboxId: sess.sandboxId,
-                    wasPaused: sess.status !== 'running',
+                    wasPaused,
                 })
             } catch (error) {
                 console.warn('🖥️ VM JOB: resume failed, starting fresh', {
@@ -4344,6 +4355,8 @@ module.exports = {
         startVmSessionHeartbeat,
         keepVmSessionAlive,
         isReusableVmSession,
+        shouldResumeVmSession,
+        resumeE2bSandbox,
         isUnhealthyVmSessionError,
         probeResumedVmSandbox,
         RESUME_HEALTHCHECK_TIMEOUT_MS,

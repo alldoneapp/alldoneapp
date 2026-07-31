@@ -94,10 +94,6 @@ const { addProjectRoutingReasonComment } = require('../shared/projectRoutingComm
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
 const { buildInitialAssistantRunStatusMessage, buildToolProgressStatusMessage } = require('./assistantProgressStatus')
-const {
-    isValidAssistantReasoningEffort,
-    normalizeAssistantReasoningEffort,
-} = require('./selectableAssistantReasoningEfforts')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -991,18 +987,6 @@ const modelSupportsToolSearch = modelKey => {
         normalizedKey === MODEL_GPT5_6_LUNA ||
         normalizedKey === MODEL_GPT5_4_MINI ||
         normalizedKey === MODEL_GPT5_4_NANO
-    )
-}
-
-// The complete product effort set, including max, is an API contract of the
-// selectable GPT-5.6 family. Keep this separate from tool-search support so a
-// capability added to older models cannot accidentally receive unsupported values.
-const modelSupportsAssistantReasoningEffort = modelKey => {
-    const normalizedKey = normalizeModelKey(modelKey)
-    return (
-        normalizedKey === MODEL_GPT5_6_SOL ||
-        normalizedKey === MODEL_GPT5_6_TERRA ||
-        normalizedKey === MODEL_GPT5_6_LUNA
     )
 }
 
@@ -2720,7 +2704,7 @@ async function interactWithChatStream(
         let responsesToolConfig = null
 
         const reasoningEffort = toolRuntimeContext?.openAiReasoningEffort
-        if (modelSupportsAssistantReasoningEffort(modelKey) && isValidAssistantReasoningEffort(reasoningEffort)) {
+        if (modelSupportsToolSearch(modelKey) && ['low', 'medium', 'high'].includes(reasoningEffort)) {
             requestParams.reasoning = { effort: reasoningEffort }
         }
 
@@ -4396,7 +4380,6 @@ async function executeDelegatedAssistantRequest({
     const targetAllowedTools = Array.isArray(targetAssistant.allowedTools) ? targetAssistant.allowedTools : []
     const targetModel = normalizeModelKey(targetAssistant.model || MODEL_GPT5_6_SOL)
     const targetTemperature = targetAssistant.temperature || TEMPERATURE_NORMAL
-    const targetReasoningEffort = targetAssistant.reasoningEffort || null
     const targetDisplayName = targetAssistant.displayName || target.displayName || 'Assistant'
     const targetInstructions = targetAssistant.instructions || 'You are a helpful assistant.'
 
@@ -4411,7 +4394,6 @@ async function executeDelegatedAssistantRequest({
         targetDisplayName,
         targetModel,
         targetTemperature,
-        targetReasoningEffort,
         targetAllowedToolsCount: targetAllowedTools.length,
         targetAllowedTools,
         hasExternalToolsToggle: targetAllowedTools.includes(EXTERNAL_TOOLS_KEY),
@@ -4440,7 +4422,6 @@ async function executeDelegatedAssistantRequest({
         projectId: target.projectId,
         assistantId: target.assistantId,
         requestUserId,
-        openAiReasoningEffort: targetReasoningEffort,
         sourceChannel: callerToolRuntimeContext?.sourceChannel || '',
         whatsappFromNumber: callerToolRuntimeContext?.whatsappFromNumber || '',
         language: delegatedLanguage,
@@ -9229,6 +9210,10 @@ async function executeToolNatively(
                         db: admin.firestore(),
                         projectId: effectiveProjectId,
                         objectId: requestedContinuationObjectId,
+                        // `latest` is project-wide only for contextless callers. Inside a thread,
+                        // prefer that thread's existing VM session so an unrelated, newer project
+                        // run cannot steal the follow-up.
+                        preferredObjectId: effectiveObjectId,
                         requestUserId,
                     })
                     if (!continuation.ok) {
@@ -10721,7 +10706,6 @@ const primeDefaultAssistantCache = async () => {
                 ...defaultAssistant,
                 model: normalizeModelKey(defaultAssistant.model || MODEL_GPT5_6_SOL),
                 temperature: defaultAssistant.temperature || 'TEMPERATURE_NORMAL',
-                reasoningEffort: normalizeAssistantReasoningEffort(defaultAssistant.reasoningEffort),
                 instructions: defaultAssistant.instructions || 'You are a helpful assistant.',
                 emailSignature:
                     typeof defaultAssistant.emailSignature === 'string'
@@ -10834,7 +10818,6 @@ async function getAssistantForChat(projectId, assistantId, userId = null, option
     assistant = assistant || {}
     assistant.model = normalizeModelKey(assistant?.model || MODEL_GPT5_6_SOL)
     assistant.temperature = assistant?.temperature || 'TEMPERATURE_NORMAL'
-    assistant.reasoningEffort = normalizeAssistantReasoningEffort(assistant?.reasoningEffort)
     assistant.instructions = assistant?.instructions || 'You are a helpful assistant.'
     assistant.emailSignature =
         typeof assistant?.emailSignature === 'string' ? assistant.emailSignature : DEFAULT_EMAIL_SIGNATURE
@@ -10905,7 +10888,6 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     const settings = {
         model: normalizeModelKey(taskModelOverride || assistant.model || MODEL_GPT5_6_SOL),
         temperature: (task && task.aiTemperature) || assistant.temperature || 'TEMPERATURE_NORMAL',
-        reasoningEffort: assistant.reasoningEffort || null,
         instructions: (task && task.aiSystemMessage) || assistant.instructions || 'You are a helpful assistant.',
         displayName: assistant.displayName, // Always use assistant's display name
         uid: assistant.uid, // Always use assistant's uid
@@ -13161,7 +13143,6 @@ module.exports = {
     OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
     OPENAI_INPUT_TOKEN_TARGET_CEILING,
     modelSupportsToolSearch,
-    modelSupportsAssistantReasoningEffort,
     modelSupportsExplicitPromptCaching,
     convertResponsesStream,
     normalizeCreateTaskImageUrls,

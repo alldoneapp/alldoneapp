@@ -370,6 +370,8 @@ describe('VM assistant tool schema', () => {
         expect(properties.target_task_id.description).toContain('existing task')
         expect(properties.target_task_id.description).toContain('instead of creating a duplicate host task')
         expect(properties.target_task_id.description).toContain('Never pass both')
+        expect(properties.continue_in_object_id.description).toContain('do not use "latest" there')
+        expect(properties.continue_in_object_id.description).toContain('contextless/project-level conversation')
     })
 })
 

@@ -420,7 +420,6 @@ const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings) => {
         ...aiSettings,
         model: aiSettings.model || assistantDetails?.model,
         temperature: aiSettings.temperature || assistantDetails?.temperature,
-        reasoningEffort: assistantDetails?.reasoningEffort || null,
         systemMessage: aiSettings.systemMessage || assistantDetails?.instructions,
         assistantUid: aiSettings.assistantUid || assistantDetails?.uid || assistantId,
         assistantDisplayName:

@@ -60,7 +60,6 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         projectId,
         assistantId: assistant.uid || assistantId,
         requestUserId: userId,
-        openAiReasoningEffort: assistant.reasoningEffort || null,
         channel: 'email',
         initialPendingAttachmentPayload: options.initialPendingAttachmentPayload || null,
         currentEmailParticipants,

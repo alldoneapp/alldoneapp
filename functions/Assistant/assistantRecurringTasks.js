@@ -33,7 +33,6 @@ function buildRecurringTaskAiSettings(task, assistant, assistantId) {
     return {
         model: taskModelOverride || assistant?.model || 'MODEL_GPT5_6_SOL',
         temperature: task.aiTemperature || assistant?.temperature || 'TEMPERATURE_NORMAL',
-        reasoningEffort: assistant?.reasoningEffort || null,
         systemMessage: task.aiSystemMessage || assistant?.instructions || 'You are a helpful assistant.',
         assistantDisplayName: assistant?.displayName || 'Assistant',
         assistantUid: assistant?.uid || assistantId,
