@@ -2259,8 +2259,9 @@ const toolSchemas = {
                             'Optional. Continue an earlier VM run instead of starting a fresh one. The job is hosted in ' +
                             'that thread and reuses its VM, so the agent keeps the files it created and the conversation ' +
                             'it already had — use it whenever the user refers to carrying on, fixing, or extending work a ' +
-                            'previous VM task did. Pass "latest" to continue the most recent VM run in this project, which ' +
-                            'is usually what "keep going" / "continue what you were doing" means. Otherwise pass the ID of ' +
+                            'previous VM task did. When already inside the thread that hosted that work, pass that thread ID; ' +
+                            'do not use "latest" there. Pass "latest" only from a contextless/project-level conversation to ' +
+                            'continue the most recent VM run anywhere in the project. Otherwise pass the ID of ' +
                             'the specific task/topic that hosted the earlier run. Only threads in the current project that ' +
                             'already ran a VM task can be continued; if the ID is wrong the tool replies with the list of ' +
                             'continuable threads, so retry with one of those rather than starting over. ' +

@@ -126,19 +126,4 @@ describe('templateMerge', () => {
             expect.objectContaining({ field: 'model', localValue: 'local', templateValue: 'new' }),
         ])
     })
-
-    test('propagates reasoning effort while preserving a genuine local override', () => {
-        const previousTemplate = { reasoningEffort: null }
-        const currentTemplate = { reasoningEffort: 'max' }
-        const inherited = inheritMissingAssistantTemplateFields({}, previousTemplate)
-
-        expect(mergeTemplateState(previousTemplate, currentTemplate, inherited.normalizedLocalState)).toEqual({
-            patch: { reasoningEffort: 'max' },
-            deleteFields: [],
-            conflicts: [],
-        })
-        expect(mergeTemplateState(previousTemplate, currentTemplate, { reasoningEffort: 'low' }).conflicts).toEqual([
-            expect.objectContaining({ field: 'reasoningEffort', localValue: 'low', templateValue: 'max' }),
-        ])
-    })
 })

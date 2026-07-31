@@ -169,7 +169,6 @@ describe('recurring assistant generated task completion', () => {
                     uid: 'assistant-1',
                     model: 'MODEL_GPT5_6_SOL',
                     temperature: 'TEMPERATURE_NORMAL',
-                    reasoningEffort: 'max',
                     instructions: 'Assistant instructions',
                     displayName: 'Anna',
                     allowedTools: ['get_tasks'],
@@ -179,7 +178,6 @@ describe('recurring assistant generated task completion', () => {
         ).toEqual({
             model: 'MODEL_GPT5_6_SOL',
             temperature: 'TEMPERATURE_LOW',
-            reasoningEffort: 'max',
             systemMessage: 'Assistant instructions',
             assistantDisplayName: 'Anna',
             assistantUid: 'assistant-1',

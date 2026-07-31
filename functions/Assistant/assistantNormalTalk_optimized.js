@@ -174,7 +174,6 @@ async function askToOpenAIBotOptimized(
             projectId,
             assistantId: runtimeAssistantId,
             requestUserId: userId,
-            openAiReasoningEffort: assistant.reasoningEffort || null,
             objectType,
             objectId,
             messageId,

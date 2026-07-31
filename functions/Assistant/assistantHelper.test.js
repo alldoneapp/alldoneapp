@@ -250,15 +250,12 @@ jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     })),
 }))
 
-jest.mock(
-    'openai',
-    () =>
-        jest.fn().mockImplementation(() => ({
-            responses: {
-                create: mockResponsesCreate,
-            },
-        })),
-    { virtual: true }
+jest.mock('openai', () =>
+    jest.fn().mockImplementation(() => ({
+        responses: {
+            create: mockResponsesCreate,
+        },
+    }))
 )
 jest.mock(
     '@dqbd/tiktoken/lite',
@@ -453,84 +450,7 @@ describe('Responses API compatibility helpers', () => {
             })
         )
         expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('messages')
-        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
     })
-
-    test.each(['none', 'low', 'medium', 'high', 'xhigh', 'max'])(
-        'sends the explicitly configured %s assistant reasoning effort',
-        async reasoningEffort => {
-            mockResponsesCreate.mockResolvedValue([
-                { type: 'response.output_text.delta', delta: 'Considered response' },
-                { type: 'response.completed', response: { output: [] } },
-            ])
-
-            const stream = await interactWithChatStream(
-                [['user', 'Consider this carefully']],
-                'MODEL_GPT5_6_SOL',
-                'TEMPERATURE_NORMAL',
-                [],
-                { openAiReasoningEffort: reasoningEffort }
-            )
-            await stream.next()
-
-            expect(mockResponsesCreate).toHaveBeenCalledWith(
-                expect.objectContaining({ reasoning: { effort: reasoningEffort } })
-            )
-        }
-    )
-
-    test.each([null, undefined, 'minimal', 'MAX'])('omits unsupported assistant reasoning effort %p', async effort => {
-        mockResponsesCreate.mockResolvedValue([
-            { type: 'response.output_text.delta', delta: 'Default response' },
-            { type: 'response.completed', response: { output: [] } },
-        ])
-
-        const stream = await interactWithChatStream(
-            [['user', 'Use the model default']],
-            'MODEL_GPT5_6_SOL',
-            'TEMPERATURE_NORMAL',
-            [],
-            { openAiReasoningEffort: effort }
-        )
-        await stream.next()
-
-        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
-    })
-
-    test('does not send GPT-5.6-only effort values to a legacy model', async () => {
-        mockResponsesCreate.mockResolvedValue([
-            { type: 'response.output_text.delta', delta: 'Legacy response' },
-            { type: 'response.completed', response: { output: [] } },
-        ])
-
-        const stream = await interactWithChatStream(
-            [['user', 'Use max effort']],
-            'MODEL_GPT5_1',
-            'TEMPERATURE_NORMAL',
-            [],
-            { openAiReasoningEffort: 'max' }
-        )
-        await stream.next()
-
-        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
-    })
-
-    test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'])(
-        'sends max effort to compatible %s assistants',
-        async model => {
-            mockResponsesCreate.mockResolvedValue([
-                { type: 'response.output_text.delta', delta: 'Maximum effort response' },
-                { type: 'response.completed', response: { output: [] } },
-            ])
-
-            const stream = await interactWithChatStream([['user', 'Use max effort']], model, 'TEMPERATURE_NORMAL', [], {
-                openAiReasoningEffort: 'max',
-            })
-            await stream.next()
-
-            expect(mockResponsesCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoning: { effort: 'max' } }))
-        }
-    )
 
     test('maps chat messages, multimodal content, tool calls, and tool outputs to Responses items', () => {
         expect(
@@ -5257,10 +5177,12 @@ describe('assistant project description tool', () => {
 describe('execute_task_in_vm existing task routing', () => {
     let vmJob
     let vmTargetTask
+    let vmContinuationThread
     let assistantStatusHelper
     let countActiveJobsSpy
     let startVmJobSpy
     let resolveTargetTaskSpy
+    let resolveContinuationSpy
     let ensureChatExistsSpy
 
     beforeEach(() => {
@@ -5270,6 +5192,7 @@ describe('execute_task_in_vm existing task routing', () => {
 
         vmJob = require('./vmJob')
         vmTargetTask = require('./vmTargetTask')
+        vmContinuationThread = require('./vmContinuationThread')
         assistantStatusHelper = require('./assistantStatusHelper')
         countActiveJobsSpy = jest.spyOn(vmJob, 'countActiveVmJobsForUser').mockResolvedValue(0)
         startVmJobSpy = jest.spyOn(vmJob, 'startVmJob').mockResolvedValue({
@@ -5282,6 +5205,9 @@ describe('execute_task_in_vm existing task routing', () => {
             objectId: 'task-1',
             isPublicFor: [0, 'user-1'],
         })
+        resolveContinuationSpy = jest
+            .spyOn(vmContinuationThread, 'resolveVmContinuationThread')
+            .mockResolvedValue({ ok: true, objectType: 'tasks', objectId: 'ambient-task' })
         ensureChatExistsSpy = jest.spyOn(assistantStatusHelper, 'ensureChatExists').mockResolvedValue(undefined)
     })
 
@@ -5289,6 +5215,7 @@ describe('execute_task_in_vm existing task routing', () => {
         countActiveJobsSpy.mockRestore()
         startVmJobSpy.mockRestore()
         resolveTargetTaskSpy.mockRestore()
+        resolveContinuationSpy.mockRestore()
         ensureChatExistsSpy.mockRestore()
     })
 
@@ -5364,6 +5291,34 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(resolveTargetTaskSpy).not.toHaveBeenCalled()
         expect(startVmJobSpy).not.toHaveBeenCalled()
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('passes the ambient thread as the preferred target for latest continuation', async () => {
+        await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Continue the implementation.',
+                task_type: 'prototype',
+                continue_in_object_id: 'latest',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { projectId: 'project-1', objectType: 'tasks', objectId: 'ambient-task' }
+        )
+
+        expect(resolveContinuationSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-1',
+                objectId: 'latest',
+                preferredObjectId: 'ambient-task',
+                requestUserId: 'user-1',
+            })
+        )
+        expect(startVmJobSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ objectType: 'tasks', objectId: 'ambient-task' })
+        )
     })
 })
 

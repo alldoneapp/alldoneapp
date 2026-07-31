@@ -1469,6 +1469,42 @@ describe('VM session isolation', () => {
         expect(__private__.isReusableVmSession({ status: 'running' })).toBe(false)
     })
 
+    test('resumes only paused sessions and connects directly to warm idle sessions', () => {
+        expect(__private__.shouldResumeVmSession({ status: 'paused' })).toBe(true)
+        expect(__private__.shouldResumeVmSession({})).toBe(true)
+        expect(__private__.shouldResumeVmSession({ status: 'idle_running' })).toBe(false)
+    })
+
+    test('treats E2B already-running resume conflicts as safe to connect', async () => {
+        const originalFetch = global.fetch
+        global.fetch = jest.fn(async () => ({
+            ok: false,
+            status: 409,
+            text: async () => '{"code":409,"message":"Sandbox sandbox-1 is already running"}',
+        }))
+
+        try {
+            await expect(__private__.resumeE2bSandbox('sandbox-1', 'test-key', 3600)).resolves.toBe(false)
+        } finally {
+            global.fetch = originalFetch
+        }
+    })
+
+    test('does not swallow unrelated E2B resume conflicts', async () => {
+        const originalFetch = global.fetch
+        global.fetch = jest.fn(async () => ({
+            ok: false,
+            status: 409,
+            text: async () => '{"code":409,"message":"Sandbox transition is already in progress"}',
+        }))
+
+        try {
+            await expect(__private__.resumeE2bSandbox('sandbox-1', 'test-key', 3600)).rejects.toThrow('E2B resume 409')
+        } finally {
+            global.fetch = originalFetch
+        }
+    })
+
     test('treats command-channel timeouts and forced agent termination as unhealthy', () => {
         expect(__private__.isUnhealthyVmSessionError(new Error('deadline exceeded while running git fetch'))).toBe(true)
         expect(__private__.isUnhealthyVmSessionError(new Error('Claude exited with exit status -1.'))).toBe(true)

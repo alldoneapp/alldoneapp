@@ -51,7 +51,6 @@ export function getNewDefaultAssistant() {
         instructions: '',
         model: MODEL_GPT5_6_SOL,
         heartbeatModel: MODEL_GPT5_6_SOL,
-        reasoningEffort: null,
         temperature: TEMPERATURE_NORMAL,
         realtimeVoice: 'marin',
         emailSignature: DEFAULT_EMAIL_SIGNATURE,

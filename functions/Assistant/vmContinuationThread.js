@@ -130,10 +130,12 @@ function withCandidates(message, threads) {
  * @param {string} params.projectId Project the VM job will run in (already access-checked — it is
  *   the assistant's runtime project, never user-supplied)
  * @param {string} params.objectId The thread to continue, or `latest` for the most recent one
+ * @param {string} [params.preferredObjectId] Ambient thread to prefer when `objectId` is `latest`.
+ *   This keeps an in-thread follow-up on that thread even when another project VM ran more recently.
  * @param {string} params.requestUserId The user the job is billed to and notified for
  * @returns {Promise<{ok: true, objectType: string, objectId: string} | {ok: false, message: string}>}
  */
-async function resolveVmContinuationThread({ db, projectId, objectId, requestUserId } = {}) {
+async function resolveVmContinuationThread({ db, projectId, objectId, preferredObjectId, requestUserId } = {}) {
     const trimmedObjectId = typeof objectId === 'string' ? objectId.trim() : ''
     if (!trimmedObjectId) {
         return { ok: false, message: 'continue_in_object_id must be a non-empty id.' }
@@ -143,6 +145,25 @@ async function resolveVmContinuationThread({ db, projectId, objectId, requestUse
     }
 
     if (trimmedObjectId.toLowerCase() === CONTINUE_LATEST) {
+        const trimmedPreferredObjectId = typeof preferredObjectId === 'string' ? preferredObjectId.trim() : ''
+        if (trimmedPreferredObjectId && trimmedPreferredObjectId.toLowerCase() !== CONTINUE_LATEST) {
+            const preferredSessionSnap = await db.doc(vmSessionDocPath(projectId, trimmedPreferredObjectId)).get()
+            if (preferredSessionSnap.exists) {
+                const preferredChatSnap = await db.doc(chatObjectPath(projectId, trimmedPreferredObjectId)).get()
+                if (preferredChatSnap.exists && isVisibleToUser(preferredChatSnap.data(), requestUserId)) {
+                    const preferredSession = preferredSessionSnap.data() || {}
+                    return {
+                        ok: true,
+                        objectType:
+                            typeof preferredSession.objectType === 'string' && preferredSession.objectType
+                                ? preferredSession.objectType
+                                : 'tasks',
+                        objectId: trimmedPreferredObjectId,
+                    }
+                }
+            }
+        }
+
         const threads = await listContinuableVmThreads({ db, projectId, requestUserId, limit: 1 })
         if (!threads.length) {
             return {
