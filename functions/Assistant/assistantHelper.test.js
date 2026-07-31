@@ -3762,6 +3762,7 @@ describe('assistant heartbeat settings tool', () => {
             'update_heartbeat_settings',
             {
                 model: 'MODEL_GPT5_6_TERRA',
+                reasoningEffort: 'xhigh',
                 intervalMinutes: 17,
                 chancePercent: 120,
                 awakeStartTime: '09:15',
@@ -3777,6 +3778,7 @@ describe('assistant heartbeat settings tool', () => {
 
         expect(mockTransactionUpdate).toHaveBeenCalledWith(expect.any(Object), {
             heartbeatModel: 'MODEL_GPT5_6_TERRA',
+            heartbeatReasoningEffort: 'xhigh',
             heartbeatIntervalMs: 15 * 60 * 1000,
             heartbeatChancePercent: 100,
             heartbeatAwakeStart: (9 * 60 + 15) * 60 * 1000,
@@ -3801,6 +3803,7 @@ describe('assistant heartbeat settings tool', () => {
             assistantId: 'assistant-1',
             updatedFields: [
                 'model',
+                'reasoningEffort',
                 'intervalMinutes',
                 'chancePercent',
                 'awakeStartTime',
@@ -3818,6 +3821,7 @@ describe('assistant heartbeat settings tool', () => {
             awakeEndTime: '18:45',
             sendWhatsApp: false,
             model: 'MODEL_GPT5_6_TERRA',
+            reasoningEffort: 'xhigh',
             prompt: 'New prompt for heartbeat',
         })
     })

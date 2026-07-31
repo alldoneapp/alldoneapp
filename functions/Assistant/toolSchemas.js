@@ -975,7 +975,7 @@ const toolSchemas = {
         function: {
             name: 'update_heartbeat_settings',
             description:
-                'Updates heartbeat settings for the current assistant only. Use this when the user asks to change the heartbeat model, interval, execution chance (separate values for days the user replied vs. days they did not reply), awake window, WhatsApp delivery, or heartbeat prompt. When editing the prompt, treat the current heartbeat prompt as the base text unless the user clearly asks for a full rewrite. Previous heartbeat prompts are versioned in heartbeatPromptHistory with the latest 10 retained for rollback.',
+                'Updates heartbeat settings for the current assistant only. Use this when the user asks to change the heartbeat model, reasoning effort, interval, execution chance (separate values for days the user replied vs. days they did not reply), awake window, WhatsApp delivery, or heartbeat prompt. When editing the prompt, treat the current heartbeat prompt as the base text unless the user clearly asks for a full rewrite. Previous heartbeat prompts are versioned in heartbeatPromptHistory with the latest 10 retained for rollback.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -984,6 +984,12 @@ const toolSchemas = {
                         enum: ['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'],
                         description:
                             'Optional: model used for heartbeat executions. Sol is the most capable, Terra balances capability and cost, and Luna is optimized for efficient high-volume work.',
+                    },
+                    reasoningEffort: {
+                        type: 'string',
+                        enum: ['model_default', 'none', 'low', 'medium', 'high', 'xhigh', 'max'],
+                        description:
+                            'Optional: reasoning effort used for heartbeat executions. Use model_default to omit reasoning effort from the model request. When this setting has never been configured, heartbeat executions inherit the assistant reasoning effort.',
                     },
                     intervalMinutes: {
                         type: 'number',

@@ -205,6 +205,15 @@ describe('User memory assistant tool schemas', () => {
             'MODEL_GPT5_6_TERRA',
             'MODEL_GPT5_6_LUNA',
         ])
+        expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.reasoningEffort.enum).toEqual([
+            'model_default',
+            'none',
+            'low',
+            'medium',
+            'high',
+            'xhigh',
+            'max',
+        ])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.intervalMinutes.type).toBe('number')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.chancePercent.type).toBe('number')
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.awakeStartTime.type).toBe('string')

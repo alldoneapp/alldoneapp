@@ -41,7 +41,11 @@ const TASK_LOCAL_FIELDS = new Set([
 
 // These settings did not exist on older derived assistants. Their absence is
 // therefore a legacy state, not a deliberate local override.
-const ASSISTANT_INHERITED_WHEN_MISSING_FIELDS = new Set(['heartbeatModel', 'reasoningEffort'])
+const ASSISTANT_INHERITED_WHEN_MISSING_FIELDS = new Set([
+    'heartbeatModel',
+    'reasoningEffort',
+    'heartbeatReasoningEffort',
+])
 
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key)
 

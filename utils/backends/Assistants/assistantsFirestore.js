@@ -1527,6 +1527,11 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
         model: globalAssistant.model,
         heartbeatModel: globalAssistant.heartbeatModel ?? globalAssistant.model,
         reasoningEffort: normalizeAssistantReasoningEffort(globalAssistant.reasoningEffort),
+        ...(Object.prototype.hasOwnProperty.call(globalAssistant, 'heartbeatReasoningEffort')
+            ? {
+                  heartbeatReasoningEffort: normalizeAssistantReasoningEffort(globalAssistant.heartbeatReasoningEffort),
+              }
+            : {}),
         temperature: globalAssistant.temperature,
         allowedTools: Array.isArray(globalAssistant.allowedTools) ? globalAssistant.allowedTools : [],
         enabledSkillIds: Array.isArray(globalAssistant.enabledSkillIds) ? globalAssistant.enabledSkillIds : [],

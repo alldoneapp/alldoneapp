@@ -23,6 +23,11 @@ const isValidAssistantReasoningEffort = value => VALID_ASSISTANT_REASONING_EFFOR
 
 const normalizeAssistantReasoningEffort = value => (isValidAssistantReasoningEffort(value) ? value : null)
 
+const resolveAssistantReasoningEffort = (settings = {}, fallbackValue = null) =>
+    Object.prototype.hasOwnProperty.call(settings, 'reasoningEffort')
+        ? normalizeAssistantReasoningEffort(settings.reasoningEffort)
+        : normalizeAssistantReasoningEffort(fallbackValue)
+
 const getAssistantReasoningEffortLabelKey = value => {
     const normalizedValue = normalizeAssistantReasoningEffort(value)
     return SELECTABLE_ASSISTANT_REASONING_EFFORTS.find(option => option.value === normalizedValue).labelKey
@@ -33,5 +38,6 @@ module.exports = {
     VALID_ASSISTANT_REASONING_EFFORTS,
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
+    resolveAssistantReasoningEffort,
     getAssistantReasoningEffortLabelKey,
 }
