@@ -4380,6 +4380,7 @@ async function executeDelegatedAssistantRequest({
     const targetAllowedTools = Array.isArray(targetAssistant.allowedTools) ? targetAssistant.allowedTools : []
     const targetModel = normalizeModelKey(targetAssistant.model || MODEL_GPT5_6_SOL)
     const targetTemperature = targetAssistant.temperature || TEMPERATURE_NORMAL
+    const targetReasoningEffort = targetAssistant.reasoningEffort || null
     const targetDisplayName = targetAssistant.displayName || target.displayName || 'Assistant'
     const targetInstructions = targetAssistant.instructions || 'You are a helpful assistant.'
 
@@ -4394,6 +4395,7 @@ async function executeDelegatedAssistantRequest({
         targetDisplayName,
         targetModel,
         targetTemperature,
+        targetReasoningEffort,
         targetAllowedToolsCount: targetAllowedTools.length,
         targetAllowedTools,
         hasExternalToolsToggle: targetAllowedTools.includes(EXTERNAL_TOOLS_KEY),
@@ -4422,6 +4424,7 @@ async function executeDelegatedAssistantRequest({
         projectId: target.projectId,
         assistantId: target.assistantId,
         requestUserId,
+        openAiReasoningEffort: targetReasoningEffort,
         sourceChannel: callerToolRuntimeContext?.sourceChannel || '',
         whatsappFromNumber: callerToolRuntimeContext?.whatsappFromNumber || '',
         language: delegatedLanguage,
@@ -10884,6 +10887,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     const settings = {
         model: normalizeModelKey(taskModelOverride || assistant.model || MODEL_GPT5_6_SOL),
         temperature: (task && task.aiTemperature) || assistant.temperature || 'TEMPERATURE_NORMAL',
+        reasoningEffort: assistant.reasoningEffort || null,
         instructions: (task && task.aiSystemMessage) || assistant.instructions || 'You are a helpful assistant.',
         displayName: assistant.displayName, // Always use assistant's display name
         uid: assistant.uid, // Always use assistant's uid

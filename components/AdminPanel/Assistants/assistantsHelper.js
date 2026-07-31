@@ -29,6 +29,10 @@ export const TEMPERATURE_NORMAL = 'TEMPERATURE_NORMAL'
 export const TEMPERATURE_HIGH = 'TEMPERATURE_HIGH'
 export const TEMPERATURE_VERY_HIGH = 'TEMPERATURE_VERY_HIGH'
 
+export const REASONING_EFFORT_LOW = 'low'
+export const REASONING_EFFORT_MEDIUM = 'medium'
+export const REASONING_EFFORT_HIGH = 'high'
+
 export const GLOBAL_PROJECT_ID = 'globalProject'
 
 export const DEFAULT_EMAIL_SIGNATURE = '---\nAnna Alldone\nAI Chief of Staff\nhttps://alldone.app/'
@@ -51,6 +55,7 @@ export function getNewDefaultAssistant() {
         instructions: '',
         model: MODEL_GPT5_6_SOL,
         heartbeatModel: MODEL_GPT5_6_SOL,
+        reasoningEffort: null,
         temperature: TEMPERATURE_NORMAL,
         realtimeVoice: 'marin',
         emailSignature: DEFAULT_EMAIL_SIGNATURE,

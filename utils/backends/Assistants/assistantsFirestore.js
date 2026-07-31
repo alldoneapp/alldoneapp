@@ -903,6 +903,11 @@ export function updateAssistantModel(projectId, assistant, model) {
         assistantModelChangedUpdatesChain(projectId, assistant, assistant.model, model)
 }
 
+export function updateAssistantReasoningEffort(projectId, assistant, reasoningEffort) {
+    const normalizedEffort = ['low', 'medium', 'high'].includes(reasoningEffort) ? reasoningEffort : null
+    updateAssistantData(projectId, assistant.uid, { reasoningEffort: normalizedEffort }, null)
+}
+
 export function updateAssistantTemperature(projectId, assistant, temperature) {
     updateAssistantData(projectId, assistant.uid, { temperature }, null)
     if (!isGlobalAssistant(assistant.uid))
@@ -1520,6 +1525,9 @@ export async function updateAssistantFromTemplate(projectId, localAssistant, glo
                 : DEFAULT_EMAIL_SIGNATURE,
         model: globalAssistant.model,
         heartbeatModel: globalAssistant.heartbeatModel ?? globalAssistant.model,
+        reasoningEffort: ['low', 'medium', 'high'].includes(globalAssistant.reasoningEffort)
+            ? globalAssistant.reasoningEffort
+            : null,
         temperature: globalAssistant.temperature,
         allowedTools: Array.isArray(globalAssistant.allowedTools) ? globalAssistant.allowedTools : [],
         enabledSkillIds: Array.isArray(globalAssistant.enabledSkillIds) ? globalAssistant.enabledSkillIds : [],
