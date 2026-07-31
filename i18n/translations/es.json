@@ -2470,5 +2470,11 @@
     "Configure workflow": "Configurar flujo de trabajo",
     "Define the first workflow step prompt before creating a workflow task": "Define primero el prompt del primer paso del flujo de trabajo antes de crear una tarea.",
     "The workflow task could not be created": "No se pudo crear la tarea de flujo de trabajo.",
-    "Customize the steps assistant workflow tasks execute": "Personaliza los pasos que ejecutan las tareas de flujo de trabajo de este asistente."
+    "Customize the steps assistant workflow tasks execute": "Personaliza los pasos que ejecutan las tareas de flujo de trabajo de este asistente.",
+    "Reasoning effort": "Esfuerzo de razonamiento",
+    "Model default": "Predeterminado del modelo",
+    "Medium": "Media",
+    "XHigh": "Muy alto",
+    "Max": "Max",
+    "Select how much reasoning the assistant should use": "Elige cuánto razonamiento debe utilizar el asistente"
 }

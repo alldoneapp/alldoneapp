@@ -250,12 +250,15 @@ jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     })),
 }))
 
-jest.mock('openai', () =>
-    jest.fn().mockImplementation(() => ({
-        responses: {
-            create: mockResponsesCreate,
-        },
-    }))
+jest.mock(
+    'openai',
+    () =>
+        jest.fn().mockImplementation(() => ({
+            responses: {
+                create: mockResponsesCreate,
+            },
+        })),
+    { virtual: true }
 )
 jest.mock(
     '@dqbd/tiktoken/lite',
@@ -450,7 +453,84 @@ describe('Responses API compatibility helpers', () => {
             })
         )
         expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('messages')
+        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
     })
+
+    test.each(['none', 'low', 'medium', 'high', 'xhigh', 'max'])(
+        'sends the explicitly configured %s assistant reasoning effort',
+        async reasoningEffort => {
+            mockResponsesCreate.mockResolvedValue([
+                { type: 'response.output_text.delta', delta: 'Considered response' },
+                { type: 'response.completed', response: { output: [] } },
+            ])
+
+            const stream = await interactWithChatStream(
+                [['user', 'Consider this carefully']],
+                'MODEL_GPT5_6_SOL',
+                'TEMPERATURE_NORMAL',
+                [],
+                { openAiReasoningEffort: reasoningEffort }
+            )
+            await stream.next()
+
+            expect(mockResponsesCreate).toHaveBeenCalledWith(
+                expect.objectContaining({ reasoning: { effort: reasoningEffort } })
+            )
+        }
+    )
+
+    test.each([null, undefined, 'minimal', 'MAX'])('omits unsupported assistant reasoning effort %p', async effort => {
+        mockResponsesCreate.mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'Default response' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+
+        const stream = await interactWithChatStream(
+            [['user', 'Use the model default']],
+            'MODEL_GPT5_6_SOL',
+            'TEMPERATURE_NORMAL',
+            [],
+            { openAiReasoningEffort: effort }
+        )
+        await stream.next()
+
+        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
+    })
+
+    test('does not send GPT-5.6-only effort values to a legacy model', async () => {
+        mockResponsesCreate.mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'Legacy response' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+
+        const stream = await interactWithChatStream(
+            [['user', 'Use max effort']],
+            'MODEL_GPT5_1',
+            'TEMPERATURE_NORMAL',
+            [],
+            { openAiReasoningEffort: 'max' }
+        )
+        await stream.next()
+
+        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
+    })
+
+    test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'])(
+        'sends max effort to compatible %s assistants',
+        async model => {
+            mockResponsesCreate.mockResolvedValue([
+                { type: 'response.output_text.delta', delta: 'Maximum effort response' },
+                { type: 'response.completed', response: { output: [] } },
+            ])
+
+            const stream = await interactWithChatStream([['user', 'Use max effort']], model, 'TEMPERATURE_NORMAL', [], {
+                openAiReasoningEffort: 'max',
+            })
+            await stream.next()
+
+            expect(mockResponsesCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoning: { effort: 'max' } }))
+        }
+    )
 
     test('maps chat messages, multimodal content, tool calls, and tool outputs to Responses items', () => {
         expect(

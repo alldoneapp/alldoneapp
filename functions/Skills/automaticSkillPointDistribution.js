@@ -259,6 +259,7 @@ async function getAssistantAllocations({ user, assistant, skills, tasks, pointsT
         projectId: assistant.defaultProjectId,
         assistantId: assistant.uid,
         requestUserId: user.uid,
+        openAiReasoningEffort: assistant.reasoningEffort || null,
     })
     const responseText = await collectStreamText(stream)
     await reduceGoldWhenChatWithAI(user.uid, Number(user.gold || 0), assistant.model, responseText, messages, null, {
