@@ -450,6 +450,25 @@ describe('Responses API compatibility helpers', () => {
             })
         )
         expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('messages')
+        expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
+    })
+
+    test('sends an explicitly configured assistant reasoning effort', async () => {
+        mockResponsesCreate.mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'Considered response' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+
+        const stream = await interactWithChatStream(
+            [['user', 'Consider this carefully']],
+            'MODEL_GPT5_6_SOL',
+            'TEMPERATURE_NORMAL',
+            [],
+            { openAiReasoningEffort: 'high' }
+        )
+        await stream.next()
+
+        expect(mockResponsesCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoning: { effort: 'high' } }))
     })
 
     test('maps chat messages, multimodal content, tool calls, and tool outputs to Responses items', () => {

@@ -168,6 +168,7 @@ async function generatePreConfigTaskResult(
         settings = {
             model: normalizeModelKey(aiSettings.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || 'TEMPERATURE_NORMAL',
+            reasoningEffort: aiSettings.reasoningEffort || null,
             instructions,
             displayName,
             uid,
@@ -192,6 +193,7 @@ async function generatePreConfigTaskResult(
         settings = {
             model: normalizeModelKey(aiSettings.model || assistant.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',
+            reasoningEffort: aiSettings.reasoningEffort || assistant.reasoningEffort || null,
             instructions: fallbackInstructions,
             displayName: fallbackDisplayName,
             uid: assistant.uid || assistantId,
@@ -366,6 +368,7 @@ async function generatePreConfigTaskResult(
             projectId,
             assistantId: settings.uid || assistantId,
             requestUserId: userId,
+            openAiReasoningEffort: settings.reasoningEffort || null,
             objectType,
             objectId,
             messageId: triggerMessageId || null,

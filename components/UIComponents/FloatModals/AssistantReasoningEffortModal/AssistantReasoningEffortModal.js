@@ -1,0 +1,64 @@
+import React from 'react'
+import { StyleSheet, View } from 'react-native'
+
+import { colors } from '../../../styles/global'
+import ModalHeader from '../ModalHeader'
+import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import OptionItem from './OptionItem'
+import useWindowSize from '../../../../utils/useWindowSize'
+import CustomScrollView from '../../../UIControls/CustomScrollView'
+import { translate } from '../../../../i18n/TranslationService'
+
+const options = [
+    { text: 'Model default', reasoningEffort: null, shortcutKey: '1' },
+    { text: 'Low', reasoningEffort: 'low', shortcutKey: '2' },
+    { text: 'Medium', reasoningEffort: 'medium', shortcutKey: '3' },
+    { text: 'High', reasoningEffort: 'high', shortcutKey: '4' },
+]
+
+export default function AssistantReasoningEffortModal({ closeModal, reasoningEffort, updateReasoningEffort }) {
+    const [width, height] = useWindowSize()
+
+    const selectReasoningEffort = value => {
+        updateReasoningEffort(value)
+        closeModal()
+    }
+
+    return (
+        <View>
+            <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+                <CustomScrollView style={localStyles.scroll} showsVerticalScrollIndicator={false}>
+                    <ModalHeader
+                        closeModal={closeModal}
+                        title={translate('Reasoning effort')}
+                        description={translate('Select how much reasoning the assistant should use')}
+                    />
+                    {options.map(option => (
+                        <OptionItem
+                            key={option.reasoningEffort || 'model-default'}
+                            option={option}
+                            selectedReasoningEffort={reasoningEffort}
+                            selectReasoningEffort={selectReasoningEffort}
+                        />
+                    ))}
+                </CustomScrollView>
+            </View>
+        </View>
+    )
+}
+
+const localStyles = StyleSheet.create({
+    container: {
+        flexDirection: 'column',
+        borderRadius: 4,
+        backgroundColor: colors.Secondary400,
+        shadowColor: 'rgba(78, 93, 120, 0.56)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 16,
+        elevation: 3,
+    },
+    scroll: {
+        padding: 16,
+    },
+})

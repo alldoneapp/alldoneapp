@@ -13,6 +13,7 @@ const { formatTemplateConflictField, formatTemplateConflictValue } = require('./
 describe('UpdateFromTemplate formatting', () => {
     test('shows friendly labels for known and generic assistant fields', () => {
         expect(formatTemplateConflictField('heartbeatModel')).toBe('Heartbeat model')
+        expect(formatTemplateConflictField('reasoningEffort')).toBe('Reasoning effort')
         expect(formatTemplateConflictField('heartbeatAwakeStart')).toBe('Heartbeat Awake Start')
     })
 
@@ -23,5 +24,10 @@ describe('UpdateFromTemplate formatting', () => {
 
     test('preserves the existing removed-value label', () => {
         expect(formatTemplateConflictValue('heartbeatModel', null, false)).toBe('(removed)')
+    })
+
+    test('shows reasoning effort values including model default', () => {
+        expect(formatTemplateConflictValue('reasoningEffort', 'high', true)).toBe('High')
+        expect(formatTemplateConflictValue('reasoningEffort', null, true)).toBe('Model default')
     })
 })
