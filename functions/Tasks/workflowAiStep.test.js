@@ -197,6 +197,45 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         })
     })
 
+    it('copies the persisted popup comment into the run for this AI-step entry', async () => {
+        seedAssignee()
+        const newTask = taskOnAiStep({
+            completed: 1000,
+            workflowAiPromptOverride: {
+                stepId: AI_STEP,
+                prompt: 'Rewrite this as a concise memo',
+                triggerMessageId: 'popup-comment-1',
+            },
+        })
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, newTask)
+
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
+            promptOverride: 'Rewrite this as a concise memo',
+            triggerMessageId: 'popup-comment-1',
+        })
+    })
+
+    it.each([
+        ['an empty comment', { stepId: AI_STEP, prompt: '   ', triggerMessageId: 'comment-1' }],
+        [
+            'a comment for another step',
+            { stepId: NEXT_STEP, prompt: 'Do something else', triggerMessageId: 'comment-2' },
+        ],
+    ])('keeps the configured prompt for %s', async (_label, workflowAiPromptOverride) => {
+        seedAssignee()
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(
+            PROJECT,
+            TASK,
+            oldTask,
+            taskOnAiStep({ completed: 1000, workflowAiPromptOverride })
+        )
+
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).not.toHaveProperty('promptOverride')
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).not.toHaveProperty('triggerMessageId')
+    })
+
     it('enqueues a creator-funded run from a project assistant workflow', async () => {
         mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
             uid: ASSISTANT,
@@ -251,7 +290,14 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
             currentReviewerId: HUMAN_REVIEWER,
             completed: 1000,
         }
-        const sentBackTask = taskOnAiStep({ completed: 2000 })
+        const sentBackTask = taskOnAiStep({
+            completed: 2000,
+            workflowAiPromptOverride: {
+                stepId: AI_STEP,
+                prompt: 'Use this backward-transition instruction',
+                triggerMessageId: 'backward-comment',
+            },
+        })
 
         const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, sentBackTask)
 
@@ -259,6 +305,8 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
             stepId: AI_STEP,
             assistantId: ASSISTANT,
+            promptOverride: 'Use this backward-transition instruction',
+            triggerMessageId: 'backward-comment',
             status: 'pending',
         })
     })
@@ -400,6 +448,23 @@ describe('runWorkflowAiStep', () => {
 
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+    })
+
+    it('replaces the configured prompt with the persisted popup comment without posting it twice', async () => {
+        const overrideRun = {
+            ...run,
+            promptOverride: 'Use $AUDIENCE and only the popup request',
+            triggerMessageId: 'popup-comment-1',
+        }
+
+        await runWorkflowAiStep(RUN_ID, overrideRun)
+
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe('Use $AUDIENCE and only the popup request')
+        expect(mockGeneratePreConfigTaskResult.mock.calls[0][12]).toEqual({
+            triggerMessageId: 'popup-comment-1',
+            maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+        })
+        expect(mockPostUserRequestComment).not.toHaveBeenCalled()
     })
 
     it('loads an assistant-owned workflow while charging the creating project member', async () => {

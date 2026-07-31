@@ -18,7 +18,7 @@ import {
     getWorkflowStepId,
 } from '../../utils/HelperFunctions'
 import { STAYWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
-import { startLoadingData, showTaskCompletionAnimation } from '../../redux/actions'
+import { startLoadingData, stopLoadingData, showTaskCompletionAnimation } from '../../redux/actions'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import FileTag from '../Tags/FileTag'
@@ -296,7 +296,7 @@ export default class WorkflowModal extends Component {
         setTaskAutoEstimation(projectId, task, autoEstimation)
     }
 
-    onDonePress = direction => {
+    onDonePress = async direction => {
         const { task, projectId, checkBoxId } = this.props
         const { steps, estimations, selectedNextStep, selectedPreviousStep, comment, disabledMainButtons } = this.state
 
@@ -304,7 +304,8 @@ export default class WorkflowModal extends Component {
 
         this.blockButtons()
 
-        updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
+        try {
+            const commentWithAttachments = await updateNewAttachmentsData(projectId, comment)
             const { stepHistory } = task
             const stepsIds = getWorkflowStepsIdsSorted(steps)
 
@@ -340,7 +341,7 @@ export default class WorkflowModal extends Component {
             }
 
             if (task.userIds.length === 1) {
-                moveTasksFromOpen(
+                await moveTasksFromOpen(
                     projectId,
                     task,
                     stepToMoveId,
@@ -350,7 +351,7 @@ export default class WorkflowModal extends Component {
                     checkBoxId
                 )
             } else {
-                moveTasksFromMiddleOfWorkflow(
+                await moveTasksFromMiddleOfWorkflow(
                     projectId,
                     task,
                     stepToMoveId,
@@ -361,27 +362,41 @@ export default class WorkflowModal extends Component {
                 )
             }
             this.props.hidePopover()
-        })
+        } catch (error) {
+            console.error('[WorkflowModal] Could not move task', { projectId, taskId: task.id, direction, error })
+            store.dispatch(stopLoadingData())
+            this.setSafeState({ disabledMainButtons: false })
+        }
     }
 
-    completeWithSelectedRecurrenceDateBasis = recurrenceBaseDateOverride => {
+    completeWithSelectedRecurrenceDateBasis = async recurrenceBaseDateOverride => {
         const { task, projectId, checkBoxId } = this.props
         const { pendingMoveFromOpenData } = this.state
         if (!pendingMoveFromOpenData) return
 
         store.dispatch(startLoadingData())
         store.dispatch(showTaskCompletionAnimation())
-        moveTasksFromOpen(
-            projectId,
-            task,
-            pendingMoveFromOpenData.stepToMoveId,
-            pendingMoveFromOpenData.commentWithAttachments,
-            pendingMoveFromOpenData.commentType,
-            pendingMoveFromOpenData.estimations,
-            checkBoxId,
-            recurrenceBaseDateOverride
-        )
-        this.props.hidePopover()
+        try {
+            await moveTasksFromOpen(
+                projectId,
+                task,
+                pendingMoveFromOpenData.stepToMoveId,
+                pendingMoveFromOpenData.commentWithAttachments,
+                pendingMoveFromOpenData.commentType,
+                pendingMoveFromOpenData.estimations,
+                checkBoxId,
+                recurrenceBaseDateOverride
+            )
+            this.props.hidePopover()
+        } catch (error) {
+            console.error('[WorkflowModal] Could not complete recurring task', {
+                projectId,
+                taskId: task.id,
+                error,
+            })
+            store.dispatch(stopLoadingData())
+            this.setSafeState({ disabledMainButtons: false })
+        }
     }
 
     followUpModalOnEnter = e => {

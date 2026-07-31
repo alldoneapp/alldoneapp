@@ -57,6 +57,7 @@ describe('workflow step advance update', () => {
                 done: false,
                 inDone: false,
                 sortIndex: 123,
+                workflowAiPromptOverride: null,
             },
         })
     })
@@ -83,6 +84,7 @@ describe('workflow step advance update', () => {
                 done: true,
                 inDone: true,
                 sortIndex: 456,
+                workflowAiPromptOverride: null,
             },
         })
     })
