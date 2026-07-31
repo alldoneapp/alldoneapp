@@ -12,6 +12,7 @@ const FIELD_LABEL_KEYS = {
     description: 'Description',
     emailSignature: 'Email signature',
     heartbeatModel: 'Heartbeat model',
+    heartbeatReasoningEffort: 'Heartbeat reasoning effort',
     model: 'Assistant model',
     reasoningEffort: 'Reasoning effort',
     temperature: 'Temperature',
@@ -37,7 +38,8 @@ export const formatTemplateConflictField = field => {
 export const formatTemplateConflictValue = (field, value, exists) => {
     if (!exists) return translate('(removed)')
     if (field === 'model' || field === 'heartbeatModel') return MODEL_LABELS[value] || value
-    if (field === 'reasoningEffort') return translate(getAssistantReasoningEffortLabelKey(value))
+    if (field === 'reasoningEffort' || field === 'heartbeatReasoningEffort')
+        return translate(getAssistantReasoningEffortLabelKey(value))
     if (typeof value === 'string') return value || translate('(empty)')
     try {
         return JSON.stringify(value, null, 2)

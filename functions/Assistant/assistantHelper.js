@@ -7147,6 +7147,21 @@ async function executeToolNatively(
                 updatedFields.push('model')
             }
 
+            if (hasOwn('reasoningEffort')) {
+                if (
+                    toolArgs.reasoningEffort !== 'model_default' &&
+                    !isValidAssistantReasoningEffort(toolArgs.reasoningEffort)
+                ) {
+                    throw new Error(
+                        'reasoningEffort must be one of: model_default, none, low, medium, high, xhigh, max.'
+                    )
+                }
+
+                patch.heartbeatReasoningEffort =
+                    toolArgs.reasoningEffort === 'model_default' ? null : toolArgs.reasoningEffort
+                updatedFields.push('reasoningEffort')
+            }
+
             if (hasOwn('intervalMinutes')) {
                 const numericIntervalMinutes = Number(toolArgs.intervalMinutes)
                 if (!Number.isFinite(numericIntervalMinutes)) {
@@ -7220,7 +7235,7 @@ async function executeToolNatively(
 
             if (updatedFields.length === 0) {
                 throw new Error(
-                    'update_heartbeat_settings requires at least one of model, intervalMinutes, chancePercent, chanceNoReplyPercent, awakeStartTime, awakeEndTime, sendWhatsApp, or prompt.'
+                    'update_heartbeat_settings requires at least one of model, reasoningEffort, intervalMinutes, chancePercent, chanceNoReplyPercent, awakeStartTime, awakeEndTime, sendWhatsApp, or prompt.'
                 )
             }
 

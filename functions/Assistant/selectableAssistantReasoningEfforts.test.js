@@ -3,6 +3,7 @@ const {
     VALID_ASSISTANT_REASONING_EFFORTS,
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
+    resolveAssistantReasoningEffort,
     getAssistantReasoningEffortLabelKey,
 } = require('./selectableAssistantReasoningEfforts')
 
@@ -29,6 +30,11 @@ describe('selectable assistant reasoning efforts', () => {
         expect(normalizeAssistantReasoningEffort(null)).toBeNull()
         expect(normalizeAssistantReasoningEffort(undefined)).toBeNull()
         expect(normalizeAssistantReasoningEffort('minimal')).toBeNull()
+    })
+
+    test('preserves an explicit model default instead of falling back to the assistant effort', () => {
+        expect(resolveAssistantReasoningEffort({ reasoningEffort: null }, 'high')).toBeNull()
+        expect(resolveAssistantReasoningEffort({}, 'high')).toBe('high')
     })
 
     test('returns exact UI labels, including XHigh and Max', () => {

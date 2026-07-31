@@ -10,7 +10,6 @@ import AssistantDataProperty from './AssistantData/AssistantDataProperty'
 import TypeOfAssistantProperty from './TypeOfAssistant/TypeOfAssistantProperty'
 import InstructionsProperty from './Instructions/InstructionsProperty'
 import ModelProperty from './Model/ModelProperty'
-import TemperatureProperty from './Temperature/TemperatureProperty'
 import ReasoningEffortProperty from './ReasoningEffort/ReasoningEffortProperty'
 import RealtimeVoiceProperty from './RealtimeVoice/RealtimeVoiceProperty'
 import ToolsAccessProperty from './ToolsAccess/ToolsAccessProperty'
@@ -33,6 +32,7 @@ import { translate } from '../../../i18n/TranslationService'
 import HeartbeatAwakeTimeProperty from './Heartbeat/HeartbeatAwakeTimeProperty'
 import HeartbeatIntervalProperty from './Heartbeat/HeartbeatIntervalProperty'
 import HeartbeatModelProperty from './Heartbeat/HeartbeatModelProperty'
+import HeartbeatReasoningEffortProperty from './Heartbeat/HeartbeatReasoningEffortProperty'
 import HeartbeatChanceProperty from './Heartbeat/HeartbeatChanceProperty'
 import HeartbeatWhatsAppProperty from './Heartbeat/HeartbeatWhatsAppProperty'
 import HeartbeatPromptProperty from './Heartbeat/HeartbeatPromptProperty'
@@ -158,7 +158,6 @@ export default function AssistantCustomizations({
                     <ReasoningEffortProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
-                    <TemperatureProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <RealtimeVoiceProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     {canConfigureEmailSignature && (
                         <EmailSignatureProperty
@@ -198,6 +197,11 @@ export default function AssistantCustomizations({
                         assistant={assistant}
                     />
                     <HeartbeatModelProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    <HeartbeatReasoningEffortProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        assistant={assistant}
+                    />
                     <HeartbeatChanceProperty
                         disabled={!canEditAssitant}
                         projectId={projectId}

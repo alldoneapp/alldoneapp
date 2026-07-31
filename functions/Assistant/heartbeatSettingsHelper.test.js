@@ -5,6 +5,7 @@ const {
     normalizeHeartbeatChancePercent,
     parseHeartbeatTimeString,
     getEffectiveHeartbeatModel,
+    getEffectiveHeartbeatReasoningEffort,
     getNormalizedHeartbeatSettings,
     buildHeartbeatSettingsContextMessage,
 } = require('./heartbeatSettingsHelper')
@@ -64,6 +65,16 @@ describe('heartbeatSettingsHelper', () => {
         expect(getEffectiveHeartbeatModel({ model: 'MODEL_GPT5_5' })).toBe('MODEL_GPT5_5')
     })
 
+    test('inherits assistant effort unless the heartbeat has an explicit effort setting', () => {
+        expect(getEffectiveHeartbeatReasoningEffort({ reasoningEffort: 'high' })).toBe('high')
+        expect(getEffectiveHeartbeatReasoningEffort({ reasoningEffort: 'high', heartbeatReasoningEffort: 'low' })).toBe(
+            'low'
+        )
+        expect(
+            getEffectiveHeartbeatReasoningEffort({ reasoningEffort: 'high', heartbeatReasoningEffort: null })
+        ).toBeNull()
+    })
+
     test('builds context text including the current heartbeat prompt', () => {
         const contextMessage = buildHeartbeatSettingsContextMessage(
             {
@@ -74,6 +85,7 @@ describe('heartbeatSettingsHelper', () => {
                 heartbeatAwakeEnd: 18 * 60 * 60 * 1000,
                 heartbeatSendWhatsApp: false,
                 heartbeatModel: 'MODEL_GPT5_6_LUNA',
+                heartbeatReasoningEffort: 'xhigh',
                 heartbeatPrompt: 'Check progress and remind about the focus task.',
             },
             { projectId: 'project-1', userData: { defaultProjectId: 'project-1' } }
@@ -86,6 +98,7 @@ describe('heartbeatSettingsHelper', () => {
         expect(contextMessage).toContain('Execution chance when the user did not reply that day: 15%')
         expect(contextMessage).toContain('WhatsApp notification: disabled')
         expect(contextMessage).toContain('Heartbeat model: MODEL_GPT5_6_LUNA')
+        expect(contextMessage).toContain('Heartbeat reasoning effort: xhigh')
         expect(contextMessage).toContain('Check progress and remind about the focus task.')
     })
 })

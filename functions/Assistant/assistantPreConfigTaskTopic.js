@@ -20,6 +20,7 @@ const { removeSingleChatNotification } = require('../Chats/chatsFirestoreCloud')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
 
 const { ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS: ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
+const { resolveAssistantReasoningEffort } = require('./selectableAssistantReasoningEfforts')
 
 // Pre-load tiktoken at module load (performance optimization)
 console.log('🚀 [TIMING] Pre-loading tiktoken JSON at module load...')
@@ -168,7 +169,7 @@ async function generatePreConfigTaskResult(
         settings = {
             model: normalizeModelKey(aiSettings.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || 'TEMPERATURE_NORMAL',
-            reasoningEffort: aiSettings.reasoningEffort || null,
+            reasoningEffort: resolveAssistantReasoningEffort(aiSettings),
             instructions,
             displayName,
             uid,
@@ -193,7 +194,7 @@ async function generatePreConfigTaskResult(
         settings = {
             model: normalizeModelKey(aiSettings.model || assistant.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',
-            reasoningEffort: aiSettings.reasoningEffort || assistant.reasoningEffort || null,
+            reasoningEffort: resolveAssistantReasoningEffort(aiSettings, assistant.reasoningEffort),
             instructions: fallbackInstructions,
             displayName: fallbackDisplayName,
             uid: assistant.uid || assistantId,

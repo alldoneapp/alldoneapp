@@ -141,4 +141,12 @@ describe('templateMerge', () => {
             expect.objectContaining({ field: 'reasoningEffort', localValue: 'low', templateValue: 'max' }),
         ])
     })
+
+    test('backfills an explicit heartbeat reasoning effort from a template', () => {
+        const template = { heartbeatReasoningEffort: 'xhigh' }
+        const { normalizedLocalState, inheritedPatch } = inheritMissingAssistantTemplateFields({}, template)
+
+        expect(normalizedLocalState).toEqual(template)
+        expect(inheritedPatch).toEqual(template)
+    })
 })
