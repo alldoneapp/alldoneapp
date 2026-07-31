@@ -132,6 +132,8 @@ const {
     dispatchPendingWorkflowAiRuns,
     enqueueWorkflowAiRunIfNeeded,
     resolveAwaitingVmRuns,
+    resolveWorkflowRunsForAssistantRunUpdate,
+    resolveWorkflowRunsForSettledVmJob,
     runWorkflowAiStep,
 } = require('./workflowAiStep')
 const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('../Assistant/assistantRunLimits')
@@ -925,6 +927,42 @@ describe('a step whose assistant dispatched VM work', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
+    it('advances immediately from the VM terminal event without waiting for a poll tick', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+        seedVmJob('completed')
+
+        expect(
+            await resolveWorkflowRunsForSettledVmJob(mockStore.get(`pendingWebhooks/${CORRELATION}`), Date.now())
+        ).toBe(1)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+    })
+
+    it('does not advance twice when a VM terminal event is redelivered', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+        seedVmJob('completed')
+        const settledJob = mockStore.get(`pendingWebhooks/${CORRELATION}`)
+
+        expect(await resolveWorkflowRunsForSettledVmJob(settledJob, Date.now())).toBe(1)
+        expect(await resolveWorkflowRunsForSettledVmJob(settledJob, Date.now())).toBe(0)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
+        expect(mockCreateTaskMovedInWorkflowFeed).toHaveBeenCalledTimes(1)
+    })
+
+    it('ignores non-terminal and unrelated settled jobs', async () => {
+        await runWorkflowAiStep(RUN_ID, run)
+        const initiated = mockStore.get(`pendingWebhooks/${CORRELATION}`)
+
+        expect(await resolveWorkflowRunsForSettledVmJob(initiated, Date.now())).toBe(0)
+        expect(
+            await resolveWorkflowRunsForSettledVmJob(
+                { ...initiated, status: 'completed', objectType: 'notes' },
+                Date.now()
+            )
+        ).toBe(0)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe(RUN_STATUS_AWAITING_VM)
+    })
+
     it('advances anyway when the VM job failed', async () => {
         await runWorkflowAiStep(RUN_ID, run)
         seedVmJob('failed')
@@ -955,6 +993,57 @@ describe('a step whose assistant dispatched VM work', () => {
 
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+    })
+})
+
+describe('the pre-VM assistant/VM completion ordering', () => {
+    const RUN_ID = 'run-pre-vm'
+    const CORRELATION = 'fast-vm'
+    const ASSISTANT_RUN_ID = 'chat-run'
+    const run = {
+        projectId: PROJECT,
+        taskId: TASK,
+        stepId: AI_STEP,
+        assistantId: ASSISTANT,
+        assigneeUserId: ASSIGNEE,
+        status: RUN_STATUS_AWAITING_VM,
+        awaitingAnyTaskExecution: true,
+        awaitingAnyTaskVm: true,
+        awaitingUntil: Date.now() + AWAITING_VM_TIMEOUT_MS,
+    }
+
+    beforeEach(() => {
+        seedAssignee()
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
+        mockStore.set(`workflowAiRuns/${RUN_ID}`, run)
+        mockStore.set(`pendingWebhooks/${CORRELATION}`, {
+            kind: 'vm_job',
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'completed',
+        })
+        mockStore.set(`assistantRunLocks/${ASSISTANT_RUN_ID}`, {
+            projectId: PROJECT,
+            objectType: 'tasks',
+            objectId: TASK,
+            status: 'running',
+            lockExpiresAt: Date.now() + 60_000,
+        })
+    })
+
+    it('waits for the assistant lock when the VM settles first, then advances on the lock event', async () => {
+        expect(
+            await resolveWorkflowRunsForSettledVmJob(mockStore.get(`pendingWebhooks/${CORRELATION}`), Date.now())
+        ).toBe(0)
+
+        const assistantBefore = mockStore.get(`assistantRunLocks/${ASSISTANT_RUN_ID}`)
+        const assistantAfter = { ...assistantBefore, status: 'completed' }
+        mockStore.set(`assistantRunLocks/${ASSISTANT_RUN_ID}`, assistantAfter)
+
+        expect(await resolveWorkflowRunsForAssistantRunUpdate(assistantBefore, assistantAfter, Date.now())).toBe(1)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 })
 

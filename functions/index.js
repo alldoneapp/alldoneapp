@@ -3399,6 +3399,21 @@ exports.runWorkflowAiStepsSecondGen = onSchedule(
     }
 )
 
+// Close the short pre-VM ordering window too: a workflow may first park on the chat assistant lock,
+// then switch to the VM job that assistant dispatched. Whichever one settles last triggers a re-check.
+exports.onUpdateWorkflowAssistantRunSecondGen = onDocumentUpdated(
+    {
+        document: 'assistantRunLocks/{runId}',
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { resolveWorkflowRunsForAssistantRunUpdate } = require('./Tasks/workflowAiStep')
+        await resolveWorkflowRunsForAssistantRunUpdate(event.data.before.data() || {}, event.data.after.data() || {})
+    }
+)
+
 // Backstop: a worker that dies without settling would leave its task parked on the AI step.
 exports.sweepStalledWorkflowAiRunsSecondGen = onSchedule(
     {

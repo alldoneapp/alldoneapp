@@ -10,6 +10,7 @@ const mockDeductGold = jest.fn()
 const mockRefundGold = jest.fn()
 const mockGetObjectFollowersIds = jest.fn()
 const mockCreateInitialStatusMessage = jest.fn()
+const mockResolveWorkflowRunsForSettledVmJob = jest.fn(async () => 1)
 const mockFirestore = jest.fn(() => ({
     doc: jest.fn(),
 }))
@@ -83,11 +84,60 @@ jest.mock('./assistantStatusHelper', () => ({
     createInitialStatusMessage: mockCreateInitialStatusMessage,
 }))
 
+jest.mock('../Tasks/workflowAiStep', () => ({
+    resolveWorkflowRunsForSettledVmJob: mockResolveWorkflowRunsForSettledVmJob,
+}))
+
 const { __private__ } = require('./vmJobRunner')
 
 afterAll(() => {
     if (originalCloudRunJob === undefined) delete process.env.CLOUD_RUN_JOB
     else process.env.CLOUD_RUN_JOB = originalCloudRunJob
+})
+
+describe('VM workflow completion handoff', () => {
+    beforeEach(() => {
+        mockResolveWorkflowRunsForSettledVmJob.mockClear()
+    })
+
+    test('re-reads the terminal job and immediately resolves its parked workflow', async () => {
+        const pendingRef = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({
+                    kind: 'vm_job',
+                    projectId: 'mutable-project',
+                    objectType: 'tasks',
+                    objectId: 'mutable-task',
+                    status: 'completed',
+                }),
+            })),
+        }
+        const immutableContext = {
+            correlationId: 'vm-1',
+            kind: 'vm_job',
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            assistantId: 'assistant-1',
+            callbackContext: {
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+            },
+        }
+
+        await expect(__private__.resolveWorkflowAfterVmJobSettlement(pendingRef, immutableContext)).resolves.toBe(1)
+        expect(mockResolveWorkflowRunsForSettledVmJob).toHaveBeenCalledWith(
+            expect.objectContaining({
+                correlationId: 'vm-1',
+                projectId: 'project-1',
+                objectId: 'task-1',
+                status: 'completed',
+            })
+        )
+    })
 })
 
 describe('VM runner prompt', () => {

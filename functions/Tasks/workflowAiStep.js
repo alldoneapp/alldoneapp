@@ -32,7 +32,8 @@ const MAX_RUNS_PER_TICK = 5
 
 // A step is not finished when the assistant stops talking, only when the work it started has
 // finished. execute_task_in_vm returns as soon as the job is enqueued, so a run that dispatched one
-// parks here instead of settling, and the next tick advances the task once the VM job settles.
+// parks here instead of settling. The VM runner re-checks it after terminal finalization, with the
+// scheduled dispatcher retained as a recovery backstop.
 const RUN_STATUS_AWAITING_VM = 'awaiting_vm'
 const VM_TERMINAL_STATUSES = ['completed', 'failed', 'cancelled']
 // Chat execution is authoritative before execute_task_in_vm has created its pendingWebhooks record.
@@ -50,6 +51,7 @@ const RUN_STATUS_RUNNING = 'running'
 const RUN_STATUS_COMPLETED = 'completed'
 const RUN_STATUS_FAILED = 'failed'
 const RUN_STATUS_SKIPPED = 'skipped'
+const RUN_TERMINAL_STATUSES = [RUN_STATUS_COMPLETED, RUN_STATUS_FAILED, RUN_STATUS_SKIPPED]
 
 const getCurrentStepId = task => {
     const stepHistory = Array.isArray(task && task.stepHistory) ? task.stepHistory : []
@@ -537,31 +539,85 @@ const parkWorkflowAiRunForExecution = async (
  */
 const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipReason = null) => {
     const { projectId, taskId, stepId } = run
-    const taskRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
+    const db = admin.firestore()
+    const taskRef = db.doc(`items/${projectId}/tasks/${taskId}`)
+    const runRef = db.doc(`${RUNS_COLLECTION}/${runId}`)
+    const settledAt = Date.now()
+    const settledStatus = skipReason ? RUN_STATUS_SKIPPED : failureReason ? RUN_STATUS_FAILED : RUN_STATUS_COMPLETED
 
-    // Re-read before moving: the assistant can move the task itself (update_task), and a human may
-    // have moved it while the run was in flight. Whoever moved it last wins.
-    const latestDoc = await taskRef.get()
-    const latest = latestDoc.exists ? { ...latestDoc.data(), id: taskId } : null
+    // Firestore update triggers are at-least-once, and the minute poller can overlap an immediate
+    // terminal-event resolver. Settle the run and move the task in one transaction so only one
+    // invocation can win. Re-reading the task in that same transaction also preserves "whoever
+    // moved it last wins" when the assistant or a human changed the step while work was running.
+    const result = await db.runTransaction(async transaction => {
+        const [runSnapshot, latestDoc] = await Promise.all([transaction.get(runRef), transaction.get(taskRef)])
+        const persistedRun = runSnapshot.exists ? runSnapshot.data() || {} : null
+        if (persistedRun && RUN_TERMINAL_STATUSES.includes(persistedRun.status)) {
+            return { finalized: false, moved: false }
+        }
 
-    if (latest && getCurrentStepId(latest) === stepId) {
-        await advanceTaskFromWorkflowStep(projectId, taskId, latest, stepId, workflow)
+        const latest = latestDoc.exists ? { ...latestDoc.data(), id: taskId } : null
+        const transition =
+            latest && getCurrentStepId(latest) === stepId
+                ? buildWorkflowStepAdvanceUpdate(latest, stepId, workflow)
+                : null
+
+        if (transition) {
+            const { movingToDone, updateData } = transition
+            transaction.set(taskRef, updateData, { merge: true })
+
+            const subtaskIds = Array.isArray(latest.subtaskIds) ? latest.subtaskIds : []
+            subtaskIds.forEach(subtaskId => {
+                transaction.set(
+                    db.doc(`items/${projectId}/tasks/${subtaskId}`),
+                    { ...updateData, parentDone: movingToDone, inDone: movingToDone },
+                    { merge: true }
+                )
+            })
+        }
+
+        transaction.set(
+            runRef,
+            {
+                status: settledStatus,
+                ...(skipReason ? { reason: skipReason } : {}),
+                ...(failureReason ? { failureReason } : {}),
+                settledAt,
+            },
+            { merge: true }
+        )
+
+        return { finalized: true, moved: !!transition, latest, transition }
+    })
+
+    if (!result.finalized) return false
+
+    if (result.moved) {
+        await writeMovedInWorkflowFeed(
+            projectId,
+            taskId,
+            result.latest,
+            workflow[stepId],
+            result.transition.nextStepId,
+            workflow
+        )
+        console.log('[workflowAiStep] Advanced task', {
+            projectId,
+            taskId,
+            fromStepId: stepId,
+            nextStepId: result.transition.nextStepId,
+        })
+    } else if (result.latest && getCurrentStepId(result.latest) === stepId) {
+        console.warn('[workflowAiStep] Step vanished from the workflow, leaving task in place', {
+            projectId,
+            taskId,
+            fromStepId: stepId,
+        })
     } else {
         console.log('[workflowAiStep] Task already moved on, skipping advance', { runId, taskId })
     }
 
-    await admin
-        .firestore()
-        .doc(`${RUNS_COLLECTION}/${runId}`)
-        .set(
-            {
-                status: skipReason ? RUN_STATUS_SKIPPED : failureReason ? RUN_STATUS_FAILED : RUN_STATUS_COMPLETED,
-                ...(skipReason ? { reason: skipReason } : {}),
-                ...(failureReason ? { failureReason } : {}),
-                settledAt: Date.now(),
-            },
-            { merge: true }
-        )
+    return true
 }
 
 /**
@@ -709,25 +765,37 @@ const resolveAwaitingDeadline = (run, unsettledJobs) => {
  * job whose status never reaches a terminal state — see resolveAwaitingDeadline for why a job blocked
  * on a user question gets longer than the plain run budget.
  */
-const resolveAwaitingVmRuns = async ({ now = Date.now() } = {}) => {
-    const snapshot = await admin
-        .firestore()
-        .collection(RUNS_COLLECTION)
-        .where('status', '==', RUN_STATUS_AWAITING_VM)
-        .limit(MAX_RUNS_PER_TICK)
-        .get()
+const resolveAwaitingVmRuns = async ({ now = Date.now(), projectId = null, taskId = null } = {}) => {
+    let query = admin.firestore().collection(RUNS_COLLECTION)
+    if (taskId) {
+        // A terminal event knows the task but not necessarily the workflow run id: the run can park
+        // in the pre-VM assistant phase before the VM correlation id exists. taskId has an automatic
+        // single-field index, avoiding a new composite index for status + taskId.
+        query = query.where('taskId', '==', taskId)
+    } else {
+        query = query.where('status', '==', RUN_STATUS_AWAITING_VM).limit(MAX_RUNS_PER_TICK)
+    }
+    const snapshot = await query.get()
 
     if (snapshot.empty) return 0
 
     let resolved = 0
     for (const doc of snapshot.docs) {
         const run = doc.data() || {}
+        if (
+            run.status !== RUN_STATUS_AWAITING_VM ||
+            (projectId && run.projectId !== projectId) ||
+            (taskId && run.taskId !== taskId)
+        ) {
+            continue
+        }
         try {
             // Read the lifecycle phases in order, not in parallel. startVmJob persists its VM record
             // before the chat run can mark its assistantRunLock terminal. Therefore an active first
-            // read can safely defer the VM read to the next tick, while a terminal first read
-            // guarantees any dispatched VM is already queryable. Parallel reads could straddle
-            // those writes in the opposite order and briefly see neither blocker.
+            // read can safely defer the VM read to the assistant/VM terminal event (or recovery
+            // tick), while a terminal first read guarantees any dispatched VM is already queryable.
+            // Parallel reads could straddle those writes in the opposite order and briefly see
+            // neither blocker.
             const activeAssistantRunIds = run.awaitingAnyTaskExecution
                 ? await findActiveAssistantRuns(run.projectId, run.taskId, now)
                 : []
@@ -745,13 +813,14 @@ const resolveAwaitingVmRuns = async ({ now = Date.now() } = {}) => {
             const timedOutWithActiveExecution =
                 timedOut && (activeAssistantRunIds.length > 0 || stillRunning.length > 0)
 
-            await finalizeWorkflowAiRun(
+            const finalized = await finalizeWorkflowAiRun(
                 doc.id,
                 run,
                 workflow,
                 timedOutWithActiveExecution ? 'vm_timeout' : null,
                 timedOutWithActiveExecution ? null : run.awaitingSkipReason || null
             )
+            if (!finalized) continue
             resolved++
             console.log('[workflowAiStep] VM work finished, advancing the step', {
                 runId: doc.id,
@@ -764,6 +833,43 @@ const resolveAwaitingVmRuns = async ({ now = Date.now() } = {}) => {
     }
 
     return resolved
+}
+
+/**
+ * Immediately re-check a parked workflow when its task VM enters a terminal state.
+ *
+ * The VM runner invokes this after result delivery, billing/refunds and its terminal status write.
+ * finalizeWorkflowAiRun is the idempotency boundary against a runner retry racing the minute poller.
+ */
+const resolveWorkflowRunsForSettledVmJob = async (job = {}, now = Date.now()) => {
+    if (
+        !VM_TERMINAL_STATUSES.includes(job.status) ||
+        job.kind !== 'vm_job' ||
+        (job.objectType || 'tasks') !== 'tasks' ||
+        !job.projectId ||
+        !job.objectId
+    ) {
+        return 0
+    }
+
+    return resolveAwaitingVmRuns({ now, projectId: job.projectId, taskId: job.objectId })
+}
+
+/**
+ * Close the pre-VM ordering window immediately as well.
+ *
+ * A workflow can park while a chat assistant run is still creating its VM record. Whichever
+ * terminal event arrives last — the assistant lock or the VM job — performs the authoritative
+ * re-check, so neither ordering falls back to the next minute tick.
+ */
+const resolveWorkflowRunsForAssistantRunUpdate = async (before = {}, after = {}, now = Date.now()) => {
+    const wasActive = ACTIVE_ASSISTANT_RUN_STATUSES.includes(before.status)
+    const isActive = ACTIVE_ASSISTANT_RUN_STATUSES.includes(after.status)
+    if (!wasActive || isActive || (after.objectType || 'tasks') !== 'tasks' || !after.projectId || !after.objectId) {
+        return 0
+    }
+
+    return resolveAwaitingVmRuns({ now, projectId: after.projectId, taskId: after.objectId })
 }
 
 /**
@@ -800,8 +906,8 @@ const claimWorkflowAiRun = async (runRef, leaseOwner, now = Date.now()) => {
  * assistant work for the same budget.
  */
 const dispatchPendingWorkflowAiRuns = async ({ now = Date.now(), leaseOwner = uuidv4() } = {}) => {
-    // Runs parked on VM work are settled by the same tick, so a finished VM job advances its step
-    // within a minute without needing a schedule of its own.
+    // Recovery path for a runner that died after persisting terminal state but before its direct
+    // completion handoff, and for bounded timeout handling.
     await resolveAwaitingVmRuns({ now }).catch(error =>
         console.error('[workflowAiStep] Could not resolve awaiting runs', { error: error.message })
     )
@@ -906,6 +1012,8 @@ module.exports = {
     enqueueWorkflowAiRunIfNeeded,
     hasActiveAiTaskJob,
     resolveAwaitingVmRuns,
+    resolveWorkflowRunsForAssistantRunUpdate,
+    resolveWorkflowRunsForSettledVmJob,
     runWorkflowAiStep,
     sweepStalledWorkflowAiRuns,
 }
