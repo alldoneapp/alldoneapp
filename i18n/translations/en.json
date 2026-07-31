@@ -2522,5 +2522,11 @@
     "Configure workflow": "Configure workflow",
     "Define the first workflow step prompt before creating a workflow task": "Define the first workflow step prompt before creating a workflow task.",
     "The workflow task could not be created": "The workflow task could not be created.",
-    "Customize the steps assistant workflow tasks execute": "Customize the steps this assistant's workflow tasks execute."
+    "Customize the steps assistant workflow tasks execute": "Customize the steps this assistant's workflow tasks execute.",
+    "Reasoning effort": "Reasoning effort",
+    "Model default": "Model default",
+    "Medium": "Medium",
+    "XHigh": "XHigh",
+    "Max": "Max",
+    "Select how much reasoning the assistant should use": "Select how much reasoning the assistant should use"
 }
