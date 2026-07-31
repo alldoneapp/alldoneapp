@@ -4,6 +4,7 @@ import { Text, TouchableOpacity } from 'react-native'
 
 import CommentsList from './CommentsList'
 import { respondToVmInteraction } from '../../../../utils/backends/Assistants/assistantRuns'
+import AssistantProgress from '../../../ChatsView/ChatDV/EditorView/AssistantProgress'
 
 jest.mock('../../../Feeds/FeedsModals/ListCommentsComponents/Comment', () => 'Comment')
 jest.mock('../../../../utils/backends/Assistants/assistantRuns', () => ({
@@ -17,13 +18,13 @@ const baseRun = interaction => ({
     interaction: { requestId: 'request-1', ...interaction },
 })
 
-const renderPopupComments = assistantRun =>
+const renderPopupComments = (assistantRun, commentOverrides = {}) =>
     renderer.create(
         <CommentsList
             projectId="project-1"
             objectType="tasks"
             objectId="task-1"
-            comments={[{ id: 'comment-1', commentText: 'VM status', assistantRun }]}
+            comments={[{ id: 'comment-1', commentText: 'VM status', assistantRun, ...commentOverrides }]}
             archivingEmailKeys={[]}
             archivedEmailKeys={[]}
         />
@@ -157,5 +158,28 @@ describe('RichCommentModal CommentsList VM interactions', () => {
             1
         )
         expect(findButton(resumedTree, 'Execute plan')).toBeUndefined()
+    })
+
+    test('replaces technical chat status text with the shared friendly progress story', () => {
+        const tree = renderPopupComments(
+            {
+                kind: 'chat',
+                status: 'running',
+                runId: 'run-1',
+                activity: { phase: 'tool', toolName: 'web_search', startedAt: 123 },
+            },
+            {
+                isLoading: true,
+                commentText: 'Under the hood: web_search (step 1/200)',
+            }
+        )
+        const comment = tree.root.findByType('Comment')
+
+        expect(comment.props.contentOverride.type).toBe(AssistantProgress)
+        expect(comment.props.contentOverride.props.activity).toEqual({
+            phase: 'tool',
+            toolName: 'web_search',
+            startedAt: 123,
+        })
     })
 })

@@ -93,6 +93,7 @@ const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
+const { buildInitialAssistantRunStatusMessage, buildToolProgressStatusMessage } = require('./assistantProgressStatus')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -1131,57 +1132,21 @@ const isTalkToAssistantToolName = toolName =>
 const isExternalIntegrationToolName = toolName =>
     typeof toolName === 'string' && toolName.startsWith(EXTERNAL_TOOL_PREFIX)
 
-const trimTextForStatus = (value, maxLength = 100) => {
-    const normalized = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
-    if (!normalized) return ''
-    return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized
-}
+const EMPTY_OPENAI_RESPONSE_ERROR_CODE = 'EMPTY_OPENAI_RESPONSE'
+const EMPTY_ASSISTANT_RESPONSE_TEXT = '⚠️ No response was generated after retrying. Please try again.'
 
-const buildToolProgressStatusMessage = ({ toolName, toolArgs, toolCallIteration, elapsedMs }) => {
-    const elapsedSeconds = Math.max(0, Math.floor((elapsedMs || 0) / 1000))
-    const stepLabel = `${toolCallIteration}/${MAX_NATIVE_TOOL_CALL_ITERATIONS}`
-    const updateSeconds = Math.floor(TOOL_PROGRESS_UPDATE_INTERVAL_MS / 1000)
+const isEmptyOpenAiResponseError = error => error?.code === EMPTY_OPENAI_RESPONSE_ERROR_CODE
 
-    if (isTalkToAssistantToolName(toolName)) {
-        const delegatedTaskPreview = trimTextForStatus(toolArgs?.message, 110)
-        return [
-            '⏳ Delegating to a specialist assistant...',
-            'Now: Sharing your request and context with another assistant.',
-            'Waiting: The delegated assistant may run its own tools before replying.',
-            `Under the hood: ${toolName} (step ${stepLabel})`,
-            delegatedTaskPreview ? `Delegated task: "${delegatedTaskPreview}"` : null,
-            `Elapsed: ${elapsedSeconds}s (updates every ${updateSeconds}s)`,
-        ]
-            .filter(Boolean)
-            .join('\n')
+const createEmptyOpenAiResponseError = response => {
+    const error = new Error('OpenAI returned a completed response without text or tool calls')
+    error.code = EMPTY_OPENAI_RESPONSE_ERROR_CODE
+    error.responseMetadata = {
+        id: response?.id || null,
+        model: response?.model || null,
+        outputItemTypes: Array.isArray(response?.output) ? response.output.map(item => item?.type).filter(Boolean) : [],
+        outputTokens: response?.usage?.output_tokens || 0,
     }
-
-    if (isExternalIntegrationToolName(toolName)) {
-        return [
-            '⏳ Running an external tool...',
-            'Now: Sending a secure request to an external integration.',
-            'Waiting: Network and external processing can take longer than normal chat.',
-            `Under the hood: ${toolName} (step ${stepLabel})`,
-            `Elapsed: ${elapsedSeconds}s (updates every ${updateSeconds}s)`,
-        ].join('\n')
-    }
-
-    return [
-        `⏳ Executing ${toolName}...`,
-        'Now: Running the requested tool with your current chat context.',
-        'Waiting: Tool execution may require additional reads/writes before response generation.',
-        `Under the hood: ${toolName} (step ${stepLabel})`,
-        `Elapsed: ${elapsedSeconds}s (updates every ${updateSeconds}s)`,
-    ].join('\n')
-}
-
-const buildInitialAssistantRunStatusMessage = () => {
-    return [
-        '⏳ Starting your request...',
-        'Now: Preparing context and selecting the best next action.',
-        'Waiting: This can take longer for complex requests before tool execution starts.',
-        'Under the hood: Initial analysis',
-    ].join('\n')
+    return error
 }
 
 /**
@@ -2894,24 +2859,30 @@ async function interactWithChatStream(
         // Make the actual API call to OpenAI
         const apiCallStart = Date.now()
         console.log('📞 [TIMING] Calling OpenAI API...')
-        let stream
-        try {
-            stream = await openai.responses.create(requestParams)
-        } catch (error) {
-            if (!responsesToolConfig?.toolSearchEnabled || !shouldRetryWithoutToolSearch(error)) throw error
+        let activeRequestParams = requestParams
+        const createResponsesStream = async () => {
+            try {
+                return await openai.responses.create(activeRequestParams)
+            } catch (error) {
+                if (!responsesToolConfig?.toolSearchEnabled || !shouldRetryWithoutToolSearch(error)) throw error
 
-            console.warn('🔎 TOOL SEARCH: Deferred loading rejected; retrying with full function schemas', {
-                model,
-                status: error.status || null,
-                error: error.message,
-            })
-            requestParams.tools = responsesToolConfig.fallbackTools
-            responsesToolConfig = {
-                ...responsesToolConfig,
-                toolSearchEnabled: false,
+                console.warn('🔎 TOOL SEARCH: Deferred loading rejected; retrying with full function schemas', {
+                    model,
+                    status: error.status || null,
+                    error: error.message,
+                })
+                activeRequestParams = {
+                    ...activeRequestParams,
+                    tools: responsesToolConfig.fallbackTools,
+                }
+                responsesToolConfig = {
+                    ...responsesToolConfig,
+                    toolSearchEnabled: false,
+                }
+                return openai.responses.create(activeRequestParams)
             }
-            stream = await openai.responses.create(requestParams)
         }
+        const stream = await createResponsesStream()
         const apiCallDuration = Date.now() - apiCallStart
         console.log(`✅ [TIMING] OpenAI API call successful: ${apiCallDuration}ms`)
 
@@ -2928,7 +2899,7 @@ async function interactWithChatStream(
         })
 
         // Convert Responses typed events to the stream contract used by the rest of the assistant runtime.
-        return convertResponsesStream(stream, {
+        const usageContext = {
             route:
                 toolRuntimeContext?.promptCacheScope ||
                 toolRuntimeContext?.sourceChannel ||
@@ -2937,7 +2908,31 @@ async function interactWithChatStream(
             model,
             cacheKey: requestParams.prompt_cache_key || '',
             cacheMode: requestParams.prompt_cache_options?.mode || 'automatic',
-        })
+        }
+        return convertResponsesStreamWithEmptyRetry(
+            stream,
+            async emptyResponseError => {
+                const retriedWithoutToolSearch = !!responsesToolConfig?.toolSearchEnabled
+                if (retriedWithoutToolSearch) {
+                    activeRequestParams = {
+                        ...activeRequestParams,
+                        tools: responsesToolConfig.fallbackTools,
+                    }
+                    responsesToolConfig = {
+                        ...responsesToolConfig,
+                        toolSearchEnabled: false,
+                    }
+                }
+                console.warn('⚠️ OPENAI EMPTY RESPONSE: Retrying once', {
+                    model,
+                    route: usageContext.route,
+                    retriedWithoutToolSearch,
+                    responseMetadata: emptyResponseError.responseMetadata,
+                })
+                return createResponsesStream()
+            },
+            usageContext
+        )
     }
 }
 
@@ -2948,6 +2943,7 @@ async function* convertResponsesStream(stream, usageContext = {}) {
     const accumulatedToolCalls = new Map()
     let chunkCount = 0
     let totalContentLength = 0
+    let completedResponse = null
 
     if (ENABLE_DETAILED_LOGGING) {
         console.log('🔧 STREAM CONVERTER: Starting to process OpenAI stream')
@@ -2999,6 +2995,7 @@ async function* convertResponsesStream(stream, usageContext = {}) {
         }
 
         if (chunk.type === 'response.completed') {
+            completedResponse = chunk.response || null
             for (const item of chunk.response?.output || []) {
                 if (item?.type !== 'function_call') continue
                 accumulatedToolCalls.set(item.call_id, {
@@ -3009,6 +3006,25 @@ async function* convertResponsesStream(stream, usageContext = {}) {
                         arguments: item.arguments || '{}',
                     },
                 })
+            }
+            if (totalContentLength === 0) {
+                const completedText = (chunk.response?.output || [])
+                    .filter(item => item?.type === 'message' && Array.isArray(item.content))
+                    .flatMap(item => item.content)
+                    .map(content => {
+                        if (content?.type === 'output_text') return content.text || ''
+                        if (content?.type === 'refusal') return content.refusal || ''
+                        return ''
+                    })
+                    .filter(Boolean)
+                    .join('\n')
+                if (completedText) {
+                    totalContentLength = completedText.length
+                    yield {
+                        content: completedText,
+                        additional_kwargs: {},
+                    }
+                }
             }
             const usage = chunk.response?.usage
             if (usage) {
@@ -3055,6 +3071,10 @@ async function* convertResponsesStream(stream, usageContext = {}) {
         }
     }
 
+    if (completedResponse && totalContentLength === 0 && completedToolCalls.length === 0) {
+        throw createEmptyOpenAiResponseError(completedResponse)
+    }
+
     if (ENABLE_DETAILED_LOGGING) {
         console.log(`🔧 STREAM CONVERTER: Finished processing stream`, {
             totalChunks: chunkCount,
@@ -3062,6 +3082,33 @@ async function* convertResponsesStream(stream, usageContext = {}) {
             hadToolCalls: completedToolCalls.length > 0,
             toolCallsCount: completedToolCalls.length,
         })
+    }
+}
+
+function convertResponsesStreamWithEmptyRetry(initialStream, retryStream, usageContext = {}) {
+    let attempt = 0
+    let iterator = convertResponsesStream(initialStream, usageContext)
+
+    return {
+        async next() {
+            while (true) {
+                try {
+                    return await iterator.next()
+                } catch (error) {
+                    if (!isEmptyOpenAiResponseError(error) || attempt === 1) throw error
+                    attempt++
+                    const retriedStream = await retryStream(error)
+                    iterator = convertResponsesStream(retriedStream, usageContext)
+                }
+            }
+        },
+        async return(value) {
+            if (typeof iterator.return === 'function') return iterator.return(value)
+            return { done: true, value }
+        },
+        [Symbol.asyncIterator]() {
+            return this
+        },
     }
 }
 
@@ -9358,6 +9405,10 @@ async function storeChunks(
                 ? {
                       ...assistantRunMetadata,
                       status: 'running',
+                      activity: assistantRunMetadata.activity || {
+                          phase: 'thinking',
+                          startedAt: Date.now(),
+                      },
                   }
                 : null
         if (assistantRun) comment.assistantRun = assistantRun
@@ -9597,23 +9648,28 @@ async function storeChunks(
             ])
         }
 
-        finalizeFailedAssistantRunComment = async () => {
-            if (!assistantRun) return
+        finalizeFailedAssistantRunComment = async failureMessage => {
+            if (!assistantRun && !failureMessage) return
             if (updateTimeout) {
                 clearTimeout(updateTimeout)
                 updateTimeout = null
             }
             pendingUpdate = null
+            if (failureMessage) commentText = failureMessage
             await ensureCommitted()
-            await commentRefRawUpdate({
+            const updateData = {
                 isLoading: false,
                 isThinking: false,
-                assistantRun: {
+            }
+            if (failureMessage) updateData.commentText = failureMessage
+            if (assistantRun) {
+                updateData.assistantRun = {
                     ...assistantRun,
                     status: 'failed',
                     failedAt: Date.now(),
-                },
-            }).catch(() => {})
+                }
+            }
+            await commentRefRawUpdate(updateData).catch(() => {})
         }
 
         const scheduleUpdate = async (updateData, immediate = false) => {
@@ -9801,6 +9857,14 @@ async function storeChunks(
                     // Show loading indicator
                     await flushPendingUpdate() // Flush any pending updates first
                     const toolExecutionStartedAt = Date.now()
+                    if (assistantRun) {
+                        assistantRun.activity = {
+                            phase: 'tool',
+                            toolName,
+                            startedAt: toolExecutionStartedAt,
+                            iteration: toolCallIteration,
+                        }
+                    }
                     let toolStatusMessage = buildToolProgressStatusMessage({
                         toolName,
                         toolArgs,
@@ -9808,7 +9872,18 @@ async function storeChunks(
                         elapsedMs: 0,
                     })
                     commentText = appendStatusBlock(commentText, toolStatusMessage)
-                    await safeCommentUpdate({ commentText, isLoading: true })
+                    await safeCommentUpdate({
+                        commentText,
+                        isLoading: true,
+                        ...(assistantRun
+                            ? {
+                                  assistantRun: {
+                                      ...assistantRun,
+                                      status: 'running',
+                                  },
+                              }
+                            : {}),
+                    })
 
                     let stopToolProgressUpdates = false
                     const updateToolProgressStatus = async () => {
@@ -9966,6 +10041,32 @@ async function storeChunks(
                     // Update currentConversation for next iteration
                     currentConversation = updatedConversation
 
+                    if (assistantRun) {
+                        assistantRun.activity = {
+                            phase: 'composing',
+                            startedAt: Date.now(),
+                            iteration: toolCallIteration,
+                        }
+                    }
+
+                    // Replace the tool status with a friendly composing phase before waiting on
+                    // the next model round. Keeping isLoading true prevents a blank message from
+                    // flashing while that round is being prepared.
+                    await flushPendingUpdate()
+                    commentText = commentText.replace(toolStatusMessage, '')
+                    await safeCommentUpdate({
+                        commentText,
+                        isLoading: true,
+                        ...(assistantRun
+                            ? {
+                                  assistantRun: {
+                                      ...assistantRun,
+                                      status: 'running',
+                                  },
+                              }
+                            : {}),
+                    })
+
                     // Resume stream with updated conversation
                     if (ENABLE_DETAILED_LOGGING) {
                         console.log('🔧 NATIVE TOOL CALL: Calling interactWithChatStream with updated conversation', {
@@ -9986,11 +10087,6 @@ async function storeChunks(
                     if (ENABLE_DETAILED_LOGGING) {
                         console.log('🔧 NATIVE TOOL CALL: Got new stream from interactWithChatStream')
                     }
-
-                    // Remove loading indicator
-                    await flushPendingUpdate() // Flush any pending updates first
-                    commentText = commentText.replace(toolStatusMessage, '')
-                    await safeCommentUpdate({ commentText, isLoading: false })
 
                     // Process the new stream - replace the current stream
                     if (ENABLE_DETAILED_LOGGING) {
@@ -10052,7 +10148,7 @@ async function storeChunks(
                                 await flushPendingUpdate()
                             }
 
-                            await scheduleUpdate({ commentText }, shouldFlushImmediately)
+                            await scheduleUpdate({ commentText, isLoading: false }, shouldFlushImmediately)
 
                             if (ENABLE_DETAILED_LOGGING) {
                                 console.log('🔧 NATIVE TOOL CALL: Scheduled comment update with new content', {
@@ -10434,10 +10530,14 @@ async function storeChunks(
                 await finalizeCancelledComment()
             }
         } else if (typeof finalizeFailedAssistantRunComment === 'function') {
-            await finalizeFailedAssistantRunComment()
+            await finalizeFailedAssistantRunComment(
+                isEmptyOpenAiResponseError(error) ? EMPTY_ASSISTANT_RESPONSE_TEXT : null
+            )
         }
         console.error('❌ [TIMING] Error in storeChunks:', {
             error: error.message,
+            code: error.code || null,
+            responseMetadata: error.responseMetadata || null,
             duration: `${Date.now() - chunksStartTime}ms`,
             chunksProcessed: chunkCount,
         })
@@ -10564,6 +10664,8 @@ async function storeBotAnswerStream(
     } catch (error) {
         console.error('❌ [TIMING] Error in storeBotAnswerStream:', {
             error: error.message,
+            code: error.code || null,
+            responseMetadata: error.responseMetadata || null,
             duration: `${Date.now() - streamProcessStart}ms`,
         })
         throw error
@@ -12721,25 +12823,13 @@ async function getOptimizedContextMessages(
         parallelPromises.push(Promise.resolve(null))
     }
 
-    // Fetch open task counts for all projects (including overdue) in parallel
-    if (userId) {
-        parallelPromises.push(getOpenTasksContextMessage(userId, userTimezoneOffset))
-    } else {
-        parallelPromises.push(Promise.resolve(null))
-    }
-
     // Fetch the current parent object in parallel. The same formatter is reused by VM handoff,
     // keeping interactive and delegated executions grounded in one canonical task context.
     parallelPromises.push(getCurrentObjectContextData(projectId, objectType, objectId))
 
-    const [
-        commentDocs,
-        chatData,
-        notesContext,
-        currentNoteContext,
-        openTasksData,
-        currentObjectContextData,
-    ] = await Promise.all(parallelPromises)
+    const [commentDocs, chatData, notesContext, currentNoteContext, currentObjectContextData] = await Promise.all(
+        parallelPromises
+    )
 
     // Collect messages from conversation history
     const messages = []
@@ -12845,18 +12935,6 @@ async function getOptimizedContextMessages(
     const currentNoteContextMessage = formatCurrentNoteContextMessage(currentNoteContext)
     if (currentNoteContextMessage) {
         volatileContextMessages.push(['system', currentNoteContextMessage])
-    }
-
-    // Add open task counts context if available
-    if (openTasksData?.openTasksData?.projects && openTasksData?.message) {
-        const { projects, totalCount } = openTasksData.openTasksData
-        console.log('📋 [ASSISTANT CONTEXT] Open tasks for today (including overdue):', {
-            userId,
-            totalCount,
-            projectCount: projects.length,
-            projects: projects.map(p => ({ name: p.name, count: p.openTaskCount })),
-        })
-        volatileContextMessages.push(['system', openTasksData.message])
     }
 
     const orderedMessages = [...baseMessages, ...volatileContextMessages, ...conversationMessages]

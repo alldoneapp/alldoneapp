@@ -33,6 +33,7 @@ import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/Em
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import VmInteractionCard from './VmInteractionCard'
 import { isAwaitingVmInteraction as hasAwaitingVmInteraction } from './messageLoadingState'
+import AssistantProgress from './AssistantProgress'
 
 export default function MessageItemContent({
     messageId,
@@ -81,6 +82,7 @@ export default function MessageItemContent({
     // even if legacy/stale message-loading logic has already cleared isLoading.
     const isAwaitingVmInteraction = creatorData?.isAssistant && hasAwaitingVmInteraction(assistantRun)
     const isLoadingState = creatorData?.isAssistant && (isLoading || isAwaitingVmInteraction)
+    const showFriendlyAssistantProgress = isLoadingState && !isAwaitingVmInteraction && assistantRun?.kind === 'chat'
     // Strip leading whitespace so a status block appended before any answer text streamed
     // (e.g. a tool that runs immediately) doesn't render with a large blank gap above it.
     const loadingText = typeof commentText === 'string' ? commentText.replace(/^\s+/, '') : commentText
@@ -409,7 +411,9 @@ export default function MessageItemContent({
                 <View style={localStyles.messageContentContainer}>
                     {isLoadingState ? (
                         <View style={localStyles.loadingContainer}>
-                            {!containsBlockOrSpecialElements(loadingText) ? (
+                            {showFriendlyAssistantProgress ? (
+                                <AssistantProgress activity={assistantRun?.activity} />
+                            ) : !containsBlockOrSpecialElements(loadingText) ? (
                                 <Text style={[localStyles.loadingText, { marginBottom: 8 }]}>{loadingText}</Text>
                             ) : (
                                 <CommentElementsParser
@@ -429,26 +433,26 @@ export default function MessageItemContent({
                                     assistantRun={assistantRun}
                                 />
                             )}
-                            {!isAwaitingVmInteraction && (
+                            {!isAwaitingVmInteraction && !showFriendlyAssistantProgress && (
                                 <View style={localStyles.loadingIndicator}>
                                     <ActivityIndicator size="small" color={colors.PrimaryBlue} />
-                                    {canStopAssistantRun && (
-                                        <TouchableOpacity
-                                            style={[
-                                                localStyles.stopRunButton,
-                                                cancellingRun && localStyles.stopRunButtonDisabled,
-                                            ]}
-                                            onPress={stopAssistantRun}
-                                            disabled={cancellingRun}
-                                            accessibilityLabel="Stop assistant"
-                                        >
-                                            <Icon name="x-thicker" size={10} color={colors.UtilityRed200} />
-                                            <Text style={localStyles.stopRunButtonText}>
-                                                {cancellingRun ? 'Stopping...' : 'Stop'}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    )}
                                 </View>
+                            )}
+                            {canStopAssistantRun && (
+                                <TouchableOpacity
+                                    style={[
+                                        localStyles.stopRunButton,
+                                        cancellingRun && localStyles.stopRunButtonDisabled,
+                                    ]}
+                                    onPress={stopAssistantRun}
+                                    disabled={cancellingRun}
+                                    accessibilityLabel="Stop assistant"
+                                >
+                                    <Icon name="x-thicker" size={10} color={colors.UtilityRed200} />
+                                    <Text style={localStyles.stopRunButtonText}>
+                                        {cancellingRun ? 'Stopping...' : 'Stop'}
+                                    </Text>
+                                </TouchableOpacity>
                             )}
                         </View>
                     ) : (
@@ -653,7 +657,8 @@ const localStyles = StyleSheet.create({
         alignItems: 'flex-start',
     },
     stopRunButton: {
-        marginLeft: 12,
+        alignSelf: 'flex-start',
+        marginTop: 8,
         minHeight: 24,
         paddingHorizontal: 8,
         borderRadius: 4,
