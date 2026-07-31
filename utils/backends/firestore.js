@@ -3545,6 +3545,8 @@ export function mapTaskData(taskId, task) {
         assigneeType: task.assigneeType ? task.assigneeType : TASK_ASSIGNEE_USER_TYPE,
         assistantId: task.assistantId ? task.assistantId : '',
         isAssistantEnabled: task.isAssistantEnabled,
+        workflowTask: task.workflowTask === true,
+        workflowPayerUserId: task.workflowPayerUserId || null,
         commentsData: task.commentsData ? task.commentsData : null,
         autoEstimation: task.autoEstimation === false || task.autoEstimation === true ? task.autoEstimation : null,
         completedTime: task.completedTime ? task.completedTime : null,

@@ -195,6 +195,51 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         })
     })
 
+    it('enqueues a creator-funded run from a project assistant workflow', async () => {
+        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
+            uid: ASSISTANT,
+            workflow: { [PROJECT]: { [AI_STEP]: aiStep(), [NEXT_STEP]: humanStep() } },
+        })
+        mockStore.set(`users/${ASSIGNEE}`, { uid: ASSIGNEE, language: 'en' })
+        const task = taskOnAiStep({
+            userId: ASSISTANT,
+            userIds: [ASSISTANT],
+            stepHistory: [AI_STEP],
+            currentReviewerId: ASSISTANT,
+            assigneeType: 'ASSISTANT',
+            workflowTask: true,
+            workflowPayerUserId: ASSIGNEE,
+            creatorId: ASSIGNEE,
+            completed: 1000,
+        })
+
+        const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, {}, task)
+
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
+            assistantId: ASSISTANT,
+            assigneeUserId: ASSIGNEE,
+            workflowOwnerId: ASSISTANT,
+            workflowOwnerType: 'assistant',
+            payerUserId: ASSIGNEE,
+        })
+    })
+
+    it('does not apply an assistant workflow to an ordinary assistant task', async () => {
+        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
+            uid: ASSISTANT,
+            workflow: { [PROJECT]: { [AI_STEP]: aiStep() } },
+        })
+        const task = taskOnAiStep({
+            userId: ASSISTANT,
+            assigneeType: 'ASSISTANT',
+            workflowTask: false,
+            completed: 1000,
+        })
+
+        await expect(enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, {}, task)).resolves.toBeNull()
+        expect(mockStore.has(`workflowAiRuns/${PROJECT}__${TASK}__${AI_STEP}__1000`)).toBe(false)
+    })
+
     it('enqueues a new run when a task is sent back from a later step to an AI step', async () => {
         seedAssignee()
         const oldTask = {
@@ -353,6 +398,37 @@ describe('runWorkflowAiStep', () => {
 
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
+    })
+
+    it('loads an assistant-owned workflow while charging the creating project member', async () => {
+        mockStore.set(`assistants/${PROJECT}/items/${ASSISTANT}`, {
+            uid: ASSISTANT,
+            workflow: { [PROJECT]: { [AI_STEP]: aiStep(), [NEXT_STEP]: humanStep() } },
+        })
+        mockStore.set(`users/${ASSIGNEE}`, { uid: ASSIGNEE, language: 'de' })
+        mockStore.set(
+            `items/${PROJECT}/tasks/${TASK}`,
+            taskOnAiStep({
+                userId: ASSISTANT,
+                userIds: [ASSISTANT],
+                stepHistory: [AI_STEP],
+                workflowTask: true,
+                workflowPayerUserId: ASSIGNEE,
+            })
+        )
+
+        await runWorkflowAiStep(RUN_ID, {
+            ...run,
+            workflowOwnerId: ASSISTANT,
+            workflowOwnerType: 'assistant',
+            payerUserId: ASSIGNEE,
+        })
+
+        const args = mockGeneratePreConfigTaskResult.mock.calls[0]
+        expect(args[0]).toBe(ASSIGNEE)
+        expect(args[7]).toBe('de')
+        expect(mockPostUserRequestComment).toHaveBeenCalledWith(expect.objectContaining({ creatorId: ASSIGNEE }))
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
     })
 
     it('parks in the pre-VM window when a chat-triggered assistant run already owns the task', async () => {

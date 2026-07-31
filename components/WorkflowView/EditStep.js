@@ -15,6 +15,10 @@ import { FEED_USER_WORKFLOW_CHANGED } from '../Feeds/Utils/FeedsConstants'
 import { translate } from '../../i18n/TranslationService'
 import { createWorkflowStepFeed, createWorkflowStepFeedChangeTitle } from '../../utils/backends/Users/userUpdates'
 import { addUserWorkflowStep, modifyUserWorkflowStep } from '../../utils/backends/Users/usersFirestore'
+import {
+    addAssistantWorkflowStep,
+    modifyAssistantWorkflowStep,
+} from '../../utils/backends/Assistants/assistantsFirestore'
 import AiStepAction from './AiStepAction/AiStepAction'
 import { aiStepFieldsChanged, isAiWorkflowStep } from './workflowStepHelper'
 
@@ -136,9 +140,12 @@ class EditStep extends Component {
             onDoneUpdatingStep,
             onCancelAction,
             formType,
+            ownerType,
+            lockedStep,
         } = this.props
         const { description, loggedUser, loggedUserProjects, workflowStep } = this.state
         const project = loggedUserProjects[projectIndex]
+        const isAssistantWorkflow = ownerType === 'assistant'
 
         if (formType === 'new' && description.length > 0) {
             const stepCopy = {
@@ -147,11 +154,15 @@ class EditStep extends Component {
                 addedById: loggedUser.uid,
                 date: Date.now(),
             }
-            addUserWorkflowStep(project.id, user.uid, stepCopy)
+            if (isAssistantWorkflow) {
+                addAssistantWorkflowStep(project.id, user.uid, stepCopy)
+            } else {
+                addUserWorkflowStep(project.id, user.uid, stepCopy)
+            }
             onCancelAction()
         } else if (formType === 'edit') {
             if (description.length === 0) {
-                this.deleteStep()
+                if (!lockedStep) this.deleteStep()
             } else {
                 if (startUpdatingStepIndicator) startUpdatingStepIndicator()
                 const stepCopy =
@@ -170,10 +181,11 @@ class EditStep extends Component {
                               addedById: loggedUser.uid,
                               date: Date.now(),
                           }
-                modifyUserWorkflowStep(project.id, user.uid, step.id, stepCopy, step.reviewerUid).then(
-                    onDoneUpdatingStep
-                )
-                if (stepCopy.reviewerUid !== step.reviewerUid) {
+                const updatePromise = isAssistantWorkflow
+                    ? modifyAssistantWorkflowStep(project.id, user.uid, step.id, stepCopy, step.reviewerUid)
+                    : modifyUserWorkflowStep(project.id, user.uid, step.id, stepCopy, step.reviewerUid)
+                updatePromise.then(onDoneUpdatingStep)
+                if (!isAssistantWorkflow && stepCopy.reviewerUid !== step.reviewerUid) {
                     createWorkflowStepFeed(
                         project.id,
                         step.reviewerUid,
@@ -183,7 +195,7 @@ class EditStep extends Component {
                         stepCopy.reviewerUid
                     )
                 }
-                if (stepCopy.description !== step.description) {
+                if (!isAssistantWorkflow && stepCopy.description !== step.description) {
                     createWorkflowStepFeedChangeTitle(
                         project.id,
                         step.reviewerUid,
@@ -199,7 +211,8 @@ class EditStep extends Component {
     }
 
     deleteStep = () => {
-        const { user, step, steps, projectIndex } = this.props
+        const { user, step, steps, projectIndex, ownerType, lockedStep } = this.props
+        if (lockedStep) return
         store.dispatch([
             showFloatPopup(),
             showConfirmPopup({
@@ -210,6 +223,7 @@ class EditStep extends Component {
                     stepId: step.id,
                     steps: steps,
                     reviewerUid: step.reviewerUid,
+                    ownerType,
                 },
             }),
         ])
@@ -220,7 +234,17 @@ class EditStep extends Component {
     }
 
     render() {
-        const { user, step, stepNumber, projectIndex, onCancelAction, formType, style } = this.props
+        const {
+            user,
+            step,
+            stepNumber,
+            projectIndex,
+            onCancelAction,
+            formType,
+            style,
+            lockedReviewer,
+            lockedStep,
+        } = this.props
         const { mounted, description, smallScreen, isMiddleScreen, workflowStep } = this.state
         const buttonItemStyle = { marginRight: smallScreen ? 8 : 4 }
         const disabled1 = formType === 'new' && description.length === 0
@@ -230,6 +254,7 @@ class EditStep extends Component {
             description === step.description &&
             !aiStepFieldsChanged(workflowStep, step)
         const disabled3 = this.isAiStepIncomplete()
+        const disabled4 = lockedStep && description.length === 0
 
         return (
             <View
@@ -278,6 +303,7 @@ class EditStep extends Component {
                                 currentUser={user}
                                 projectIndex={projectIndex}
                                 onChangeValue={this.focusInput}
+                                disabled={lockedReviewer}
                             />
 
                             {isAiWorkflowStep(workflowStep) && (
@@ -287,7 +313,7 @@ class EditStep extends Component {
                                 />
                             )}
 
-                            {formType === 'edit' && (
+                            {formType === 'edit' && !lockedStep && (
                                 <Hotkeys
                                     keyName={'alt+Del'}
                                     onKeyDown={(sht, event) =>
@@ -344,7 +370,7 @@ class EditStep extends Component {
                                     : null
                             }
                             onPress={this.modifyWorkflowStep}
-                            disabled={disabled1 || disabled2 || disabled3}
+                            disabled={disabled1 || disabled2 || disabled3 || disabled4}
                             accessible={false}
                             shortcutText={'Enter'}
                         />

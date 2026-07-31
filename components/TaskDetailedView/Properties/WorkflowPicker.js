@@ -51,6 +51,7 @@ const WorkflowPicker = ({ projectId, task, disabled }) => {
 
     const getWorkflow = () => {
         let taskOwner = ownerIsWorkstream ? loggedUser : assignee || TasksHelper.getTaskOwner(task.userId, projectId)
+        if (taskOwner?.temperature && !task.workflowTask) return {}
 
         if (!taskOwner.workflow) {
             taskOwner.workflow = {}

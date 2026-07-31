@@ -420,12 +420,20 @@ export async function uploadNewTask(
         taskCopy.extendedName = taskCopy.extendedName ? taskCopy.extendedName.trim() : taskCopy.name
         taskCopy.description = taskCopy.description ? taskCopy.description : ''
         taskCopy.userId = taskCopy.userId ? taskCopy.userId : ''
-        taskCopy.userIds = [taskCopy.userId]
-        taskCopy.currentReviewerId = taskCopy.userId
+        const startsInWorkflow = taskCopy.workflowTask === true
+        taskCopy.userIds =
+            startsInWorkflow && Array.isArray(taskCopy.userIds) && taskCopy.userIds.length > 0
+                ? taskCopy.userIds
+                : [taskCopy.userId]
+        taskCopy.currentReviewerId =
+            startsInWorkflow && taskCopy.currentReviewerId ? taskCopy.currentReviewerId : taskCopy.userId
         taskCopy.observersIds = taskCopy.observersIds ? taskCopy.observersIds : []
         taskCopy.dueDateByObserversIds = taskCopy.dueDateByObserversIds ? taskCopy.dueDateByObserversIds : {}
         taskCopy.estimationsByObserverIds = taskCopy.estimationsByObserverIds ? taskCopy.estimationsByObserverIds : {}
-        taskCopy.stepHistory = [OPEN_STEP]
+        taskCopy.stepHistory =
+            startsInWorkflow && Array.isArray(taskCopy.stepHistory) && taskCopy.stepHistory.length > 0
+                ? taskCopy.stepHistory
+                : [OPEN_STEP]
         taskCopy.hasStar = taskCopy.hasStar ? taskCopy.hasStar : '#FFFFFF'
         taskCopy.priority = normalizeTaskPriority(taskCopy.priority)
         taskCopy.created = taskCopy.created ? taskCopy.created : Date.now()
@@ -2716,6 +2724,12 @@ export async function moveTasksFromMiddleOfWorkflow(
     const transitionDate = Date.now()
     const undoBeforeStates = await loadTaskUndoStates(projectId, [task.id, parentId, ...subtaskIds])
 
+    if (task.workflowTask && stepToMoveId === OPEN_STEP) {
+        const firstWorkflowStepId = getWorkflowStepsIdsSorted(getUserWorkflow(projectId, userId, task))[0]
+        if (!firstWorkflowStepId) return
+        stepToMoveId = firstWorkflowStepId
+    }
+
     if (comment) createObjectMessage(projectId, task.id, comment, 'tasks', commentType, null, null)
 
     let updateData
@@ -2740,7 +2754,7 @@ export async function moveTasksFromMiddleOfWorkflow(
             completed: transitionDate,
         }
     } else {
-        workflow = getUserWorkflow(projectId, userId)
+        workflow = getUserWorkflow(projectId, userId, task)
         const workflowStepsIds = getWorkflowStepsIdsSorted(workflow)
         const stepToMoveIndex = workflowStepsIds.indexOf(stepToMoveId)
         const currentStepId = stepHistory[stepHistory.length - 1]
@@ -2758,7 +2772,7 @@ export async function moveTasksFromMiddleOfWorkflow(
             }
         } else {
             const newUserIds = [task.userId]
-            const newStepHistory = [OPEN_STEP]
+            const newStepHistory = task.workflowTask ? [] : [OPEN_STEP]
             let newCurrentReviewerId = task.userId
 
             for (let i = 0; i < workflowStepsIds.length; i++) {
@@ -2932,7 +2946,14 @@ export async function moveTasksFromOpen(
     const newUserId = ownerIsWorkstream ? loggedUserId : userId
 
     let updateData
-    let workflow = getUserWorkflow(projectId, newUserId)
+    let workflow = getUserWorkflow(projectId, newUserId, task)
+
+    if (task.workflowTask && stepToMoveId === OPEN_STEP) {
+        const firstWorkflowStepId = getWorkflowStepsIdsSorted(workflow)[0]
+        if (!firstWorkflowStepId) return
+        stepToMoveId = firstWorkflowStepId
+    }
+    if (task.workflowTask && task.stepHistory[task.stepHistory.length - 1] === stepToMoveId) return
 
     const completedTime = getTaskCompletedTime(task)
 
@@ -2951,7 +2972,7 @@ export async function moveTasksFromOpen(
             userIds: [newUserId, reviewerUid],
             currentReviewerId: reviewerUid,
             completed: completionDate,
-            stepHistory: [OPEN_STEP, stepToMoveId],
+            stepHistory: task.workflowTask ? [...task.stepHistory, stepToMoveId] : [OPEN_STEP, stepToMoveId],
             completedTime,
         }
     }
@@ -3098,6 +3119,12 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
     const { stepHistory, parentId, subtaskIds = [], userId, estimations } = task
     const undoBeforeStates = await loadTaskUndoStates(projectId, [task.id, parentId, ...subtaskIds])
 
+    if (task.workflowTask && stepToMoveId === OPEN_STEP) {
+        const firstWorkflowStepId = getWorkflowStepsIdsSorted(getUserWorkflow(projectId, task.userId, task))[0]
+        if (!firstWorkflowStepId) return
+        stepToMoveId = firstWorkflowStepId
+    }
+
     let workflow
     let updateData
 
@@ -3111,11 +3138,11 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
             completedTime: null,
         }
     } else {
-        workflow = getUserWorkflow(projectId, task.userId)
+        workflow = getUserWorkflow(projectId, task.userId, task)
         const workflowStepsIds = getWorkflowStepsIdsSorted(workflow)
 
         const newUserIds = [task.userId]
-        const newStepHistory = [OPEN_STEP]
+        const newStepHistory = task.workflowTask ? [] : [OPEN_STEP]
         let newCurrentReviewerId = task.userId
 
         for (let i = 0; i < workflowStepsIds.length; i++) {

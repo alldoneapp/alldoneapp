@@ -27,8 +27,8 @@ export default function PendingTasksByDate({
 
     const getStepData = (tasks, stepId) => {
         const assigneeId = tasks[0].userId
-        const assignee = TasksHelper.getUserInProject(projectId, assigneeId)
-        return { currentStep: assignee.workflow[projectId][stepId], assignee }
+        const assignee = TasksHelper.getTaskOwner(assigneeId, projectId)
+        return { currentStep: assignee?.workflow?.[projectId]?.[stepId], assignee }
     }
 
     return (

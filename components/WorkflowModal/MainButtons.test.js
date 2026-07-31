@@ -82,4 +82,13 @@ describe('MainButtons layout', () => {
         expect(tree.root.findByType('BackwardButton').props.targetStepName).toBe('Open')
         expect(tree.root.findByType('ForwardButton').props.targetStepName).toBe('Review')
     })
+
+    it('can lock the backward action at the first assistant workflow step', () => {
+        const tree = renderer.create(
+            <MainButtons allowBackward={false} currentStep={0} selectedCustomStep={false} onDonePress={jest.fn()} />
+        )
+
+        expect(tree.root.findAllByType('BackwardButton')).toHaveLength(0)
+        expect(tree.root.findAllByType('ForwardButton')).toHaveLength(1)
+    })
 })
