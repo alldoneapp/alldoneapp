@@ -20,7 +20,7 @@ jest.mock('../../../components/TaskListView/Header/DateHeader', () => 'DateHeade
 jest.mock('../../../components/TaskListView/PendingTasksView/SentToSection', () => 'SendToSection')
 jest.mock('../../../components/TaskListView/Utils/TasksHelper', () => ({
     __esModule: true,
-    default: { getUserInProject: jest.fn() },
+    default: { getTaskOwner: jest.fn() },
 }))
 jest.mock('../../../components/HashtagFilters/FilterHelpers/FilterTasks', () => ({
     taskMatchHashtagFilters: jest.fn(() => true),
@@ -64,7 +64,7 @@ const renderByDate = (state = createState(), props = {}) => {
 describe('PendingTasksByDate component', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        TasksHelper.getUserInProject.mockReturnValue(assignee)
+        TasksHelper.getTaskOwner.mockReturnValue(assignee)
         taskMatchHashtagFilters.mockReturnValue(true)
     })
 

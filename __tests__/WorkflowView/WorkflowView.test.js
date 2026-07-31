@@ -25,7 +25,9 @@ jest.mock('react-redux', () => ({
 describe('WorkflowView component', () => {
     describe('WorkflowView snapshot test', () => {
         it('should render correctly', () => {
-            const tree = renderer.create(<WorkflowView user={{ displayName: 'asd' }} />).toJSON()
+            const tree = renderer
+                .create(<WorkflowView projectId="0" user={{ uid: '1', displayName: 'asd' }} />)
+                .toJSON()
             expect(tree).toMatchSnapshot()
         })
     })
