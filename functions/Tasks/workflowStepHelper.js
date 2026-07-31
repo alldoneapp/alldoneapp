@@ -60,6 +60,7 @@ const buildWorkflowStepAdvanceUpdate = (task, fromStepId, workflow, now = Date.n
               done: true,
               inDone: true,
               sortIndex: now,
+              workflowAiPromptOverride: null,
           }
         : {
               userIds: [...userIds, workflow[nextStepId].reviewerUid],
@@ -70,6 +71,9 @@ const buildWorkflowStepAdvanceUpdate = (task, fromStepId, workflow, now = Date.n
               done: false,
               inDone: false,
               sortIndex: now,
+              // Automatic AI-to-AI transitions have no popup handoff. Never leak the prior step's
+              // one-run prompt override into the next AI step.
+              workflowAiPromptOverride: null,
           }
 
     return { nextStepId, movingToDone, updateData }

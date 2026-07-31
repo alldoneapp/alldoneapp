@@ -1,4 +1,4 @@
-import { getNextWorkflowStep, isNextWorkflowStepAi } from './workflowStepHelper'
+import { buildWorkflowAiPromptOverride, getNextWorkflowStep, isNextWorkflowStepAi } from './workflowStepHelper'
 import { getWorkflowSortIndexUpdates, getWorkflowStepsIdsSorted } from '../../utils/workflowOrder'
 
 const workflow = {
@@ -61,5 +61,20 @@ describe('next workflow step presentation', () => {
             'workflow.project-1.step-2.sortIndex': 0,
             'workflow.project-1.step-1.sortIndex': 1,
         })
+    })
+})
+
+describe('workflow AI prompt overrides', () => {
+    test('captures a popup comment only when the transition targets an AI step', () => {
+        expect(buildWorkflowAiPromptOverride(workflow, '2026-02', '  Rewrite this as a memo  ', 'comment-1')).toEqual({
+            stepId: '2026-02',
+            prompt: 'Rewrite this as a memo',
+            triggerMessageId: 'comment-1',
+        })
+        expect(buildWorkflowAiPromptOverride(workflow, '2026-01', 'Keep this comment', 'comment-2')).toBeNull()
+    })
+
+    test.each(['', '   ', null, undefined])('keeps the configured prompt for an empty %p comment', comment => {
+        expect(buildWorkflowAiPromptOverride(workflow, '2026-02', comment, 'comment-1')).toBeNull()
     })
 })

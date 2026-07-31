@@ -146,6 +146,7 @@ import { getRoundedStartAndEndDates } from '../../../components/MyDayView/MyDayT
 import { getCalendarTaskStartAndEndTimestamp } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksIntervals'
 import { getAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
+import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/workflowStepHelper'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -2730,7 +2731,11 @@ export async function moveTasksFromMiddleOfWorkflow(
         stepToMoveId = firstWorkflowStepId
     }
 
-    if (comment) createObjectMessage(projectId, task.id, comment, 'tasks', commentType, null, null)
+    // Persist the visible handoff before moving the task. Its id and prompt are then written with
+    // the destination step below, so the AI run never races the comment write or duplicates it.
+    const transitionCommentId = comment
+        ? await createObjectMessage(projectId, task.id, comment, 'tasks', commentType, null, null, true)
+        : null
 
     let updateData
     let workflow
@@ -2832,6 +2837,7 @@ export async function moveTasksFromMiddleOfWorkflow(
 
     const taskUpdateData = {
         ...updateData,
+        workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
         done: stepToMoveId === DONE_STEP,
         inDone: stepToMoveId === DONE_STEP,
         sortIndex,
@@ -2940,7 +2946,9 @@ export async function moveTasksFromOpen(
 
     // Completion/workflow-move comments must never trigger an assistant reply,
     // even when the task/thread has an assistant enabled — hence skipAssistantTrigger = true.
-    if (comment) createObjectMessage(projectId, task.id, comment, 'tasks', commentType, null, null, true)
+    const transitionCommentId = comment
+        ? await createObjectMessage(projectId, task.id, comment, 'tasks', commentType, null, null, true)
+        : null
 
     const ownerIsWorkstream = userId.startsWith(WORKSTREAM_ID_PREFIX)
     const newUserId = ownerIsWorkstream ? loggedUserId : userId
@@ -3022,6 +3030,7 @@ export async function moveTasksFromOpen(
 
     const taskUpdateData = {
         ...updateData,
+        workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
         ...(stepToMoveId === DONE_STEP && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
         done: stepToMoveId === DONE_STEP,
         inDone: stepToMoveId === DONE_STEP,
@@ -3187,6 +3196,9 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
 
     const taskUpdateData = {
         ...updateData,
+        // Reopening a completed task has no transition-popup comment. Explicitly clear any old
+        // handoff so landing on an AI step runs its configured prompt.
+        workflowAiPromptOverride: null,
         done: false,
         inDone: false,
         sortIndex,

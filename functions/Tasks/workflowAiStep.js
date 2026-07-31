@@ -113,20 +113,37 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     // move stamps `completed`; the stepHistory depth is the deterministic fallback.
     const enteredAt = Number(newTask.completed) || `s${newTask.stepHistory.length}`
     const runId = buildRunId(projectId, taskId, stepId, enteredAt)
+    const persistedOverride = newTask.workflowAiPromptOverride
+    const promptOverride =
+        persistedOverride &&
+        persistedOverride.stepId === stepId &&
+        typeof persistedOverride.prompt === 'string' &&
+        persistedOverride.prompt.trim()
+            ? persistedOverride
+            : null
 
     try {
-        await admin.firestore().doc(`${RUNS_COLLECTION}/${runId}`).create({
-            projectId,
-            taskId,
-            stepId,
-            assistantId: step.reviewerUid,
-            assigneeUserId: payerUserId,
-            workflowOwnerId,
-            workflowOwnerType,
-            payerUserId,
-            status: RUN_STATUS_PENDING,
-            createdAt: Date.now(),
-        })
+        await admin
+            .firestore()
+            .doc(`${RUNS_COLLECTION}/${runId}`)
+            .create({
+                projectId,
+                taskId,
+                stepId,
+                assistantId: step.reviewerUid,
+                assigneeUserId: payerUserId,
+                workflowOwnerId,
+                workflowOwnerType,
+                payerUserId,
+                ...(promptOverride
+                    ? {
+                          promptOverride: promptOverride.prompt,
+                          triggerMessageId: promptOverride.triggerMessageId || null,
+                      }
+                    : {}),
+                status: RUN_STATUS_PENDING,
+                createdAt: Date.now(),
+            })
         return runId
     } catch (error) {
         // ALREADY_EXISTS means this update was redelivered; anything else is worth surfacing but must
@@ -286,7 +303,10 @@ const activateWorkflowTaskAssistant = async (projectId, taskId, assistantId) => 
  * Resolves the prompt for an AI step. The pre-config task is read live so later edits to it take
  * effect; the snapshot stored on the step is the fallback for a deleted task.
  */
-const resolveAiStepPrompt = async (projectId, step) => {
+const resolveAiStepPrompt = async (projectId, step, promptOverride = null) => {
+    // A non-empty transition-popup comment replaces the configured action for this run exactly. It
+    // is intentionally not augmented with the step prompt or substituted with the step's variables.
+    if (typeof promptOverride === 'string' && promptOverride.trim()) return promptOverride
     if (!step.aiPreConfigTaskId) return buildAiStepPrompt(step)
 
     const paths = [
@@ -416,7 +436,8 @@ const runWorkflowAiStep = async (runId, run) => {
             failureReason = 'step_no_longer_ai'
         } else {
             try {
-                const prompt = await resolveAiStepPrompt(projectId, step)
+                const hasPromptOverride = typeof run.promptOverride === 'string' && !!run.promptOverride.trim()
+                const prompt = await resolveAiStepPrompt(projectId, step, run.promptOverride)
                 if (!prompt.trim()) {
                     failureReason = 'empty_prompt'
                 } else {
@@ -432,7 +453,13 @@ const runWorkflowAiStep = async (runId, run) => {
                     await ensureChatExists(projectId, 'tasks', taskId, assistantId, followerIds, isPublicFor)
                     await activateWorkflowTaskAssistant(projectId, taskId, assistantId)
 
-                    const triggerMessageId = await postWorkflowStepPrompt(projectId, taskId, payerUserId, prompt)
+                    // The popup comment was persisted before the atomic task move and its id was
+                    // copied into this run. Reuse it as context instead of posting the same request
+                    // a second time. Configured prompts still seed the thread as before.
+                    const triggerMessageId =
+                        hasPromptOverride && run.triggerMessageId
+                            ? run.triggerMessageId
+                            : await postWorkflowStepPrompt(projectId, taskId, payerUserId, prompt)
 
                     const { generatePreConfigTaskResult } = require('../Assistant/assistantPreConfigTaskTopic')
                     await generatePreConfigTaskResult(
