@@ -60,6 +60,9 @@ let userOpenTasks = {}
 let userObservedTasks = {}
 let streamAndUserOpenTasks = {}
 
+export const taskBelongsInOpenBoard = (task, assistantOwner, observed = false) =>
+    observed || !assistantOwner || task?.workflowTask !== true
+
 const activeMilestoneEmptyGoals = {}
 
 export const WATCHER_VARS_DEFAULT = {
@@ -308,6 +311,7 @@ const watchUserOpenTasks = (
         })
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
+    const assistantOwner = !!currentUser.temperature
 
     const date = moment()
     const endOfDay = date.endOf('day').valueOf()
@@ -327,7 +331,9 @@ const watchUserOpenTasks = (
 
     let cacheChanges = []
     const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
-        const changes = querySnapshot.docChanges()
+        const changes = querySnapshot
+            .docChanges()
+            .filter(change => taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks))
         if (querySnapshot.metadata.fromCache) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {

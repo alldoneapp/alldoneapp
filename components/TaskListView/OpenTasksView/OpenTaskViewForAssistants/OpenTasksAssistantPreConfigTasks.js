@@ -12,14 +12,18 @@ import AssistantInputLine from './AssistantInputLine'
 import WhatsAppAssistantLine from './WhatsAppAssistantLine'
 import { GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
+import WorkflowTaskCreator from './WorkflowTaskCreator'
 
 export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
     const currentUser = useSelector(state => state.currentUser)
     const globalAssistants = useSelector(state => state.globalAssistants)
+    const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
     const [tasks, setTasks] = useState([])
 
     const isGlobalAssistant = globalAssistants.find(item => item.uid === currentUser.uid)
     const tasksProjectId = isGlobalAssistant ? GLOBAL_PROJECT_ID : projectId
+    const canCreateWorkflowTask = !isAnonymous && Array.isArray(realProjectIds) && realProjectIds.includes(projectId)
 
     useEffect(() => {
         const watcherKey = v4()
@@ -52,6 +56,15 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
                 <WhatsAppAssistantLine assistant={currentUser} projectId={projectId} />
             )}
             <Text style={localStyles.header}>{translate('Assistant tasks')}</Text>
+            {!isGlobalAssistant && (
+                <View style={localStyles.section}>
+                    <WorkflowTaskCreator
+                        projectId={projectId}
+                        assistant={currentUser}
+                        disabled={!canCreateWorkflowTask}
+                    />
+                </View>
+            )}
             {oneTimeTasks.length > 0 && (
                 <View style={localStyles.section}>
                     <Text style={localStyles.sectionTitle}>{translate('One-time tasks')}</Text>

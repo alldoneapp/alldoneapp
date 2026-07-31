@@ -13,6 +13,11 @@ export const URL_ASSISTANT_DETAILS = 'ASSISTANT_DETAILS'
 export const URL_ASSISTANT_DETAILS_CUSTOMIZATIONS = 'ASSISTANT_DETAILS_CUSTOMIZATIONS'
 
 /**
+ * /projects/{projectId}/assistants/{assistantId}/workflow
+ */
+export const URL_ASSISTANT_DETAILS_WORKFLOW = 'ASSISTANT_DETAILS_WORKFLOW'
+
+/**
  * /projects/{projectId}/assistants/{assistantId}/backlinks/tasks
  */
 export const URL_ASSISTANT_DETAILS_BACKLINKS_TASKS = 'ASSISTANT_DETAILS_BACKLINKS_TASKS'
@@ -79,6 +84,8 @@ class URLsAssistants {
                 return `projects/${params[0]}/assistants/${params[1]}`
             case URL_ASSISTANT_DETAILS_CUSTOMIZATIONS:
                 return `projects/${params[0]}/assistants/${params[1]}/customizations`
+            case URL_ASSISTANT_DETAILS_WORKFLOW:
+                return `projects/${params[0]}/assistants/${params[1]}/workflow`
             case URL_ASSISTANT_DETAILS_BACKLINKS_TASKS:
                 return `projects/${params[0]}/assistants/${params[1]}/backlinks/tasks`
             case URL_ASSISTANT_DETAILS_BACKLINKS_NOTES:
@@ -111,6 +118,10 @@ class URLsAssistants {
             }
             case URL_ASSISTANT_DETAILS_CUSTOMIZATIONS: {
                 assistantDetails(' - Customizations')
+                break
+            }
+            case URL_ASSISTANT_DETAILS_WORKFLOW: {
+                assistantDetails(' - Workflow')
                 break
             }
             case URL_ASSISTANT_DETAILS_BACKLINKS_TASKS: {

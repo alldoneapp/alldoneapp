@@ -22,6 +22,7 @@ import {
     DV_TAB_ASSISTANT_BACKLINKS,
     DV_TAB_ASSISTANT_CHAT,
     DV_TAB_ASSISTANT_CUSTOMIZATIONS,
+    DV_TAB_ASSISTANT_WORKFLOW,
     DV_TAB_ASSISTANT_NOTE,
     DV_TAB_ASSISTANT_UPDATES,
     DV_TAB_ROOT_TASKS,
@@ -42,6 +43,7 @@ import RootViewFeedsAssistant from '../Feeds/RootViewFeedsAssistant'
 import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import WorkflowView from '../WorkflowView/WorkflowView'
 
 export default function AssistantDetailedView({ navigation }) {
     const assistantId = navigation.getParam('assistantId', undefined)
@@ -60,8 +62,15 @@ export default function AssistantDetailedView({ navigation }) {
 
     const isGlobalAsisstant = projectId !== projectOriginId
     const isInGlobalProject = projectId === GLOBAL_PROJECT_ID
+    const canManageWorkflow =
+        !isInGlobalProject &&
+        !isGlobalAsisstant &&
+        !loggedUser.isAnonymous &&
+        Array.isArray(loggedUser.realProjectIds) &&
+        loggedUser.realProjectIds.includes(projectId)
 
     const navigationTabs = [DV_TAB_ASSISTANT_CUSTOMIZATIONS]
+    if (canManageWorkflow) navigationTabs.push(DV_TAB_ASSISTANT_WORKFLOW)
     if (!isInGlobalProject) navigationTabs.push(DV_TAB_ASSISTANT_BACKLINKS)
     if (!isInGlobalProject && !isGlobalAsisstant) navigationTabs.push(DV_TAB_ASSISTANT_NOTE)
     if (!isInGlobalProject && !isGlobalAsisstant) navigationTabs.push(DV_TAB_ASSISTANT_CHAT)
@@ -195,6 +204,15 @@ export default function AssistantDetailedView({ navigation }) {
                                                     isGlobalAsisstant={isGlobalAsisstant}
                                                     isInGlobalProject={isInGlobalProject}
                                                     isAdmin={loggedUser.uid === administratorUserId}
+                                                />
+                                            )
+                                        case DV_TAB_ASSISTANT_WORKFLOW:
+                                            return (
+                                                <WorkflowView
+                                                    user={assistant}
+                                                    projectIndex={project.index}
+                                                    projectId={projectId}
+                                                    ownerType="assistant"
                                                 />
                                             )
                                         case DV_TAB_ASSISTANT_BACKLINKS:

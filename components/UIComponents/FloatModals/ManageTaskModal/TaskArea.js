@@ -80,7 +80,7 @@ export default function TaskArea({
     }
 
     const handleWorkflowTaskWorkflowInteraction = (longPress, workflow) => {
-        if (task.userIds.length > 1 || longPress) {
+        if (task.workflowTask || task.userIds.length > 1 || longPress) {
             setWorkflowModalIsOpen(true)
         } else {
             const stepsEntries = Object.entries(workflow).sort(chronoEntriesOrder)
@@ -92,6 +92,7 @@ export default function TaskArea({
         const taskOwner = task?.userId?.startsWith(WORKSTREAM_ID_PREFIX)
             ? loggedUser
             : TasksHelper.getTaskOwner(task.userId, projectId)
+        if (taskOwner?.temperature && !task.workflowTask) return null
         if (taskOwner.recorderUserId) {
             return null
         } else {
@@ -119,7 +120,11 @@ export default function TaskArea({
             if (isSubtask) {
                 handleSubtaskWorkflowInteraction()
             } else if (done) {
-                moveTasksFromDone(projectId, task, OPEN_STEP)
+                const workflow = task.workflowTask ? getWorkflow(task) : null
+                const firstWorkflowStepId = workflow ? Object.entries(workflow).sort(chronoEntriesOrder)[0]?.[0] : null
+                if (!task.workflowTask || firstWorkflowStepId) {
+                    moveTasksFromDone(projectId, task, firstWorkflowStepId || OPEN_STEP)
+                }
             } else {
                 const workflow = getWorkflow(task)
                 if (!task.isPrivate && workflow && !task.genericData) {

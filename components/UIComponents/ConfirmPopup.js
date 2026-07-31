@@ -29,6 +29,7 @@ import { translate } from '../../i18n/TranslationService'
 import {
     deleteAssistant,
     deletePreConfigTask,
+    removeAssistantWorkflowStep,
     removeGlobalAssistantFromProject,
 } from '../../utils/backends/Assistants/assistantsFirestore'
 import { DV_TAB_ADMIN_PANEL_ASSISTANTS, DV_TAB_PROJECT_ASSISTANTS } from '../../utils/TabNavigationConstants'
@@ -207,9 +208,11 @@ export default function ConfirmPopup() {
             }
 
             case CONFIRM_POPUP_TRIGGER_DELETE_WORKFLOW_STEP: {
-                const { projectIndex, userUid, stepId, steps, reviewerUid } = object
+                const { projectIndex, userUid, stepId, steps, reviewerUid, ownerType } = object
                 const project = loggedUserProjects[projectIndex]
-                await removeUserWorkflowStep(project, userUid, stepId, steps, reviewerUid)
+                await (ownerType === 'assistant'
+                    ? removeAssistantWorkflowStep(project, userUid, stepId, steps, reviewerUid)
+                    : removeUserWorkflowStep(project, userUid, stepId, steps, reviewerUid))
                 hidePopup()
                 break
             }

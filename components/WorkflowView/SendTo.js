@@ -13,7 +13,7 @@ import { translate } from '../../i18n/TranslationService'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import { emptyAiStepFields, REVIEWER_TYPE_ASSISTANT } from './workflowStepHelper'
 
-const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue }) => {
+const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue, disabled = false }) => {
     const [visiblePopover, setVisiblePopover] = useState(false)
     const smallScreen = useSelector(state => state.smallScreen)
     const sendTo = useSelector(state => state.workflowStep)
@@ -39,6 +39,7 @@ const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue }) =
     }
 
     const showPopover = () => {
+        if (disabled) return
         setVisiblePopover(true)
         dispatch(showFloatPopup())
         assigneeBtnRef?.current?.blur()
@@ -121,6 +122,7 @@ const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue }) =
                             }
                             title={getText()}
                             onPress={showPopover}
+                            disabled={disabled}
                             shortcutText={'A'}
                         />
                     </Hotkeys>

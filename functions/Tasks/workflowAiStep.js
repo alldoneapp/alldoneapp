@@ -56,7 +56,21 @@ const getCurrentStepId = task => {
     return stepHistory.length > 0 ? stepHistory[stepHistory.length - 1] : null
 }
 
-const getUserWorkflow = (user, projectId) => (user && user.workflow && user.workflow[projectId]) || {}
+const getWorkflow = (owner, projectId) => (owner && owner.workflow && owner.workflow[projectId]) || {}
+
+const isAssistantWorkflowTask = task => task?.workflowTask === true
+
+const getWorkflowOwnerRef = (projectId, ownerType, ownerId) =>
+    ownerType === 'assistant'
+        ? admin.firestore().doc(`assistants/${projectId}/items/${ownerId}`)
+        : admin.firestore().doc(`users/${ownerId}`)
+
+const loadRunWorkflow = async run => {
+    const workflowOwnerType = run.workflowOwnerType || 'user'
+    const workflowOwnerId = run.workflowOwnerId || run.assigneeUserId
+    const owner = await getWorkflowOwnerRef(run.projectId, workflowOwnerType, workflowOwnerId).get()
+    return getWorkflow(owner.exists ? owner.data() : null, run.projectId)
+}
 
 const buildRunId = (projectId, taskId, stepId, enteredAt) => `${projectId}__${taskId}__${stepId}__${enteredAt}`
 
@@ -76,14 +90,21 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
     const stepId = getCurrentStepId(newTask)
     if (!stepId || stepId === getCurrentStepId(oldTask)) return null
 
-    const assigneeId = newTask.userId
-    if (!assigneeId || assigneeId.startsWith(WORKSTREAM_ID_PREFIX)) return null
+    const workflowOwnerId = newTask.userId
+    if (!workflowOwnerId || workflowOwnerId.startsWith(WORKSTREAM_ID_PREFIX)) return null
 
-    const assignee = await admin.firestore().doc(`users/${assigneeId}`).get()
-    if (!assignee.exists) return null
+    const workflowOwnerType = isAssistantWorkflowTask(newTask) ? 'assistant' : 'user'
+    const workflowOwner = await getWorkflowOwnerRef(projectId, workflowOwnerType, workflowOwnerId).get()
+    if (!workflowOwner.exists) return null
 
-    const step = getUserWorkflow(assignee.data(), projectId)[stepId]
+    const step = getWorkflow(workflowOwner.data(), projectId)[stepId]
     if (!isAiWorkflowStep(step) || !step.reviewerUid) return null
+
+    const payerUserId =
+        workflowOwnerType === 'assistant'
+            ? newTask.workflowPayerUserId || newTask.creatorId
+            : newTask.workflowPayerUserId || workflowOwnerId
+    if (!payerUserId) return null
 
     // The discriminator has to be derived from the task itself: a redelivery of this same update
     // must produce the same id, or the duplicate would be charged for a second time. Every workflow
@@ -97,7 +118,10 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
             taskId,
             stepId,
             assistantId: step.reviewerUid,
-            assigneeUserId: assigneeId,
+            assigneeUserId: payerUserId,
+            workflowOwnerId,
+            workflowOwnerType,
+            payerUserId,
             status: RUN_STATUS_PENDING,
             createdAt: Date.now(),
         })
@@ -290,6 +314,9 @@ const resolveAiStepPrompt = async (projectId, step) => {
  */
 const runWorkflowAiStep = async (runId, run) => {
     const { projectId, taskId, stepId, assistantId, assigneeUserId } = run
+    const workflowOwnerType = run.workflowOwnerType || 'user'
+    const workflowOwnerId = run.workflowOwnerId || assigneeUserId
+    const payerUserId = run.payerUserId || assigneeUserId
     const runRef = admin.firestore().doc(`${RUNS_COLLECTION}/${runId}`)
     const taskRef = admin.firestore().doc(`items/${projectId}/tasks/${taskId}`)
 
@@ -306,8 +333,11 @@ const runWorkflowAiStep = async (runId, run) => {
         return
     }
 
-    const assignee = await admin.firestore().doc(`users/${assigneeUserId}`).get()
-    const workflow = getUserWorkflow(assignee.exists ? assignee.data() : null, projectId)
+    const [workflowOwner, payer] = await Promise.all([
+        getWorkflowOwnerRef(projectId, workflowOwnerType, workflowOwnerId).get(),
+        admin.firestore().doc(`users/${payerUserId}`).get(),
+    ])
+    const workflow = getWorkflow(workflowOwner.exists ? workflowOwner.data() : null, projectId)
     const step = workflow[stepId]
 
     const taskRunLock = await acquireAssistantTaskRunLock(admin.firestore(), {
@@ -389,27 +419,30 @@ const runWorkflowAiStep = async (runId, run) => {
                     failureReason = 'empty_prompt'
                 } else {
                     const isPublicFor = task.isPublicFor || [FEED_PUBLIC_FOR_ALL]
-                    const followerIds = Array.from(new Set([assigneeUserId, ...(task.userIds || [])])).filter(
-                        id => id && !id.startsWith(WORKSTREAM_ID_PREFIX)
+                    const followerIds = Array.from(new Set([payerUserId, ...(task.userIds || [])])).filter(
+                        id =>
+                            id &&
+                            !id.startsWith(WORKSTREAM_ID_PREFIX) &&
+                            !(workflowOwnerType === 'assistant' && id === workflowOwnerId)
                     )
 
                     const { ensureChatExists } = require('../Assistant/assistantStatusHelper')
                     await ensureChatExists(projectId, 'tasks', taskId, assistantId, followerIds, isPublicFor)
                     await activateWorkflowTaskAssistant(projectId, taskId, assistantId)
 
-                    const triggerMessageId = await postWorkflowStepPrompt(projectId, taskId, assigneeUserId, prompt)
+                    const triggerMessageId = await postWorkflowStepPrompt(projectId, taskId, payerUserId, prompt)
 
                     const { generatePreConfigTaskResult } = require('../Assistant/assistantPreConfigTaskTopic')
                     await generatePreConfigTaskResult(
-                        // The assignee owns the workflow, so the assignee pays the Gold.
-                        assigneeUserId,
+                        // The workflow task records the project member who created it and pays the Gold.
+                        payerUserId,
                         projectId,
                         taskId,
                         followerIds,
                         isPublicFor,
                         assistantId,
                         prompt,
-                        assignee.exists ? assignee.data().language || 'en' : 'en',
+                        payer.exists ? payer.data().language || 'en' : 'en',
                         // null lets the assistant's own model/temperature/instructions/tools apply.
                         null,
                         { name: task.extendedName || task.name },
@@ -708,8 +741,7 @@ const resolveAwaitingVmRuns = async ({ now = Date.now() } = {}) => {
             const timedOut = now >= resolveAwaitingDeadline(run, stillRunning)
             if ((activeAssistantRunIds.length > 0 || stillRunning.length > 0) && !timedOut) continue
 
-            const assignee = await admin.firestore().doc(`users/${run.assigneeUserId}`).get()
-            const workflow = getUserWorkflow(assignee.exists ? assignee.data() : null, run.projectId)
+            const workflow = await loadRunWorkflow(run)
             const timedOutWithActiveExecution =
                 timedOut && (activeAssistantRunIds.length > 0 || stillRunning.length > 0)
 
@@ -844,8 +876,7 @@ const sweepStalledWorkflowAiRuns = async () => {
             if (taskDoc.exists) {
                 const task = { ...taskDoc.data(), id: run.taskId }
                 if (getCurrentStepId(task) === run.stepId) {
-                    const assignee = await admin.firestore().doc(`users/${run.assigneeUserId}`).get()
-                    const workflow = getUserWorkflow(assignee.exists ? assignee.data() : null, run.projectId)
+                    const workflow = await loadRunWorkflow(run)
                     await advanceTaskFromWorkflowStep(run.projectId, run.taskId, task, run.stepId, workflow)
                 }
             }

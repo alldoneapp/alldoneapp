@@ -547,7 +547,7 @@ class TasksHelper {
 
             return {
                 steps: steps,
-                selected: task.stepHistory.length === 1 ? OPEN_STEP : selected,
+                selected: task.workflowTask ? selected : task.stepHistory.length === 1 ? OPEN_STEP : selected,
                 nextStepNum: nextStepNum === stepsEntries.length - 1 ? OPEN_STEP : nextStepNum,
             }
         }
@@ -560,7 +560,9 @@ class TasksHelper {
             case isAllProjects ? URL_ALL_PROJECTS_TASKS_WORKFLOW : URL_PROJECT_USER_TASKS_WORKFLOW:
                 return { index: TOGGLE_INDEX_PENDING, name: 'Workflow' }
             case URL_PROJECT_USER_TASKS_IN_PROGRESS:
-                return { index: TOGGLE_INDEX_IN_PROGRESS, name: 'In progress' }
+                return store.getState().currentUser?.temperature
+                    ? { index: TOGGLE_INDEX_PENDING, name: 'Workflow' }
+                    : { index: TOGGLE_INDEX_IN_PROGRESS, name: 'In progress' }
             case isAllProjects ? URL_ALL_PROJECTS_TASKS_DONE : URL_PROJECT_USER_TASKS_DONE:
                 return { index: TOGGLE_INDEX_DONE, name: 'Done' }
 
@@ -579,11 +581,7 @@ class TasksHelper {
             case TOGGLE_INDEX_OPEN:
                 return isAllProjects ? URL_ALL_PROJECTS_TASKS_OPEN : URL_PROJECT_USER_TASKS_OPEN
             case TOGGLE_INDEX_PENDING || TOGGLE_INDEX_IN_PROGRESS:
-                return userIsAssistant
-                    ? URL_PROJECT_USER_TASKS_IN_PROGRESS
-                    : isAllProjects
-                    ? URL_ALL_PROJECTS_TASKS_WORKFLOW
-                    : URL_PROJECT_USER_TASKS_WORKFLOW
+                return isAllProjects ? URL_ALL_PROJECTS_TASKS_WORKFLOW : URL_PROJECT_USER_TASKS_WORKFLOW
             case TOGGLE_INDEX_DONE:
                 return isAllProjects ? URL_ALL_PROJECTS_TASKS_DONE : URL_PROJECT_USER_TASKS_DONE
             default:

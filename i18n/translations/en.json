@@ -2476,5 +2476,11 @@
     "Uses Gold for each classified task": "Uses Gold for each classified task",
     "Suggested goal": "Suggested goal",
     "Choose another": "Choose another",
-    "Not relevant": "Not relevant"
+    "Not relevant": "Not relevant",
+    "Workflow tasks": "Workflow tasks",
+    "Open workflow": "Open workflow",
+    "Configure workflow": "Configure workflow",
+    "Define the first workflow step prompt before creating a workflow task": "Define the first workflow step prompt before creating a workflow task.",
+    "The workflow task could not be created": "The workflow task could not be created.",
+    "Customize the steps assistant workflow tasks execute": "Customize the steps this assistant's workflow tasks execute."
 }

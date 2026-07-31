@@ -624,6 +624,7 @@ export default class WorkflowModal extends Component {
                             selectedCustomStep={selectedCustomStep}
                             currentStep={currentStep}
                             disabled={disabledMainButtons}
+                            allowBackward={!task.workflowTask || currentStep > 0}
                         />
                     </View>
                 </View>

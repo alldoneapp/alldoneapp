@@ -2003,5 +2003,11 @@
     "Uses Gold for each classified task": "Verwendet Gold für jeden klassifizierten Task",
     "Suggested goal": "Vorgeschlagenes Ziel",
     "Choose another": "Anderes auswählen",
-    "Not relevant": "Nicht relevant"
+    "Not relevant": "Nicht relevant",
+    "Workflow tasks": "Workflow-Aufgaben",
+    "Open workflow": "Workflow öffnen",
+    "Configure workflow": "Workflow konfigurieren",
+    "Define the first workflow step prompt before creating a workflow task": "Definiere zuerst den Prompt für den ersten Workflow-Schritt, bevor du eine Workflow-Aufgabe erstellst.",
+    "The workflow task could not be created": "Die Workflow-Aufgabe konnte nicht erstellt werden.",
+    "Customize the steps assistant workflow tasks execute": "Passe die Schritte an, die Workflow-Aufgaben dieses Assistenten durchlaufen."
 }

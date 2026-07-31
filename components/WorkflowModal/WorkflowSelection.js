@@ -25,7 +25,9 @@ export default function WorkflowSelection({
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [hoverStep, setHoverStep] = useState(selectedNextStep)
     const sortedSteps = Object.entries(steps).sort(chronoEntriesOrder)
-    const indexes = TasksHelper.generateWorkflowStepIndexes(sortedSteps.length, currentStep)
+    const indexes = TasksHelper.generateWorkflowStepIndexes(sortedSteps.length, currentStep).filter(
+        index => !task.workflowTask || index !== OPEN_STEP
+    )
 
     const getNextStepIndex = () => {
         const index = indexes.indexOf(hoverStep)
@@ -96,17 +98,19 @@ export default function WorkflowSelection({
             </Hotkeys>
 
             <View style={localStyles.subsection}>
-                <WorkflowStepItem
-                    task={task}
-                    open
-                    selectedNextStep={selectedNextStep}
-                    assignee={assignee}
-                    selectStep={selectStep}
-                    stepIndex={OPEN_STEP}
-                    estimations={estimations}
-                    currentStep={currentStep}
-                    active={hoverStep === OPEN_STEP}
-                />
+                {!task.workflowTask && (
+                    <WorkflowStepItem
+                        task={task}
+                        open
+                        selectedNextStep={selectedNextStep}
+                        assignee={assignee}
+                        selectStep={selectStep}
+                        stepIndex={OPEN_STEP}
+                        estimations={estimations}
+                        currentStep={currentStep}
+                        active={hoverStep === OPEN_STEP}
+                    />
+                )}
                 {sortedSteps.map((step, index) => (
                     <WorkflowStepItem
                         key={index}

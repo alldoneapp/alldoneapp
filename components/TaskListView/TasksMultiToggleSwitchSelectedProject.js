@@ -39,8 +39,8 @@ export default function TasksMultiToggleSwitchSelectedProject() {
                           },
                           {
                               icon: 'workflow',
-                              text: 'In progress',
-                              badge: openTasksAmount,
+                              text: 'Workflow',
+                              badge: workflowTasksAmount,
                           },
                           {
                               icon: 'square-checked-gray',

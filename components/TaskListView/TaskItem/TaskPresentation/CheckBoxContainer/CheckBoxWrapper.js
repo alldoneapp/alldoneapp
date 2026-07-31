@@ -264,13 +264,23 @@ function CheckBoxWrapper(
                 ).catch(rollbackOptimisticCheck)
             }
         } else if (done) {
-            moveTasksFromDone(projectId, task, OPEN_STEP).catch(rollbackOptimisticCheck)
+            if (task.workflowTask) {
+                const workflow = getUserWorkflow(projectId, userId, task)
+                const firstWorkflowStepId = getWorkflowStepsIdsSorted(workflow)[0]
+                if (firstWorkflowStepId) {
+                    moveTasksFromDone(projectId, task, firstWorkflowStepId).catch(rollbackOptimisticCheck)
+                } else {
+                    safeSetChecked(true)
+                }
+            } else {
+                moveTasksFromDone(projectId, task, OPEN_STEP).catch(rollbackOptimisticCheck)
+            }
         } else if (genericData || (isPrivate && !isLongPress) || calendarData || isLockedGmailTask) {
             shouldAskForRecurrenceDateBasis(DONE_STEP)
                 ? setRecurrenceDateBasisModalIsOpen(true)
                 : scheduleMoveTasksFromOpen(DONE_STEP)
-        } else if (userIds.length === 1 && !isLongPress) {
-            const workflow = getUserWorkflow(projectId, ownerIsWorkstream ? loggedUser.uid : userId)
+        } else if (!task.workflowTask && userIds.length === 1 && !isLongPress) {
+            const workflow = getUserWorkflow(projectId, ownerIsWorkstream ? loggedUser.uid : userId, task)
             const workflowStepsIds = getWorkflowStepsIdsSorted(workflow)
             const stepToMoveId = workflowStepsIds[0] ? workflowStepsIds[0] : DONE_STEP
             shouldAskForRecurrenceDateBasis(stepToMoveId)
