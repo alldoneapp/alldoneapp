@@ -14,6 +14,7 @@ const TASK_CHAT_ID = 'task-1'
 
 const mockDispatch = jest.fn()
 let mockState = {}
+let mockMessages = []
 
 jest.mock('react-redux', () => ({
     shallowEqual: jest.fn(),
@@ -49,13 +50,18 @@ jest.mock('../../../URLSystem/Notes/URLsNotes', () => ({ __esModule: true, defau
 jest.mock('../../../URLSystem/Skills/URLsSkills', () => ({ __esModule: true, default: { push: jest.fn() } }))
 jest.mock('../../../URLSystem/Assistants/URLsAssistants', () => ({ __esModule: true, default: { push: jest.fn() } }))
 jest.mock('../../../i18n/TranslationService', () => ({ translate: key => key }))
-jest.mock('../Utils/ChatHelper', () => ({ LIMIT_SHOW_EARLIER: 25 }))
-jest.mock('../../../hooks/Chats/useGetMessages', () => () => [])
+jest.mock('../Utils/ChatHelper', () => ({
+    LIMIT_SHOW_EARLIER: 25,
+    getTimestampInMilliseconds: timestamp => timestamp || null,
+}))
+jest.mock('../../../hooks/Chats/useGetMessages', () => () => mockMessages)
 jest.mock('../../../utils/BackendBridge', () => ({
     getFirebaseTimestampDirectly: () => new Promise(() => {}),
 }))
 jest.mock('../../../utils/SharedHelper', () => ({ accessGranted: () => false }))
-jest.mock('../../AdminPanel/Assistants/assistantsHelper', () => ({ getAssistant: () => null }))
+jest.mock('../../AdminPanel/Assistants/assistantsHelper', () => ({
+    getAssistant: creatorId => (creatorId === 'assistant-1' ? { id: creatorId } : null),
+}))
 jest.mock('../../../utils/backends/Chats/chatsComments', () => ({
     getChatCommentsWithLinkedEmails: jest.fn(),
     markChatMessagesAsRead: jest.fn(),
@@ -70,7 +76,11 @@ jest.mock('../../UIControls/CustomScrollView', () => {
     const { View } = require('react-native')
     return React.forwardRef((props, ref) => {
         React.useImperativeHandle(ref, () => ({ scrollToEnd: jest.fn(), scrollTo: jest.fn() }))
-        return React.createElement(View, null, props.children)
+        return React.createElement(
+            View,
+            { testID: 'chat-scroll-view', showIndicator: props.showIndicator },
+            props.children
+        )
     })
 })
 jest.mock('./EditorView/BotMessagePlaceholder', () => {
@@ -109,6 +119,7 @@ const consumeCalls = () =>
 describe('ChatBoard bot spinner placeholder', () => {
     beforeEach(() => {
         mockDispatch.mockClear()
+        mockMessages = []
         mockState = {
             triggerBotSpinner: null,
             loggedUser: { uid: 'user-1', isAnonymous: false },
@@ -165,6 +176,72 @@ describe('ChatBoard bot spinner placeholder', () => {
         })
 
         expect(consumeCalls()).toHaveLength(0)
+    })
+})
+
+describe('ChatBoard mobile loading scrollbar', () => {
+    beforeEach(() => {
+        mockDispatch.mockClear()
+        mockMessages = []
+        mockState = {
+            triggerBotSpinner: null,
+            assistantEnabled: false,
+            assistantEnabledScope: null,
+            loggedUser: { uid: 'user-1', isAnonymous: false },
+            selectedNavItem: 'unrelated-tab',
+            chatPagesAmount: 0,
+            smallScreenNavigation: true,
+            projectChatNotifications: { [PROJECT_ID]: { [TASK_CHAT_ID]: null } },
+        }
+    })
+
+    it('hides only the custom indicator while an assistant response loads on mobile', () => {
+        mockMessages = [
+            {
+                id: 'assistant-loading',
+                creatorId: 'assistant-1',
+                commentText: '',
+                isLoading: true,
+                assistantRun: { kind: 'chat', status: 'running' },
+            },
+        ]
+
+        const tree = renderChatBoard()
+
+        expect(tree.root.findByProps({ testID: 'chat-scroll-view' }).props.showIndicator).toBe(false)
+    })
+
+    it('restores the custom indicator after the response appears', () => {
+        mockMessages = [
+            {
+                id: 'assistant-done',
+                creatorId: 'assistant-1',
+                commentText: 'Finished response',
+                isLoading: false,
+                assistantRun: { kind: 'chat', status: 'completed' },
+            },
+        ]
+
+        const tree = renderChatBoard()
+
+        expect(tree.root.findByProps({ testID: 'chat-scroll-view' }).props.showIndicator).toBe(true)
+    })
+
+    it('keeps the indicator on desktop while the assistant loads', () => {
+        mockState.smallScreenNavigation = false
+        mockMessages = [
+            {
+                id: 'assistant-loading',
+                creatorId: 'assistant-1',
+                commentText: '',
+                isLoading: true,
+                assistantRun: { kind: 'chat', status: 'running' },
+            },
+        ]
+
+        const tree = renderChatBoard()
+
+        expect(tree.root.findByProps({ testID: 'chat-scroll-view' }).props.showIndicator).toBe(true)
     })
 })
 

@@ -28,7 +28,7 @@ import {
 import URLsPeople, { URL_PEOPLE_DETAILS_CHAT } from '../../../URLSystem/People/URLsPeople'
 import URLsGoals, { URL_GOAL_DETAILS_CHAT } from '../../../URLSystem/Goals/URLsGoals'
 import URLsNotes, { URL_NOTE_DETAILS_CHAT } from '../../../URLSystem/Notes/URLsNotes'
-import { LIMIT_SHOW_EARLIER } from '../Utils/ChatHelper'
+import { getTimestampInMilliseconds, LIMIT_SHOW_EARLIER } from '../Utils/ChatHelper'
 import ShowMoreButton from '../../UIControls/ShowMoreButton'
 import Backend from '../../../utils/BackendBridge'
 import SharedHelper from '../../../utils/SharedHelper'
@@ -38,10 +38,15 @@ import BotMessagePlaceholder from './EditorView/BotMessagePlaceholder'
 import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
 import { getChatCommentsWithLinkedEmails, markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
-import { hasNewVisibleAssistantMessage, snapshotAssistantMessageIds } from '../Utils/assistantWaiting'
+import {
+    hasLoadingAssistantMessage,
+    hasNewVisibleAssistantMessage,
+    shouldShowAssistantScrollIndicator,
+    snapshotAssistantMessageIds,
+} from '../Utils/assistantWaiting'
 import { shouldConsumeBotSpinnerTrigger } from '../Utils/botSpinnerTrigger'
 import { isAssistantEnabledScopeMatch } from '../Utils/assistantEnabledScope'
-import { ASSISTANT_LOADING_TIMEOUT_MS } from './EditorView/messageLoadingState'
+import { ASSISTANT_LOADING_TIMEOUT_MS, resolveEffectiveMessageLoading } from './EditorView/messageLoadingState'
 import { performEmailLineAction } from '../../../utils/backends/EmailLine/emailLineBackend'
 import {
     getLinkedEmailFromMessage,
@@ -111,6 +116,15 @@ export default function ChatBoard({
         assistantMessageIdsAtWaitStartRef.current,
         getAssistant
     )
+    const assistantResponseIsLoading =
+        waitingForBotAnswer ||
+        hasLoadingAssistantMessage(
+            messages,
+            creatorId => !!getAssistant(creatorId),
+            message =>
+                message.assistantRun?.kind === 'chat' &&
+                resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate))
+        )
 
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
@@ -313,6 +327,7 @@ export default function ChatBoard({
             <CustomScrollView
                 ref={scrollViewRef}
                 containerStyle={[localStyles.scrollView]}
+                showIndicator={shouldShowAssistantScrollIndicator(smallScreenNavigation, assistantResponseIsLoading)}
                 onScroll={handleScroll}
                 onContentSizeChange={handleContentSizeChange}
                 scrollEventThrottle={16}
