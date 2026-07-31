@@ -127,8 +127,8 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 4,
     },
     tagPrimary: {
-        backgroundColor: colors.Primary300,
-        borderColor: colors.Primary300,
+        backgroundColor: colors.UtilityBlue200,
+        borderColor: colors.UtilityBlue150,
     },
     tagMobile: {
         width: 24,
