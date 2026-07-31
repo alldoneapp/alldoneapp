@@ -2474,5 +2474,7 @@
     "Reasoning effort": "Esfuerzo de razonamiento",
     "Model default": "Predeterminado del modelo",
     "Medium": "Media",
+    "XHigh": "Muy alto",
+    "Max": "Max",
     "Select how much reasoning the assistant should use": "Elige cuánto razonamiento debe utilizar el asistente"
 }

@@ -2053,5 +2053,7 @@
     "Reasoning effort": "Denkaufwand",
     "Model default": "Modellstandard",
     "Medium": "Mittel",
+    "XHigh": "Sehr hoch",
+    "Max": "Max",
     "Select how much reasoning the assistant should use": "Wähle, wie viel Denkaufwand der Assistent verwenden soll"
 }

@@ -27,7 +27,10 @@ describe('UpdateFromTemplate formatting', () => {
     })
 
     test('shows reasoning effort values including model default', () => {
+        expect(formatTemplateConflictValue('reasoningEffort', 'none', true)).toBe('None')
         expect(formatTemplateConflictValue('reasoningEffort', 'high', true)).toBe('High')
+        expect(formatTemplateConflictValue('reasoningEffort', 'xhigh', true)).toBe('XHigh')
+        expect(formatTemplateConflictValue('reasoningEffort', 'max', true)).toBe('Max')
         expect(formatTemplateConflictValue('reasoningEffort', null, true)).toBe('Model default')
     })
 })

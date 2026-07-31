@@ -2526,5 +2526,7 @@
     "Reasoning effort": "Reasoning effort",
     "Model default": "Model default",
     "Medium": "Medium",
+    "XHigh": "XHigh",
+    "Max": "Max",
     "Select how much reasoning the assistant should use": "Select how much reasoning the assistant should use"
 }
