@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, Text } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import Comment from './Comment'
@@ -160,5 +160,21 @@ describe('feed Comment', () => {
 
         expect(tree.root.findAllByProps({ testID: 'comment-inline-text' })).toHaveLength(0)
         expect(tree.root.findAllByType('CommentElementsParser')).toHaveLength(1)
+    })
+
+    test('can replace a live technical status with a custom progress presentation', () => {
+        const tree = renderer.create(
+            <Comment
+                {...defaultProps}
+                comment={{
+                    ...defaultProps.comment,
+                    commentText: 'Under the hood: internal_tool_name',
+                }}
+                contentOverride={<Text testID="friendly-progress">Friendly progress</Text>}
+            />
+        )
+
+        expect(tree.root.findByProps({ testID: 'friendly-progress' }).props.children).toBe('Friendly progress')
+        expect(tree.root.findAllByProps({ testID: 'comment-inline-text' })).toHaveLength(0)
     })
 })

@@ -224,6 +224,7 @@ export default function Comment({
     linkedEmailArchiving,
     linkedEmailArchived,
     onArchiveLinkedEmail,
+    contentOverride,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
@@ -395,24 +396,25 @@ export default function Comment({
                     {linkedEmail && linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
                 </View>
 
-                {textsFiltered.map((commentData, index) => {
-                    const { type, text } = commentData
-                    const lastItem = index === textsFiltered.length - 1
-                    if (type === 'quote') {
-                        return (
-                            <QuotedText
-                                key={index}
-                                projectId={projectId}
-                                lastItem={lastItem}
-                                quotedText={text}
-                                backgroundColor={colors.Secondary300}
-                                textColor={colors.Text04}
-                            />
-                        )
-                    } else {
-                        return renderTextContent(text, lastItem)
-                    }
-                })}
+                {contentOverride ||
+                    textsFiltered.map((commentData, index) => {
+                        const { type, text } = commentData
+                        const lastItem = index === textsFiltered.length - 1
+                        if (type === 'quote') {
+                            return (
+                                <QuotedText
+                                    key={index}
+                                    projectId={projectId}
+                                    lastItem={lastItem}
+                                    quotedText={text}
+                                    backgroundColor={colors.Secondary300}
+                                    textColor={colors.Text04}
+                                />
+                            )
+                        } else {
+                            return renderTextContent(text, lastItem)
+                        }
+                    })}
                 {linkedEmail && (
                     <View style={localStyles.linkedEmailActions} testID="linked-email-actions">
                         <GmailTag

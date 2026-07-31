@@ -5,6 +5,7 @@ import Comment from '../../../Feeds/FeedsModals/ListCommentsComponents/Comment'
 import { getLinkedEmailFromMessage } from '../../../ChatsView/ChatDV/linkedEmailActions'
 import VmInteractionCard from '../../../ChatsView/ChatDV/EditorView/VmInteractionCard'
 import { isAwaitingVmInteraction } from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
+import AssistantProgress from '../../../ChatsView/ChatDV/EditorView/AssistantProgress'
 
 export default function CommentsList({
     projectId,
@@ -23,6 +24,10 @@ export default function CommentsList({
             {comments.map((item, index) => {
                 const linkedEmail = getLinkedEmailFromMessage(item)
                 const showVmInteraction = isAwaitingVmInteraction(item.assistantRun)
+                const showAssistantProgress =
+                    item.isLoading === true &&
+                    item.assistantRun?.kind === 'chat' &&
+                    ['running', 'cancel_requested'].includes(item.assistantRun?.status)
                 return (
                     <React.Fragment key={item.id}>
                         <Comment
@@ -35,6 +40,11 @@ export default function CommentsList({
                             linkedEmailArchiving={archivingAllEmails || archivingEmailKeys.includes(linkedEmail?.key)}
                             linkedEmailArchived={archivedEmailKeys.includes(linkedEmail?.key)}
                             onArchiveLinkedEmail={onArchiveLinkedEmail}
+                            contentOverride={
+                                showAssistantProgress ? (
+                                    <AssistantProgress activity={item.assistantRun?.activity} compact={true} />
+                                ) : null
+                            }
                             containerStyle={{
                                 marginBottom: showVmInteraction
                                     ? 0

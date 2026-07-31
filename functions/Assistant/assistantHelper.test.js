@@ -592,7 +592,10 @@ describe('Responses API compatibility helpers', () => {
     })
 
     test('sends an explicit GPT-5.6 cache breakpoint without changing the source message content', async () => {
-        mockResponsesCreate.mockResolvedValue([{ type: 'response.completed', response: { output: [] } }])
+        mockResponsesCreate.mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'Ok' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
         const prompt = [
             ['system', 'Stable instructions', { promptCacheBreakpoint: true }],
             ['user', 'Volatile request'],
@@ -616,6 +619,188 @@ describe('Responses API compatibility helpers', () => {
                         ]),
                     }),
                 ]),
+            })
+        )
+    })
+
+    test('retries one empty response with full tool schemas and returns the retry text', async () => {
+        const emptyCompletion = {
+            type: 'response.completed',
+            response: {
+                id: 'resp-empty',
+                model: 'gpt-5.6-terra',
+                output: [{ id: 'search-1', type: 'tool_search_call', status: 'completed' }],
+                usage: { input_tokens: 100, output_tokens: 4, total_tokens: 104 },
+            },
+        }
+        mockResponsesCreate.mockResolvedValueOnce([emptyCompletion]).mockResolvedValueOnce([
+            { type: 'response.output_text.delta', delta: 'Marco Rubio has generally aligned with Trump.' },
+            {
+                type: 'response.completed',
+                response: {
+                    model: 'gpt-5.6-terra',
+                    output: [],
+                    usage: { input_tokens: 100, output_tokens: 10, total_tokens: 110 },
+                },
+            },
+        ])
+        const allowedTools = [
+            'update_task',
+            'get_tasks',
+            'create_task',
+            'create_note',
+            'get_focus_task',
+            'update_note',
+            'get_user_projects',
+            'search',
+            'get_notes',
+            'web_search',
+            'search_gmail',
+            'create_gmail_reply_draft',
+        ]
+
+        const stream = await interactWithChatStream(
+            [['user', 'Is Rubio aligned with Trump?']],
+            'MODEL_GPT5_6_TERRA',
+            'TEMPERATURE_NORMAL',
+            allowedTools
+        )
+        const chunks = []
+        let next = await stream.next()
+        while (!next.done) {
+            chunks.push(next.value)
+            next = await stream.next()
+        }
+
+        expect(chunks).toEqual([{ content: 'Marco Rubio has generally aligned with Trump.', additional_kwargs: {} }])
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
+        expect(mockResponsesCreate.mock.calls[0][0].tools[0]).toEqual({ type: 'tool_search' })
+        expect(mockResponsesCreate.mock.calls[1][0].tools.every(tool => tool.type === 'function')).toBe(true)
+    })
+
+    test('retries a rejected deferred-tool request with the full function schemas', async () => {
+        const deferredToolsError = new Error('tool_search and defer_loading are not supported for this request')
+        deferredToolsError.status = 400
+        mockResponsesCreate.mockRejectedValueOnce(deferredToolsError).mockResolvedValueOnce([
+            { type: 'response.output_text.delta', delta: 'Recovered after the tool fallback.' },
+            {
+                type: 'response.completed',
+                response: {
+                    model: 'gpt-5.6-terra',
+                    output: [],
+                    usage: { input_tokens: 100, output_tokens: 10, total_tokens: 110 },
+                },
+            },
+        ])
+        const allowedTools = [
+            'update_task',
+            'get_tasks',
+            'create_task',
+            'create_note',
+            'get_focus_task',
+            'update_note',
+            'get_user_projects',
+            'search',
+            'get_notes',
+            'web_search',
+            'search_gmail',
+            'create_gmail_reply_draft',
+        ]
+
+        const stream = await interactWithChatStream(
+            [['user', 'Please help with this request.']],
+            'MODEL_GPT5_6_TERRA',
+            'TEMPERATURE_NORMAL',
+            allowedTools
+        )
+        const chunks = []
+        let next = await stream.next()
+        while (!next.done) {
+            chunks.push(next.value)
+            next = await stream.next()
+        }
+
+        expect(chunks).toEqual([{ content: 'Recovered after the tool fallback.', additional_kwargs: {} }])
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
+        expect(mockResponsesCreate.mock.calls[0][0].tools[0]).toEqual({ type: 'tool_search' })
+        expect(mockResponsesCreate.mock.calls[1][0].tools.every(tool => tool.type === 'function')).toBe(true)
+    })
+
+    test('replaces the loading placeholder with a clear failure after two empty responses', async () => {
+        mockDocSet.mockClear()
+        mockDocUpdate.mockClear()
+        mockResponsesCreate.mockResolvedValue([
+            {
+                type: 'response.completed',
+                response: {
+                    id: 'resp-empty',
+                    model: 'gpt-5.6-terra',
+                    output: [],
+                    usage: { input_tokens: 100, output_tokens: 4, total_tokens: 104 },
+                },
+            },
+        ])
+        const stream = await interactWithChatStream(
+            [['user', 'Please answer this question.']],
+            'MODEL_GPT5_6_TERRA',
+            'TEMPERATURE_NORMAL',
+            []
+        )
+
+        await expect(stream.next()).rejects.toMatchObject({ code: 'EMPTY_OPENAI_RESPONSE' })
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
+
+        const emptyResponseError = new Error('OpenAI returned a completed response without text or tool calls')
+        emptyResponseError.code = 'EMPTY_OPENAI_RESPONSE'
+        emptyResponseError.responseMetadata = {
+            id: 'resp-empty',
+            model: 'gpt-5.6-terra',
+            outputItemTypes: [],
+            outputTokens: 4,
+        }
+        const failedStream = {
+            *[Symbol.iterator]() {
+                throw emptyResponseError
+            },
+        }
+
+        await expect(
+            storeBotAnswerStream(
+                'project-1',
+                'topics',
+                'chat-1',
+                failedStream,
+                ['user-1'],
+                ['PUBLIC'],
+                null,
+                'assistant-1',
+                ['user-1'],
+                'Anna',
+                'user-1',
+                null,
+                [['user', 'Please answer this question.']],
+                'MODEL_GPT5_6_TERRA',
+                'TEMPERATURE_NORMAL',
+                [],
+                {
+                    project: { name: 'Project A' },
+                    chat: { title: 'Chat A' },
+                    chatLink: 'https://my.alldone.app/projects/project-1/chats/chat-1/chat',
+                },
+                null,
+                null,
+                {},
+                null,
+                { runId: 'run-1', kind: 'chat' }
+            )
+        ).rejects.toMatchObject({ code: 'EMPTY_OPENAI_RESPONSE' })
+
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: '⚠️ No response was generated after retrying. Please try again.',
+                isLoading: false,
+                isThinking: false,
+                assistantRun: expect.objectContaining({ status: 'failed' }),
             })
         )
     })
@@ -738,6 +923,28 @@ describe('Responses API compatibility helpers', () => {
                 },
             },
         ])
+    })
+
+    test('recovers completed response text when no delta event was emitted', async () => {
+        const iterator = convertResponsesStream([
+            {
+                type: 'response.completed',
+                response: {
+                    output: [
+                        {
+                            type: 'message',
+                            content: [{ type: 'output_text', text: 'Recovered final answer.' }],
+                        },
+                    ],
+                },
+            },
+        ])
+
+        await expect(iterator.next()).resolves.toEqual({
+            done: false,
+            value: { content: 'Recovered final answer.', additional_kwargs: {} },
+        })
+        await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
     })
 
     test('surfaces Responses stream failures', async () => {
@@ -4133,6 +4340,71 @@ describe('assistant thread compaction tool', () => {
         expect(flattened).toContain('Operations done. Marketing next.')
         expect(flattened).toContain('Recent assistant update')
         expect(flattened).not.toContain('Old assistant update')
+    })
+
+    test('does not scan unrelated projects for task counts in interactive chat context', async () => {
+        const requestedDocumentPaths = []
+        mockDocGet.mockImplementation(function () {
+            const path = this?.path || ''
+            requestedDocumentPaths.push(path)
+
+            if (path === 'user-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({
+                        projectIds: ['project-1', 'project-other'],
+                        archivedProjectIds: [],
+                        templateProjectIds: [],
+                        guideProjectIds: [],
+                    }),
+                })
+            }
+
+            if (path === 'projects/project-1') {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({ name: 'Current project', description: 'Current project context.' }),
+                })
+            }
+
+            return Promise.resolve({ exists: false, data: () => ({}) })
+        })
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'message-1',
+                    ref: { path: 'message-1-ref' },
+                    data: () => ({
+                        commentText: 'Help me with this project.',
+                        fromAssistant: false,
+                        created: 300,
+                        lastChangeDate: 300,
+                    }),
+                },
+            ],
+        })
+
+        const contextMessages = await getOptimizedContextMessages(
+            'message-1',
+            'project-1',
+            'topics',
+            'chat-1',
+            'en',
+            'Project Bot',
+            'Be helpful.',
+            ['get_tasks'],
+            null,
+            'user-1',
+            'assistant-1'
+        )
+        const flattened = contextMessages
+            .map(message => (typeof message[1] === 'string' ? message[1] : JSON.stringify(message[1])))
+            .join('\n')
+
+        expect(requestedDocumentPaths).not.toContain('project-other')
+        expect(flattened).not.toContain('Open tasks per project')
+        expect(flattened).toContain('Current project context.')
+        expect(flattened).toContain('Help me with this project.')
     })
 
     test('includes the current note in assistant context for note chats', async () => {
