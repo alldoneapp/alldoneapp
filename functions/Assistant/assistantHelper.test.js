@@ -939,6 +939,12 @@ describe('Responses API compatibility helpers', () => {
 
         expect(buildResponsesTools(buildTools(12), 'MODEL_GPT5_2').toolSearchEnabled).toBe(false)
         expect(buildResponsesTools(buildTools(3), 'MODEL_GPT5_6_SOL').toolSearchEnabled).toBe(false)
+
+        const explicitlyDisabled = buildResponsesTools(buildTools(12), 'MODEL_GPT5_6_SOL', {
+            disableToolSearch: true,
+        })
+        expect(explicitlyDisabled.toolSearchEnabled).toBe(false)
+        expect(explicitlyDisabled.tools.every(tool => tool.type === 'function')).toBe(true)
     })
 
     test('converts typed Responses stream events to the existing text and tool-call stream contract', async () => {

@@ -178,6 +178,29 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         expect(getConversationHistory).toHaveBeenCalledWith('project-1', 'chat-1', 20, 120)
     })
 
+    test('keeps all safe email tool schemas directly visible instead of using deferred tool search', async () => {
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Please process the attached invoice',
+            'assistant-1',
+            {
+                fromEmail: 'owner@example.com',
+                toEmail: 'owner@example.com',
+                toEmails: ['anna@alldoneapp.com'],
+                skipCurrentMessageAppend: true,
+            }
+        )
+
+        expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(
+            expect.objectContaining({
+                channel: 'email',
+                disableToolSearch: true,
+            })
+        )
+    })
+
     test('attributes calendar availability to the account owner instead of Anna', async () => {
         mockGetAssistantForChat.mockResolvedValue({
             uid: 'assistant-1',

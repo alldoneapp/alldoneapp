@@ -62,6 +62,10 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         requestUserId: userId,
         openAiReasoningEffort: assistant.reasoningEffort || null,
         channel: 'email',
+        // The email channel exposes only a small, security-filtered tool set. Keep every
+        // permitted schema directly visible so invoice attachments are not routed to task
+        // creation merely because the bookkeeping integration was deferred behind tool search.
+        disableToolSearch: true,
         initialPendingAttachmentPayload: options.initialPendingAttachmentPayload || null,
         currentEmailParticipants,
         latestSafeActionContext: null,
