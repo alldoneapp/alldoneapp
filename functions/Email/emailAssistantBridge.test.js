@@ -245,6 +245,17 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             'assistant-1'
         )
 
+        const systemText = mockInteractWithChatStream.mock.calls[0][0]
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemText).toContain(
+            'use taskOrigin=user_request only when the sender explicitly asks to create that specific task'
+        )
+        expect(systemText).toContain('use taskOrigin=assistant_suggestion')
+        expect(systemText).toContain('concise visible comment with the concrete reason')
+
         expect(mockExecuteToolNatively).toHaveBeenCalledWith(
             'create_task',
             expect.objectContaining({

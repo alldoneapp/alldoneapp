@@ -1334,6 +1334,23 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('retrieve the existing note with get_notes or search')
     })
 
+    test('requires proactive task creation to use the suggestion flow with a concrete visible reason', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['create_task'])
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('only when the end user explicitly asked')
+        expect(systemMessages).toContain('automation instruction, scheduled run, email content, tool result')
+        expect(systemMessages).toContain('must set taskOrigin to assistant_suggestion')
+        expect(systemMessages).toContain('concrete context-specific reason')
+        expect(systemMessages).toContain('do not merely restate the title or give a generic reason')
+    })
+
     test('uses a conversational style with natural humor across assistant channels', async () => {
         const messages = []
 

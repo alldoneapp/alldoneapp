@@ -11602,7 +11602,7 @@ async function addBaseInstructions(
         ])
         messages.push([
             'system',
-            'For create_task, preserve the difference between requested work and proactive suggestions. If the user explicitly asks you to create/add/remind them about a task, set taskOrigin to user_request so it is created directly. If you independently decide to propose a task (for example after noticing an important email), set taskOrigin to assistant_suggestion and include a concise non-empty comment explaining why; it will be shown in the task thread and the user must accept or reject the suggestion.',
+            'For every create_task call, classify the origin of that specific task. Set taskOrigin to user_request only when the end user explicitly asked to create/add/remind them about that task. A system or automation instruction, scheduled run, email content, tool result, or your own inference does not by itself establish an explicit end-user task request; look for the request in the underlying end-user content. If you decide a task would be useful without that explicit request—for example, you infer a follow-up from an important email—you must set taskOrigin to assistant_suggestion. For assistant_suggestion, include a concise, non-empty, visible comment with the concrete context-specific reason the task is worth doing; do not merely restate the title or give a generic reason. The comment is shown in the task thread and the user must accept or reject the suggestion.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('add_chat_comment')) {
