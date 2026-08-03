@@ -2551,5 +2551,8 @@
     "Retry assistant task": "Retry assistant task",
     "Task flow": "Task flow",
     "Use workflow": "Use workflow",
-    "Bypass workflow": "Bypass workflow"
+    "Bypass workflow": "Bypass workflow",
+    "Submit": "Submit",
+    "Submitting task": "Submitting task...",
+    "Task submitted": "Task submitted."
 }
