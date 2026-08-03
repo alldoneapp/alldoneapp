@@ -284,16 +284,6 @@ export default function EditTask({
         adding ? createTask(finalTask, false, false) : editTask(finalTask, true, false, null, '')
     }
 
-    const setExecutionModeBeforeSave = executionMode => {
-        const finalTask = { ...tmpTask, executionMode }
-        if (adding) {
-            setTmpTask(finalTask)
-            inputTask.current?.focus()
-        } else {
-            editTask(finalTask, true, false, null, '')
-        }
-    }
-
     const setPriorityBeforeSave = priority => {
         const finalTask = { ...tmpTask, priority }
         editTask(finalTask, true, false, null, '')
@@ -763,7 +753,6 @@ export default function EditTask({
                     setRecurrenceBeforeSave={setRecurrenceBeforeSave}
                     setPriorityBeforeSave={setPriorityBeforeSave}
                     setTempAutoEstimation={setTempAutoEstimation}
-                    setExecutionModeBeforeSave={setExecutionModeBeforeSave}
                     isPending={isPending}
                     parentInTaskOutOfOpen={parentInTaskOutOfOpen}
                     createSubtask={createSubtask}

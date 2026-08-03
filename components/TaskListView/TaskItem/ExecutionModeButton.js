@@ -8,8 +8,6 @@ import {
     getTaskExecutionMode,
 } from '../../../utils/taskExecutionMode'
 
-export const shouldShowExecutionModeButton = (adding, task) => adding && !task.calendarData
-
 export default function ExecutionModeButton({ task, disabled, onChange, style, iconOnly = false }) {
     const executionMode = getTaskExecutionMode(task)
     const usesWorkflow = executionMode === TASK_EXECUTION_MODE_WORKFLOW

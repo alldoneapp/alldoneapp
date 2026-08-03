@@ -81,7 +81,7 @@ describe('TasksHelper class', () => {
             recurrence: 'never',
             executionMode: 'workflow',
         }
-        it('The function work correctly', async () => {
+        it('defaults new tasks to workflow execution', async () => {
             store.dispatch([storeLoggedUser({ uid: '-Uxyz_1' }), storeCurrentUser({ uid: '-Uxyz_1' })])
             const value = TasksHelper.getNewDefaultTask()
 
