@@ -3,10 +3,10 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
-import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
 import TaskInputArea from '../../TaskItem/TaskInputArea'
 import ExecutionModeButton from '../../TaskItem/ExecutionModeButton'
+import CheckboxAndIcon from '../../TaskItem/CheckboxAndIcon'
 import { translate } from '../../../../i18n/TranslationService'
 import { assistantWorkflowFirstStepHasPrompt } from '../../../../utils/assistantWorkflow'
 import { setSelectedNavItem } from '../../../../redux/actions'
@@ -15,6 +15,7 @@ import URLsAssistants, { URL_ASSISTANT_DETAILS_WORKFLOW } from '../../../../URLS
 import NavigationService from '../../../../utils/NavigationService'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import { TASK_EXECUTION_MODE_WORKFLOW } from '../../../../utils/taskExecutionMode'
+import { taskEditorLayout } from '../../TaskItem/TaskEditorLayout'
 
 const openAssistantWorkflow = (projectId, assistant, dispatch) => {
     NavigationService.navigate('AssistantDetailedView', {
@@ -57,9 +58,10 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const inputRef = useRef(null)
     const creatingRef = useRef(false)
-    const taskInputDraft = useMemo(() => ({ genericData: null, calendarData: null, gmailData: null, executionMode }), [
-        executionMode,
-    ])
+    const taskInputDraft = useMemo(
+        () => ({ genericData: null, calendarData: null, gmailData: null, subtaskIds: [], executionMode }),
+        [executionMode]
+    )
 
     const createWorkflowTask = async () => {
         const trimmedTitle = title.trim()
@@ -131,51 +133,67 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
                     <WorkflowConfigurationLink projectId={projectId} assistant={assistant} />
                 </View>
             )}
-            <View
-                testID="assistant-workflow-task-editor"
-                style={[localStyles.taskEditor, disabled && localStyles.disabled]}
-            >
-                <TaskInputArea
-                    isSubtask={false}
-                    tmpTask={taskInputDraft}
-                    adding={true}
-                    projectId={projectId}
-                    accessGranted={!disabled && !creating}
-                    loggedUserCanUpdateObject={true}
-                    isAssistant={false}
-                    inputTask={inputRef}
-                    onChangeInputText={updateTitle}
-                    setMentionsModalActive={setMentionsModalActive}
-                    getInitialText={() => ''}
-                    onKeyEnterPressed={createWorkflowTask}
-                    leftAccessory={
-                        <View style={localStyles.addIcon}>
-                            <Icon name="plus-square" size={24} color={colors.Primary100} />
-                        </View>
-                    }
-                    rightAccessory={
-                        <View style={localStyles.executionModeAccessory}>
-                            <ExecutionModeButton
-                                task={taskInputDraft}
-                                disabled={disabled || creating}
-                                onChange={setExecutionMode}
-                                style={localStyles.executionModeButton}
-                                iconOnly
+            <View testID="assistant-workflow-task-section" style={taskEditorLayout.addTaskSection}>
+                <View
+                    testID="assistant-workflow-task-editor"
+                    style={[taskEditorLayout.inlineEditor, disabled && localStyles.disabled]}
+                >
+                    <TaskInputArea
+                        isSubtask={false}
+                        tmpTask={taskInputDraft}
+                        adding={true}
+                        projectId={projectId}
+                        accessGranted={!disabled && !creating}
+                        loggedUserCanUpdateObject={true}
+                        isAssistant={false}
+                        inputTask={inputRef}
+                        onChangeInputText={updateTitle}
+                        setMentionsModalActive={setMentionsModalActive}
+                        getInitialText={() => ''}
+                        onKeyEnterPressed={createWorkflowTask}
+                        leftAccessory={
+                            <CheckboxAndIcon
+                                tmpTask={taskInputDraft}
+                                isSubtask={false}
+                                adding={true}
+                                accessGranted={!disabled && !creating}
+                                showArrowInAnonymous={false}
+                                loggedUserCanUpdateObject={true}
+                                isAssistant={false}
+                                projectId={projectId}
                             />
-                        </View>
-                    }
-                />
-                <View testID="assistant-workflow-task-actions" style={localStyles.buttonContainer}>
-                    <Button
-                        type="primary"
-                        title={translate('Submit')}
-                        processing={creating}
-                        processingTitle={translate('Submitting task')}
-                        onPress={createWorkflowTask}
-                        disabled={disabled || creating || !title.trim()}
-                        accessibilityLabel={translate('Submit')}
-                        accessible={true}
+                        }
+                        rightAccessory={
+                            <View style={localStyles.executionModeAccessory}>
+                                <ExecutionModeButton
+                                    task={taskInputDraft}
+                                    disabled={disabled || creating}
+                                    onChange={setExecutionMode}
+                                    style={localStyles.executionModeButton}
+                                    iconOnly
+                                />
+                            </View>
+                        }
                     />
+                    <View
+                        testID="assistant-workflow-task-actions"
+                        style={[
+                            taskEditorLayout.actionBar,
+                            taskEditorLayout.inlineActionBar,
+                            localStyles.buttonContainer,
+                        ]}
+                    >
+                        <Button
+                            type="primary"
+                            title={translate('Submit')}
+                            processing={creating}
+                            processingTitle={translate('Submitting task')}
+                            onPress={createWorkflowTask}
+                            disabled={disabled || creating || !title.trim()}
+                            accessibilityLabel={translate('Submit')}
+                            accessible={true}
+                        />
+                    </View>
                 </View>
             </View>
             {!!submissionFeedback && (
@@ -229,40 +247,12 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         textDecorationLine: 'underline',
     },
-    taskEditor: {
-        flex: 1,
-        marginHorizontal: -16,
-        backgroundColor: 'transparent',
-        borderWidth: 0,
-        borderRadius: 0,
-        shadowColor: 'transparent',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0,
-        shadowRadius: 0,
-        elevation: 0,
-    },
     disabled: {
         opacity: 0.5,
     },
-    addIcon: {
-        position: 'absolute',
-        left: 7,
-        top: 7,
-        zIndex: 100,
-    },
     buttonContainer: {
-        minHeight: 55,
-        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-end',
-        backgroundColor: colors.Grey100,
-        borderTopWidth: 1,
-        borderTopColor: colors.Gray300,
-        paddingVertical: 7,
-        paddingHorizontal: 9,
-        marginHorizontal: 8,
-        borderBottomLeftRadius: 4,
-        borderBottomRightRadius: 4,
     },
     executionModeAccessory: {
         position: 'absolute',
