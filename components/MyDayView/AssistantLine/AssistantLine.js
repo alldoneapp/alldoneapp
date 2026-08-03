@@ -21,8 +21,6 @@ export default function AssistantLine({
     showAllQuickActions = false,
     preferAssistantIdOverride = false,
     scopeLastCommentToAssistant = false,
-    showEditAssistantButton = false,
-    onEditAssistant = null,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isMobile = useSelector(state => state.smallScreenNavigation)
@@ -122,12 +120,9 @@ export default function AssistantLine({
                     showSwitchAssistant={showSwitchAssistant}
                     preferAssistantIdOverride={preferAssistantIdOverride}
                     scopeLastCommentToAssistant={scopeLastCommentToAssistant}
-                    showEditAssistantButton={showEditAssistantButton}
-                    onEditAssistant={onEditAssistant}
                 />
             ) : (
                 <View>
-                    {showEditAssistantButton && <EditAssistantButton onPress={onEditAssistant} />}
                     {canSwitchAssistant && (
                         <SwitchAssistantButton onPress={toggleAssistant} showSwitchAssistant={showSwitchAssistant} />
                     )}
@@ -169,8 +164,6 @@ function CollapsedAssistantRow({
     showSwitchAssistant,
     preferAssistantIdOverride,
     scopeLastCommentToAssistant,
-    showEditAssistantButton,
-    onEditAssistant,
 }) {
     const isMobile = useSelector(state => state.smallScreenNavigation)
 
@@ -179,7 +172,6 @@ function CollapsedAssistantRow({
             style={[localStyles.collapsedRow, isMobile && localStyles.collapsedRowMobile]}
             onPress={onPress}
         >
-            {showEditAssistantButton && <EditAssistantButton onPress={onEditAssistant} collapsed />}
             {canSwitchAssistant && (
                 <SwitchAssistantButton
                     onPress={toggleAssistant}
@@ -221,24 +213,6 @@ function CollapsedAssistantRow({
                 color={colors.Text03}
                 style={[localStyles.chevron, isMobile && localStyles.chevronMobile]}
             />
-        </TouchableOpacity>
-    )
-}
-
-function EditAssistantButton({ onPress, collapsed = false }) {
-    const editAssistant = event => {
-        event?.preventDefault?.()
-        event?.stopPropagation?.()
-        onPress?.()
-    }
-
-    return (
-        <TouchableOpacity
-            style={[localStyles.editButton, collapsed && localStyles.editButtonCollapsed]}
-            onPress={editAssistant}
-            accessibilityLabel="Edit assistant"
-        >
-            <Icon name="edit-2" size={16} color={colors.Text03} />
         </TouchableOpacity>
     )
 }
@@ -289,24 +263,6 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         backgroundColor: colors.Grey300,
         zIndex: 1,
-    },
-    editButton: {
-        position: 'absolute',
-        left: 0,
-        top: -4,
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.Grey300,
-        zIndex: 2,
-    },
-    editButtonCollapsed: {
-        position: 'relative',
-        left: 0,
-        top: 0,
-        marginRight: 8,
     },
     switchButtonCollapsed: {
         position: 'relative',

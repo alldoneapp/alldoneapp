@@ -24,7 +24,21 @@ import {
     TASK_TYPE_WEBHOOK,
 } from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { filterPreConfigTaskSearchItems, groupPreConfigTaskSearchItems } from './assistantTaskSearchHelper'
-import { getAssistantTaskIcon } from '../assistantTaskIcon'
+
+const getTaskIcon = task => {
+    switch (task.type) {
+        case TASK_TYPE_PROMPT:
+            return 'message-square'
+        case TASK_TYPE_EXTERNAL_LINK:
+            return 'external-link'
+        case TASK_TYPE_WEBHOOK:
+            return 'link-2'
+        case TASK_TYPE_IFRAME:
+            return 'monitor'
+        default:
+            return 'cpu'
+    }
+}
 
 const getAiSettings = task => {
     return task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
@@ -304,7 +318,7 @@ function TaskRow({ task, active, onPress }) {
             style={[localStyles.taskRow, active && localStyles.activeTaskRow]}
             onPress={() => onPress(task)}
         >
-            <Icon name={getAssistantTaskIcon(task)} size={20} color="#ffffff" />
+            <Icon name={getTaskIcon(task)} size={20} color="#ffffff" />
             <Text style={localStyles.taskName} numberOfLines={2}>
                 {task.name}
             </Text>

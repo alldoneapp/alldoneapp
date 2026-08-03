@@ -172,7 +172,6 @@ export default function SecondaryButtonsArea({
                     disabled={!hasName || !accessGranted || isLoadingGoal}
                     onChange={setExecutionModeBeforeSave}
                     style={buttonItemStyle}
-                    iconOnly={adding && smallScreen}
                 />
             )}
 

@@ -30,19 +30,4 @@ describe('ExecutionModeButton for user tasks', () => {
         act(() => button.props.onPress())
         expect(onChange).toHaveBeenCalledWith('workflow')
     })
-
-    test('can render icon-only while keeping the accessible mode label', () => {
-        const tree = renderer.create(
-            <ExecutionModeButton
-                task={{ assigneeType: 'USER', executionMode: 'workflow' }}
-                onChange={jest.fn()}
-                iconOnly
-            />
-        )
-        const button = tree.root.findByType('GhostButton')
-
-        expect(button.props.icon).toBe('git-branch')
-        expect(button.props.title).toBeNull()
-        expect(button.props.accessibilityLabel).toBe('Use workflow')
-    })
 })
