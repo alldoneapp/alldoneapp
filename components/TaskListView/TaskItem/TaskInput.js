@@ -70,6 +70,7 @@ export default function TaskInput({
                 localStyles.textInputContainer,
                 isSubtask && localStyles.subtaskTextInputContainer,
                 isMiddleScreen && localStyles.inputUnderBreakpoint,
+                adding && !isSubtask && localStyles.inlineTaskInputContainer,
             ]}
             initialTextExtended={getInitialText()}
             wordStyle={isSubtask ? styles.body2 : undefined}
@@ -99,6 +100,10 @@ const localStyles = StyleSheet.create({
         paddingRight: 0,
     },
     inputUnderBreakpoint: {
+        marginLeft: 43,
+        marginRight: 32,
+    },
+    inlineTaskInputContainer: {
         marginLeft: 43,
         marginRight: 32,
     },
