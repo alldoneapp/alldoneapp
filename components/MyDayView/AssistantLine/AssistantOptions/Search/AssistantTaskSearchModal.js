@@ -53,6 +53,7 @@ const getAiSettings = task => {
 const getTaskMetadata = task => ({
     ...(task.taskMetadata || {}),
     sendWhatsApp: !!task.sendWhatsApp,
+    executionMode: task.executionMode,
 })
 
 export default function AssistantTaskSearchModal({ closeModal }) {

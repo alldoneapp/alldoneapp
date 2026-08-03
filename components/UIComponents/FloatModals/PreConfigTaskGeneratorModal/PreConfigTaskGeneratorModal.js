@@ -63,6 +63,7 @@ export default function PreConfigTaskGeneratorModal({
             const taskMetadata = {
                 ...(task.taskMetadata || {}),
                 sendWhatsApp: !!task.sendWhatsApp,
+                executionMode: task.executionMode,
             }
             generateTaskFromPreConfig(projectId, name, assistant.uid, generatedPrompt, aiSettings, taskMetadata)
         }

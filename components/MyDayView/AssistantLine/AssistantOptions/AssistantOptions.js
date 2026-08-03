@@ -37,6 +37,8 @@ export default function AssistantOptions({
     onCollapse,
     projectOverride = null,
     assistantIdOverride = null,
+    showAllQuickActions = false,
+    preferAssistantIdOverride = false,
 }) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -68,7 +70,8 @@ export default function AssistantOptions({
     const { assistant, assistantProject, assistantProjectId } = getAssistantLineData(
         selectedProject,
         assistantId,
-        defaultProjectId
+        defaultProjectId,
+        preferAssistantIdOverride
     )
     // The assistant can live in another project, but conversations started from
     // this line must inherit the project the user currently has selected.
@@ -206,7 +209,8 @@ export default function AssistantOptions({
         conversationProject,
         assistant.uid,
         tasks,
-        amountOfButtonOptions
+        amountOfButtonOptions,
+        showAllQuickActions
     )
 
     const hasQuickActions = true

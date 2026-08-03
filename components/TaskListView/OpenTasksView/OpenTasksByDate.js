@@ -11,6 +11,7 @@ import SelectedProjectEmptyInbox from './SelectedProjectEmptyInbox'
 import TasksSections from './TasksSections'
 import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
+import { AssistantScheduleRows } from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
 
 export default function OpenTasksByDate({
     projectId,
@@ -21,6 +22,9 @@ export default function OpenTasksByDate({
     sortedLoggedUserProjectIds,
     pressedShowMoreMainSection,
     setPressedShowMoreMainSection,
+    assistantProfileMode = false,
+    assistantScheduleOccurrences = [],
+    assistantScheduleContext = null,
 }) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -115,6 +119,7 @@ export default function OpenTasksByDate({
                 dateIndex={dateIndex}
                 instanceKey={instanceKey}
                 accessGranted={accessGranted}
+                additionalTasksAmount={assistantScheduleOccurrences.length}
             />
 
             <TasksSections
@@ -125,8 +130,17 @@ export default function OpenTasksByDate({
                 isActiveOrganizeMode={isActiveOrganizeMode}
                 pressedShowMoreMainSection={pressedShowMoreMainSection}
                 setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                assistantProfileMode={assistantProfileMode}
             />
+            {assistantScheduleOccurrences.length > 0 && (
+                <AssistantScheduleRows
+                    projectId={projectId}
+                    occurrences={assistantScheduleOccurrences}
+                    {...assistantScheduleContext}
+                />
+            )}
             {amountTasks === 0 &&
+                assistantScheduleOccurrences.length === 0 &&
                 emptyGoalsAmount === 0 &&
                 initialLoadingEndOpenTasks &&
                 initialLoadingEndObservedTasks && (

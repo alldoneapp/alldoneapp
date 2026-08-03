@@ -31,12 +31,12 @@ const sortAssistantTasksForQuickLinks = tasks => {
     return [...oneTimeTasks, ...recurringTasks]
 }
 
-const getOptions = (project, assistantId, tasks) => {
+const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
     return sortAssistantTasksForQuickLinks(tasks).map(task => {
         return {
             id: task.id,
             type: TASK_OPTION,
-            text: shrinkTagText(task.name, 16),
+            text: showFullLabels ? task.name : shrinkTagText(task.name, 16),
             icon: task.type === TASK_TYPE_PROMPT ? 'cpu' : 'bookmark',
             task,
             action: () => {
@@ -64,6 +64,7 @@ const getOptions = (project, assistantId, tasks) => {
                     const taskMetadata = {
                         ...(task.taskMetadata || {}),
                         sendWhatsApp: !!task.sendWhatsApp,
+                        executionMode: task.executionMode,
                     }
                     const targetProjectId = project?.id
                     if (!targetProjectId) return
@@ -98,8 +99,17 @@ export const calculateAmountOfOptionButtons = (containerWidth, isMiddleScreen, i
     return calculatedAmount
 }
 
-export const getOptionsPresentationData = (project, defaultAssistantId, tasks, amountOfButtonOptions) => {
-    const options = getOptions(project, defaultAssistantId, tasks)
+export const getOptionsPresentationData = (
+    project,
+    defaultAssistantId,
+    tasks,
+    amountOfButtonOptions,
+    showAllOptions = false
+) => {
+    const options = getOptions(project, defaultAssistantId, tasks, showAllOptions)
+    if (showAllOptions) {
+        return { optionsLikeButtons: options, optionsInModal: [], showSubmenu: false }
+    }
     const optionsLikeButtons = options.slice(0, amountOfButtonOptions)
     const optionsInModal = options.slice(amountOfButtonOptions)
     const showSubmenu = optionsInModal.length > 0
@@ -161,9 +171,18 @@ export const getCommentData = (
     }
 }
 
-export const getAssistantLineData = (selectedProject, defaultAssistantId, defaultProjectId) => {
+export const getAssistantLineData = (
+    selectedProject,
+    defaultAssistantId,
+    defaultProjectId,
+    preferAssistantId = false
+) => {
     const assistantId =
-        selectedProject && selectedProject.assistantId ? selectedProject.assistantId : defaultAssistantId
+        preferAssistantId && defaultAssistantId
+            ? defaultAssistantId
+            : selectedProject && selectedProject.assistantId
+            ? selectedProject.assistantId
+            : defaultAssistantId
     const assistant = getAssistant(assistantId)
 
     // Determine the actual project where the assistant lives

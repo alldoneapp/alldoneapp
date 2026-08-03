@@ -28,6 +28,7 @@ import { getTimeFormat } from '../../FloatModals/DateFormatPickerModal'
 import Popover from 'react-tiny-popover'
 import RecurrenceModal from '../RecurrenceModal'
 import TimePickerModal from '../../FloatModals/TimePickerModal/TimePickerModal'
+import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW } from '../../../../utils/taskExecutionMode'
 
 export const TASK_TYPE_PROMPT = 'prompt'
 export const TASK_TYPE_EXTERNAL_LINK = 'link'
@@ -83,6 +84,8 @@ const MemoizedModalContent = memo(
         removeVariable,
         recurrence,
         setRecurrence,
+        executionMode,
+        setExecutionMode,
         projectId,
         promptProjectId,
         setPromptMentionsActive,
@@ -200,6 +203,39 @@ const MemoizedModalContent = memo(
                             openVariableModal={openVariableModal}
                             removeVariable={removeVariable}
                         />
+                        <View style={localStyles.recurrenceContainer}>
+                            <View style={{ marginRight: 8 }}>
+                                <Icon
+                                    name={
+                                        executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'git-branch' : 'fast-forward'
+                                    }
+                                    size={24}
+                                    color={colors.Text03}
+                                />
+                            </View>
+                            <Text style={[styles.subtitle2, { color: colors.Text03 }]}>{translate('Task flow')}</Text>
+                            <View style={{ marginLeft: 'auto' }}>
+                                <TouchableOpacity
+                                    style={localStyles.dateButton}
+                                    onPress={() =>
+                                        setExecutionMode(
+                                            executionMode === TASK_EXECUTION_MODE_WORKFLOW
+                                                ? TASK_EXECUTION_MODE_DIRECT
+                                                : TASK_EXECUTION_MODE_WORKFLOW
+                                        )
+                                    }
+                                    disabled={disabled}
+                                >
+                                    <Text style={[styles.subtitle2, { color: colors.Text02 }]}>
+                                        {translate(
+                                            executionMode === TASK_EXECUTION_MODE_WORKFLOW
+                                                ? 'Use workflow'
+                                                : 'Bypass workflow'
+                                        )}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
                         <View style={localStyles.recurrenceContainer}>
                             <View style={{ marginRight: 8 }}>
                                 <Icon name="message-circle" size={24} color={colors.Text03} />
@@ -409,6 +445,7 @@ const MemoizedModalContent = memo(
             prevProps.taskType === nextProps.taskType &&
             prevProps.prompt === nextProps.prompt &&
             prevProps.recurrence === nextProps.recurrence &&
+            prevProps.executionMode === nextProps.executionMode &&
             prevProps.promptProjectId === nextProps.promptProjectId &&
             prevProps.disabled === nextProps.disabled &&
             prevProps.showDatePicker === nextProps.showDatePicker &&
@@ -464,6 +501,8 @@ export default function TaskModal({
     assistantId,
     recurrence = RECURRENCE_NEVER,
     setRecurrence,
+    executionMode = TASK_EXECUTION_MODE_WORKFLOW,
+    setExecutionMode,
     startDate,
     setStartDate,
     sendWhatsApp = false,
@@ -745,6 +784,7 @@ export default function TaskModal({
                     task={{ id: 'temp', recurrence }}
                     projectId={projectId}
                     closePopover={handleRecurrenceSelect}
+                    allowOneOffSchedule={true}
                 />
             ) : (
                 <View
@@ -768,6 +808,8 @@ export default function TaskModal({
                         removeVariable={removeVariable}
                         recurrence={recurrence}
                         setRecurrence={handleRecurrenceClick}
+                        executionMode={executionMode}
+                        setExecutionMode={setExecutionMode}
                         projectId={projectId}
                         promptProjectId={promptProjectId}
                         setPromptMentionsActive={setPromptMentionsActive}

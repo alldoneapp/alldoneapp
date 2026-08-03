@@ -75,6 +75,12 @@ const toolSchemas = {
                         description:
                             'Optional recurrence schedule. Use daily, everyWorkday, weekly, every2Weeks, every3Weeks, monthly, every3Months, every6Months, annually, or custom:<positive number of days>. The task recurs after it is completed; dueDate sets the first occurrence.',
                     },
+                    executionMode: {
+                        type: 'string',
+                        enum: ['workflow', 'direct'],
+                        description:
+                            "Optional task completion mode. workflow (default) sends the task through the assignee's configured workflow; direct bypasses the workflow and goes straight to Done when completed.",
+                    },
                     projectId: {
                         type: 'string',
                         description:
@@ -711,6 +717,12 @@ const toolSchemas = {
                         ],
                         description:
                             'Set the recurrence schedule, or use never to disable recurrence. Supports daily, everyWorkday, weekly, every2Weeks, every3Weeks, monthly, every3Months, every6Months, annually, and custom:<positive number of days>. The task recurs after it is completed; dueDate sets or changes the current occurrence date.',
+                    },
+                    executionMode: {
+                        type: 'string',
+                        enum: ['workflow', 'direct'],
+                        description:
+                            "Set how the task is completed. workflow sends it through the assignee's configured workflow; direct bypasses the workflow and goes straight to Done.",
                     },
                     estimation: {
                         type: 'number',

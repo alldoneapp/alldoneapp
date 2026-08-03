@@ -2535,5 +2535,21 @@
     "Medium": "Medium",
     "XHigh": "XHigh",
     "Max": "Max",
-    "Select how much reasoning the assistant should use": "Select how much reasoning the assistant should use"
+    "Select how much reasoning the assistant should use": "Select how much reasoning the assistant should use",
+    "Edit in chat": "Edit in chat",
+    "Start chat": "Start chat",
+    "Suggested prompts": "Suggested prompts",
+    "Links and integrations": "Links and integrations",
+    "Scheduled tasks": "Scheduled tasks",
+    "Copy this assistant to configure its workflow and add tasks": "Copy this assistant to configure its workflow and add tasks.",
+    "No scheduled tasks": "No scheduled tasks",
+    "Run now": "Run now",
+    "Pause": "Pause",
+    "Once": "Once",
+    "Queued": "Queued",
+    "Needs attention": "Needs attention",
+    "Retry assistant task": "Retry assistant task",
+    "Task flow": "Task flow",
+    "Use workflow": "Use workflow",
+    "Bypass workflow": "Bypass workflow"
 }

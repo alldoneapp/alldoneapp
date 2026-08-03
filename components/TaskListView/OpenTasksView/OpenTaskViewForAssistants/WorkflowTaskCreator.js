@@ -1,25 +1,26 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
-import { createTaskWithService } from '../../../../utils/backends/Tasks/TaskServiceFrontendHelper'
-import { assistantWorkflowFirstStepHasPrompt, buildAssistantWorkflowTask } from '../../../../utils/assistantWorkflow'
+import { assistantWorkflowFirstStepHasPrompt } from '../../../../utils/assistantWorkflow'
 import { setSelectedNavItem } from '../../../../redux/actions'
 import { DV_TAB_ASSISTANT_WORKFLOW } from '../../../../utils/TabNavigationConstants'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_WORKFLOW } from '../../../../URLSystem/Assistants/URLsAssistants'
 import NavigationService from '../../../../utils/NavigationService'
+import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
+import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW } from '../../../../utils/taskExecutionMode'
 
 export default function WorkflowTaskCreator({ projectId, assistant, disabled }) {
     const dispatch = useDispatch()
-    const creatorId = useSelector(state => state.loggedUser.uid)
     const [title, setTitle] = useState('')
     const [creating, setCreating] = useState(false)
     const [showWorkflowWarning, setShowWorkflowWarning] = useState(false)
     const [creationError, setCreationError] = useState('')
+    const [executionMode, setExecutionMode] = useState(TASK_EXECUTION_MODE_WORKFLOW)
 
     const openWorkflow = () => {
         NavigationService.navigate('AssistantDetailedView', {
@@ -39,7 +40,10 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled }) 
         const trimmedTitle = title.trim()
         if (!trimmedTitle || creating || disabled) return
 
-        if (!assistantWorkflowFirstStepHasPrompt(assistant, projectId)) {
+        if (
+            executionMode === TASK_EXECUTION_MODE_WORKFLOW &&
+            !assistantWorkflowFirstStepHasPrompt(assistant, projectId)
+        ) {
             setShowWorkflowWarning(true)
             setCreationError('')
             return
@@ -48,23 +52,20 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled }) 
         setCreating(true)
         setShowWorkflowWarning(false)
         setCreationError('')
+        setTitle('')
         try {
-            await createTaskWithService(
-                buildAssistantWorkflowTask({
-                    assistant,
-                    projectId,
-                    creatorId,
-                    title: trimmedTitle,
-                }),
-                {
-                    awaitForTaskCreation: true,
-                    notGenerateMentionTasks: false,
-                    notGenerateUpdates: false,
-                }
+            await generateTaskFromPreConfig(
+                projectId,
+                trimmedTitle,
+                assistant.uid,
+                trimmedTitle,
+                null,
+                { executionMode },
+                { skipNavigation: true, waitForDirectRun: false }
             )
-            setTitle('')
         } catch (error) {
             console.error('Could not create assistant workflow task', error)
+            setTitle(trimmedTitle)
             setCreationError(translate('The workflow task could not be created'))
         } finally {
             setCreating(false)
@@ -74,7 +75,6 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled }) 
     return (
         <View style={localStyles.container}>
             <View style={localStyles.headerRow}>
-                <Text style={localStyles.header}>{translate('Workflow tasks')}</Text>
                 <TouchableOpacity
                     style={localStyles.configurationLink}
                     onPress={openWorkflow}
@@ -110,6 +110,30 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled }) 
                     editable={!disabled && !creating}
                     returnKeyType="done"
                 />
+                <TouchableOpacity
+                    style={localStyles.executionModeButton}
+                    onPress={() =>
+                        setExecutionMode(currentMode =>
+                            currentMode === TASK_EXECUTION_MODE_WORKFLOW
+                                ? TASK_EXECUTION_MODE_DIRECT
+                                : TASK_EXECUTION_MODE_WORKFLOW
+                        )
+                    }
+                    disabled={disabled || creating}
+                    accessibilityRole="button"
+                    accessibilityLabel={translate(
+                        executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow'
+                    )}
+                >
+                    <Icon
+                        name={executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'git-branch' : 'fast-forward'}
+                        size={16}
+                        color={colors.Text03}
+                    />
+                    <Text style={localStyles.executionModeText}>
+                        {translate(executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow')}
+                    </Text>
+                </TouchableOpacity>
             </View>
             {showWorkflowWarning && (
                 <View style={localStyles.warning}>
@@ -136,11 +160,7 @@ const localStyles = StyleSheet.create({
         marginBottom: 4,
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    header: {
-        ...styles.subtitle2,
-        color: colors.Text01,
+        justifyContent: 'flex-end',
     },
     configurationLink: {
         paddingVertical: 2,
@@ -173,6 +193,21 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 0,
         paddingVertical: 5,
         outlineStyle: 'none',
+    },
+    executionModeButton: {
+        alignSelf: 'center',
+        height: 28,
+        paddingHorizontal: 8,
+        marginLeft: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 14,
+        backgroundColor: colors.Grey200,
+    },
+    executionModeText: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginLeft: 4,
     },
     warning: {
         marginTop: 8,

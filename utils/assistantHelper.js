@@ -34,6 +34,8 @@ import { createObjectMessage } from './backends/Chats/chatsComments'
 import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinnerTrigger'
 import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 import { resolvePreConfigTaskReasoningEffort } from '../functions/Assistant/preConfigTaskReasoningEffort'
+import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW, getTaskExecutionMode } from './taskExecutionMode'
+import { ASSISTANT_WORKFLOW_FIRST_STEP_ID } from './assistantWorkflow'
 
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 
@@ -414,23 +416,24 @@ const createTopicForPreConfigTask = async (
 const activePreConfigPromptTaskExecutions = new Set()
 
 const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings) => {
-    if (!aiSettings) return null
-
     const assistantDetails = getAssistantInProjectObject(projectId, assistantId)
+    if (!aiSettings && !assistantDetails) return null
+
+    const overrides = aiSettings || {}
     return {
-        ...aiSettings,
-        model: aiSettings.model || assistantDetails?.model,
-        temperature: aiSettings.temperature || assistantDetails?.temperature,
+        ...overrides,
+        model: overrides.model || assistantDetails?.model,
+        temperature: overrides.temperature || assistantDetails?.temperature,
         reasoningEffort: resolvePreConfigTaskReasoningEffort(
-            { aiReasoningEffort: aiSettings.reasoningEffort },
+            { aiReasoningEffort: overrides.reasoningEffort },
             assistantDetails?.reasoningEffort
         ),
-        systemMessage: aiSettings.systemMessage || assistantDetails?.instructions,
-        assistantUid: aiSettings.assistantUid || assistantDetails?.uid || assistantId,
+        systemMessage: overrides.systemMessage || assistantDetails?.instructions,
+        assistantUid: overrides.assistantUid || assistantDetails?.uid || assistantId,
         assistantDisplayName:
-            aiSettings.assistantDisplayName || assistantDetails?.displayName || assistantDetails?.name || '',
-        allowedTools: Array.isArray(aiSettings.allowedTools)
-            ? aiSettings.allowedTools
+            overrides.assistantDisplayName || assistantDetails?.displayName || assistantDetails?.name || '',
+        allowedTools: Array.isArray(overrides.allowedTools)
+            ? overrides.allowedTools
             : Array.isArray(assistantDetails?.allowedTools)
             ? assistantDetails.allowedTools
             : [],
@@ -500,8 +503,11 @@ export const generateTaskFromPreConfig = async (
     taskMetadata = null,
     options = {}
 ) => {
-    const { skipNavigation = false } = options
+    const { skipNavigation = false, waitForDirectRun = true } = options
     const resolvedAiSettings = resolvePreConfigAiSettings(projectId, assistantId, aiSettings)
+    // Preconfigured prompts created before execution modes existed always ran directly.
+    const executionMode = getTaskExecutionMode(taskMetadata, TASK_EXECUTION_MODE_DIRECT)
+    const { loggedUser } = store.getState()
 
     console.log('generateTaskFromPreConfig called:', {
         projectId,
@@ -521,7 +527,26 @@ export const generateTaskFromPreConfig = async (
     generatedTask.assigneeType = TASK_ASSIGNEE_ASSISTANT_TYPE
     generatedTask.assistantId = assistantId
     generatedTask.isPublicFor = [FEED_PUBLIC_FOR_ALL]
-    generatedTask.isAssistantEnabled = true
+    generatedTask.executionMode = executionMode
+    generatedTask.isAssistantEnabled = executionMode === TASK_EXECUTION_MODE_DIRECT
+
+    if (executionMode === TASK_EXECUTION_MODE_WORKFLOW) {
+        const now = Date.now()
+        generatedTask.workflowTask = true
+        generatedTask.workflowPayerUserId = loggedUser.uid
+        generatedTask.stepHistory = [ASSISTANT_WORKFLOW_FIRST_STEP_ID]
+        generatedTask.currentReviewerId = assistantId
+        generatedTask.completed = now
+        generatedTask.dueDate = now
+        generatedTask.estimations = {
+            ...generatedTask.estimations,
+            [ASSISTANT_WORKFLOW_FIRST_STEP_ID]: 0,
+        }
+        generatedTask.workflowAiPromptOverride = {
+            stepId: ASSISTANT_WORKFLOW_FIRST_STEP_ID,
+            prompt: generatedPrompt,
+        }
+    }
 
     // Add AI settings to the task if provided
     if (resolvedAiSettings) {
@@ -547,7 +572,14 @@ export const generateTaskFromPreConfig = async (
         taskMetadata,
     })
 
-    uploadNewTask(projectId, generatedTask, null, true, false, false, false).then(task => {
+    const task = await uploadNewTask(projectId, generatedTask, null, true, false, false, false)
+    const taskWithPublicFor = {
+        ...task,
+        isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
+        isAssistantEnabled: executionMode === TASK_EXECUTION_MODE_DIRECT,
+    }
+
+    if (executionMode === TASK_EXECUTION_MODE_DIRECT) {
         // Purely UI state for the task chat we are about to open: the assistant run itself is
         // triggered from the task's persisted `isAssistantEnabled: true` (and
         // `createTopicForPreConfigTask` calls `createObjectMessage` with skipAssistantTrigger,
@@ -556,13 +588,6 @@ export const generateTaskFromPreConfig = async (
         // My Day assistant line and the pre-config task search modal — from switching the
         // assistant on in whatever unrelated chat the user opens next (AT-2084).
         store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, task.id)))
-
-        // Ensure task has isPublicFor set
-        const taskWithPublicFor = {
-            ...task,
-            isPublicFor: task.isPublicFor || [FEED_PUBLIC_FOR_ALL],
-            isAssistantEnabled: true,
-        }
 
         console.log('Creating topic for task:', {
             taskId: taskWithPublicFor.id,
@@ -590,24 +615,6 @@ export const generateTaskFromPreConfig = async (
             taskTaskMetadataSendWhatsApp: taskWithPublicFor.taskMetadata?.sendWhatsApp,
         })
 
-        // Add a small delay for webhook tasks to avoid race condition with frontend updates
-        const isWebhookTask = taskMetadata?.isWebhookTask
-        const delay = isWebhookTask ? 1000 : 0
-
-        setTimeout(() => {
-            createTopicForPreConfigTask(
-                projectId,
-                taskWithPublicFor.id,
-                taskWithPublicFor.isPublicFor,
-                taskWithPublicFor.assistantId,
-                generatedPrompt,
-                resolvedAiSettings,
-                mergedMetadata
-            ).catch(error => {
-                console.error('Failed to create topic for pre-config task:', error)
-            })
-        }, delay)
-
         if (!skipNavigation) {
             // Trigger the bot spinner to show assistant is working (without toggling
             // assistantEnabled), scoped to the task chat we are about to open. When we do not
@@ -623,6 +630,49 @@ export const generateTaskFromPreConfig = async (
             store.dispatch([setSelectedNavItem(DV_TAB_TASK_CHAT), setDisableAutoFocusInChat(true)])
         }
 
-        moveTasksFromOpen(projectId, taskWithPublicFor, DONE_STEP, null, null, taskWithPublicFor.estimations, null)
-    })
+        if (taskMetadata?.isWebhookTask) {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+
+        const runAndCompleteDirectTask = async () => {
+            const succeeded = await executePreConfigPromptForTask({
+                projectId,
+                taskId: taskWithPublicFor.id,
+                task: taskWithPublicFor,
+                assistantId: taskWithPublicFor.assistantId,
+                prompt: generatedPrompt,
+                name,
+                aiSettings: resolvedAiSettings,
+                taskMetadata: mergedMetadata,
+            })
+
+            if (succeeded) {
+                await moveTasksFromOpen(
+                    projectId,
+                    taskWithPublicFor,
+                    DONE_STEP,
+                    null,
+                    null,
+                    taskWithPublicFor.estimations,
+                    null
+                )
+            }
+        }
+
+        if (waitForDirectRun) {
+            await runAndCompleteDirectTask()
+        } else {
+            runAndCompleteDirectTask().catch(error => {
+                console.error('Could not finish direct assistant task in the background:', error)
+            })
+        }
+    } else if (!skipNavigation) {
+        NavigationService.navigate('TaskDetailedView', {
+            task: taskWithPublicFor,
+            projectId,
+        })
+        store.dispatch([setSelectedNavItem(DV_TAB_TASK_CHAT), setDisableAutoFocusInChat(true)])
+    }
+
+    return taskWithPublicFor
 }

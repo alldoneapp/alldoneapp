@@ -2670,6 +2670,7 @@ describe('assistant create_task project routing comments', () => {
                 name: 'Follow up with client',
                 projectName: 'Client Work',
                 recurrence: 'weekly',
+                executionMode: 'direct',
                 projectRoutingReason: 'the task is about the client onboarding discussion',
                 projectRoutingConfidence: 0.84,
             },
@@ -2684,6 +2685,7 @@ describe('assistant create_task project routing comments', () => {
                 name: 'Follow up with client',
                 projectId: 'project-client',
                 recurrence: 'weekly',
+                executionMode: 'direct',
             }),
             expect.objectContaining({
                 userId: 'user-1',

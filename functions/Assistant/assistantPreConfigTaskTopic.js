@@ -595,7 +595,7 @@ async function generatePreConfigTaskResult(
         return {
             success: true,
             projectId,
-            objectType: 'tasks',
+            objectType,
             objectId,
             isPublicFor,
             assistantId: settings.uid,

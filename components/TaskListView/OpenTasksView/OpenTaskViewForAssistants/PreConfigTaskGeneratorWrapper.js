@@ -60,7 +60,11 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             sendWhatsAppType: typeof sendWhatsApp,
             sendWhatsAppRawValue: sendWhatsApp,
         })
-        const mergedTaskMetadata = { ...(taskMetadata || {}), sendWhatsApp: !!sendWhatsApp }
+        const mergedTaskMetadata = {
+            ...(taskMetadata || {}),
+            sendWhatsApp: !!sendWhatsApp,
+            executionMode: task.executionMode,
+        }
         console.log('PreConfigTaskGeneratorWrapper merged taskMetadata:', {
             mergedTaskMetadata,
             originalSendWhatsApp: sendWhatsApp,

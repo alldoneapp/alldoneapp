@@ -37,7 +37,12 @@ import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFi
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
 
-export default function OpenTasksByProjectHandler({ projectIndex, firstProject, setProjectsHaveTasksInFirstDay }) {
+export default function OpenTasksByProjectHandler({
+    projectIndex,
+    firstProject,
+    setProjectsHaveTasksInFirstDay,
+    assistantProfileMode = false,
+}) {
     const dispatch = useDispatch()
     const projectId = useSelector(state => state.loggedUserProjects[projectIndex]?.id)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -155,7 +160,8 @@ export default function OpenTasksByProjectHandler({ projectIndex, firstProject, 
                 laterTasksExpandedForNavigateFromAllProjects,
                 somedayTasksExpandedForNavigateFromAllProjects,
                 false,
-                instanceKey
+                instanceKey,
+                assistantProfileMode
             )
 
             return () => {

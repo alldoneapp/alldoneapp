@@ -101,6 +101,7 @@ export default function PreConfigTaskOption({
             const mergedTaskMetadata = {
                 ...(taskMetadata || {}),
                 sendWhatsApp: !!sendWhatsApp,
+                executionMode: task.executionMode,
             }
             generateTaskFromPreConfig(projectId, name, assistantId, prompt, aiSettings, mergedTaskMetadata)
         } else if (type === TASK_TYPE_IFRAME) {

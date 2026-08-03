@@ -75,6 +75,7 @@ const ESTIMATION_POINTS_VALUES = {
 }
 
 const RECURRENCE_NEVER = 'never'
+const RECURRENCE_ONCE = 'once'
 const RECURRENCE_DAILY = 'daily'
 const RECURRENCE_EVERY_WORKDAY = 'everyWorkday'
 const RECURRENCE_WEEKLY = 'weekly'
@@ -87,6 +88,7 @@ const RECURRENCE_ANNUALLY = 'annually'
 
 const RECURRENCE_MAP = {
     [RECURRENCE_NEVER]: { short: '', large: 'Never', shortcut: '0' },
+    [RECURRENCE_ONCE]: { short: '1×', large: 'Once', shortcut: '' },
     [RECURRENCE_DAILY]: { short: 'D', large: 'Daily', shortcut: '1' },
     [RECURRENCE_EVERY_WORKDAY]: { short: 'Mo-Fr', large: 'Every workday (Mo-Fr)', shortcut: '2' },
     [RECURRENCE_WEEKLY]: { short: 'W', large: 'Weekly', shortcut: '3' },
@@ -289,6 +291,7 @@ module.exports = {
     ALL_USERS,
     CURRENT_DAY_VERSION_ID,
     RECURRENCE_NEVER,
+    RECURRENCE_ONCE,
     REGEX_URL,
     REGEX_MENTION,
     BACKLOG_MILESTONE_ID,

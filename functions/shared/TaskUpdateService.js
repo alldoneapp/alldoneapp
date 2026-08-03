@@ -630,6 +630,7 @@ class TaskUpdateService {
                 description: updateFields.description,
                 dueDate: processedDueDate,
                 recurrence: updateFields.recurrence,
+                executionMode: updateFields.executionMode,
                 priority: updateFields.priority,
                 completed: updateFields.completed,
                 userId: updateFields.userId || updateFields.targetUserId,

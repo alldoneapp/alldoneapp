@@ -214,6 +214,7 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                                 const taskMetadata = {
                                     ...(task.taskMetadata || {}),
                                     sendWhatsApp: !!task.sendWhatsApp,
+                                    executionMode: task.executionMode,
                                 }
                                 generateTaskFromPreConfig(
                                     targetProjectId,

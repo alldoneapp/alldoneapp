@@ -734,6 +734,7 @@ export default function LinkTag({
                                     const taskMetadata = {
                                         ...(task.taskMetadata || {}),
                                         sendWhatsApp: !!task.sendWhatsApp,
+                                        executionMode: task.executionMode,
                                     }
                                     generateTaskFromPreConfig(
                                         targetProjectId,

@@ -160,6 +160,16 @@ describe('User memory assistant tool schemas', () => {
         })
     })
 
+    test('exposes direct and workflow modes for user task creation and updates', () => {
+        const createMode = toolSchemas.create_task.function.parameters.properties.executionMode
+        const updateMode = toolSchemas.update_task.function.parameters.properties.executionMode
+
+        expect(createMode.enum).toEqual(['workflow', 'direct'])
+        expect(updateMode.enum).toEqual(['workflow', 'direct'])
+        expect(createMode.description).toContain('default')
+        expect(updateMode.description).toContain('straight to Done')
+    })
+
     test('requires create_note responses to reuse the canonical URL without recreating the note', () => {
         expect(toolSchemas.create_note.function.description).toContain('canonical note URL')
         expect(toolSchemas.create_note.function.description).toContain('Never call create_note again')

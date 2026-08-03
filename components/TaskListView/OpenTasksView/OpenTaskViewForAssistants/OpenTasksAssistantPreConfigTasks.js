@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { View, Text, StyleSheet } from 'react-native'
 import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -7,18 +7,19 @@ import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { unwatch } from '../../../../utils/backends/firestore'
-import PreConfigTaskGeneratorWrapper from './PreConfigTaskGeneratorWrapper'
-import AssistantInputLine from './AssistantInputLine'
 import WhatsAppAssistantLine from './WhatsAppAssistantLine'
 import { GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
-import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
+import TasksHelper, { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 import WorkflowTaskCreator from './WorkflowTaskCreator'
+import { buildAssistantScheduleOccurrences } from '../../../../utils/assistantSchedule'
+import AssistantLine from '../../../MyDayView/AssistantLine/AssistantLine'
 
-export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
+export default function OpenTasksAssistantPreConfigTasks({ projectId, children }) {
     const currentUser = useSelector(state => state.currentUser)
     const globalAssistants = useSelector(state => state.globalAssistants)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
+    const project = useSelector(state => state.loggedUserProjectsMap[projectId])
     const [tasks, setTasks] = useState([])
 
     const isGlobalAssistant = globalAssistants.find(item => item.uid === currentUser.uid)
@@ -42,20 +43,43 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
         return hasRecurringUser || (!!task?.recurrence && task.recurrence !== RECURRENCE_NEVER)
     }
 
-    const oneTimeTasks = tasks.filter(task => !isRecurringTask(task))
-    const recurringTasks = tasks.filter(task => isRecurringTask(task))
+    const scheduledTasks = tasks.filter(task => isRecurringTask(task))
+    const scheduledOccurrences = useMemo(
+        () => buildAssistantScheduleOccurrences(scheduledTasks, userId => TasksHelper.getPeopleById(userId, projectId)),
+        [scheduledTasks, projectId]
+    )
+    const timelineChildren = React.Children.map(children, child =>
+        React.isValidElement(child)
+            ? React.cloneElement(child, {
+                  assistantScheduleOccurrences: scheduledOccurrences,
+                  assistantScheduleContext: {
+                      tasksProjectId,
+                      assistant: currentUser,
+                      disabled: !!isGlobalAssistant || !canCreateWorkflowTask,
+                  },
+              })
+            : child
+    )
 
     return (
         <View style={localStyles.container}>
-            <AssistantInputLine
-                assistant={currentUser}
-                projectId={projectId}
-                noBottomMargin={currentUser.displayName === 'Anna Alldone'}
+            <AssistantLine
+                showLastComment
+                removeBottomSpace
+                useAssistantProjectContext={false}
+                projectOverride={project}
+                assistantIdOverride={currentUser.uid}
+                showAllQuickActions
+                preferAssistantIdOverride
+                scopeLastCommentToAssistant
             />
             {currentUser.displayName === 'Anna Alldone' && (
-                <WhatsAppAssistantLine assistant={currentUser} projectId={projectId} />
+                <View style={localStyles.section}>
+                    <WhatsAppAssistantLine assistant={currentUser} projectId={projectId} />
+                </View>
             )}
-            <Text style={localStyles.header}>{translate('Assistant tasks')}</Text>
+
+            <Text style={[localStyles.header, localStyles.majorSection]}>{translate('Tasks')}</Text>
             {!isGlobalAssistant && (
                 <View style={localStyles.section}>
                     <WorkflowTaskCreator
@@ -65,32 +89,12 @@ export default function OpenTasksAssistantPreConfigTasks({ projectId }) {
                     />
                 </View>
             )}
-            {oneTimeTasks.length > 0 && (
-                <View style={localStyles.section}>
-                    <Text style={localStyles.sectionTitle}>{translate('One-time tasks')}</Text>
-                    {oneTimeTasks.map(task => (
-                        <PreConfigTaskGeneratorWrapper
-                            projectId={projectId}
-                            key={task.id}
-                            task={task}
-                            assistant={currentUser}
-                        />
-                    ))}
-                </View>
+            {!!isGlobalAssistant && (
+                <Text style={localStyles.readOnlyText}>
+                    {translate('Copy this assistant to configure its workflow and add tasks')}
+                </Text>
             )}
-            {recurringTasks.length > 0 && (
-                <View style={localStyles.section}>
-                    <Text style={localStyles.sectionTitle}>{translate('Recurring tasks')}</Text>
-                    {recurringTasks.map(task => (
-                        <PreConfigTaskGeneratorWrapper
-                            projectId={projectId}
-                            key={task.id}
-                            task={task}
-                            assistant={currentUser}
-                        />
-                    ))}
-                </View>
-            )}
+            {timelineChildren}
         </View>
     )
 }
@@ -107,10 +111,12 @@ const localStyles = StyleSheet.create({
     section: {
         marginTop: 8,
     },
-    sectionTitle: {
-        ...styles.subtitle2,
-        color: colors.Text01,
-        marginTop: 12,
-        marginBottom: 4,
+    majorSection: {
+        marginTop: 32,
+    },
+    readOnlyText: {
+        ...styles.body2,
+        color: colors.Text03,
+        marginTop: 8,
     },
 })
