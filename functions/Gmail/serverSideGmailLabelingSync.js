@@ -243,7 +243,7 @@ function buildDefaultProjectLabelDescription(project = {}, labelName = '', isDef
 function buildDefaultProjectFollowUpPrompt(labelName = '') {
     const projectLabel = labelName || 'the matched project'
     return [
-        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ".`,
+        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ". This is an automated, proactive task: set taskOrigin to "assistant_suggestion" and include a concise visible comment explaining why the email warrants the task.`,
         `When followUpType is "informational", never create a task. Always add one concise comment to the topic chat "Daily emails ${projectLabel} ${DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER}" with createIfMissing=true. Every informational email gets exactly one comment, including routine, promotional, automated, or redundant ones. The comment should be in this format: "Email from [sender name] ([sender email]): [one-line summary]". Do not include the Gmail web URL or any other email link in the comment; the server attaches the email metadata and the UI shows the linked email tag separately.`,
         `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com) also use update_note with the project ${projectLabel} to update the contact note and include a link to the email with a space at the end.`,
     ].join('\n')
@@ -1058,6 +1058,7 @@ function buildPostLabelGmailContext({
     targetContactName = '',
     topicChatTitle = '',
     followUpType = 'informational',
+    taskSuggestionComment = '',
 }) {
     const messageId = typeof normalizedMessage?.messageId === 'string' ? normalizedMessage.messageId.trim() : ''
     const threadId = typeof normalizedMessage?.threadId === 'string' ? normalizedMessage.threadId.trim() : ''
@@ -1086,8 +1087,18 @@ function buildPostLabelGmailContext({
         targetContactName: typeof targetContactName === 'string' ? targetContactName.trim() : '',
         topicChatTitle: typeof topicChatTitle === 'string' ? topicChatTitle.trim() : '',
         followUpType: followUpType === 'actionable' ? 'actionable' : 'informational',
+        taskSuggestionComment: typeof taskSuggestionComment === 'string' ? taskSuggestionComment.trim() : '',
         ...(unsubscribe ? { unsubscribe } : {}),
     }
+}
+
+function buildPostLabelTaskSuggestionComment(normalizedMessage = {}) {
+    const subject = typeof normalizedMessage.subject === 'string' ? normalizedMessage.subject.trim() : ''
+    const conciseSubject = subject.length > 120 ? `${subject.slice(0, 117).trimEnd()}...` : subject
+
+    return conciseSubject
+        ? `I suggest this task because the automatically processed email “${conciseSubject}” appears to require follow-up.`
+        : 'I suggest this task because an automatically processed email appears to require follow-up.'
 }
 
 async function addRoutingCommentsToCreatedGmailTasks({
@@ -1259,6 +1270,7 @@ async function executePostLabelPrompt({
             targetContactName,
             topicChatTitle,
             followUpType,
+            taskSuggestionComment: buildPostLabelTaskSuggestionComment(normalizedMessage),
         })
         const toolRuntimeContext = {
             projectId: assistantProjectId,

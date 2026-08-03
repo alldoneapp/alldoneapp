@@ -5131,6 +5131,7 @@ async function executeToolNatively(
             const { TaskService } = require('../shared/TaskService')
             const moment = require('moment-timezone')
             const db = admin.firestore()
+            const isGmailLabelFollowUp = toolRuntimeContext?.gmailContext?.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN
             const gmailLabelMatchedProjectId = getGmailLabelFollowUpSelectedProjectId(toolRuntimeContext)
             const assistantProvidedProjectReasoning = gmailLabelMatchedProjectId
                 ? ''
@@ -5138,8 +5139,24 @@ async function executeToolNatively(
             const projectRoutingConfidence = gmailLabelMatchedProjectId
                 ? null
                 : normalizeCreateTaskProjectRoutingConfidence(toolArgs.projectRoutingConfidence)
-            const taskOrigin = toolArgs.taskOrigin === 'assistant_suggestion' ? 'assistant_suggestion' : 'user_request'
-            const taskComment = typeof toolArgs.comment === 'string' ? toolArgs.comment.trim() : ''
+            // A post-label Gmail run is automation, not a user request. Keep that boundary
+            // authoritative on the server because a model can still misclassify the tool call
+            // (for example, treating the automation prompt itself as the user's request).
+            const taskOrigin =
+                isGmailLabelFollowUp || toolArgs.taskOrigin === 'assistant_suggestion'
+                    ? 'assistant_suggestion'
+                    : 'user_request'
+            const providedTaskComment = typeof toolArgs.comment === 'string' ? toolArgs.comment.trim() : ''
+            const gmailSuggestionComment =
+                typeof toolRuntimeContext?.gmailContext?.taskSuggestionComment === 'string'
+                    ? toolRuntimeContext.gmailContext.taskSuggestionComment.trim()
+                    : ''
+            const taskComment =
+                providedTaskComment ||
+                (isGmailLabelFollowUp
+                    ? gmailSuggestionComment ||
+                      'I suggest this task because an automatically processed email appears to require follow-up.'
+                    : '')
             const isAssistantSuggestion = taskOrigin === 'assistant_suggestion'
 
             if (taskComment && !assistantId) {
@@ -5341,9 +5358,6 @@ async function executeToolNatively(
                 // afterwards using the classifier's reasoning/confidence. Skip the assistant_create_task
                 // comment here to avoid two contradictory "I chose X because…" comments on the same task.
                 // Other flows (e.g. WhatsApp, normal chat) have no labeling step and keep this comment.
-                const isGmailLabelFollowUp =
-                    toolRuntimeContext?.gmailContext?.origin === GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN
-
                 let projectSelectionComment = null
                 if (isGmailLabelFollowUp) {
                     console.log(

@@ -2941,6 +2941,7 @@ describe('assistant create_task project routing comments', () => {
             'create_task',
             {
                 name: 'Bereitstellung der Rechnung 004 fuer JTL',
+                taskOrigin: 'user_request',
                 projectName: 'Bechtle',
                 projectRoutingReason: 'the task is for Bechtle operations',
             },
@@ -2962,6 +2963,8 @@ describe('assistant create_task project routing comments', () => {
                     threadId: 'thread-1',
                     webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
                     archiveOnComplete: true,
+                    taskSuggestionComment:
+                        'I suggest this task because the invoice email appears to require follow-up.',
                 },
             }
         )
@@ -2970,6 +2973,9 @@ describe('assistant create_task project routing comments', () => {
             expect.objectContaining({
                 name: 'Bereitstellung der Rechnung 004 fuer JTL',
                 projectId: 'project-jtl',
+                creatorId: 'assistant-1',
+                suggestedBy: 'assistant-1',
+                taskMetadata: { assistantSuggestion: { assistantId: 'assistant-1' } },
                 gmailData: expect.objectContaining({
                     origin: 'gmail_label_follow_up',
                     projectId: 'gmail-connection-project',
@@ -2985,6 +2991,17 @@ describe('assistant create_task project routing comments', () => {
         )
         expect(result.projectId).toBe('project-jtl')
         expect(result.projectName).toBe('JTL Software - Project Juno')
+        expect(result).toMatchObject({
+            taskOrigin: 'assistant_suggestion',
+            suggested: true,
+            commentId: 'task-comment-1',
+        })
+        expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            projectId: 'project-jtl',
+            taskId: 'task-jtl',
+            assistantId: 'assistant-1',
+            comment: 'I suggest this task because the invoice email appears to require follow-up.',
+        })
         expect(result.projectSelection).toMatchObject({
             source: 'gmailLabelMatchedProject',
             reasoning:
