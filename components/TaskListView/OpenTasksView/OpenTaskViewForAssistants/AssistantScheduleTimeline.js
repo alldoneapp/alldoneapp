@@ -32,6 +32,7 @@ function AssistantScheduleRow({ projectId, tasksProjectId, assistant, occurrence
     const timeLabel = `${time.format(getTimeFormat())} ${timezoneAbbreviation}`.trim()
     const recurrenceTask = { ...occurrence.task, recurrence: occurrence.recurrence }
     const executionMode = getTaskExecutionMode(occurrence.task, TASK_EXECUTION_MODE_DIRECT)
+    const isMobile = smallScreenNavigation || smallScreenNavSidebarCollapsed
     const tagElements = [
         { key: 'time', element: <DateTag date={timeLabel} icon="clock" disabled /> },
         {
@@ -41,10 +42,10 @@ function AssistantScheduleRow({ projectId, tasksProjectId, assistant, occurrence
         executionMode === TASK_EXECUTION_MODE_DIRECT
             ? {
                   key: 'bypass-workflow',
-                  element: <TaskTypeTag icon="fast-forward" text="Bypass workflow" />,
+                  element: <TaskTypeTag icon="fast-forward" text="Bypass workflow" iconOnly={isMobile} />,
               }
             : null,
-        occurrence.user ? { key: 'user', element: <UserTag user={occurrence.user} /> } : null,
+        occurrence.user ? { key: 'user', element: <UserTag user={occurrence.user} onlyPhoto={isMobile} /> } : null,
         occurrence.status === 'failed'
             ? {
                   key: 'needs-attention',
@@ -59,7 +60,6 @@ function AssistantScheduleRow({ projectId, tasksProjectId, assistant, occurrence
         taskTitleIsMultiline: false,
         inMyDayAndNotSubtask: false,
     })
-    const isMobile = smallScreenNavigation || smallScreenNavSidebarCollapsed
     const needSummarize = shouldSummarizeTaskTags({
         amountTags: tagElements.length,
         inMyDayAndNotSubtask: false,

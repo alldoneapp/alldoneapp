@@ -192,7 +192,32 @@ describe('AssistantScheduleRows', () => {
         expect(tree.root.findByType('TaskTypeTag').props).toMatchObject({
             icon: 'fast-forward',
             text: 'Bypass workflow',
+            iconOnly: false,
         })
+        expect(tree.root.findByType('UserTag').props.onlyPhoto).toBe(false)
+    })
+
+    it.each([
+        ['mobile navigation', { smallScreenNavigation: true }],
+        ['collapsed mobile sidebar', { smallScreenNavSidebarCollapsed: true }],
+    ])('renders bypass workflow and assignee as icon-only tags on %s', (layout, stateOverrides) => {
+        mockState = { ...mockState, ...stateOverrides }
+        const tree = renderRows()
+
+        expect(tree.root.findByType('TaskSummarizeTags').props.amountTags).toBe(4)
+
+        expandTags(tree)
+
+        expect(tree.root.findByType('TaskTypeTag').props).toMatchObject({
+            icon: 'fast-forward',
+            text: 'Bypass workflow',
+            iconOnly: true,
+        })
+        expect(tree.root.findByType('UserTag').props).toMatchObject({
+            user: occurrence.user,
+            onlyPhoto: true,
+        })
+        expect(getExpandedTagOrder(tree)).toEqual(['time', 'recurrence', 'bypass-workflow', 'user'])
     })
 
     it('includes the failure tag last in the collapsed count and expanded order', () => {

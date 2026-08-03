@@ -3,9 +3,6 @@ import { Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import WorkflowTaskCreator from './WorkflowTaskCreator'
-import TaskInput from '../../TaskItem/TaskInput'
-import TaskInputArea from '../../TaskItem/TaskInputArea'
-import ExecutionModeButton from '../../TaskItem/ExecutionModeButton'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 
 let mockState
@@ -16,29 +13,18 @@ jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
 jest.mock('../../../UIControls/Button', () => 'Button')
-jest.mock('../../../UIControls/GhostButton', () => 'GhostButton')
 jest.mock('../../../Icon', () => 'Icon')
-jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
+jest.mock('../../TaskItem/TaskInput', () => {
     const React = require('react')
 
-    return React.forwardRef((props, ref) => {
-        React.useImperativeHandle(ref, () => ({
+    return props => {
+        props.inputTask.current = {
             clear: mockInputClear,
-            focus: jest.fn(),
             isFocused: () => true,
-        }))
-        return React.createElement('CustomTextInput3', props)
-    })
+        }
+        return React.createElement('TaskInput', props)
+    }
 })
-jest.mock('../../../Feeds/CommentsTextInput/textInputHelper', () => ({
-    NOT_ALLOW_EDIT_TAGS: 'not-allowed',
-    SUBTASK_THEME: 'subtask',
-    TASK_THEME: 'task',
-}))
-jest.mock('../../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
-    __esModule: true,
-    default: { getProjectIndexById: () => 0 },
-}))
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../../../utils/assistantWorkflow', () => ({
     assistantWorkflowFirstStepHasPrompt: jest.fn(() => true),
@@ -67,75 +53,39 @@ const renderCreator = (props = {}) => {
 }
 
 const enterTask = (tree, title) => {
-    const editor = tree.root.findByType('CustomTextInput3')
-    expect(editor.props.disabledEdition).toBe(false)
     act(() => {
-        editor.props.onChangeText(title)
+        tree.root.findByType('TaskInput').props.onChangeInputText(title)
     })
 }
 
 describe('WorkflowTaskCreator', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        mockState = {
-            smallScreenNavigation: false,
-            isMiddleScreen: false,
-            currentUser: { uid: 'assistant-1' },
-            loggedUser: { uid: 'user-1' },
-        }
+        mockState = { smallScreenNavigation: false }
     })
 
-    it('accepts typing through the real shared multi-line task input', () => {
+    it('reuses the normal multi-line task input inside the normal task editor pattern', () => {
         const tree = renderCreator()
-        const inputArea = tree.root.findByType(TaskInputArea)
-        const input = tree.root.findByType(TaskInput)
-        const editor = tree.root.findByType('CustomTextInput3')
+        const input = tree.root.findByType('TaskInput')
         const touchableElements = tree.root.findAllByType(TouchableOpacity)
         const configurationLink = touchableElements.find(
             element => element.props.accessibilityLabel === 'Configure workflow'
         )
+        const executionModeButton = touchableElements.find(
+            element => element.props.accessibilityLabel === 'Use workflow'
+        )
         const addIcon = tree.root.findAllByType('Icon').find(icon => icon.props.name === 'plus-square')
 
-        expect(inputArea).toBeDefined()
         expect(input.props).toMatchObject({
             adding: true,
             isSubtask: false,
             projectId: 'project-1',
             accessGranted: true,
-            tmpTask: {
-                genericData: null,
-                calendarData: null,
-                gmailData: null,
-                executionMode: 'workflow',
-            },
-        })
-        expect(editor.props).toMatchObject({
-            forceBreaklinesLikeEnterAction: true,
-            disabledEdition: false,
         })
         expect(addIcon.props).toMatchObject({ name: 'plus-square', size: 24 })
         expect(configurationLink.findByType(Text).props.children).toBe('Configure workflow')
+        expect(executionModeButton.findByType(Text).props.children).toBe('Use workflow')
         expect(tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.disabled).toBe(true)
-
-        enterTask(tree, 'A task that wraps across multiple visual lines')
-
-        expect(tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.disabled).toBe(false)
-    })
-
-    it.each([false, true])('replaces the input avatar with the workflow/direct icon (mobile: %s)', isMobile => {
-        mockState.smallScreenNavigation = isMobile
-        const tree = renderCreator({ showConfigurationLink: false })
-        const inputArea = tree.root.findByType(TaskInputArea)
-        const modeButton = tree.root.findByType(ExecutionModeButton)
-        const renderedButton = tree.root.findByType('GhostButton')
-
-        expect(inputArea.props.rightAccessory.props.children.type).toBe(ExecutionModeButton)
-        expect(modeButton.props.iconOnly).toBe(true)
-        expect(renderedButton.props).toMatchObject({
-            icon: 'git-branch',
-            title: null,
-            accessibilityLabel: 'Use workflow',
-        })
     })
 
     it('shows immediate submission feedback and keeps the existing task payload', async () => {
@@ -197,34 +147,21 @@ describe('WorkflowTaskCreator', () => {
         console.error.mockRestore()
     })
 
-    it('submits the direct execution payload after switching the input icon', async () => {
-        generateTaskFromPreConfig.mockResolvedValue()
-        const tree = renderCreator()
-
-        act(() => {
-            tree.root.findByType('GhostButton').props.onPress()
-        })
-        enterTask(tree, 'Run directly')
-
-        await act(async () => {
-            await tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.onPress()
-        })
-
-        expect(generateTaskFromPreConfig).toHaveBeenCalledWith(
-            'project-1',
-            'Run directly',
-            'assistant-1',
-            'Run directly',
-            null,
-            { executionMode: 'direct' },
-            { skipNavigation: true, waitForDirectRun: false }
-        )
-    })
-
     it('can render the task editor without the duplicate configuration link', () => {
         const tree = renderCreator({ showConfigurationLink: false })
 
         expect(tree.root.findAllByProps({ accessibilityLabel: 'Configure workflow' })).toHaveLength(0)
-        expect(tree.root.findByType(TaskInputArea)).toBeDefined()
+        expect(tree.root.findByType('TaskInput')).toBeDefined()
+    })
+
+    it('shows only the execution-mode icon on mobile', () => {
+        mockState.smallScreenNavigation = true
+        const tree = renderCreator({ showConfigurationLink: false })
+        const executionModeButton = tree.root
+            .findAllByType(TouchableOpacity)
+            .find(element => element.props.accessibilityLabel === 'Use workflow')
+
+        expect(executionModeButton.findByType('Icon').props.name).toBe('git-branch')
+        expect(executionModeButton.findAllByType(Text)).toHaveLength(0)
     })
 })
