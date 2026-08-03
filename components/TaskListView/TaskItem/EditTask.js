@@ -51,7 +51,7 @@ import { updateNoteTitleWithoutFeed } from '../../../utils/backends/Notes/notesF
 import { updateChatTitleWithoutFeeds } from '../../../utils/backends/Chats/chatsFirestore'
 import MainButtonsArea from './MainButtonsArea'
 import SecondaryButtonsArea from './SecondaryButtonsArea'
-import TaskInputArea from './TaskInputArea'
+import TaskInput from './TaskInput'
 import CheckboxAndIcon from './CheckboxAndIcon'
 
 const generateNewTask = (useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) => {
@@ -691,45 +691,43 @@ export default function EditTask({
                 isMiddleScreen ? localStyles.containerUnderBreakpoint : undefined,
             ]}
         >
-            <TaskInputArea
-                isSubtask={isSubtask}
-                tmpTask={tmpTask}
-                adding={adding}
-                projectId={projectId}
-                accessGranted={accessGranted}
-                loggedUserCanUpdateObject={loggedUserCanUpdateObject}
-                isAssistant={isAssistant}
-                inputTask={inputTask}
-                onChangeInputText={onChangeInputText}
-                setMentionsModalActive={setMentionsModalActive}
-                getInitialText={getInitialText}
-                setInitialLinkedObject={setInitialLinkedObject}
-                onKeyEnterPressed={onKeyEnterPressed}
-                leftAccessory={
-                    <CheckboxAndIcon
-                        tmpTask={tmpTask}
-                        isSubtask={isSubtask}
-                        adding={adding}
-                        accessGranted={accessGranted}
-                        showArrowInAnonymous={showArrowInAnonymous}
-                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
-                        isAssistant={isAssistant}
-                        projectId={projectId}
-                        editModeCheckOff={editModeCheckOff}
-                        dismissEditMode={dismissEditMode}
-                    />
-                }
-                rightAccessory={
-                    <EditAssigneeWrapper
-                        tmpTask={tmpTask}
-                        projectId={projectId}
-                        disabled={!hasName || !accessGranted || isSubtaskInGuide}
-                        saveAssigneeBeforeSaveTask={setAssigneeBeforeSave}
-                        onDismissPopup={onDismissPopup}
-                        isAssistant={isAssistant}
-                    />
-                }
-            />
+            <View style={[localStyles.inputContainer, isSubtask ? localStyles.subtaskInputContainer : undefined]}>
+                <CheckboxAndIcon
+                    tmpTask={tmpTask}
+                    isSubtask={isSubtask}
+                    adding={adding}
+                    accessGranted={accessGranted}
+                    showArrowInAnonymous={showArrowInAnonymous}
+                    loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                    isAssistant={isAssistant}
+                    projectId={projectId}
+                    editModeCheckOff={editModeCheckOff}
+                    dismissEditMode={dismissEditMode}
+                />
+                <TaskInput
+                    isSubtask={isSubtask}
+                    tmpTask={tmpTask}
+                    adding={adding}
+                    projectId={projectId}
+                    accessGranted={accessGranted}
+                    loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                    isAssistant={isAssistant}
+                    inputTask={inputTask}
+                    onChangeInputText={onChangeInputText}
+                    setMentionsModalActive={setMentionsModalActive}
+                    getInitialText={getInitialText}
+                    setInitialLinkedObject={setInitialLinkedObject}
+                    onKeyEnterPressed={onKeyEnterPressed}
+                />
+                <EditAssigneeWrapper
+                    tmpTask={tmpTask}
+                    projectId={projectId}
+                    disabled={!hasName || !accessGranted || isSubtaskInGuide}
+                    saveAssigneeBeforeSaveTask={setAssigneeBeforeSave}
+                    onDismissPopup={onDismissPopup}
+                    isAssistant={isAssistant}
+                />
+            </View>
             <View style={localStyles.buttonContainer}>
                 <SecondaryButtonsArea
                     tmpTask={tmpTask}
@@ -815,7 +813,15 @@ const localStyles = StyleSheet.create({
         paddingVertical: 7,
         paddingHorizontal: 9,
     },
+    inputContainer: {
+        minHeight: 59,
+        overflow: 'hidden',
+    },
     subtaskContainer: {
         backgroundColor: colors.Grey200,
+    },
+    subtaskInputContainer: {
+        minHeight: 55,
+        overflow: 'hidden',
     },
 })
