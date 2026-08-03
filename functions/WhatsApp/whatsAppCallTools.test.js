@@ -32,6 +32,11 @@ describe('WhatsApp call Realtime tools', () => {
     test('adds the server confirmation resolver and end_call control tools to allowed tools', () => {
         const schemas = buildRealtimeToolSchemas(['create_task'])
         expect(schemas.map(schema => schema.name)).toEqual(['create_task', CONFIRMATION_TOOL_NAME, END_CALL_TOOL_NAME])
+
+        const createTask = schemas.find(schema => schema.name === 'create_task')
+        expect(createTask.description).toContain('only when the end user explicitly asked')
+        expect(createTask.parameters.properties.taskOrigin.enum).toEqual(['user_request', 'assistant_suggestion'])
+        expect(createTask.parameters.properties.comment.description).toContain('context-specific reason')
     })
 
     test('the end_call control tool never requires spoken confirmation', () => {

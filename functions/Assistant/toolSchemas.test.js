@@ -164,9 +164,13 @@ describe('User memory assistant tool schemas', () => {
         const properties = toolSchemas.create_task.function.parameters.properties
 
         expect(properties.taskOrigin.enum).toEqual(['user_request', 'assistant_suggestion'])
-        expect(properties.taskOrigin.description).toContain('Defaults to user_request')
+        expect(properties.taskOrigin.description).toContain('only when the end user explicitly asked')
+        expect(properties.taskOrigin.description).toContain('automation prompt, schedule, email, or tool result')
         expect(properties.comment.description).toContain('Required and non-empty')
+        expect(properties.comment.description).toContain('context-specific reason')
+        expect(properties.comment.description).toContain('do not merely restate the title')
         expect(toolSchemas.create_task.function.description).toContain('suggested-task approval flow')
+        expect(toolSchemas.create_task.function.description).toContain('automation instruction')
         expect(toolSchemas.create_task.function.parameters.required).toEqual(['name', 'taskOrigin'])
     })
 

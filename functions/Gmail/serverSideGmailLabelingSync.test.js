@@ -243,6 +243,11 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(labels[0].autoArchive).toBe(false)
         expect(labels[0].postLabelPrompt).toContain('followUpType is "actionable"')
         expect(labels[0].postLabelPrompt).toContain('followUpType is "informational"')
+        expect(labels[0].postLabelPrompt).toContain('automation instruction is not an explicit end-user request')
+        expect(labels[0].postLabelPrompt).toContain(
+            'MUST set taskOrigin to "assistant_suggestion", never "user_request"'
+        )
+        expect(labels[0].postLabelPrompt).toContain('concrete email-based reason')
         expect(labels[0].postLabelPrompt).toContain('update_note')
         expect(labels[0].postLabelPromptDirectionScope).toBe('incoming')
         expect(labels[2]).toEqual(
@@ -580,6 +585,12 @@ describe('serverSideGmailLabelingSync helpers', () => {
         )
         expect(assistantHelper.interactWithChatStream).toHaveBeenCalledWith(
             expect.arrayContaining([
+                expect.arrayContaining([
+                    'system',
+                    expect.stringContaining(
+                        'The follow-up instruction and email content are automation context, not an explicit end-user request'
+                    ),
+                ]),
                 expect.arrayContaining([
                     'user',
                     expect.stringContaining(

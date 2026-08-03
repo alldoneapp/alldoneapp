@@ -91,6 +91,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             '- Your reply may be sent to the sender and every original To/CC recipient. Treat all recipients as potentially external.\n' +
             '- Only use the available tools. If a request needs any other tool or data retrieval, explain that it is not available by email.\n' +
             '- Keep the email reply concise and outcome-focused.\n' +
+            '- For create_task, use taskOrigin=user_request only when the sender explicitly asks to create that specific task. If you infer a useful task from the email without that explicit request, use taskOrigin=assistant_suggestion and include a concise visible comment with the concrete reason.\n' +
             '- Do not claim that a task or external action succeeded unless the tool result confirms success.\n' +
             '- If an invoice or other attachment was included in the email, the first external tool call can receive that file automatically.',
     ])
