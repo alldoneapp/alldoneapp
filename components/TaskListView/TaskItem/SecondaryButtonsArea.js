@@ -66,7 +66,7 @@ export default function SecondaryButtonsArea({
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
     const inFocusTaskId = optimisticFocusActive ? optimisticFocusTaskId : rawInFocusTaskId
-    const taskIsFocused = adding ? newTaskInFocus : !!tmpTask.id && inFocusTaskId === tmpTask.id
+    const taskIsFocused = adding ? newTaskInFocus === true : !!tmpTask.id && inFocusTaskId === tmpTask.id
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const isLockedGmailTask = isInboxSummaryGmailTask(tmpTask)
 
@@ -241,12 +241,16 @@ export default function SecondaryButtonsArea({
                         title={!smallScreen ? translate(taskIsFocused ? 'Set out of focus' : 'Set in focus') : null}
                         noBorder={smallScreen}
                         buttonStyle={
-                            taskIsFocused ? { ...buttonItemStyle, backgroundColor: colors.Primary050 } : buttonItemStyle
+                            taskIsFocused
+                                ? { ...buttonItemStyle, backgroundColor: colors.Primary050 }
+                                : { ...buttonItemStyle, backgroundColor: 'transparent' }
                         }
                         iconColor={taskIsFocused ? colors.Primary100 : colors.Text03}
                         onPress={focusTask}
                         disabled={!hasName || !accessGranted || isLoadingGoal}
                         shortcutText={'F'}
+                        accessibilityRole={'button'}
+                        accessibilityState={{ selected: taskIsFocused }}
                     />
                 </Hotkeys>
             )}

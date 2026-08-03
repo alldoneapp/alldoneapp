@@ -9,7 +9,6 @@ import { moveTasksFromMiddleOfWorkflow, moveTasksFromOpen } from '../../../../ut
 import { DONE_STEP, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
 import MainButtons from '../../../WorkflowModal/MainButtons'
 import { WORKFLOW_BACKWARD } from '../../../WorkflowModal/workflowDirections'
-import { getWorkflowStepName } from '../../../WorkflowModal/workflowNavigation'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
@@ -115,9 +114,12 @@ export default function CommentPopupWorkflowControls({
 
     if (!targets) return null
 
-    const currentStepLabel = getWorkflowStepName(workflow, targets.currentStepId)
-    const backwardStepName = getWorkflowStepName(workflow, targets.backwardStepId)
-    const forwardStepName = getWorkflowStepName(workflow, targets.forwardStepId)
+    const currentStepLabel =
+        targets.currentStepId === OPEN_STEP ? translate('Open') : workflow[targets.currentStepId]?.description
+    const backwardStepName =
+        targets.backwardStepId === OPEN_STEP ? translate('Open') : workflow[targets.backwardStepId]?.description
+    const forwardStepName =
+        targets.forwardStepId === DONE_STEP ? translate('Done') : workflow[targets.forwardStepId]?.description
 
     const moveTaskToStep = async (stepToMoveId, source) => {
         if (disabled || submittingRef.current) return
