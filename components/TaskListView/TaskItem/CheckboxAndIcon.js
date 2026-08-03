@@ -38,7 +38,6 @@ export default function CheckboxAndIcon({
                 isSubtask && isMiddleScreen && localStyles.subtaskIconMobile,
                 adding && localStyles.iconNew,
                 (adding || !showArrowInAnonymous) && isMiddleScreen && localStyles.iconNewMobile,
-                adding && !isSubtask && localStyles.inlineTaskIcon,
                 addingSubtask && localStyles.subtaskIconNew,
                 addingSubtask && isMiddleScreen && localStyles.subtaskIconNewMobile,
             ]}
@@ -82,9 +81,6 @@ const localStyles = StyleSheet.create({
     },
     iconNewMobile: {
         top: 7,
-        left: 7,
-    },
-    inlineTaskIcon: {
         left: 7,
     },
     subtaskIcon: {
