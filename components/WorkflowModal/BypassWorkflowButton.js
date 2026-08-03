@@ -21,7 +21,7 @@ export default function BypassWorkflowButton({ disabled, onPress }) {
 const localStyles = StyleSheet.create({
     button: {
         alignSelf: 'center',
-        marginTop: 0,
+        marginTop: -8,
         marginBottom: 12,
         paddingHorizontal: 8,
         paddingVertical: 4,
