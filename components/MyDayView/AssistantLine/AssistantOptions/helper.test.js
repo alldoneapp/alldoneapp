@@ -58,4 +58,28 @@ describe('getOptionsPresentationData', () => {
         const presentation = getOptionsPresentationData({ id: 'project-1' }, 'assistant-1', tasks, 2)
         expect(presentation.hasAdditionalOptions).toBe(false)
     })
+
+    it('excludes scheduled tasks from both collapsed and expanded quick actions', () => {
+        const tasksWithSchedules = [
+            tasks[0],
+            { id: 'scheduled-task', name: 'Daily task', type: 'prompt', recurrence: 'daily' },
+            {
+                id: 'scheduled-for-member',
+                name: 'Member task',
+                type: 'prompt',
+                recurrence: 'never',
+                recurrenceByUser: { 'user-1': 'never', 'user-2': 'weekly' },
+            },
+            tasks[1],
+        ]
+
+        const collapsed = getOptionsPresentationData({ id: 'project-1' }, 'assistant-1', tasksWithSchedules, 1)
+        expect(collapsed.optionsLikeButtons.map(option => option.id)).toEqual(['task-1'])
+        expect(collapsed.optionsInModal.map(option => option.id)).toEqual(['task-2'])
+        expect(collapsed.hasAdditionalOptions).toBe(true)
+
+        const expanded = getOptionsPresentationData({ id: 'project-1' }, 'assistant-1', tasksWithSchedules, 1, true)
+        expect(expanded.optionsLikeButtons.map(option => option.id)).toEqual(['task-1', 'task-2'])
+        expect(expanded.optionsInModal).toEqual([])
+    })
 })

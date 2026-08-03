@@ -15,15 +15,10 @@ import { getAssistantTaskIcon, isScheduledAssistantTask } from './assistantTaskI
 
 export const TASK_OPTION = 'TASK_OPTION'
 
-const sortAssistantTasksForQuickLinks = tasks => {
-    const oneTimeTasks = tasks.filter(task => !isScheduledAssistantTask(task))
-    const recurringTasks = tasks.filter(task => isScheduledAssistantTask(task))
-
-    return [...oneTimeTasks, ...recurringTasks]
-}
-
 const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
-    return sortAssistantTasksForQuickLinks(tasks).map(task => {
+    const quickLinkTasks = tasks.filter(task => !isScheduledAssistantTask(task))
+
+    return quickLinkTasks.map(task => {
         return {
             id: task.id,
             type: TASK_OPTION,
