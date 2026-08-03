@@ -9,6 +9,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import OpenTasksByProject from '../../../components/TaskListView/OpenTasksView/OpenTasksByProject'
 
 jest.mock('react-redux', () => ({
+    connect: jest.fn(() => component => component),
     useDispatch: jest.fn(),
     useSelector: jest.fn(),
     shallowEqual: jest.fn(),
