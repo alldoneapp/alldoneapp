@@ -38,7 +38,7 @@ import RecurringTaskDateBasisModal, {
     shouldShowRecurringTaskDateBasisModal,
 } from '../UIComponents/FloatModals/RecurringTaskDateBasisModal/RecurringTaskDateBasisModal'
 import { getTaskCommentAssistantProps } from '../UIComponents/FloatModals/RichCommentModal/taskCommentAssistant'
-import { getWorkflowTargetStepIndex } from './workflowNavigation'
+import { getWorkflowTargetStepIndex, getWorkflowTargetStepNames } from './workflowNavigation'
 import { WORKFLOW_FORWARD } from './workflowDirections'
 import { getWorkflowCompletionCopy } from './workflowCompletionCopy'
 import BypassWorkflowButton from './BypassWorkflowButton'
@@ -516,6 +516,7 @@ export default class WorkflowModal extends Component {
         const { nextStepDescription, nextStepPhotoURL } = this.getStepDataForTag(this.taskOwner)
         const ownerId = ownerIsWorkstream ? store.getState().loggedUser.uid : task.userId
         const completionCopy = getWorkflowCompletionCopy(steps, task, pending)
+        const targetStepNames = getWorkflowTargetStepNames(steps, selectedNextStep, this.state.selectedPreviousStep)
 
         return this.state.inRecurrenceDateBasis ? (
             <RecurringTaskDateBasisModal
@@ -668,7 +669,7 @@ export default class WorkflowModal extends Component {
                             selectedCustomStep={selectedCustomStep}
                             currentStep={currentStep}
                             disabled={disabledMainButtons}
-                            allowBackward={!task.workflowTask || currentStep > 0}
+                            {...targetStepNames}
                         />
                         <BypassWorkflowButton disabled={disabledMainButtons} onPress={this.onBypassWorkflowPress} />
                     </View>

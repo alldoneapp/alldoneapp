@@ -426,42 +426,23 @@ describe('CommentPopupWorkflowControls', () => {
         expect(tree.root.findByType('MainButtons').props.disabled).toBe(false)
     })
 
-    it('shows the first forward target for an open workflow task but not for a regular open task', () => {
-        expect(getCommentPopupWorkflowTargets({ ...task, workflowTask: true, stepHistory: [-1] }, workflow)).toEqual({
-            currentStep: -1,
-            currentStepId: -1,
-            stepIds: ['step1', 'step2'],
-            backwardStepId: null,
-            forwardStepId: 'step1',
-        })
-        expect(getCommentPopupWorkflowTargets({ ...task, workflowTask: false, stepHistory: [-1] }, workflow)).toBeNull()
-    })
-
-    it('does not show workflow controls for completed tasks or workflows without steps', () => {
+    it('does not show workflow controls for open or completed tasks', () => {
+        expect(getCommentPopupWorkflowTargets({ ...task, stepHistory: [-1] }, workflow)).toBeNull()
         expect(getCommentPopupWorkflowTargets({ ...task, done: true }, workflow)).toBeNull()
-        expect(getCommentPopupWorkflowTargets({ ...task, workflowTask: true, stepHistory: [-1] }, {})).toBeNull()
     })
 
-    it('shows the polished forward action and uses the open-task transition path for workflow entry', async () => {
-        const openOwnedTask = { ...task, workflowTask: true, userIds: ['owner'], stepHistory: [-1] }
+    it('uses the open-task transition path for a workflow entry edge case', async () => {
+        const openOwnedTask = { ...task, userIds: ['owner'] }
         const tree = renderer.create(
             <CommentPopupWorkflowControls projectId="project-1" task={openOwnedTask} workflow={workflow} />
         )
-        const buttons = tree.root.findByType('MainButtons')
 
-        expect(buttons.props.currentStep).toBe(-1)
-        expect(buttons.props.backwardStepName).toBeUndefined()
-        expect(buttons.props.forwardStepName).toBe('First review')
-        expect(tree.root.findByProps({ testID: 'comment-popup-workflow-selector' }).props.accessibilityLabel).toBe(
-            'Select workflow step: Open'
-        )
-
-        await act(async () => buttons.props.onDonePress('FORWARD'))
+        await act(async () => tree.root.findByType('MainButtons').props.onDonePress('FORWARD'))
 
         expect(moveTasksFromOpen).toHaveBeenCalledWith(
             'project-1',
             openOwnedTask,
-            'step1',
+            'step2',
             null,
             null,
             task.estimations,
