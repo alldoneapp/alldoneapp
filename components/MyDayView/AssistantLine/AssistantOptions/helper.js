@@ -9,24 +9,15 @@ import {
 } from '../../../AdminPanel/Assistants/assistantsHelper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
-import { RECURRENCE_NEVER } from '../../../TaskListView/Utils/TasksHelper'
 import store from '../../../../redux/store'
 import { setPreConfigTaskExecuting } from '../../../../redux/actions'
+import { getAssistantTaskIcon, isScheduledAssistantTask } from './assistantTaskIcon'
 
 export const TASK_OPTION = 'TASK_OPTION'
 
-const isRecurringAssistantTask = task => {
-    const recurrenceByUser = task?.recurrenceByUser || {}
-    const hasRecurringUser = Object.values(recurrenceByUser).some(
-        recurrence => recurrence && recurrence !== RECURRENCE_NEVER
-    )
-
-    return hasRecurringUser || (!!task?.recurrence && task.recurrence !== RECURRENCE_NEVER)
-}
-
 const sortAssistantTasksForQuickLinks = tasks => {
-    const oneTimeTasks = tasks.filter(task => !isRecurringAssistantTask(task))
-    const recurringTasks = tasks.filter(task => isRecurringAssistantTask(task))
+    const oneTimeTasks = tasks.filter(task => !isScheduledAssistantTask(task))
+    const recurringTasks = tasks.filter(task => isScheduledAssistantTask(task))
 
     return [...oneTimeTasks, ...recurringTasks]
 }
@@ -37,7 +28,7 @@ const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
             id: task.id,
             type: TASK_OPTION,
             text: showFullLabels ? task.name : shrinkTagText(task.name, 16),
-            icon: task.type === TASK_TYPE_PROMPT ? 'cpu' : 'bookmark',
+            icon: getAssistantTaskIcon(task),
             task,
             action: () => {
                 if (task.type === TASK_TYPE_IFRAME) {

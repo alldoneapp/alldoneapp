@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
 import Icon from '../../../Icon'
@@ -14,27 +14,44 @@ import NavigationService from '../../../../utils/NavigationService'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW } from '../../../../utils/taskExecutionMode'
 
-export default function WorkflowTaskCreator({ projectId, assistant, disabled }) {
+const openAssistantWorkflow = (projectId, assistant, dispatch) => {
+    NavigationService.navigate('AssistantDetailedView', {
+        assistantId: assistant.uid,
+        projectId,
+    })
+    dispatch(setSelectedNavItem(DV_TAB_ASSISTANT_WORKFLOW))
+    URLsAssistants.push(
+        URL_ASSISTANT_DETAILS_WORKFLOW,
+        { projectId, assistantId: assistant.uid },
+        projectId,
+        assistant.uid
+    )
+}
+
+export function WorkflowConfigurationLink({ projectId, assistant }) {
     const dispatch = useDispatch()
+
+    return (
+        <TouchableOpacity
+            style={localStyles.configurationLink}
+            onPress={() => openAssistantWorkflow(projectId, assistant, dispatch)}
+            activeOpacity={0.6}
+            accessibilityRole="link"
+            accessibilityLabel={translate('Configure workflow')}
+        >
+            <Text style={localStyles.configurationLinkText}>{translate('Configure workflow')}</Text>
+        </TouchableOpacity>
+    )
+}
+
+export default function WorkflowTaskCreator({ projectId, assistant, disabled, showConfigurationLink = true }) {
+    const dispatch = useDispatch()
+    const isMobile = useSelector(state => state.smallScreenNavigation)
     const [title, setTitle] = useState('')
     const [creating, setCreating] = useState(false)
     const [showWorkflowWarning, setShowWorkflowWarning] = useState(false)
     const [creationError, setCreationError] = useState('')
     const [executionMode, setExecutionMode] = useState(TASK_EXECUTION_MODE_WORKFLOW)
-
-    const openWorkflow = () => {
-        NavigationService.navigate('AssistantDetailedView', {
-            assistantId: assistant.uid,
-            projectId,
-        })
-        dispatch(setSelectedNavItem(DV_TAB_ASSISTANT_WORKFLOW))
-        URLsAssistants.push(
-            URL_ASSISTANT_DETAILS_WORKFLOW,
-            { projectId, assistantId: assistant.uid },
-            projectId,
-            assistant.uid
-        )
-    }
 
     const createWorkflowTask = async () => {
         const trimmedTitle = title.trim()
@@ -73,18 +90,12 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled }) 
     }
 
     return (
-        <View style={localStyles.container}>
-            <View style={localStyles.headerRow}>
-                <TouchableOpacity
-                    style={localStyles.configurationLink}
-                    onPress={openWorkflow}
-                    activeOpacity={0.6}
-                    accessibilityRole="link"
-                    accessibilityLabel={translate('Configure workflow')}
-                >
-                    <Text style={localStyles.configurationLinkText}>{translate('Configure workflow')}</Text>
-                </TouchableOpacity>
-            </View>
+        <View style={[localStyles.container, !showConfigurationLink && localStyles.timelineContainer]}>
+            {showConfigurationLink && (
+                <View style={localStyles.headerRow}>
+                    <WorkflowConfigurationLink projectId={projectId} assistant={assistant} />
+                </View>
+            )}
             <View style={[localStyles.inputRow, disabled && localStyles.disabled]}>
                 <TouchableOpacity
                     style={localStyles.addButton}
@@ -111,7 +122,7 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled }) 
                     returnKeyType="done"
                 />
                 <TouchableOpacity
-                    style={localStyles.executionModeButton}
+                    style={[localStyles.executionModeButton, isMobile && localStyles.executionModeButtonMobile]}
                     onPress={() =>
                         setExecutionMode(currentMode =>
                             currentMode === TASK_EXECUTION_MODE_WORKFLOW
@@ -130,9 +141,13 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled }) 
                         size={16}
                         color={colors.Text03}
                     />
-                    <Text style={localStyles.executionModeText}>
-                        {translate(executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow')}
-                    </Text>
+                    {!isMobile && (
+                        <Text style={localStyles.executionModeText}>
+                            {translate(
+                                executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow'
+                            )}
+                        </Text>
+                    )}
                 </TouchableOpacity>
             </View>
             {showWorkflowWarning && (
@@ -142,7 +157,11 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled }) 
                             {translate('Define the first workflow step prompt before creating a workflow task')}
                         </Text>
                     </View>
-                    <Button type="ghost" title={translate('Open workflow')} onPress={openWorkflow} />
+                    <Button
+                        type="ghost"
+                        title={translate('Open workflow')}
+                        onPress={() => openAssistantWorkflow(projectId, assistant, dispatch)}
+                    />
                 </View>
             )}
             {!!creationError && <Text style={[styles.body2, localStyles.error]}>{creationError}</Text>}
@@ -153,6 +172,9 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled }) 
 const localStyles = StyleSheet.create({
     container: {
         marginBottom: 24,
+    },
+    timelineContainer: {
+        marginBottom: 0,
     },
     headerRow: {
         minHeight: 22,
@@ -203,6 +225,11 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         borderRadius: 14,
         backgroundColor: colors.Grey200,
+    },
+    executionModeButtonMobile: {
+        width: 28,
+        paddingHorizontal: 0,
+        justifyContent: 'center',
     },
     executionModeText: {
         ...styles.caption2,

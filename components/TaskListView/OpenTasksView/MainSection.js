@@ -34,7 +34,6 @@ import EmptyGoal from './EmptyGoal'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 import SortModeActiveInfo from '../../GoalsView/SortModeActiveInfo'
-import AssistantAddTaskInfo from './AssistantAddTaskInfo'
 import { getGoalData, watchGoal } from '../../../utils/backends/Goals/goalsFirestore'
 import { unwatch } from '../../../utils/backends/firestore'
 import TasksHelper from '../Utils/TasksHelper'
@@ -422,9 +421,8 @@ export default function MainSection({
                             {accessGranted &&
                                 loggedUserCanUpdateObject &&
                                 !isTemplateProject &&
-                                (isAssistant ? (
-                                    <AssistantAddTaskInfo containerStyle={{ paddingLeft: 8 }} />
-                                ) : isActiveOrganizeMode ? (
+                                !isAssistant &&
+                                (isActiveOrganizeMode ? (
                                     <SortModeActiveInfo containerStyle={{ paddingLeft: 8 }} />
                                 ) : (
                                     <NewTaskSection
@@ -449,9 +447,8 @@ export default function MainSection({
                             {accessGranted &&
                                 loggedUserCanUpdateObject &&
                                 isTemplateProject &&
-                                (isAssistant ? (
-                                    <AssistantAddTaskInfo containerStyle={{ paddingLeft: 8 }} />
-                                ) : isActiveOrganizeMode ? (
+                                !isAssistant &&
+                                (isActiveOrganizeMode ? (
                                     <SortModeActiveInfo containerStyle={{ paddingLeft: 8 }} />
                                 ) : (
                                     <NewTaskSection
