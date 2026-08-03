@@ -247,6 +247,22 @@ function EmailLabelModal({
         openUrlInNewTab(getEmailAccountWebUrl(section.provider, section.emailAddress))
     }
 
+    const renderAccountHeader = section => (
+        <View key={`account:${sectionKey(section)}`} style={localStyles.accountHeader}>
+            <Text style={[styles.caption2, localStyles.accountHeaderText]} numberOfLines={1}>
+                {[getProviderLabel(section.provider), section.emailAddress].filter(Boolean).join(' · ')}
+            </Text>
+            <TouchableOpacity
+                style={localStyles.accountOpenButton}
+                onPress={() => openAccount(section)}
+                accessibilityLabel={translate('Open email account')}
+            >
+                <Icon name="external-link" size={12} color={colors.Primary100} />
+                <Text style={[styles.caption2, localStyles.accountOpenButtonText]}>{translate('Open account')}</Text>
+            </TouchableOpacity>
+        </View>
+    )
+
     const openIntegrations = () => {
         closePopover()
         SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_INTEGRATIONS)
@@ -538,9 +554,12 @@ function EmailLabelModal({
 
             <CustomScrollView style={localStyles.list} showsVerticalScrollIndicator={false}>
                 {showLoading ? (
-                    <View style={localStyles.centered}>
-                        <ActivityIndicator color={colors.Primary100} />
-                    </View>
+                    <>
+                        {entries.map(renderAccountHeader)}
+                        <View style={localStyles.centered}>
+                            <ActivityIndicator color={colors.Primary100} />
+                        </View>
+                    </>
                 ) : loadFailed ? (
                     // Every account's list call failed: an empty list here would read as "this label
                     // has no inbox mail", which is exactly the confusion this state exists to prevent.
@@ -566,23 +585,7 @@ function EmailLabelModal({
                 ) : (
                     sections.map(section => (
                         <View key={sectionKey(section)}>
-                            <View style={localStyles.accountHeader}>
-                                <Text style={[styles.caption2, localStyles.accountHeaderText]} numberOfLines={1}>
-                                    {[getProviderLabel(section.provider), section.emailAddress]
-                                        .filter(Boolean)
-                                        .join(' · ')}
-                                </Text>
-                                <TouchableOpacity
-                                    style={localStyles.accountOpenButton}
-                                    onPress={() => openAccount(section)}
-                                    accessibilityLabel={translate('Open email account')}
-                                >
-                                    <Icon name="external-link" size={12} color={colors.Primary100} />
-                                    <Text style={[styles.caption2, localStyles.accountOpenButtonText]}>
-                                        {translate('Open account')}
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
+                            {renderAccountHeader(section)}
                             {section.messages.map(row => (
                                 <EmailRow
                                     key={selectionKey(section.connectionId, section.labelId, row.messageId)}
