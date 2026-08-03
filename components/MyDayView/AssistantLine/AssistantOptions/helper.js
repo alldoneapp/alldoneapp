@@ -98,14 +98,16 @@ export const getOptionsPresentationData = (
     showAllOptions = false
 ) => {
     const options = getOptions(project, defaultAssistantId, tasks, showAllOptions)
+    const hasAdditionalOptions = options.length > amountOfButtonOptions
+
     if (showAllOptions) {
-        return { optionsLikeButtons: options, optionsInModal: [], showSubmenu: false }
+        return { optionsLikeButtons: options, optionsInModal: [], showSubmenu: false, hasAdditionalOptions }
     }
     const optionsLikeButtons = options.slice(0, amountOfButtonOptions)
     const optionsInModal = options.slice(amountOfButtonOptions)
     const showSubmenu = optionsInModal.length > 0
 
-    return { optionsLikeButtons, optionsInModal, showSubmenu }
+    return { optionsLikeButtons, optionsInModal, showSubmenu, hasAdditionalOptions }
 }
 
 export const getCommentData = (
