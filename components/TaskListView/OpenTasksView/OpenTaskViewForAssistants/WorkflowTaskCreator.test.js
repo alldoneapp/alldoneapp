@@ -1,11 +1,12 @@
 import React from 'react'
-import { Text, TextInput, TouchableOpacity } from 'react-native'
+import { Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import WorkflowTaskCreator from './WorkflowTaskCreator'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 
 let mockState
+const mockInputClear = jest.fn()
 
 jest.mock('react-redux', () => ({
     useDispatch: () => jest.fn(),
@@ -13,6 +14,17 @@ jest.mock('react-redux', () => ({
 }))
 jest.mock('../../../UIControls/Button', () => 'Button')
 jest.mock('../../../Icon', () => 'Icon')
+jest.mock('../../TaskItem/TaskInput', () => {
+    const React = require('react')
+
+    return props => {
+        props.inputTask.current = {
+            clear: mockInputClear,
+            isFocused: () => true,
+        }
+        return React.createElement('TaskInput', props)
+    }
+})
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../../../utils/assistantWorkflow', () => ({
     assistantWorkflowFirstStepHasPrompt: jest.fn(() => true),
@@ -30,69 +42,76 @@ jest.mock('../../../../utils/NavigationService', () => ({
     default: { navigate: jest.fn() },
 }))
 
+const renderCreator = (props = {}) => {
+    let tree
+    act(() => {
+        tree = renderer.create(
+            <WorkflowTaskCreator projectId="project-1" assistant={{ uid: 'assistant-1' }} disabled={false} {...props} />
+        )
+    })
+    return tree
+}
+
+const enterTask = (tree, title) => {
+    act(() => {
+        tree.root.findByType('TaskInput').props.onChangeInputText(title)
+    })
+}
+
 describe('WorkflowTaskCreator', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        mockState = { loggedUser: { uid: 'user-1' }, smallScreenNavigation: false }
+        mockState = { smallScreenNavigation: false }
     })
 
-    it('uses the same flat plus-square entry pattern as the normal add-task line', () => {
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <WorkflowTaskCreator projectId="project-1" assistant={{ uid: 'assistant-1' }} disabled={false} />
-            )
-        })
-
-        const input = tree.root.findByType(TextInput)
+    it('reuses the normal multi-line task input inside the normal task editor pattern', () => {
+        const tree = renderCreator()
+        const input = tree.root.findByType('TaskInput')
         const touchableElements = tree.root.findAllByType(TouchableOpacity)
-        const addButton = touchableElements.find(element => element.props.accessibilityLabel === 'Add task')
         const configurationLink = touchableElements.find(
             element => element.props.accessibilityLabel === 'Configure workflow'
         )
-        const icons = tree.root.findAllByType('Icon')
-        const addIcon = icons.find(icon => icon.props.name === 'plus-square')
         const executionModeButton = touchableElements.find(
             element => element.props.accessibilityLabel === 'Use workflow'
         )
+        const addIcon = tree.root.findAllByType('Icon').find(icon => icon.props.name === 'plus-square')
 
-        expect(input.props.placeholder).toBe('Type to add new task')
-        expect(addIcon.props).toMatchObject({
-            name: 'plus-square',
-            size: 24,
+        expect(input.props).toMatchObject({
+            adding: true,
+            isSubtask: false,
+            projectId: 'project-1',
+            accessGranted: true,
         })
-        expect(addButton.props.accessibilityLabel).toBe('Add task')
+        expect(addIcon.props).toMatchObject({ name: 'plus-square', size: 24 })
         expect(configurationLink.findByType(Text).props.children).toBe('Configure workflow')
-        expect(executionModeButton).toBeDefined()
         expect(executionModeButton.findByType(Text).props.children).toBe('Use workflow')
-        expect(tree.root.findAllByType('Button')).toHaveLength(0)
+        expect(tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.disabled).toBe(true)
     })
 
-    it('clears the input immediately while task creation continues in the background', async () => {
+    it('shows immediate submission feedback and keeps the existing task payload', async () => {
         let resolveCreation
         generateTaskFromPreConfig.mockReturnValue(
             new Promise(resolve => {
                 resolveCreation = resolve
             })
         )
-
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <WorkflowTaskCreator projectId="project-1" assistant={{ uid: 'assistant-1' }} disabled={false} />
-            )
-        })
-
-        act(() => {
-            tree.root.findByType(TextInput).props.onChangeText('Create this task')
-        })
+        const tree = renderCreator()
+        enterTask(tree, 'Create this task')
 
         let creationPromise
         act(() => {
-            creationPromise = tree.root.findByType(TextInput).props.onSubmitEditing()
+            creationPromise = tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.onPress()
         })
 
-        expect(tree.root.findByType(TextInput).props.value).toBe('')
+        const submittingButton = tree.root.findByProps({ accessibilityLabel: 'Submit' })
+        const submittingFeedback = tree.root.findByProps({ accessibilityLiveRegion: 'polite' })
+        expect(submittingButton.props).toMatchObject({
+            disabled: true,
+            processing: true,
+            processingTitle: 'Submitting task',
+        })
+        expect(submittingFeedback.props.children).toBe('Submitting task')
+        expect(mockInputClear).not.toHaveBeenCalled()
         expect(generateTaskFromPreConfig).toHaveBeenCalledWith(
             'project-1',
             'Create this task',
@@ -107,40 +126,37 @@ describe('WorkflowTaskCreator', () => {
             resolveCreation()
             await creationPromise
         })
+
+        expect(mockInputClear).toHaveBeenCalledTimes(1)
+        expect(tree.root.findByProps({ accessibilityLiveRegion: 'polite' }).props.children).toBe('Task submitted')
     })
 
-    it('can render only the add-task row when configuration is shown in the Tasks header', () => {
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <WorkflowTaskCreator
-                    projectId="project-1"
-                    assistant={{ uid: 'assistant-1' }}
-                    disabled={false}
-                    showConfigurationLink={false}
-                />
-            )
+    it('retains the entered task and shows an error when submission fails', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {})
+        generateTaskFromPreConfig.mockRejectedValue(new Error('network error'))
+        const tree = renderCreator()
+        enterTask(tree, 'Retry this task')
+
+        await act(async () => {
+            await tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.onPress()
         })
+
+        expect(mockInputClear).not.toHaveBeenCalled()
+        expect(tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.disabled).toBe(false)
+        expect(tree.root.findByProps({ children: 'The workflow task could not be created' })).toBeDefined()
+        console.error.mockRestore()
+    })
+
+    it('can render the task editor without the duplicate configuration link', () => {
+        const tree = renderCreator({ showConfigurationLink: false })
 
         expect(tree.root.findAllByProps({ accessibilityLabel: 'Configure workflow' })).toHaveLength(0)
-        expect(tree.root.findByType(TextInput).props.placeholder).toBe('Type to add new task')
+        expect(tree.root.findByType('TaskInput')).toBeDefined()
     })
 
-    it('shows only the execution-mode icon in the mobile add-task row', () => {
+    it('shows only the execution-mode icon on mobile', () => {
         mockState.smallScreenNavigation = true
-
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <WorkflowTaskCreator
-                    projectId="project-1"
-                    assistant={{ uid: 'assistant-1' }}
-                    disabled={false}
-                    showConfigurationLink={false}
-                />
-            )
-        })
-
+        const tree = renderCreator({ showConfigurationLink: false })
         const executionModeButton = tree.root
             .findAllByType(TouchableOpacity)
             .find(element => element.props.accessibilityLabel === 'Use workflow')
