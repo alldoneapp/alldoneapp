@@ -1,7 +1,6 @@
 'use strict'
 
 const GMAIL_LABELING_PROMPT_MODE_DEFAULT = 'default'
-const MAX_CLASSIFIER_LABEL_DESCRIPTION_CHARS = 900
 const MAX_CLASSIFIER_BODY_CHARS = 12000
 
 const GMAIL_ACTIONABILITY_GUIDANCE =
@@ -30,7 +29,7 @@ function buildClassifierLabelDefinitions(labelDefinitions = []) {
         .map(label => ({
             key: label.key,
             gmailLabelName: label.gmailLabelName || '',
-            description: String(label.description || '').slice(0, MAX_CLASSIFIER_LABEL_DESCRIPTION_CHARS),
+            description: String(label.description || ''),
         }))
         .sort((a, b) => String(a.key).localeCompare(String(b.key)))
 }

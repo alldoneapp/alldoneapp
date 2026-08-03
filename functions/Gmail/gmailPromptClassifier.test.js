@@ -57,18 +57,19 @@ describe('gmailPromptClassifier', () => {
     })
 
     test('strips action fields from labels and caps large email bodies before prompting', () => {
+        const fullDescription = 'Project work '.repeat(200)
         expect(
             buildClassifierLabelDefinitions([
                 {
                     key: 'project_jtl',
                     gmailLabelName: 'JTL',
-                    description: 'Project work',
+                    description: fullDescription,
                     postLabelPrompt: 'Create tasks and update notes with a long prompt',
                     autoArchive: true,
                     sourceProjectId: 'project-1',
                 },
             ])
-        ).toEqual([{ key: 'project_jtl', gmailLabelName: 'JTL', description: 'Project work' }])
+        ).toEqual([{ key: 'project_jtl', gmailLabelName: 'JTL', description: fullDescription }])
 
         const compactMessage = buildClassifierMessage({ subject: 'Hello', bodyText: 'x'.repeat(20000) })
         expect(compactMessage.subject).toBe('Hello')
