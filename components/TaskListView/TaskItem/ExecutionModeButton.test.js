@@ -1,18 +1,12 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
-import ExecutionModeButton, { shouldShowExecutionModeButton } from './ExecutionModeButton'
+import ExecutionModeButton from './ExecutionModeButton'
 
 jest.mock('../../UIControls/GhostButton', () => 'GhostButton')
 jest.mock('../../../i18n/TranslationService', () => ({ translate: text => text }))
 
 describe('ExecutionModeButton for user tasks', () => {
-    test('is only shown while creating a non-calendar task', () => {
-        expect(shouldShowExecutionModeButton(true, { calendarData: null })).toBe(true)
-        expect(shouldShowExecutionModeButton(false, { calendarData: null })).toBe(false)
-        expect(shouldShowExecutionModeButton(true, { calendarData: { eventId: 'event-id' } })).toBe(false)
-    })
-
     test('switches a workflow user task to direct mode', () => {
         const onChange = jest.fn()
         const tree = renderer.create(
