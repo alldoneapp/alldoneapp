@@ -2083,5 +2083,8 @@
     "Retry assistant task": "Assistentenaufgabe erneut versuchen",
     "Task flow": "Aufgabenablauf",
     "Use workflow": "Workflow verwenden",
-    "Bypass workflow": "Workflow umgehen"
+    "Bypass workflow": "Workflow umgehen",
+    "Submit": "Absenden",
+    "Submitting task": "Aufgabe wird übermittelt...",
+    "Task submitted": "Aufgabe übermittelt."
 }
