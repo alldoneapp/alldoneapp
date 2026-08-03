@@ -8,7 +8,9 @@ import {
     getTaskExecutionMode,
 } from '../../../utils/taskExecutionMode'
 
-export default function ExecutionModeButton({ task, disabled, onChange, style }) {
+export const shouldShowExecutionModeButton = (adding, task) => adding && !task.calendarData
+
+export default function ExecutionModeButton({ task, disabled, onChange, style, iconOnly = false }) {
     const executionMode = getTaskExecutionMode(task)
     const usesWorkflow = executionMode === TASK_EXECUTION_MODE_WORKFLOW
     const nextMode = usesWorkflow ? TASK_EXECUTION_MODE_DIRECT : TASK_EXECUTION_MODE_WORKFLOW
@@ -18,7 +20,7 @@ export default function ExecutionModeButton({ task, disabled, onChange, style })
         <GhostButton
             type="ghost"
             icon={usesWorkflow ? 'git-branch' : 'fast-forward'}
-            title={label}
+            title={iconOnly ? null : label}
             buttonStyle={style}
             disabled={disabled}
             onPress={() => onChange(nextMode)}

@@ -9,6 +9,7 @@ import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/Proj
 import {
     AMOUNT_TASKS_INDEX,
     DATE_TASK_INDEX,
+    TODAY_DATE,
     watchAllGoals,
     watchAllMilestones,
 } from '../../../utils/backends/openTasks'
@@ -41,6 +42,7 @@ export default function OpenTasksByProject({
     assistantProfileMode = false,
     assistantScheduleOccurrences = [],
     assistantScheduleContext = null,
+    assistantTaskCreatorContext = null,
 }) {
     const dispatch = useDispatch()
     const projectIndex = useSelector(state => state.loggedUserProjectsMap[projectId]?.index)
@@ -209,6 +211,11 @@ export default function OpenTasksByProject({
                                 assistantProfileMode={assistantProfileMode}
                                 assistantScheduleOccurrences={timelineDate.occurrences}
                                 assistantScheduleContext={assistantScheduleContext}
+                                assistantTaskCreatorContext={
+                                    assistantProfileMode && timelineDate.dateKey === TODAY_DATE
+                                        ? assistantTaskCreatorContext
+                                        : null
+                                }
                             />
                         ) : (
                             <AssistantScheduleDateSection
