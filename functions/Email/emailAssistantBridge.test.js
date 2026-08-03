@@ -201,6 +201,65 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         )
     })
 
+    test('keeps an explicitly emailed task request as a direct user_request', async () => {
+        mockGetAssistantForChat.mockResolvedValue({
+            uid: 'assistant-1',
+            displayName: 'Anna',
+            allowedTools: ['create_task'],
+            instructions: '',
+            model: 'MODEL_GPT5_5',
+            temperature: 'TEMPERATURE_NORMAL',
+        })
+        getConversationHistory.mockResolvedValue([['user', 'Please create a task to pay invoice 42']])
+        mockExecuteToolNatively.mockResolvedValue({
+            success: true,
+            taskId: 'task-42',
+            projectId: 'project-1',
+        })
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                {
+                    additional_kwargs: {
+                        tool_calls: [
+                            {
+                                id: 'tool-1',
+                                function: {
+                                    name: 'create_task',
+                                    arguments: JSON.stringify({
+                                        name: 'Pay invoice 42',
+                                        taskOrigin: 'user_request',
+                                    }),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ])
+            .mockReturnValueOnce([{ content: 'Task created.' }])
+
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Please create a task to pay invoice 42',
+            'assistant-1'
+        )
+
+        expect(mockExecuteToolNatively).toHaveBeenCalledWith(
+            'create_task',
+            expect.objectContaining({
+                name: 'Pay invoice 42',
+                taskOrigin: 'user_request',
+                projectId: 'project-1',
+            }),
+            'project-1',
+            'assistant-1',
+            'user-1',
+            expect.any(Object),
+            expect.objectContaining({ channel: 'email' })
+        )
+    })
+
     test('attributes calendar availability to the account owner instead of Anna', async () => {
         mockGetAssistantForChat.mockResolvedValue({
             uid: 'assistant-1',

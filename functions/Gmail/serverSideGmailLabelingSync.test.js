@@ -210,6 +210,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             archiveOnComplete: true,
             direction: 'incoming',
             followUpType: 'informational',
+            taskSuggestionComment: '',
             targetContactEmail: '',
             targetContactName: '',
             topicChatTitle: '',
@@ -568,6 +569,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         archiveOnComplete: true,
                         direction: 'incoming',
                         followUpType: 'informational',
+                        taskSuggestionComment:
+                            'I suggest this task because the automatically processed email “Urgent request” appears to require follow-up.',
                         targetContactEmail: 'sender@example.com',
                         targetContactName: 'Eva-Maria Würz',
                         topicChatTitle: '',

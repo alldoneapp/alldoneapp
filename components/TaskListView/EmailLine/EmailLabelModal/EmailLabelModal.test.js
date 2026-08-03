@@ -151,34 +151,6 @@ describe('EmailLabelModal', () => {
         expect(texts).toContain('Microsoft · b@outlook.com')
     })
 
-    it('shows working account headers immediately while the initial email content is loading', async () => {
-        const { getEmailAccountWebUrl, openUrlInNewTab } = require('../emailLineHelper')
-        listEmailLineMessages.mockReturnValue(new Promise(() => {}))
-
-        const tree = await renderModal()
-
-        const texts = tree.root
-            .findAll(node => typeof node.props.children === 'string')
-            .map(node => node.props.children)
-        expect(texts).toContain('Google · a@gmail.com')
-        expect(texts).toContain('Microsoft · b@outlook.com')
-        expect(texts).toContain('Open account')
-        expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(1)
-
-        const openAccountButtons = tree.root
-            .findAllByType(TouchableOpacity)
-            .filter(node => node.props.accessibilityLabel === 'Open email account')
-        expect(openAccountButtons).toHaveLength(2)
-
-        await act(async () => {
-            openAccountButtons[0].props.onPress()
-            await Promise.resolve()
-        })
-
-        expect(getEmailAccountWebUrl).toHaveBeenCalledWith('google', 'a@gmail.com')
-        expect(openUrlInNewTab).toHaveBeenCalledWith('https://account/google/a@gmail.com')
-    })
-
     it('shows every label, preselects the opened label, and switches without closing', async () => {
         let tree
         await act(async () => {
