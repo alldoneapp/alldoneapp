@@ -91,4 +91,13 @@ describe('MainButtons layout', () => {
         expect(tree.root.findAllByType('BackwardButton')).toHaveLength(0)
         expect(tree.root.findAllByType('ForwardButton')).toHaveLength(1)
     })
+
+    it('shows only the forward action while a workflow task is open', () => {
+        const tree = renderer.create(
+            <MainButtons currentStep={-1} selectedCustomStep={false} onDonePress={jest.fn()} />
+        )
+
+        expect(tree.root.findAllByType('BackwardButton')).toHaveLength(0)
+        expect(tree.root.findAllByType('ForwardButton')).toHaveLength(1)
+    })
 })

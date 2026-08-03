@@ -58,16 +58,21 @@ export const getCommentPopupWorkflowTargets = (task, workflow) => {
     const stepIds = getWorkflowStepsIdsSorted(workflow)
     const stepHistory = Array.isArray(task?.stepHistory) ? task.stepHistory : []
     const currentStepId = stepHistory[stepHistory.length - 1]
-    const currentStep = stepIds.indexOf(currentStepId)
+    const isOpenWorkflowTask = task?.workflowTask === true && currentStepId === OPEN_STEP
+    const currentStep = isOpenWorkflowTask ? OPEN_STEP : stepIds.indexOf(currentStepId)
 
-    if (task?.done || currentStep < 0) return null
+    if (task?.done || (currentStep < 0 && !isOpenWorkflowTask) || stepIds.length === 0) return null
 
     return {
         currentStep,
         currentStepId,
         stepIds,
-        backwardStepId: currentStep > 0 ? stepIds[currentStep - 1] : OPEN_STEP,
-        forwardStepId: currentStep + 1 < stepIds.length ? stepIds[currentStep + 1] : DONE_STEP,
+        backwardStepId: isOpenWorkflowTask ? null : currentStep > 0 ? stepIds[currentStep - 1] : OPEN_STEP,
+        forwardStepId: isOpenWorkflowTask
+            ? stepIds[0]
+            : currentStep + 1 < stepIds.length
+            ? stepIds[currentStep + 1]
+            : DONE_STEP,
     }
 }
 
@@ -109,7 +114,8 @@ export default function CommentPopupWorkflowControls({
 
     if (!targets) return null
 
-    const currentStepLabel = workflow[targets.currentStepId]?.description
+    const currentStepLabel =
+        targets.currentStepId === OPEN_STEP ? translate('Open') : workflow[targets.currentStepId]?.description
     const backwardStepName =
         targets.backwardStepId === OPEN_STEP ? translate('Open') : workflow[targets.backwardStepId]?.description
     const forwardStepName =
