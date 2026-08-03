@@ -15,7 +15,14 @@ import {
 } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 
-export default function PreConfigTaskGeneratorWrapper({ projectId, task, assistant }) {
+export default function PreConfigTaskGeneratorWrapper({
+    projectId,
+    task,
+    assistant,
+    children,
+    disabled = false,
+    skipNavigation = false,
+}) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const isExecuting = useSelector(state => state.preConfigTaskExecuting)
@@ -70,12 +77,19 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             originalSendWhatsApp: sendWhatsApp,
             convertedSendWhatsApp: !!sendWhatsApp,
         })
-        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata)
+        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata, {
+            skipNavigation,
+        })
     }
 
-    const pressButton = () => {
+    const running = isExecuting === name
+    const executionDisabled = disabled || running
+
+    const pressButton = event => {
+        event?.stopPropagation?.()
+
         // Prevent execution if this task is already running
-        if (isExecuting === name) {
+        if (executionDisabled) {
             return
         }
 
@@ -83,7 +97,11 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             openModal()
         } else {
             if (type === TASK_TYPE_PROMPT || type === TASK_TYPE_WEBHOOK) {
-                variables.length > 0 ? openModal() : addTask()
+                if ((variables || []).length > 0) {
+                    openModal()
+                } else {
+                    addTask()
+                }
             } else if (type === TASK_TYPE_IFRAME) {
                 dispatch({
                     type: 'Set iframe modal data',
@@ -118,12 +136,16 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
             isOpen={isOpen}
             contentLocation={null}
         >
-            <PreConfigTaskButton
-                projectId={projectId}
-                task={task}
-                onPress={pressButton}
-                disabled={isExecuting === name}
-            />
+            {typeof children === 'function' ? (
+                children({ onPress: pressButton, running, disabled: executionDisabled })
+            ) : (
+                <PreConfigTaskButton
+                    projectId={projectId}
+                    task={task}
+                    onPress={pressButton}
+                    disabled={executionDisabled}
+                />
+            )}
         </Popover>
     )
 }
