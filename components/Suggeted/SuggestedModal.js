@@ -29,6 +29,8 @@ import {
     updateSuggestedTask,
 } from '../../utils/backends/Tasks/tasksFirestore'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
+import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
+import { isAssistantSuggestedTask } from '../../utils/suggestedTaskFlow'
 export default class SuggestedModal extends Component {
     constructor(props) {
         super(props)
@@ -154,7 +156,7 @@ export default class SuggestedModal extends Component {
                 const hasWorkflow = Object.keys(currentUser.workflow?.[projectId] || {}).length > 0
                 const stepId = hasWorkflow ? getWorkflowStepsIdsSorted(currentUser.workflow[projectId])[0] : DONE_STEP
                 const estimations = { ...task.estimations, [OPEN_STEP]: estimation }
-                nextStepSuggestedTask(projectId, stepId, task, estimations, comment, checkBoxId)
+                nextStepSuggestedTask(projectId, stepId, task, estimations, commentWithAttachments, checkBoxId)
             }
         })
     }
@@ -245,7 +247,8 @@ export default class SuggestedModal extends Component {
         } = this.state
 
         const { photoURL: photoURLCreator, displayName } = TasksHelper.getUserInProject(projectId, task.creatorId) ||
-            TasksHelper.getContactInProject(projectId, task.creatorId) || {
+            TasksHelper.getContactInProject(projectId, task.creatorId) ||
+            getAssistant(task.creatorId) || {
                 photoURL: `${window.location.origin}/images/generic-user.svg`,
                 displayName: translate('Unknown user'),
             }
@@ -411,7 +414,7 @@ export default class SuggestedModal extends Component {
                         <Button
                             disabled={task.userId !== tmpTask.userId}
                             icon="next-workflow"
-                            title={translate('Go to next step')}
+                            title={translate(isAssistantSuggestedTask(task) ? 'Reject' : 'Go to next step')}
                             type="secondary"
                             buttonStyle={{ marginRight: 8 }}
                             onPress={() => this.onDonePress(false)}

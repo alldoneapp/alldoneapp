@@ -923,6 +923,7 @@
     "Select workflow step": "Select workflow step",
     "Select workflow step with name": "Select workflow step: %{step}",
     "Go to next step": "Go to next step",
+    "Reject": "Reject",
     "Stop observing": "Stop observing",
     "Accept task?": "Accept task?",
     "Congrats, you have done it!": "Congrats, you have done it!",
@@ -2551,8 +2552,5 @@
     "Retry assistant task": "Retry assistant task",
     "Task flow": "Task flow",
     "Use workflow": "Use workflow",
-    "Bypass workflow": "Bypass workflow",
-    "Submit": "Submit",
-    "Submitting task": "Submitting task...",
-    "Task submitted": "Task submitted."
+    "Bypass workflow": "Bypass workflow"
 }

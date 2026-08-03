@@ -15,14 +15,7 @@ import {
 } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
 
-export default function PreConfigTaskGeneratorWrapper({
-    projectId,
-    task,
-    assistant,
-    children,
-    disabled = false,
-    skipNavigation = false,
-}) {
+export default function PreConfigTaskGeneratorWrapper({ projectId, task, assistant }) {
     const dispatch = useDispatch()
     const gold = useSelector(state => state.loggedUser.gold)
     const isExecuting = useSelector(state => state.preConfigTaskExecuting)
@@ -77,19 +70,12 @@ export default function PreConfigTaskGeneratorWrapper({
             originalSendWhatsApp: sendWhatsApp,
             convertedSendWhatsApp: !!sendWhatsApp,
         })
-        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata, {
-            skipNavigation,
-        })
+        generateTaskFromPreConfig(projectId, name, assistant.uid, prompt, aiSettings, mergedTaskMetadata)
     }
 
-    const running = isExecuting === name
-    const executionDisabled = disabled || running
-
-    const pressButton = event => {
-        event?.stopPropagation?.()
-
+    const pressButton = () => {
         // Prevent execution if this task is already running
-        if (executionDisabled) {
+        if (isExecuting === name) {
             return
         }
 
@@ -97,11 +83,7 @@ export default function PreConfigTaskGeneratorWrapper({
             openModal()
         } else {
             if (type === TASK_TYPE_PROMPT || type === TASK_TYPE_WEBHOOK) {
-                if ((variables || []).length > 0) {
-                    openModal()
-                } else {
-                    addTask()
-                }
+                variables.length > 0 ? openModal() : addTask()
             } else if (type === TASK_TYPE_IFRAME) {
                 dispatch({
                     type: 'Set iframe modal data',
@@ -136,16 +118,12 @@ export default function PreConfigTaskGeneratorWrapper({
             isOpen={isOpen}
             contentLocation={null}
         >
-            {typeof children === 'function' ? (
-                children({ onPress: pressButton, running, disabled: executionDisabled })
-            ) : (
-                <PreConfigTaskButton
-                    projectId={projectId}
-                    task={task}
-                    onPress={pressButton}
-                    disabled={executionDisabled}
-                />
-            )}
+            <PreConfigTaskButton
+                projectId={projectId}
+                task={task}
+                onPress={pressButton}
+                disabled={isExecuting === name}
+            />
         </Popover>
     )
 }
