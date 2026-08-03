@@ -2499,5 +2499,8 @@
     "Retry assistant task": "Reintentar tarea del asistente",
     "Task flow": "Flujo de la tarea",
     "Use workflow": "Usar flujo de trabajo",
-    "Bypass workflow": "Omitir flujo de trabajo"
+    "Bypass workflow": "Omitir flujo de trabajo",
+    "Submit": "Enviar",
+    "Submitting task": "Enviando tarea...",
+    "Task submitted": "Tarea enviada."
 }
