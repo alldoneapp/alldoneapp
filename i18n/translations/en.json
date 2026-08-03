@@ -1820,7 +1820,6 @@
     "Output": "Output",
     "You will get the following prompt to send to": "You will get the following prompt to send to %{assistantName}:",
     "Fill out the form to tell the AI Assistant what you need": "Fill out the form to tell the AI Assistant what you need",
-    "Please go to open tasks to add a task for this assistant": "Please go to open tasks to add a task for this assistant",
     "Select assistant": "Select assistant",
     "Select the assistant that will help you": "Select the assistant that will help you",
     "No assistant available": "No assistant available",

@@ -12,6 +12,7 @@ import TasksSections from './TasksSections'
 import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import AllProjectsShowMoreButtonContainer from './AllProjectsShowMoreButtonContainer'
 import { AssistantScheduleRows } from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
+import WorkflowTaskCreator from './OpenTaskViewForAssistants/WorkflowTaskCreator'
 
 export default function OpenTasksByDate({
     projectId,
@@ -25,6 +26,7 @@ export default function OpenTasksByDate({
     assistantProfileMode = false,
     assistantScheduleOccurrences = [],
     assistantScheduleContext = null,
+    assistantTaskCreatorContext = null,
 }) {
     const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -121,6 +123,7 @@ export default function OpenTasksByDate({
                 accessGranted={accessGranted}
                 additionalTasksAmount={assistantScheduleOccurrences.length}
             />
+            {!!assistantTaskCreatorContext && <WorkflowTaskCreator {...assistantTaskCreatorContext} />}
 
             <TasksSections
                 projectId={projectId}
@@ -139,7 +142,8 @@ export default function OpenTasksByDate({
                     {...assistantScheduleContext}
                 />
             )}
-            {amountTasks === 0 &&
+            {!assistantProfileMode &&
+                amountTasks === 0 &&
                 assistantScheduleOccurrences.length === 0 &&
                 emptyGoalsAmount === 0 &&
                 initialLoadingEndOpenTasks &&
