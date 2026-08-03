@@ -44,6 +44,7 @@ jest.mock('../../../i18n/TranslationService', () => ({ translate: text => text }
 describe('SecondaryButtonsArea', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        mockState.smallScreen = false
     })
 
     test('does not offer workflow bypass while adding an inline task', () => {
@@ -61,7 +62,9 @@ describe('SecondaryButtonsArea', () => {
         expect(tree.root.findAllByType(ExecutionModeButton)).toHaveLength(0)
     })
 
-    test('starts a new inline task deselected and toggles focus selection on and off', () => {
+    test('starts a new mobile inline task deselected and toggles focus selection on and off', () => {
+        mockState.smallScreen = true
+
         const InlineTaskFocusHarness = () => {
             const [newTaskInFocus, setNewTaskInFocus] = React.useState(false)
 
@@ -90,21 +93,24 @@ describe('SecondaryButtonsArea', () => {
         const getFocusButton = () =>
             tree.root.findAllByType('GhostButton').find(button => button.props.icon === 'crosshair')
 
-        expect(getFocusButton().props.title).toBe('Set in focus')
+        expect(getFocusButton().props.title).toBeNull()
         expect(getFocusButton().props.iconColor).toBe(colors.Text03)
-        expect(getFocusButton().props.buttonStyle.backgroundColor).toBeUndefined()
+        expect(getFocusButton().props.buttonStyle.backgroundColor).toBe('transparent')
+        expect(getFocusButton().props.accessibilityState).toEqual({ selected: false })
 
         act(() => getFocusButton().props.onPress())
 
-        expect(getFocusButton().props.title).toBe('Set out of focus')
+        expect(getFocusButton().props.title).toBeNull()
         expect(getFocusButton().props.iconColor).toBe(colors.Primary100)
         expect(getFocusButton().props.buttonStyle.backgroundColor).toBe(colors.Primary050)
+        expect(getFocusButton().props.accessibilityState).toEqual({ selected: true })
 
         act(() => getFocusButton().props.onPress())
 
-        expect(getFocusButton().props.title).toBe('Set in focus')
+        expect(getFocusButton().props.title).toBeNull()
         expect(getFocusButton().props.iconColor).toBe(colors.Text03)
-        expect(getFocusButton().props.buttonStyle.backgroundColor).toBeUndefined()
+        expect(getFocusButton().props.buttonStyle.backgroundColor).toBe('transparent')
+        expect(getFocusButton().props.accessibilityState).toEqual({ selected: false })
         expect(prepareTaskFocusChange).not.toHaveBeenCalled()
         expect(updateFocusedTask).not.toHaveBeenCalled()
     })
