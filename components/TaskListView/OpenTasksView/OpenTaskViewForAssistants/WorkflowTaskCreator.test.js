@@ -1,5 +1,5 @@
 import React from 'react'
-import { Text, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import WorkflowTaskCreator from './WorkflowTaskCreator'
@@ -120,6 +120,32 @@ describe('WorkflowTaskCreator', () => {
         enterTask(tree, 'A task that wraps across multiple visual lines')
 
         expect(tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.disabled).toBe(false)
+    })
+
+    it('matches the normal inline add-task layout while unselected', () => {
+        const tree = renderCreator({ showConfigurationLink: false })
+        const editorStyle = StyleSheet.flatten(
+            tree.root.findByProps({ testID: 'assistant-workflow-task-editor' }).props.style
+        )
+        const actionsStyle = StyleSheet.flatten(
+            tree.root.findByProps({ testID: 'assistant-workflow-task-actions' }).props.style
+        )
+        const addIconStyle = StyleSheet.flatten(tree.root.findByType(TaskInputArea).props.leftAccessory.props.style)
+
+        expect(editorStyle).toMatchObject({
+            marginHorizontal: -16,
+            backgroundColor: 'transparent',
+            borderWidth: 0,
+            borderRadius: 0,
+            shadowColor: 'transparent',
+            elevation: 0,
+        })
+        expect(actionsStyle).toMatchObject({
+            marginHorizontal: 8,
+            borderBottomLeftRadius: 4,
+            borderBottomRightRadius: 4,
+        })
+        expect(addIconStyle.left).toBe(7)
     })
 
     it.each([false, true])('replaces the input avatar with the workflow/direct icon (mobile: %s)', isMobile => {
