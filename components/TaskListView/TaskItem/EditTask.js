@@ -689,7 +689,6 @@ export default function EditTask({
                 localStyles.container,
                 isSubtask ? localStyles.subtaskContainer : undefined,
                 isMiddleScreen ? localStyles.containerUnderBreakpoint : undefined,
-                adding && !isSubtask ? localStyles.inlineTaskContainer : undefined,
             ]}
         >
             <TaskInputArea
@@ -707,7 +706,6 @@ export default function EditTask({
                 setInitialLinkedObject={setInitialLinkedObject}
                 onKeyEnterPressed={onKeyEnterPressed}
                 autoFocusInput={autoFocusInput}
-                newTaskInFocus={newTaskInFocus}
                 leftAccessory={
                     <CheckboxAndIcon
                         tmpTask={tmpTask}
@@ -733,12 +731,7 @@ export default function EditTask({
                     />
                 }
             />
-            <View
-                style={[
-                    localStyles.buttonContainer,
-                    adding && !isSubtask ? localStyles.inlineTaskButtonContainer : undefined,
-                ]}
-            >
+            <View style={localStyles.buttonContainer}>
                 <SecondaryButtonsArea
                     tmpTask={tmpTask}
                     hasName={hasName}
@@ -812,19 +805,6 @@ const localStyles = StyleSheet.create({
         marginLeft: -8,
         marginRight: -8,
     },
-    inlineTaskContainer: {
-        backgroundColor: 'transparent',
-        borderWidth: 0,
-        borderRadius: 0,
-        shadowColor: 'transparent',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0,
-        shadowRadius: 0,
-        elevation: 0,
-        marginLeft: -16,
-        marginRight: -16,
-        marginBottom: 0,
-    },
     buttonContainer: {
         flex: 1,
         height: 55,
@@ -836,11 +816,6 @@ const localStyles = StyleSheet.create({
         borderTopColor: colors.Gray300,
         paddingVertical: 7,
         paddingHorizontal: 9,
-    },
-    inlineTaskButtonContainer: {
-        marginHorizontal: 8,
-        borderBottomLeftRadius: 4,
-        borderBottomRightRadius: 4,
     },
     subtaskContainer: {
         backgroundColor: colors.Grey200,
