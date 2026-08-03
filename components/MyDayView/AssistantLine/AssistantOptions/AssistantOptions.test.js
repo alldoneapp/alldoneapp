@@ -11,6 +11,17 @@ import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 
 const mockInputBlur = jest.fn()
+const mockGetOptionsPresentationData = jest.fn((project, assistantId, tasks, amount, expanded) => ({
+    optionsLikeButtons: expanded
+        ? [
+              { id: 'task-1', task: { name: 'Quick task' } },
+              { id: 'task-2', task: { name: 'Overflow task' } },
+          ]
+        : [{ id: 'task-1', task: { name: 'Quick task' } }],
+    optionsInModal: expanded ? [] : [{ id: 'task-2', task: { name: 'Overflow task' } }],
+    showSubmenu: !expanded,
+    hasAdditionalOptions: true,
+}))
 
 const mockState = {
     selectedProjectIndex: 0,
@@ -69,11 +80,7 @@ jest.mock('./helper', () => ({
         assistantProject: { id: 'default-project', index: 1, name: 'Default project' },
         assistantProjectId: 'default-project',
     }),
-    getOptionsPresentationData: () => ({
-        optionsLikeButtons: [{ id: 'task-1', task: { name: 'Quick task' } }],
-        optionsInModal: [],
-        showSubmenu: false,
-    }),
+    getOptionsPresentationData: (...args) => mockGetOptionsPresentationData(...args),
 }))
 
 jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => {
@@ -85,13 +92,7 @@ jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => {
 jest.mock('./OptionButtons/OptionButtons', () => {
     const React = require('react')
     const { Text } = require('react-native')
-    return () => <Text>OptionButtons</Text>
-})
-
-jest.mock('./MoreOptions/MoreOptionsWrapper', () => {
-    const React = require('react')
-    const { Text } = require('react-native')
-    return () => <Text>MoreOptions</Text>
+    return ({ options }) => <Text>{`OptionButtons: ${options.map(option => option.task.name).join(', ')}`}</Text>
 })
 
 jest.mock('./AssistantAvatarButton', () => {
@@ -156,6 +157,29 @@ describe('AssistantOptions search button', () => {
         expect(output.indexOf('SearchButton')).toBeGreaterThan(-1)
         expect(output.indexOf('OptionButtons')).toBeGreaterThan(-1)
         expect(output.indexOf('SearchButton')).toBeLessThan(output.indexOf('OptionButtons'))
+    })
+
+    it('expands overflow tasks inline and collapses them again', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        expect(JSON.stringify(tree.toJSON())).not.toContain('Overflow task')
+
+        await act(async () => {
+            tree.root.findByProps({ accessibilityLabel: 'Show all' }).props.onPress()
+        })
+
+        expect(JSON.stringify(tree.toJSON())).toContain('Overflow task')
+        expect(tree.root.findByProps({ accessibilityLabel: 'Show less' })).toBeTruthy()
+
+        await act(async () => {
+            tree.root.findByProps({ accessibilityLabel: 'Show less' }).props.onPress()
+        })
+
+        expect(JSON.stringify(tree.toJSON())).not.toContain('Overflow task')
+        expect(tree.root.findByProps({ accessibilityLabel: 'Show all' })).toBeTruthy()
     })
 
     it('stacks the voice and send controls when the assistant input expands', async () => {
