@@ -41,8 +41,6 @@ import { getTaskCommentAssistantProps } from '../UIComponents/FloatModals/RichCo
 import { getWorkflowTargetStepIndex } from './workflowNavigation'
 import { WORKFLOW_FORWARD } from './workflowDirections'
 import { getWorkflowCompletionCopy } from './workflowCompletionCopy'
-import BypassWorkflowButton from './BypassWorkflowButton'
-import { moveTaskToDoneBypassingWorkflow } from './workflowBypass'
 
 export { WORKFLOW_BACKWARD, WORKFLOW_FORWARD } from './workflowDirections'
 
@@ -298,7 +296,7 @@ export default class WorkflowModal extends Component {
         setTaskAutoEstimation(projectId, task, autoEstimation)
     }
 
-    onDonePress = async (direction, bypassWorkflow = false) => {
+    onDonePress = async direction => {
         const { task, projectId, checkBoxId } = this.props
         const { steps, estimations, selectedNextStep, selectedPreviousStep, comment, disabledMainButtons } = this.state
 
@@ -312,11 +310,10 @@ export default class WorkflowModal extends Component {
             const stepsIds = getWorkflowStepsIdsSorted(steps)
 
             const stepToMoveIndex = getWorkflowTargetStepIndex(direction, selectedNextStep, selectedPreviousStep)
-            const stepToMoveId = bypassWorkflow ? DONE_STEP : getWorkflowStepId(stepToMoveIndex, stepsIds)
-            const commentTargetStepIndex = bypassWorkflow ? DONE_STEP : stepToMoveIndex
+            const stepToMoveId = getWorkflowStepId(stepToMoveIndex, stepsIds)
             const commentType =
                 commentWithAttachments && commentWithAttachments.length > 0
-                    ? getCommentDirectionWhenMoveTaskInTheWorklfow(commentTargetStepIndex, stepsIds, stepHistory)
+                    ? getCommentDirectionWhenMoveTaskInTheWorklfow(stepToMoveIndex, stepsIds, stepHistory)
                     : STAYWARD_COMMENT
 
             if (
@@ -331,7 +328,6 @@ export default class WorkflowModal extends Component {
                         commentWithAttachments,
                         commentType,
                         estimations,
-                        bypassWorkflow,
                     },
                     disabledMainButtons: false,
                 })
@@ -344,16 +340,7 @@ export default class WorkflowModal extends Component {
                 store.dispatch(showTaskCompletionAnimation())
             }
 
-            if (bypassWorkflow) {
-                await moveTaskToDoneBypassingWorkflow({
-                    projectId,
-                    task,
-                    comment: commentWithAttachments,
-                    commentType,
-                    estimations,
-                    checkBoxId,
-                })
-            } else if (task.userIds.length === 1) {
+            if (task.userIds.length === 1) {
                 await moveTasksFromOpen(
                     projectId,
                     task,
@@ -382,10 +369,6 @@ export default class WorkflowModal extends Component {
         }
     }
 
-    onBypassWorkflowPress = () => {
-        return this.onDonePress(WORKFLOW_FORWARD, true)
-    }
-
     completeWithSelectedRecurrenceDateBasis = async recurrenceBaseDateOverride => {
         const { task, projectId, checkBoxId } = this.props
         const { pendingMoveFromOpenData } = this.state
@@ -394,28 +377,16 @@ export default class WorkflowModal extends Component {
         store.dispatch(startLoadingData())
         store.dispatch(showTaskCompletionAnimation())
         try {
-            if (pendingMoveFromOpenData.bypassWorkflow) {
-                await moveTaskToDoneBypassingWorkflow({
-                    projectId,
-                    task,
-                    comment: pendingMoveFromOpenData.commentWithAttachments,
-                    commentType: pendingMoveFromOpenData.commentType,
-                    estimations: pendingMoveFromOpenData.estimations,
-                    checkBoxId,
-                    recurrenceBaseDateOverride,
-                })
-            } else {
-                await moveTasksFromOpen(
-                    projectId,
-                    task,
-                    pendingMoveFromOpenData.stepToMoveId,
-                    pendingMoveFromOpenData.commentWithAttachments,
-                    pendingMoveFromOpenData.commentType,
-                    pendingMoveFromOpenData.estimations,
-                    checkBoxId,
-                    recurrenceBaseDateOverride
-                )
-            }
+            await moveTasksFromOpen(
+                projectId,
+                task,
+                pendingMoveFromOpenData.stepToMoveId,
+                pendingMoveFromOpenData.commentWithAttachments,
+                pendingMoveFromOpenData.commentType,
+                pendingMoveFromOpenData.estimations,
+                checkBoxId,
+                recurrenceBaseDateOverride
+            )
             this.props.hidePopover()
         } catch (error) {
             console.error('[WorkflowModal] Could not complete recurring task', {
@@ -670,7 +641,6 @@ export default class WorkflowModal extends Component {
                             disabled={disabledMainButtons}
                             allowBackward={!task.workflowTask || currentStep > 0}
                         />
-                        <BypassWorkflowButton disabled={disabledMainButtons} onPress={this.onBypassWorkflowPress} />
                     </View>
                 </View>
             </View>

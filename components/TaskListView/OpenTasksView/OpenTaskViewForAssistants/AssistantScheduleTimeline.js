@@ -67,17 +67,13 @@ export function AssistantScheduleRows({ projectId, tasksProjectId, assistant, oc
                                         disabled
                                         style={localStyles.tagSpacing}
                                     />
-                                    <TaskTypeTag
-                                        icon={
-                                            executionMode === TASK_EXECUTION_MODE_DIRECT ? 'fast-forward' : 'git-branch'
-                                        }
-                                        text={
-                                            executionMode === TASK_EXECUTION_MODE_DIRECT
-                                                ? 'Bypass workflow'
-                                                : 'Use workflow'
-                                        }
-                                        containerStyle={localStyles.tagSpacing}
-                                    />
+                                    {executionMode === TASK_EXECUTION_MODE_DIRECT && (
+                                        <TaskTypeTag
+                                            icon="fast-forward"
+                                            text="Bypass workflow"
+                                            containerStyle={localStyles.tagSpacing}
+                                        />
+                                    )}
                                     {!!occurrence.user && (
                                         <View style={localStyles.tagSpacing}>
                                             <UserTag user={occurrence.user} />
