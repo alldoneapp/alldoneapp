@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
-import TaskInput from '../../TaskItem/TaskInput'
+import TaskInputArea from '../../TaskItem/TaskInputArea'
+import ExecutionModeButton from '../../TaskItem/ExecutionModeButton'
 import { translate } from '../../../../i18n/TranslationService'
 import { assistantWorkflowFirstStepHasPrompt } from '../../../../utils/assistantWorkflow'
 import { setSelectedNavItem } from '../../../../redux/actions'
@@ -13,7 +14,7 @@ import { DV_TAB_ASSISTANT_WORKFLOW } from '../../../../utils/TabNavigationConsta
 import URLsAssistants, { URL_ASSISTANT_DETAILS_WORKFLOW } from '../../../../URLSystem/Assistants/URLsAssistants'
 import NavigationService from '../../../../utils/NavigationService'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
-import { TASK_EXECUTION_MODE_DIRECT, TASK_EXECUTION_MODE_WORKFLOW } from '../../../../utils/taskExecutionMode'
+import { TASK_EXECUTION_MODE_WORKFLOW } from '../../../../utils/taskExecutionMode'
 
 const openAssistantWorkflow = (projectId, assistant, dispatch) => {
     NavigationService.navigate('AssistantDetailedView', {
@@ -47,7 +48,6 @@ export function WorkflowConfigurationLink({ projectId, assistant }) {
 
 export default function WorkflowTaskCreator({ projectId, assistant, disabled, showConfigurationLink = true }) {
     const dispatch = useDispatch()
-    const isMobile = useSelector(state => state.smallScreenNavigation)
     const [title, setTitle] = useState('')
     const [creating, setCreating] = useState(false)
     const [showWorkflowWarning, setShowWorkflowWarning] = useState(false)
@@ -57,6 +57,9 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const inputRef = useRef(null)
     const creatingRef = useRef(false)
+    const taskInputDraft = useMemo(() => ({ genericData: null, calendarData: null, gmailData: null, executionMode }), [
+        executionMode,
+    ])
 
     const createWorkflowTask = async () => {
         const trimmedTitle = title.trim()
@@ -129,54 +132,37 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
                 </View>
             )}
             <View style={[localStyles.taskEditor, disabled && localStyles.disabled]}>
-                <View style={localStyles.inputContainer}>
-                    <View style={localStyles.addIcon}>
-                        <Icon name="plus-square" size={24} color={colors.Primary100} />
-                    </View>
-                    <TaskInput
-                        isSubtask={false}
-                        tmpTask={{}}
-                        adding={true}
-                        projectId={projectId}
-                        accessGranted={!disabled && !creating}
-                        loggedUserCanUpdateObject={true}
-                        isAssistant={false}
-                        inputTask={inputRef}
-                        onChangeInputText={updateTitle}
-                        setMentionsModalActive={setMentionsModalActive}
-                        getInitialText={() => ''}
-                        onKeyEnterPressed={createWorkflowTask}
-                    />
-                </View>
+                <TaskInputArea
+                    isSubtask={false}
+                    tmpTask={taskInputDraft}
+                    adding={true}
+                    projectId={projectId}
+                    accessGranted={!disabled && !creating}
+                    loggedUserCanUpdateObject={true}
+                    isAssistant={false}
+                    inputTask={inputRef}
+                    onChangeInputText={updateTitle}
+                    setMentionsModalActive={setMentionsModalActive}
+                    getInitialText={() => ''}
+                    onKeyEnterPressed={createWorkflowTask}
+                    leftAccessory={
+                        <View style={localStyles.addIcon}>
+                            <Icon name="plus-square" size={24} color={colors.Primary100} />
+                        </View>
+                    }
+                    rightAccessory={
+                        <View style={localStyles.executionModeAccessory}>
+                            <ExecutionModeButton
+                                task={taskInputDraft}
+                                disabled={disabled || creating}
+                                onChange={setExecutionMode}
+                                style={localStyles.executionModeButton}
+                                iconOnly
+                            />
+                        </View>
+                    }
+                />
                 <View style={localStyles.buttonContainer}>
-                    <TouchableOpacity
-                        style={[localStyles.executionModeButton, isMobile && localStyles.executionModeButtonMobile]}
-                        onPress={() =>
-                            setExecutionMode(currentMode =>
-                                currentMode === TASK_EXECUTION_MODE_WORKFLOW
-                                    ? TASK_EXECUTION_MODE_DIRECT
-                                    : TASK_EXECUTION_MODE_WORKFLOW
-                            )
-                        }
-                        disabled={disabled || creating}
-                        accessibilityRole="button"
-                        accessibilityLabel={translate(
-                            executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow'
-                        )}
-                    >
-                        <Icon
-                            name={executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'git-branch' : 'fast-forward'}
-                            size={16}
-                            color={colors.Text03}
-                        />
-                        {!isMobile && (
-                            <Text style={localStyles.executionModeText}>
-                                {translate(
-                                    executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow'
-                                )}
-                            </Text>
-                        )}
-                    </TouchableOpacity>
                     <Button
                         type="primary"
                         title={translate('Submit')}
@@ -256,10 +242,6 @@ const localStyles = StyleSheet.create({
     disabled: {
         opacity: 0.5,
     },
-    inputContainer: {
-        minHeight: 59,
-        overflow: 'hidden',
-    },
     addIcon: {
         position: 'absolute',
         left: 15,
@@ -270,30 +252,27 @@ const localStyles = StyleSheet.create({
         minHeight: 55,
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         backgroundColor: colors.Grey100,
         borderTopWidth: 1,
         borderTopColor: colors.Gray300,
         paddingVertical: 7,
         paddingHorizontal: 9,
     },
+    executionModeAccessory: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        borderRadius: 50,
+        overflow: 'hidden',
+    },
     executionModeButton: {
-        height: 28,
-        paddingHorizontal: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderRadius: 14,
-        backgroundColor: colors.Grey200,
-    },
-    executionModeButtonMobile: {
-        width: 28,
+        width: 24,
+        height: 24,
+        minHeight: 24,
         paddingHorizontal: 0,
-        justifyContent: 'center',
-    },
-    executionModeText: {
-        ...styles.caption2,
-        color: colors.Text03,
-        marginLeft: 4,
+        paddingVertical: 0,
+        borderRadius: 50,
     },
     warning: {
         marginTop: 8,
