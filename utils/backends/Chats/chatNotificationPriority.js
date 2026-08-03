@@ -5,10 +5,6 @@ export const getChatNotificationWithCommentId = document => ({
     commentId: document.id,
 })
 
-// Followed notifications use the red UI treatment; unfollowed notifications
-// are grey and only become the preview when there is no red notification.
-const getNotificationPriority = notification => (notification?.followed ? 1 : 0)
-
 const getNotificationDate = notification => {
     const rawDate = notification?.date
     if (rawDate === null || rawDate === undefined) return null
@@ -18,11 +14,11 @@ const getNotificationDate = notification => {
 }
 
 export const isPreferredChatNotification = (notification, currentNotification) => {
-    if (!notification) return false
-    if (!currentNotification) return true
-
-    const priorityDifference = getNotificationPriority(notification) - getNotificationPriority(currentNotification)
-    if (priorityDifference !== 0) return priorityDifference > 0
+    // Only followed notifications use the red treatment and belong in the
+    // assistant-line preview. Unfollowed notifications remain available to the
+    // wider chat UI, but must never become the assistant line's last comment.
+    if (!notification?.followed) return false
+    if (!currentNotification?.followed) return true
 
     const notificationDate = getNotificationDate(notification)
     const currentNotificationDate = getNotificationDate(currentNotification)

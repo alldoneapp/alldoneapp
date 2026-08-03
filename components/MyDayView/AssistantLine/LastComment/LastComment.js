@@ -10,7 +10,10 @@ export default function LastComment({
     currentLastAssistantCommentData,
     compact = false,
 }) {
-    const hasNotification = !!currentProjectChatLastNotification
+    const followedNotification = currentProjectChatLastNotification?.followed
+        ? currentProjectChatLastNotification
+        : null
+    const hasNotification = !!followedNotification
     const hasValidLastCommentData =
         !!currentLastAssistantCommentData &&
         !!currentLastAssistantCommentData.objectId &&
@@ -24,14 +27,14 @@ export default function LastComment({
     }
     return (
         <View style={[localStyles.container, compact && localStyles.containerCompact]}>
-            {currentProjectChatLastNotification ? (
+            {followedNotification ? (
                 <LastUserOrAssistantCommentContainer
                     project={project}
-                    objectId={currentProjectChatLastNotification.chatId}
-                    objectType={currentProjectChatLastNotification.chatType}
+                    objectId={followedNotification.chatId}
+                    objectType={followedNotification.chatType}
                     setAModalIsOpen={setAModalIsOpen}
                     fromChatNotification={true}
-                    isFollowedNotification={!!currentProjectChatLastNotification.followed}
+                    isFollowedNotification={true}
                     compact={compact}
                 />
             ) : (

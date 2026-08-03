@@ -36,18 +36,21 @@ export default function LastCommentArea({
         : project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
     const lastAssistantCommentData = useSelector(state => state.loggedUser.lastAssistantCommentData[projectKey])
     const projectChatLastNotification = useSelector(state => state.projectChatLastNotification[projectKey])
+    const followedProjectChatLastNotification = projectChatLastNotification?.followed
+        ? projectChatLastNotification
+        : null
     const [aModalIsOpen, setAModalIsOpen] = useState(false)
     const [currentProjectChatLastNotification, setCurrentProjectChatLastNotification] = useState(
-        projectChatLastNotification
+        followedProjectChatLastNotification
     )
     const [currentLastAssistantCommentData, setCurrentLastAssistantCommentData] = useState(lastAssistantCommentData)
 
     useEffect(() => {
         if (!aModalIsOpen) {
-            setCurrentProjectChatLastNotification(projectChatLastNotification)
+            setCurrentProjectChatLastNotification(followedProjectChatLastNotification)
             setCurrentLastAssistantCommentData(lastAssistantCommentData)
         }
-    }, [aModalIsOpen, projectChatLastNotification, lastAssistantCommentData])
+    }, [aModalIsOpen, followedProjectChatLastNotification, lastAssistantCommentData])
 
     const { commentCreator, commentProject } = getCommentData(
         project,
