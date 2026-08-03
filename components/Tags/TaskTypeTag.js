@@ -5,17 +5,11 @@ import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import { translate } from '../../i18n/TranslationService'
 
-export default function TaskTypeTag({ icon, containerStyle, text, iconOnly = false }) {
-    const label = translate(text)
-
+export default function TaskTypeTag({ icon, containerStyle, text }) {
     return (
-        <View
-            accessibilityLabel={iconOnly ? label : undefined}
-            title={iconOnly ? label : undefined}
-            style={[localStyles.container, iconOnly && localStyles.iconOnlyContainer, containerStyle]}
-        >
+        <View style={[localStyles.container, containerStyle]}>
             <Icon name={icon} size={16} color={colors.Text03} style={localStyles.icon} />
-            {!iconOnly && <Text style={localStyles.text}>{label}</Text>}
+            <Text style={localStyles.text}>{translate(text)}</Text>
         </View>
     )
 }
@@ -32,9 +26,6 @@ const localStyles = StyleSheet.create({
     },
     icon: {
         marginHorizontal: 4,
-    },
-    iconOnlyContainer: {
-        paddingHorizontal: 0,
     },
     text: {
         ...styles.subtitle2,
