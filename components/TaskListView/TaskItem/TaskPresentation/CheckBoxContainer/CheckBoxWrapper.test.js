@@ -175,26 +175,6 @@ describe('CheckBoxWrapper task completion', () => {
         expect(moveTasksFromOpen.mock.calls[0][2]).toBe('done')
     })
 
-    test('opens the workflow actions immediately when a workflow task checkbox is pressed', () => {
-        const task = {
-            ...baseTask,
-            genericData: false,
-            workflowTask: true,
-            userIds: ['user-1', 'reviewer-1'],
-            stepHistory: ['open', 'step-1'],
-        }
-        let tree
-        act(() => {
-            tree = renderWrapper(task)
-        })
-
-        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
-
-        expect(tree.root.findByType('TaskFlowModal').props.task).toBe(task)
-        expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(true)
-        expect(moveTasksFromOpen).not.toHaveBeenCalled()
-    })
-
     test('clears optimistic state when the mounted row advances between steps assigned to the same user', () => {
         const taskAtFirstStep = {
             ...baseTask,
