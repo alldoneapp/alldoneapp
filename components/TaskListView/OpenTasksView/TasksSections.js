@@ -92,7 +92,7 @@ export default function TasksSections({
                 />
             )}
 
-            {!assistantProfileMode && receivedFromTasksSectionsAmount > 0 && (
+            {receivedFromTasksSectionsAmount > 0 && (
                 <OriginallyFromSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}
