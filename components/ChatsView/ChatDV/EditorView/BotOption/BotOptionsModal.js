@@ -166,7 +166,7 @@ export default function BotOptionsModal({
                         }
                         const aiSettings = {
                             model: selectedTask.aiModel,
-                            temperature: selectedTask.aiTemperature,
+                            reasoningEffort: selectedTask.aiReasoningEffort,
                             systemMessage: selectedTask.aiSystemMessage,
                         }
                         onSelectBotOption(prompt, selectedTask.name, aiSettings, {

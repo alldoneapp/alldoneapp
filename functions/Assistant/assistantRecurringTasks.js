@@ -4,6 +4,10 @@ const { getAssistantTasks } = require('../Firestore/templatesFirestore')
 const { generatePreConfigTaskResult } = require('./assistantPreConfigTaskTopic')
 const { getAssistantForChat } = require('./assistantHelper')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
+const {
+    getPreConfigTaskReasoningEffortOverride,
+    resolvePreConfigTaskReasoningEffort,
+} = require('./preConfigTaskReasoningEffort')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
@@ -32,8 +36,8 @@ function buildRecurringTaskAiSettings(task, assistant, assistantId) {
     const taskModelOverride = getPreConfigTaskModelOverride(task)
     return {
         model: taskModelOverride || assistant?.model || 'MODEL_GPT5_6_SOL',
-        temperature: task.aiTemperature || assistant?.temperature || 'TEMPERATURE_NORMAL',
-        reasoningEffort: assistant?.reasoningEffort || null,
+        temperature: assistant?.temperature || 'TEMPERATURE_NORMAL',
+        reasoningEffort: resolvePreConfigTaskReasoningEffort(task, assistant?.reasoningEffort),
         systemMessage: task.aiSystemMessage || assistant?.instructions || 'You are a helpful assistant.',
         assistantDisplayName: assistant?.displayName || 'Assistant',
         assistantUid: assistant?.uid || assistantId,
@@ -480,7 +484,12 @@ async function ensureTaskChatExists(projectId, taskId, assistantId, prompt) {
                             // Task-level AI settings that override assistant settings
                             genericData: {
                                 aiModel: getPreConfigTaskModelOverride(task),
-                                aiTemperature: task.aiTemperature || null,
+                                aiTemperature: null,
+                                ...(getPreConfigTaskReasoningEffortOverride(task) !== undefined
+                                    ? {
+                                          aiReasoningEffort: getPreConfigTaskReasoningEffortOverride(task),
+                                      }
+                                    : {}),
                                 aiSystemMessage: task.aiSystemMessage || null,
                             },
                             feedUser,
@@ -724,7 +733,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             promptLength: task.prompt?.length,
             aiModel: resolvedAiSettings.model,
             aiModelSource: taskModelOverride ? 'task_override' : 'assistant',
-            aiTemperature: resolvedAiSettings.temperature,
+            aiReasoningEffort: resolvedAiSettings.reasoningEffort,
         })
 
         // Execute the task using the activator's user ID for gold deduction and notifications

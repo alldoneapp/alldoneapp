@@ -1006,7 +1006,9 @@ export function uploadNewPreConfigTask(projectId, assistantId, task) {
     const taskToStore = { ...task }
     delete taskToStore.id
     delete taskToStore.aiModel
+    delete taskToStore.aiTemperature
     if (!getPreConfigTaskModelOverride(taskToStore)) delete taskToStore.aiModelOverride
+    if (taskToStore.aiReasoningEffort === undefined) delete taskToStore.aiReasoningEffort
     taskToStore.assistantId = assistantId
 
     const collectionPath = getAssistantTasksCollectionPath(projectId, assistantId)
@@ -1085,7 +1087,10 @@ export function updatePreConfigTask(projectId, assistantId, task) {
     delete taskToStore.id
     const aiModelOverride = getPreConfigTaskModelOverride(taskToStore)
     delete taskToStore.aiModel
+    delete taskToStore.aiTemperature
     if (!aiModelOverride) delete taskToStore.aiModelOverride
+    const hasReasoningEffortOverride = taskToStore.aiReasoningEffort !== undefined
+    if (!hasReasoningEffortOverride) delete taskToStore.aiReasoningEffort
     taskToStore.assistantId = assistantId
 
     // Get the current task data to compare changes
@@ -1111,7 +1116,11 @@ export function updatePreConfigTask(projectId, assistantId, task) {
             ...taskToStore,
             id: task.id,
             aiModel: firebase.firestore.FieldValue.delete(),
+            aiTemperature: firebase.firestore.FieldValue.delete(),
             ...(!aiModelOverride ? { aiModelOverride: firebase.firestore.FieldValue.delete() } : { aiModelOverride }),
+            ...(!hasReasoningEffortOverride
+                ? { aiReasoningEffort: firebase.firestore.FieldValue.delete() }
+                : { aiReasoningEffort: taskToStore.aiReasoningEffort }),
         }
 
         if (!payload.creatorUserId) {

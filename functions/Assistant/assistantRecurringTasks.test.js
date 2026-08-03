@@ -178,7 +178,7 @@ describe('recurring assistant generated task completion', () => {
             )
         ).toEqual({
             model: 'MODEL_GPT5_6_SOL',
-            temperature: 'TEMPERATURE_LOW',
+            temperature: 'TEMPERATURE_NORMAL',
             reasoningEffort: 'max',
             systemMessage: 'Assistant instructions',
             assistantDisplayName: 'Anna',
@@ -195,5 +195,23 @@ describe('recurring assistant generated task completion', () => {
         )
 
         expect(settings.model).toBe('MODEL_GPT5_6_LUNA')
+    })
+
+    test('uses a deliberately saved recurring-task reasoning effort override', () => {
+        expect(
+            __private__.buildRecurringTaskAiSettings(
+                { aiReasoningEffort: 'low' },
+                { reasoningEffort: 'max' },
+                'assistant-1'
+            ).reasoningEffort
+        ).toBe('low')
+
+        expect(
+            __private__.buildRecurringTaskAiSettings(
+                { aiReasoningEffort: null },
+                { reasoningEffort: 'max' },
+                'assistant-1'
+            ).reasoningEffort
+        ).toBeNull()
     })
 })

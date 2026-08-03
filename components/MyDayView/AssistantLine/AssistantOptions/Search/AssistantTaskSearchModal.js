@@ -41,10 +41,10 @@ const getTaskIcon = task => {
 }
 
 const getAiSettings = task => {
-    return task.aiModel || task.aiTemperature || task.aiSystemMessage
+    return task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
         ? {
               model: task.aiModel,
-              temperature: task.aiTemperature,
+              reasoningEffort: task.aiReasoningEffort,
               systemMessage: task.aiSystemMessage,
           }
         : null

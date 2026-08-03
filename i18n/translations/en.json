@@ -2530,6 +2530,7 @@
     "The workflow task could not be created": "The workflow task could not be created.",
     "Customize the steps assistant workflow tasks execute": "Customize the steps this assistant's workflow tasks execute.",
     "Reasoning effort": "Reasoning effort",
+    "Use assistant effort": "Use assistant effort",
     "Model default": "Model default",
     "Medium": "Medium",
     "XHigh": "XHigh",

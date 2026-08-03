@@ -489,6 +489,7 @@ export async function uploadNewTask(
         // Task-level AI settings that can override assistant settings
         taskCopy.aiModel = taskCopy.aiModel || null
         taskCopy.aiTemperature = taskCopy.aiTemperature || null
+        taskCopy.aiReasoningEffort = taskCopy.aiReasoningEffort || null
         taskCopy.aiSystemMessage = taskCopy.aiSystemMessage || null
         // Webhook task metadata (for external webhook integrations)
         taskCopy.taskMetadata = taskCopy.taskMetadata || null

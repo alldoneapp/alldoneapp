@@ -97,8 +97,8 @@ const MemoizedModalContent = memo(
         setShowAISettings,
         aiModel,
         setAiModel,
-        aiTemperature,
-        setAiTemperature,
+        aiReasoningEffort,
+        setAiReasoningEffort,
         aiSystemMessage,
         setAiSystemMessage,
         link,
@@ -348,8 +348,8 @@ const MemoizedModalContent = memo(
                                     disabled={disabled}
                                     aiModel={aiModel}
                                     setAiModel={setAiModel}
-                                    aiTemperature={aiTemperature}
-                                    setAiTemperature={setAiTemperature}
+                                    aiReasoningEffort={aiReasoningEffort}
+                                    setAiReasoningEffort={setAiReasoningEffort}
                                     aiSystemMessage={aiSystemMessage}
                                     setAiSystemMessage={setAiSystemMessage}
                                     isMiddleScreen={isMiddleScreen}
@@ -416,7 +416,7 @@ const MemoizedModalContent = memo(
             prevProps.showAISettings === nextProps.showAISettings &&
             prevProps.startDate === nextProps.startDate &&
             prevProps.aiModel === nextProps.aiModel &&
-            prevProps.aiTemperature === nextProps.aiTemperature &&
+            prevProps.aiReasoningEffort === nextProps.aiReasoningEffort &&
             prevProps.aiSystemMessage === nextProps.aiSystemMessage &&
             prevProps.link === nextProps.link &&
             prevProps.sendWhatsApp === nextProps.sendWhatsApp &&
@@ -455,8 +455,8 @@ export default function TaskModal({
     setTaskType,
     aiModel,
     setAiModel,
-    aiTemperature,
-    setAiTemperature,
+    aiReasoningEffort,
+    setAiReasoningEffort,
     aiSystemMessage,
     setAiSystemMessage,
     projectId,
@@ -493,7 +493,7 @@ export default function TaskModal({
         assistantId,
         currentAssistant,
         aiModel,
-        aiTemperature,
+        aiReasoningEffort,
         aiSystemMessage,
         assistantInstructions: currentAssistant?.instructions,
         startDateType: typeof startDate,
@@ -782,8 +782,8 @@ export default function TaskModal({
                         setShowAISettings={memoizedSetShowAISettings}
                         aiModel={aiModel}
                         setAiModel={setAiModel}
-                        aiTemperature={aiTemperature}
-                        setAiTemperature={setAiTemperature}
+                        aiReasoningEffort={aiReasoningEffort}
+                        setAiReasoningEffort={setAiReasoningEffort}
                         aiSystemMessage={aiSystemMessage}
                         setAiSystemMessage={setAiSystemMessage}
                         link={link}
