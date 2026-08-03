@@ -11,6 +11,7 @@ import { removeActiveDragTaskModeInDate, setSelectedTasks } from '../../../redux
 import { checkIfSelectedProject } from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 
 jest.mock('react-redux', () => ({
+    connect: jest.fn(() => component => component),
     useDispatch: jest.fn(),
     useSelector: jest.fn(),
     shallowEqual: jest.fn(),

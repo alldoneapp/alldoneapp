@@ -26,7 +26,7 @@ import { objectIsPublicForLoggedUser } from '../../TaskListView/Utils/TasksHelpe
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
 import { prepareTaskFocusChange } from '../../../utils/taskFocusInteraction'
 import useFloatPopupLock from '../../../hooks/useFloatPopupLock'
-import ExecutionModeButton, { shouldShowExecutionModeButton } from './ExecutionModeButton'
+import ExecutionModeButton from './ExecutionModeButton'
 
 export default function SecondaryButtonsArea({
     tmpTask,
@@ -166,7 +166,7 @@ export default function SecondaryButtonsArea({
                 disabled={(adding && !hasName) || isLoadingGoal}
             />
 
-            {shouldShowExecutionModeButton(adding, tmpTask) && (
+            {!tmpTask.calendarData && (
                 <ExecutionModeButton
                     task={tmpTask}
                     disabled={!hasName || !accessGranted || isLoadingGoal}
