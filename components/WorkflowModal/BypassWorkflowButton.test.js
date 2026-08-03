@@ -14,6 +14,7 @@ describe('BypassWorkflowButton', () => {
         const text = button.findByType(Text)
 
         expect(text.props.children).toBe('Bypass workflow')
+        expect(StyleSheet.flatten(button.props.style)).toMatchObject({ marginTop: 0 })
         expect(StyleSheet.flatten(text.props.style)).toMatchObject({ color: colors.Text03 })
     })
 
