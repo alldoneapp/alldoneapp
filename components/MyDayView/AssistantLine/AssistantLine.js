@@ -18,6 +18,9 @@ export default function AssistantLine({
     assistantIdOverride = null,
     assistantSwitchOptions = null,
     startCollapsed = false,
+    showAllQuickActions = false,
+    preferAssistantIdOverride = false,
+    scopeLastCommentToAssistant = false,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isMobile = useSelector(state => state.smallScreenNavigation)
@@ -49,7 +52,8 @@ export default function AssistantLine({
     const { assistant: selectedLineAssistant } = getAssistantLineData(
         selectedProject,
         assistantId,
-        loggedUser?.defaultProjectId
+        loggedUser?.defaultProjectId,
+        preferAssistantIdOverride
     )
     const selectedAssistant = selectedLineAssistant || defaultAssistant
 
@@ -114,6 +118,8 @@ export default function AssistantLine({
                     canSwitchAssistant={canSwitchAssistant}
                     toggleAssistant={toggleAssistant}
                     showSwitchAssistant={showSwitchAssistant}
+                    preferAssistantIdOverride={preferAssistantIdOverride}
+                    scopeLastCommentToAssistant={scopeLastCommentToAssistant}
                 />
             ) : (
                 <View>
@@ -125,6 +131,8 @@ export default function AssistantLine({
                         onCollapse={() => setIsCollapsed(true)}
                         projectOverride={selectedProject}
                         assistantIdOverride={assistantId}
+                        showAllQuickActions={showAllQuickActions}
+                        preferAssistantIdOverride={preferAssistantIdOverride}
                     />
                     {showLastComment && (
                         <LastCommentArea
@@ -133,6 +141,8 @@ export default function AssistantLine({
                             useGlobalLatestComment={effectiveUseGlobalLatestComment}
                             projectOverride={selectedProject}
                             assistantIdOverride={assistantId}
+                            preferAssistantIdOverride={preferAssistantIdOverride}
+                            scopeToAssistant={scopeLastCommentToAssistant}
                         />
                     )}
                 </View>
@@ -152,6 +162,8 @@ function CollapsedAssistantRow({
     canSwitchAssistant,
     toggleAssistant,
     showSwitchAssistant,
+    preferAssistantIdOverride,
+    scopeLastCommentToAssistant,
 }) {
     const isMobile = useSelector(state => state.smallScreenNavigation)
 
@@ -190,6 +202,8 @@ function CollapsedAssistantRow({
                         compact={true}
                         projectOverride={projectOverride}
                         assistantIdOverride={assistantIdOverride}
+                        preferAssistantIdOverride={preferAssistantIdOverride}
+                        scopeToAssistant={scopeLastCommentToAssistant}
                     />
                 </View>
             )}

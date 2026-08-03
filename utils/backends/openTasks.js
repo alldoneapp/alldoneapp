@@ -60,8 +60,8 @@ let userOpenTasks = {}
 let userObservedTasks = {}
 let streamAndUserOpenTasks = {}
 
-export const taskBelongsInOpenBoard = (task, assistantOwner, observed = false) =>
-    observed || !assistantOwner || task?.workflowTask !== true
+export const taskBelongsInOpenBoard = (task, assistantOwner, observed = false, assistantProfileMode = false) =>
+    observed || !assistantOwner || assistantProfileMode || task?.workflowTask !== true
 
 const activeMilestoneEmptyGoals = {}
 
@@ -92,7 +92,15 @@ export const unwatchOpenTasks = (projectId, currentUserId) => {
     unwatchEmptyGoalsWatcher(projectId, currentUserId, activeMilestoneEmptyGoals)
 }
 
-export const watchOpenTasks = (projectId, callback, showLaterTasks, showSomedayTasks, keepMainDayData, instanceKey) => {
+export const watchOpenTasks = (
+    projectId,
+    callback,
+    showLaterTasks,
+    showSomedayTasks,
+    keepMainDayData,
+    instanceKey,
+    assistantProfileMode = false
+) => {
     const { currentUser, taskListWatchersVars, globalDataByProject } = store.getState()
 
     let storedTasks = {}
@@ -194,7 +202,8 @@ export const watchOpenTasks = (projectId, callback, showLaterTasks, showSomedayT
         showLaterTasks,
         showSomedayTasks,
         subtasksByParentId,
-        subtasksMap
+        subtasksMap,
+        assistantProfileMode
     )
     watchUserOpenTasks(
         projectId,
@@ -303,7 +312,8 @@ const watchUserOpenTasks = (
     showLaterTasks,
     showSomedayTasks,
     subtasksByParentId,
-    subtasksMap
+    subtasksMap,
+    assistantProfileMode = false
 ) => {
     if (!areObservedTasks)
         setTimeout(() => {
@@ -333,7 +343,9 @@ const watchUserOpenTasks = (
     const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
         const changes = querySnapshot
             .docChanges()
-            .filter(change => taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks))
+            .filter(change =>
+                taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
+            )
         if (querySnapshot.metadata.fromCache) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
@@ -358,7 +370,8 @@ const watchUserOpenTasks = (
                     showLaterTasks,
                     showSomedayTasks,
                     subtasksByParentId,
-                    subtasksMap
+                    subtasksMap,
+                    assistantProfileMode
                 )
                 subtasks = subtasksByTasks
                 callback(openTasksArray, !areObservedTasks)
@@ -391,10 +404,14 @@ const watchUserOpenTasks = (
         : (userOpenTasks[projectId] = { [currentUserId]: [unsub] })
 }
 
-export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks) => {
+export const getTaskTypeIndex = (task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode = false) => {
     const { genericData, suggestedBy, userIds, calendarData, gmailData } = task
     if (areObservedTasks) return OBSERVED_TASKS_INDEX
     if (areStreamAndUserTasks) return STREAM_AND_USER_TASKS_INDEX
+    // The assistant page intentionally has one timeline. A workflow task that is currently being
+    // handled by this assistant must therefore render like a regular task even when its workflow
+    // history already contains multiple reviewers.
+    if (assistantProfileMode && task.workflowTask === true) return MAIN_TASK_INDEX
     if (genericData) return MENTION_TASK_INDEX
     if (userIds.length > 1) return WORKFLOW_TASK_INDEX
     if (suggestedBy) return SUGGESTED_TASK_INDEX
@@ -419,7 +436,8 @@ const processTaskChange = (
     showSomedayTasks,
     listsToSort,
     changeType,
-    task
+    task,
+    assistantProfileMode = false
 ) => {
     const { uid: loggedUserId } = loggedUser
 
@@ -464,7 +482,7 @@ const processTaskChange = (
         : taskInBacklog
         ? BACKLOG_DATE_STRING
         : moment(taskDueDate).format('YYYYMMDD')
-    const taskTypeIndex = getTaskTypeIndex(task, areObservedTasks, areStreamAndUserTasks)
+    const taskTypeIndex = getTaskTypeIndex(task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode)
     const currentStepId = stepHistory[stepHistory.length - 1]
 
     const estimation = areObservedTasks
@@ -620,7 +638,12 @@ const processTaskChange = (
                 ? BACKLOG_DATE_STRING
                 : moment(oldTaskDueDate).format('YYYYMMDD')
 
-            const oldTaskTypeIndex = getTaskTypeIndex(oldTask, areObservedTasks, areStreamAndUserTasks)
+            const oldTaskTypeIndex = getTaskTypeIndex(
+                oldTask,
+                areObservedTasks,
+                areStreamAndUserTasks,
+                assistantProfileMode
+            )
             const oldStepHistory = oldTask.stepHistory
             const oldCurrentStepId = oldStepHistory[oldStepHistory.length - 1]
             const oldSuggestedBy = oldTask.suggestedBy
@@ -902,7 +925,8 @@ const processTaskChanges = (
     showLaterTasks,
     showSomedayTasks,
     subtasksByParentId,
-    subtasksMap
+    subtasksMap,
+    assistantProfileMode = false
 ) => {
     const listsToSort = {}
     const subtasksListToSortParentsId = new Set()
@@ -930,7 +954,8 @@ const processTaskChanges = (
                         showSomedayTasks,
                         listsToSort,
                         'removed',
-                        task
+                        task,
+                        assistantProfileMode
                     )
                 }
             }
@@ -985,7 +1010,8 @@ const processTaskChanges = (
                 showSomedayTasks,
                 listsToSort,
                 changeType,
-                task
+                task,
+                assistantProfileMode
             )
         }
     }

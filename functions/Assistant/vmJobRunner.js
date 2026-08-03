@@ -705,6 +705,11 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
                         ...updateDate,
                         projectId,
                     },
+                    [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: updateDate,
+                    [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                        ...updateDate,
+                        projectId,
+                    },
                 },
                 { merge: true }
             )

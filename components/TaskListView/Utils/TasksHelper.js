@@ -2,6 +2,7 @@ import moment from 'moment'
 import { findIndex, uniq } from 'lodash'
 
 import store from '../../../redux/store'
+import { TASK_EXECUTION_MODE_WORKFLOW } from '../../../utils/taskExecutionMode'
 import { shouldBlockPressAfterPopupDismiss } from '../../../utils/popupDismissGuard'
 import {
     setBacklinkSection,
@@ -159,6 +160,7 @@ export const GENERIC_CHAT_TYPE = 5
 export const GENERIC_SKILL_TYPE = 6
 
 export const RECURRENCE_NEVER = 'never'
+export const RECURRENCE_ONCE = 'once'
 export const RECURRENCE_DAILY = 'daily'
 export const RECURRENCE_EVERY_WORKDAY = 'everyWorkday'
 export const RECURRENCE_WEEKLY = 'weekly'
@@ -180,6 +182,7 @@ export const RECURRENCE_CUSTOM_MAX_DAYS = 3650
 
 export const RECURRENCE_MAP = {
     [RECURRENCE_NEVER]: { short: '', large: 'Never', shortcut: '0' },
+    [RECURRENCE_ONCE]: { short: '1×', large: 'Once', shortcut: '' },
     [RECURRENCE_DAILY]: { short: 'D', large: 'Daily', shortcut: '1' },
     [RECURRENCE_EVERY_WORKDAY]: { short: 'Mo-Fr', large: 'Every workday (Mo-Fr)', shortcut: '2' },
     [RECURRENCE_WEEKLY]: { short: 'W', large: 'Weekly', shortcut: '3' },
@@ -453,6 +456,7 @@ class TasksHelper {
             isPremium: false,
             lockKey: '',
             assigneeType: TASK_ASSIGNEE_USER_TYPE,
+            executionMode: TASK_EXECUTION_MODE_WORKFLOW,
             assistantId: '',
             commentsData: null,
             autoEstimation: null,

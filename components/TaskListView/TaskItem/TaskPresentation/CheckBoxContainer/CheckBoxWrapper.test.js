@@ -161,6 +161,20 @@ describe('CheckBoxWrapper task completion', () => {
         expect(moveTasksFromOpen.mock.calls[0][2]).toBe('ordered-step')
     })
 
+    test('bypasses an available workflow when the task is direct', async () => {
+        getUserWorkflow.mockReturnValue({ 'workflow-step': { sortIndex: 0 } })
+        const task = { ...baseTask, genericData: false, executionMode: 'direct' }
+        const tree = renderWrapper(task)
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+
+        await act(async () => {
+            jest.runAllTimers()
+            await Promise.resolve()
+        })
+        expect(moveTasksFromOpen.mock.calls[0][2]).toBe('done')
+    })
+
     test('clears optimistic state when the mounted row advances between steps assigned to the same user', () => {
         const taskAtFirstStep = {
             ...baseTask,

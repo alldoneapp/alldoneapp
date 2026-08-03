@@ -3,6 +3,7 @@ import { Text, TextInput, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import WorkflowTaskCreator from './WorkflowTaskCreator'
+import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 
 jest.mock('react-redux', () => ({
     useDispatch: () => jest.fn(),
@@ -11,13 +12,10 @@ jest.mock('react-redux', () => ({
 jest.mock('../../../UIControls/Button', () => 'Button')
 jest.mock('../../../Icon', () => 'Icon')
 jest.mock('../../../../i18n/TranslationService', () => ({ translate: key => key }))
-jest.mock('../../../../utils/backends/Tasks/TaskServiceFrontendHelper', () => ({
-    createTaskWithService: jest.fn(),
-}))
 jest.mock('../../../../utils/assistantWorkflow', () => ({
     assistantWorkflowFirstStepHasPrompt: jest.fn(() => true),
-    buildAssistantWorkflowTask: jest.fn(),
 }))
+jest.mock('../../../../utils/assistantHelper', () => ({ generateTaskFromPreConfig: jest.fn() }))
 jest.mock('../../../../redux/actions', () => ({ setSelectedNavItem: jest.fn() }))
 jest.mock('../../../../utils/TabNavigationConstants', () => ({ DV_TAB_ASSISTANT_WORKFLOW: 'workflow' }))
 jest.mock('../../../../URLSystem/Assistants/URLsAssistants', () => ({
@@ -31,6 +29,10 @@ jest.mock('../../../../utils/NavigationService', () => ({
 }))
 
 describe('WorkflowTaskCreator', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
     it('uses the same flat plus-square entry pattern as the normal add-task line', () => {
         let tree
         act(() => {
@@ -45,17 +47,61 @@ describe('WorkflowTaskCreator', () => {
         const configurationLink = touchableElements.find(
             element => element.props.accessibilityLabel === 'Configure workflow'
         )
-        const workflowTitle = tree.root.findAllByType(Text).find(element => element.props.children === 'Workflow tasks')
-        const icon = tree.root.findByType('Icon')
+        const icons = tree.root.findAllByType('Icon')
+        const addIcon = icons.find(icon => icon.props.name === 'plus-square')
+        const executionModeButton = touchableElements.find(
+            element => element.props.accessibilityLabel === 'Use workflow'
+        )
 
         expect(input.props.placeholder).toBe('Type to add new task')
-        expect(icon.props).toMatchObject({
+        expect(addIcon.props).toMatchObject({
             name: 'plus-square',
             size: 24,
         })
         expect(addButton.props.accessibilityLabel).toBe('Add task')
         expect(configurationLink.findByType(Text).props.children).toBe('Configure workflow')
-        expect(configurationLink.parent).toBe(workflowTitle.parent)
+        expect(executionModeButton).toBeDefined()
         expect(tree.root.findAllByType('Button')).toHaveLength(0)
+    })
+
+    it('clears the input immediately while task creation continues in the background', async () => {
+        let resolveCreation
+        generateTaskFromPreConfig.mockReturnValue(
+            new Promise(resolve => {
+                resolveCreation = resolve
+            })
+        )
+
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <WorkflowTaskCreator projectId="project-1" assistant={{ uid: 'assistant-1' }} disabled={false} />
+            )
+        })
+
+        act(() => {
+            tree.root.findByType(TextInput).props.onChangeText('Create this task')
+        })
+
+        let creationPromise
+        act(() => {
+            creationPromise = tree.root.findByType(TextInput).props.onSubmitEditing()
+        })
+
+        expect(tree.root.findByType(TextInput).props.value).toBe('')
+        expect(generateTaskFromPreConfig).toHaveBeenCalledWith(
+            'project-1',
+            'Create this task',
+            'assistant-1',
+            'Create this task',
+            null,
+            { executionMode: 'workflow' },
+            { skipNavigation: true, waitForDirectRun: false }
+        )
+
+        await act(async () => {
+            resolveCreation()
+            await creationPromise
+        })
     })
 })

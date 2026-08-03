@@ -17,6 +17,7 @@ import TaskFlowModal from './TaskFlowModal'
 import CheckBoxContainer from './CheckBoxContainer'
 import TaskCompletionAnimation, { ANIMATION_DURATION } from '../../TaskCompletionAnimation'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../../utils/backends/Tasks/tasksFirestore'
+import { taskBypassesWorkflow } from '../../../../../utils/taskExecutionMode'
 import { getEmailTaskArchiveData, isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUtils'
 import { performEmailLineAction } from '../../../../../utils/backends/EmailLine/emailLineBackend'
 import RecurringTaskDateBasisModal, {
@@ -275,7 +276,13 @@ function CheckBoxWrapper(
             } else {
                 moveTasksFromDone(projectId, task, OPEN_STEP).catch(rollbackOptimisticCheck)
             }
-        } else if (genericData || (isPrivate && !isLongPress) || calendarData || isLockedGmailTask) {
+        } else if (
+            taskBypassesWorkflow(task) ||
+            genericData ||
+            (isPrivate && !isLongPress) ||
+            calendarData ||
+            isLockedGmailTask
+        ) {
             shouldAskForRecurrenceDateBasis(DONE_STEP)
                 ? setRecurrenceDateBasisModalIsOpen(true)
                 : scheduleMoveTasksFromOpen(DONE_STEP)

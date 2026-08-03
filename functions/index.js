@@ -2846,7 +2846,9 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 aiSettings,
                 taskMetadata,
                 messageId,
+                objectType: requestedObjectType,
             } = data
+            const objectType = requestedObjectType === 'topics' ? 'topics' : 'tasks'
             const userId = auth.uid
             if (requestedUserId && requestedUserId !== userId) {
                 console.warn('generatePreConfigTaskResultSecondGen: ignoring mismatched userId from payload', {
@@ -2856,7 +2858,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
             }
             try {
                 if (projectId && taskId) {
-                    await assertObjectAccess(admin.firestore(), userId, projectId, 'tasks', taskId)
+                    await assertObjectAccess(admin.firestore(), userId, projectId, objectType, taskId)
                 } else if (projectId) {
                     await assertProjectAccess(userId, projectId)
                 }
@@ -2881,7 +2883,7 @@ exports.generatePreConfigTaskResultSecondGen = onCall(
                 aiSettings,
                 taskMetadata,
                 functionEntryTime, // Pass entry time for time-to-first-token tracking
-                'tasks',
+                objectType,
                 { triggerMessageId: messageId }
             )
 
@@ -3385,6 +3387,27 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
 // The run here is sized to SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS (25 min), not the full interactive
 // 55: Cloud Scheduler's attempt deadline caps at 1800s and then retries, so a longer run would be
 // invoked a second time concurrently rather than simply finishing.
+exports.retryWorkflowAiRunSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth, data } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+
+        const { projectId, taskId } = data || {}
+        if (!projectId || !taskId) throw new HttpsError('invalid-argument', 'projectId and taskId are required')
+
+        await assertObjectAccess(admin.firestore(), auth.uid, projectId, 'tasks', taskId)
+        const { retryFailedWorkflowAiRun } = require('./Tasks/workflowAiStep')
+        const runId = await retryFailedWorkflowAiRun(projectId, taskId)
+        return { success: true, runId }
+    }
+)
+
 exports.runWorkflowAiStepsSecondGen = onSchedule(
     {
         schedule: '* * * * *',

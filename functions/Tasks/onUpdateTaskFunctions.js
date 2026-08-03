@@ -19,6 +19,43 @@ const { reconcileTaskMergeStatusAfterWorkflowChange } = require('../Repositories
 
 const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
 
+const finalizeAssistantScheduleSource = async (oldTask, newTask) => {
+    const source = newTask?.assistantScheduleSource
+    if (oldTask?.done || !newTask?.done || !source?.projectId || !source?.assistantId || !source?.taskId) return
+
+    const activatorUserId = source.activatorUserId
+    const completedAt = Date.now()
+    const update = {
+        lastExecuted: completedAt,
+        lastExecutionCompleted: completedAt,
+        executionStatus: 'succeeded',
+        lastExecutionError: null,
+        lastGeneratedTaskId: newTask.id,
+        lastGeneratedTaskCompletionStatus: 'succeeded',
+        lastGeneratedTaskCompletionError: null,
+    }
+
+    if (activatorUserId) {
+        update[`lastExecutedByUser.${activatorUserId}`] = completedAt
+        update[`executionByUser.${activatorUserId}`] = {
+            status: 'succeeded',
+            completedAt,
+            error: null,
+            taskId: newTask.id,
+        }
+        if (source.recurrence === 'once') {
+            update.completedOneOffUserIds = admin.firestore.FieldValue.arrayUnion(activatorUserId)
+            update.activatedUserIds = admin.firestore.FieldValue.arrayRemove(activatorUserId)
+            update[`recurrenceByUser.${activatorUserId}`] = admin.firestore.FieldValue.delete()
+        }
+    }
+
+    await admin
+        .firestore()
+        .doc(`assistantTasks/${source.projectId}/${source.assistantId}/${source.taskId}`)
+        .update(update)
+}
+
 const getRewardGoldAmount = (maxGold, rewardKey) => {
     const normalizedMaxGold = Number(maxGold)
     if (!Number.isFinite(normalizedMaxGold) || normalizedMaxGold <= 0) return 0
@@ -339,6 +376,7 @@ const onUpdateTask = async (taskId, projectId, change) => {
     promises.push(awardGoldForTaskProgress(projectId, taskId, oldTask, newTask))
     promises.push(captureTaskPriorityFeedbackSafely(projectId, taskId, oldTask, newTask))
     promises.push(reconcileTaskMergeStatusAfterWorkflowChange({ projectId, taskId, oldTask, newTask }))
+    promises.push(finalizeAssistantScheduleSource(oldTask, { id: taskId, ...newTask }))
     promises.push(
         enqueueWorkflowAiRunIfNeeded(projectId, taskId, oldTask, newTask).catch(error =>
             console.error('[workflowAiStep] Enqueue check failed', { taskId, error: error.message })
@@ -417,5 +455,6 @@ const onUpdateTask = async (taskId, projectId, change) => {
 
 module.exports = {
     buildTaskProgressReward,
+    finalizeAssistantScheduleSource,
     onUpdateTask,
 }

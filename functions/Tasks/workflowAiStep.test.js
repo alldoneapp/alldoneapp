@@ -134,6 +134,7 @@ const {
     resolveAwaitingVmRuns,
     resolveWorkflowRunsForAssistantRunUpdate,
     resolveWorkflowRunsForSettledVmJob,
+    retryFailedWorkflowAiRun,
     runWorkflowAiStep,
 } = require('./workflowAiStep')
 const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('../Assistant/assistantRunLimits')
@@ -366,6 +367,30 @@ describe('enqueueWorkflowAiRunIfNeeded', () => {
         const runId = await enqueueWorkflowAiRunIfNeeded(PROJECT, TASK, oldTask, taskOnAiStep({ userId: 'ws@default' }))
 
         expect(runId).toBeNull()
+    })
+})
+
+describe('retryFailedWorkflowAiRun', () => {
+    it('queues a fresh run without moving the task off the assistant step', async () => {
+        seedAssignee()
+        mockStore.set(
+            `items/${PROJECT}/tasks/${TASK}`,
+            taskOnAiStep({ workflowAiStatus: { status: 'failed', runId: 'old-run', stepId: AI_STEP } })
+        )
+
+        const runId = await retryFailedWorkflowAiRun(PROJECT, TASK)
+
+        expect(runId).toContain(`${PROJECT}__${TASK}__${AI_STEP}__`)
+        expect(mockStore.get(`workflowAiRuns/${runId}`)).toMatchObject({
+            projectId: PROJECT,
+            taskId: TASK,
+            stepId: AI_STEP,
+            status: 'pending',
+        })
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
+            stepHistory: [-1, AI_STEP],
+            workflowAiStatus: { status: 'pending', runId, stepId: AI_STEP },
+        })
     })
 })
 
@@ -781,12 +806,12 @@ describe('runWorkflowAiStep', () => {
         expect(mockGeneratePreConfigTaskResult.mock.calls[0][6]).toBe('Review for execs')
     })
 
-    it('still advances the task when the assistant run fails', async () => {
+    it('keeps the task active when the assistant run fails', async () => {
         mockGeneratePreConfigTaskResult.mockRejectedValueOnce(new Error('out of gold'))
 
         await runWorkflowAiStep(RUN_ID, run)
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
             status: 'failed',
             failureReason: 'out of gold',
@@ -794,6 +819,10 @@ describe('runWorkflowAiStep', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
             assistantId: ASSISTANT,
             isAssistantEnabled: true,
+            workflowAiStatus: {
+                status: 'failed',
+                failureReason: 'out of gold',
+            },
         })
         expect(mockStore.get(`chatObjects/${PROJECT}/chats/${TASK}`)).toMatchObject({
             assistantId: ASSISTANT,
@@ -822,13 +851,13 @@ describe('runWorkflowAiStep', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1])
     })
 
-    it('advances without running anything when the step is no longer an AI step', async () => {
+    it('keeps the task active when the configured step is no longer an AI step', async () => {
         seedAssignee({ [AI_STEP]: humanStep(), [NEXT_STEP]: humanStep() })
 
         await runWorkflowAiStep(RUN_ID, run)
 
         expect(mockGeneratePreConfigTaskResult).not.toHaveBeenCalled()
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
             status: 'failed',
             failureReason: 'step_no_longer_ai',
@@ -1028,22 +1057,23 @@ describe('a step whose assistant dispatched VM work', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe(RUN_STATUS_AWAITING_VM)
     })
 
-    it('advances anyway when the VM job failed', async () => {
+    it('keeps the task active when the VM job failed', async () => {
         await runWorkflowAiStep(RUN_ID, run)
         seedVmJob('failed')
 
         await resolveAwaitingVmRuns({ now: Date.now() })
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).workflowAiStatus.status).toBe('failed')
     })
 
-    it('gives up and advances once the VM has had its full budget', async () => {
+    it('times out without completing the task once the VM has had its full budget', async () => {
         await runWorkflowAiStep(RUN_ID, run)
 
         // Still 'initiated' well past the point a healthy VM job must have settled.
         await resolveAwaitingVmRuns({ now: Date.now() + AWAITING_VM_TIMEOUT_MS + 1000 })
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
             status: 'failed',
             failureReason: 'vm_timeout',
@@ -1152,13 +1182,13 @@ describe('a VM job that stops to ask the user a question', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
     })
 
-    it('advances once the question expired and the job still has not settled', async () => {
+    it('keeps the task active once the question expired and the job still has not settled', async () => {
         const expiredAt = Date.now() - 1000
         seedVmJob('awaiting_user', { interactionExpiresAt: expiredAt })
 
         await resolveAwaitingVmRuns({ now: expiredAt + AWAITING_VM_TIMEOUT_MS + 1000 })
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).failureReason).toBe('vm_timeout')
     })
 
@@ -1192,12 +1222,12 @@ describe('a VM job that stops to ask the user a question', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
-    it('still abandons a job that simply hangs, with no interaction to justify waiting', async () => {
+    it('still fails a job that simply hangs, with no interaction to justify waiting', async () => {
         seedVmJob('initiated')
 
         await resolveAwaitingVmRuns({ now: Date.now() + AWAITING_VM_TIMEOUT_MS + 1000 })
 
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).failureReason).toBe('vm_timeout')
     })
 })

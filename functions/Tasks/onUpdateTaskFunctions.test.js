@@ -11,6 +11,11 @@ jest.mock('firebase-admin', () => {
                 Timestamp: {
                     now: jest.fn(() => 'timestamp-now'),
                 },
+                FieldValue: {
+                    arrayUnion: jest.fn(value => ({ arrayUnion: value })),
+                    arrayRemove: jest.fn(value => ({ arrayRemove: value })),
+                    delete: jest.fn(() => ({ delete: true })),
+                },
             }
         ),
         __mock: {
@@ -70,7 +75,42 @@ jest.mock('../Feeds/tasksFeeds', () => ({
 }))
 
 const admin = require('firebase-admin')
-const { buildTaskProgressReward } = require('./onUpdateTaskFunctions')
+const { buildTaskProgressReward, finalizeAssistantScheduleSource } = require('./onUpdateTaskFunctions')
+
+describe('scheduled assistant task completion', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    test('advances the schedule only when its generated workflow task reaches done', async () => {
+        await finalizeAssistantScheduleSource(
+            { done: false },
+            {
+                id: 'generated-task-1',
+                done: true,
+                assistantScheduleSource: {
+                    projectId: 'assistant-project',
+                    assistantId: 'assistant-1',
+                    taskId: 'schedule-1',
+                    activatorUserId: 'user-1',
+                    recurrence: 'weekly',
+                },
+            }
+        )
+
+        expect(admin.__mock.doc).toHaveBeenCalledWith('assistantTasks/assistant-project/assistant-1/schedule-1')
+        expect(admin.__mock.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                executionStatus: 'succeeded',
+                lastGeneratedTaskId: 'generated-task-1',
+                'executionByUser.user-1': expect.objectContaining({
+                    status: 'succeeded',
+                    taskId: 'generated-task-1',
+                }),
+            })
+        )
+    })
+})
 
 describe('onUpdateTaskFunctions reward handling', () => {
     beforeEach(() => {

@@ -3437,6 +3437,11 @@ const updateLastAssistantCommentData = async (projectId, objectType, objectId, c
                 ...updateDate,
                 projectId,
             },
+            [`lastAssistantCommentDataByAssistant.${creatorId}.${projectId}`]: updateDate,
+            [`lastAssistantCommentDataByAssistant.${creatorId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                ...updateDate,
+                projectId,
+            },
         })
     })
 
@@ -3923,6 +3928,21 @@ async function addChatCommentFromAssistantTool({
                 date: now,
             },
             [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                objectType: 'topics',
+                objectId: resolved.chatId,
+                creatorId: assistantId,
+                creatorType: 'assistant',
+                date: now,
+                projectId,
+            },
+            [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: {
+                objectType: 'topics',
+                objectId: resolved.chatId,
+                creatorId: assistantId,
+                creatorType: 'assistant',
+                date: now,
+            },
+            [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
                 objectType: 'topics',
                 objectId: resolved.chatId,
                 creatorId: assistantId,
@@ -5228,6 +5248,7 @@ async function executeToolNatively(
                         description: descriptionWithImages,
                         dueDate: processedDueDate,
                         recurrence: toolArgs.recurrence,
+                        executionMode: toolArgs.executionMode,
                         userId: creatorId,
                         projectId: targetProjectId,
                         isPrivate: false,
@@ -6156,6 +6177,7 @@ async function executeToolNatively(
                     'dueDate',
                     'alertEnabled',
                     'recurrence',
+                    'executionMode',
                     'estimation',
                     'priority',
                     'userId',

@@ -306,7 +306,15 @@ const updateParentObjectAssistantIfNeeded = (projectId, assistantId, objectId, o
     return assistantId
 }
 
-const updateLastAssistantCommentData = async (projectId, objectId, objectType, creatorId, followerIds, batch) => {
+const updateLastAssistantCommentData = async (
+    projectId,
+    objectId,
+    objectType,
+    creatorId,
+    followerIds,
+    assistantId,
+    batch
+) => {
     const activeFollowerIds = filterActiveProjectUserIds(projectId, followerIds, 'lastAssistantCommentData')
 
     activeFollowerIds.forEach(followerId => {
@@ -317,6 +325,15 @@ const updateLastAssistantCommentData = async (projectId, objectId, objectType, c
                 ...updateData,
                 projectId,
             },
+            ...(assistantId
+                ? {
+                      [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: updateData,
+                      [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                          ...updateData,
+                          projectId,
+                      },
+                  }
+                : {}),
         })
     })
 }
@@ -333,7 +350,8 @@ const storeComment = async (
     creatorId,
     followerIds,
     title,
-    chatMembers
+    chatMembers,
+    assistantId
 ) => {
     const batch = new BatchWrapper(getDb())
     const mediaContext = extractMediaContextFromText(comment)
@@ -364,7 +382,7 @@ const storeComment = async (
             batch
         )
 
-        updateLastAssistantCommentData(projectId, objectId, objectType, creatorId, followerIds, batch)
+        updateLastAssistantCommentData(projectId, objectId, objectType, creatorId, followerIds, assistantId, batch)
     }
     batch.set(
         getDb().doc(`chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`),
@@ -572,7 +590,8 @@ export async function createObjectMessage(
                 creatorId,
                 followerIds,
                 title,
-                chat ? uniq([...chat.members, creatorId]) : [creatorId]
+                chat ? uniq([...chat.members, creatorId]) : [creatorId],
+                assistantId
             )
         )
 

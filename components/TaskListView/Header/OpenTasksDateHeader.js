@@ -16,7 +16,7 @@ import {
     TODAY_DATE,
 } from '../../../utils/backends/openTasks'
 
-export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex }) {
+export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex, additionalTasksAmount = 0 }) {
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const amountTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][AMOUNT_TASKS_INDEX])
     const estimation = useSelector(
@@ -55,7 +55,13 @@ export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex 
         }
     }
 
-    const text = generateDateHeaderText(projectId, upperCaseDateText, dayName, estimation, amountTasks)
+    const text = generateDateHeaderText(
+        projectId,
+        upperCaseDateText,
+        dayName,
+        estimation,
+        amountTasks + additionalTasksAmount
+    )
 
     return (
         <View style={[localStyles.container, isMainDay ? localStyles.containerToday : undefined]}>

@@ -79,6 +79,7 @@ describe('TasksHelper class', () => {
             parentId: null,
             subtaskIds: [],
             recurrence: 'never',
+            executionMode: 'workflow',
         }
         it('The function work correctly', async () => {
             store.dispatch([storeLoggedUser({ uid: '-Uxyz_1' }), storeCurrentUser({ uid: '-Uxyz_1' })])

@@ -2065,5 +2065,21 @@
     "Medium": "Mittel",
     "XHigh": "Sehr hoch",
     "Max": "Max",
-    "Select how much reasoning the assistant should use": "Wähle, wie viel Denkaufwand der Assistent verwenden soll"
+    "Select how much reasoning the assistant should use": "Wähle, wie viel Denkaufwand der Assistent verwenden soll",
+    "Edit in chat": "Im Chat bearbeiten",
+    "Start chat": "Chat starten",
+    "Suggested prompts": "Vorgeschlagene Prompts",
+    "Links and integrations": "Links und Integrationen",
+    "Scheduled tasks": "Geplante Aufgaben",
+    "Copy this assistant to configure its workflow and add tasks": "Kopiere diesen Assistenten, um seinen Workflow zu konfigurieren und Aufgaben hinzuzufügen.",
+    "No scheduled tasks": "Keine geplanten Aufgaben",
+    "Run now": "Jetzt ausführen",
+    "Pause": "Pausieren",
+    "Once": "Einmal",
+    "Queued": "In Warteschlange",
+    "Needs attention": "Benötigt Aufmerksamkeit",
+    "Retry assistant task": "Assistentenaufgabe erneut versuchen",
+    "Task flow": "Aufgabenablauf",
+    "Use workflow": "Workflow verwenden",
+    "Bypass workflow": "Workflow umgehen"
 }

@@ -180,13 +180,12 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
     let cacheChanges = []
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
 
-    let query = getDb()
+    const query = getDb()
         .collection(`items/${projectId}/tasks`)
         .where('userId', '==', currentUserId)
         .where('inDone', '==', false)
+        .where('currentReviewerId', '!=', currentUserId)
         .where('isPublicFor', 'array-contains-any', allowUserIds)
-
-    if (!assistantOwner) query = query.where('currentReviewerId', '!=', currentUserId)
 
     const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
         const changes = querySnapshot

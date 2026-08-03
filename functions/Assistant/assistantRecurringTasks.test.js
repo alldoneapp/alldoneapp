@@ -43,6 +43,29 @@ jest.mock('../shared/TaskService', () => ({
 
 const { __private__ } = require('./assistantRecurringTasks')
 
+describe('recurring assistant activations', () => {
+    test('treats an explicitly empty activation list as paused', () => {
+        expect(
+            __private__.getActivatedUserIdsForTask({
+                recurrence: 'daily',
+                activatedUserIds: [],
+                recurrenceByUser: {},
+                activatorUserId: 'user-1',
+                creatorUserId: 'user-1',
+            })
+        ).toEqual([])
+    })
+
+    test('keeps legacy schedules readable when no activation fields exist', () => {
+        expect(
+            __private__.getActivatedUserIdsForTask({
+                recurrence: 'daily',
+                activatorUserId: 'user-1',
+            })
+        ).toEqual(['user-1'])
+    })
+})
+
 describe('recurring assistant generated task completion', () => {
     beforeEach(() => {
         jest.clearAllMocks()

@@ -27,6 +27,11 @@ import {
     getPreConfigTaskReasoningEffortSelection,
     getPreConfigTaskReasoningEffortValue,
 } from '../../../../functions/Assistant/preConfigTaskReasoningEffort'
+import {
+    TASK_EXECUTION_MODE_DIRECT,
+    TASK_EXECUTION_MODE_WORKFLOW,
+    getTaskExecutionMode,
+} from '../../../../utils/taskExecutionMode'
 
 export default function PreConfigTaskModal({ disabled, projectId, closeModal, adding, assistantId, task }) {
     const dispatch = useDispatch()
@@ -83,6 +88,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             aiReasoningEffort: getPreConfigTaskReasoningEffortSelection(task),
             aiSystemMessage: task ? task.aiSystemMessage : currentAssistant ? currentAssistant.instructions : '',
             recurrence: task ? task.recurrence : RECURRENCE_NEVER,
+            executionMode: task ? getTaskExecutionMode(task, TASK_EXECUTION_MODE_DIRECT) : TASK_EXECUTION_MODE_WORKFLOW,
             startDate: getInitialStartDate(),
             sendWhatsApp: task?.sendWhatsApp ?? false,
             webhookUrl: task?.taskMetadata?.webhookUrl ?? '',
@@ -110,6 +116,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     const [aiReasoningEffort, setAiReasoningEffort] = useState(initialState.aiReasoningEffort)
     const [aiSystemMessage, setAiSystemMessage] = useState(initialState.aiSystemMessage)
     const [recurrence, setRecurrence] = useState(initialState.recurrence)
+    const [executionMode, setExecutionMode] = useState(initialState.executionMode)
     const [startDate, setStartDate] = useState(initialState.startDate)
     const [sendWhatsApp, setSendWhatsApp] = useState(initialState.sendWhatsApp)
     const getInitialIframeDiscoveryStatus = () => {
@@ -279,6 +286,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                           : {}),
                       aiSystemMessage: aiSystemMessage || currentAssistant?.instructions || '',
                       recurrence,
+                      executionMode,
                       startDate: utcStartDate,
                       startTime: moment(startDate).format('HH:mm'),
                       userTimezone: parseInt(moment().format('Z')), // Store user's timezone offset
@@ -296,6 +304,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       variables: [],
                       link: '',
                       recurrence,
+                      executionMode,
                       sendWhatsApp,
                       taskMetadata: {
                           isWebhookTask: true,
@@ -315,9 +324,10 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       link,
                       taskMetadata: iframeTaskMetadata || {},
                       recurrence,
+                      executionMode,
                       sendWhatsApp,
                   }
-                : { name, type: taskType, prompt: '', variables: [], link, recurrence, sendWhatsApp }
+                : { name, type: taskType, prompt: '', variables: [], link, recurrence, executionMode, sendWhatsApp }
         setTimeout(() => {
             uploadNewPreConfigTask(projectId, assistantId, applyCurrentUserRecurrenceConfig(newTask))
         }, 1000)
@@ -355,6 +365,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       aiReasoningEffort: aiReasoningEffortOverride,
                       aiSystemMessage: aiSystemMessage || currentAssistant?.instructions || '',
                       recurrence: recurrence ?? null,
+                      executionMode,
                       startDate: utcStartDate,
                       startTime: moment(startDate).format('HH:mm'),
                       userTimezone: parseInt(moment().format('Z')), // Store user's timezone offset
@@ -376,6 +387,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       variables: [],
                       link: '',
                       recurrence: recurrence ?? null,
+                      executionMode,
                       sendWhatsApp,
                       taskMetadata: {
                           isWebhookTask: true,
@@ -396,6 +408,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       link,
                       taskMetadata: iframeTaskMetadata || {},
                       recurrence: recurrence ?? null,
+                      executionMode,
                       sendWhatsApp,
                   }
                 : {
@@ -406,6 +419,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       variables: [],
                       link,
                       recurrence: recurrence ?? null,
+                      executionMode,
                       sendWhatsApp,
                   }
         console.log('PreConfigTaskModal - updatedTask to save:', {
@@ -513,6 +527,8 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                     assistantId={assistantId}
                     recurrence={recurrence}
                     setRecurrence={handleSetRecurrence}
+                    executionMode={executionMode}
+                    setExecutionMode={setExecutionMode}
                     startDate={startDate}
                     setStartDate={handleSetStartDate}
                     sendWhatsApp={sendWhatsApp}

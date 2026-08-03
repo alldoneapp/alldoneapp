@@ -38,7 +38,7 @@ import {
 import { updateNoteTitleWithoutFeed } from '../Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../Chats/chatsFirestore'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
-import { RECURRENCE_NEVER } from '../../../components/TaskListView/Utils/TasksHelper'
+import { RECURRENCE_NEVER, RECURRENCE_ONCE } from '../../../components/TaskListView/Utils/TasksHelper'
 import { getAssistantPreConfigSearchRows, sortPreConfigTaskSearchItems } from './preConfigTaskSearchHelper'
 import { getPreConfigTaskModelOverride } from '../../../functions/Assistant/preConfigTaskModel'
 import { getWorkflowSortIndexUpdates, getWorkflowStepsIdsSorted } from '../../workflowOrder'
@@ -144,17 +144,28 @@ function getAssistantTaskDocRef(projectId, assistantId, taskId) {
 }
 
 function getActivatedUserIds(task) {
+    const completedOneOffUserIds = new Set(task?.completedOneOffUserIds || [])
     const recurrenceByUser = task?.recurrenceByUser || {}
     const recurrenceUserIds = Object.entries(recurrenceByUser)
-        .filter(([, recurrence]) => recurrence && recurrence !== RECURRENCE_NEVER)
+        .filter(
+            ([userId, recurrence]) =>
+                recurrence &&
+                recurrence !== RECURRENCE_NEVER &&
+                !(recurrence === RECURRENCE_ONCE && completedOneOffUserIds.has(userId))
+        )
         .map(([userId]) => userId)
 
-    const ids = Array.isArray(task?.activatedUserIds) ? task.activatedUserIds.filter(Boolean) : []
-    if (ids.length > 0 || recurrenceUserIds.length > 0) return [...new Set([...ids, ...recurrenceUserIds])]
+    const ids = Array.isArray(task?.activatedUserIds)
+        ? task.activatedUserIds.filter(userId => userId && !completedOneOffUserIds.has(userId))
+        : []
+    const hasExplicitActivationState = Array.isArray(task?.activatedUserIds) || task?.recurrenceByUser !== undefined
+    if (hasExplicitActivationState) return [...new Set([...ids, ...recurrenceUserIds])]
 
     if (!task?.recurrence || task.recurrence === RECURRENCE_NEVER) return []
 
-    const fallbackIds = [task?.activatorUserId, task?.creatorUserId, task?.userId].filter(Boolean)
+    const fallbackIds = [task?.activatorUserId, task?.creatorUserId, task?.userId].filter(
+        userId => userId && !completedOneOffUserIds.has(userId)
+    )
     return [...new Set(fallbackIds)]
 }
 
@@ -1154,7 +1165,13 @@ export function updatePreConfigTask(projectId, assistantId, task) {
     })
 }
 
-export async function toggleRecurringTaskActivation(projectId, assistantId, taskId, recurrenceValue = null) {
+export async function toggleRecurringTaskActivation(
+    projectId,
+    assistantId,
+    taskId,
+    recurrenceValue = null,
+    activatedInProjectId = projectId
+) {
     clearAssistantTasksCache(projectId, assistantId)
     const { loggedUser } = store.getState()
     if (!loggedUser?.uid || !taskId) return
@@ -1186,19 +1203,23 @@ export async function toggleRecurringTaskActivation(projectId, assistantId, task
             updatePayload.creatorUserId = currentUserId
         }
 
-        if (!isGlobalAssistant(assistantId)) {
-            updatePayload.activatedInProjectId = projectId
-        }
+        updatePayload[`activatedInProjectIdByUser.${currentUserId}`] = activatedInProjectId
+        if (!isGlobalAssistant(assistantId)) updatePayload.activatedInProjectId = activatedInProjectId
 
         const perUserLastExecutedField = `lastExecutedByUser.${currentUserId}`
         if (isActivatedForCurrentUser) {
             updatePayload[perUserLastExecutedField] = firebase.firestore.FieldValue.delete()
             delete nextRecurrenceByUser[currentUserId]
-        } else if (task.lastExecutedByUser?.[currentUserId] === undefined) {
-            updatePayload[perUserLastExecutedField] = null
+        } else {
             const recurrenceToActivate =
                 recurrenceValue || task.recurrenceByUser?.[currentUserId] || task.recurrence || RECURRENCE_DAILY
+            if (task.lastExecutedByUser?.[currentUserId] === undefined || recurrenceToActivate === RECURRENCE_ONCE) {
+                updatePayload[perUserLastExecutedField] = null
+            }
             nextRecurrenceByUser[currentUserId] = recurrenceToActivate
+            if (recurrenceToActivate === RECURRENCE_ONCE) {
+                updatePayload.completedOneOffUserIds = firebase.firestore.FieldValue.arrayRemove(currentUserId)
+            }
         }
 
         updatePayload.recurrenceByUser = nextRecurrenceByUser

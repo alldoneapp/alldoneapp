@@ -2483,5 +2483,21 @@
     "Medium": "Media",
     "XHigh": "Muy alto",
     "Max": "Max",
-    "Select how much reasoning the assistant should use": "Elige cuánto razonamiento debe utilizar el asistente"
+    "Select how much reasoning the assistant should use": "Elige cuánto razonamiento debe utilizar el asistente",
+    "Edit in chat": "Editar en el chat",
+    "Start chat": "Iniciar chat",
+    "Suggested prompts": "Prompts sugeridos",
+    "Links and integrations": "Enlaces e integraciones",
+    "Scheduled tasks": "Tareas programadas",
+    "Copy this assistant to configure its workflow and add tasks": "Copia este asistente para configurar su flujo de trabajo y añadir tareas.",
+    "No scheduled tasks": "No hay tareas programadas",
+    "Run now": "Ejecutar ahora",
+    "Pause": "Pausar",
+    "Once": "Una vez",
+    "Queued": "En cola",
+    "Needs attention": "Necesita atención",
+    "Retry assistant task": "Reintentar tarea del asistente",
+    "Task flow": "Flujo de la tarea",
+    "Use workflow": "Usar flujo de trabajo",
+    "Bypass workflow": "Omitir flujo de trabajo"
 }

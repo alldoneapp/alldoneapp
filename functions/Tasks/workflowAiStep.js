@@ -53,6 +53,35 @@ const RUN_STATUS_FAILED = 'failed'
 const RUN_STATUS_SKIPPED = 'skipped'
 const RUN_TERMINAL_STATUSES = [RUN_STATUS_COMPLETED, RUN_STATUS_FAILED, RUN_STATUS_SKIPPED]
 
+const setTaskWorkflowAiStatus = async (projectId, taskId, runId, stepId, status, failureReason = null) => {
+    if (!projectId || !taskId) return
+    try {
+        await admin
+            .firestore()
+            .doc(`items/${projectId}/tasks/${taskId}`)
+            .set(
+                {
+                    workflowAiStatus: {
+                        runId,
+                        stepId,
+                        status,
+                        failureReason,
+                        updatedAt: Date.now(),
+                    },
+                },
+                { merge: true }
+            )
+    } catch (error) {
+        console.error('[workflowAiStep] Could not persist task run status', {
+            projectId,
+            taskId,
+            runId,
+            status,
+            error: error.message,
+        })
+    }
+}
+
 const getCurrentStepId = task => {
     const stepHistory = Array.isArray(task && task.stepHistory) ? task.stepHistory : []
     return stepHistory.length > 0 ? stepHistory[stepHistory.length - 1] : null
@@ -144,6 +173,7 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
                 status: RUN_STATUS_PENDING,
                 createdAt: Date.now(),
             })
+        await setTaskWorkflowAiStatus(projectId, taskId, runId, stepId, RUN_STATUS_PENDING)
         return runId
     } catch (error) {
         // ALREADY_EXISTS means this update was redelivered; anything else is worth surfacing but must
@@ -331,8 +361,8 @@ const resolveAiStepPrompt = async (projectId, step, promptOverride = null) => {
  * Runs one queued AI step: executes the assistant against the task in its own chat, then moves the
  * task on.
  *
- * The task is advanced whether or not the assistant succeeded — a failed run posts its error into
- * the chat and the pipeline keeps moving rather than parking the task on the step.
+ * The task advances only after a successful run. Failed work remains on the assistant step so it is
+ * visible in the active task list and can be retried deliberately.
  */
 const runWorkflowAiStep = async (runId, run) => {
     const { projectId, taskId, stepId, assistantId, assigneeUserId } = run
@@ -348,6 +378,8 @@ const runWorkflowAiStep = async (runId, run) => {
         await runRef.set({ status: RUN_STATUS_SKIPPED, reason: 'task_deleted', settledAt: Date.now() }, { merge: true })
         return
     }
+
+    await setTaskWorkflowAiStatus(projectId, taskId, runId, stepId, RUN_STATUS_RUNNING)
 
     const task = { ...taskDoc.data(), id: taskId }
     if (getCurrentStepId(task) !== stepId) {
@@ -552,6 +584,8 @@ const parkWorkflowAiRunForExecution = async (
         },
         { merge: true }
     )
+    const persistedRun = (await runRef.get()).data() || {}
+    await setTaskWorkflowAiStatus(persistedRun.projectId, taskId, runId, persistedRun.stepId, RUN_STATUS_AWAITING_VM)
     console.log('[workflowAiStep] Holding the step until task assistant work finishes', {
         runId,
         taskId,
@@ -585,13 +619,20 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipRe
 
         const latest = latestDoc.exists ? { ...latestDoc.data(), id: taskId } : null
         const transition =
-            latest && getCurrentStepId(latest) === stepId
+            !failureReason && latest && getCurrentStepId(latest) === stepId
                 ? buildWorkflowStepAdvanceUpdate(latest, stepId, workflow)
                 : null
+        const workflowAiStatus = {
+            runId,
+            stepId,
+            status: settledStatus,
+            failureReason: failureReason || null,
+            updatedAt: settledAt,
+        }
 
         if (transition) {
             const { movingToDone, updateData } = transition
-            transaction.set(taskRef, updateData, { merge: true })
+            transaction.set(taskRef, { ...updateData, workflowAiStatus }, { merge: true })
 
             const subtaskIds = Array.isArray(latest.subtaskIds) ? latest.subtaskIds : []
             subtaskIds.forEach(subtaskId => {
@@ -601,7 +642,7 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipRe
                     { merge: true }
                 )
             })
-        }
+        } else if (latest) transaction.set(taskRef, { workflowAiStatus }, { merge: true })
 
         transaction.set(
             runRef,
@@ -633,6 +674,13 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipRe
             taskId,
             fromStepId: stepId,
             nextStepId: result.transition.nextStepId,
+        })
+    } else if (failureReason && result.latest && getCurrentStepId(result.latest) === stepId) {
+        console.warn('[workflowAiStep] Run failed; leaving task on the assistant step', {
+            runId,
+            taskId,
+            stepId,
+            failureReason,
         })
     } else if (result.latest && getCurrentStepId(result.latest) === stepId) {
         console.warn('[workflowAiStep] Step vanished from the workflow, leaving task in place', {
@@ -721,6 +769,29 @@ const findUnsettledVmJobs = async (projectId, taskId) => {
     }
 }
 
+const findTerminalVmFailure = async (projectId, taskId, run = {}) => {
+    try {
+        const snapshot = await admin.firestore().collection('pendingWebhooks').where('objectId', '==', taskId).get()
+        const correlationIds = new Set(run.awaitingCorrelationIds || [])
+        const runStartedAt = Number(run.startedAt || run.createdAt || run.awaitingSince || 0)
+        const failedJob = snapshot.docs.find(doc => {
+            const job = doc.data() || {}
+            const belongsToRun = correlationIds.has(doc.id) || Number(job.createdAt || 0) >= runStartedAt
+            return (
+                belongsToRun &&
+                job.kind === 'vm_job' &&
+                job.projectId === projectId &&
+                (job.objectType || 'tasks') === 'tasks' &&
+                ['failed', 'cancelled'].includes(job.status)
+            )
+        })
+        return failedJob ? `vm_${failedJob.data().status}` : null
+    } catch (error) {
+        console.warn('[workflowAiStep] Could not check terminal VM outcome', { taskId, error: error.message })
+        return null
+    }
+}
+
 /**
  * Of the given VM correlation ids, the ones that have not reached a terminal status. A job whose doc
  * has gone is treated as settled rather than waited on forever.
@@ -786,11 +857,8 @@ const resolveAwaitingDeadline = (run, unsettledJobs) => {
 /**
  * Advances runs that were parked waiting on VM work, once that work settles.
  *
- * A failed or cancelled VM job still advances the task: it matches how a failed assistant run behaves
- * (the error is posted into the chat and the pipeline keeps moving) rather than parking the task
- * where nobody is looking. The same applies once the deadline passes, which is the backstop for a VM
- * job whose status never reaches a terminal state — see resolveAwaitingDeadline for why a job blocked
- * on a user question gets longer than the plain run budget.
+ * Successful VM completion advances the workflow. Failures, cancellations, and timeouts settle the
+ * run as failed while leaving the task on the assistant step for a deliberate retry.
  */
 const resolveAwaitingVmRuns = async ({ now = Date.now(), projectId = null, taskId = null } = {}) => {
     let query = admin.firestore().collection(RUNS_COLLECTION)
@@ -839,20 +907,24 @@ const resolveAwaitingVmRuns = async ({ now = Date.now(), projectId = null, taskI
             const workflow = await loadRunWorkflow(run)
             const timedOutWithActiveExecution =
                 timedOut && (activeAssistantRunIds.length > 0 || stillRunning.length > 0)
+            const terminalFailureReason = timedOutWithActiveExecution
+                ? 'vm_timeout'
+                : await findTerminalVmFailure(run.projectId, run.taskId, run)
 
             const finalized = await finalizeWorkflowAiRun(
                 doc.id,
                 run,
                 workflow,
-                timedOutWithActiveExecution ? 'vm_timeout' : null,
-                timedOutWithActiveExecution ? null : run.awaitingSkipReason || null
+                terminalFailureReason,
+                terminalFailureReason ? null : run.awaitingSkipReason || null
             )
             if (!finalized) continue
             resolved++
-            console.log('[workflowAiStep] VM work finished, advancing the step', {
+            console.log('[workflowAiStep] Assistant workflow run settled', {
                 runId: doc.id,
                 taskId: run.taskId,
                 timedOut,
+                outcome: terminalFailureReason ? 'failed' : 'advanced',
             })
         } catch (error) {
             console.error('[workflowAiStep] Could not resolve awaiting run', { runId: doc.id, error: error.message })
@@ -1010,13 +1082,16 @@ const sweepStalledWorkflowAiRuns = async () => {
                 const task = { ...taskDoc.data(), id: run.taskId }
                 if (getCurrentStepId(task) === run.stepId) {
                     const workflow = await loadRunWorkflow(run)
-                    await advanceTaskFromWorkflowStep(run.projectId, run.taskId, task, run.stepId, workflow)
+                    await finalizeWorkflowAiRun(doc.id, run, workflow, 'stalled')
                 }
             }
-            await doc.ref.set(
-                { status: RUN_STATUS_FAILED, failureReason: 'stalled', settledAt: Date.now() },
-                { merge: true }
-            )
+            const latestRun = await doc.ref.get()
+            if (!latestRun.exists || !RUN_TERMINAL_STATUSES.includes(latestRun.data()?.status)) {
+                await doc.ref.set(
+                    { status: RUN_STATUS_FAILED, failureReason: 'stalled', settledAt: Date.now() },
+                    { merge: true }
+                )
+            }
         } catch (error) {
             console.error('[workflowAiStep] Could not sweep stalled run', { runId: doc.id, error: error.message })
         }
@@ -1024,6 +1099,27 @@ const sweepStalledWorkflowAiRuns = async () => {
 
     console.log('[workflowAiStep] Swept stalled runs', { count: stalled.size })
     return stalled.size
+}
+
+const retryFailedWorkflowAiRun = async (projectId, taskId) => {
+    const taskDoc = await admin.firestore().doc(`items/${projectId}/tasks/${taskId}`).get()
+    if (!taskDoc.exists) throw new Error('Task not found')
+
+    const task = { ...taskDoc.data(), id: taskId }
+    if (task.workflowAiStatus?.status !== RUN_STATUS_FAILED) {
+        throw new Error('Only failed assistant workflow runs can be retried')
+    }
+
+    const stepHistory = Array.isArray(task.stepHistory) ? task.stepHistory : []
+    const stepId = getCurrentStepId(task)
+    if (!stepId) throw new Error('Task is not on a workflow step')
+
+    return enqueueWorkflowAiRunIfNeeded(
+        projectId,
+        taskId,
+        { ...task, stepHistory: stepHistory.slice(0, -1) },
+        { ...task, completed: Date.now(), workflowAiStatus: null }
+    )
 }
 
 module.exports = {
@@ -1041,6 +1137,7 @@ module.exports = {
     resolveAwaitingVmRuns,
     resolveWorkflowRunsForAssistantRunUpdate,
     resolveWorkflowRunsForSettledVmJob,
+    retryFailedWorkflowAiRun,
     runWorkflowAiStep,
     sweepStalledWorkflowAiRuns,
 }

@@ -23,14 +23,13 @@ export const watchWorkflowTasksAmount = (projectIds, userId, watcherKeys) => {
     const amountsByProject = { total: 0 }
 
     projectIds.forEach((projectId, index) => {
-        let query = getDb()
+        const query = getDb()
             .collection(`items/${projectId}/tasks`)
             .where('userId', '==', userId)
             .where('done', '==', false)
             .where('parentId', '==', null)
+            .where('currentReviewerId', '!=', userId)
             .where('isPublicFor', 'array-contains-any', allowUserIds)
-
-        if (!assistantOwner) query = query.where('currentReviewerId', '!=', userId)
 
         globalWatcherUnsub[watcherKeys[index]] = query.onSnapshot(snapshot => {
             const newAmount = assistantOwner
@@ -109,9 +108,6 @@ export const watchOpenTasksAmount = (
     const { uid: loggedUserId, isAnonymous } = loggedUser
 
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
-    const currentUser = store.getState().currentUser
-    const assistantOwner = currentUser?.uid === userId && !!currentUser.temperature
-
     const dateEndToday = moment().endOf('day').valueOf()
 
     projectIds.forEach((projectId, index) => {
@@ -126,9 +122,7 @@ export const watchOpenTasksAmount = (
 
         globalWatcherUnsub[watcherKeys[index]] = query.onSnapshot(snapshot => {
             if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
-            const newAmount = assistantOwner
-                ? snapshot.docs.filter(doc => doc.data()?.workflowTask !== true).length
-                : snapshot.docs.length
+            const newAmount = snapshot.docs.length
             const previousAmount = amountsByProject[projectId].normal ? amountsByProject[projectId].normal : 0
 
             if (newAmount !== previousAmount) {

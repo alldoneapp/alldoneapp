@@ -74,6 +74,21 @@ function buildTaskObject({
     autoFollowUpContactId = null,
     autoFollowUpStatusId = null,
     priority = 'none',
+    executionMode = 'workflow',
+    workflowTask = false,
+    workflowPayerUserId = null,
+    workflowAiPromptOverride = null,
+    assistantScheduleSource = null,
+    isAssistantEnabled = false,
+    aiModel = null,
+    aiTemperature = null,
+    aiReasoningEffort = null,
+    aiSystemMessage = null,
+    taskMetadata = null,
+    stepHistory = null,
+    currentReviewerId = null,
+    completed = null,
+    creatorId = null,
 }) {
     // Validation
     if (!name || !name.trim()) {
@@ -115,8 +130,12 @@ function buildTaskObject({
         // User assignment
         userId: userId,
         userIds: finalUserIds,
-        currentReviewerId: userId,
+        currentReviewerId: currentReviewerId || userId,
         assigneeType: assigneeType,
+        executionMode: executionMode === 'direct' ? 'direct' : 'workflow',
+        workflowTask: workflowTask === true,
+        workflowPayerUserId,
+        workflowAiPromptOverride,
 
         // Observers and privacy
         observersIds: observersIds || [],
@@ -126,7 +145,7 @@ function buildTaskObject({
         isPublicFor: finalIsPublicFor,
 
         // Workflow and steps
-        stepHistory: [OPEN_STEP],
+        stepHistory: stepHistory || [OPEN_STEP],
         estimations: finalEstimations,
 
         // Dates and timing
@@ -135,13 +154,13 @@ function buildTaskObject({
         startTime: moment ? moment(now).format('HH:mm') : new Date(now).toTimeString().substring(0, 5),
         dueDate: finalDueDate,
         alertEnabled: false,
-        completed: null,
+        completed,
         completedTime: null,
         lastEditionDate: now,
         lastEditorId: userId,
 
         // Creation metadata
-        creatorId: userId,
+        creatorId: creatorId || userId,
         hasStar: hasStar,
         priority: TASK_PRIORITIES.has(priority) ? priority : 'none',
         sortIndex: now,
@@ -189,6 +208,13 @@ function buildTaskObject({
 
         // AI and assistance
         assistantId: assistantId,
+        assistantScheduleSource,
+        isAssistantEnabled: isAssistantEnabled === true,
+        aiModel,
+        aiTemperature,
+        aiReasoningEffort,
+        aiSystemMessage,
+        taskMetadata,
         autoEstimation: autoEstimation,
         suggestedBy: suggestedBy,
 

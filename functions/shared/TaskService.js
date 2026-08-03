@@ -654,6 +654,7 @@ class TaskService {
             description,
             dueDate,
             recurrence,
+            executionMode,
             priority,
             completed,
             userId,
@@ -701,6 +702,13 @@ class TaskService {
                 updateData.timesDone = 0
             }
             changes.push(`recurrence to "${recurrence}"`)
+        }
+        if (executionMode !== undefined && executionMode !== currentTask.executionMode) {
+            if (executionMode !== 'workflow' && executionMode !== 'direct') {
+                throw new Error('Invalid task execution mode. Expected "workflow" or "direct"')
+            }
+            updateData.executionMode = executionMode
+            changes.push(`execution mode to "${executionMode}"`)
         }
         if (priority !== undefined && priority !== currentTask.priority) {
             TaskValidator.validateOptionalFields({ priority })

@@ -28,6 +28,7 @@ export default function TasksSections({
     isActiveOrganizeMode,
     pressedShowMoreMainSection,
     setPressedShowMoreMainSection,
+    assistantProfileMode = false,
 }) {
     const mentionTasksAmount = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][MENTION_TASK_INDEX].length
@@ -73,7 +74,7 @@ export default function TasksSections({
                 setPressedShowMoreMainSection={setPressedShowMoreMainSection}
             />
 
-            {mentionTasksAmount > 0 && (
+            {!assistantProfileMode && mentionTasksAmount > 0 && (
                 <MentionSection
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -82,7 +83,7 @@ export default function TasksSections({
                 />
             )}
 
-            {suggestedTasksSectionsAmount > 0 && (
+            {!assistantProfileMode && suggestedTasksSectionsAmount > 0 && (
                 <SuggestedSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -91,7 +92,7 @@ export default function TasksSections({
                 />
             )}
 
-            {receivedFromTasksSectionsAmount > 0 && (
+            {!assistantProfileMode && receivedFromTasksSectionsAmount > 0 && (
                 <OriginallyFromSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -100,7 +101,7 @@ export default function TasksSections({
                 />
             )}
 
-            {calendarTasksAmount > 0 && (
+            {!assistantProfileMode && calendarTasksAmount > 0 && (
                 <CalendarSectionContainer
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -109,7 +110,7 @@ export default function TasksSections({
                 />
             )}
 
-            {observedTasksSectionsAmount > 0 && (
+            {!assistantProfileMode && observedTasksSectionsAmount > 0 && (
                 <ObservedFromSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}
@@ -119,7 +120,7 @@ export default function TasksSections({
                 />
             )}
 
-            {streamAndUserTasksSectionsAmount > 0 && (
+            {!assistantProfileMode && streamAndUserTasksSectionsAmount > 0 && (
                 <StreamAndUserTasksSectionList
                     projectId={projectId}
                     dateIndex={dateIndex}
