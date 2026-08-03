@@ -1,5 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
+import { Platform } from 'react-native'
 
 import TaskInput from './TaskInput'
 
@@ -30,7 +31,7 @@ jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 jest.mock('../../../utils/Gmail/gmailTaskUtils', () => ({ isInboxSummaryGmailTask: jest.fn(() => false) }))
 jest.mock('../../../i18n/TranslationService', () => ({ translate: text => text }))
 
-const createTaskInput = autoFocusInput => {
+const createTaskInput = () => {
     const inputTask = React.createRef()
     let tree
 
@@ -47,7 +48,6 @@ const createTaskInput = autoFocusInput => {
                 onChangeInputText={jest.fn()}
                 getInitialText={() => ''}
                 onKeyEnterPressed={jest.fn()}
-                autoFocusInput={autoFocusInput}
             />
         )
     })
@@ -56,19 +56,27 @@ const createTaskInput = autoFocusInput => {
 }
 
 describe('TaskInput focus', () => {
+    const originalOS = Platform.OS
+
     beforeEach(() => {
         mockInputFocus.mockClear()
     })
 
-    test('does not focus or activate the keyboard for a mobile inline task', () => {
-        const { tree } = createTaskInput(false)
+    afterEach(() => {
+        Platform.OS = originalOS
+    })
 
-        expect(mockInputFocus).not.toHaveBeenCalled()
-        expect(tree.root.findByType('CustomTextInput3').props.autoFocus).toBe(false)
+    test('focuses a mobile inline task input as soon as it mounts', () => {
+        Platform.OS = 'ios'
+        const { tree } = createTaskInput()
+
+        expect(mockInputFocus).toHaveBeenCalledTimes(1)
+        expect(tree.root.findByType('CustomTextInput3').props.autoFocus).toBe(true)
     })
 
     test('keeps desktop inline task auto-focus behavior', () => {
-        const { tree } = createTaskInput(true)
+        Platform.OS = 'web'
+        const { tree } = createTaskInput()
 
         expect(mockInputFocus).toHaveBeenCalledTimes(1)
         expect(tree.root.findByType('CustomTextInput3').props.autoFocus).toBe(true)

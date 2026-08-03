@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import moment from 'moment'
 import v4 from 'uuid/v4'
-import { View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import DismissibleItem from '../../UIComponents/DismissibleItem'
@@ -13,7 +13,6 @@ import Backend from '../../../utils/BackendBridge'
 import { DATE_TASK_INDEX, TODAY_DATE } from '../../../utils/backends/openTasks'
 import EditTask from '../TaskItem/EditTask'
 import { setAddTaskSectionToOpenData } from '../../../redux/actions'
-import { taskEditorLayout } from '../TaskItem/TaskEditorLayout'
 
 export default function NewTaskSection({
     projectId,
@@ -112,7 +111,7 @@ export default function NewTaskSection({
     }, [addTaskSectionToOpenData])
 
     return (
-        <View style={taskEditorLayout.addTaskSection}>
+        <View style={localStyles.container}>
             <DismissibleItem
                 ref={newItemRef}
                 defaultComponent={
@@ -150,3 +149,9 @@ export default function NewTaskSection({
         </View>
     )
 }
+
+const localStyles = StyleSheet.create({
+    container: {
+        paddingHorizontal: 8,
+    },
+})

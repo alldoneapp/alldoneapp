@@ -6,8 +6,6 @@ import WorkflowTaskCreator from './WorkflowTaskCreator'
 import TaskInput from '../../TaskItem/TaskInput'
 import TaskInputArea from '../../TaskItem/TaskInputArea'
 import ExecutionModeButton from '../../TaskItem/ExecutionModeButton'
-import CheckboxAndIcon from '../../TaskItem/CheckboxAndIcon'
-import { taskEditorLayout } from '../../TaskItem/TaskEditorLayout'
 import { generateTaskFromPreConfig } from '../../../../utils/assistantHelper'
 
 let mockState
@@ -20,8 +18,6 @@ jest.mock('react-redux', () => ({
 jest.mock('../../../UIControls/Button', () => 'Button')
 jest.mock('../../../UIControls/GhostButton', () => 'GhostButton')
 jest.mock('../../../Icon', () => 'Icon')
-jest.mock('../../TaskItem/TaskAssistantButton', () => 'TaskAssistantButton')
-jest.mock('../../TaskItem/TaskCheckbox', () => 'TaskCheckbox')
 jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
     const React = require('react')
 
@@ -110,7 +106,6 @@ describe('WorkflowTaskCreator', () => {
                 genericData: null,
                 calendarData: null,
                 gmailData: null,
-                subtaskIds: [],
                 executionMode: 'workflow',
             },
         })
@@ -127,43 +122,30 @@ describe('WorkflowTaskCreator', () => {
         expect(tree.root.findByProps({ accessibilityLabel: 'Submit' }).props.disabled).toBe(false)
     })
 
-    it.each([
-        ['desktop', false, false],
-        ['mobile', true, false],
-        ['disabled desktop', false, true],
-        ['disabled mobile', true, true],
-    ])('matches the normal inline add-task layout while unselected on %s', (_label, isMobile, disabled) => {
-        mockState.smallScreenNavigation = isMobile
-        mockState.isMiddleScreen = isMobile
-        const tree = renderCreator({ showConfigurationLink: false, disabled })
-        const sectionStyle = StyleSheet.flatten(
-            tree.root.findByProps({ testID: 'assistant-workflow-task-section' }).props.style
-        )
+    it('matches the normal inline add-task layout while unselected', () => {
+        const tree = renderCreator({ showConfigurationLink: false })
         const editorStyle = StyleSheet.flatten(
             tree.root.findByProps({ testID: 'assistant-workflow-task-editor' }).props.style
         )
         const actionsStyle = StyleSheet.flatten(
             tree.root.findByProps({ testID: 'assistant-workflow-task-actions' }).props.style
         )
-        const inputAreaStyle = StyleSheet.flatten(
-            tree.root.findByType(TaskInputArea).findAllByType('View')[0].props.style
-        )
+        const addIconStyle = StyleSheet.flatten(tree.root.findByType(TaskInputArea).props.leftAccessory.props.style)
 
-        expect(sectionStyle).toEqual(taskEditorLayout.addTaskSection)
-        expect(editorStyle).toMatchObject(taskEditorLayout.inlineEditor)
+        expect(editorStyle).toMatchObject({
+            marginHorizontal: -16,
+            backgroundColor: 'transparent',
+            borderWidth: 0,
+            borderRadius: 0,
+            shadowColor: 'transparent',
+            elevation: 0,
+        })
         expect(actionsStyle).toMatchObject({
-            ...taskEditorLayout.actionBar,
-            ...taskEditorLayout.inlineActionBar,
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-        })
-        expect(inputAreaStyle).toMatchObject({
             marginHorizontal: 8,
-            backgroundColor: '#ffffff',
-            borderRadius: 4,
+            borderBottomLeftRadius: 4,
+            borderBottomRightRadius: 4,
         })
-        expect(inputAreaStyle.borderWidth).toBeUndefined()
-        expect(tree.root.findByType(CheckboxAndIcon).props).toMatchObject({ adding: true, isSubtask: false })
+        expect(addIconStyle.left).toBe(7)
     })
 
     it.each([false, true])('replaces the input avatar with the workflow/direct icon (mobile: %s)', isMobile => {
@@ -180,17 +162,6 @@ describe('WorkflowTaskCreator', () => {
             title: null,
             accessibilityLabel: 'Use workflow',
         })
-        expect(inputArea.props.newTaskInFocus).toBeUndefined()
-
-        act(() => renderedButton.props.onPress())
-
-        expect(tree.root.findByType(ExecutionModeButton).props.task.executionMode).toBe('direct')
-        expect(tree.root.findByType('GhostButton').props).toMatchObject({
-            icon: 'fast-forward',
-            title: null,
-            accessibilityLabel: 'Bypass workflow',
-        })
-        expect(tree.root.findByType(TaskInputArea).props.newTaskInFocus).toBeUndefined()
     })
 
     it('shows immediate submission feedback and keeps the existing task payload', async () => {
