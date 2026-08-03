@@ -1554,13 +1554,14 @@ export const updateOpTasks = (
         })
 }
 
-export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
+const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
     let hiddenTaskTypesExist = false
 
     // Determine if any tasks of the specifically "hidden" types exist
     for (const tasksByDate of filteredOpenTasks) {
         const typesToSumForHiddenCheck = [
             tasksByDate[MENTION_TASK_INDEX],
+            tasksByDate[SUGGESTED_TASK_INDEX],
             tasksByDate[OBSERVED_TASKS_INDEX],
             tasksByDate[STREAM_AND_USER_TASKS_INDEX],
         ]
@@ -1611,15 +1612,6 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             })
         }
 
-        let currentSuggestedTasksCount = 0
-        if (originalTasksByDate[SUGGESTED_TASK_INDEX]) {
-            originalTasksByDate[SUGGESTED_TASK_INDEX].forEach(tasksBySuggester => {
-                tasksBySuggester[1].forEach(tasksByGoal => {
-                    currentSuggestedTasksCount += tasksByGoal[1].length
-                })
-            })
-        }
-
         // Calculate calendar tasks count
         let currentCalendarTasksCount = 0
         if (originalTasksByDate[CALENDAR_TASK_INDEX]) {
@@ -1649,22 +1641,18 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
         const shouldInclude =
             currentMainTasksCount > 0 ||
             currentEmailTasksCount > 0 ||
-            currentSuggestedTasksCount > 0 ||
             currentCalendarTasksCount > 0 ||
             currentWorkflowTasksCount > 0 ||
             currentEmptyGoalsCount > 0
 
-        // Include days with any task type that is visible in All Projects.
+        // Modified condition to include days with any visible task type (main, email, calendar, or workflow)
         if (shouldInclude) {
             const newTasksByDateEntry = [...originalTasksByDate] // Start with a shallow copy
 
-            // Count every visible task type so projects containing only one of these sections remain visible.
+            // Set AMOUNT_TASKS_INDEX to include calendar and workflow tasks so the project is visible
+            // This ensures projects with only calendar or workflow tasks are displayed in the All Projects view
             newTasksByDateEntry[AMOUNT_TASKS_INDEX] =
-                currentMainTasksCount +
-                currentEmailTasksCount +
-                currentSuggestedTasksCount +
-                currentCalendarTasksCount +
-                currentWorkflowTasksCount
+                currentMainTasksCount + currentEmailTasksCount + currentCalendarTasksCount + currentWorkflowTasksCount
 
             // Add a flag indicating whether this date has calendar tasks - will help with arrow logic
             newTasksByDateEntry.hasCalendarTasks = currentCalendarTasksCount > 0
@@ -1672,13 +1660,12 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
             // Store the non-calendar count separately in a custom property that can be used for the arrow logic
             // Normal UI components won't use this, but our arrow logic can
             newTasksByDateEntry.nonCalendarTasksCount =
-                currentMainTasksCount + currentEmailTasksCount + currentSuggestedTasksCount + currentWorkflowTasksCount
+                currentMainTasksCount + currentEmailTasksCount + currentWorkflowTasksCount
 
             // Preserve task types that should be VISIBLE in "All Projects" view
             newTasksByDateEntry[MAIN_TASK_INDEX] = originalTasksByDate[MAIN_TASK_INDEX] || []
             newTasksByDateEntry[CALENDAR_TASK_INDEX] = originalTasksByDate[CALENDAR_TASK_INDEX] || [] // Display calendar tasks
             newTasksByDateEntry[EMAIL_TASK_INDEX] = originalTasksByDate[EMAIL_TASK_INDEX] || [] // Display email tasks
-            newTasksByDateEntry[SUGGESTED_TASK_INDEX] = originalTasksByDate[SUGGESTED_TASK_INDEX] || [] // Display suggested tasks
             newTasksByDateEntry[WORKFLOW_TASK_INDEX] = originalTasksByDate[WORKFLOW_TASK_INDEX] || [] // Display workflow tasks
 
             // Preserve Active Goals and Empty Goals as they are handled by projectAmount or UI separately
@@ -1687,6 +1674,7 @@ export const taskToShowInAllProjects = (instanceKey, filteredOpenTasks) => {
 
             // Clear task types that are HIDDEN in "All Projects" summary view
             newTasksByDateEntry[MENTION_TASK_INDEX] = []
+            newTasksByDateEntry[SUGGESTED_TASK_INDEX] = []
             newTasksByDateEntry[OBSERVED_TASKS_INDEX] = []
             newTasksByDateEntry[STREAM_AND_USER_TASKS_INDEX] = []
 
