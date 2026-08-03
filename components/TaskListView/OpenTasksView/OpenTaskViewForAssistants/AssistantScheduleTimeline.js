@@ -1,9 +1,8 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import moment from 'moment-timezone'
 
 import DateHeader from '../../Header/DateHeader'
-import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
 import { getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import DateTag from '../../../Tags/DateTag'
@@ -13,6 +12,9 @@ import UserTag from '../../../Tags/UserTag'
 import AddPreConfigTaskWrapper from '../../../AssistantDetailedView/Customizations/PreConfigTasks/AddPreConfigTaskWrapper'
 import { taskPresentationLayout } from '../../TaskItem/TaskPresentation/TaskPresentationLayout'
 import { TASK_EXECUTION_MODE_DIRECT, getTaskExecutionMode } from '../../../../utils/taskExecutionMode'
+import AiStepCheckBox from '../../TaskItem/TaskPresentation/CheckBoxContainer/AiStepCheckBox'
+import PreConfigTaskGeneratorWrapper from './PreConfigTaskGeneratorWrapper'
+import { translate } from '../../../../i18n/TranslationService'
 
 export function AssistantScheduleRows({ projectId, tasksProjectId, assistant, occurrences, disabled = false }) {
     const timeFormat = getTimeFormat()
@@ -44,15 +46,27 @@ export function AssistantScheduleRows({ projectId, tasksProjectId, assistant, oc
                                     style={[taskPresentationLayout.leadingContent, localStyles.scheduleLeadingContent]}
                                     testID="assistant-schedule-task-leading-content"
                                 >
-                                    <View style={localStyles.scheduleIcon} testID="assistant-schedule-task-icon">
-                                        <Icon
-                                            name={occurrence.status === 'failed' ? 'alert-circle' : 'clock'}
-                                            size={20}
-                                            color={
-                                                occurrence.status === 'failed' ? colors.UtilityRed200 : colors.Text03
-                                            }
-                                        />
-                                    </View>
+                                    <PreConfigTaskGeneratorWrapper
+                                        projectId={projectId}
+                                        task={occurrence.task}
+                                        assistant={assistant}
+                                        disabled={disabled}
+                                        skipNavigation
+                                    >
+                                        {({ onPress, running, disabled: executionDisabled }) => (
+                                            <TouchableOpacity
+                                                style={localStyles.executionButton}
+                                                onPress={onPress}
+                                                disabled={executionDisabled}
+                                                activeOpacity={executionDisabled ? 1 : 0.35}
+                                                accessibilityLabel={translate('Run now')}
+                                                title={translate('Run now')}
+                                                testID="assistant-schedule-task-play-button"
+                                            >
+                                                <AiStepCheckBox running={running} />
+                                            </TouchableOpacity>
+                                        )}
+                                    </PreConfigTaskGeneratorWrapper>
                                     <View style={localStyles.descriptionContainer}>
                                         <Text style={[styles.body1, localStyles.name]} numberOfLines={1}>
                                             {occurrence.task.name}
@@ -125,7 +139,7 @@ const localStyles = StyleSheet.create({
     scheduleLeadingContent: {
         alignItems: 'center',
     },
-    scheduleIcon: {
+    executionButton: {
         width: 24,
         height: 24,
         alignItems: 'center',
