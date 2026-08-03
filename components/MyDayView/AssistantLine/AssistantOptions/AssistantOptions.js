@@ -10,7 +10,7 @@ import { stopLoadingData } from '../../../../redux/actions'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { getAssistantLineData, getOptionsPresentationData } from './helper'
 import OptionButtons from './OptionButtons/OptionButtons'
-import QuickActionsToggle from './QuickActionsToggle'
+import MoreOptionsWrapper from './MoreOptions/MoreOptionsWrapper'
 import AssistantAvatarButton from './AssistantAvatarButton'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { createBotQuickTopic, generateUserIdsToNotifyForNewComments } from '../../../../utils/assistantHelper'
@@ -56,7 +56,6 @@ export default function AssistantOptions({
     const [inputLayout, setInputLayout] = useState(INITIAL_ASSISTANT_INPUT_LAYOUT)
     const [controlsWidth, setControlsWidth] = useState(null)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
-    const [quickActionsExpanded, setQuickActionsExpanded] = useState(showAllQuickActions)
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
@@ -96,10 +95,6 @@ export default function AssistantOptions({
             setTasks(null)
         }
     }, [assistant?.uid, assistantProjectId])
-
-    useEffect(() => {
-        setQuickActionsExpanded(showAllQuickActions)
-    }, [assistant?.uid, assistantProjectId, showAllQuickActions])
 
     const handleSendMessage = useCallback(async () => {
         const trimmedMessage = message.trim()
@@ -210,12 +205,12 @@ export default function AssistantOptions({
         return null
     }
 
-    const { optionsLikeButtons, hasAdditionalOptions } = getOptionsPresentationData(
+    const { optionsLikeButtons, optionsInModal, showSubmenu } = getOptionsPresentationData(
         conversationProject,
         assistant.uid,
         tasks,
         amountOfButtonOptions,
-        quickActionsExpanded
+        showAllQuickActions
     )
 
     const hasQuickActions = true
@@ -312,10 +307,11 @@ export default function AssistantOptions({
                         options={optionsLikeButtons}
                         assistant={assistant}
                     />
-                    {hasAdditionalOptions && (
-                        <QuickActionsToggle
-                            expanded={quickActionsExpanded}
-                            onPress={() => setQuickActionsExpanded(expanded => !expanded)}
+                    {showSubmenu && (
+                        <MoreOptionsWrapper
+                            projectId={conversationProjectId}
+                            options={optionsInModal}
+                            assistant={assistant}
                         />
                     )}
                 </View>

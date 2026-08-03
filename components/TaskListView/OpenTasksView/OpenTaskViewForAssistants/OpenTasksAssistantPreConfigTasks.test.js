@@ -6,12 +6,9 @@ import OpenTasksAssistantPreConfigTasks from './OpenTasksAssistantPreConfigTasks
 
 let mockState
 let mockTasks
-const mockDispatch = jest.fn()
-const mockNavigate = jest.fn()
 
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
-    useDispatch: () => mockDispatch,
 }))
 jest.mock('uuid/v4', () => () => 'watcher-1')
 jest.mock('../../../../utils/backends/Assistants/assistantsFirestore', () => ({
@@ -30,26 +27,13 @@ jest.mock('../../../TaskListView/Utils/TasksHelper', () => ({
 jest.mock('../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal', () => ({ TASK_TYPE_PROMPT: 'prompt' }))
 jest.mock('../../../AdminPanel/Assistants/assistantsHelper', () => ({ GLOBAL_PROJECT_ID: 'globalProject' }))
 jest.mock('./WhatsAppAssistantLine', () => 'WhatsAppAssistantLine')
-jest.mock('./WorkflowTaskCreator', () => ({
-    __esModule: true,
-    default: 'WorkflowTaskCreator',
-    WorkflowConfigurationLink: 'WorkflowConfigurationLink',
-}))
+jest.mock('./WorkflowTaskCreator', () => 'WorkflowTaskCreator')
 jest.mock('../../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
-jest.mock('../../../../utils/NavigationService', () => ({
-    __esModule: true,
-    default: { navigate: (...args) => mockNavigate(...args) },
-}))
-jest.mock('../../../../redux/actions', () => ({ setSelectedNavItem: tab => ({ type: 'select-tab', tab }) }))
-jest.mock('../../../../utils/TabNavigationConstants', () => ({
-    DV_TAB_ASSISTANT_CUSTOMIZATIONS: 'assistant-customizations',
-}))
 
 const TimelineChild = () => null
 
 describe('assistant profile workflow task creator', () => {
     beforeEach(() => {
-        jest.clearAllMocks()
         mockTasks = []
         mockState = {
             currentUser: {
@@ -58,37 +42,26 @@ describe('assistant profile workflow task creator', () => {
             },
             globalAssistants: [],
             loggedUser: {
-                uid: 'user-1',
                 isAnonymous: false,
                 realProjectIds: ['project-1'],
             },
-            administratorUser: { uid: 'admin-1' },
-            showFloatPopup: 0,
             loggedUserProjectsMap: {
                 'project-1': { id: 'project-1', name: 'Project' },
             },
         }
     })
 
-    it('keeps workflow configuration in the Tasks header and injects creation into the timeline', () => {
+    it('shows workflow task creation beside the project assistant pre-configured tasks', () => {
         let tree
         act(() => {
-            tree = renderer.create(
-                <OpenTasksAssistantPreConfigTasks projectId="project-1">
-                    <TimelineChild />
-                </OpenTasksAssistantPreConfigTasks>
-            )
+            tree = renderer.create(<OpenTasksAssistantPreConfigTasks projectId="project-1" />)
         })
 
-        expect(tree.root.findByType('WorkflowConfigurationLink').props).toMatchObject({
-            projectId: 'project-1',
-            assistant: mockState.currentUser,
-        })
-        expect(tree.root.findByType(TimelineChild).props.assistantTaskCreatorContext).toMatchObject({
+        const creator = tree.root.findByType('WorkflowTaskCreator')
+        expect(creator.props).toMatchObject({
             projectId: 'project-1',
             assistant: mockState.currentUser,
             disabled: false,
-            showConfigurationLink: false,
         })
         expect(tree.root.findByType('AssistantLine').props).toMatchObject({
             projectOverride: mockState.loggedUserProjectsMap['project-1'],
@@ -96,14 +69,7 @@ describe('assistant profile workflow task creator', () => {
             showAllQuickActions: true,
             preferAssistantIdOverride: true,
             scopeLastCommentToAssistant: true,
-            showEditAssistantButton: true,
         })
-        act(() => tree.root.findByType('AssistantLine').props.onEditAssistant())
-        expect(mockNavigate).toHaveBeenCalledWith('AssistantDetailedView', {
-            assistantId: 'assistant-1',
-            projectId: 'project-1',
-        })
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'select-tab', tab: 'assistant-customizations' })
         expect(tree.root.findAllByType(Text).map(node => node.props.children)).toEqual(['Tasks'])
     })
 
@@ -112,16 +78,10 @@ describe('assistant profile workflow task creator', () => {
 
         let tree
         act(() => {
-            tree = renderer.create(
-                <OpenTasksAssistantPreConfigTasks projectId="project-1">
-                    <TimelineChild />
-                </OpenTasksAssistantPreConfigTasks>
-            )
+            tree = renderer.create(<OpenTasksAssistantPreConfigTasks projectId="project-1" />)
         })
 
-        expect(tree.root.findAllByType('WorkflowConfigurationLink')).toHaveLength(0)
-        expect(tree.root.findByType(TimelineChild).props.assistantTaskCreatorContext).toBeNull()
-        expect(tree.root.findByType('AssistantLine').props.showEditAssistantButton).toBe(false)
+        expect(tree.root.findAllByType('WorkflowTaskCreator')).toHaveLength(0)
     })
 
     it('delegates all quick actions to the assistant line and only injects schedules into the timeline', () => {

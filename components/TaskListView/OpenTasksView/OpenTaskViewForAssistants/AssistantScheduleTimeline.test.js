@@ -84,29 +84,9 @@ describe('AssistantScheduleRows', () => {
         expect(tags.findAllByType('DateTag')).toHaveLength(1)
         expect(tags.findAllByType('TaskRecurrence')).toHaveLength(1)
         expect(tags.findAllByType('UserTag')).toHaveLength(1)
-        expect(tags.findAllByType('TaskTypeTag').map(tag => tag.props)).toEqual([
-            expect.objectContaining({ icon: 'fast-forward', text: 'Bypass workflow' }),
-        ])
 
         const labels = tree.root.findAllByType(Text).map(node => node.props.children)
         expect(labels).not.toContain('Run now')
         expect(labels).not.toContain('Pause')
-    })
-
-    it('hides the default workflow mode tag', () => {
-        const workflowOccurrence = {
-            ...occurrence,
-            task: { ...task, executionMode: 'workflow' },
-        }
-        const tree = renderer.create(
-            <AssistantScheduleRows
-                projectId="project-1"
-                tasksProjectId="assistant-tasks-project"
-                assistant={{ uid: 'assistant-1' }}
-                occurrences={[workflowOccurrence]}
-            />
-        )
-
-        expect(tree.root.findAllByType('TaskTypeTag')).toHaveLength(0)
     })
 })

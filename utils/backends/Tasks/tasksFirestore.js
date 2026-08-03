@@ -147,6 +147,7 @@ import { getCalendarTaskStartAndEndTimestamp } from '../../../components/MyDayVi
 import { getAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/workflowStepHelper'
+import { TASK_EXECUTION_MODE_DIRECT } from '../../taskExecutionMode'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -2838,6 +2839,7 @@ export async function moveTasksFromMiddleOfWorkflow(
 
     const taskUpdateData = {
         ...updateData,
+        ...(task.executionMode === TASK_EXECUTION_MODE_DIRECT ? { executionMode: TASK_EXECUTION_MODE_DIRECT } : {}),
         workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
         done: stepToMoveId === DONE_STEP,
         inDone: stepToMoveId === DONE_STEP,
@@ -3031,6 +3033,7 @@ export async function moveTasksFromOpen(
 
     const taskUpdateData = {
         ...updateData,
+        ...(task.executionMode === TASK_EXECUTION_MODE_DIRECT ? { executionMode: TASK_EXECUTION_MODE_DIRECT } : {}),
         workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
         ...(stepToMoveId === DONE_STEP && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
         done: stepToMoveId === DONE_STEP,
