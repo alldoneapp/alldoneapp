@@ -26,7 +26,6 @@ import { objectIsPublicForLoggedUser } from '../../TaskListView/Utils/TasksHelpe
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
 import { prepareTaskFocusChange } from '../../../utils/taskFocusInteraction'
 import useFloatPopupLock from '../../../hooks/useFloatPopupLock'
-import ExecutionModeButton, { shouldShowExecutionModeButton } from './ExecutionModeButton'
 
 export default function SecondaryButtonsArea({
     tmpTask,
@@ -57,7 +56,6 @@ export default function SecondaryButtonsArea({
     isPending,
     parentInTaskOutOfOpen,
     createSubtask,
-    setExecutionModeBeforeSave,
 }) {
     const smallScreen = useSelector(state => state.smallScreen)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -165,16 +163,6 @@ export default function SecondaryButtonsArea({
                 projectId={projectId}
                 disabled={(adding && !hasName) || isLoadingGoal}
             />
-
-            {shouldShowExecutionModeButton(adding, tmpTask) && (
-                <ExecutionModeButton
-                    task={tmpTask}
-                    disabled={!hasName || !accessGranted || isLoadingGoal}
-                    onChange={setExecutionModeBeforeSave}
-                    style={buttonItemStyle}
-                    iconOnly={adding && smallScreen}
-                />
-            )}
 
             {loggedUserCanUpdateObject &&
                 !tmpTask.done &&
