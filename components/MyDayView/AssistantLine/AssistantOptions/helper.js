@@ -53,10 +53,10 @@ const getOptions = (project, assistantId, tasks) => {
                     store.dispatch(setPreConfigTaskExecuting(task.name))
                     // Build aiSettings from task configuration
                     const aiSettings =
-                        task.aiModel || task.aiTemperature || task.aiSystemMessage
+                        task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
                             ? {
                                   model: task.aiModel,
-                                  temperature: task.aiTemperature,
+                                  reasoningEffort: task.aiReasoningEffort,
                                   systemMessage: task.aiSystemMessage,
                               }
                             : null

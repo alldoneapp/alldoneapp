@@ -724,10 +724,10 @@ export default function LinkTag({
                                     // No variables - execute directly
                                     console.log('[LinkTag] Executing prompt task directly (no variables)')
                                     const aiSettings =
-                                        task.aiModel || task.aiTemperature || task.aiSystemMessage
+                                        task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
                                             ? {
                                                   model: task.aiModel,
-                                                  temperature: task.aiTemperature,
+                                                  reasoningEffort: task.aiReasoningEffort,
                                                   systemMessage: task.aiSystemMessage,
                                               }
                                             : null

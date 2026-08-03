@@ -3553,6 +3553,7 @@ export function mapTaskData(taskId, task) {
         // Task-level AI settings
         aiModel: task.aiModel || null,
         aiTemperature: task.aiTemperature || null,
+        aiReasoningEffort: task.aiReasoningEffort || null,
         aiSystemMessage: task.aiSystemMessage || null,
         // Webhook task metadata
         taskMetadata: task.taskMetadata || null,

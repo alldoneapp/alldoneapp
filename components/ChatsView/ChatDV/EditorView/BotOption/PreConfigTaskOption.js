@@ -31,7 +31,7 @@ export default function PreConfigTaskOption({
         type,
         link,
         aiModel,
-        aiTemperature,
+        aiReasoningEffort,
         aiSystemMessage,
         taskMetadata,
         sendWhatsApp,
@@ -42,7 +42,7 @@ export default function PreConfigTaskOption({
         type,
         aiSettings: {
             model: aiModel,
-            temperature: aiTemperature,
+            reasoningEffort: aiReasoningEffort,
             systemMessage: aiSystemMessage,
         },
     })
@@ -78,7 +78,7 @@ export default function PreConfigTaskOption({
                 enableAssistantForObject?.()
                 const aiSettings = {
                     model: aiModel,
-                    temperature: aiTemperature,
+                    reasoningEffort: aiReasoningEffort,
                     systemMessage: aiSystemMessage,
                 }
                 onSelectBotOption(prompt, name, aiSettings, {
@@ -94,7 +94,7 @@ export default function PreConfigTaskOption({
             // For webhook tasks, create a task and execute the webhook
             const aiSettings = {
                 model: aiModel,
-                temperature: aiTemperature,
+                reasoningEffort: aiReasoningEffort,
                 systemMessage: aiSystemMessage,
             }
             // Build taskMetadata including sendWhatsApp

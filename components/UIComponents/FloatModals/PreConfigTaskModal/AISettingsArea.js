@@ -9,6 +9,7 @@ import {
     INHERIT_ASSISTANT_MODEL,
     PRE_CONFIG_TASK_MODEL_OPTIONS,
 } from '../../../../functions/Assistant/preConfigTaskModel'
+import { PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS } from '../../../../functions/Assistant/preConfigTaskReasoningEffort'
 
 const getModelOptions = () => {
     return [
@@ -17,33 +18,32 @@ const getModelOptions = () => {
     ]
 }
 
-const TEMPERATURE_OPTIONS = [
-    { label: translate('Very Low'), value: 'TEMPERATURE_VERY_LOW' },
-    { label: translate('Low'), value: 'TEMPERATURE_LOW' },
-    { label: translate('Normal'), value: 'TEMPERATURE_NORMAL' },
-    { label: translate('High'), value: 'TEMPERATURE_HIGH' },
-    { label: translate('Very High'), value: 'TEMPERATURE_VERY_HIGH' },
-]
+export const getReasoningEffortOptions = () =>
+    PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS.map(option => ({
+        ...option,
+        label: translate(option.labelKey),
+    }))
 
 export default function AISettingsArea({
     disabled,
     aiModel,
     setAiModel,
-    aiTemperature,
-    setAiTemperature,
+    aiReasoningEffort,
+    setAiReasoningEffort,
     aiSystemMessage,
     setAiSystemMessage,
     isMiddleScreen,
     smallScreenNavigation,
 }) {
     const modelOptions = getModelOptions()
+    const reasoningEffortOptions = getReasoningEffortOptions()
 
     console.log('AISettingsArea render:', {
         aiModel,
-        aiTemperature,
+        aiReasoningEffort,
         aiSystemMessage,
         modelOptions: modelOptions.map(opt => opt.value),
-        tempOptions: TEMPERATURE_OPTIONS.map(opt => opt.value),
+        reasoningEffortOptions: reasoningEffortOptions.map(opt => opt.value),
     })
 
     const handleModelChange = value => {
@@ -51,9 +51,9 @@ export default function AISettingsArea({
         setAiModel(value)
     }
 
-    const handleTemperatureChange = value => {
-        console.log('Temperature change:', { from: aiTemperature, to: value })
-        setAiTemperature(value)
+    const handleReasoningEffortChange = value => {
+        console.log('Reasoning effort change:', { from: aiReasoningEffort, to: value })
+        setAiReasoningEffort(value)
     }
 
     return (
@@ -76,11 +76,11 @@ export default function AISettingsArea({
             />
 
             <DropDown
-                items={TEMPERATURE_OPTIONS}
-                value={aiTemperature}
-                setValue={handleTemperatureChange}
-                placeholder={translate('Choose temperature')}
-                header={translate('Temperature')}
+                items={reasoningEffortOptions}
+                value={aiReasoningEffort}
+                setValue={handleReasoningEffortChange}
+                placeholder={translate('Reasoning effort')}
+                header={translate('Reasoning effort')}
                 containerStyle={{ marginTop: 12, zIndex: 2 }}
                 disabled={disabled}
                 arrowStyle={{

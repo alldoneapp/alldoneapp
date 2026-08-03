@@ -93,6 +93,7 @@ const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
+const { resolvePreConfigTaskReasoningEffort } = require('./preConfigTaskReasoningEffort')
 const { buildInitialAssistantRunStatusMessage, buildToolProgressStatusMessage } = require('./assistantProgressStatus')
 const {
     isValidAssistantReasoningEffort,
@@ -10908,6 +10909,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
         legacyTaskAiModel: task?.aiModel,
         taskAiModelOverride: getPreConfigTaskModelOverride(task),
         taskAiTemperature: task?.aiTemperature,
+        taskAiReasoningEffort: task?.aiReasoningEffort,
         hasTaskAiSystemMessage: !!task?.aiSystemMessage,
     })
     console.log('⚙️ ASSISTANT SETTINGS: Assistant data:', {
@@ -10923,8 +10925,8 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
     const taskModelOverride = getPreConfigTaskModelOverride(task)
     const settings = {
         model: normalizeModelKey(taskModelOverride || assistant.model || MODEL_GPT5_6_SOL),
-        temperature: (task && task.aiTemperature) || assistant.temperature || 'TEMPERATURE_NORMAL',
-        reasoningEffort: assistant.reasoningEffort || null,
+        temperature: assistant.temperature || 'TEMPERATURE_NORMAL',
+        reasoningEffort: resolvePreConfigTaskReasoningEffort(task, assistant.reasoningEffort),
         instructions: (task && task.aiSystemMessage) || assistant.instructions || 'You are a helpful assistant.',
         displayName: assistant.displayName, // Always use assistant's display name
         uid: assistant.uid, // Always use assistant's uid
@@ -10940,7 +10942,9 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId) {
         modelTokensPerGold: getTokensPerGold(settings.model),
         settingsSource: {
             model: taskModelOverride ? 'task_override' : 'assistant',
-            temperature: task && task.aiTemperature ? 'task' : 'assistant',
+            temperature: 'assistant',
+            reasoningEffort:
+                task && Object.prototype.hasOwnProperty.call(task, 'aiReasoningEffort') ? 'task' : 'assistant',
             instructions: task && task.aiSystemMessage ? 'task' : 'assistant',
         },
         totalDuration: `${Date.now() - settingsStart}ms`,

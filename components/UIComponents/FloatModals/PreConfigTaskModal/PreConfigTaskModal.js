@@ -23,6 +23,10 @@ import {
     INHERIT_ASSISTANT_MODEL,
     getPreConfigTaskModelSelection,
 } from '../../../../functions/Assistant/preConfigTaskModel'
+import {
+    getPreConfigTaskReasoningEffortSelection,
+    getPreConfigTaskReasoningEffortValue,
+} from '../../../../functions/Assistant/preConfigTaskReasoningEffort'
 
 export default function PreConfigTaskModal({ disabled, projectId, closeModal, adding, assistantId, task }) {
     const dispatch = useDispatch()
@@ -76,7 +80,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
             taskType: task ? task.type : TASK_TYPE_PROMPT,
             variables: task ? task.variables : [],
             aiModel: task ? getPreConfigTaskModelSelection(task) : INHERIT_ASSISTANT_MODEL,
-            aiTemperature: task ? task.aiTemperature : currentAssistant ? currentAssistant.temperature : '',
+            aiReasoningEffort: getPreConfigTaskReasoningEffortSelection(task),
             aiSystemMessage: task ? task.aiSystemMessage : currentAssistant ? currentAssistant.instructions : '',
             recurrence: task ? task.recurrence : RECURRENCE_NEVER,
             startDate: getInitialStartDate(),
@@ -103,7 +107,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
     const [activeVariableIndex, setActiveVariableIndex] = useState(null)
     const [showVariableModal, setShowVariableModal] = useState(false)
     const [aiModel, setAiModel] = useState(initialState.aiModel)
-    const [aiTemperature, setAiTemperature] = useState(initialState.aiTemperature)
+    const [aiReasoningEffort, setAiReasoningEffort] = useState(initialState.aiReasoningEffort)
     const [aiSystemMessage, setAiSystemMessage] = useState(initialState.aiSystemMessage)
     const [recurrence, setRecurrence] = useState(initialState.recurrence)
     const [startDate, setStartDate] = useState(initialState.startDate)
@@ -172,7 +176,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
 
     console.log('PreConfigTaskModal state initialized:', {
         aiModel,
-        aiTemperature,
+        aiReasoningEffort,
         aiSystemMessage,
         taskType,
         fromAssistant: !!currentAssistant,
@@ -259,6 +263,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
         const utcStartDate = moment(startDate).utc().valueOf()
         const iframeTaskMetadata = taskType === TASK_TYPE_IFRAME ? await getIframeTaskMetadata() : null
         const aiModelOverride = aiModel === INHERIT_ASSISTANT_MODEL ? null : aiModel
+        const aiReasoningEffortOverride = getPreConfigTaskReasoningEffortValue(aiReasoningEffort)
 
         const newTask =
             taskType === TASK_TYPE_PROMPT
@@ -269,7 +274,9 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       variables,
                       link: '',
                       ...(aiModelOverride ? { aiModelOverride } : {}),
-                      aiTemperature: aiTemperature || currentAssistant?.temperature || 'TEMPERATURE_NORMAL',
+                      ...(aiReasoningEffortOverride !== undefined
+                          ? { aiReasoningEffort: aiReasoningEffortOverride }
+                          : {}),
                       aiSystemMessage: aiSystemMessage || currentAssistant?.instructions || '',
                       recurrence,
                       startDate: utcStartDate,
@@ -333,6 +340,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
         const iframeTaskMetadata =
             taskType === TASK_TYPE_IFRAME ? await getIframeTaskMetadata(task?.taskMetadata || {}) : null
         const aiModelOverride = aiModel === INHERIT_ASSISTANT_MODEL ? null : aiModel
+        const aiReasoningEffortOverride = getPreConfigTaskReasoningEffortValue(aiReasoningEffort)
 
         const updatedTask =
             taskType === TASK_TYPE_PROMPT
@@ -344,7 +352,7 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       variables,
                       link: '',
                       aiModelOverride,
-                      aiTemperature: aiTemperature || currentAssistant?.temperature || 'TEMPERATURE_NORMAL',
+                      aiReasoningEffort: aiReasoningEffortOverride,
                       aiSystemMessage: aiSystemMessage || currentAssistant?.instructions || '',
                       recurrence: recurrence ?? null,
                       startDate: utcStartDate,
@@ -496,8 +504,8 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                     setTaskType={setTaskType}
                     aiModel={aiModel}
                     setAiModel={setAiModel}
-                    aiTemperature={aiTemperature}
-                    setAiTemperature={setAiTemperature}
+                    aiReasoningEffort={aiReasoningEffort}
+                    setAiReasoningEffort={setAiReasoningEffort}
                     aiSystemMessage={aiSystemMessage}
                     setAiSystemMessage={setAiSystemMessage}
                     projectId={projectId}

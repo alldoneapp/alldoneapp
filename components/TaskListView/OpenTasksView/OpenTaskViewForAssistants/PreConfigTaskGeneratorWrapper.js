@@ -28,7 +28,7 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
         type,
         link,
         aiModel,
-        aiTemperature,
+        aiReasoningEffort,
         aiSystemMessage,
         taskMetadata,
         sendWhatsApp,
@@ -49,7 +49,7 @@ export default function PreConfigTaskGeneratorWrapper({ projectId, task, assista
     const addTask = async () => {
         const aiSettings = {
             model: aiModel,
-            temperature: aiTemperature,
+            reasoningEffort: aiReasoningEffort,
             systemMessage: aiSystemMessage,
         }
         console.log('PreConfigTaskGeneratorWrapper generating task:', {

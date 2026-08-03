@@ -12,5 +12,6 @@ describe('assistant model translations', () => {
         expect(translations['GPT 5_6 Terra']).toBeTruthy()
         expect(translations['GPT 5_6 Luna']).toBeTruthy()
         expect(translations['Use assistant model']).toBeTruthy()
+        expect(translations['Use assistant effort']).toBeTruthy()
     })
 })

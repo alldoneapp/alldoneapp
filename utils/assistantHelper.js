@@ -33,6 +33,7 @@ import { STAYWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from './backends/Chats/chatsComments'
 import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinnerTrigger'
 import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
+import { resolvePreConfigTaskReasoningEffort } from '../functions/Assistant/preConfigTaskReasoningEffort'
 
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 
@@ -420,7 +421,10 @@ const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings) => {
         ...aiSettings,
         model: aiSettings.model || assistantDetails?.model,
         temperature: aiSettings.temperature || assistantDetails?.temperature,
-        reasoningEffort: assistantDetails?.reasoningEffort || null,
+        reasoningEffort: resolvePreConfigTaskReasoningEffort(
+            { aiReasoningEffort: aiSettings.reasoningEffort },
+            assistantDetails?.reasoningEffort
+        ),
         systemMessage: aiSettings.systemMessage || assistantDetails?.instructions,
         assistantUid: aiSettings.assistantUid || assistantDetails?.uid || assistantId,
         assistantDisplayName:
@@ -523,6 +527,7 @@ export const generateTaskFromPreConfig = async (
     if (resolvedAiSettings) {
         generatedTask.aiModel = resolvedAiSettings.model
         generatedTask.aiTemperature = resolvedAiSettings.temperature
+        generatedTask.aiReasoningEffort = resolvedAiSettings.reasoningEffort
         generatedTask.aiSystemMessage = resolvedAiSettings.systemMessage
     }
 
@@ -536,6 +541,7 @@ export const generateTaskFromPreConfig = async (
         aiSettings: {
             model: generatedTask.aiModel,
             temperature: generatedTask.aiTemperature,
+            reasoningEffort: generatedTask.aiReasoningEffort,
             systemMessage: generatedTask.aiSystemMessage,
         },
         taskMetadata,
