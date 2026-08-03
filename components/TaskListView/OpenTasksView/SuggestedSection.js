@@ -10,8 +10,6 @@ import TasksList from './TasksList'
 import { translate } from '../../../i18n/TranslationService'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
-import { getAssistantFromState } from '../../AdminPanel/Assistants/assistantsHelper'
-import { resolveSuggestedByIdentity } from '../../../utils/suggestedTaskFlow'
 
 export default function SuggestedSection({
     projectId,
@@ -27,30 +25,12 @@ export default function SuggestedSection({
     const doneMilestones = useSelector(state => state.doneMilestonesByProjectInTasks[projectId])
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
     const currentUserId = useSelector(state => state.currentUser.uid)
-    const suggestedAssistant = useSelector(state => getAssistantFromState(state, suggestedUserId))
 
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
-    const suggestedTask = taskByGoalsList.reduce(
-        (foundTask, goalTasks) =>
-            foundTask || goalTasks[1].find(task => task.suggestedBy === suggestedUserId) || goalTasks[1][0],
-        null
-    )
-    const suggestedUser = TasksHelper.getUserInProject(projectId, suggestedUserId)
-    const suggestedContact = TasksHelper.getContactInProject(projectId, suggestedUserId)
-    const suggestedByIdentity = resolveSuggestedByIdentity({
-        task: suggestedTask,
-        suggestedById: suggestedUserId,
-        user: suggestedUser,
-        contact: suggestedContact,
-        assistant: suggestedAssistant,
-    })
-    const photoURL =
-        suggestedByIdentity.identity?.photoURL ||
-        suggestedByIdentity.identity?.photoURL50 ||
-        `${window.location.origin}/images/generic-user.svg`
-    const displayName =
-        suggestedByIdentity.identity?.displayName ||
-        translate(suggestedByIdentity.isAssistant ? 'Assistant' : 'Unknown user')
+    const { photoURL, displayName } = TasksHelper.getUserInProject(projectId, suggestedUserId) || {
+        photoURL: `${window.location.origin}/images/generic-user.svg`,
+        displayName: translate('Unknown user'),
+    }
 
     const goalsPositionId = sortGoalTasksGorups(
         projectId,
