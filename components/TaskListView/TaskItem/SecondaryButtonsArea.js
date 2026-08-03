@@ -39,6 +39,8 @@ export default function SecondaryButtonsArea({
     accessGranted,
     loggedUserCanUpdateObject,
     isAssistant,
+    newTaskInFocus,
+    setNewTaskInFocus,
     onOpenDetailedView,
     setDueDateBeforeSave,
     setToBacklogBeforeSave,
@@ -64,6 +66,7 @@ export default function SecondaryButtonsArea({
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
     const inFocusTaskId = optimisticFocusActive ? optimisticFocusTaskId : rawInFocusTaskId
+    const taskIsFocused = adding ? newTaskInFocus : !!tmpTask.id && inFocusTaskId === tmpTask.id
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const isLockedGmailTask = isInboxSummaryGmailTask(tmpTask)
 
@@ -78,8 +81,13 @@ export default function SecondaryButtonsArea({
     }
 
     const focusTask = event => {
+        if (adding) {
+            setNewTaskInFocus(currentValue => !currentValue)
+            return
+        }
+
         prepareTaskFocusChange(event, dismissEditMode)
-        updateFocusedTask(loggedUserId, projectId, inFocusTaskId === tmpTask.id ? null : tmpTask, null, null)
+        updateFocusedTask(loggedUserId, projectId, taskIsFocused ? null : tmpTask, null, null)
     }
 
     const focusButtonRef = React.useRef(null)
@@ -230,18 +238,12 @@ export default function SecondaryButtonsArea({
                         ref={focusButtonRef}
                         type={'ghost'}
                         icon={'crosshair'}
-                        title={
-                            !smallScreen
-                                ? translate(inFocusTaskId === tmpTask.id ? 'Set out of focus' : 'Set in focus')
-                                : null
-                        }
+                        title={!smallScreen ? translate(taskIsFocused ? 'Set out of focus' : 'Set in focus') : null}
                         noBorder={smallScreen}
                         buttonStyle={
-                            inFocusTaskId === tmpTask.id
-                                ? { ...buttonItemStyle, backgroundColor: colors.Primary050 }
-                                : buttonItemStyle
+                            taskIsFocused ? { ...buttonItemStyle, backgroundColor: colors.Primary050 } : buttonItemStyle
                         }
-                        iconColor={inFocusTaskId === tmpTask.id ? colors.Primary100 : colors.Text03}
+                        iconColor={taskIsFocused ? colors.Primary100 : colors.Text03}
                         onPress={focusTask}
                         disabled={!hasName || !accessGranted || isLoadingGoal}
                         shortcutText={'F'}

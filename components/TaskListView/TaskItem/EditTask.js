@@ -44,6 +44,7 @@ import {
     createFollowUpTask,
     setTaskProjectWithGoal,
     updateTask,
+    updateFocusedTask,
     uploadNewSubTask,
 } from '../../../utils/backends/Tasks/tasksFirestore'
 import { createTaskWithService } from '../../../utils/backends/Tasks/TaskServiceFrontendHelper'
@@ -140,6 +141,7 @@ export default function EditTask({
     const [tmpTask, setTmpTask] = useState(() =>
         adding ? generateNewTask(useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) : cloneDeep(task)
     )
+    const [newTaskInFocus, setNewTaskInFocus] = useState(false)
 
     const inputTask = useRef(null)
 
@@ -525,6 +527,10 @@ export default function EditTask({
     const onSuccessUploadNewTask = (uploadedTask, actionBeforeSave, showSuggested) => {
         trySetLinkedObjects(uploadedTask.id)
 
+        if (newTaskInFocus) {
+            updateFocusedTask(loggedUserId, projectId, uploadedTask, null, null)
+        }
+
         if (actionBeforeSave) {
             NavigationService.navigate('TaskDetailedView', { task: uploadedTask, projectId })
             dispatch(setSelectedNavItem(DV_TAB_TASK_PROPERTIES))
@@ -532,6 +538,7 @@ export default function EditTask({
 
         if (addTaskRepeatMode) {
             setTmpTask(generateNewTask(useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate))
+            setNewTaskInFocus(false)
             inputTask.current?.clear()
             inputTask.current?.focus()
         }
@@ -733,6 +740,8 @@ export default function EditTask({
                     accessGranted={accessGranted}
                     loggedUserCanUpdateObject={loggedUserCanUpdateObject}
                     isAssistant={isAssistant}
+                    newTaskInFocus={newTaskInFocus}
+                    setNewTaskInFocus={setNewTaskInFocus}
                     dismissEditMode={dismissEditMode}
                     onDismissPopup={() => {
                         setTimeout(() => {
