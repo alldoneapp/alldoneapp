@@ -131,7 +131,10 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
                     <WorkflowConfigurationLink projectId={projectId} assistant={assistant} />
                 </View>
             )}
-            <View style={[localStyles.taskEditor, disabled && localStyles.disabled]}>
+            <View
+                testID="assistant-workflow-task-editor"
+                style={[localStyles.taskEditor, disabled && localStyles.disabled]}
+            >
                 <TaskInputArea
                     isSubtask={false}
                     tmpTask={taskInputDraft}
@@ -162,7 +165,7 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
                         </View>
                     }
                 />
-                <View style={localStyles.buttonContainer}>
+                <View testID="assistant-workflow-task-actions" style={localStyles.buttonContainer}>
                     <Button
                         type="primary"
                         title={translate('Submit')}
@@ -227,24 +230,23 @@ const localStyles = StyleSheet.create({
         textDecorationLine: 'underline',
     },
     taskEditor: {
+        flex: 1,
         marginHorizontal: -16,
-        borderRadius: 4,
-        backgroundColor: '#ffffff',
-        borderWidth: 1,
-        borderColor: colors.Grey200,
-        shadowColor: 'rgba(0,0,0,0.08)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
-        elevation: 3,
-        overflow: 'hidden',
+        backgroundColor: 'transparent',
+        borderWidth: 0,
+        borderRadius: 0,
+        shadowColor: 'transparent',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        elevation: 0,
     },
     disabled: {
         opacity: 0.5,
     },
     addIcon: {
         position: 'absolute',
-        left: 15,
+        left: 7,
         top: 7,
         zIndex: 100,
     },
@@ -258,6 +260,9 @@ const localStyles = StyleSheet.create({
         borderTopColor: colors.Gray300,
         paddingVertical: 7,
         paddingHorizontal: 9,
+        marginHorizontal: 8,
+        borderBottomLeftRadius: 4,
+        borderBottomRightRadius: 4,
     },
     executionModeAccessory: {
         position: 'absolute',
