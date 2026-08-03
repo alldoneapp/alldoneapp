@@ -100,6 +100,7 @@ import TasksHelper, {
     RECURRENCE_MONTHLY,
     RECURRENCE_NEVER,
     RECURRENCE_WEEKLY,
+    TASK_ASSIGNEE_ASSISTANT_TYPE,
 } from '../../../components/TaskListView/Utils/TasksHelper'
 import {
     getCommentDirectionWhenMoveTaskInTheWorklfow,
@@ -148,6 +149,7 @@ import { getAssistant } from '../../../components/AdminPanel/Assistants/assistan
 import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/workflowStepHelper'
 import { TASK_EXECUTION_MODE_DIRECT } from '../../taskExecutionMode'
+import { getAssistantSuggestedTaskRejection } from '../../suggestedTaskFlow'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -2975,6 +2977,9 @@ export async function moveTasksFromOpen(
             currentReviewerId: DONE_STEP,
             completed: completionDate,
             completedTime,
+            ...(task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
+                ? { assigneeType: TASK_ASSIGNEE_ASSISTANT_TYPE, assistantId: task.assistantId }
+                : {}),
         }
     } else {
         const { reviewerUid } = workflow[stepToMoveId]
@@ -3033,6 +3038,7 @@ export async function moveTasksFromOpen(
 
     const taskUpdateData = {
         ...updateData,
+        ...(task.suggestedBy ? { suggestedBy: null } : {}),
         ...(task.executionMode === TASK_EXECUTION_MODE_DIRECT ? { executionMode: TASK_EXECUTION_MODE_DIRECT } : {}),
         workflowAiPromptOverride: buildWorkflowAiPromptOverride(workflow, stepToMoveId, comment, transitionCommentId),
         ...(stepToMoveId === DONE_STEP && recurrenceBaseDateOverride ? { recurrenceBaseDateOverride } : {}),
@@ -3518,6 +3524,22 @@ export const updateSuggestedTask = (projectId, taskId, object) => {
 }
 
 export const nextStepSuggestedTask = (projectId, targetStepId, task, estimations, comment, checkBoxId) => {
+    const assistantRejection = getAssistantSuggestedTaskRejection(task)
+    if (assistantRejection) {
+        // moveTasksFromOpen persists `comment` as a normal visible user comment with assistant
+        // triggering disabled. The weekly comment review can learn from it without a direct
+        // user-memory write here.
+        return moveTasksFromOpen(
+            projectId,
+            assistantRejection.task,
+            assistantRejection.targetStepId,
+            comment,
+            assistantRejection.commentType,
+            estimations,
+            checkBoxId
+        )
+    }
+
     const { subtaskIds } = task
     const updateData = { suggestedBy: null }
     updateTaskData(projectId, task.id, updateData, null)

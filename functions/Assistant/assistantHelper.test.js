@@ -163,6 +163,12 @@ jest.mock('../shared/projectRoutingCommentHelper', () => ({
         commentId: 'routing-comment-1',
     }),
 }))
+jest.mock('../shared/assistantTaskCommentHelper', () => ({
+    addAssistantTaskComment: jest.fn().mockResolvedValue({
+        commentId: 'task-comment-1',
+        commentText: 'Suggested because it needs attention',
+    }),
+}))
 jest.mock('./userMemoryHelper', () => {
     const actual = jest.requireActual('./userMemoryHelper')
     return {
@@ -296,6 +302,7 @@ const { GoalRetrievalService } = require('../shared/GoalRetrievalService')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+const { addAssistantTaskComment } = require('../shared/assistantTaskCommentHelper')
 const { updateUserMemory } = require('./userMemoryHelper')
 global.fetch = jest.fn()
 global.AbortSignal = { timeout: jest.fn(() => undefined) }
@@ -2686,6 +2693,9 @@ describe('assistant create_task project routing comments', () => {
                 projectId: 'project-client',
                 recurrence: 'weekly',
                 executionMode: 'direct',
+                creatorId: 'user-1',
+                suggestedBy: null,
+                assistantId: '',
             }),
             expect.objectContaining({
                 userId: 'user-1',
@@ -2712,6 +2722,102 @@ describe('assistant create_task project routing comments', () => {
             confidence: 0.84,
             commentId: 'routing-comment-1',
         })
+        expect(result).toMatchObject({ taskOrigin: 'user_request', suggested: false, commentId: null })
+        expect(addAssistantTaskComment).not.toHaveBeenCalled()
+    })
+
+    test('creates proactive assistant tasks as suggestions with a visible explanatory comment', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([{ id: 'project-client', name: 'Client Work' }])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+        mockDocGet
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-client',
+                    projectIds: ['project-client'],
+                    timezone: 'UTC+02:00',
+                }),
+            })
+            .mockResolvedValueOnce({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-client',
+                    projectIds: ['project-client'],
+                    timezone: 'UTC+02:00',
+                }),
+            })
+        mockCreateAndPersistTask.mockResolvedValueOnce({
+            success: true,
+            taskId: 'task-suggested',
+            projectId: 'project-client',
+            message: 'Task created',
+            task: {
+                id: 'task-suggested',
+                name: 'Reply to important client email',
+                userId: 'user-1',
+                commentsData: { amount: 0 },
+            },
+        })
+
+        const result = await executeToolNatively(
+            'create_task',
+            {
+                name: 'Reply to important client email',
+                taskOrigin: 'assistant_suggestion',
+                comment: 'This client email asks for a decision before tomorrow.',
+                projectName: 'Client Work',
+                projectRoutingReason: 'the email belongs to the client project',
+            },
+            'project-client',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userId: 'user-1',
+                creatorId: 'assistant-1',
+                suggestedBy: 'assistant-1',
+                assistantId: '',
+                taskMetadata: { assistantSuggestion: { assistantId: 'assistant-1' } },
+            }),
+            expect.objectContaining({ userId: 'user-1', projectId: 'project-client' })
+        )
+        expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            projectId: 'project-client',
+            taskId: 'task-suggested',
+            assistantId: 'assistant-1',
+            comment: 'This client email asks for a decision before tomorrow.',
+        })
+        expect(updateUserMemory).not.toHaveBeenCalled()
+        expect(result).toMatchObject({
+            taskOrigin: 'assistant_suggestion',
+            suggested: true,
+            commentId: 'task-comment-1',
+        })
+    })
+
+    test('rejects proactive task creation without an explanatory comment before creating anything', async () => {
+        await expect(
+            executeToolNatively(
+                'create_task',
+                {
+                    name: 'Reply to important client email',
+                    taskOrigin: 'assistant_suggestion',
+                },
+                'project-client',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('require a comment explaining why')
+
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+        expect(addAssistantTaskComment).not.toHaveBeenCalled()
     })
 
     test('creates task in corrected project when selected project conflicts with low-confidence reason', async () => {

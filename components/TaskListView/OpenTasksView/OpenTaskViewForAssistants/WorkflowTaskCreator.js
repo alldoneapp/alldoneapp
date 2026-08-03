@@ -1,11 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import React, { useState } from 'react'
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
-import TaskInput from '../../TaskItem/TaskInput'
 import { translate } from '../../../../i18n/TranslationService'
 import { assistantWorkflowFirstStepHasPrompt } from '../../../../utils/assistantWorkflow'
 import { setSelectedNavItem } from '../../../../redux/actions'
@@ -52,15 +51,11 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
     const [creating, setCreating] = useState(false)
     const [showWorkflowWarning, setShowWorkflowWarning] = useState(false)
     const [creationError, setCreationError] = useState('')
-    const [submissionFeedback, setSubmissionFeedback] = useState('')
     const [executionMode, setExecutionMode] = useState(TASK_EXECUTION_MODE_WORKFLOW)
-    const [mentionsModalActive, setMentionsModalActive] = useState(false)
-    const inputRef = useRef(null)
-    const creatingRef = useRef(false)
 
     const createWorkflowTask = async () => {
         const trimmedTitle = title.trim()
-        if (!trimmedTitle || creatingRef.current || disabled) return
+        if (!trimmedTitle || creating || disabled) return
 
         if (
             executionMode === TASK_EXECUTION_MODE_WORKFLOW &&
@@ -68,15 +63,13 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
         ) {
             setShowWorkflowWarning(true)
             setCreationError('')
-            setSubmissionFeedback('')
             return
         }
 
-        creatingRef.current = true
         setCreating(true)
         setShowWorkflowWarning(false)
         setCreationError('')
-        setSubmissionFeedback(translate('Submitting task'))
+        setTitle('')
         try {
             await generateTaskFromPreConfig(
                 projectId,
@@ -87,39 +80,14 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
                 { executionMode },
                 { skipNavigation: true, waitForDirectRun: false }
             )
-            setTitle('')
-            inputRef.current?.clear()
-            setSubmissionFeedback(translate('Task submitted'))
         } catch (error) {
             console.error('Could not create assistant workflow task', error)
-            setSubmissionFeedback('')
+            setTitle(trimmedTitle)
             setCreationError(translate('The workflow task could not be created'))
         } finally {
-            creatingRef.current = false
             setCreating(false)
         }
     }
-
-    const updateTitle = value => {
-        setTitle(value.replace(/\r?\n|\r/g, ''))
-        setShowWorkflowWarning(false)
-        setCreationError('')
-        setSubmissionFeedback('')
-    }
-
-    const handleKeyDown = event => {
-        if (event.key === 'Enter' && inputRef.current?.isFocused?.() && !event.shiftKey && !mentionsModalActive) {
-            event.preventDefault()
-            createWorkflowTask()
-        }
-    }
-
-    useEffect(() => {
-        document.addEventListener('keydown', handleKeyDown)
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown)
-        }
-    }, [title, disabled, executionMode, mentionsModalActive])
 
     return (
         <View style={[localStyles.container, !showConfigurationLink && localStyles.timelineContainer]}>
@@ -128,76 +96,60 @@ export default function WorkflowTaskCreator({ projectId, assistant, disabled, sh
                     <WorkflowConfigurationLink projectId={projectId} assistant={assistant} />
                 </View>
             )}
-            <View style={[localStyles.taskEditor, disabled && localStyles.disabled]}>
-                <View style={localStyles.inputContainer}>
-                    <View style={localStyles.addIcon}>
-                        <Icon name="plus-square" size={24} color={colors.Primary100} />
-                    </View>
-                    <TaskInput
-                        isSubtask={false}
-                        tmpTask={{}}
-                        adding={true}
-                        projectId={projectId}
-                        accessGranted={!disabled && !creating}
-                        loggedUserCanUpdateObject={true}
-                        isAssistant={false}
-                        inputTask={inputRef}
-                        onChangeInputText={updateTitle}
-                        setMentionsModalActive={setMentionsModalActive}
-                        getInitialText={() => ''}
-                        onKeyEnterPressed={createWorkflowTask}
-                    />
-                </View>
-                <View style={localStyles.buttonContainer}>
-                    <TouchableOpacity
-                        style={[localStyles.executionModeButton, isMobile && localStyles.executionModeButtonMobile]}
-                        onPress={() =>
-                            setExecutionMode(currentMode =>
-                                currentMode === TASK_EXECUTION_MODE_WORKFLOW
-                                    ? TASK_EXECUTION_MODE_DIRECT
-                                    : TASK_EXECUTION_MODE_WORKFLOW
-                            )
-                        }
-                        disabled={disabled || creating}
-                        accessibilityRole="button"
-                        accessibilityLabel={translate(
-                            executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow'
-                        )}
-                    >
-                        <Icon
-                            name={executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'git-branch' : 'fast-forward'}
-                            size={16}
-                            color={colors.Text03}
-                        />
-                        {!isMobile && (
-                            <Text style={localStyles.executionModeText}>
-                                {translate(
-                                    executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow'
-                                )}
-                            </Text>
-                        )}
-                    </TouchableOpacity>
-                    <Button
-                        type="primary"
-                        title={translate('Submit')}
-                        processing={creating}
-                        processingTitle={translate('Submitting task')}
-                        onPress={createWorkflowTask}
-                        disabled={disabled || creating || !title.trim()}
-                        accessibilityLabel={translate('Submit')}
-                        accessible={true}
-                    />
-                </View>
-            </View>
-            {!!submissionFeedback && (
-                <Text
-                    style={[styles.body2, localStyles.feedback]}
-                    accessibilityLiveRegion="polite"
-                    accessibilityLabel={submissionFeedback}
+            <View style={[localStyles.inputRow, disabled && localStyles.disabled]}>
+                <TouchableOpacity
+                    style={localStyles.addButton}
+                    onPress={createWorkflowTask}
+                    activeOpacity={0.35}
+                    disabled={disabled || creating || !title.trim()}
+                    accessibilityRole="button"
+                    accessibilityLabel={translate('Add task')}
                 >
-                    {submissionFeedback}
-                </Text>
-            )}
+                    <Icon name="plus-square" size={24} color={colors.Primary100} />
+                </TouchableOpacity>
+                <TextInput
+                    value={title}
+                    onChangeText={value => {
+                        setTitle(value)
+                        setShowWorkflowWarning(false)
+                        setCreationError('')
+                    }}
+                    onSubmitEditing={createWorkflowTask}
+                    placeholder={translate('Type to add new task')}
+                    placeholderTextColor={colors.Text03}
+                    style={[styles.body1, localStyles.input]}
+                    editable={!disabled && !creating}
+                    returnKeyType="done"
+                />
+                <TouchableOpacity
+                    style={[localStyles.executionModeButton, isMobile && localStyles.executionModeButtonMobile]}
+                    onPress={() =>
+                        setExecutionMode(currentMode =>
+                            currentMode === TASK_EXECUTION_MODE_WORKFLOW
+                                ? TASK_EXECUTION_MODE_DIRECT
+                                : TASK_EXECUTION_MODE_WORKFLOW
+                        )
+                    }
+                    disabled={disabled || creating}
+                    accessibilityRole="button"
+                    accessibilityLabel={translate(
+                        executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow'
+                    )}
+                >
+                    <Icon
+                        name={executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'git-branch' : 'fast-forward'}
+                        size={16}
+                        color={colors.Text03}
+                    />
+                    {!isMobile && (
+                        <Text style={localStyles.executionModeText}>
+                            {translate(
+                                executionMode === TASK_EXECUTION_MODE_WORKFLOW ? 'Use workflow' : 'Bypass workflow'
+                            )}
+                        </Text>
+                    )}
+                </TouchableOpacity>
+            </View>
             {showWorkflowWarning && (
                 <View style={localStyles.warning}>
                     <View style={localStyles.warningCopy}>
@@ -240,46 +192,35 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         textDecorationLine: 'underline',
     },
-    taskEditor: {
-        marginHorizontal: -16,
+    inputRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        minHeight: 40,
+        paddingHorizontal: 8,
+        marginHorizontal: -8,
         borderRadius: 4,
         backgroundColor: '#ffffff',
-        borderWidth: 1,
-        borderColor: colors.Grey200,
-        shadowColor: 'rgba(0,0,0,0.08)',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 1,
-        shadowRadius: 8,
-        elevation: 3,
-        overflow: 'hidden',
     },
     disabled: {
         opacity: 0.5,
     },
-    inputContainer: {
-        minHeight: 59,
-        overflow: 'hidden',
+    addButton: {
+        marginTop: 8,
     },
-    addIcon: {
-        position: 'absolute',
-        left: 15,
-        top: 7,
-        zIndex: 100,
-    },
-    buttonContainer: {
-        minHeight: 55,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: colors.Grey100,
-        borderTopWidth: 1,
-        borderTopColor: colors.Gray300,
-        paddingVertical: 7,
-        paddingHorizontal: 9,
+    input: {
+        flex: 1,
+        minHeight: 40,
+        color: colors.Text01,
+        marginLeft: 12,
+        paddingHorizontal: 0,
+        paddingVertical: 5,
+        outlineStyle: 'none',
     },
     executionModeButton: {
+        alignSelf: 'center',
         height: 28,
         paddingHorizontal: 8,
+        marginLeft: 8,
         flexDirection: 'row',
         alignItems: 'center',
         borderRadius: 14,
@@ -310,11 +251,6 @@ const localStyles = StyleSheet.create({
     },
     error: {
         color: colors.UtilityRed200,
-        marginTop: 8,
-        marginLeft: 12,
-    },
-    feedback: {
-        color: colors.Primary100,
         marginTop: 8,
         marginLeft: 12,
     },

@@ -790,6 +790,7 @@
     "Select workflow step": "Workflow-Schritt auswählen",
     "Select workflow step with name": "Workflow-Schritt auswählen: %{step}",
     "Go to next step": "Wähle den nächsten Schritt",
+    "Reject": "Ablehnen",
     "Stop observing": "Aufhören zu beobachten",
     "Accept task?": "Akzeptiere die Aufgabe",
     "Congrats, you have done it!": "Du hast es geschafft!",
@@ -2082,8 +2083,5 @@
     "Retry assistant task": "Assistentenaufgabe erneut versuchen",
     "Task flow": "Aufgabenablauf",
     "Use workflow": "Workflow verwenden",
-    "Bypass workflow": "Workflow umgehen",
-    "Submit": "Absenden",
-    "Submitting task": "Aufgabe wird übermittelt...",
-    "Task submitted": "Aufgabe übermittelt."
+    "Bypass workflow": "Workflow umgehen"
 }

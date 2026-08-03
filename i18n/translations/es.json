@@ -914,6 +914,7 @@
     "Select workflow step": "Seleccionar paso del flujo de trabajo",
     "Select workflow step with name": "Seleccionar paso del flujo de trabajo: %{step}",
     "Go to next step": "Ir al siguiente paso",
+    "Reject": "Rechazar",
     "Stop observing": "Dejar de observar",
     "Accept task?": "¿Aceptar tarea?",
     "Congrats, you have done it!": "¡Enhorabuena, lo has conseguido!",
@@ -2499,8 +2500,5 @@
     "Retry assistant task": "Reintentar tarea del asistente",
     "Task flow": "Flujo de la tarea",
     "Use workflow": "Usar flujo de trabajo",
-    "Bypass workflow": "Omitir flujo de trabajo",
-    "Submit": "Enviar",
-    "Submitting task": "Enviando tarea...",
-    "Task submitted": "Tarea enviada."
+    "Bypass workflow": "Omitir flujo de trabajo"
 }

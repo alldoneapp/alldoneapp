@@ -91,6 +91,7 @@ const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('./contextLimits')
 const { updateProjectDescription } = require('../shared/projectDescriptionUpdateHelper')
 const { updateUserDescription } = require('../shared/userDescriptionUpdateHelper')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+const { addAssistantTaskComment } = require('../shared/assistantTaskCommentHelper')
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
 const { resolvePreConfigTaskReasoningEffort } = require('./preConfigTaskReasoningEffort')
@@ -5137,6 +5138,16 @@ async function executeToolNatively(
             const projectRoutingConfidence = gmailLabelMatchedProjectId
                 ? null
                 : normalizeCreateTaskProjectRoutingConfidence(toolArgs.projectRoutingConfidence)
+            const taskOrigin = toolArgs.taskOrigin === 'assistant_suggestion' ? 'assistant_suggestion' : 'user_request'
+            const taskComment = typeof toolArgs.comment === 'string' ? toolArgs.comment.trim() : ''
+            const isAssistantSuggestion = taskOrigin === 'assistant_suggestion'
+
+            if (taskComment && !assistantId) {
+                throw new Error('Assistant task comments require an assistant identity')
+            }
+            if (isAssistantSuggestion && !taskComment) {
+                throw new Error('Assistant-suggested tasks require a comment explaining why they are suggested')
+            }
 
             const createTaskProjectSelection = await resolveCreateTaskTargetProject(db, {
                 creatorId,
@@ -5254,6 +5265,10 @@ async function executeToolNatively(
                         isPrivate: false,
                         feedUser,
                         gmailData: gmailTaskData,
+                        creatorId: isAssistantSuggestion ? assistantId : creatorId,
+                        suggestedBy: isAssistantSuggestion ? assistantId : null,
+                        assistantId: '',
+                        taskMetadata: isAssistantSuggestion ? { assistantSuggestion: { assistantId } } : null,
                     },
                     {
                         userId: creatorId,
@@ -5370,6 +5385,19 @@ async function executeToolNatively(
                     }
                 }
 
+                let taskCommentResult = null
+                if (taskComment) {
+                    taskCommentResult = await addAssistantTaskComment({
+                        projectId: resolvedProjectId,
+                        taskId: resolvedTaskId,
+                        assistantId,
+                        comment: taskComment,
+                    })
+                    if (!taskCommentResult) {
+                        throw new Error('Task was created, but its assistant comment could not be added')
+                    }
+                }
+
                 return {
                     success: true,
                     taskId: resolvedTaskId,
@@ -5377,6 +5405,9 @@ async function executeToolNatively(
                     projectName: targetProjectName,
                     message: result.message,
                     task: result.task,
+                    taskOrigin,
+                    suggested: isAssistantSuggestion,
+                    commentId: taskCommentResult?.commentId || null,
                     projectSelection: {
                         source: createTaskProjectSelection.source,
                         reasoning: projectRoutingReasoning,
@@ -11554,6 +11585,10 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When you call create_task, decide which project should receive the task. If you target a project with projectId or projectName, or if you intentionally keep the task in the current/default project, include create_task.projectRoutingReason with a short reason for that project choice. The server will store that reason as an internal task comment. Do not repeat that routing explanation in your visible chat reply unless the user asks.',
+        ])
+        messages.push([
+            'system',
+            'For create_task, preserve the difference between requested work and proactive suggestions. If the user explicitly asks you to create/add/remind them about a task, set taskOrigin to user_request so it is created directly. If you independently decide to propose a task (for example after noticing an important email), set taskOrigin to assistant_suggestion and include a concise non-empty comment explaining why; it will be shown in the task thread and the user must accept or reject the suggestion.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('add_chat_comment')) {

@@ -9,7 +9,7 @@ const toolSchemas = {
         function: {
             name: 'create_task',
             description:
-                'Creates a new task with optional reminder/alert and recurrence. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X", "create a task to Y at Z time", or recurring task requests. Keep the task name concise; if the user gives a very long request, summarize it into a short title and put extra detail in description. The only required parameter is the task name - all other parameters (projectId, projectName, dueDate, recurrence, etc.) are optional. When you choose a project for the task, also provide projectRoutingReason explaining why. If no project is specified, the task will be created in the project of the current assistant. The response includes the projectId where the task was created.',
+                'Creates a new task with optional reminder/alert and recurrence. Use this when the user wants to add, create, or remember a task/todo item, especially for "remind me to X", "create a task to Y at Z time", or recurring task requests. Set taskOrigin to user_request when the user explicitly asked for the task; it is created directly. Set taskOrigin to assistant_suggestion only when you proactively decide the task would help; it enters the suggested-task approval flow and requires a visible explanatory comment. Keep the task name concise; if the user gives a very long request, summarize it into a short title and put extra detail in description. When you choose a project for the task, also provide projectRoutingReason explaining why. If no project is specified, the task will be created in the project of the current assistant. The response includes the projectId where the task was created.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -21,6 +21,17 @@ const toolSchemas = {
                     description: {
                         type: 'string',
                         description: 'Optional: description for the task',
+                    },
+                    taskOrigin: {
+                        type: 'string',
+                        enum: ['user_request', 'assistant_suggestion'],
+                        description:
+                            'How this task originated. Use user_request when the user explicitly asked you to create the task. Use assistant_suggestion only for a proactive task you decided to propose; assistant_suggestion requires comment and puts the task into the suggested-task approval flow. Defaults to user_request for backward compatibility.',
+                    },
+                    comment: {
+                        type: 'string',
+                        description:
+                            'Optional visible comment to add directly to the new task thread, authored by the assistant. Required and non-empty when taskOrigin is assistant_suggestion; explain why you are suggesting the task.',
                     },
                     images: {
                         type: 'array',
@@ -104,7 +115,7 @@ const toolSchemas = {
                             'Optional confidence from 0 to 1 for the project choice. Include only when meaningful.',
                     },
                 },
-                required: ['name'],
+                required: ['name', 'taskOrigin'],
             },
         },
     },

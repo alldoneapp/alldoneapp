@@ -160,6 +160,16 @@ describe('User memory assistant tool schemas', () => {
         })
     })
 
+    test('distinguishes direct user requests from proactive task suggestions', () => {
+        const properties = toolSchemas.create_task.function.parameters.properties
+
+        expect(properties.taskOrigin.enum).toEqual(['user_request', 'assistant_suggestion'])
+        expect(properties.taskOrigin.description).toContain('Defaults to user_request')
+        expect(properties.comment.description).toContain('Required and non-empty')
+        expect(toolSchemas.create_task.function.description).toContain('suggested-task approval flow')
+        expect(toolSchemas.create_task.function.parameters.required).toEqual(['name', 'taskOrigin'])
+    })
+
     test('exposes direct and workflow modes for user task creation and updates', () => {
         const createMode = toolSchemas.create_task.function.parameters.properties.executionMode
         const updateMode = toolSchemas.update_task.function.parameters.properties.executionMode
