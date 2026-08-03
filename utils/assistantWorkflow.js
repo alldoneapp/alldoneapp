@@ -2,6 +2,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
 import { OPEN_STEP, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../components/TaskListView/Utils/TasksHelper'
 
 export const ASSISTANT_WORKFLOW_FIRST_STEP_ID = 'assistant-start'
+export const DEFAULT_ASSISTANT_WORKFLOW_PROMPT = 'Do this'
 
 export const buildAssistantWorkflowFirstStep = (assistantId, addedById, now = Date.now()) => ({
     reviewerUid: assistantId,
@@ -12,7 +13,7 @@ export const buildAssistantWorkflowFirstStep = (assistantId, addedById, now = Da
     sortIndex: 0,
     aiPreConfigTaskId: null,
     aiActionName: '',
-    aiPrompt: '',
+    aiPrompt: DEFAULT_ASSISTANT_WORKFLOW_PROMPT,
     aiVariableValues: {},
 })
 

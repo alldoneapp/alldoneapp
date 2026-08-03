@@ -1,5 +1,6 @@
 import {
     ASSISTANT_WORKFLOW_FIRST_STEP_ID,
+    DEFAULT_ASSISTANT_WORKFLOW_PROMPT,
     assistantWorkflowFirstStepHasPrompt,
     buildAssistantWorkflowFirstStep,
     buildAssistantWorkflowTask,
@@ -10,11 +11,12 @@ describe('assistant workflow', () => {
         expect(buildAssistantWorkflowFirstStep('assistant-1', 'user-1', 123)).toMatchObject({
             reviewerUid: 'assistant-1',
             reviewerType: 'assistant',
-            aiPrompt: '',
+            aiPrompt: 'Do this',
             sortIndex: 0,
             addedById: 'user-1',
             date: 123,
         })
+        expect(DEFAULT_ASSISTANT_WORKFLOW_PROMPT).toBe('Do this')
     })
 
     it('requires a non-empty first-step prompt', () => {
