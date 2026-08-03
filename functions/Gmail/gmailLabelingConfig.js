@@ -1,15 +1,16 @@
 'use strict'
 
 const admin = require('firebase-admin')
+const { SELECTABLE_ASSISTANT_MODELS } = require('../Assistant/selectableAssistantModels')
 
-const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_4_NANO'
+const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_6_LUNA'
+const GMAIL_LABELING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
 // The self-consistency auditor (second pass) deliberately runs on a STRONGER, independent
-// model than the first-pass classifier. Re-judging with the same small model produces
-// correlated error — production logs show the auditor re-confirming, and even strengthening,
-// its own mistake (e.g. labelKey "Bechtle" kept at 0.86 -> 0.90 while the reasoning describes
-// "JTL Software - Project Juno"). The audit pass only runs on the rare flagged cases, so a
-// high-capability model here is cheap and gives a genuinely different judgement. Terra is
-// intentionally stronger than the GPT-5.4 Nano first pass while costing less than Sol.
+// model tier than the first-pass classifier. Re-judging with the same model produces correlated
+// error — production logs show the auditor re-confirming, and even strengthening, its own mistake
+// (e.g. labelKey "Bechtle" kept at 0.86 -> 0.90 while the reasoning describes "JTL Software -
+// Project Juno"). The audit pass only runs on the rare flagged cases, so Terra provides a stronger
+// independent judgement than the default Luna classifier while costing less than Sol.
 const DEFAULT_GMAIL_CONSISTENCY_MODEL = 'MODEL_GPT5_6_TERRA'
 const DEFAULT_MAX_MESSAGES_PER_RUN = 20
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.7
@@ -220,7 +221,9 @@ function normalizeConfigInput(projectId, input = {}, gmailEmail = '') {
         promptMode: normalizePromptMode(input.promptMode, defaultConfig.promptMode),
         prompt: typeof input.prompt === 'string' ? input.prompt.trim() : defaultConfig.prompt,
         model:
-            typeof input.model === 'string' && input.model.trim() ? input.model.trim() : DEFAULT_GMAIL_LABELING_MODEL,
+            typeof input.model === 'string' && GMAIL_LABELING_MODEL_KEYS.has(input.model.trim())
+                ? input.model.trim()
+                : DEFAULT_GMAIL_LABELING_MODEL,
         processUnreadOnly:
             typeof input.processUnreadOnly === 'boolean' ? input.processUnreadOnly : defaultConfig.processUnreadOnly,
         onlyInbox: typeof input.onlyInbox === 'boolean' ? input.onlyInbox : defaultConfig.onlyInbox,
@@ -379,6 +382,7 @@ module.exports = {
     GMAIL_DIRECTION_SCOPES,
     GMAIL_LABELING_CONFIG_TYPE,
     GMAIL_LABELING_LOCK_TIMEOUT_MS,
+    GMAIL_LABELING_MODEL_KEYS,
     GMAIL_LABELING_PROMPT_MODE_CUSTOM,
     GMAIL_LABELING_PROMPT_MODE_DEFAULT,
     GMAIL_LABELING_PROMPT_MODES,

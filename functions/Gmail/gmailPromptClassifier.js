@@ -12,18 +12,26 @@ const {
     DEFAULT_CONFIDENCE_THRESHOLD,
     DEFAULT_GMAIL_LABELING_MODEL,
     DEFAULT_GMAIL_CONSISTENCY_MODEL,
-    GMAIL_LABELING_PROMPT_MODE_DEFAULT,
     slugifyLabelKey,
 } = require('./gmailLabelingConfig')
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
-
-const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
-    'You classify Gmail messages into exactly one configured label or no match, and classify the follow-up as actionable or informational. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must always be either "actionable" or "informational". Actionable means the email creates a concrete action, responsibility, decision, deadline, or follow-up for the user. Informational means it does not create a concrete action for the user, including useful updates, notifications, newsletters, automated messages, and irrelevant email. Confidence must be a number between 0 and 1 and must describe confidence in the returned decision.'
+const {
+    GMAIL_ACTIONABILITY_GUIDANCE,
+    GMAIL_CLASSIFIER_SYSTEM_PROMPT,
+    buildClassifierLabelDefinitions,
+    buildClassifierMessage,
+    buildDecisionGuidance,
+    buildFirstPassClassifierPromptSections,
+    buildNoMatchResponseGuidance,
+    buildUserDescriptionSection,
+} = require('./gmailClassifierPrompt')
 
 // Second-pass auditor used when the first-pass reasoning looks inconsistent with the
 // label it chose (e.g. it chose the "Bechtle" label but the reasoning describes "JTL").
 const GMAIL_CONSISTENCY_SYSTEM_PROMPT =
-    'You audit a Gmail classification for self-consistency. You are given the email, configured labels, and a first-pass decision including its label and follow-up type. Decide the FINAL best label and whether the email is actionable or informational. If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
+    'You audit a Gmail classification for self-consistency. You are given the email, configured labels, and a first-pass decision including its label and follow-up type. Decide the FINAL best label and whether the email is actionable or informational. ' +
+    GMAIL_ACTIONABILITY_GUIDANCE +
+    ' If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
     'MODEL_GPT5_6_SOL',
@@ -35,9 +43,6 @@ const GPT5_REASONING_MODEL_KEYS = new Set([
     'MODEL_GPT5_4_MINI',
     'MODEL_GPT5_4_NANO',
 ])
-const MAX_CLASSIFIER_LABEL_DESCRIPTION_CHARS = 900
-const MAX_CLASSIFIER_BODY_CHARS = 12000
-
 function mapAssistantModelToOpenAIModel(modelKey) {
     const normalizedKey = normalizeModelKey(modelKey || DEFAULT_GMAIL_LABELING_MODEL)
     if (normalizedKey === 'MODEL_GPT3_5') return 'gpt-3.5-turbo'
@@ -157,18 +162,6 @@ function coerceClassifierResult(result, labelDefinitions = [], confidenceThresho
 function normalizeConfidenceThreshold(value) {
     const parsed = Number(value)
     return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), 1) : DEFAULT_CONFIDENCE_THRESHOLD
-}
-
-function buildDecisionGuidance(confidenceThreshold = DEFAULT_CONFIDENCE_THRESHOLD) {
-    return [
-        `Configured confidence threshold: ${confidenceThreshold}.`,
-        `Return matched:true only when the best configured label's confidence is at least ${confidenceThreshold}.`,
-        'For matched:true, confidence means confidence that the returned labelKey is the correct configured label.',
-        'For matched:false, confidence means confidence that no configured label matches.',
-        'Use high no-match confidence only when the reasoning explains why the email is unrelated to every configured label.',
-        'Do not return matched:false when your reasoning identifies a configured label, project name, client name, sender domain, or project-specific link. In that case return matched:true with that labelKey.',
-        'Explicit project names, client names, sender domains, subjects, body references, deadlines, action requests, deliverables, or links to project-specific Alldone URLs are strong match evidence.',
-    ].join('\n')
 }
 
 function noMatchReasoningSuggestsPositiveMatch(reasoning = '') {
@@ -297,45 +290,6 @@ function buildConsistencyOptionsFromLabels(labelDefinitions = []) {
         .map(label => ({ key: label.key, names: [label.gmailLabelName || '', label.key] }))
 }
 
-function buildClassifierLabelDefinitions(labelDefinitions = []) {
-    return (Array.isArray(labelDefinitions) ? labelDefinitions : [])
-        .filter(label => label && label.key)
-        .map(label => ({
-            key: label.key,
-            gmailLabelName: label.gmailLabelName || '',
-            description: String(label.description || '').slice(0, MAX_CLASSIFIER_LABEL_DESCRIPTION_CHARS),
-        }))
-        .sort((a, b) => String(a.key).localeCompare(String(b.key)))
-}
-
-function compactClassifierBody(body = '') {
-    const normalizedBody = String(body || '')
-    if (normalizedBody.length <= MAX_CLASSIFIER_BODY_CHARS) return normalizedBody
-    return `${normalizedBody.slice(0, MAX_CLASSIFIER_BODY_CHARS)}\n[Older email content truncated]`
-}
-
-function buildClassifierMessage(message = {}) {
-    return {
-        direction: message.direction || '',
-        from: message.from || '',
-        to: message.to || '',
-        cc: message.cc || '',
-        bcc: message.bcc || '',
-        date: message.date || '',
-        subject: message.subject || '',
-        snippet: message.snippet || '',
-        bodyText: compactClassifierBody(message.bodyText || message.body || ''),
-        inReplyTo: message.inReplyTo || '',
-        references: message.references || '',
-        gmailLabelIds: Array.isArray(message.gmailLabelIds)
-            ? message.gmailLabelIds
-            : Array.isArray(message.labelIds)
-            ? message.labelIds
-            : [],
-        listUnsubscribe: message.listUnsubscribe || '',
-    }
-}
-
 function buildAuditLabelDefinitions(labelDefinitions, firstResult, crossReference, consistencyTrigger) {
     if (consistencyTrigger?.type === 'zero_confidence') return labelDefinitions
 
@@ -350,21 +304,6 @@ function buildAuditLabelDefinitions(labelDefinitions, firstResult, crossReferenc
     if (candidateKeys.size === 0) return labelDefinitions
     const candidates = labelDefinitions.filter(label => candidateKeys.has(label.key))
     return candidates.length > 0 ? candidates : labelDefinitions
-}
-
-// Optional "who is the user" section — helps judge relevance (cold outreach vs a real
-// business opportunity, which newsletters the user plausibly subscribed to).
-function buildUserDescriptionSection(config = {}) {
-    const description = typeof config.userDescription === 'string' ? config.userDescription.trim() : ''
-    return description ? `About the user (context for judging relevance):\n${description}\n\n` : ''
-}
-
-function buildNoMatchResponseGuidance(config = {}) {
-    if (config.promptMode === GMAIL_LABELING_PROMPT_MODE_DEFAULT) {
-        return 'If the email is work-relevant but no specific non-default project label matches clearly, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label.'
-    }
-
-    return 'Use matched:false only when the prompt and configured labels do not provide a suitable label.'
 }
 
 async function verifyClassificationConsistency(
@@ -445,20 +384,16 @@ async function classifyGmailMessage({ config, message }) {
     const auditModelKey = config?.consistencyModel || DEFAULT_GMAIL_CONSISTENCY_MODEL
     const auditModel = mapAssistantModelToOpenAIModel(auditModelKey)
     const auditIsReasoningModel = isGpt5ReasoningModel(auditModelKey)
-    const classifierLabelDefinitions = buildClassifierLabelDefinitions(labelDefinitions)
-    const classifierMessage = buildClassifierMessage(message)
-
-    const firstStaticUserContent =
-        `Prompt:\n${config.prompt}\n\n` +
-        buildUserDescriptionSection(config) +
-        `Configured labels:\n${JSON.stringify(classifierLabelDefinitions)}\n\n` +
-        `Decision rules:\n${buildDecisionGuidance(confidenceThreshold)}`
-    const firstDynamicUserContent =
-        `Email:\n${JSON.stringify(classifierMessage)}\n\n` +
-        'Return JSON exactly like {"matched":true,"labelKey":"newsletter","followUpType":"informational","confidence":0.92,"reasoning":"..."}. ' +
-        `${buildNoMatchResponseGuidance(
-            config
-        )} If returning no match, use JSON like {"matched":false,"labelKey":null,"followUpType":"informational","confidence":0.2,"reasoning":"..."}.`
+    const {
+        classifierLabelDefinitions,
+        classifierMessage,
+        staticUserContent: firstStaticUserContent,
+        dynamicUserContent: firstDynamicUserContent,
+    } = buildFirstPassClassifierPromptSections({
+        config: { ...config, labelDefinitions },
+        message,
+        confidenceThreshold,
+    })
 
     const { parsed, usage: firstUsage } = await runClassifierCompletion(openai, {
         selectedModel,
