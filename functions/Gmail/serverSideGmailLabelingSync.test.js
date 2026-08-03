@@ -106,6 +106,7 @@ const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 const { buildConnectionId } = require('../Integrations/providerConnections')
 const {
+    applyGmailLabelingModelMigration,
     buildThreadLabelModification,
     buildDefaultActiveProjectLabelDefinitions,
     buildDefaultProjectFollowUpPrompt,
@@ -159,6 +160,12 @@ describe('serverSideGmailLabelingSync helpers', () => {
         expect(buildGmailMessageUrl('person@example.com', 'msg-123')).toBe(
             'https://mail.google.com/mail/u/0/?authuser=person%40example.com#all/msg-123'
         )
+    })
+
+    test('migrates retired Gmail labeling models to Luna and preserves selectable models', () => {
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_4_NANO' }).model).toBe('MODEL_GPT5_6_LUNA')
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_6_TERRA' }).model).toBe('MODEL_GPT5_6_TERRA')
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_6_SOL' }).model).toBe('MODEL_GPT5_6_SOL')
     })
 
     test('account-wide auto-archive overrides label settings for incoming messages only', () => {
@@ -340,6 +347,8 @@ describe('serverSideGmailLabelingSync helpers', () => {
 
         expect(config.prompt).toContain('active Alldone project or the Ads label')
         expect(config.prompt).toContain('Never use Ads for transactional email')
+        expect(config.prompt).toContain('likely something the user genuinely wants to do or should do')
+        expect(config.prompt).toContain('A call to action')
         expect(config.labelDefinitions).toHaveLength(2)
         expect(config.labelDefinitions[0]).toEqual(
             expect.objectContaining({

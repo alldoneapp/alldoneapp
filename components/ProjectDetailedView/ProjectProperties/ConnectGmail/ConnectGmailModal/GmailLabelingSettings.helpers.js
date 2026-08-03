@@ -1,9 +1,17 @@
+const { SELECTABLE_ASSISTANT_MODELS } = require('../../../../../functions/Assistant/selectableAssistantModels')
+const {
+    GMAIL_ACTIONABILITY_GUIDANCE,
+    buildFirstPassClassifierPromptSections,
+} = require('../../../../../functions/Gmail/gmailClassifierPrompt')
+
 const MAX_LOOKBACK_DAYS = 30
 const MAX_MESSAGES_PER_RUN = 100
 const MIN_SYNC_INTERVAL_MINUTES = 5
 const MAX_SYNC_INTERVAL_MINUTES = 24 * 60
 const GMAIL_LABELING_PROMPT_MODE_DEFAULT = 'default'
 const GMAIL_LABELING_PROMPT_MODE_CUSTOM = 'custom'
+const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_6_LUNA'
+const GMAIL_LABELING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
 // Client mirror of the shared Ads guidance in functions/Gmail/serverSideGmailLabelingSync.js —
 // keep the texts identical, they only exist here for the default-config preview.
 const DEFAULT_ADS_LABEL_GUIDANCE =
@@ -16,7 +24,8 @@ const DEFAULT_ADS_LABEL_GUIDANCE =
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
     'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer the strongest specific project label when the evidence is clear. If the email is work-relevant but it is not clear which project label fits best, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
     DEFAULT_ADS_LABEL_GUIDANCE +
-    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead.'
+    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead. ' +
+    GMAIL_ACTIONABILITY_GUIDANCE
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = 'incoming'
 const DEFAULT_ADS_LABEL_DEFINITION = {
     key: 'ads',
@@ -65,6 +74,50 @@ function normalizePromptMode(value, fallback = GMAIL_LABELING_PROMPT_MODE_DEFAUL
         : fallback
 }
 
+function normalizeModel(value) {
+    return GMAIL_LABELING_MODEL_KEYS.has(value) ? value : DEFAULT_GMAIL_LABELING_MODEL
+}
+
+function appendLearnedRulesToPrompt(prompt = '', learnedRules = '') {
+    const rules = typeof learnedRules === 'string' ? learnedRules.trim() : ''
+    if (!rules) return prompt
+    return [prompt, `User feedback rules (always apply):\n${rules}`].filter(Boolean).join('\n\n')
+}
+
+function buildFullClassifierPromptPreview({ config = {}, defaultConfigPreview = {}, userDescription = '' }) {
+    const isDefaultMode = normalizePromptMode(config.promptMode) === GMAIL_LABELING_PROMPT_MODE_DEFAULT
+    const prompt = isDefaultMode ? defaultConfigPreview.prompt || '' : config.prompt || ''
+    const labelDefinitions = isDefaultMode ? defaultConfigPreview.labelDefinitions || [] : config.labelDefinitions || []
+    const parsedThreshold = Number(config.confidenceThreshold)
+    const confidenceThreshold = Number.isFinite(parsedThreshold) ? Math.min(Math.max(parsedThreshold, 0), 1) : 0.7
+
+    return buildFirstPassClassifierPromptSections({
+        config: {
+            ...config,
+            promptMode: isDefaultMode ? GMAIL_LABELING_PROMPT_MODE_DEFAULT : GMAIL_LABELING_PROMPT_MODE_CUSTOM,
+            prompt: appendLearnedRulesToPrompt(prompt, config.learnedRules),
+            labelDefinitions,
+            userDescription,
+        },
+        confidenceThreshold,
+        message: {
+            direction: '<incoming or outgoing>',
+            from: '<sender>',
+            to: '<recipients>',
+            cc: '<cc recipients>',
+            bcc: '<bcc recipients>',
+            date: '<message date>',
+            subject: '<subject>',
+            snippet: '<Gmail snippet>',
+            bodyText: '<email body, capped at 12,000 characters>',
+            inReplyTo: '<In-Reply-To header>',
+            references: '<References header>',
+            gmailLabelIds: ['<Gmail label IDs>'],
+            listUnsubscribe: '<List-Unsubscribe header>',
+        },
+    })
+}
+
 function buildCustomDefaultsForReset() {
     return {
         prompt: DEFAULT_CUSTOM_GMAIL_LABELING_PROMPT,
@@ -92,7 +145,7 @@ function normalizeConfig(projectId, config = {}, gmailEmail = '') {
         gmailEmail: config.gmailEmail || gmailEmail || '',
         promptMode: normalizePromptMode(config.promptMode, promptModeFallback),
         prompt: config.prompt || '',
-        model: config.model || 'MODEL_GPT5_4_NANO',
+        model: normalizeModel(config.model),
         processUnreadOnly: typeof config.processUnreadOnly === 'boolean' ? config.processUnreadOnly : true,
         onlyInbox: typeof config.onlyInbox === 'boolean' ? config.onlyInbox : true,
         autoArchiveAllLabeled: config.autoArchiveAllLabeled === true,
@@ -117,7 +170,7 @@ function sanitizeConfigForSave(config) {
         gmailEmail: config.gmailEmail || '',
         promptMode: normalizePromptMode(config.promptMode),
         prompt: config.prompt || '',
-        model: config.model || 'MODEL_GPT5_4_NANO',
+        model: normalizeModel(config.model),
         processUnreadOnly: !!config.processUnreadOnly,
         onlyInbox: !!config.onlyInbox,
         autoArchiveAllLabeled: config.autoArchiveAllLabeled === true,
@@ -230,6 +283,7 @@ function formatPostLabelActionStatus(action = {}) {
 }
 
 module.exports = {
+    DEFAULT_GMAIL_LABELING_MODEL,
     DEFAULT_CUSTOM_GMAIL_LABELING_PROMPT,
     DEFAULT_ADS_LABEL_DEFINITION,
     GMAIL_LABELING_PROMPT_MODE_CUSTOM,
@@ -238,6 +292,7 @@ module.exports = {
     buildCustomDefaultsForReset,
     buildDefaultConfigPreviewFromProjects,
     buildDefaultProjectFollowUpPrompt,
+    buildFullClassifierPromptPreview,
     createEmptyLabel,
     formatPostLabelActionStatus,
     normalizeConfig,

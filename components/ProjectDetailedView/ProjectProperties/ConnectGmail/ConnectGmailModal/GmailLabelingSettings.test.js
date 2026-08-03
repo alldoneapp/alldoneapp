@@ -6,6 +6,7 @@ const {
     buildCustomDefaultsForReset,
     buildDefaultConfigPreviewFromProjects,
     buildDefaultProjectFollowUpPrompt,
+    buildFullClassifierPromptPreview,
     createEmptyLabel,
     formatPostLabelActionStatus,
     normalizeConfig,
@@ -41,8 +42,8 @@ describe('GmailLabelingSettings helpers', () => {
 
         const sanitized = sanitizeConfigForSave(normalized)
 
-        expect(normalized.model).toBe('MODEL_GPT5_4_NANO')
-        expect(sanitized.model).toBe('MODEL_GPT5_4_NANO')
+        expect(normalized.model).toBe('MODEL_GPT5_6_LUNA')
+        expect(sanitized.model).toBe('MODEL_GPT5_6_LUNA')
         expect(sanitized.labelDefinitions[0].postLabelPrompt).toBe('Create a task with this email link')
     })
 
@@ -71,7 +72,7 @@ describe('GmailLabelingSettings helpers', () => {
             gmailEmail: 'person@example.com',
             promptMode: GMAIL_LABELING_PROMPT_MODE_DEFAULT,
             prompt: 'Keep this custom prompt',
-            model: 'MODEL_GPT5_4_NANO',
+            model: 'MODEL_GPT5_6_TERRA',
             processUnreadOnly: true,
             onlyInbox: true,
             lookbackDays: '7',
@@ -91,6 +92,7 @@ describe('GmailLabelingSettings helpers', () => {
 
         expect(sanitized.promptMode).toBe(GMAIL_LABELING_PROMPT_MODE_DEFAULT)
         expect(sanitized.prompt).toBe('Keep this custom prompt')
+        expect(sanitized.model).toBe('MODEL_GPT5_6_TERRA')
         expect(sanitized.labelDefinitions[0].postLabelPrompt).toBe('Create a follow-up task')
     })
 
@@ -125,6 +127,8 @@ describe('GmailLabelingSettings helpers', () => {
         expect(preview.prompt).toContain('use the default project label')
         expect(preview.prompt).toContain('Do not use matched:false')
         expect(preview.prompt).toContain('Never use Ads for transactional email')
+        expect(preview.prompt).toContain('likely something the user genuinely wants to do or should do')
+        expect(preview.prompt).toContain('A call to action')
         expect(preview.labelDefinitions.map(label => label.gmailLabelName)).toEqual(['Client', 'Client (2)', 'Ads'])
         expect(preview.labelDefinitions[0].description).toContain('Website launch')
         expect(preview.labelDefinitions[0].description).not.toContain('Project description: Project Description')
@@ -162,6 +166,33 @@ describe('GmailLabelingSettings helpers', () => {
         expect(prompt).not.toContain('LINK: Email from')
         expect(prompt).toContain('hello@cal.com')
         expect(prompt).toContain('with a space at the end')
+    })
+
+    test('builds the complete classifier prompt preview from effective settings', () => {
+        const sections = buildFullClassifierPromptPreview({
+            config: {
+                promptMode: GMAIL_LABELING_PROMPT_MODE_DEFAULT,
+                confidenceThreshold: '0.8',
+                learnedRules: '- Messages from example.com are actionable',
+            },
+            defaultConfigPreview: {
+                prompt: 'Classify by active project.',
+                labelDefinitions: [
+                    { key: 'project_one', gmailLabelName: 'Project One', description: 'Project One work' },
+                ],
+            },
+            userDescription: 'I manage Project One.',
+        })
+
+        expect(sections.systemPrompt).toContain('actionable or informational')
+        expect(sections.staticUserContent).toContain('Prompt:\nClassify by active project.')
+        expect(sections.staticUserContent).toContain('User feedback rules (always apply)')
+        expect(sections.staticUserContent).toContain('About the user')
+        expect(sections.staticUserContent).toContain('Project One work')
+        expect(sections.staticUserContent).toContain('Configured confidence threshold: 0.8')
+        expect(sections.dynamicUserContent).toContain('<email body, capped at 12,000 characters>')
+        expect(sections.dynamicUserContent).toContain('followUpType')
+        expect(sections.dynamicUserContent).toContain('use the default project label')
     })
 
     test('formats follow-up action statuses for audit display', () => {

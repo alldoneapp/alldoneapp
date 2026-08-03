@@ -30,6 +30,7 @@ const {
     GMAIL_DIRECTION_SCOPE_OUTGOING,
     DEFAULT_SYNC_INTERVAL_MINUTES,
     DEFAULT_GMAIL_LABELING_MODEL,
+    GMAIL_LABELING_MODEL_KEYS,
     buildConfigWriteData,
     buildDefaultState,
     getDefaultGmailLabelingConfig,
@@ -48,6 +49,7 @@ const {
     parseEmailHeaderAddresses,
 } = require('./gmailMessageParser')
 const { classifyGmailMessage } = require('./gmailPromptClassifier')
+const { GMAIL_ACTIONABILITY_GUIDANCE } = require('./gmailClassifierPrompt')
 const { parseListUnsubscribe } = require('../Email/emailLine/emailLineShared')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
 
@@ -74,7 +76,8 @@ const DEFAULT_ADS_LABEL_GUIDANCE =
 const DEFAULT_ACTIVE_PROJECTS_PROMPT =
     'Classify each Gmail message into exactly one configured label when it clearly belongs to an active Alldone project or the Ads label. Use the label descriptions as the primary basis for deciding. Prefer the strongest specific project label when the evidence is clear. If the email is work-relevant but it is not clear which project label fits best, use the default project label. Use matched:false only when it does not relate to any configured project or Ads label. Consider participants, project names, client names, sender domains, subjects, deadlines, action requests, decisions, deliverables, business context, and project-specific Alldone links. ' +
     DEFAULT_ADS_LABEL_GUIDANCE +
-    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead.'
+    ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead. ' +
+    GMAIL_ACTIONABILITY_GUIDANCE
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
 const DEFAULT_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_LUNA'
 const CUSTOM_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_TERRA'
@@ -171,16 +174,6 @@ function buildBootstrapQuery(config) {
     return `newer_than:${config.lookbackDays || 7}d`
 }
 
-const GMAIL_LABELING_LEGACY_GPT5_MODELS = new Set([
-    'MODEL_GPT5',
-    'MODEL_GPT5_1',
-    'MODEL_GPT5_2',
-    'MODEL_GPT5_4',
-    'MODEL_GPT5_5',
-    'MODEL_GPT5_4_MINI',
-    'MODEL_GPT5_6_LUNA',
-])
-
 function applyGmailLabelingModelMigration(config = {}) {
     if (!config || typeof config !== 'object') return config
     const migratedConfig = {
@@ -188,7 +181,7 @@ function applyGmailLabelingModelMigration(config = {}) {
         promptMode: normalizePromptMode(config.promptMode, GMAIL_LABELING_PROMPT_MODE_CUSTOM),
     }
 
-    if (migratedConfig.model && !GMAIL_LABELING_LEGACY_GPT5_MODELS.has(migratedConfig.model)) {
+    if (GMAIL_LABELING_MODEL_KEYS.has(migratedConfig.model)) {
         return migratedConfig
     }
 
@@ -2239,6 +2232,7 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
 
 module.exports = {
     GmailSyncLockedError,
+    applyGmailLabelingModelMigration,
     applyGmailThreadLabelCorrection,
     buildThreadLabelModification,
     buildDefaultActiveProjectLabelDefinitions,

@@ -23,6 +23,7 @@ jest.mock('../Assistant/assistantHelper', () => ({
 }))
 
 const {
+    GMAIL_CLASSIFIER_SYSTEM_PROMPT,
     buildClassifierLabelDefinitions,
     buildClassifierMessage,
     classifyGmailMessage,
@@ -47,6 +48,13 @@ describe('gmailPromptClassifier', () => {
             usage,
         }
     }
+
+    test('requires contextual user relevance before classifying an email as actionable', () => {
+        expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('only when both conditions are met')
+        expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('likely something the user genuinely wants to do or should do')
+        expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('A call to action')
+        expect(GMAIL_CLASSIFIER_SYSTEM_PROMPT).toContain('choose informational')
+    })
 
     test('strips action fields from labels and caps large email bodies before prompting', () => {
         expect(

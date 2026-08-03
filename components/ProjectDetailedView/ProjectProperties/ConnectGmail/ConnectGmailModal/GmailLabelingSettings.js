@@ -9,6 +9,7 @@ import styles, { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
 import { PLAN_STATUS_PREMIUM } from '../../../../Premium/PremiumHelper'
 import { NEW_TOPIC_MODAL_THEME } from '../../../../Feeds/CommentsTextInput/textInputHelper'
+import { SELECTABLE_ASSISTANT_MODELS } from '../../../../../functions/Assistant/selectableAssistantModels'
 import {
     getGmailLabelingConfig,
     runGmailLabelingSync,
@@ -19,14 +20,13 @@ import {
     GMAIL_LABELING_PROMPT_MODE_DEFAULT,
     buildCustomDefaultsForReset,
     buildDefaultConfigPreviewFromProjects,
+    buildFullClassifierPromptPreview,
     createEmptyLabel,
     formatPostLabelActionStatus,
     normalizeConfig,
     sanitizeConfigForSave,
 } from './GmailLabelingSettings.helpers'
 
-const GMAIL_CLASSIFIER_SYSTEM_PROMPT =
-    'You classify Gmail messages into exactly one configured label or no match. Messages may be incoming or outgoing. Return strict JSON only with keys matched, labelKey, confidence, reasoning. Never invent labels. Confidence must be a number between 0 and 1.'
 const DIRECTION_OPTIONS = [
     { key: 'incoming', label: 'Incoming' },
     { key: 'outgoing', label: 'Outgoing' },
@@ -273,27 +273,35 @@ function PromptModeSegment({ value, disabled, onChange }) {
     )
 }
 
+function ModelSelector({ value, disabled, onChange }) {
+    return (
+        <View style={localStyles.modelOptions}>
+            {SELECTABLE_ASSISTANT_MODELS.map(option => {
+                const active = value === option.model
+                return (
+                    <TouchableOpacity
+                        key={option.model}
+                        style={[localStyles.modelOption, active && localStyles.modelOptionActive]}
+                        onPress={() => onChange(option.model)}
+                        disabled={disabled}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={[localStyles.modelOptionName, active && localStyles.modelOptionNameActive]}>
+                            {option.name}
+                        </Text>
+                        <Text style={localStyles.modelOptionDescription}>{translate(option.descriptionKey)}</Text>
+                    </TouchableOpacity>
+                )
+            })}
+        </View>
+    )
+}
+
 function DefaultLabelingPreview({ preview }) {
     const labelDefinitions = Array.isArray(preview?.labelDefinitions) ? preview.labelDefinitions : []
 
     return (
         <View style={localStyles.section}>
-            <Text style={localStyles.inputLabel}>Generated default prompt</Text>
-            <CustomTextInput3
-                containerStyle={[localStyles.input, localStyles.textArea, localStyles.multilineInput]}
-                initialTextExtended={preview?.prompt || ''}
-                placeholder={''}
-                placeholderTextColor={colors.Text03}
-                multiline={true}
-                onChangeText={() => {}}
-                styleTheme={NEW_TOPIC_MODAL_THEME}
-                disabledTabKey={true}
-                disabledTags={true}
-                disabledEdition={true}
-                externalTextStyle={localStyles.multilineInputText}
-                keepBreakLines={true}
-                key={`gmail-default-prompt-${labelDefinitions.length}`}
-            />
             <Text style={localStyles.sectionTitle}>Generated default labels</Text>
             {labelDefinitions.length > 0 ? (
                 labelDefinitions.map((label, index) => (
@@ -320,6 +328,36 @@ function DefaultLabelingPreview({ preview }) {
     )
 }
 
+function PromptMessagePreview({ title, content }) {
+    return (
+        <View style={localStyles.promptMessageCard}>
+            <Text style={localStyles.previewLabelName}>{title}</Text>
+            <Text style={localStyles.promptPreviewText} selectable={true}>
+                {content}
+            </Text>
+        </View>
+    )
+}
+
+function FullClassificationPromptPreview({ sections }) {
+    return (
+        <View style={localStyles.section}>
+            <Text style={localStyles.sectionTitle}>{translate('Full classification prompt')}</Text>
+            <Text style={localStyles.helperText}>
+                {translate(
+                    'This is the complete prompt sent to the classifier. Email values are inserted when each message is processed.'
+                )}
+            </Text>
+            <PromptMessagePreview title={translate('System message')} content={sections.systemPrompt} />
+            <PromptMessagePreview title={translate('Configuration message')} content={sections.staticUserContent} />
+            <PromptMessagePreview
+                title={translate('Per-email message template')}
+                content={sections.dynamicUserContent}
+            />
+        </View>
+    )
+}
+
 export default function GmailLabelingSettings({
     projectId,
     isConnected,
@@ -328,6 +366,7 @@ export default function GmailLabelingSettings({
     onRegisterCloseHandlers,
 }) {
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
+    const userDescription = useSelector(state => state.loggedUser.extendedDescription || '')
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const [config, setConfig] = useState(() => normalizeConfig(projectId))
     const [defaultConfigPreview, setDefaultConfigPreview] = useState(() =>
@@ -561,6 +600,11 @@ export default function GmailLabelingSettings({
 
     const showInitialLoadingState = !initialLoadComplete && !error
     const isDefaultPromptMode = config.promptMode === GMAIL_LABELING_PROMPT_MODE_DEFAULT
+    const fullClassifierPrompt = buildFullClassifierPromptPreview({
+        config,
+        defaultConfigPreview,
+        userDescription,
+    })
 
     return (
         <View style={localStyles.container}>
@@ -641,28 +685,15 @@ export default function GmailLabelingSettings({
                                     disabled={!canManage}
                                     onChange={promptMode => updateConfig({ promptMode })}
                                 />
-                            </View>
 
-                            <View style={localStyles.section}>
-                                <Text style={localStyles.inputLabel}>System prompt</Text>
-                                <CustomTextInput3
-                                    containerStyle={[
-                                        localStyles.input,
-                                        localStyles.systemPromptInput,
-                                        localStyles.multilineInput,
-                                    ]}
-                                    initialTextExtended={GMAIL_CLASSIFIER_SYSTEM_PROMPT}
-                                    placeholder={''}
-                                    placeholderTextColor={colors.Text03}
-                                    multiline={true}
-                                    onChangeText={() => {}}
-                                    styleTheme={NEW_TOPIC_MODAL_THEME}
-                                    disabledTabKey={true}
-                                    disabledTags={true}
-                                    disabledEdition={true}
-                                    externalTextStyle={localStyles.multilineInputText}
-                                    keepBreakLines={true}
-                                    key={'gmail-system-prompt'}
+                                <Text style={localStyles.inputLabel}>{translate('Gmail labeling model')}</Text>
+                                <Text style={localStyles.helperText}>
+                                    {translate('Choose the model used to classify and label emails.')}
+                                </Text>
+                                <ModelSelector
+                                    value={config.model}
+                                    disabled={!canManage}
+                                    onChange={model => updateConfig({ model })}
                                 />
                             </View>
 
@@ -941,6 +972,8 @@ export default function GmailLabelingSettings({
                                 <Text style={localStyles.helperText}>{translate('LearnedRulesDescription')}</Text>
                             </View>
 
+                            <FullClassificationPromptPreview sections={fullClassifierPrompt} />
+
                             <SyncSummary state={syncState} result={syncResult} />
                             <SyncAuditSection entries={recentAuditEntries} />
                         </>
@@ -1059,10 +1092,6 @@ const localStyles = StyleSheet.create({
         minHeight: 96,
         textAlignVertical: 'top',
     },
-    systemPromptInput: {
-        minHeight: 88,
-        opacity: 0.75,
-    },
     descriptionInput: {
         minHeight: 104,
         paddingTop: 12,
@@ -1154,6 +1183,40 @@ const localStyles = StyleSheet.create({
     modeButtonTextActive: {
         color: '#ffffff',
     },
+    modelOptions: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginTop: 4,
+        marginBottom: 10,
+    },
+    modelOption: {
+        flexGrow: 1,
+        flexBasis: 150,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.16)',
+        borderRadius: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginRight: 8,
+        marginTop: 8,
+        backgroundColor: 'rgba(255,255,255,0.02)',
+    },
+    modelOptionActive: {
+        borderColor: colors.Primary300,
+        backgroundColor: 'rgba(66, 153, 225, 0.18)',
+    },
+    modelOptionName: {
+        ...styles.subtitle2,
+        color: '#ffffff',
+    },
+    modelOptionNameActive: {
+        color: colors.Primary300,
+    },
+    modelOptionDescription: {
+        ...styles.caption1,
+        color: colors.Text03,
+        marginTop: 4,
+    },
     previewLabelCard: {
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
@@ -1172,6 +1235,19 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginTop: 10,
         marginBottom: 4,
+    },
+    promptMessageCard: {
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 8,
+        padding: 12,
+        marginTop: 10,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    promptPreviewText: {
+        ...styles.body2,
+        color: '#ffffff',
+        lineHeight: 20,
     },
     buttonRow: {
         flexDirection: 'row',
