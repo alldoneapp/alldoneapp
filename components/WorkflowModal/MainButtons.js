@@ -16,6 +16,7 @@ export default function MainButtons({
     narrow = false,
     backwardStepName,
     forwardStepName,
+    allowBackward = true,
 }) {
     return (
         <View
@@ -26,7 +27,7 @@ export default function MainButtons({
                 narrow && localStyles.narrowContainer,
             ]}
         >
-            {currentStep !== OPEN_STEP && !selectedCustomStep && (
+            {allowBackward && currentStep !== OPEN_STEP && !selectedCustomStep && (
                 <BackwardButton
                     onPress={onDonePress}
                     direction={WORKFLOW_BACKWARD}
