@@ -7,6 +7,23 @@ export const isAssistantSuggestedTask = task =>
     (task.suggestedBy === task?.taskMetadata?.assistantSuggestion?.assistantId ||
         task.suggestedBy === task?.assistantId)
 
+export const getSuggestedById = task =>
+    task?.suggestedBy || task?.taskMetadata?.assistantSuggestion?.assistantId || task?.creatorId || ''
+
+export const resolveSuggestedByIdentity = ({ task, suggestedById, user, contact, assistant }) => {
+    const id = suggestedById || getSuggestedById(task)
+
+    return {
+        id,
+        identity: user || contact || assistant || null,
+        isAssistant:
+            !!assistant ||
+            (!!id &&
+                (id === task?.taskMetadata?.assistantSuggestion?.assistantId ||
+                    (!!task?.assistantId && id === task.assistantId && task?.suggestedBy === id))),
+    }
+}
+
 export const buildRejectedAssistantSuggestedTask = task => {
     if (!isAssistantSuggestedTask(task)) return null
     const assistantId = task.taskMetadata?.assistantSuggestion?.assistantId || task.assistantId
