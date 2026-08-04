@@ -23,6 +23,7 @@ export default function TaskInput({
     getInitialText,
     setInitialLinkedObject,
     onKeyEnterPressed,
+    autoFocusInput,
 }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -50,8 +51,8 @@ export default function TaskInput({
         isAssistant
 
     useEffect(() => {
-        if (!disableInput) inputTask.current?.focus()
-    }, [disableInput])
+        if (!disableInput && autoFocusInput) inputTask.current?.focus()
+    }, [disableInput, autoFocusInput])
 
     return (
         <CustomTextInput3
@@ -60,7 +61,7 @@ export default function TaskInput({
             placeholder={getPlaceholderText()}
             placeholderTextColor={colors.Text03}
             onChangeText={onChangeInputText}
-            autoFocus={true}
+            autoFocus={autoFocusInput}
             setMentionsModalActive={setMentionsModalActive}
             projectId={projectId}
             projectIndex={projectIndex}
