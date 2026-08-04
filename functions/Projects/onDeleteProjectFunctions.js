@@ -1,5 +1,4 @@
 const admin = require('firebase-admin')
-const firebase_tools = require('firebase-tools')
 
 const { removeAlgoliaRecordsInProject } = require('../AlgoliaGlobalSearchHelper')
 const { recursiveDeleteHelper } = require('../Utils/HelperFunctionsCloud')
@@ -8,7 +7,7 @@ const {
     safelySyncHeartbeatSchedules,
 } = require('../Assistant/assistantHeartbeatSchedule')
 
-const removeProjectData = async (projectId, admin, firebase_tools, process) => {
+const removeProjectData = async (projectId, admin) => {
     const basePaths = [
         'assistantTasks',
         'assistants',
@@ -43,7 +42,7 @@ const removeProjectData = async (projectId, admin, firebase_tools, process) => {
 
     basePaths.forEach(basePath => {
         const path = `${basePath}/${projectId}`
-        deletePromises.push(recursiveDeleteHelper(firebase_tools, process.env.GCLOUD_PROJECT, path))
+        deletePromises.push(recursiveDeleteHelper(path))
     })
 
     const getPromises = []
@@ -64,7 +63,7 @@ const removeProjectData = async (projectId, admin, firebase_tools, process) => {
 
 const onDeleteProject = async projectId => {
     const promises = []
-    promises.push(removeProjectData(projectId, admin, firebase_tools, process))
+    promises.push(removeProjectData(projectId, admin))
     promises.push(removeAlgoliaRecordsInProject(projectId))
     promises.push(
         safelySyncHeartbeatSchedules(() => deleteHeartbeatSchedulesForProject(projectId), {

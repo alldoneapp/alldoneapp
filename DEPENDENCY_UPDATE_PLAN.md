@@ -39,14 +39,24 @@ Where the risk actually is:
 
 ## Phase 1 — functions targeted majors (one MR each, in order)
 
-1. **Drop the runtime `firebase-tools` dependency** — highest value per effort. Only
-   `require`d in `functions/FirestoreTool/Users.js` and
-   `functions/Projects/onDeleteProjectFunctions.js` for recursive Firestore deletes;
-   `firebase-admin` ≥10 has `firestore().recursiveDelete()` built in. Removing it kills the
-   `request`/`tar`/`form-data` criticals and a huge install tree.
+1. **Drop the runtime `firebase-tools` dependency** — DONE 2026-08-04. The real surface was
+   larger than first mapped: `recursiveDeleteHelper` in `Utils/HelperFunctionsCloud.js`
+   wrapped `firebase_tools.firestore.delete` and was threaded through
+   `Chats/onDeleteChatFunctions.js`, `Projects/onDeleteProjectFunctions.js`,
+   `Projects/onUpdateProjectFunctions.js`, and `Users/onKickUserFromProject.js`
+   (plus an unused import in `FirestoreTool/Users.js`). The helper now takes just a path and
+   uses `admin.firestore().recursiveDelete()` (doc vs collection resolved by segment count);
+   the `firebase_tools`/`process` parameter threading and the `GOOGLE_FIREBASE_DEPLOY_TOKEN`
+   lookup are gone. Killed the `tar` critical and the firebase-tools install tree.
    _Note: this is separate from the CLI pin — keep deploying with the repo-pinned
    `firebase-tools@13.29.3` (newer CLIs reject the pre-existing 3600s scheduled-function
-   timeouts in `index.js`)._
+   timeouts in `index.js`). `npm run serve`/`deploy` inside `functions/` now resolve the
+   global `firebase` CLI instead of a local one — consistent with the pin._
+   1a. **Replace `html-pdf`** (discovered during 1): deprecated, PhantomJS-based, and the
+   remaining source of the `request` + `form-data` criticals (npm's only "fix" is a
+   downgrade to html-pdf 1.5). Single usage: `Payment/Invoices/Invoices.js` (invoice PDF
+   generation). Migrate to e.g. `puppeteer-core` + `@sparticuz/chromium` or `pdfkit`,
+   then delete the dep.
 2. **Remove or align the direct `@google-cloud/firestore@^4.2.0`** — firebase-admin 12
    bundles its own Firestore client; the direct 4.x dep is stale and keeps the `protobufjs`
    critical alive. Check for direct imports; most likely it can be deleted.
@@ -105,3 +115,8 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
         master (model default changed to `MODEL_GPT5_6_LUNA` in `ff45a4d08`, unrelated to
         deps — flagged as a separate task).
     -   Phase 3 migration plan drafted → `FRONTEND_MIGRATION_PLAN.md`.
+-   2026-08-04 (later): Phase 1.1 executed — runtime `firebase-tools` removed from
+    `functions/` (see item 1 above for the full call-site inventory). Vulns 27 → 23;
+    remaining criticals: `protobufjs` (→ item 2) and `request`/`form-data` via the
+    deprecated `html-pdf` (→ new item 1a). Functions tests: 160/161 suites pass, only the
+    pre-existing `calendarProjectRoutingConfig` failure remains.
