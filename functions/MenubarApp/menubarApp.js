@@ -5,6 +5,7 @@ const admin = require('firebase-admin')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { getMenubarAccountSummary } = require('./menubarAccountSummary')
 const { resolveMenubarRichTextLinks } = require('./menubarRichText')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 const TOKEN_PREFIX = 'adapp_'
 const TOKENS_COLLECTION = 'menubarAppTokens'
@@ -83,7 +84,7 @@ async function mintMenubarAppToken(userId) {
             appId: 'anna-menubar',
             tokenSuffix: token.slice(-4),
             revoked: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
             lastUsedAt: null,
         })
 
@@ -104,10 +105,7 @@ async function mintMenubarAppToken(userId) {
             const excess = sorted.slice(0, activeTokens.size - MAX_ACTIVE_TOKENS_PER_USER)
             await Promise.all(
                 excess.map(doc =>
-                    doc.ref.set(
-                        { revoked: true, revokedAt: admin.firestore.FieldValue.serverTimestamp() },
-                        { merge: true }
-                    )
+                    doc.ref.set({ revoked: true, revokedAt: FieldValue.serverTimestamp() }, { merge: true })
                 )
             )
         }
@@ -154,7 +152,7 @@ async function revokeMenubarAppToken(userId, tokenId) {
     if (!tokenDoc.exists || tokenDoc.data()?.userId !== userId) {
         return { success: false, error: 'Token not found' }
     }
-    await tokenRef.set({ revoked: true, revokedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    await tokenRef.set({ revoked: true, revokedAt: FieldValue.serverTimestamp() }, { merge: true })
     return { success: true }
 }
 
@@ -178,7 +176,7 @@ async function resolveTokenUser(token) {
     const lastUsedMs = tokenData.lastUsedAt?.toMillis?.() || 0
     if (Date.now() - lastUsedMs > LAST_USED_UPDATE_THROTTLE_MS) {
         tokenRef
-            .set({ lastUsedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+            .set({ lastUsedAt: FieldValue.serverTimestamp() }, { merge: true })
             .catch(error => console.warn('menubarSession: lastUsedAt update failed', error))
     }
 
@@ -1659,7 +1657,7 @@ async function getOrCreateMacAppDailyTopic(db, userId, projectId, assistantId, u
         db.doc(`usersFollowing/${projectId}/entries/${userId}`).set({ topics: { [chatId]: true } }, { merge: true }),
         db
             .doc(`followers/${projectId}/topics/${chatId}`)
-            .set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+            .set({ usersFollowing: FieldValue.arrayUnion(userId) }, { merge: true }),
     ])
 
     return { chatId, isNew: true }
@@ -1709,7 +1707,7 @@ async function enableNoteAssistantChat(db, { projectId, noteId, title, userId, a
         db.doc(`usersFollowing/${projectId}/entries/${userId}`).set({ notes: { [noteId]: true } }, { merge: true }),
         db
             .doc(`followers/${projectId}/notes/${noteId}`)
-            .set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+            .set({ usersFollowing: FieldValue.arrayUnion(userId) }, { merge: true }),
     ])
 }
 
@@ -1880,7 +1878,7 @@ async function deleteMenubarThreadNotifications(db, projectId, chatId, userId, n
         const userIds = Array.isArray(emailDoc.data()?.userIds) ? emailDoc.data().userIds : []
         if (userIds.includes(userId)) {
             if (userIds.length > 1) {
-                batch.set(emailDoc.ref, { userIds: admin.firestore.FieldValue.arrayRemove(userId) }, { merge: true })
+                batch.set(emailDoc.ref, { userIds: FieldValue.arrayRemove(userId) }, { merge: true })
             } else {
                 batch.delete(emailDoc.ref)
             }
@@ -1889,7 +1887,7 @@ async function deleteMenubarThreadNotifications(db, projectId, chatId, userId, n
     pushSnapshot.docs.forEach(doc => {
         const userIds = Array.isArray(doc.data()?.userIds) ? doc.data().userIds : []
         if (userIds.length > 1) {
-            batch.set(doc.ref, { userIds: admin.firestore.FieldValue.arrayRemove(userId) }, { merge: true })
+            batch.set(doc.ref, { userIds: FieldValue.arrayRemove(userId) }, { merge: true })
         } else {
             batch.delete(doc.ref)
         }
@@ -2282,7 +2280,7 @@ async function handleMenubarAssistantMessage(req, res) {
                 batch.set(db.doc(`chatComments/${projectId}/${objectType}/${chatId}/comments/${commentId}`), {
                     commentText,
                     mediaContext,
-                    lastChangeDate: admin.firestore.Timestamp.now(),
+                    lastChangeDate: Timestamp.now(),
                     created: now,
                     creatorId: userId,
                     fromAssistant: false,
@@ -2290,14 +2288,14 @@ async function handleMenubarAssistantMessage(req, res) {
                     ...(objectType === 'tasks' ? { commentType: STAYWARD_COMMENT } : {}),
                 })
                 batch.update(db.doc(`chatObjects/${projectId}/chats/${chatId}`), {
-                    members: admin.firestore.FieldValue.arrayUnion(userId),
-                    usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
+                    members: FieldValue.arrayUnion(userId),
+                    usersFollowing: FieldValue.arrayUnion(userId),
                     lastEditionDate: now,
                     lastEditorId: userId,
                     'commentsData.lastComment': preview || 'Comment',
                     'commentsData.lastCommentOwnerId': userId,
                     'commentsData.lastCommentType': STAYWARD_COMMENT,
-                    'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                    'commentsData.amount': FieldValue.increment(1),
                 })
                 visibleUserIds.forEach(candidateId => {
                     batch.set(db.doc(`chatNotifications/${projectId}/${candidateId}/${commentId}`), {
@@ -2389,7 +2387,7 @@ async function handleMenubarAssistantMessage(req, res) {
             await db.doc(`chatComments/${defaultProjectId}/topics/${chatId}/comments/${commentId}`).set({
                 commentText,
                 mediaContext,
-                lastChangeDate: admin.firestore.Timestamp.now(),
+                lastChangeDate: Timestamp.now(),
                 created: now,
                 creatorId: userId,
                 fromAssistant: false,
@@ -2398,13 +2396,13 @@ async function handleMenubarAssistantMessage(req, res) {
 
             await chatRef
                 .update({
-                    members: admin.firestore.FieldValue.arrayUnion(userId),
+                    members: FieldValue.arrayUnion(userId),
                     lastEditionDate: now,
                     lastEditorId: userId,
                     'commentsData.lastComment': preview,
                     'commentsData.lastCommentOwnerId': userId,
                     'commentsData.lastCommentType': STAYWARD_COMMENT,
-                    'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                    'commentsData.amount': FieldValue.increment(1),
                 })
                 .catch(error => console.warn('menubarAssistantMessage: chat metadata update failed', error))
 

@@ -4,6 +4,7 @@ const admin = require('firebase-admin')
 
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 function normalizeText(value) {
     return typeof value === 'string' ? value.trim() : ''
@@ -41,7 +42,7 @@ async function addAssistantTaskComment({ projectId, taskId, assistantId, comment
         creatorId: assistantId,
         commentText,
         commentType: STAYWARD_COMMENT,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         originalContent: commentText,
         fromAssistant: true,
@@ -57,7 +58,7 @@ async function addAssistantTaskComment({ projectId, taskId, assistantId, comment
         lastEditionDate: now,
         lastEditorId: assistantId,
         assistantId,
-        members: admin.firestore.FieldValue.arrayUnion(assistantId),
+        members: FieldValue.arrayUnion(assistantId),
     }
 
     if (chatDoc.exists) {
@@ -72,7 +73,7 @@ async function addAssistantTaskComment({ projectId, taskId, assistantId, comment
             creatorId: task.creatorId || taskOwnerId,
             created: task.created || now,
             isPublicFor: task.isPublicFor || [0, taskOwnerId].filter(Boolean),
-            usersFollowing: admin.firestore.FieldValue.arrayUnion(...followingIds),
+            usersFollowing: FieldValue.arrayUnion(...followingIds),
             followerIds: followingIds,
             hasStar: task.hasStar || '#ffffff',
             stickyData: { days: 0, stickyEndDate: 0 },

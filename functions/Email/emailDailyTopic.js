@@ -18,6 +18,7 @@ const {
     normalizeEmailAddress,
     normalizeSafeEmailActionContext,
 } = require('./emailChannelHelpers')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 const EMAIL_PARTICIPANT_SCOPE_VERSION = 1
 
@@ -145,7 +146,7 @@ async function storeEmailUserMessageInTopic(projectId, chatId, userId, messageTe
 
     const comment = {
         commentText: finalText,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         creatorId: userId,
         fromAssistant: false,
@@ -186,7 +187,7 @@ async function storeEmailAssistantMessageInTopic(projectId, chatId, assistantId,
 
     const comment = {
         commentText: String(responseText || '').trim(),
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         creatorId: assistantId,
         fromAssistant: true,
@@ -211,7 +212,7 @@ async function storeTopicComment(projectId, chatId, commentId, comment, actorId,
             'commentsData.lastComment': String(commentText || '').substring(0, 200),
             'commentsData.lastCommentOwnerId': actorId,
             'commentsData.lastCommentType': STAYWARD_COMMENT,
-            'commentsData.amount': admin.firestore.FieldValue.increment(1),
+            'commentsData.amount': FieldValue.increment(1),
         }),
     ])
 }

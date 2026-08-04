@@ -47,6 +47,7 @@ const {
     updateCallSession,
 } = require('./whatsAppCallSessions')
 const { getCallTranscript, getCallTranscriptTurn, storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const MAX_SIDEBAND_RECONNECTS = 3
 const RECONNECT_DELAY_MS = 1000
@@ -488,7 +489,7 @@ async function runAssistantRealtimeCall(sessionId) {
                 await updateCallSession(sessionId, {
                     pendingConfirmationTool: null,
                     pendingConfirmationAt: null,
-                    confirmationRejections: admin.firestore.FieldValue.increment(1),
+                    confirmationRejections: FieldValue.increment(1),
                 })
                 sendFunctionOutput(callId, { success: true, status: 'cancelled', toolName: cancelledTool })
                 requestResponse('Briefly tell the caller the pending action was cancelled.')
@@ -505,7 +506,7 @@ async function runAssistantRealtimeCall(sessionId) {
             await updateCallSession(sessionId, {
                 pendingConfirmationTool: null,
                 pendingConfirmationAt: null,
-                confirmationApprovals: admin.firestore.FieldValue.increment(1),
+                confirmationApprovals: FieldValue.increment(1),
             })
             try {
                 const result = await executeAllowedTool(approvedAction.toolName, approvedAction.toolArgs)
@@ -536,7 +537,7 @@ async function runAssistantRealtimeCall(sessionId) {
             await updateCallSession(sessionId, {
                 pendingConfirmationTool: toolName,
                 pendingConfirmationAt: pendingAction.requestedAt,
-                confirmationRequests: admin.firestore.FieldValue.increment(1),
+                confirmationRequests: FieldValue.increment(1),
             })
             sendFunctionOutput(callId, {
                 success: false,

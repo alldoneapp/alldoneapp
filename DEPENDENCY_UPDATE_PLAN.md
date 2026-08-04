@@ -103,6 +103,46 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
 
 ## Status log
 
+-   2026-08-04 (Phase 1 remainder, one combined change): items 1a–6 all executed.
+
+    -   **firebase-admin 12 → 14 + firebase-functions 5 → 7 + @google-cloud/firestore 4 → 8**
+        (interlocked: admin 14 makes the Firestore client a peer dep at ^8.6). Kills the
+        `protobufjs` critical. admin 14 removed the legacy namespace statics — a codemod
+        rewrote 366 `admin.firestore.{FieldValue,Timestamp,FieldPath}` usages across ~80
+        files to modular `require('firebase-admin/firestore')` imports. Unused
+        `firebase-functions-test` devDep dropped.
+    -   **Functions tests moved to Node 22** via `ci/jest.functions.config.js` (skips Babel
+        for functions/node_modules; `node:crypto` shim in `ci/nodeShims/`). The web-pinned
+        Babel 7.12 cannot parse the new SDKs' syntax, and a global @babel/core bump breaks
+        the Expo presets (verified A/B) — so web tooling stays untouched. CLAUDE.md updated.
+    -   **html-pdf → puppeteer-core + @sparticuz/chromium** (invoice PDFs; kills the
+        `request`/`form-data` criticals). `sendMonthlyInvoice*` memory 256MB → 1GiB for
+        Chromium. Verify the first staging/production invoice renders correctly.
+    -   **twilio 3 → 6** (surface used — `messages.create`, `validateRequest`,
+        `twiml.VoiceResponse` — unchanged; load-smoke-tested).
+    -   **@mollie/api-client 3 → 4**: snake_case binder aliases removed upstream;
+        `customers_mandates`/`customers_subscriptions` renamed to
+        `customerMandates`/`customerSubscriptions` in `Payment/Mollie.js`.
+    -   **stripe 14 → 22**: runtime surface unchanged, BUT the newer pinned API version
+        moves `current_period_end` from Subscription to SubscriptionItem — all read sites
+        now fall back to `items.data[0].current_period_end`. Webhook event shapes are pinned
+        account-side and unaffected. Retest checkout + premium status on staging.
+    -   **@deepgram/sdk 4 → 5**: `createClient` → `new DeepgramClient({apiKey})`,
+        `listen.prerecorded.transcribeFile` → `listen.v1.media.transcribeFile` (throws
+        instead of `{result, error}`); options and response shape unchanged.
+    -   **@tavily/core 0.0.2 → 0.7, googleapis 174, uuid 11** (surfaces verified);
+        **fs-extra removed** (unused).
+    -   **Audit after all of Phase 1: 0 critical, 0 high, 7 moderate** (was 66 total /
+        8 critical at baseline).
+    -   **Deploy checks for the next staging deploy**: (1) the pinned `firebase-tools@13.29.3`
+        must discover the firebase-functions 7 manifest — `index.js` loads cleanly under v7
+        locally, but confirm every function actually redeploys (source-hash + CreateFunction
+        error check per CLAUDE.md); if discovery fails, fall back to `firebase-functions@^6`
+        (the security fixes are not in that package). (2) First invoice PDF (Chromium render),
+        (3) a WhatsApp send (twilio 6), (4) a Mollie subscription update (v4 binders),
+        (5) premium status check (stripe 22 period-end fallback), (6) a meeting
+        transcription (deepgram v5).
+
 -   2026-08-04: Plan created. Phase 0 executed:
     -   Email worker: `wrangler` 4.75.0 → 4.118.0, `postal-mime` 2.7.4 → 2.7.5, tests pass.
         6 → 3 vulns; the remaining 3 are `undici` inside `miniflare` (dev-only tooling —

@@ -11,6 +11,7 @@ const { buildWorkflowStepAdvanceUpdate, isAiWorkflowStep, buildAiStepPrompt } = 
 const { SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS, TRANSPORT_HEADROOM_MS } = require('../Assistant/assistantRunLimits')
 const { TARGET_MAX_VM_RUNTIME_MS, VM_JOB_FINALIZATION_HEADROOM_MS } = require('../Assistant/vmJobConfig')
 const { acquireAssistantTaskRunLock, releaseAssistantTaskRunLock } = require('../Assistant/assistantRunIdempotency')
+const { Timestamp } = require('firebase-admin/firestore')
 
 const RUNS_COLLECTION = 'workflowAiRuns'
 
@@ -268,7 +269,7 @@ const postAssistantComment = async (projectId, taskId, assistantId, commentText)
     const commentId = uuidv4()
     await admin.firestore().doc(`chatComments/${projectId}/tasks/${taskId}/comments/${commentId}`).set({
         commentText,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: Date.now(),
         creatorId: assistantId,
         fromAssistant: true,

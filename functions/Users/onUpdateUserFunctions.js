@@ -9,6 +9,7 @@ const {
     safelySyncHeartbeatSchedules,
     syncHeartbeatSchedulesForUser,
 } = require('../Assistant/assistantHeartbeatSchedule')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const HEARTBEAT_USER_SCHEDULE_FIELDS = [
     'timezone',
@@ -57,7 +58,7 @@ const onUpdateUser = async (userId, change) => {
                 userId: userId,
                 userPhone: newUser.phone,
                 isWelcome: true,
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                timestamp: FieldValue.serverTimestamp(),
             })
         )
     }

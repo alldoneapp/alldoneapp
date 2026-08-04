@@ -11,6 +11,7 @@ const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThr
 const { buildVmChatPath } = require('./vmHostTaskHelper')
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { sanitizeTaskDescriptionText, buildTaskDescriptionMediaContextLines } = require('./taskDescriptionContext')
+const { Timestamp } = require('firebase-admin/firestore')
 
 // Hybrid Gold pricing for a VM run:
 //   total = VM_JOB_BASE_GOLD + ceil(runtimeMinutes) * VM_GOLD_PER_MINUTE
@@ -668,7 +669,7 @@ async function performVmCloudRunLaunch({
                     {
                         commentText: failureText,
                         originalContent: failureText,
-                        lastChangeDate: admin.firestore.Timestamp.now(),
+                        lastChangeDate: Timestamp.now(),
                     },
                     { merge: true }
                 )
@@ -757,7 +758,7 @@ async function settleQueuedVmJobInsufficientGold(pending) {
                         requestUserId: pending.userId,
                         status: 'failed',
                     },
-                    lastChangeDate: admin.firestore.Timestamp.now(),
+                    lastChangeDate: Timestamp.now(),
                 },
                 { merge: true }
             )
@@ -882,7 +883,7 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
                             commentText: failureText,
                             originalContent: failureText,
                             isLoading: false,
-                            lastChangeDate: admin.firestore.Timestamp.now(),
+                            lastChangeDate: Timestamp.now(),
                         },
                         { merge: true }
                     )

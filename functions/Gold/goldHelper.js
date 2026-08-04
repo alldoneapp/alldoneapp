@@ -11,6 +11,7 @@ const {
     getUsersThatEarnedSomeGoldToday,
 } = require('../Users/usersFirestore')
 const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud')
+const { FieldValue } = require('firebase-admin/firestore')
 
 function logGoldAnalytics(userId, eventName, amount, source, context = {}) {
     return logEvent(userId, eventName, {
@@ -208,7 +209,7 @@ const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate, c
                     objectType: context.objectType || '',
                     status: 'skipped_no_daily_gold',
                     timestamp,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    createdAt: FieldValue.serverTimestamp(),
                 })
             }
             console.log('[gold][server] earnGold skipped because no daily gold remained', {
@@ -256,7 +257,7 @@ const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate, c
                 objectType: context.objectType || '',
                 status: 'processed',
                 timestamp,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdAt: FieldValue.serverTimestamp(),
             })
         }
 
@@ -274,7 +275,7 @@ const earnGold = async (projectId, userId, gold, slimDate, timestamp, dayDate, c
         transaction.set(
             statisticsRef,
             {
-                gold: admin.firestore.FieldValue.increment(goldToIncrease),
+                gold: FieldValue.increment(goldToIncrease),
                 timestamp,
                 day: dayDate,
             },

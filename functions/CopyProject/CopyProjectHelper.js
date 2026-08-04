@@ -17,6 +17,7 @@ const SendInBlueManager = require('../SendInBlueManager')
 const moment = require('moment')
 const { addFollower, FOLLOW_TYPE_USERS } = require('./FollowObjectHelper')
 const { inProductionEnvironment } = require('../Utils/HelperFunctionsCloud')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const onCopyProject = async (admin, projectId, user, options) => {
     const db = admin.firestore()
@@ -80,7 +81,7 @@ const onCopyProject = async (admin, projectId, user, options) => {
 
     // Update reference of project in user at the end of the process
     await db.doc(`users/${user.uid}`).update({
-        projectIds: admin.firestore.FieldValue.arrayUnion(newProjectId),
+        projectIds: FieldValue.arrayUnion(newProjectId),
     })
     await addFollower(admin, newProjectId, user.uid, FOLLOW_TYPE_USERS, user.uid)
 

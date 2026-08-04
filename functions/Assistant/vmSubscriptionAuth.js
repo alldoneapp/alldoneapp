@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { HttpsError } = require('firebase-functions/v2/https')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const VM_SUBSCRIPTION_DOC = 'vmAgentSubscriptions'
 const VALID_PROVIDERS = ['claude', 'codex']
@@ -132,7 +133,7 @@ async function disconnectVmSubscription({ userId, provider }) {
     const fallbackMode = apiKeyStatus[provider]?.connected ? 'byok' : 'api'
     await getSubscriptionRef(userId).set(
         {
-            [provider]: admin.firestore.FieldValue.delete(),
+            [provider]: FieldValue.delete(),
             credentialModes: { [provider]: fallbackMode },
             updatedAt: Date.now(),
         },

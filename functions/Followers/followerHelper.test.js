@@ -1,3 +1,11 @@
+let mockArrayUnion
+
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: {
+        arrayUnion: (...values) => mockArrayUnion(...values),
+    },
+}))
+
 jest.mock('../Feeds/tasksFeeds', () => ({
     createTaskFollowedFeed: jest.fn().mockResolvedValue(undefined),
 }))
@@ -29,7 +37,6 @@ const { getGlobalState } = require('../GlobalState/globalState')
 const { tryAddFollower } = require('./followerHelper')
 
 describe('followerHelper', () => {
-    let arrayUnion
     let batch
     let chatUpdate
     let chatData
@@ -37,7 +44,7 @@ describe('followerHelper', () => {
 
     beforeEach(() => {
         jest.clearAllMocks()
-        arrayUnion = jest.fn(value => ({ arrayUnion: value }))
+        mockArrayUnion = jest.fn(value => ({ arrayUnion: value }))
         batch = { set: jest.fn() }
         chatUpdate = jest.fn().mockResolvedValue(undefined)
         chatData = { usersFollowing: ['user-1'] }
@@ -54,7 +61,7 @@ describe('followerHelper', () => {
             return {}
         })
         getGlobalState.mockReturnValue({
-            admin: { firestore: { FieldValue: { arrayUnion } } },
+            admin: { firestore: { FieldValue: { arrayUnion: mockArrayUnion } } },
             appAdmin: { firestore: () => ({ doc: firestoreDoc }) },
         })
     })
@@ -91,7 +98,7 @@ describe('followerHelper', () => {
             true
         )
 
-        expect(arrayUnion).toHaveBeenCalledWith('user-1')
+        expect(mockArrayUnion).toHaveBeenCalledWith('user-1')
         expect(chatUpdate).toHaveBeenCalledWith({ usersFollowing: { arrayUnion: 'user-1' } })
     })
 })

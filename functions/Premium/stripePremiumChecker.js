@@ -11,6 +11,7 @@ const {
     PLAN_STATUS_FREE,
     PLAN_STATUS_PREMIUM,
 } = require('../Payment/stripeHelper')
+const { FieldValue } = require('firebase-admin/firestore')
 
 /**
  * Updates user's premium status in Firestore based on Stripe subscription
@@ -41,7 +42,7 @@ const updateUserPremiumStatus = async (userId, premiumData) => {
         const updateData = {
             premium: {
                 status: status,
-                lastChecked: admin.firestore.FieldValue.serverTimestamp(),
+                lastChecked: FieldValue.serverTimestamp(),
             },
         }
 
@@ -153,7 +154,7 @@ const recordUnmatchedGoldPurchase = async (session, eventId, reason) => {
                 clientReferenceId: session.client_reference_id || null,
                 customerId: typeof session.customer === 'string' ? session.customer : null,
                 customerEmail: session?.customer_details?.email || null,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }
         )
@@ -228,7 +229,7 @@ const fulfillGoldPurchase = async (session, event, stripe) => {
             customerEmail: session?.customer_details?.email || null,
             clientReferenceId: session.client_reference_id || null,
             goldAmount: GOLD_PURCHASE_AMOUNT,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
         })
     })
 
@@ -273,7 +274,7 @@ const markRefundForGoldPurchase = async (charge, event) => {
             refundStatus: charge?.refunded ? 'refunded' : 'partial_refund',
             refundedAmount: charge?.amount_refunded || charge?.amount || null,
             refundedEventId: event.id,
-            refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+            refundedAt: FieldValue.serverTimestamp(),
             needsManualReview: true,
         },
         { merge: true }
@@ -390,7 +391,7 @@ const checkPremiumStatusById = async (userId, trackingId = null) => {
                 .update({
                     premium: {
                         status: PLAN_STATUS_FREE,
-                        lastChecked: admin.firestore.FieldValue.serverTimestamp(),
+                        lastChecked: FieldValue.serverTimestamp(),
                         error: error.message,
                     },
                 })
@@ -455,7 +456,10 @@ const checkUserPremiumStatus = async (data, context) => {
                 ? {
                       id: result.subscription.id,
                       status: result.subscription.status,
-                      currentPeriodEnd: result.subscription.current_period_end,
+                      // Stripe API 2025-03-31+ moved current_period_end to the subscription item
+                      currentPeriodEnd:
+                          result.subscription.current_period_end ??
+                          result.subscription.items?.data[0]?.current_period_end,
                       planInterval: result.subscription.items?.data[0]?.price?.recurring?.interval,
                   }
                 : null,
@@ -770,7 +774,10 @@ const linkStripeAccount = async (data, context) => {
                 ? {
                       id: linkingResult.subscription.id,
                       status: linkingResult.subscription.status,
-                      currentPeriodEnd: linkingResult.subscription.current_period_end,
+                      // Stripe API 2025-03-31+ moved current_period_end to the subscription item
+                      currentPeriodEnd:
+                          linkingResult.subscription.current_period_end ??
+                          linkingResult.subscription.items?.data[0]?.current_period_end,
                       planInterval: linkingResult.subscription.items?.data[0]?.price?.recurring?.interval,
                   }
                 : null,

@@ -1,6 +1,6 @@
 'use strict'
 const { run } = require('./Utils/shell_runner')
-const { Firestore } = require('@google-cloud/firestore')
+const { v1: firestoreV1 } = require('@google-cloud/firestore')
 const envDevelop = require('../firebaseConfigDevelop.json')
 const envMaster = require('../firebaseConfigMaster.json')
 
@@ -33,7 +33,7 @@ const productionConfig = {
  */
 const backupDatabase = (projectId, folder = '') => {
     const config = getBackupsConfig(projectId)
-    const fsClient = new Firestore.v1.FirestoreAdminClient({
+    const fsClient = new firestoreV1.FirestoreAdminClient({
         projectId: config.projectId,
         keyFilename: config.serviceAccountURL,
     })
@@ -70,7 +70,7 @@ const backupDatabase = (projectId, folder = '') => {
  */
 const restoreDatabase = (projectId, folder = '', specificBucket) => {
     const config = getBackupsConfig(projectId)
-    const fsClient = new Firestore.v1.FirestoreAdminClient({
+    const fsClient = new firestoreV1.FirestoreAdminClient({
         projectId: config.projectId,
         keyFilename: config.serviceAccountURL,
     })

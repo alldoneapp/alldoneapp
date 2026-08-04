@@ -1,3 +1,6 @@
+const mockFieldPath = { documentId: jest.fn(() => '__name__') }
+jest.mock('firebase-admin/firestore', () => ({ FieldPath: mockFieldPath }))
+const { FieldPath } = require('firebase-admin/firestore')
 jest.mock('firebase-admin', () => {
     const refs = new Map()
     const collectionDocs = new Map()
@@ -40,7 +43,7 @@ jest.mock('firebase-admin', () => {
     })
 
     const firestore = jest.fn(() => ({ doc, collection }))
-    firestore.FieldPath = { documentId: jest.fn(() => '__name__') }
+    firestore.FieldPath = mockFieldPath
 
     return {
         firestore,
@@ -449,7 +452,7 @@ describe('calendarTasks routing', () => {
                 completed: Date.parse('2026-06-26T08:00:00Z'),
             }),
         ])
-        expect(admin.firestore.FieldPath.documentId).toHaveBeenCalled()
+        expect(FieldPath.documentId).toHaveBeenCalled()
         expect(admin.__mock.collectionQueries[0].query.where).toHaveBeenCalledWith('__name__', 'in', ['event-1'])
     })
 

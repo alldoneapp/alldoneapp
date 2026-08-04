@@ -7,6 +7,7 @@ const {
     deleteHeartbeatSchedulesForUser,
     safelySyncHeartbeatSchedules,
 } = require('../Assistant/assistantHeartbeatSchedule')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const processPremiumStatusPaidByOtherUser = async (userId, admin, superAdmin) => {
     const userSubscription = (await admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).get()).data()
@@ -21,9 +22,9 @@ const processPremiumStatusPaidByOtherUser = async (userId, admin, superAdmin) =>
                     .firestore()
                     .doc(`subscriptions/${userPayingId}`)
                     .update({
-                        activePaidUsersIds: superAdmin.firestore.FieldValue.arrayRemove(userId),
-                        paidUsersIds: superAdmin.firestore.FieldValue.arrayRemove(userId),
-                        selectedUserIds: superAdmin.firestore.FieldValue.arrayRemove(userId),
+                        activePaidUsersIds: FieldValue.arrayRemove(userId),
+                        paidUsersIds: FieldValue.arrayRemove(userId),
+                        selectedUserIds: FieldValue.arrayRemove(userId),
                     })
             )
             promises.push(admin.firestore().doc(`subscriptionsPaidByOtherUser/${userId}`).delete())

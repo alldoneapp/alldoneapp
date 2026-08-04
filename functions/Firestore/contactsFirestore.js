@@ -4,6 +4,7 @@ const { mapContactData } = require('../Utils/MapDataFuncions')
 const { addContactFeedsChain } = require('../Feeds/contactsFeedsChains')
 const { logEvent } = require('../GAnalytics/GAnalytics')
 const { buildContactEmailFields } = require('../shared/contactEmailHelper')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const getContactData = async (db, projectId, contactId) => {
     const contact = (await db.doc(`/projectsContacts/${projectId}/contacts/${contactId}`).get()).data()
@@ -49,7 +50,7 @@ const updateContactOpenTasksAmount = async (projectId, contactId, amountToAdd) =
             const contactDoc = await transaction.get(ref)
             if (contactDoc.exists)
                 transaction.update(ref, {
-                    openTasksAmount: admin.firestore.FieldValue.increment(amountToAdd),
+                    openTasksAmount: FieldValue.increment(amountToAdd),
                 })
         })
     } catch (e) {
@@ -66,7 +67,7 @@ const updateContactLastCommentData = async (projectId, contactId, lastComment, l
                 transaction.update(ref, {
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: lastCommentType,
-                    [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+                    [`commentsData.amount`]: FieldValue.increment(1),
                 })
         })
     } catch (e) {

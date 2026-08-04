@@ -12,6 +12,7 @@ const {
     slugify,
 } = require('./bookingSettings')
 const { sendBookingNotificationToHost, sendBookingConfirmationToVisitor } = require('./bookingEmails')
+const { FieldValue } = require('firebase-admin/firestore')
 
 function setCommonHeaders(res) {
     res.set('Cache-Control', 'no-store')
@@ -273,7 +274,7 @@ async function handleBook(req, res) {
             eventId: eventResult.event?.eventId || '',
             htmlLink: eventResult.event?.htmlLink || '',
         },
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
     })
 
     // Notify both sides — the host that somebody booked, and the visitor that it's

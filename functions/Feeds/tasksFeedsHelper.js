@@ -1,6 +1,7 @@
 const { setFeedObjectLastState } = require('./globalFeedsHelper')
 const { OPEN_STEP, FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
 const { getGlobalState } = require('../GlobalState/globalState')
+const { FieldValue } = require('firebase-admin/firestore')
 const TASK_PRIORITIES = new Set(['none', 'do_later', 'could_do', 'should_do', 'must_do'])
 
 function generateTaskObjectModel(currentMilliseconds, task, taskId) {
@@ -36,10 +37,7 @@ const updateTasksFeedsAmountOfSubtasks = async (
 ) => {
     const { admin, appAdmin } = getGlobalState()
     const feedObjectRef = appAdmin.firestore().doc(`/projectsFeeds/${projectId}/${currentDateFormated}/${taskId}`)
-    const subtaskIds =
-        amountVariation > 0
-            ? admin.firestore.FieldValue.arrayUnion(subtaskId)
-            : admin.firestore.FieldValue.arrayRemove(subtaskId)
+    const subtaskIds = amountVariation > 0 ? FieldValue.arrayUnion(subtaskId) : FieldValue.arrayRemove(subtaskId)
     const taskChanges = { subtaskIds }
     batch.set(feedObjectRef, taskChanges, { merge: true })
     setFeedObjectLastState(projectId, 'tasks', taskId, taskChanges, batch)

@@ -12,6 +12,7 @@ const {
     proccessFeed,
 } = require('../Feeds/globalFeedsHelper')
 const { interactWithChatStream, reduceGoldWhenChatWithAI, normalizeModelKey } = require('../Assistant/assistantHelper')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 const SKILL_POINTS_PER_LEVEL = 5
 const MANUAL_DISTRIBUTION_POINTS = 5
@@ -381,7 +382,7 @@ async function writeSkillComment(batch, { project, skill, assistant, allocation,
 
     batch.set(db.doc(`chatComments/${skill.projectId}/skills/${skill.id}/comments/${commentId}`), {
         commentText,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         creatorId: assistant.uid,
         fromAssistant: true,
@@ -393,15 +394,15 @@ async function writeSkillComment(batch, { project, skill, assistant, allocation,
     })
 
     const chatUpdate = {
-        members: admin.firestore.FieldValue.arrayUnion(skill.userId, assistant.uid),
+        members: FieldValue.arrayUnion(skill.userId, assistant.uid),
         lastEditionDate: now,
         lastEditorId: assistant.uid,
         [`commentsData.lastCommentOwnerId`]: assistant.uid,
         [`commentsData.lastComment`]: commentText,
         [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-        [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+        [`commentsData.amount`]: FieldValue.increment(1),
     }
-    if (followers.length > 0) chatUpdate.usersFollowing = admin.firestore.FieldValue.arrayUnion(...followers)
+    if (followers.length > 0) chatUpdate.usersFollowing = FieldValue.arrayUnion(...followers)
 
     // `chatUpdate` uses Firestore field paths (for example
     // `commentsData.lastComment`). Those paths are interpreted by `update`, but
@@ -410,12 +411,12 @@ async function writeSkillComment(batch, { project, skill, assistant, allocation,
     batch.update(db.doc(`chatObjects/${skill.projectId}/chats/${skill.id}`), chatUpdate)
 
     batch.update(db.doc(`skills/${skill.projectId}/items/${skill.id}`), {
-        points: admin.firestore.FieldValue.increment(allocation.points),
+        points: FieldValue.increment(allocation.points),
         lastEditionDate: now,
         lastEditorId: assistant.uid,
         [`commentsData.lastComment`]: commentText,
         [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-        [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+        [`commentsData.amount`]: FieldValue.increment(1),
     })
 
     userIdsToNotify.forEach(userId => {
@@ -551,7 +552,7 @@ async function applyAllocations({
     const batch = new BatchWrapper(db)
     if (userSkillPointDelta !== 0) {
         batch.update(db.doc(`users/${user.uid}`), {
-            skillPoints: admin.firestore.FieldValue.increment(userSkillPointDelta),
+            skillPoints: FieldValue.increment(userSkillPointDelta),
         })
     }
 

@@ -2,6 +2,10 @@ jest.mock('firebase-admin', () => ({
     firestore: jest.fn(),
 }))
 
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: { serverTimestamp: jest.fn(() => 'now') },
+}))
+
 jest.mock('../GoogleCalendar/assistantCalendarTools', () => ({
     createCalendarEventForAssistantRequest: jest.fn(),
 }))
@@ -11,7 +15,9 @@ jest.mock('./bookingSettings', () => ({
     getConnectedCalendarCount: jest.fn(),
     getHostingUrl: jest.fn(() => 'https://my.alldone.app'),
     getPublicBookingPage: jest.fn(),
-    resolvePublicDuration: jest.fn((settings, durationMinutes) => parseInt(durationMinutes, 10) || settings.durationMinutes || 30),
+    resolvePublicDuration: jest.fn(
+        (settings, durationMinutes) => parseInt(durationMinutes, 10) || settings.durationMinutes || 30
+    ),
     slugify: value =>
         String(value || '')
             .trim()
@@ -91,7 +97,6 @@ describe('public booking API', () => {
             })),
             FieldValue: { serverTimestamp: jest.fn(() => 'now') },
         })
-        admin.firestore.FieldValue = { serverTimestamp: jest.fn(() => 'now') }
     })
 
     test('returns not found for unknown booking pages', async () => {
@@ -125,7 +130,11 @@ describe('public booking API', () => {
     })
 
     test('returns conflict when selected slot is no longer available', async () => {
-        bookingSettings.findPublicBookingSlots.mockResolvedValue({ success: true, timeZone: 'Europe/Berlin', options: [] })
+        bookingSettings.findPublicBookingSlots.mockResolvedValue({
+            success: true,
+            timeZone: 'Europe/Berlin',
+            options: [],
+        })
         const res = createResponse()
 
         await bookingApiHandler(
@@ -154,7 +163,6 @@ describe('public booking API', () => {
                 doc: jest.fn(() => ({ id: 'booking-1', set })),
             })),
         })
-        admin.firestore.FieldValue = { serverTimestamp: jest.fn(() => 'now') }
         const res = createResponse()
 
         await bookingApiHandler(
@@ -185,7 +193,9 @@ describe('public booking API', () => {
                 attendees: [{ email: 'visitor@example.com', displayName: 'Visitor' }],
             })
         )
-        expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'confirmed', visitorEmail: 'visitor@example.com' }))
+        expect(set).toHaveBeenCalledWith(
+            expect.objectContaining({ status: 'confirmed', visitorEmail: 'visitor@example.com' })
+        )
         expect(res.body.bookingId).toBe('booking-1')
     })
 })

@@ -1,6 +1,5 @@
 'use strict'
 const fs = require('fs')
-const pdf = require('html-pdf')
 const moment = require('moment')
 const { v4: uuidv4 } = require('uuid')
 const handlebars = require('handlebars')
@@ -9,25 +8,39 @@ const { defineString } = require('firebase-functions/params')
 
 const { sendEmail } = require('./SendInvoiceEmail')
 const { getDaysLeftUntilNextPaymentPercent } = require('../SubscriptionsHelper')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const netPrice = 4.2
 const vatPercent = 0.8
 
-const options = {
-    format: 'Letter',
-    footer: { height: '15mm' },
-    childProcessOptions: {
-        env: {
-            OPENSSL_CONF: '/dev/null',
-        },
-    },
+// Renders the invoice HTML to a PDF buffer with headless Chromium
+// (@sparticuz/chromium ships a Linux binary; hosting functions need >=1GiB memory).
+const renderPdfBuffer = async html => {
+    const chromium = require('@sparticuz/chromium')
+    const puppeteer = require('puppeteer-core')
+    const browser = await puppeteer.launch({
+        args: chromium.args,
+        executablePath: await chromium.executablePath(),
+        headless: 'shell',
+    })
+    try {
+        const page = await browser.newPage()
+        await page.setContent(html, { waitUntil: 'networkidle0' })
+        return await page.pdf({
+            format: 'letter',
+            printBackground: true,
+            margin: { bottom: '15mm' },
+        })
+    } finally {
+        await browser.close()
+    }
 }
 
 const generatePremiumInvoiceNumber = async () => {
     await admin
         .firestore()
         .doc('invoiceNumbers/premiumInvoiceNumber')
-        .set({ number: admin.firestore.FieldValue.increment(1) }, { merge: true })
+        .set({ number: FieldValue.increment(1) }, { merge: true })
     const { number } = (await admin.firestore().doc('invoiceNumbers/premiumInvoiceNumber').get()).data()
 
     const numberLength = number.toString().length
@@ -111,40 +124,45 @@ const createPdf = (
             totalInvoice: amountValue,
         }
         const htmlToSend = template(replacements)
-        await pdf.create(htmlToSend, options).toBuffer(function (err, buffer) {
-            if (err) return console.log(err)
-            const file = bucket.file(`Invoice/${uid}/${invoiceNo}.pdf`)
-            file.save(
-                buffer,
-                {
+        let buffer
+        try {
+            buffer = await renderPdfBuffer(htmlToSend)
+        } catch (err) {
+            console.log(err)
+            res.status(500).end()
+            return
+        }
+        const file = bucket.file(`Invoice/${uid}/${invoiceNo}.pdf`)
+        file.save(
+            buffer,
+            {
+                metadata: {
+                    contentType: 'application/pdf',
                     metadata: {
-                        contentType: 'application/pdf',
-                        metadata: {
-                            firebaseStorageDownloadTokens: uuidv4(),
-                        },
+                        firebaseStorageDownloadTokens: uuidv4(),
                     },
                 },
-                error => {
-                    if (error) {
-                        console.log('error')
-                    }
+            },
+            error => {
+                if (error) {
+                    console.log('error')
                 }
+            }
+        )
+        file.getSignedUrl({ action: 'read', expires: '03-17-2027' }, function (err, url) {
+            sendEmail(
+                buffer,
+                url,
+                name,
+                email,
+                replacements.startDate,
+                replacements.endDate,
+                invoiceNo,
+                isEditingUsers,
+                paidUsersAmount
             )
-            file.getSignedUrl({ action: 'read', expires: '03-17-2027' }, function (err, url) {
-                sendEmail(
-                    buffer,
-                    url,
-                    name,
-                    email,
-                    replacements.startDate,
-                    replacements.endDate,
-                    invoiceNo,
-                    isEditingUsers,
-                    paidUsersAmount
-                )
-            })
-            res.status(200).end()
         })
+        res.status(200).end()
     })
 }
 

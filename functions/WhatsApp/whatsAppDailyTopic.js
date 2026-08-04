@@ -6,6 +6,7 @@ const { inferMimeTypeFromFileName } = require('../Utils/parseTextUtils')
 const { addTimestampToContextContent, getUserLocalDateContext } = require('../Assistant/contextTimestampHelper')
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('../Assistant/contextLimits')
 const { getUserData } = require('../Users/usersFirestore')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+$/
 
@@ -118,7 +119,7 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
 
     const comment = {
         commentText: messageText,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         creatorId: userId,
         fromAssistant: false,
@@ -171,7 +172,7 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
                 'commentsData.lastComment': messageText.substring(0, 200),
                 'commentsData.lastCommentOwnerId': userId,
                 'commentsData.lastCommentType': STAYWARD_COMMENT,
-                'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                'commentsData.amount': FieldValue.increment(1),
             }),
         ])
         console.log('WhatsApp DailyTopic: User message stored successfully', { commentId })
@@ -211,7 +212,7 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
 
     const comment = {
         commentText: responseText,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         creatorId: assistantId,
         fromAssistant: true,
@@ -231,7 +232,7 @@ async function storeAssistantMessageInTopic(projectId, chatId, assistantId, resp
                 'commentsData.lastComment': responseText.substring(0, 200),
                 'commentsData.lastCommentOwnerId': assistantId,
                 'commentsData.lastCommentType': STAYWARD_COMMENT,
-                'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                'commentsData.amount': FieldValue.increment(1),
             }),
         ])
         console.log('WhatsApp DailyTopic: Assistant message stored successfully', { commentId })

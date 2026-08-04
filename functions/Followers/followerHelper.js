@@ -8,6 +8,7 @@ const { createAssistantFollowedFeed } = require('../Feeds/assistantsFeeds')
 const { getFeedObjectLastState, deleteObjectFeedCounter } = require('../Feeds/globalFeedsHelper')
 const { getGlobalState } = require('../GlobalState/globalState')
 const { FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
+const { FieldValue } = require('firebase-admin/firestore')
 
 function addFollowerWithoutFeeds(
     projectId,
@@ -25,16 +26,16 @@ function addFollowerWithoutFeeds(
     batch.set(userFollowingRef, entry, { merge: true })
 
     const followersRef = appAdmin.firestore().doc(`followers/${projectId}/${followObjectsType}/${followObjectId}`)
-    batch.set(followersRef, { usersFollowing: admin.firestore.FieldValue.arrayUnion(userFollowingId) }, { merge: true })
+    batch.set(followersRef, { usersFollowing: FieldValue.arrayUnion(userFollowingId) }, { merge: true })
 
     if (followObjectsType === 'notes' && actionType !== 'delete') {
         if (followObject) {
-            const updateData = { followersIds: admin.firestore.FieldValue.arrayUnion(userFollowingId) }
+            const updateData = { followersIds: FieldValue.arrayUnion(userFollowingId) }
             if (
                 followObject.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) ||
                 followObject.isPublicFor.includes(userFollowingId)
             ) {
-                updateData.isVisibleInFollowedFor = admin.firestore.FieldValue.arrayUnion(userFollowingId)
+                updateData.isVisibleInFollowedFor = FieldValue.arrayUnion(userFollowingId)
             }
             appAdmin.firestore().doc(`noteItems/${projectId}/notes/${followObjectId}`).set(updateData, { merge: true })
         }
@@ -50,7 +51,7 @@ async function addFollowerToChat(projectId, chatId, userId) {
         const usersFollowing = Array.isArray(chat.usersFollowing) ? chat.usersFollowing : []
         if (!usersFollowing.includes(userId)) {
             await db.doc(`chatObjects/${projectId}/chats/${chatId}`).update({
-                usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
+                usersFollowing: FieldValue.arrayUnion(userId),
             })
         }
     }

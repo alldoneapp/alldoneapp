@@ -1,5 +1,6 @@
 const admin = require('firebase-admin')
 const { HttpsError } = require('firebase-functions/v2/https')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const VM_API_KEYS_DOC = 'vmAgentApiKeys'
 const VM_SUBSCRIPTION_DOC = 'vmAgentSubscriptions'
@@ -210,11 +211,7 @@ async function removeVmApiKey({ userId, provider }) {
     const fallbackMode = providerHasSubscription(provider, subscriptionData) ? 'subscription' : 'api'
     const now = Date.now()
     const batch = admin.firestore().batch()
-    batch.set(
-        getApiKeysRef(userId),
-        { [provider]: admin.firestore.FieldValue.delete(), updatedAt: now },
-        { merge: true }
-    )
+    batch.set(getApiKeysRef(userId), { [provider]: FieldValue.delete(), updatedAt: now }, { merge: true })
     batch.set(
         getSubscriptionRef(userId),
         { credentialModes: { [provider]: fallbackMode }, updatedAt: now },

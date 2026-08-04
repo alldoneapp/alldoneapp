@@ -6,6 +6,12 @@ jest.mock('firebase-admin', () => ({
     },
 }))
 
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: {
+        arrayUnion: (...values) => ({ __op: 'arrayUnion', values }),
+    },
+}))
+
 jest.mock('../Email/emailChannelHelpers', () => ({
     normalizeEmailAddress: value => {
         const normalized = String(value || '').trim()

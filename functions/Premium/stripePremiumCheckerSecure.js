@@ -9,6 +9,7 @@ const {
     PLAN_STATUS_FREE,
     PLAN_STATUS_PREMIUM,
 } = require('../Payment/stripeHelperSecure')
+const { FieldValue } = require('firebase-admin/firestore')
 
 /**
  * Updates user's premium status in Firestore based on Stripe subscription
@@ -22,7 +23,7 @@ const updateUserPremiumStatus = async (userId, premiumData) => {
         const updateData = {
             premium: {
                 status: status,
-                lastChecked: admin.firestore.FieldValue.serverTimestamp(),
+                lastChecked: FieldValue.serverTimestamp(),
             },
         }
 
@@ -101,7 +102,7 @@ const checkPremiumStatusById = async (userId, stripe) => {
                 .update({
                     premium: {
                         status: PLAN_STATUS_FREE,
-                        lastChecked: admin.firestore.FieldValue.serverTimestamp(),
+                        lastChecked: FieldValue.serverTimestamp(),
                         error: error.message,
                     },
                 })
@@ -149,7 +150,10 @@ const checkUserPremiumStatus = functions
                     ? {
                           id: result.subscription.id,
                           status: result.subscription.status,
-                          currentPeriodEnd: result.subscription.current_period_end,
+                          // Stripe API 2025-03-31+ moved current_period_end to the subscription item
+                          currentPeriodEnd:
+                              result.subscription.current_period_end ??
+                              result.subscription.items?.data[0]?.current_period_end,
                           planInterval: result.subscription.items?.data[0]?.price?.recurring?.interval,
                       }
                     : null,

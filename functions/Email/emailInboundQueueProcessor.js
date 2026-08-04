@@ -19,6 +19,7 @@ const {
     pickActionableAttachment,
     summarizeAttachments,
 } = require('./emailChannelHelpers')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const QUEUE_STATUS_PENDING = 'pending'
 const QUEUE_STATUS_PROCESSING = 'processing'
@@ -148,7 +149,7 @@ async function processQueueItem(userId, item) {
             status: QUEUE_STATUS_FAILED,
             updatedAt: Date.now(),
             error: error.message || 'Unknown processing error',
-            attempts: admin.firestore.FieldValue.increment(1),
+            attempts: FieldValue.increment(1),
         })
         await admin
             .firestore()
@@ -283,7 +284,7 @@ async function claimNextPendingEmailForUser(userId, ownerId) {
         status: QUEUE_STATUS_PROCESSING,
         lockOwnerId: ownerId,
         updatedAt: Date.now(),
-        attempts: admin.firestore.FieldValue.increment(1),
+        attempts: FieldValue.increment(1),
     })
 
     return {

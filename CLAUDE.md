@@ -232,6 +232,16 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
 -   Firebase mocks in `__mocks__/`
 -   Maintain 10% coverage thresholds
 -   Many tests fail due to native module mocking issues (ExpoLocalization, etc.) - this is a known limitation
+-   **Functions suites run under Node 22, NOT the web-pinned Node 14**:
+    `nvm use 22 && npx jest --config ci/jest.functions.config.js`. That config skips Babel
+    for `functions/node_modules` (firebase-admin 14 / firebase-functions 7 ship modern CJS —
+    class static blocks, `node:`-prefixed requires — that the pinned web Babel 7.12 cannot
+    parse and Node 14 cannot execute) and maps `node:crypto` through `ci/nodeShims/`. The old
+    `npm test -- --testPathPattern="functions/"` under Node 14 no longer works for functions.
+    CI's `test:web:changed` job excludes `functions/` entirely, so this is a local check.
+-   **firebase-admin 14 removed the legacy namespace statics** (`admin.firestore.FieldValue`
+    / `.Timestamp` / `.FieldPath`). Use `const { FieldValue, Timestamp } = require('firebase-admin/firestore')`.
+    Tests that stub them must mock `'firebase-admin/firestore'`, not just `'firebase-admin'`.
 
 ### Verifying Code Changes
 

@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const moment = require('moment')
 
 const { ESTIMATION_16_HOURS, ESTIMATION_TYPE_POINTS, ESTIMATION_POINTS_VALUES } = require('./HelperFunctionsCloud')
+const { FieldValue } = require('firebase-admin/firestore')
 
 /**
  * Get estimation value in points
@@ -52,9 +53,9 @@ async function updateStatistics(projectId, taskOwnerUid, estimation, subtract, o
 
     // Build statistics update
     const statistics = {
-        doneTasks: admin.firestore.FieldValue.increment(subtract ? -1 : 1),
-        donePoints: admin.firestore.FieldValue.increment(subtract ? -donePoints : donePoints),
-        doneTime: admin.firestore.FieldValue.increment(subtract ? -estimation : estimation),
+        doneTasks: FieldValue.increment(subtract ? -1 : 1),
+        donePoints: FieldValue.increment(subtract ? -donePoints : donePoints),
+        doneTime: FieldValue.increment(subtract ? -estimation : estimation),
         timestamp,
         day: dayDate,
     }

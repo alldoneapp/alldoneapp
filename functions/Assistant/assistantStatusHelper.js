@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const moment = require('moment')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 /**
  * Creates an initial status message from the assistant with proper notifications and updates
@@ -48,7 +49,7 @@ async function createInitialStatusMessage(
         creatorId: assistantId,
         commentText: statusMessage,
         commentType: 'STAYWARD_COMMENT',
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         originalContent: statusMessage,
         fromAssistant: true,
@@ -69,7 +70,7 @@ async function createInitialStatusMessage(
             [`commentsData.lastCommentOwnerId`]: assistantId,
             [`commentsData.lastComment`]: statusMessage,
             [`commentsData.lastCommentType`]: 'STAYWARD_COMMENT',
-            [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+            [`commentsData.amount`]: FieldValue.increment(1),
         })
 
     // Update last comment data on parent object

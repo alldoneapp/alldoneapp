@@ -3,6 +3,7 @@ const moment = require('moment-timezone')
 const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
 const { getEnvironmentConfig } = require('./config/environments.js')
+const { Timestamp } = require('firebase-admin/firestore')
 
 // ---------------------------------------------------------------------------
 // Native assistant tool delegation
@@ -225,12 +226,10 @@ class RateLimiter {
                     {
                         key: key,
                         count: currentCount + 1,
-                        firstRequest: doc.exists
-                            ? admin.firestore.Timestamp.fromDate(firstRequest)
-                            : admin.firestore.Timestamp.now(),
-                        lastRequest: admin.firestore.Timestamp.now(),
+                        firstRequest: doc.exists ? Timestamp.fromDate(firstRequest) : Timestamp.now(),
+                        lastRequest: Timestamp.now(),
                         operation: operation,
-                        expiresAt: admin.firestore.Timestamp.fromDate(resetTime),
+                        expiresAt: Timestamp.fromDate(resetTime),
                     },
                     { merge: true }
                 )
@@ -280,7 +279,7 @@ class RateLimiter {
      */
     async cleanup() {
         try {
-            const now = admin.firestore.Timestamp.now()
+            const now = Timestamp.now()
             const expiredQuery = this.db.collection(this.collection).where('expiresAt', '<', now).limit(100)
 
             const expiredDocs = await expiredQuery.get()
@@ -637,16 +636,14 @@ class AlldoneSimpleMCPServer {
                 const EXTENSION_DAYS = 30
 
                 if (tokenData.grantType === 'direct-login' && daysUntilExpiry < RENEWAL_WINDOW_DAYS) {
-                    const newExpiresAt = admin.firestore.Timestamp.fromDate(
-                        new Date(Date.now() + EXTENSION_DAYS * 24 * 3600 * 1000)
-                    )
+                    const newExpiresAt = Timestamp.fromDate(new Date(Date.now() + EXTENSION_DAYS * 24 * 3600 * 1000))
 
                     // Non-blocking update to extend token expiration
                     db.collection('oauthTokens')
                         .doc(accessToken)
                         .update({
                             expiresAt: newExpiresAt,
-                            lastExtendedAt: admin.firestore.Timestamp.now(),
+                            lastExtendedAt: Timestamp.now(),
                         })
                         .catch(err => console.error('Failed to extend token:', err))
 
@@ -656,7 +653,7 @@ class AlldoneSimpleMCPServer {
                             .doc(tokenData.userId)
                             .update({
                                 expiresAt: newExpiresAt,
-                                lastUsed: admin.firestore.Timestamp.now(),
+                                lastUsed: Timestamp.now(),
                             })
                             .catch(() => {})
 
@@ -1278,7 +1275,7 @@ class AlldoneSimpleMCPServer {
                 const clientData = {
                     clientId: directLoginClientId,
                     clientSecret: 'direct-login-secret', // Fixed secret for direct login
-                    createdAt: admin.firestore.Timestamp.now(),
+                    createdAt: Timestamp.now(),
                     redirectUris: [], // No redirects needed for direct login
                     grantTypes: ['direct-login'], // Custom grant type
                     scopes: ['read', 'write', 'mcp:tools'],
@@ -1299,8 +1296,8 @@ class AlldoneSimpleMCPServer {
 
             console.log('🆔 Generated access token:', accessToken.substring(0, 20) + '...')
 
-            const now = admin.firestore.Timestamp.now()
-            const accessExpiry = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)) // 30 days
+            const now = Timestamp.now()
+            const accessExpiry = Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)) // 30 days
 
             // Store access token (no refresh token needed for direct login)
             const accessTokenData = {
@@ -1378,7 +1375,7 @@ class AlldoneSimpleMCPServer {
     async cleanupExpiredTokens() {
         try {
             const db = admin.firestore()
-            const now = admin.firestore.Timestamp.now()
+            const now = Timestamp.now()
 
             console.log('🧹 Starting comprehensive token cleanup...')
 
@@ -2259,7 +2256,7 @@ class AlldoneSimpleMCPServer {
                     const clientData = {
                         clientId,
                         clientSecret,
-                        createdAt: admin.firestore.Timestamp.now(),
+                        createdAt: Timestamp.now(),
                         redirectUris: req.body.redirect_uris || ['https://claude.ai/api/mcp/auth_callback'],
                         grantTypes: ['authorization_code', 'refresh_token'],
                         scopes: ['read', 'write', 'mcp:tools'],
@@ -2417,7 +2414,7 @@ class AlldoneSimpleMCPServer {
                 if (!client_id) {
                     console.log('⚠️ Skipping recent authorization lookup because client_id is missing')
                 } else {
-                    const fiveMinutesAgo = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 5 * 60 * 1000))
+                    const fiveMinutesAgo = Timestamp.fromDate(new Date(Date.now() - 5 * 60 * 1000))
                     const recentAuthSessions = await db
                         .collection('oauthAuthSessions')
                         .where('clientId', '==', client_id)
@@ -2583,13 +2580,13 @@ class AlldoneSimpleMCPServer {
                         const autoClientData = {
                             clientId: client_id,
                             clientSecret: `auto-secret-${uuidv4()}`, // Generate secret
-                            createdAt: admin.firestore.Timestamp.now(),
+                            createdAt: Timestamp.now(),
                             redirectUris: [redirect_uri], // Only allow the requested URI
                             grantTypes: ['authorization_code', 'refresh_token'],
                             scopes: ['read', 'write', 'mcp:tools'],
                             tokenEndpointAuthMethod: 'none',
                             autoRegistered: true, // Mark as auto-registered
-                            autoRegisteredAt: admin.firestore.Timestamp.now(),
+                            autoRegisteredAt: Timestamp.now(),
                         }
 
                         console.log('🆔 Auto-registering client:', {
@@ -2698,8 +2695,8 @@ class AlldoneSimpleMCPServer {
                         // PKCE parameters
                         codeChallenge: code_challenge,
                         codeChallengeMethod: code_challenge_method,
-                        createdAt: admin.firestore.Timestamp.now(),
-                        expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)), // 30 min
+                        createdAt: Timestamp.now(),
+                        expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 60 * 1000)), // 30 min
                         status: 'pending',
                     })
 
@@ -3022,10 +3019,8 @@ class AlldoneSimpleMCPServer {
                                 userId: authData.userId,
                                 mcpSessionId: authData.mcpSessionId,
                                 scope: authData.scope || 'read write mcp:tools',
-                                createdAt: admin.firestore.Timestamp.now(),
-                                expiresAt: admin.firestore.Timestamp.fromDate(
-                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
-                                ), // 30 days
+                                createdAt: Timestamp.now(),
+                                expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
                             }
 
                             console.log('📝 Storing access token data:', {
@@ -3047,10 +3042,8 @@ class AlldoneSimpleMCPServer {
                                 userId: authData.userId,
                                 mcpSessionId: authData.mcpSessionId,
                                 scope: authData.scope || 'read write mcp:tools',
-                                createdAt: admin.firestore.Timestamp.now(),
-                                expiresAt: admin.firestore.Timestamp.fromDate(
-                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
-                                ), // 30 days
+                                createdAt: Timestamp.now(),
+                                expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
                             }
 
                             console.log('📝 Storing refresh token data:', {
@@ -3073,11 +3066,9 @@ class AlldoneSimpleMCPServer {
                                     email: authData.userId, // Will be updated if we have email from auth data
                                     bearerToken: accessToken, // Store MCP access token, not Firebase token
                                     sessionId: authData.mcpSessionId,
-                                    createdAt: admin.firestore.Timestamp.now(),
-                                    expiresAt: admin.firestore.Timestamp.fromDate(
-                                        new Date(Date.now() + 30 * 24 * 3600 * 1000)
-                                    ), // 30 days
-                                    lastUsed: admin.firestore.Timestamp.now(),
+                                    createdAt: Timestamp.now(),
+                                    expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
+                                    lastUsed: Timestamp.now(),
                                 },
                                 { merge: true }
                             )
@@ -3185,10 +3176,8 @@ class AlldoneSimpleMCPServer {
                                 mcpSessionId: refreshData.mcpSessionId,
                                 scope: refreshData.scope,
                                 grantType: 'refresh_token',
-                                createdAt: admin.firestore.Timestamp.now(),
-                                expiresAt: admin.firestore.Timestamp.fromDate(
-                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
-                                ), // 30 days
+                                createdAt: Timestamp.now(),
+                                expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
                             }
                             batch.set(db.collection('oauthTokens').doc(newAccessToken), newAccessTokenData)
 
@@ -3199,10 +3188,8 @@ class AlldoneSimpleMCPServer {
                                 userId: refreshData.userId,
                                 mcpSessionId: refreshData.mcpSessionId,
                                 scope: refreshData.scope,
-                                createdAt: admin.firestore.Timestamp.now(),
-                                expiresAt: admin.firestore.Timestamp.fromDate(
-                                    new Date(Date.now() + 30 * 24 * 3600 * 1000)
-                                ), // 30 days
+                                createdAt: Timestamp.now(),
+                                expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
                                 previousRefreshToken: refresh_token, // Audit trail
                             }
                             batch.set(db.collection('oauthRefreshTokens').doc(newRefreshToken), newRefreshTokenData)
@@ -3233,10 +3220,8 @@ class AlldoneSimpleMCPServer {
                                     userId: refreshData.userId,
                                     bearerToken: newAccessToken, // Store new MCP access token
                                     sessionId: refreshData.mcpSessionId,
-                                    expiresAt: admin.firestore.Timestamp.fromDate(
-                                        new Date(Date.now() + 30 * 24 * 3600 * 1000)
-                                    ), // 30 days
-                                    lastUsed: admin.firestore.Timestamp.now(),
+                                    expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
+                                    lastUsed: Timestamp.now(),
                                 },
                                 { merge: true }
                             )
@@ -3293,10 +3278,8 @@ class AlldoneSimpleMCPServer {
                                     mcpSessionId: null,
                                     scope: scope,
                                     grantType: 'client_credentials',
-                                    createdAt: admin.firestore.Timestamp.now(),
-                                    expiresAt: admin.firestore.Timestamp.fromDate(
-                                        new Date(Date.now() + 24 * 3600 * 1000)
-                                    ), // 24 hours for service-to-service
+                                    createdAt: Timestamp.now(),
+                                    expiresAt: Timestamp.fromDate(new Date(Date.now() + 24 * 3600 * 1000)), // 24 hours for service-to-service
                                 })
 
                             res.json({
