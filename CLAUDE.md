@@ -244,9 +244,16 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
     `__tests__/Chats/copyChatToOtherProject.test.js`,
     `__tests__/Feeds/copyInnerFeedsToOtherProject.test.js`) — those run in the functions
     config instead (`BRIDGE_SUITES` in `ci/jest.functions.config.js`).
--   **firebase-admin 14 removed the legacy namespace statics** (`admin.firestore.FieldValue`
-    / `.Timestamp` / `.FieldPath`). Use `const { FieldValue, Timestamp } = require('firebase-admin/firestore')`.
-    Tests that stub them must mock `'firebase-admin/firestore'`, not just `'firebase-admin'`.
+-   **firebase-admin is pinned to ^13 — do NOT bump to 14 casually.** v14's top-level
+    `require('firebase-admin')` export is only the `app` module: the entire legacy namespace
+    API (`admin.firestore()`, `admin.auth()`, `admin.messaging()`, `admin.database()`,
+    `admin.storage()`, `admin.credential.cert`, `admin.apps`) is gone, and this codebase has
+    hundreds of those call sites (an attempted v14 deploy failed at source analysis on
+    `admin.credential.cert`; tests did not catch it because they mock `firebase-admin`).
+    Moving to 14 requires the full modular migration (`getFirestore()` etc.) as its own
+    project. Convention going forward regardless: statics come from the modular subpath —
+    `const { FieldValue, Timestamp } = require('firebase-admin/firestore')` — and tests that
+    stub them must mock `'firebase-admin/firestore'`, not just `'firebase-admin'`.
 
 ### Verifying Code Changes
 

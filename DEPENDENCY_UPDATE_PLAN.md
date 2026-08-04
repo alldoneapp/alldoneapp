@@ -103,6 +103,19 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
 
 ## Status log
 
+-   2026-08-04 (Phase 1.4 correction): **firebase-admin runs at ^13.10, not 14.** The first
+    production deploy of the Phase 1 batch failed at firebase-tools' source analysis:
+    `admin.credential.cert` is undefined in v14 because v14's top-level export is only the
+    `app` module — the whole legacy namespace API the codebase uses everywhere
+    (`admin.firestore()`, `admin.auth()`, `admin.messaging()`, …) was removed, which the
+    test suite cannot see (it mocks `firebase-admin`). v13 keeps the namespace API, still
+    supports Node 22 + firebase-functions 7, and carries the same security posture
+    (`@google-cloud/firestore` aligned back to ^7.11, protobufjs 7 tree, audit still
+    0 critical / 0 high). Verified by loading `index.js` under plain Node 22 (225 functions
+    defined) — the same thing the deploy analyzer does. The FieldValue/Timestamp codemod
+    stays (modular statics work in v13 too and are the v14-ready direction). **Admin 14 =
+    full modular migration, tracked as its own future project.**
+
 -   2026-08-04 (Phase 2): root-app hygiene executed under the pinned Node 14 / npm 6
     (lockfile stayed v1; `replacement_node_modules` Quill/y-quill patches re-applied and
     diff-verified after installs).
