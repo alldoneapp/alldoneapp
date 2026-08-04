@@ -30,7 +30,7 @@ import {
 } from '../../utils/backends/Tasks/tasksFirestore'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
-import { getSuggestedById, isAssistantSuggestedTask, resolveSuggestedByIdentity } from '../../utils/suggestedTaskFlow'
+import { isAssistantSuggestedTask } from '../../utils/suggestedTaskFlow'
 export default class SuggestedModal extends Component {
     constructor(props) {
         super(props)
@@ -246,21 +246,12 @@ export default class SuggestedModal extends Component {
             tmpTask,
         } = this.state
 
-        const suggestedById = getSuggestedById(task)
-        const suggestedByIdentity = resolveSuggestedByIdentity({
-            task,
-            suggestedById,
-            user: TasksHelper.getUserInProject(projectId, suggestedById),
-            contact: TasksHelper.getContactInProject(projectId, suggestedById),
-            assistant: getAssistant(suggestedById),
-        })
-        const photoURLCreator =
-            suggestedByIdentity.identity?.photoURL ||
-            suggestedByIdentity.identity?.photoURL50 ||
-            `${window.location.origin}/images/generic-user.svg`
-        const displayName =
-            suggestedByIdentity.identity?.displayName ||
-            translate(suggestedByIdentity.isAssistant ? 'Assistant' : 'Unknown user')
+        const { photoURL: photoURLCreator, displayName } = TasksHelper.getUserInProject(projectId, task.creatorId) ||
+            TasksHelper.getContactInProject(projectId, task.creatorId) ||
+            getAssistant(task.creatorId) || {
+                photoURL: `${window.location.origin}/images/generic-user.svg`,
+                displayName: translate('Unknown user'),
+            }
 
         const { photoURL: photoURLAssignee } = TasksHelper.getUserInProject(projectId, tmpTask.userId) ||
             TasksHelper.getContactInProject(projectId, tmpTask.userId) ||

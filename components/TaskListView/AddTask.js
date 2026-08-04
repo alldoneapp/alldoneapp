@@ -20,6 +20,8 @@ function AddTask({
     hideParentGoalButton,
     isLocked,
     dateFormated,
+    disabled = false,
+    setRepeatModeOnOpen = true,
 }) {
     const dispatch = useDispatch()
     const showShortcuts = useSelector(state => state.showShortcuts)
@@ -28,14 +30,15 @@ function AddTask({
     const taskItem = useRef()
 
     const onCheckboxPress = () => {
+        if (disabled) return
         toggleModal()
-        dispatch(setAddTaskRepeatMode())
+        if (setRepeatModeOnOpen) dispatch(setAddTaskRepeatMode())
     }
 
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     return (
-        <View ref={taskItem} style={localStyles.container}>
+        <View ref={taskItem} style={[localStyles.container, disabled && localStyles.disabled]}>
             <View style={{ borderRadius: 4 }}>
                 <View
                     style={[
@@ -52,7 +55,7 @@ function AddTask({
                             activeOpacity={0.35}
                             onPress={onCheckboxPress}
                             onLongPress={onCheckboxPress}
-                            disabled={!accessGranted}
+                            disabled={!accessGranted || disabled}
                         >
                             <Icon name={'plus-square'} size={24} color={colors.Primary100} />
                         </TouchableOpacity>
@@ -72,7 +75,7 @@ function AddTask({
                                     isSubtask ? subTaskStyles.descriptionText : undefined,
                                     isSubtask ? { color: colors.Text03 } : undefined,
                                 ]}
-                                onPress={toggleModal}
+                                onPress={disabled ? undefined : toggleModal}
                                 numberOfLines={3}
                                 wrapText
                                 newItem
@@ -99,7 +102,7 @@ function AddTask({
                 </View>
             </View>
 
-            {showShortcuts && !isSubtask && newItem && accessGranted && !isLocked && (
+            {showShortcuts && !isSubtask && newItem && accessGranted && !isLocked && !disabled && (
                 <View style={{ position: 'absolute', top: 0, right: 14 }}>
                     <Shortcut text={'+'} />
                 </View>
@@ -113,6 +116,9 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         marginLeft: -16,
         marginRight: -16,
+    },
+    disabled: {
+        opacity: 0.5,
     },
     taskRow: {
         flexDirection: 'row',

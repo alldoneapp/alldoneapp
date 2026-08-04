@@ -1,6 +1,5 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { Platform } from 'react-native'
 
 import TaskInput from './TaskInput'
 
@@ -31,7 +30,7 @@ jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 jest.mock('../../../utils/Gmail/gmailTaskUtils', () => ({ isInboxSummaryGmailTask: jest.fn(() => false) }))
 jest.mock('../../../i18n/TranslationService', () => ({ translate: text => text }))
 
-const createTaskInput = () => {
+const createTaskInput = autoFocusInput => {
     const inputTask = React.createRef()
     let tree
 
@@ -48,6 +47,7 @@ const createTaskInput = () => {
                 onChangeInputText={jest.fn()}
                 getInitialText={() => ''}
                 onKeyEnterPressed={jest.fn()}
+                autoFocusInput={autoFocusInput}
             />
         )
     })
@@ -56,27 +56,19 @@ const createTaskInput = () => {
 }
 
 describe('TaskInput focus', () => {
-    const originalOS = Platform.OS
-
     beforeEach(() => {
         mockInputFocus.mockClear()
     })
 
-    afterEach(() => {
-        Platform.OS = originalOS
-    })
+    test('does not focus or activate the keyboard for a mobile inline task', () => {
+        const { tree } = createTaskInput(false)
 
-    test('focuses a mobile inline task input as soon as it mounts', () => {
-        Platform.OS = 'ios'
-        const { tree } = createTaskInput()
-
-        expect(mockInputFocus).toHaveBeenCalledTimes(1)
-        expect(tree.root.findByType('CustomTextInput3').props.autoFocus).toBe(true)
+        expect(mockInputFocus).not.toHaveBeenCalled()
+        expect(tree.root.findByType('CustomTextInput3').props.autoFocus).toBe(false)
     })
 
     test('keeps desktop inline task auto-focus behavior', () => {
-        Platform.OS = 'web'
-        const { tree } = createTaskInput()
+        const { tree } = createTaskInput(true)
 
         expect(mockInputFocus).toHaveBeenCalledTimes(1)
         expect(tree.root.findByType('CustomTextInput3').props.autoFocus).toBe(true)
