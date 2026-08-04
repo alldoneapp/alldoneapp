@@ -131,6 +131,21 @@ const getNormalAssistantInProject = (projectId, assistantId) => {
     return null
 }
 
+export const getAssistantFromState = (state, assistantId) => {
+    if (!assistantId) return null
+
+    const globalAssistant = (state?.globalAssistants || []).find(assistant => assistant.uid === assistantId)
+    if (globalAssistant) return globalAssistant
+
+    const projectAssistants = state?.projectAssistants || {}
+    for (const assistants of Object.values(projectAssistants)) {
+        const assistant = (assistants || []).find(item => item.uid === assistantId)
+        if (assistant) return assistant
+    }
+
+    return null
+}
+
 export const getAssistant = assistantId => {
     const globalAssistant = getGlobalAssistant(assistantId)
     if (globalAssistant) return globalAssistant
