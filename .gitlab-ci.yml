@@ -337,15 +337,26 @@ deploy:web-preview:
 deploy:web-webpack-preview:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
+    # optional: the shadow build's rules use compare_to on branches, so a push
+    # with no web-relevant diff (e.g. creating a branch off master) creates a
+    # pipeline without it — a hard `needs` made that pipeline invalid. The job
+    # is manual, so it is only ever played when the build actually ran.
     needs:
-        - 'build_web_webpack_check'
+        - job: 'build_web_webpack_check'
+          optional: true
     script:
         - firebase --version
         - firebase hosting:channel:deploy --token $GOOGLE_FIREBASE_DEPLOY_TOKEN webpack-$CI_COMMIT_REF_SLUG
     interruptible: false
     rules:
-        - if: '$CI_COMMIT_BRANCH'
+        - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
           changes: *web-relevant-paths
+          when: manual
+          allow_failure: true
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          changes:
+              compare_to: 'refs/heads/master'
+              paths: *web-relevant-paths
           when: manual
           allow_failure: true
 
