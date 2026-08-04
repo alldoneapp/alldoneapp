@@ -14,7 +14,7 @@ import { getQuillEditorRef } from '../../textInputHelper'
 
 const Delta = ReactQuill.Quill.import('delta')
 
-export default EmailWrapper = ({ data }) => {
+const EmailWrapper = ({ data }) => {
     console.log('EmailWrapper received data:', data)
     const { text = '', id: tagId = '', editorId = '', userIdAllowedToEditTags = '' } = data
 
@@ -106,3 +106,5 @@ export default EmailWrapper = ({ data }) => {
         </Popover>
     )
 }
+
+export default EmailWrapper
