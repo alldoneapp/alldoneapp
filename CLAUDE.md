@@ -39,9 +39,13 @@ replacement for `expo build:web` and runs on **Node 22** (own `.nvmrc` + lockfil
 the Cloudflare worker's Node 20 carve-out). It builds the unchanged app source against the
 root `node_modules` (still installed under Node 14 / npm 6) and reproduces the exact
 `web-build/` output contract. Env injection stays sed-based outside the bundler; the
-`replacement_node_modules` swap still applies before building. CI shadow-builds it via
-`build_web_webpack_check` (allow_failure) — the expo pipeline remains the deployed artifact
-until staging parity is confirmed. See `web-bundler/README.md`. **Strict-mode gotcha**: the
+`replacement_node_modules` swap still applies before building. **Since 2026-08-04 this IS
+the deployed pipeline**: `build_web_production` (master) and `build_web_staging` (develop)
+build through web-bundler on the Node 22 tooling image; `build_web_webpack_check` gives
+feature branches compile signal + a manual preview-channel deploy
+(`deploy:web-webpack-preview`, channel `webpack-<ref>` on the staging project). The expo
+build jobs are deleted; `npm run build-web` (expo) remains only as a local legacy script.
+See `web-bundler/README.md`. **Strict-mode gotcha**: the
 RN-era sloppy idiom `export default Name = (...)` (assignment to an undeclared identifier)
 crashes under real ES modules with a `ReferenceError` that aborts the whole main chunk with
 zero console errors — write `const Name = (...); export default Name` instead. Four
