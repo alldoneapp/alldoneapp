@@ -54,7 +54,6 @@ import MainButtonsArea from './MainButtonsArea'
 import SecondaryButtonsArea from './SecondaryButtonsArea'
 import TaskInputArea from './TaskInputArea'
 import CheckboxAndIcon from './CheckboxAndIcon'
-import { shouldAutoFocusTaskInput } from './taskInputFocus'
 import { taskEditorLayout } from './TaskEditorLayout'
 
 const generateNewTask = (useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) => {
@@ -118,7 +117,6 @@ export default function EditTask({
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
     const selectedNavItem = useSelector(state => state.selectedNavItem)
     const addTaskSectionToOpenData = useSelector(state => state.addTaskSectionToOpenData)
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const [accessGranted, setAccessGranted] = useState(false)
     const [linkedParents, setLinkedParents] = useState({
@@ -147,7 +145,6 @@ export default function EditTask({
     const [newTaskInFocus, setNewTaskInFocus] = useState(false)
 
     const inputTask = useRef(null)
-    const autoFocusInput = shouldAutoFocusTaskInput(adding, smallScreenNavigation)
 
     if (currentUserId === ALL_GOALS_ID) currentUserId = loggedUserId
     const isSuggestedTask = loggedUserId !== currentUserId
@@ -640,12 +637,12 @@ export default function EditTask({
             if (projectId === projectIdToOpen && dateFormatedToOpen === dateFormated) {
                 if (goalId) {
                     if (originalParentGoal && goalId === originalParentGoal.id) {
-                        if (autoFocusInput) inputTask.current?.focus()
+                        inputTask.current?.focus()
                         return
                     }
                 } else {
                     if (!originalParentGoal) {
-                        if (autoFocusInput) inputTask.current?.focus()
+                        inputTask.current?.focus()
                         return
                     }
                 }
@@ -707,7 +704,6 @@ export default function EditTask({
                 getInitialText={getInitialText}
                 setInitialLinkedObject={setInitialLinkedObject}
                 onKeyEnterPressed={onKeyEnterPressed}
-                autoFocusInput={autoFocusInput}
                 newTaskInFocus={newTaskInFocus}
                 leftAccessory={
                     <CheckboxAndIcon
