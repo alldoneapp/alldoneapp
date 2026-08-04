@@ -670,9 +670,7 @@ const processProjectInvitations = async (projectId, userId, admin) => {
     await Promise.all(promises)
 }
 
-const removeUserDataFromProject = async (projectId, userId, admin, firebase_tools, process, superAdmin) => {
-    const { GCLOUD_PROJECT } = process.env
-
+const removeUserDataFromProject = async (projectId, userId, admin, superAdmin) => {
     const promises = []
     promises.push(processChats(projectId, userId, admin, superAdmin))
     promises.push(processGoals(projectId, userId, admin, superAdmin))
@@ -688,10 +686,10 @@ const removeUserDataFromProject = async (projectId, userId, admin, firebase_tool
     promises.push(processKarma(projectId, userId, admin, superAdmin))
     promises.push(processProjectInvitations(projectId, userId, admin))
 
-    promises.push(recursiveDeleteHelper(firebase_tools, GCLOUD_PROJECT, `statistics/${projectId}/${userId}`))
-    promises.push(recursiveDeleteHelper(firebase_tools, GCLOUD_PROJECT, `feedsCount/${projectId}/${userId}`))
-    promises.push(recursiveDeleteHelper(firebase_tools, GCLOUD_PROJECT, `invoiceData/${projectId}/${userId}`))
-    promises.push(recursiveDeleteHelper(firebase_tools, GCLOUD_PROJECT, `chatNotifications/${projectId}/${userId}`))
+    promises.push(recursiveDeleteHelper(`statistics/${projectId}/${userId}`))
+    promises.push(recursiveDeleteHelper(`feedsCount/${projectId}/${userId}`))
+    promises.push(recursiveDeleteHelper(`invoiceData/${projectId}/${userId}`))
+    promises.push(recursiveDeleteHelper(`chatNotifications/${projectId}/${userId}`))
 
     await Promise.all(promises)
 }

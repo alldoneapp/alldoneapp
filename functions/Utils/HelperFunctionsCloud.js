@@ -4,7 +4,6 @@ const { defineString } = require('firebase-functions/params')
 
 const { getUserData } = require('../Users/usersFirestore')
 const { orderBy } = require('lodash')
-const { getEnvFunctions } = require('../envFunctionsHelper')
 
 const TASK_ASSIGNEE_USER_TYPE = 'USER'
 
@@ -155,16 +154,11 @@ const getTaskNameWithoutMeta = (taskName, removeLineBreaks) => {
     return words.join(' ')
 }
 
-const recursiveDeleteHelper = async (firebase_tools, projectEnv, path) => {
-    const { GOOGLE_FIREBASE_DEPLOY_TOKEN } = getEnvFunctions()
-
-    await firebase_tools.firestore.delete(path, {
-        project: projectEnv,
-        recursive: true,
-        yes: true,
-        token: GOOGLE_FIREBASE_DEPLOY_TOKEN,
-        force: true,
-    })
+const recursiveDeleteHelper = async path => {
+    const firestore = admin.firestore()
+    // An even number of segments is a document path, an odd number a collection path
+    const isDocumentPath = path.split('/').filter(Boolean).length % 2 === 0
+    await firestore.recursiveDelete(isDocumentPath ? firestore.doc(path) : firestore.collection(path))
 }
 
 const getFirstName = fullName => {

@@ -1,5 +1,4 @@
 const admin = require('firebase-admin')
-const firebase_tools = require('firebase-tools')
 const { difference } = require('lodash')
 
 const { generateProjectWarnings } = require('../Payment/QuotaWarnings')
@@ -188,7 +187,7 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
     if (removedUserId) {
         console.log(`[onUpdateProject] User removed from project: ${removedUserId}`)
         executionReasons.push(`user_removed:${removedUserId}`)
-        promises.push(removeUserDataFromProject(projectId, removedUserId, admin, firebase_tools, process, admin))
+        promises.push(removeUserDataFromProject(projectId, removedUserId, admin, admin))
     }
 
     const removedGlobalAssistantIds = difference(oldProject.globalAssistantIds, newProject.globalAssistantIds)
