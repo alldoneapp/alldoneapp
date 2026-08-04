@@ -26,11 +26,27 @@ npm run coverage             # Generate test coverage
 npm run update-snapshots     # Update Jest snapshots
 
 # Build & Deploy
-npm run build-web            # Build for web production
+npm run build-web            # Build for web production (legacy expo pipeline, Node 14)
+npm run build-web-webpack    # Build for web production (webpack 5 pipeline, Node 22 — see web-bundler/)
+npm run web-webpack          # Dev server on the webpack pipeline (Node 22, port 19006)
 npm run format-code          # Format with Prettier
 ```
 
 **Required versions**: Node 14.21.3, npm 6.14.18, expo-cli 6.1.0, firebase-tools 13.29.3
+
+**web-bundler exception (migration Stage 0)**: `web-bundler/` is the standalone webpack 5
+replacement for `expo build:web` and runs on **Node 22** (own `.nvmrc` + lockfile v3, like
+the Cloudflare worker's Node 20 carve-out). It builds the unchanged app source against the
+root `node_modules` (still installed under Node 14 / npm 6) and reproduces the exact
+`web-build/` output contract. Env injection stays sed-based outside the bundler; the
+`replacement_node_modules` swap still applies before building. CI shadow-builds it via
+`build_web_webpack_check` (allow_failure) — the expo pipeline remains the deployed artifact
+until staging parity is confirmed. See `web-bundler/README.md`. **Strict-mode gotcha**: the
+RN-era sloppy idiom `export default Name = (...)` (assignment to an undeclared identifier)
+crashes under real ES modules with a `ReferenceError` that aborts the whole main chunk with
+zero console errors — write `const Name = (...); export default Name` instead. Four
+components were fixed for this during Stage 0; grep before assuming a blank page is a
+bundler problem.
 
 **Cloudflare worker exception**: The repo stays on Node 14.21.3 for the main app and Firebase work, but `cloudflare/email-worker/` uses Node 20 for Wrangler. That directory has its own `.nvmrc`; use `nvm use 20` inside `cloudflare/email-worker/`, then switch back to `nvm use 14` at the repo root for normal app work.
 

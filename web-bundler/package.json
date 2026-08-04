@@ -1,0 +1,50 @@
+{
+    "name": "alldone-web-bundler",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Standalone webpack 5 build pipeline for the Alldone web app (FRONTEND_MIGRATION_PLAN.md Stage 0). Builds the app source in the parent directory against the parent's node_modules; this package only carries build tooling and runs on Node 22.",
+    "engines": {
+        "node": ">=22"
+    },
+    "scripts": {
+        "prebuild": "node check-node.js",
+        "build": "webpack --config webpack.config.js --mode production",
+        "prebuild:analyze": "node check-node.js",
+        "build:analyze": "ANALYZE_BUNDLE=1 webpack --config webpack.config.js --mode production",
+        "predev": "node check-node.js",
+        "dev": "webpack serve --config webpack.config.js --mode development"
+    },
+    "dependencies": {
+        "@babel/core": "^7.26.0",
+        "@babel/plugin-transform-runtime": "^7.25.9",
+        "@babel/preset-env": "^7.26.0",
+        "@babel/preset-flow": "^7.25.9",
+        "@babel/preset-react": "^7.26.3",
+        "@babel/preset-typescript": "^7.29.7",
+        "@babel/runtime": "^7.26.0",
+        "assert": "^2.1.0",
+        "babel-loader": "^9.2.1",
+        "buffer": "^6.0.3",
+        "copy-webpack-plugin": "^12.0.2",
+        "crypto-browserify": "^3.12.1",
+        "css-loader": "^7.1.2",
+        "events": "^3.3.0",
+        "html-webpack-plugin": "^5.6.3",
+        "os-browserify": "^0.3.0",
+        "path-browserify": "^1.0.1",
+        "process": "^0.11.10",
+        "react-native-dotenv": "^3.4.11",
+        "setimmediate": "^1.0.5",
+        "stream-browserify": "^3.0.0",
+        "style-loader": "^4.0.0",
+        "url": "^0.11.4",
+        "util": "^0.12.5",
+        "vm-browserify": "^1.1.2",
+        "webpack": "^5.97.1",
+        "webpack-cli": "^5.1.4",
+        "webpack-dev-server": "^5.2.0"
+    },
+    "devDependencies": {
+        "webpack-bundle-analyzer": "^4.10.2"
+    }
+}

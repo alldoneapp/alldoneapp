@@ -57,6 +57,8 @@ stages:
               - replacement_node_modules/**/*
               - utils/**/*
               - web/**/*
+              - web-bundler/**/*
+              - ci/Dockerfile_web_bundler
 
 #clean_workspace:
 #    stage: clean
@@ -79,6 +81,31 @@ modules_cache:
           changes:
               - package.json
               - package-lock.json
+
+# Tooling image for the standalone webpack pipeline (FRONTEND_MIGRATION_PLAN.md
+# Stage 0): Node 22 + web-bundler's own npm-ci'd tooling, with the app's
+# node_modules copied in from the legacy base image. Runs after modules_cache when
+# both rebuild so it copies the fresh app dependency tree.
+web_bundler_cache:
+    stage: build_base
+    image:
+        name: gcr.io/kaniko-project/executor:debug
+        entrypoint: ['']
+    needs:
+        - job: modules_cache
+          optional: true
+    script:
+        - mkdir -p /kaniko/.docker
+        - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+        - /kaniko/executor --cache=true --push-retry 10 --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/ci/Dockerfile_web_bundler --build-arg BASE_IMAGE=$CI_REGISTRY_IMAGE/build_base:latest --destination $CI_REGISTRY_IMAGE/build_web_bundler:latest
+    rules:
+        - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+          changes:
+              - package.json
+              - package-lock.json
+              - web-bundler/package.json
+              - web-bundler/package-lock.json
+              - ci/Dockerfile_web_bundler
 
 firebase_cmd_cache:
     stage: build_base
@@ -219,6 +246,40 @@ build_web_staging:
     rules:
         - if: '$CI_COMMIT_BRANCH == "develop"'
           changes: *web-relevant-paths
+
+# Shadow build on the standalone webpack pipeline (web-bundler/, Node 22 —
+# FRONTEND_MIGRATION_PLAN.md Stage 0). Runs alongside the expo builds to prove
+# parity; the expo pipeline stays the deployed artifact until a staging deploy of
+# this output is verified. allow_failure keeps it from blocking anything while
+# confidence accumulates — flip it (and eventually swap the deploy jobs' `needs`)
+# once parity is confirmed.
+build_web_webpack_check:
+    stage: build_web
+    image: $CI_REGISTRY_IMAGE/build_web_bundler:latest
+    allow_failure: true
+    before_script:
+        - sed -i '/BEGIN-ENVS/,/END-ENVS/c\const GOOGLE_FIREBASE_WEB_CLIENT_ID = "'"$GOOGLE_FIREBASE_WEB_CLIENT_ID_DEV"'"\n const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"\n const GOOGLE_FIREBASE_WEB_AUTH_DOMAIN = "'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'"\n const GOOGLE_FIREBASE_WEB_DATABASE_URL = "'"$GOOGLE_FIREBASE_WEB_DATABASE_URL_DEV"'"\n const GOOGLE_FIREBASE_WEB_PROJECT_ID = "'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'"\n const GOOGLE_FIREBASE_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'"\n const GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID = "'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'"\n const GOOGLE_FIREBASE_WEB_APP_ID = "'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'"\n const SENTRY_DSN = "'"$SENTRY_DSN"'"\n const HOSTING_URL = "'"$HOSTING_URL_DEV"'"\n const CURRENT_ENVIORNMENT = "'"$CURRENT_ENVIORNMENT_DEV"'"\n const NOTES_COLLABORATION_SERVER = "'"$NOTES_COLLABORATION_SERVER"'"\n const ALGOLIA_APP_ID = "'"$ALGOLIA_APP_ID_DEV"'"\n const ALGOLIA_SEARCH_ONLY_API_KEY = "'"$ALGOLIA_SEARCH_ONLY_API_KEY_DEV"'"\n const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_DEV"'"\n const IP_REGISTRY_API_KEY = "'"$IP_REGISTRY_API_KEY"'"\n const SIB_MARKETING_SERVICE_LIST = "'"$SIB_MARKETING_SERVICE_LIST_DEV"'"\n const GIPHY_API_KEY = "'"$GIPHY_API_KEY_DEV"'"\n const PERPLEXITY_API_KEY = "'"$PERPLEXITY_API_KEY_DEV"'"' utils/backends/firestore.js
+        - sed -i '/BEGIN-ENVS/,/END-ENVS/c\const GOOGLE_FIREBASE_WEB_CLIENT_ID = "'"$GOOGLE_FIREBASE_WEB_CLIENT_ID_DEV"'"\n const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'"' apis/google/apisConfig.js
+        - sed -i 's|__FIREBASE_API_KEY__|'"$GOOGLE_FIREBASE_WEB_API_KEY_DEV"'|g; s|__FIREBASE_AUTH_DOMAIN__|'"$GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_DEV"'|g; s|__FIREBASE_DATABASE_URL__|'"$GOOGLE_FIREBASE_WEB_DATABASE_URL_DEV"'|g; s|__FIREBASE_PROJECT_ID__|'"$GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV"'|g; s|__FIREBASE_STORAGE_BUCKET__|'"$GOOGLE_FIREBASE_STORAGE_BUCKET_DEV"'|g; s|__FIREBASE_MESSAGING_SENDER_ID__|'"$GOOGLE_FIREBASE_WEB_MESSAGING_SENDER_ID_DEV"'|g; s|__FIREBASE_APP_ID__|'"$GOOGLE_FIREBASE_WEB_APP_ID_DEV"'|g' web/firebase-messaging-sw.js
+    script:
+        - ln -s /app/node_modules node_modules
+        - cp -R -f replacement_node_modules/* node_modules/
+        - ln -s /bundler/node_modules web-bundler/node_modules
+        - cd web-bundler && npm run build
+    artifacts:
+        expire_in: 1 days
+        when: on_success
+        name: 'web-build-webpack'
+        paths:
+            - web-build/
+            - firebase.json
+    rules:
+        - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+          changes: *web-relevant-paths
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          changes:
+              compare_to: 'refs/heads/master'
+              paths: *web-relevant-paths
 
 build_web_production:
     stage: build_web

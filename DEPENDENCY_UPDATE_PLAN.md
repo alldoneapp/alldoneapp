@@ -115,10 +115,11 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
     defined) — the same thing the deploy analyzer does. The FieldValue/Timestamp codemod
     stays (modular statics work in v13 too and are the v14-ready direction). **Admin 14 =
     full modular migration, tracked as its own future project.**
-    Follow-up: `@firebase/app` added as an explicit dependency — `@firebase/database-compat`
-    2.1.x (pulled by admin 13) hard-requires it in its standalone bundle, which only the
-    deploy analyzer loads (via the firebase-functions v2 aggregate), so local index.js
-    loads and jest cannot catch it.
+
+-   2026-08-04 (Phase 3 / migration Stage 0): standalone webpack 5 pipeline on Node 22
+    built and locally verified (`web-bundler/` + CI shadow job `build_web_webpack_check`);
+    expo pipeline still deploys until staging parity is confirmed. Details in
+    `FRONTEND_MIGRATION_PLAN.md` status log.
 
 -   2026-08-04 (Phase 2): root-app hygiene executed under the pinned Node 14 / npm 6
     (lockfile stayed v1; `replacement_node_modules` Quill/y-quill patches re-applied and

@@ -149,6 +149,52 @@ Isolated last because it touches production collaborative documents:
 -   Throughout: the old build pipeline stays green in CI until stage 0 parity is confirmed;
     every stage is revertable by itself.
 
+## Status log
+
+-   2026-08-04 — **Stage 0 built and locally verified** (`web-bundler/`): standalone
+    webpack 5 pipeline on Node 22 building the unchanged app source (React 16, RNW 0.11)
+    against the root Node-14-installed `node_modules`.
+    -   Same entry chain as expo (`expo/AppEntry.js`), same output contract
+        (`web-build/`, `static/js/[name].[contenthash]`, `fonts/`, `static/media/`,
+        `web/` statics, snapshotted PWA assets in `web-bundler/static/`). HTML template =
+        `web/index.html` with expo's build-time injections pre-applied.
+    -   webpack 4→5 gaps closed: node polyfills via `resolve.fallback` + ProvidePlugin
+        (crypto/stream/buffer/process for the y-webrtc→simple-peer chain), `setimmediate`
+        entry polyfill for RNW 0.11, `__DEV__`/`process.env.APP_MANIFEST` DefinePlugin
+        (expo-constants is read by sentry-expo). Babel: preset-env/react(classic)/flow
+        (`all`, RNW 0.11 dist still ships Flow) + preset-typescript for the 3 `.ts` api
+        files; transform-runtime pinned to the tooling's own `@babel/runtime`.
+    -   Verified: prod + dev modes compile with 0 errors and 5 warnings (all
+        pre-existing BackendBridge dead re-exports). Bundle gzip 2.0 MB vs expo's
+        2.5 MB. Fonts/media/moment-locales/quill-css presence diffed against the last
+        expo build; all output URLs serve 200; **browser smoke test passes** — the
+        build boots to a login page pixel-identical to the expo build's.
+    -   **Two runtime defects found by the smoke test** (bundles compiled clean but the
+        app didn't boot — always smoke-test in a browser, compile success proves little):
+        1.  Four components used the RN-era sloppy idiom `export default Name = (...)`
+            (assignment to an undeclared identifier). The old pipeline compiled modules
+            to sloppy-mode CJS, silently creating globals; real ES modules are strict
+            → `ReferenceError` during entry evaluation, which aborts the whole main
+            chunk with **zero console errors** (the exception unwinds out of webpack's
+            chunk startup). Fixed as `const Name = …; export default Name`
+            (behavior-identical; CommentTagsSection, Footer, EmailWrapper,
+            InheritedPropertiesHeader; related Jest suites pass).
+        2.  `resolve.modules` listed the root node_modules as an absolute path first,
+            which defeats nearest-first resolution: every `@firebase/*` package nests
+            tslib 2.3.1 while the hoisted root tslib is 1.11.1 (no `__spreadArray`),
+            so the deferred Firebase load threw `__spreadArray is not a function` at
+            runtime (surfacing only as an unhandled rejection; the app hung on
+            "Negotiating with the backend…"). Fix: default `modules: ['node_modules']`
+            — this also dropped the build warnings from 49 to 5.
+            Also set `scriptLoading: 'blocking'` so script placement matches the old
+            pipeline exactly (body-end, no defer).
+    -   CI: `web_bundler_cache` (Node 22 tooling image, `ci/Dockerfile_web_bundler`) +
+        `build_web_webpack_check` shadow build (allow_failure) on all web-relevant
+        changes. Expo pipeline stays the deployed artifact.
+    -   **Remaining for stage acceptance**: deploy the shadow artifact to a staging
+        channel, run the QA smoke checklist + web push, review bundle diff, then flip
+        the deploy jobs' `needs` to the new build and delete the expo pipeline.
+
 ## What this plan deliberately does NOT do
 
 -   No Expo SDK upgrade treadmill (36→57) — the native targets it serves are not shipped.

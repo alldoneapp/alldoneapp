@@ -4,7 +4,7 @@ import { View, StyleSheet } from 'react-native'
 import AttachmentsTag from './AttachmentsTag'
 import { isPicture } from '../Feeds/Utils/HelperFunctions'
 
-export default CommentTagsSection = ({ comment, files, removeComment, removeFile }) => {
+const CommentTagsSection = ({ comment, files, removeComment, removeFile }) => {
     const tagsData = [
         {
             text: comment,
@@ -59,3 +59,5 @@ const localStyles = StyleSheet.create({
         marginLeft: 4,
     },
 })
+
+export default CommentTagsSection
