@@ -4,9 +4,12 @@ import URLsPeople, {
     URL_PROJECT_PEOPLE_FOLLOWED,
 } from '../../../URLSystem/People/URLsPeople'
 
-// expo-localization loads a native module that is unavailable in the JSDOM test env (see CLAUDE.md).
+// Pin the device language so the suite is independent of the host machine's navigator.language.
 // Mock it so the pure getNewDefaultUser logic can be exercised.
-jest.mock('expo-localization', () => ({ locale: 'en-US', getLocales: () => [{ languageCode: 'en' }] }))
+jest.mock('../../../utils/WebShims/Localization', () => ({
+    locale: 'en-US',
+    getLocales: () => [{ languageCode: 'en' }],
+}))
 
 jest.mock('firebase', () => ({ firestore: {} }))
 jest.mock('../../../utils/BackendBridge', () => {

@@ -3,7 +3,10 @@ import TaskTitle from '../../../components/TaskDetailedView/Header/TaskTitle'
 
 import renderer, { act } from 'react-test-renderer'
 
-jest.mock('expo-localization', () => ({ locale: 'en-US', getLocales: () => [{ languageCode: 'en' }] }))
+jest.mock('../../../utils/WebShims/Localization', () => ({
+    locale: 'en-US',
+    getLocales: () => [{ languageCode: 'en' }],
+}))
 jest.mock('firebase', () => ({ firestore: {} }))
 jest.mock('../../../utils/BackendBridge', () => ({}))
 jest.mock('../../../redux/store', () => ({

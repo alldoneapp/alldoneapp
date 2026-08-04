@@ -69,6 +69,11 @@ module.exports = (env, argv) => {
             process: 'process/browser.js',
             Buffer: ['buffer', 'Buffer'],
         }),
+        // react-native-screens was removed in migration Stage 1. Its only importer,
+        // react-navigation-stack, requires it inside a try/catch and guards every
+        // use behind Platform.OS !== 'web', so ignoring the module makes the
+        // require throw into that catch — the library's designed-optional path.
+        new webpack.IgnorePlugin({ resourceRegExp: /^react-native-screens$/ }),
         new HtmlWebpackPlugin({
             template: path.join(__dirname, 'index.html'),
             inject: 'body',

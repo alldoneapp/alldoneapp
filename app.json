@@ -19,13 +19,6 @@
             "fallbackToCacheTimeout": 0
         },
         "assetBundlePatterns": ["**/*"],
-        "entryPoint": "node_modules/expo/AppEntry.js",
-        "hooks": {
-            "postPublish": [
-                {
-                    "file": "sentry-expo/upload-sourcemaps"
-                }
-            ]
-        }
+        "entryPoint": "node_modules/expo/AppEntry.js"
     }
 }

@@ -1,4 +1,4 @@
-import * as ImgManipulator from 'expo-image-manipulator'
+import * as ImgManipulator from './WebShims/ImageManipulator'
 import moment from 'moment'
 import { Dimensions } from 'react-native-web'
 import dom from 'react-dom'

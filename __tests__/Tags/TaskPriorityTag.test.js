@@ -5,7 +5,7 @@
 import React from 'react'
 import renderer from 'react-test-renderer'
 
-jest.mock('expo-localization', () => ({ locale: 'en' }))
+jest.mock('../../utils/WebShims/Localization', () => ({ locale: 'en' }))
 
 import TaskPriorityTag from '../../components/Tags/TaskPriorityTag'
 
