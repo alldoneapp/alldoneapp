@@ -1,5 +1,6 @@
 const { getProjectUsers } = require('../Users/usersFirestore')
 const { mapProjectData } = require('../Utils/MapDataFuncions')
+const { FieldValue } = require('firebase-admin/firestore')
 
 let lastPushTime = 0
 
@@ -61,7 +62,7 @@ async function getServerCurrentTime(appAdmin) {
 }
 
 async function getFirebaseTimestampDirectly(admin, appAdmin) {
-    await appAdmin.firestore().doc('/info/currentTime/').set({ time: admin.firestore.FieldValue.serverTimestamp() })
+    await appAdmin.firestore().doc('/info/currentTime/').set({ time: FieldValue.serverTimestamp() })
     const currentTime = await getServerCurrentTime(appAdmin)
     return currentTime
 }

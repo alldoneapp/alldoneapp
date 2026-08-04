@@ -9,6 +9,7 @@ const { getDefaultAssistantData } = require('../Firestore/assistantsFirestore')
 const { extractTextFromWhatsAppFile } = require('./whatsAppFileExtraction')
 const { buildAttachmentToken, buildImageToken, buildVideoToken, sanitizeTokenText } = require('./whatsAppMediaTokens')
 const { v4: uuidv4 } = require('uuid')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const RATE_LIMIT_MAX_MESSAGES = 30
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000 // 1 hour
@@ -484,7 +485,7 @@ async function checkRateLimit(userId) {
     }
 
     // Increment counter
-    await ref.update({ messageCount: admin.firestore.FieldValue.increment(1) })
+    await ref.update({ messageCount: FieldValue.increment(1) })
     return false
 }
 

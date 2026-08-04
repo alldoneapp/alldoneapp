@@ -19,6 +19,7 @@ const {
     resolveCalendarConnection,
     resolveEmailConnection,
 } = require('../Integrations/providerConnections')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 // Microsoft services already use 'email'/'calendar', matching the connection model.
 function microsoftServiceToConnectionService(service) {
@@ -198,8 +199,8 @@ async function initiateOAuth(userId, projectId, service, returnUrl, connectionId
             service,
             connectionId: isConnectionId(connectionId) ? connectionId : null,
             returnUrl: returnUrl || null,
-            createdAt: admin.firestore.Timestamp.now(),
-            expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000)),
+            createdAt: Timestamp.now(),
+            expiresAt: Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000)),
         })
 
     const params = new URLSearchParams({
@@ -251,13 +252,13 @@ async function handleOAuthCallback(code, state) {
         refreshToken: tokenData.refresh_token || '',
         accessToken: tokenData.access_token,
         tokenExpiry: tokenData.expires_in
-            ? admin.firestore.Timestamp.fromMillis(Date.now() + Number(tokenData.expires_in) * 1000)
+            ? Timestamp.fromMillis(Date.now() + Number(tokenData.expires_in) * 1000)
             : null,
         scopes: typeof tokenData.scope === 'string' ? tokenData.scope.split(' ') : getScopes(service),
         email,
         microsoftUserId: userInfo.id || null,
-        createdAt: admin.firestore.Timestamp.now(),
-        lastUsed: admin.firestore.Timestamp.now(),
+        createdAt: Timestamp.now(),
+        lastUsed: Timestamp.now(),
         provider: 'microsoft',
         service,
         connectionId,
@@ -276,7 +277,7 @@ async function handleOAuthCallback(code, state) {
             : listEmailConnections(userData)
     const existingEntry = (userData[mapField] || {})[connectionId] || null
     const hasAnyDefaultAccount = existingConnections.some(connection => connection.isDefaultAccount)
-    const now = admin.firestore.Timestamp.now()
+    const now = Timestamp.now()
 
     const updateData = {
         [`${mapField}.${connectionId}.provider`]: EMAIL_PROVIDER_MICROSOFT,
@@ -335,7 +336,7 @@ async function getAccessToken(userId, projectId, service) {
     const data = tokenDoc.data() || {}
     const expiresAt = data.tokenExpiry?.toMillis ? data.tokenExpiry.toMillis() : 0
     if (data.accessToken && expiresAt - Date.now() > 2 * 60 * 1000) {
-        await ref.update({ lastUsed: admin.firestore.Timestamp.now() })
+        await ref.update({ lastUsed: Timestamp.now() })
         return data.accessToken
     }
 
@@ -369,11 +370,11 @@ async function getAccessToken(userId, projectId, service) {
 
     const updateData = {
         accessToken: refreshed.access_token,
-        lastUsed: admin.firestore.Timestamp.now(),
+        lastUsed: Timestamp.now(),
     }
     if (refreshed.refresh_token) updateData.refreshToken = refreshed.refresh_token
     if (refreshed.expires_in) {
-        updateData.tokenExpiry = admin.firestore.Timestamp.fromMillis(Date.now() + Number(refreshed.expires_in) * 1000)
+        updateData.tokenExpiry = Timestamp.fromMillis(Date.now() + Number(refreshed.expires_in) * 1000)
     }
     if (typeof refreshed.scope === 'string') updateData.scopes = refreshed.scope.split(' ')
 
@@ -401,7 +402,7 @@ async function revokeConnectionAccess(userId, connectionId) {
             .catch(() => null)
     }
 
-    const updateData = { [`${mapField}.${connectionId}`]: admin.firestore.FieldValue.delete() }
+    const updateData = { [`${mapField}.${connectionId}`]: FieldValue.delete() }
     const resolver =
         connectionService === CONNECTION_SERVICE_CALENDAR ? resolveCalendarConnection : resolveEmailConnection
     const apisConnected = userData.apisConnected || {}
@@ -411,17 +412,17 @@ async function revokeConnectionAccess(userId, connectionId) {
         if (buildConnectionId(connectionService, resolved.provider, resolved.emailAddress) !== connectionId) return
         if (connectionService === CONNECTION_SERVICE_CALENDAR) {
             updateData[`apisConnected.${legacyProjectId}.calendar`] = false
-            updateData[`apisConnected.${legacyProjectId}.calendarProvider`] = admin.firestore.FieldValue.delete()
-            updateData[`apisConnected.${legacyProjectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${legacyProjectId}.calendarProvider`] = FieldValue.delete()
+            updateData[`apisConnected.${legacyProjectId}.calendarEmail`] = FieldValue.delete()
             updateData[`apisConnected.${legacyProjectId}.calendarDefault`] = false
         } else {
             updateData[`apisConnected.${legacyProjectId}.email`] = false
-            updateData[`apisConnected.${legacyProjectId}.emailProvider`] = admin.firestore.FieldValue.delete()
-            updateData[`apisConnected.${legacyProjectId}.emailAddress`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${legacyProjectId}.emailProvider`] = FieldValue.delete()
+            updateData[`apisConnected.${legacyProjectId}.emailAddress`] = FieldValue.delete()
             updateData[`apisConnected.${legacyProjectId}.emailDefault`] = false
             updateData[`apisConnected.${legacyProjectId}.gmail`] = false
             updateData[`apisConnected.${legacyProjectId}.gmailDefault`] = false
-            updateData[`apisConnected.${legacyProjectId}.gmailEmail`] = admin.firestore.FieldValue.delete()
+            updateData[`apisConnected.${legacyProjectId}.gmailEmail`] = FieldValue.delete()
         }
     })
 
@@ -441,17 +442,17 @@ async function revokeAccess(userId, projectId, service) {
     const updateData = {}
     if (service === 'calendar') {
         updateData[`apisConnected.${projectId}.calendar`] = false
-        updateData[`apisConnected.${projectId}.calendarProvider`] = admin.firestore.FieldValue.delete()
-        updateData[`apisConnected.${projectId}.calendarEmail`] = admin.firestore.FieldValue.delete()
+        updateData[`apisConnected.${projectId}.calendarProvider`] = FieldValue.delete()
+        updateData[`apisConnected.${projectId}.calendarEmail`] = FieldValue.delete()
         updateData[`apisConnected.${projectId}.calendarDefault`] = false
     } else if (service === 'email') {
         updateData[`apisConnected.${projectId}.email`] = false
-        updateData[`apisConnected.${projectId}.emailProvider`] = admin.firestore.FieldValue.delete()
-        updateData[`apisConnected.${projectId}.emailAddress`] = admin.firestore.FieldValue.delete()
+        updateData[`apisConnected.${projectId}.emailProvider`] = FieldValue.delete()
+        updateData[`apisConnected.${projectId}.emailAddress`] = FieldValue.delete()
         updateData[`apisConnected.${projectId}.emailDefault`] = false
         updateData[`apisConnected.${projectId}.gmail`] = false
         updateData[`apisConnected.${projectId}.gmailDefault`] = false
-        updateData[`apisConnected.${projectId}.gmailEmail`] = admin.firestore.FieldValue.delete()
+        updateData[`apisConnected.${projectId}.gmailEmail`] = FieldValue.delete()
     }
 
     if (Object.keys(updateData).length > 0) {

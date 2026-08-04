@@ -4,6 +4,7 @@ const admin = require('firebase-admin')
 
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
+const { Timestamp } = require('firebase-admin/firestore')
 
 const COMMENT_MAX_LENGTH = 5000
 
@@ -71,7 +72,7 @@ class TaskCommentService {
                 creatorId: actorId,
                 commentText,
                 commentType: STAYWARD_COMMENT,
-                lastChangeDate: admin.firestore.Timestamp.now(),
+                lastChangeDate: Timestamp.now(),
                 created: now,
                 originalContent: commentText,
                 fromAssistant: !!fromAssistant,

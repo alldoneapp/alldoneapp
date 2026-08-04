@@ -1,6 +1,6 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https')
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const { createClient } = require('@deepgram/sdk')
+const { DeepgramClient } = require('@deepgram/sdk')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -54,7 +54,7 @@ exports.transcribeMeetingAudio = onCall(
             throw new HttpsError('internal', 'Deepgram API Key is not configured')
         }
 
-        const deepgram = createClient(apiKey)
+        const deepgram = new DeepgramClient({ apiKey })
 
         // Create a temporary file to store the audio chunk
         const tempFilePath = path.join(os.tmpdir(), `audio-${Date.now()}.webm`)
@@ -75,18 +75,20 @@ exports.transcribeMeetingAudio = onCall(
             // but Deepgram SDK is designed for buffers in Node.
             // Actually, let's use the buffer directly to skip disk I/O, it's faster.
 
-            const { result, error } = await deepgram.listen.prerecorded.transcribeFile(buffer, {
-                model: 'nova-3',
-                smart_format: true,
-                detect_language: true,
-                // Deactivate diarization for now because with our current file / chunk based approach
-                // who is which speaker will not be persisted across sessions.
-                diarize: false,
-                punctuate: true,
-                paragraphs: true,
-            })
-
-            if (error) {
+            // SDK v5 returns the response payload directly and throws on API errors
+            let result
+            try {
+                result = await deepgram.listen.v1.media.transcribeFile(buffer, {
+                    model: 'nova-3',
+                    smart_format: true,
+                    detect_language: true,
+                    // Deactivate diarization for now because with our current file / chunk based approach
+                    // who is which speaker will not be persisted across sessions.
+                    diarize: false,
+                    punctuate: true,
+                    paragraphs: true,
+                })
+            } catch (error) {
                 console.error('Deepgram API error:', error)
                 throw new Error('Deepgram transcription failed')
             }

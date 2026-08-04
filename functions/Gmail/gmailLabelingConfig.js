@@ -2,6 +2,7 @@
 
 const admin = require('firebase-admin')
 const { SELECTABLE_ASSISTANT_MODELS } = require('../Assistant/selectableAssistantModels')
+const { Timestamp } = require('firebase-admin/firestore')
 
 const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_6_LUNA'
 const GMAIL_LABELING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
@@ -326,7 +327,7 @@ function buildConfigWriteData(userId, projectId, configInput, gmailEmail = '', e
         throw error
     }
 
-    const now = admin.firestore.Timestamp.now()
+    const now = Timestamp.now()
 
     // A payload without learnedRules/adsAutoArchive/autoArchiveAllLabeled (older client, partial save) must
     // not wipe the stored values — keep whatever is already there.

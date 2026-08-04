@@ -16,6 +16,7 @@ const { earnGold } = require('../Gold/goldHelper')
 const { captureTaskPriorityTaskUpdateFeedback } = require('../Assistant/taskPriorityLearning')
 const { enqueueWorkflowAiRunIfNeeded } = require('./workflowAiStep')
 const { reconcileTaskMergeStatusAfterWorkflowChange } = require('../Repositories/taskMergeStatusReconciliation')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const MAX_GOLD_TO_EARN_BY_CHECK_TASKS = 5
 
@@ -44,9 +45,9 @@ const finalizeAssistantScheduleSource = async (oldTask, newTask) => {
             taskId: newTask.id,
         }
         if (source.recurrence === 'once') {
-            update.completedOneOffUserIds = admin.firestore.FieldValue.arrayUnion(activatorUserId)
-            update.activatedUserIds = admin.firestore.FieldValue.arrayRemove(activatorUserId)
-            update[`recurrenceByUser.${activatorUserId}`] = admin.firestore.FieldValue.delete()
+            update.completedOneOffUserIds = FieldValue.arrayUnion(activatorUserId)
+            update.activatedUserIds = FieldValue.arrayRemove(activatorUserId)
+            update[`recurrenceByUser.${activatorUserId}`] = FieldValue.delete()
         }
     }
 

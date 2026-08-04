@@ -52,6 +52,7 @@ const { classifyGmailMessage } = require('./gmailPromptClassifier')
 const { GMAIL_ACTIONABILITY_GUIDANCE } = require('./gmailClassifierPrompt')
 const { parseListUnsubscribe } = require('../Email/emailLine/emailLineShared')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+const { Timestamp } = require('firebase-admin/firestore')
 
 const MAX_HISTORY_PAGES = 5
 const MAX_MESSAGES_FETCH_MULTIPLIER = 3
@@ -556,7 +557,7 @@ async function getGmailLabelingConfigWithState(userId, projectId, gmailEmail = '
 
 async function acquireSyncLock(userId, projectId, gmailEmail = '') {
     const stateRef = getGmailLabelingStateRef(userId, projectId)
-    const now = admin.firestore.Timestamp.now()
+    const now = Timestamp.now()
 
     await admin.firestore().runTransaction(async transaction => {
         const stateDoc = await transaction.get(stateRef)
@@ -795,7 +796,7 @@ async function writeAuditRecord(userId, projectId, normalizedMessage, auditData)
                 from: normalizedMessage.from,
                 subject: normalizedMessage.subject,
                 snippet: normalizedMessage.snippet,
-                processedAt: admin.firestore.Timestamp.now(),
+                processedAt: Timestamp.now(),
                 ...auditData,
             },
             { merge: true }
@@ -938,7 +939,7 @@ function buildPostLabelActionSkipped({
         goldSpent: Number.isFinite(goldSpent) ? goldSpent : 0,
         estimatedNormalGoldCost: Number.isFinite(estimatedNormalGoldCost) ? estimatedNormalGoldCost : 0,
         tokenUsage,
-        executedAt: admin.firestore.Timestamp.now(),
+        executedAt: Timestamp.now(),
     }
 }
 
@@ -1355,7 +1356,7 @@ async function executePostLabelPrompt({
             tokenUsage: {
                 totalTokens,
             },
-            executedAt: admin.firestore.Timestamp.now(),
+            executedAt: Timestamp.now(),
         }
     } catch (error) {
         const isBlocked = error.message?.includes('Tool not permitted')
@@ -1373,7 +1374,7 @@ async function executePostLabelPrompt({
             goldSpent: 0,
             estimatedNormalGoldCost: 0,
             tokenUsage: null,
-            executedAt: admin.firestore.Timestamp.now(),
+            executedAt: Timestamp.now(),
         }
     }
 }
@@ -1506,7 +1507,7 @@ async function processSingleMessage({
     const normalizedMessage = normalizeGmailMessage(rawMessage)
     const direction = getGmailMessageDirection(rawMessage)
     const eligibleLabelDefinitions = getEligibleLabelDefinitions(config.labelDefinitions, direction)
-    const promptVersion = config.updatedAt || admin.firestore.Timestamp.now()
+    const promptVersion = config.updatedAt || Timestamp.now()
     const existingAuditEntry = await loadAuditEntry(userId, projectId, normalizedMessage.messageId)
 
     // Check the user has at least the minimum balance to run the classifier.
@@ -2073,7 +2074,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                     applied: false,
                     archived: false,
                     skippedReason: 'processing_error',
-                    promptVersion: effectiveConfig.updatedAt || admin.firestore.Timestamp.now(),
+                    promptVersion: effectiveConfig.updatedAt || Timestamp.now(),
                     postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
                 })
                 skipped += 1
@@ -2081,7 +2082,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
         }
 
         const latestHistoryId = await getCurrentProfileHistoryId(gmail)
-        const now = admin.firestore.Timestamp.now()
+        const now = Timestamp.now()
         const resolvedHistoryId = syncStartHistoryId || latestHistoryId || state.lastHistoryId || null
 
         await finalizeSyncState(
@@ -2139,7 +2140,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             syncMode,
         }
     } catch (error) {
-        const now = admin.firestore.Timestamp.now()
+        const now = Timestamp.now()
         await finalizeSyncState(
             userId,
             projectId,

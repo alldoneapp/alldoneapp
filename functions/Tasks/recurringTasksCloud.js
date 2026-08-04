@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const moment = require('moment')
 const { cloneDeep } = require('lodash')
 const { getTaskNameWithoutMeta } = require('../Utils/HelperFunctionsCloud')
+const { FieldValue } = require('firebase-admin/firestore')
 
 // Task recurrence constants
 const RECURRENCE_NEVER = 'never'
@@ -544,7 +545,7 @@ async function updateOriginalTaskRecurrence(projectId, taskId, originalTask) {
             recurrence: RECURRENCE_NEVER,
             timesDoneInExpectedDay: 0,
             timesDone: 0,
-            recurrenceBaseDateOverride: admin.firestore.FieldValue.delete(),
+            recurrenceBaseDateOverride: FieldValue.delete(),
         })
 
         console.log('✅ Successfully updated original task recurrence settings')

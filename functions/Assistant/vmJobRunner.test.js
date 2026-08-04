@@ -21,6 +21,11 @@ jest.mock('firebase-admin', () => ({
     firestore: mockFirestore,
 }))
 
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: mockFirestore.FieldValue,
+    Timestamp: mockFirestore.Timestamp,
+}))
+
 jest.mock('../Feeds/globalFeedsHelper', () => ({
     getObjectFollowersIds: mockGetObjectFollowersIds,
 }))

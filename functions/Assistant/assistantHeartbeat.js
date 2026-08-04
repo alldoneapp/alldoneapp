@@ -42,6 +42,7 @@ const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE =
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_FIELD = 'heartbeatInsufficientGoldNoticeAt'
 const HEARTBEAT_INSUFFICIENT_GOLD_NOTICE_THROTTLE_MS = 24 * 60 * 60 * 1000
 const { HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS: HEARTBEAT_TASK_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
+const { FieldValue } = require('firebase-admin/firestore')
 
 /**
  * Fetch recent conversation history from a topic for context.
@@ -179,7 +180,7 @@ async function getOrCreateHeartbeatTopic(userId, projectId, assistantId, userDat
 
     await Promise.all([
         userFollowingRef.set({ topics: { [chatId]: true } }, { merge: true }),
-        followersRef.set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+        followersRef.set({ usersFollowing: FieldValue.arrayUnion(userId) }, { merge: true }),
     ])
 
     return { chatId, isNew: true }

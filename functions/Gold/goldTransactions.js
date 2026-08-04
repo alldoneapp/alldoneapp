@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const GOLD_CONTEXT_FIELDS = ['projectId', 'goalId', 'objectId', 'objectType', 'channel', 'note', 'callSessionId']
 
@@ -21,7 +22,7 @@ function buildGoldTransaction({ amount, direction, source, balanceBefore, balanc
         amount,
         direction,
         source,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         balanceBefore,
         balanceAfter,
         ...sanitizeContext(context),

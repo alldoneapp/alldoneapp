@@ -19,6 +19,7 @@ const mockFirestore = jest.fn(() => ({
 mockFirestore.FieldValue = { delete: jest.fn(() => ({ __op: 'delete' })) }
 
 jest.mock('firebase-admin', () => ({ firestore: mockFirestore }))
+jest.mock('firebase-admin/firestore', () => ({ FieldValue: mockFirestore.FieldValue }))
 jest.mock(
     'firebase-functions/v2/https',
     () => ({

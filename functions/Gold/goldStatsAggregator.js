@@ -1,6 +1,7 @@
 'use strict'
 
 const admin = require('firebase-admin')
+const { FieldValue } = require('firebase-admin/firestore')
 const moment = require('moment')
 
 // Consent-independent rollups of the goldTransactions ledger. Unlike the Google
@@ -103,7 +104,6 @@ function computeStatsDeltas(transaction = {}) {
 }
 
 function buildRollupPayload(labelKey, labelValue, { deltas, bySource }) {
-    const FieldValue = admin.firestore.FieldValue
     const payload = { [labelKey]: labelValue, updatedAt: FieldValue.serverTimestamp() }
 
     Object.entries(deltas).forEach(([key, value]) => {
@@ -134,7 +134,6 @@ async function recordGoldTransactionStats({ ref, data, eventTime }) {
     if (!buckets) return { applied: false, reason: 'no-date' }
 
     const db = admin.firestore()
-    const FieldValue = admin.firestore.FieldValue
     const dailyRef = db.doc(`goldStats/daily/days/${buckets.day}`)
     const monthlyRef = db.doc(`goldStats/monthly/months/${buckets.month}`)
 

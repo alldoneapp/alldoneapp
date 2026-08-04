@@ -9,6 +9,7 @@ const { updateStatistics } = require('../Utils/statisticsHelper')
 const { isEqual } = require('lodash')
 const { getUserData } = require('../Users/usersFirestore')
 const { addProjectRoutingReasonComment } = require('../shared/projectRoutingCommentHelper')
+const { FieldPath } = require('firebase-admin/firestore')
 
 const FIRESTORE_IN_QUERY_MAX_IDS = 30
 
@@ -438,7 +439,7 @@ const getCalendarTasksByEventIdsInProject = async (projectId, userId, eventIds =
             admin
                 .firestore()
                 .collection(`items/${projectId}/tasks`)
-                .where(admin.firestore.FieldPath.documentId(), 'in', eventIdChunk)
+                .where(FieldPath.documentId(), 'in', eventIdChunk)
                 .get()
         )
     )

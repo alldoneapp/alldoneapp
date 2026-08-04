@@ -7,6 +7,7 @@ const { getProject } = require('../Firestore/generalFirestoreCloud')
 const { processDeletedNoteForRevisionHistory } = require('../NotesRevisionHistory')
 const { mapTaskData } = require('../Utils/MapDataFuncions')
 const { deleteNote } = require('./notesFirestoreCloud')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const removeNoteContent = async (projectId, noteId) => {
     const { defineString } = require('firebase-functions/params')
@@ -39,7 +40,7 @@ const removeNoteFromInnerTasks = async (projectId, taskId, noteId) => {
         .firestore()
         .doc(`items/${projectId}/tasks/${taskId}`)
         .update({
-            containerNotesIds: admin.firestore.FieldValue.arrayRemove(noteId),
+            containerNotesIds: FieldValue.arrayRemove(noteId),
         })
 }
 

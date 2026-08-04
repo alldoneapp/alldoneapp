@@ -21,6 +21,7 @@ const {
     HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
     SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
 } = require('./Assistant/assistantRunLimits')
+const { Timestamp } = require('firebase-admin/firestore')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -1434,7 +1435,8 @@ exports.updateMollieSubscription = onCall(
 exports.sendMonthlyInvoiceSecondGen = onRequest(
     {
         timeoutSeconds: 540,
-        memory: '256MB',
+        // Invoice PDFs render with headless Chromium, which needs more than 256MB
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async (req, res) => {
@@ -1447,7 +1449,8 @@ exports.sendMonthlyInvoiceSecondGen = onRequest(
 exports.sendMonthlyInvoice = onRequest(
     {
         timeoutSeconds: 540,
-        memory: '256MB',
+        // Invoice PDFs render with headless Chromium, which needs more than 256MB
+        memory: '1GiB',
         region: 'europe-west1',
     },
     async (req, res) => {
@@ -2693,7 +2696,7 @@ exports.respondToVmInteractionSecondGen = onCall(
                     interaction: null,
                     interactionAnsweredAt: Date.now(),
                 },
-                lastChangeDate: admin.firestore.Timestamp.now(),
+                lastChangeDate: Timestamp.now(),
             },
             { merge: true }
         )

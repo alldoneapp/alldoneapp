@@ -2,6 +2,7 @@
 
 const admin = require('firebase-admin')
 const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('../Gmail/gmailLabelingConfig')
+const { Timestamp } = require('firebase-admin/firestore')
 
 const CALENDAR_PROJECT_ROUTING_CONFIG_TYPE = 'calendarProjectRoutingConfig'
 const DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT =
@@ -84,7 +85,7 @@ function buildCalendarProjectRoutingConfigWriteData(userId, projectId, configInp
         throw error
     }
 
-    const now = admin.firestore.Timestamp.now()
+    const now = Timestamp.now()
 
     return {
         ...normalizedConfig,

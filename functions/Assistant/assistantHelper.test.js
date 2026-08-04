@@ -197,6 +197,17 @@ const mockBatchUpdate = jest.fn()
 const mockBatchDelete = jest.fn()
 const mockBatchCommit = jest.fn(async () => {})
 const mockResponsesCreate = jest.fn()
+const mockFirestoreTimestamp = { now: jest.fn(() => ({ seconds: 0, nanoseconds: 0 })) }
+const mockFirestoreFieldValue = {
+    increment: jest.fn(value => ({ __op: 'increment', value })),
+    arrayUnion: jest.fn((...values) => ({ __op: 'arrayUnion', values })),
+    delete: jest.fn(() => ({ __op: 'delete' })),
+}
+
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: mockFirestoreFieldValue,
+    Timestamp: mockFirestoreTimestamp,
+}))
 
 jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({ options: { projectId: 'alldonealeph' } })),
@@ -239,12 +250,8 @@ jest.mock('firebase-admin', () => ({
             })),
         })),
         {
-            Timestamp: { now: jest.fn(() => ({ seconds: 0, nanoseconds: 0 })) },
-            FieldValue: {
-                increment: jest.fn(value => ({ __op: 'increment', value })),
-                arrayUnion: jest.fn((...values) => ({ __op: 'arrayUnion', values })),
-                delete: jest.fn(() => ({ __op: 'delete' })),
-            },
+            Timestamp: mockFirestoreTimestamp,
+            FieldValue: mockFirestoreFieldValue,
         }
     ),
 }))

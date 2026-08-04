@@ -75,8 +75,11 @@ const checkPremiumStatus = async (customerId, stripe) => {
             limit: 100,
         })
 
+        // Stripe API 2025-03-31+ moved current_period_end to the subscription item
+        const getPeriodEnd = sub => sub.current_period_end ?? sub.items?.data[0]?.current_period_end
+
         const activeSubscription = subscriptions.data.find(
-            sub => sub.status === 'active' && sub.current_period_end > Math.floor(Date.now() / 1000)
+            sub => sub.status === 'active' && getPeriodEnd(sub) > Math.floor(Date.now() / 1000)
         )
 
         if (activeSubscription) {
@@ -84,7 +87,7 @@ const checkPremiumStatus = async (customerId, stripe) => {
                 status: PLAN_STATUS_PREMIUM,
                 subscription: activeSubscription,
                 customer: customerId,
-                currentPeriodEnd: activeSubscription.current_period_end,
+                currentPeriodEnd: getPeriodEnd(activeSubscription),
                 planInterval: activeSubscription.items.data[0]?.price?.recurring?.interval,
             }
         }

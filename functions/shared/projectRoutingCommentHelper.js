@@ -5,6 +5,7 @@ const admin = require('firebase-admin')
 const { getId } = require('../Firestore/generalFirestoreCloud')
 const { getDefaultAssistantData, GLOBAL_PROJECT_ID } = require('../Firestore/assistantsFirestore')
 const { STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 function normalizeText(value) {
     return typeof value === 'string' ? value.trim() : ''
@@ -277,7 +278,7 @@ async function addProjectRoutingReasonComment({
         creatorId: assistantContext.assistantId,
         commentText,
         commentType: STAYWARD_COMMENT,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         originalContent: commentText,
         fromAssistant: true,
@@ -297,7 +298,7 @@ async function addProjectRoutingReasonComment({
         },
         lastEditionDate: now,
         lastEditorId: assistantContext.assistantId,
-        members: admin.firestore.FieldValue.arrayUnion(assistantContext.assistantId),
+        members: FieldValue.arrayUnion(assistantContext.assistantId),
     }
 
     if (chatDoc.exists) {
@@ -317,7 +318,7 @@ async function addProjectRoutingReasonComment({
             creatorId: taskData?.creatorId || taskData?.userId || '',
             created: taskData?.created || now,
             isPublicFor: taskData?.isPublicFor || [0, taskData?.userId].filter(Boolean),
-            usersFollowing: admin.firestore.FieldValue.arrayUnion(...followingIds),
+            usersFollowing: FieldValue.arrayUnion(...followingIds),
             hasStar: taskData?.hasStar || '#ffffff',
             stickyData: { days: 0, stickyEndDate: 0 },
             ...chatData,

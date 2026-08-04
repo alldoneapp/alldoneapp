@@ -7,6 +7,7 @@ const {
     findCalendarAvailabilityForAssistantRequest,
     __private__: { getConnectedCalendarAccounts },
 } = require('../GoogleCalendar/assistantCalendarTools')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const DEFAULT_BOOKING_SETTINGS = {
     enabled: false,
@@ -179,7 +180,7 @@ function buildPublicBookingPage(userId, userData, settings) {
             additionalGuestEmails: normalizeGuestEmails(settings.additionalGuestEmails),
             timeZone: resolveUserIanaTimeZone(userData),
         },
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
     }
 }
 
@@ -244,7 +245,7 @@ async function saveBookingSettings(userId, input = {}) {
             settingsRef,
             {
                 ...settings,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }
         )

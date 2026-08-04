@@ -6,6 +6,18 @@ if (!global.crypto) {
     }
 }
 
+// lib0's CommonJS dist files self-reference `require('lib0/webcrypto')`, which this
+// Jest version resolves to lib0's untranspiled ESM source. Serve the Node webcrypto
+// implementation instead so requiring yjs does not blow up on `export` syntax.
+jest.mock('lib0/webcrypto', () => {
+    const crypto = require('crypto')
+    return {
+        subtle: crypto.webcrypto ? crypto.webcrypto.subtle : undefined,
+        getRandomValues: typedArray =>
+            crypto.webcrypto ? crypto.webcrypto.getRandomValues(typedArray) : crypto.randomFillSync(typedArray),
+    }
+})
+
 const Y = require('yjs')
 
 const { NoteService, seedCurrentNoteFeedObject } = require('./NoteService')

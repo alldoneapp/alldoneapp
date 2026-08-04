@@ -23,6 +23,7 @@ const {
     TASK_EXECUTION_MODE_WORKFLOW,
     getTaskExecutionMode,
 } = require('../shared/taskExecutionMode')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 // Removed createTaskCreatedFeed import - now using TaskService for unified task creation
 
 const RECURRENCE_NEVER = 'never'
@@ -635,7 +636,7 @@ async function ensureTaskChatExists(
                 creatorId: activatorUserId || task.creatorUserId || task.userId,
                 commentText: prompt,
                 commentType: STAYWARD_COMMENT,
-                lastChangeDate: admin.firestore.Timestamp.now(),
+                lastChangeDate: Timestamp.now(),
                 created: Date.now(),
                 originalContent: prompt,
             }
@@ -767,7 +768,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
     })
 
     try {
-        const startTimestamp = admin.firestore.Timestamp.now()
+        const startTimestamp = Timestamp.now()
         await taskDocRef.update({
             lastExecutionStarted: startTimestamp,
             lastExecutionCompleted: null,
@@ -898,9 +899,9 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             },
         }
         if (taskWithActivator.recurrence === RECURRENCE_ONCE) {
-            successPayload.completedOneOffUserIds = admin.firestore.FieldValue.arrayUnion(activatorUserId)
-            successPayload.activatedUserIds = admin.firestore.FieldValue.arrayRemove(activatorUserId)
-            successPayload[`recurrenceByUser.${activatorUserId}`] = admin.firestore.FieldValue.delete()
+            successPayload.completedOneOffUserIds = FieldValue.arrayUnion(activatorUserId)
+            successPayload.activatedUserIds = FieldValue.arrayRemove(activatorUserId)
+            successPayload[`recurrenceByUser.${activatorUserId}`] = FieldValue.delete()
         }
         await taskDocRef.update(successPayload)
 
@@ -948,13 +949,13 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         if (previousLastExecuted) {
             revertPayload.lastExecuted = previousLastExecuted
         } else {
-            revertPayload.lastExecuted = admin.firestore.FieldValue.delete()
+            revertPayload.lastExecuted = FieldValue.delete()
         }
 
         if (typeof previousLastExecutedByUser === 'number') {
             revertPayload[`lastExecutedByUser.${activatorUserId}`] = previousLastExecutedByUser
         } else {
-            revertPayload[`lastExecutedByUser.${activatorUserId}`] = admin.firestore.FieldValue.delete()
+            revertPayload[`lastExecutedByUser.${activatorUserId}`] = FieldValue.delete()
         }
 
         try {

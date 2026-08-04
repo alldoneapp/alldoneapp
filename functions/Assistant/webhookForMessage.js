@@ -1,6 +1,7 @@
 const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { createInitialStatusMessage } = require('./assistantStatusHelper')
+const { Timestamp } = require('firebase-admin/firestore')
 
 /**
  * Execute webhook when user sends a message in a webhook task
@@ -162,7 +163,7 @@ async function executeWebhookForUserMessage(data) {
                 creatorId: assistantId,
                 commentText: `❌ Webhook failed: ${error.message}`,
                 commentType: 'STAYWARD_COMMENT',
-                lastChangeDate: admin.firestore.Timestamp.now(),
+                lastChangeDate: Timestamp.now(),
                 created: Date.now(),
                 originalContent: `❌ Webhook failed: ${error.message}`,
                 fromAssistant: true,

@@ -37,6 +37,7 @@ const {
 } = require('./FeedsConstants')
 const { getGlobalState } = require('../GlobalState/globalState')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const initialDates = {
     'Initial of Minutes': 'm',
@@ -410,7 +411,7 @@ function deleteObjectFeedCounter(projectId, userId, objectId, objectTypes, tabsT
     const { admin } = getGlobalState()
 
     const entryObjectsCounter = {
-        [objectTypes]: { [objectId]: admin.firestore.FieldValue.delete() },
+        [objectTypes]: { [objectId]: FieldValue.delete() },
     }
 
     if (tabsToRemove === FOLLOWED_TAB || tabsToRemove === BOTH_TABS) {

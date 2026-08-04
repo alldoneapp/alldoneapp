@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const admin = require('firebase-admin')
 const { STAYWARD_COMMENT } = require('../Utils/HelperFunctionsCloud')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 function getTranscriptCommentId(sessionId, turnId, role) {
     return crypto.createHash('sha256').update(`${sessionId}:${turnId}:${role}`).digest('hex').slice(0, 40)
@@ -69,7 +70,7 @@ async function storeCallTranscriptTurn({
 
         transaction.set(commentRef, {
             commentText: normalizedText,
-            lastChangeDate: admin.firestore.Timestamp.now(),
+            lastChangeDate: Timestamp.now(),
             created: now,
             creatorId,
             fromAssistant: role === 'assistant',
@@ -84,12 +85,12 @@ async function storeCallTranscriptTurn({
             'commentsData.lastComment': normalizedText.substring(0, 200),
             'commentsData.lastCommentOwnerId': creatorId,
             'commentsData.lastCommentType': STAYWARD_COMMENT,
-            'commentsData.amount': admin.firestore.FieldValue.increment(1),
+            'commentsData.amount': FieldValue.increment(1),
         })
         transaction.set(
             sessionRef,
             {
-                transcriptTurnCount: admin.firestore.FieldValue.increment(1),
+                transcriptTurnCount: FieldValue.increment(1),
                 updatedAt: now,
             },
             { merge: true }

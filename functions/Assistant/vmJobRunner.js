@@ -38,6 +38,7 @@ const {
     E2B_SANDBOX_SLICE_MS,
     E2B_COMMAND_CONNECTION_TIMEOUT_MS,
 } = require('./vmJobConfig')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 // Don't refresh the live status comment more often than this (Firestore write rate).
 const PROGRESS_UPDATE_INTERVAL_MS = 3000
@@ -670,7 +671,7 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
                 [`commentsData.lastCommentOwnerId`]: assistantId,
                 [`commentsData.lastComment`]: lastComment,
                 [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+                [`commentsData.amount`]: FieldValue.increment(1),
             },
             { merge: true }
         )
@@ -679,7 +680,7 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
             transaction.update(parentRef, {
                 [`commentsData.lastComment`]: parentLastComment,
                 [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+                [`commentsData.amount`]: FieldValue.increment(1),
                 ...(activateTaskAssistant && objectType === 'tasks'
                     ? {
                           assistantId,
@@ -1054,7 +1055,7 @@ async function writeStatusComment(
         commentText: text,
         originalContent: text,
         commentType: 'STAYWARD_COMMENT',
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         fromAssistant: true,
         isLoading: runIsActive,
         isThinking: false,

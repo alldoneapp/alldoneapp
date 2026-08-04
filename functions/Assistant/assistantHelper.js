@@ -52,6 +52,7 @@ const {
     buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
 } = require('./attachmentToolHandoff')
+const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 const {
     normalizeCreateTaskImageUrls,
     buildCreateTaskImageTokens,
@@ -563,7 +564,7 @@ async function persistAssistantThreadState({
             trimHistoryBeforeMs: Math.max(Number(currentState.trimHistoryBeforeMs) || 0, trimHistoryBeforeMs),
             trimHistoryBeforeMessageId: '',
             compactionRevision: Number.isInteger(currentRevision) && currentRevision >= 0 ? currentRevision + 1 : 1,
-            updatedAt: admin.firestore.Timestamp.now(),
+            updatedAt: Timestamp.now(),
         }
         transaction.set(stateRef, nextState)
         return nextState
@@ -3135,7 +3136,7 @@ function formatMessage(objectType, message, assistantId) {
     const now = Date.now()
     const comment = {
         commentText: message,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         creatorId: assistantId,
         fromAssistant: true,
@@ -3853,7 +3854,7 @@ async function addChatCommentFromAssistantTool({
         commentText: resolvedComment,
         originalContent: resolvedComment,
         commentType: STAYWARD_COMMENT,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         creatorId: assistantId,
         fromAssistant: true,
@@ -3893,8 +3894,8 @@ async function addChatCommentFromAssistantTool({
             {
                 lastEditionDate: now,
                 lastEditorId: assistantId,
-                members: admin.firestore.FieldValue.arrayUnion(userId, assistantId),
-                usersFollowing: admin.firestore.FieldValue.arrayUnion(userId),
+                members: FieldValue.arrayUnion(userId, assistantId),
+                usersFollowing: FieldValue.arrayUnion(userId),
                 // For a freshly-created chat the commentsData (owner, text, type, amount) was
                 // already seeded at creation, so only update these fields for existing chats —
                 // otherwise the amount would be double-incremented for the first comment.
@@ -3904,14 +3905,14 @@ async function addChatCommentFromAssistantTool({
                           'commentsData.lastComment': resolvedComment.substring(0, 200),
                           'commentsData.lastCommentOwnerId': assistantId,
                           'commentsData.lastCommentType': STAYWARD_COMMENT,
-                          'commentsData.amount': admin.firestore.FieldValue.increment(1),
+                          'commentsData.amount': FieldValue.increment(1),
                       }),
             },
             { merge: true }
         ),
         db
             .doc(`followers/${projectId}/topics/${resolved.chatId}`)
-            .set({ usersFollowing: admin.firestore.FieldValue.arrayUnion(userId) }, { merge: true }),
+            .set({ usersFollowing: FieldValue.arrayUnion(userId) }, { merge: true }),
         db.doc(`usersFollowing/${projectId}/entries/${userId}`).set(
             {
                 topics: {
@@ -4961,7 +4962,7 @@ async function postUserRequestComment({ projectId, objectType, objectId, creator
         commentText,
         originalContent: commentText,
         commentType: STAYWARD_COMMENT,
-        lastChangeDate: admin.firestore.Timestamp.now(),
+        lastChangeDate: Timestamp.now(),
         created: now,
         fromAssistant: false,
     }
@@ -4976,7 +4977,7 @@ async function postUserRequestComment({ projectId, objectType, objectId, creator
             [`commentsData.lastCommentOwnerId`]: creatorId,
             [`commentsData.lastComment`]: cleanText.substring(0, 500),
             [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-            [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+            [`commentsData.amount`]: FieldValue.increment(1),
         },
         { merge: true }
     )
@@ -9748,7 +9749,7 @@ async function storeChunks(
                         [`commentsData.lastCommentOwnerId`]: assistantId,
                         [`commentsData.lastComment`]: commentText,
                         [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                        [`commentsData.amount`]: admin.firestore.FieldValue.increment(1),
+                        [`commentsData.amount`]: FieldValue.increment(1),
                     }),
                 updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, commentText, STAYWARD_COMMENT),
             ])
@@ -10587,7 +10588,7 @@ async function storeChunks(
                     [`commentsData.lastCommentOwnerId`]: assistantId,
                     [`commentsData.lastComment`]: lastComment,
                     [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                    [`commentsData.amount`]: admin.firestore.FieldValue.increment(1), // Fixed: increment counter instead of resetting to 1
+                    [`commentsData.amount`]: FieldValue.increment(1), // Fixed: increment counter instead of resetting to 1
                 })
         )
 

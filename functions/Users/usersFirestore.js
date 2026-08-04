@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const { FieldValue } = require('firebase-admin/firestore')
 
 //ACCESS FUNCTIONS
 
@@ -109,12 +110,12 @@ const adGoldToUser = async (userId, gold) => {
     await admin
         .firestore()
         .doc(`users/${userId}`)
-        .update({ gold: admin.firestore.FieldValue.increment(gold) })
+        .update({ gold: FieldValue.increment(gold) })
 }
 
 const removeUserFcmTokens = async (userId, tokens, batch) => {
     batch.update(admin.firestore().doc(`users/${userId}`), {
-        fcmToken: admin.firestore.FieldValue.arrayRemove(...tokens),
+        fcmToken: FieldValue.arrayRemove(...tokens),
     })
 }
 
@@ -127,7 +128,7 @@ const updateUserLastCommentData = async (projectId, userId, lastComment, lastCom
                 transaction.update(ref, {
                     [`commentsData.${projectId}.lastComment`]: lastComment,
                     [`commentsData.${projectId}.lastCommentType`]: lastCommentType,
-                    [`commentsData.${projectId}.amount`]: admin.firestore.FieldValue.increment(1),
+                    [`commentsData.${projectId}.amount`]: FieldValue.increment(1),
                 })
         })
     } catch (e) {

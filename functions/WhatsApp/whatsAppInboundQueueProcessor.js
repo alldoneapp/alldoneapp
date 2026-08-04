@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid')
 const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
 const { getOrCreateWhatsAppDailyTopic, storeUserMessageInTopic } = require('./whatsAppDailyTopic')
 const { processWhatsAppAssistantMessage } = require('./whatsAppAssistantBridge')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const QUEUE_STATUS_PENDING = 'pending'
 const QUEUE_STATUS_PROCESSING = 'processing'
@@ -329,7 +330,7 @@ async function claimNextBatchForUser(userId, ownerId) {
                 processorId: ownerId,
                 processingStartedAt: now,
                 updatedAt: now,
-                attempts: admin.firestore.FieldValue.increment(1),
+                attempts: FieldValue.increment(1),
             })
 
             claimed.push({

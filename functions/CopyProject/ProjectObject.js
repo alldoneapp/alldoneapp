@@ -1,6 +1,7 @@
 const moment = require('moment')
 const { logEvent } = require('../GAnalytics/GAnalytics')
 const { addFollower, FOLLOW_TYPE_PROJECTS } = require('./FollowObjectHelper')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const copyProject = async (firebase, projectId, user) => {
     const db = firebase.firestore()
@@ -27,9 +28,7 @@ const copyProject = async (firebase, projectId, user) => {
     const copyProjectId = projectRef.id
 
     await projectRef.set(copyProject)
-    await db
-        .doc(`users/${user.uid}`)
-        .update({ copyProjectIds: firebase.firestore.FieldValue.arrayUnion(copyProjectId) })
+    await db.doc(`users/${user.uid}`).update({ copyProjectIds: FieldValue.arrayUnion(copyProjectId) })
     await addFollower(firebase, copyProjectId, user.uid, FOLLOW_TYPE_PROJECTS, copyProjectId)
 
     await logEvent(user.uid, 'duplicate_project', {

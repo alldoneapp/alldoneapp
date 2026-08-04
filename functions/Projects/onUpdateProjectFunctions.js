@@ -15,6 +15,7 @@ const {
     safelySyncHeartbeatSchedules,
     syncHeartbeatSchedulesForProject,
 } = require('../Assistant/assistantHeartbeatSchedule')
+const { FieldValue } = require('firebase-admin/firestore')
 
 const deleteTasksFromAssistantsInProject = async (projectId, assistantIds) => {
     const promises = []
@@ -31,7 +32,7 @@ const addSomeGlobalAssistantToTemplateGuides = async (guideIds, globalAssistantI
             admin
                 .firestore()
                 .doc(`projects/${guideId}`)
-                .update({ globalAssistantIds: admin.firestore.FieldValue.arrayUnion(...globalAssistantIds) })
+                .update({ globalAssistantIds: FieldValue.arrayUnion(...globalAssistantIds) })
         )
     })
     await Promise.all(promises)
@@ -44,7 +45,7 @@ const removeSomeGlobalAssistantFromTemplateGuides = async (guideIds, globalAssis
             admin
                 .firestore()
                 .doc(`projects/${guideId}`)
-                .update({ globalAssistantIds: admin.firestore.FieldValue.arrayRemove(...globalAssistantIds) })
+                .update({ globalAssistantIds: FieldValue.arrayRemove(...globalAssistantIds) })
         )
     })
     await Promise.all(promises)
