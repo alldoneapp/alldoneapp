@@ -175,7 +175,7 @@
         "yjs": "13.4.7"
     },
     "devDependencies": {
-        "@babel/core": "^7.29.7",
+        "@babel/core": "^7.0.0",
         "@expo/webpack-config": "^0.12.38",
         "@svgr/cli": "^5.4.0",
         "@testing-library/react-native": "^7.0.2",
