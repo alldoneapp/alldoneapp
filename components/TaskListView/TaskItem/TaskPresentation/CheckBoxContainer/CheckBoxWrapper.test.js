@@ -116,6 +116,71 @@ describe('CheckBoxWrapper task completion', () => {
     })
 
     test.each([
+        ['assistant without persisted assistant metadata', 'assistant-1'],
+        ['human', 'user-2'],
+    ])('opens the acceptance flow for an unresolved %s suggestion', (_description, suggestedBy) => {
+        const task = { ...baseTask, suggestedBy }
+        let tree
+        act(() => {
+            tree = renderWrapper(task)
+        })
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+
+        expect(tree.root.findByType('TaskFlowModal').props).toEqual(
+            expect.objectContaining({ task, isSuggested: true })
+        )
+        expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(true)
+        expect(moveTasksFromOpen).not.toHaveBeenCalled()
+    })
+
+    test.each([
+        ['subtask', { isSubtask: true }],
+        ['private task', { genericData: false, isPrivate: true }],
+        ['calendar task', { genericData: false, calendarData: { eventId: 'event-1' } }],
+        ['direct task', { genericData: false, executionMode: 'direct' }],
+        ['workflow task', { genericData: false, workflowTask: true, userIds: ['user-1', 'reviewer-1'] }],
+    ])('protects an unresolved human suggestion for a specialized %s', (_description, taskData) => {
+        const task = { ...baseTask, ...taskData, suggestedBy: 'user-2' }
+        const tree = renderWrapper(task)
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+
+        expect(tree.root.findByType('TaskFlowModal').props.isSuggested).toBe(true)
+        expect(moveTasksFromOpen).not.toHaveBeenCalled()
+    })
+
+    test('accepting a suggestion leaves it open and the next checkbox press completes it', async () => {
+        const suggestedTask = { ...baseTask, suggestedBy: 'user-2' }
+        const tree = renderWrapper(suggestedTask)
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+        act(() => tree.root.findByType('TaskFlowModal').props.setVisiblePopover(false))
+        expect(moveTasksFromOpen).not.toHaveBeenCalled()
+
+        const acceptedTask = { ...suggestedTask, suggestedBy: null }
+        act(() => {
+            tree.update(
+                <CheckBoxWrapper
+                    task={acceptedTask}
+                    projectId={'project-1'}
+                    accessGranted={true}
+                    loggedUserCanUpdateObject={true}
+                />
+            )
+        })
+        expect(tree.root.findByType('CheckBoxContainer').props.checked).toBe(false)
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+        await act(async () => {
+            jest.runAllTimers()
+            await Promise.resolve()
+        })
+
+        expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
+    })
+
+    test.each([
         ['absent', undefined],
         ['null', null],
     ])('completes directly when workflow data is %s', async (_description, workflow) => {
@@ -276,6 +341,44 @@ describe('CheckBoxWrapper task completion', () => {
             await Promise.resolve()
         })
 
+        expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
+    })
+
+    test('email-linked suggestions require acceptance before showing the archive choice', async () => {
+        const suggestedTask = {
+            ...baseTask,
+            suggestedBy: 'user-2',
+            gmailData: { connectionId: 'email_google_12345678', messageId: 'message-1' },
+        }
+        const tree = renderWrapper(suggestedTask)
+
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+
+        expect(tree.root.findByType('TaskFlowModal').props.isSuggested).toBe(true)
+        expect(tree.root.findAllByType('EmailTaskCompletionModal')).toHaveLength(0)
+        expect(moveTasksFromOpen).not.toHaveBeenCalled()
+
+        act(() => tree.root.findByType('TaskFlowModal').props.setVisiblePopover(false))
+        const acceptedTask = { ...suggestedTask, suggestedBy: null }
+        act(() => {
+            tree.update(
+                <CheckBoxWrapper
+                    task={acceptedTask}
+                    projectId={'project-1'}
+                    accessGranted={true}
+                    loggedUserCanUpdateObject={true}
+                />
+            )
+        })
+        act(() => tree.root.findByType('CheckBoxContainer').props.onCheckboxPress(false))
+
+        const emailCompletionModal = tree.root.findByType('EmailTaskCompletionModal')
+        await act(async () => {
+            emailCompletionModal.props.onComplete(false)
+            await Promise.resolve()
+            jest.runAllTimers()
+            await Promise.resolve()
+        })
         expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
     })
 

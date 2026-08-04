@@ -33,7 +33,6 @@ function CheckBoxWrapper(
         projectId,
         isObservedTask,
         isToReviewTask,
-        isSuggested,
         isActiveOrganizeMode,
         checkOnDrag,
         loggedUserCanUpdateObject,
@@ -125,6 +124,7 @@ function CheckBoxWrapper(
     const ownerIsWorkstream = userId?.startsWith(WORKSTREAM_ID_PREFIX)
     const isLockedGmailTask = isInboxSummaryGmailTask(task)
     const emailArchiveData = !done && !isSubtask ? getEmailTaskArchiveData(task) : null
+    const hasUnresolvedSuggestion = !!task.suggestedBy
 
     const scheduleSetTaskStatus = recurrenceBaseDateOverride => {
         if (taskTransitionPendingRef.current) return
@@ -304,6 +304,11 @@ function CheckBoxWrapper(
         console.log('onCheckboxPress called - isLongPress:', isLongPress)
         if (taskTransitionPendingRef.current || emailCompletionSubmittingRef.current) return
         if (!checkIsLimitedByXp(projectId)) {
+            if (hasUnresolvedSuggestion) {
+                setChecked(true)
+                openModal()
+                return
+            }
             if (emailArchiveData && !done) {
                 setEmailCompletionModalIsOpen(true)
                 return
@@ -366,7 +371,7 @@ function CheckBoxWrapper(
                         isSubtask={isSubtask}
                         isObservedTask={isObservedTask}
                         isToReviewTask={isToReviewTask}
-                        isSuggested={isSuggested}
+                        isSuggested={hasUnresolvedSuggestion}
                         isActiveOrganizeMode={isActiveOrganizeMode}
                         checkOnDrag={checkOnDrag}
                         highlightColor={highlightColor}
@@ -403,7 +408,7 @@ function CheckBoxWrapper(
                         isSubtask={isSubtask}
                         isObservedTask={isObservedTask}
                         isToReviewTask={isToReviewTask}
-                        isSuggested={isSuggested}
+                        isSuggested={hasUnresolvedSuggestion}
                         isActiveOrganizeMode={isActiveOrganizeMode}
                         checkOnDrag={checkOnDrag}
                         highlightColor={highlightColor}
@@ -429,7 +434,7 @@ function CheckBoxWrapper(
                             projectId={projectId}
                             isObservedTask={isObservedTask}
                             isToReviewTask={isToReviewTask}
-                            isSuggested={isSuggested}
+                            isSuggested={hasUnresolvedSuggestion}
                             pending={pending}
                             cancelPopover={closeModal}
                             checkBoxIdRef={checkBoxIdRef}
@@ -448,7 +453,7 @@ function CheckBoxWrapper(
                         isSubtask={isSubtask}
                         isObservedTask={isObservedTask}
                         isToReviewTask={isToReviewTask}
-                        isSuggested={isSuggested}
+                        isSuggested={hasUnresolvedSuggestion}
                         isActiveOrganizeMode={isActiveOrganizeMode}
                         checkOnDrag={checkOnDrag}
                         highlightColor={highlightColor}
@@ -469,7 +474,7 @@ function CheckBoxWrapper(
                     isSubtask={isSubtask}
                     isObservedTask={isObservedTask}
                     isToReviewTask={isToReviewTask}
-                    isSuggested={isSuggested}
+                    isSuggested={hasUnresolvedSuggestion}
                     isActiveOrganizeMode={isActiveOrganizeMode}
                     checkOnDrag={checkOnDrag}
                     highlightColor={highlightColor}
