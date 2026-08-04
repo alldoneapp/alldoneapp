@@ -29,6 +29,7 @@ stages:
 .web-relevant-changes:
     rules:
         - changes: &web-relevant-paths
+              - .gitlab-ci.yml
               - App*.js
               - index.js
               - app.json
@@ -324,6 +325,27 @@ deploy:web-preview:
           changes:
               compare_to: 'refs/heads/master'
               paths: *web-relevant-paths
+          when: manual
+          allow_failure: true
+
+# Manual QA gate for the webpack pipeline (migration Stage 0 acceptance): publish
+# the shadow build's artifact to a Firebase Hosting preview channel on the staging
+# project (.firebaserc default; the shadow build injects the _DEV env values, so
+# the artifact talks to staging). Once this channel passes the parity checklist,
+# deploy:web's `needs` flips to build_web_webpack_check's successor and the expo
+# pipeline can be deleted.
+deploy:web-webpack-preview:
+    image: $CI_REGISTRY_IMAGE/build_firebase:latest
+    stage: deploy_web
+    needs:
+        - 'build_web_webpack_check'
+    script:
+        - firebase --version
+        - firebase hosting:channel:deploy --token $GOOGLE_FIREBASE_DEPLOY_TOKEN webpack-$CI_COMMIT_REF_SLUG
+    interruptible: false
+    rules:
+        - if: '$CI_COMMIT_BRANCH'
+          changes: *web-relevant-paths
           when: manual
           allow_failure: true
 
