@@ -1,7 +1,7 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import moment from 'moment-timezone'
-import * as Localization from 'expo-localization'
+import * as Localization from '../../utils/WebShims/Localization'
 
 import MeetingBookingPage from './MeetingBookingPage'
 import { BOOKING_LANGUAGE_STORAGE_KEY } from './bookingLanguage'
@@ -12,7 +12,7 @@ import {
     getPublicBookingSlots,
 } from '../../utils/backends/Booking/bookingFirestore'
 
-jest.mock('expo-localization', () => ({
+jest.mock('../../utils/WebShims/Localization', () => ({
     locale: 'en',
 }))
 

@@ -116,6 +116,13 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
     stays (modular statics work in v13 too and are the v14-ready direction). **Admin 14 =
     full modular migration, tracked as its own future project.**
 
+-   2026-08-04 (Phase 3 / migration Stage 1): vestigial native/dead deps removed — 22
+    direct deps dropped (native firebase, reanimated, screens, unimodules, expo-updates/
+    application/device, sentry-expo → @sentry/react@7, the shimmed expo-_ five), the 8
+    expo-_ import sites now use `utils/WebShims/`. Tree 3003 → 2844 packages; audit
+    1517 → 1485 same-day (−17 high, −2 critical — the rest is the retained expo build
+    chain + React-era pins). Full Jest suite + both build pipelines verified. Details in
+    `FRONTEND_MIGRATION_PLAN.md`.
 -   2026-08-04 (Phase 3 / migration Stage 0): standalone webpack 5 pipeline on Node 22
     built and locally verified (`web-bundler/` + CI shadow job `build_web_webpack_check`);
     expo pipeline still deploys until staging parity is confirmed. Details in

@@ -154,6 +154,7 @@ Isolated last because it touches production collaborative documents:
 -   2026-08-04 — **Stage 0 built and locally verified** (`web-bundler/`): standalone
     webpack 5 pipeline on Node 22 building the unchanged app source (React 16, RNW 0.11)
     against the root Node-14-installed `node_modules`.
+
     -   Same entry chain as expo (`expo/AppEntry.js`), same output contract
         (`web-build/`, `static/js/[name].[contenthash]`, `fonts/`, `static/media/`,
         `web/` statics, snapshotted PWA assets in `web-bundler/static/`). HTML template =
@@ -194,6 +195,44 @@ Isolated last because it touches production collaborative documents:
     -   **Remaining for stage acceptance**: deploy the shadow artifact to a staging
         channel, run the QA smoke checklist + web push, review bundle diff, then flip
         the deploy jobs' `needs` to the new build and delete the expo pipeline.
+
+-   2026-08-04 — **Stage 1 executed** (vestigial-dep floor). All installs under the pinned
+    Node 14 / npm 6; lockfile stayed v1; `replacement_node_modules` patches re-applied.
+
+    -   **Removed 22 direct deps**: `@react-native-firebase/{app,auth,database,firestore,messaging}`,
+        `react-native-reanimated`, `react-native-screens`, `react-native-unimodules`,
+        `unimodules-permissions-interface`, `expo-updates`, `expo-application`,
+        `expo-device`, `@sentry/tracing`, `sentry-expo` (→ `@sentry/react@7`, the last
+        major supporting React 16.9), `react-navigation-drawer` (bonus — imported by
+        nothing), and the five shimmed expo modules `expo-localization`,
+        `expo-image-picker`, `expo-image-manipulator`, `expo-linking`, `expo-font`
+        (+ vestigial direct entries `expo-constants`, `expo-modules-core`).
+        `expo-font`/`expo-constants`/`expo-asset` remain in the tree as `expo`'s own
+        deps — the `expo/AppEntry` boot chain still needs them until the expo pipeline
+        dies. Dead `sentry-expo` postPublish hook dropped from `app.json`.
+    -   **New `utils/WebShims/`** (Localization, Linking, ImagePicker, ImageManipulator,
+        Fonts) replacing the 8 expo-\* import sites — each implements exactly the surface
+        the app used, the same way expo's own web implementations did (file input +
+        data URL, canvas resize, FontFace API, `navigator.language`). Jest mocks
+        (global `ci/jestSetup.js` + 6 test files) now mock the shim paths.
+    -   **react-native-screens removal**: its only importer, `react-navigation-stack`,
+        requires it in a try/catch and guards every use behind `Platform.OS !== 'web'`
+        — but webpack still hard-fails on the unresolved require, so BOTH webpack
+        configs (root + web-bundler) got an `IgnorePlugin(/^react-native-screens$/)`,
+        which turns the require into the runtime throw the library's catch was
+        designed for. `react-native-gesture-handler` stays (69 files);
+        `react-navigation`/`-stack` die in Stage 2.
+    -   **Verified**: webpack pipeline builds clean (same 5 pre-existing warnings);
+        full root Jest suite green (333 suites / 1481 tests / 165 snapshots); legacy
+        expo pipeline rebuilt locally with expo-cli 6.1.0. Audit (same-day npm 6
+        baseline vs after): 3003 → 2844 packages, findings 1517 → 1485 (−17 high,
+        −2 critical). The count stays dominated by the retained Expo/webpack-4 build
+        chain — the big collapse lands when the expo pipeline is deleted after
+        Stage 0's staging acceptance, and with React/RNW in Stage 2. Bundle size is
+        effectively unchanged (the removed packages were mostly never bundled).
+    -   **Remaining for stage acceptance**: QA smoke checklist on staging (image
+        upload/resize paths — avatar, company logo — plus meeting-link opening and
+        language detection all now run on the shims).
 
 ## What this plan deliberately does NOT do
 

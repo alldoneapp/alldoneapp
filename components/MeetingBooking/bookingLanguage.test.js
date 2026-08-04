@@ -1,4 +1,4 @@
-import * as Localization from 'expo-localization'
+import * as Localization from '../../utils/WebShims/Localization'
 
 import {
     BOOKING_LANGUAGE_STORAGE_KEY,
@@ -7,7 +7,7 @@ import {
     persistBookingLanguage,
 } from './bookingLanguage'
 
-jest.mock('expo-localization', () => ({
+jest.mock('../../utils/WebShims/Localization', () => ({
     locale: 'en-US',
 }))
 

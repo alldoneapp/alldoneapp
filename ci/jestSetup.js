@@ -1,18 +1,9 @@
-// Native Expo modules are not available in GitLab's Node/JSDOM runner.
-// Keep the public values used by TranslationService and language-specific tests.
-jest.mock('expo-localization', () => ({
+// The device language must be stable in the JSDOM runner regardless of the
+// host machine's navigator.language. Mock the web shim (which replaced
+// expo-localization in migration Stage 1) with the values TranslationService
+// and language-specific tests rely on.
+jest.mock('../utils/WebShims/Localization', () => ({
     locale: 'en-US',
-    locales: ['en-US'],
-    timezone: 'UTC',
-    getLocales: () => [
-        {
-            languageCode: 'en',
-            languageTag: 'en-US',
-            regionCode: 'US',
-            textDirection: 'ltr',
-        },
-    ],
-    getCalendars: () => [],
 }))
 
 // The react-tiny-popover build in replacement_node_modules - which CI copies

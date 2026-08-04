@@ -1,4 +1,4 @@
-jest.mock('expo-localization', () => ({
+jest.mock('../../utils/WebShims/Localization', () => ({
     locale: 'en-US',
 }))
 

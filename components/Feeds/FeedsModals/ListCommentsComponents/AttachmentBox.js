@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
-import * as Linking from 'expo-linking'
+import * as Linking from '../../../../utils/WebShims/Linking'
 import Spinner from '../../../UIComponents/Spinner'
 import { colors } from '../../../styles/global'
 

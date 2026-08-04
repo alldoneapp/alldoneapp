@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react'
 import { KeyboardAvoidingView } from 'react-native'
 import { Provider } from 'react-redux'
-import * as Sentry from 'sentry-expo'
-import * as Font from 'expo-font'
+import * as Sentry from '@sentry/react'
+import * as Font from './utils/WebShims/Fonts'
 
 import RobotoMedium from './assets/fonts/Roboto-Medium.ttf'
 import RobotoRegular from './assets/fonts/Roboto-Regular.ttf'
@@ -21,7 +21,6 @@ try {
     if (sentryDsn && sentryDsn.length > 0) {
         Sentry.init({
             dsn: sentryDsn,
-            enableInExpoDevelopment: true,
         })
     } else {
         console.warn('Sentry DSN is not configured, skipping Sentry initialization')
