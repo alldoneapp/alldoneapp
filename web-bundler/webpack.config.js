@@ -131,6 +131,14 @@ module.exports = (env, argv) => {
         },
         devtool: isProd ? 'source-map' : 'eval-cheap-module-source-map',
         resolve: {
+            // CI symlinks the checkout's node_modules to /app/node_modules (baked
+            // into the image). With webpack's default symlinks:true, modules resolve
+            // to their REAL path under /app, so relative escapes back into app
+            // source break there while working locally: expo/AppEntry.js's
+            // '../../App', and the replacement_node_modules react-native-web patch
+            // importing '../../../../../components/...'. The old expo pipeline set
+            // symlinks:false for the same reason.
+            symlinks: false,
             extensions: ['.web.js', '.web.jsx', '.js', '.jsx', '.web.ts', '.web.tsx', '.ts', '.tsx', '.json'],
             alias: {
                 'react-native$': 'react-native-web',
