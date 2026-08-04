@@ -48,6 +48,27 @@ module.exports = {
         },
     ],
     plugins: [
+        // Reproduce the legacy pipeline's module semantics EXACTLY. The metro
+        // preset compiled every module to sloppy-mode CommonJS with var-hoisted
+        // bindings, and the app relies on that in ways strict ES modules break
+        // at runtime on logged-in code paths (production incident 2026-08-04):
+        // - assignments to undeclared identifiers (versionUnsub, lastPushTime
+        //   in utils/backends/firestore.js) throw ReferenceError under strict
+        //   mode but silently create globals in sloppy mode;
+        // - use-before-declaration (openTasks.js) throws a TDZ ReferenceError
+        //   under real let/const but reads undefined under var hoisting.
+        // Keep these two transforms until an ESLint no-undef /
+        // no-use-before-define sweep makes the codebase strict-clean; only
+        // then can the CJS transform be dropped for tree-shaking.
+        [
+            require.resolve('@babel/plugin-transform-modules-commonjs'),
+            {
+                strictMode: false,
+                allowTopLevelThis: true,
+                loose: true,
+            },
+        ],
+        require.resolve('@babel/plugin-transform-block-scoping'),
         [
             require.resolve('@babel/plugin-transform-runtime'),
             {
