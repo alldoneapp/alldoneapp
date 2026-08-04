@@ -151,16 +151,6 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
--   2026-08-04 — **Stage 0 ACCEPTED, deploys flipped to the webpack pipeline.** The
-    preview channel (webpack-master, staging project) passed manual QA;
-    `build_web_production` / `build_web_staging` now run the web-bundler build on the
-    Node 22 tooling image (same env injection + GitHub mirror before_script as before),
-    the expo build jobs (`build_web_preview`, expo `build_web_staging`/`_production`
-    scripts, `deploy:web-preview`) are deleted, and `build_web_webpack_check` remains as
-    the feature-branch build + preview feed. The expo toolchain (expo-cli, root
-    webpack.config.js, `npm run build-web`) is now local-legacy only and gets removed
-    with the Stage 2 branch.
-
 -   2026-08-04 — **Stage 0 built and locally verified** (`web-bundler/`): standalone
     webpack 5 pipeline on Node 22 building the unchanged app source (React 16, RNW 0.11)
     against the root Node-14-installed `node_modules`.
