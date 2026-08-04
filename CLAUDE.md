@@ -239,6 +239,11 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
     parse and Node 14 cannot execute) and maps `node:crypto` through `ci/nodeShims/`. The old
     `npm test -- --testPathPattern="functions/"` under Node 14 no longer works for functions.
     CI's `test:web:changed` job excludes `functions/` entirely, so this is a local check.
+    The root `npm test` (Node 14) now also excludes `functions/` plus three web-located
+    "bridge" suites that require functions code (`__tests__/TwilioWhatsAppService.test.js`,
+    `__tests__/Chats/copyChatToOtherProject.test.js`,
+    `__tests__/Feeds/copyInnerFeedsToOtherProject.test.js`) — those run in the functions
+    config instead (`BRIDGE_SUITES` in `ci/jest.functions.config.js`).
 -   **firebase-admin 14 removed the legacy namespace statics** (`admin.firestore.FieldValue`
     / `.Timestamp` / `.FieldPath`). Use `const { FieldValue, Timestamp } = require('firebase-admin/firestore')`.
     Tests that stub them must mock `'firebase-admin/firestore'`, not just `'firebase-admin'`.

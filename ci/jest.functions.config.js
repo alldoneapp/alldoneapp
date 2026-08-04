@@ -18,10 +18,21 @@ const path = require('path')
 
 const baseConfig = require('../package.json').jest
 
+// Web-located suites that require functions/ code. The root config excludes them
+// (they cannot run under the web toolchain's Node 14 / old Babel); they run here.
+const BRIDGE_SUITES = [
+    '__tests__/TwilioWhatsAppService.test.js',
+    '__tests__/Chats/copyChatToOtherProject.test.js',
+    '__tests__/Feeds/copyInnerFeedsToOtherProject.test.js',
+]
+
 module.exports = {
     ...baseConfig,
     rootDir: path.resolve(__dirname, '..'),
-    testMatch: ['<rootDir>/functions/**/*.test.js'],
+    testMatch: ['<rootDir>/functions/**/*.test.js', ...BRIDGE_SUITES.map(suite => `<rootDir>/${suite}`)],
+    testPathIgnorePatterns: baseConfig.testPathIgnorePatterns.filter(
+        pattern => !BRIDGE_SUITES.includes(pattern) && pattern !== '<rootDir>/functions/'
+    ),
     transformIgnorePatterns: ['/functions/node_modules/'],
     moduleNameMapper: {
         ...baseConfig.moduleNameMapper,

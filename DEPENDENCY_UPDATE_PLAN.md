@@ -74,7 +74,7 @@ Where the risk actually is:
 functions runtime — see CLAUDE.md); `zod` stays on 3.x until `@modelcontextprotocol/sdk`
 supports zod 4.
 
-## Phase 2 — root app hygiene (limited, deliberate)
+## Phase 2 — root app hygiene (limited, deliberate) — DONE 2026-08-04
 
 All root installs MUST run under the pinned Node 14.21.3 / npm 6.14.18 — the lockfile is v1
 and a modern npm would rewrite it to v3. Re-apply the `replacement_node_modules` Quill/y-quill
@@ -102,6 +102,29 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
 3–5 months, staged, each stage independently deployable.
 
 ## Status log
+
+-   2026-08-04 (Phase 2): root-app hygiene executed under the pinned Node 14 / npm 6
+    (lockfile stayed v1; `replacement_node_modules` Quill/y-quill patches re-applied and
+    diff-verified after installs).
+
+    -   **Removed** (all verified unused): duplicate `@react-native-community/async-storage`
+        (+ its stale manual mock), frontend `firebase-admin` + `firebase-functions` (only the
+        jest moduleNameMapper references functions' own copies), npm `http2` shim.
+    -   **Bumped in-range**: `react-native-calendars` 1.1314 (visual-check the calendar UI),
+        `tinycolor2` 1.6, `chartjs-adapter-moment` 1.0.1, `chartjs-plugin-datalabels` 2.2.0,
+        `y-websocket` 1.5.4 (collab notes — smoke-test realtime editing),
+        `husky` 4.3.8, `webpack-bundle-analyzer` 4.10.2, `css-loader` 5.2.7,
+        `moment` pin 2.29.4 → 2.30.1.
+    -   **Test layout**: root `npm test` (Node 14) now excludes `functions/` (aligning local
+        runs with CI's web job) and three web-located bridge suites that require functions
+        code — those moved into `ci/jest.functions.config.js` (`BRIDGE_SUITES`) and pass
+        under Node 22. This also un-breaks CI's `test:web:changed` for branches that touch
+        files related to those suites.
+    -   **Deploy note**: the Phase 1 functions changes were NOT deployed by the green
+        pipeline after the babel-range fix — `deploy:cloud:functions:production` only runs
+        on `functions/**` diffs, and the fix commit had none (documented in
+        `functions/index.js` header). The Phase 2 commit includes a `functions/**` change,
+        so its pipeline runs the functions + Cloud Run deploys carrying all of Phase 1.
 
 -   2026-08-04 (Phase 1 remainder, one combined change): items 1a–6 all executed.
 
