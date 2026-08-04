@@ -7,9 +7,17 @@ echo "Starting GitHub push process..."
 git config --global user.email "karsten@alldone.app"
 git config --global user.name "Alldone CI"
 
-# Add remotes
-git remote add origin_github "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/kwkrass/alldone.git" || true
-git remote add alldoneapp_github "https://${GITHUB_USER_ALLDONEAPP}:${GITHUB_TOKEN_ALLDONEAPP}@github.com/alldoneapp/alldoneapp.git" || true
+# Add remotes with credential-free URLs. The tokens are supplied by URL-scoped
+# credential helpers that read the environment only when git authenticates, so
+# no secret ever appears in remote URLs, process command lines, or GIT_TRACE
+# output (the old token-in-URL form leaked the PAT into job logs via the
+# verbose retry below).
+ORIGIN_GITHUB_URL="https://github.com/kwkrass/alldone.git"
+ALLDONEAPP_GITHUB_URL="https://github.com/alldoneapp/alldoneapp.git"
+git remote add origin_github "$ORIGIN_GITHUB_URL" 2>/dev/null || git remote set-url origin_github "$ORIGIN_GITHUB_URL"
+git remote add alldoneapp_github "$ALLDONEAPP_GITHUB_URL" 2>/dev/null || git remote set-url alldoneapp_github "$ALLDONEAPP_GITHUB_URL"
+git config --global "credential.${ORIGIN_GITHUB_URL}.helper" '!f() { echo "username=${GITHUB_USER}"; echo "password=${GITHUB_TOKEN}"; }; f'
+git config --global "credential.${ALLDONEAPP_GITHUB_URL}.helper" '!f() { echo "username=${GITHUB_USER_ALLDONEAPP}"; echo "password=${GITHUB_TOKEN_ALLDONEAPP}"; }; f'
 
 # Push with history to origin_github (safer force that checks remote state)
 git fetch origin_github master || true

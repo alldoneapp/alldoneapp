@@ -7,6 +7,8 @@
 // commits diff under functions/** (or firebase.json). If that pipeline fails
 // before deploy, a follow-up fix that touches only root files goes green
 // WITHOUT redeploying functions - the next functions/** push carries both.
+// This also applies when the deploy jobs were created but skipped because an
+// earlier stage failed: the fix push needs its own functions/** diff.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { onTaskDispatched } = require('firebase-functions/v2/tasks')

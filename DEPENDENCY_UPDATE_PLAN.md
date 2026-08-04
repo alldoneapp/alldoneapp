@@ -112,9 +112,16 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
         jest moduleNameMapper references functions' own copies), npm `http2` shim.
     -   **Bumped in-range**: `react-native-calendars` 1.1314 (visual-check the calendar UI),
         `tinycolor2` 1.6, `chartjs-adapter-moment` 1.0.1, `chartjs-plugin-datalabels` 2.2.0,
-        `y-websocket` 1.5.4 (collab notes — smoke-test realtime editing),
         `husky` 4.3.8, `webpack-bundle-analyzer` 4.10.2, `css-loader` 5.2.7,
         `moment` pin 2.29.4 → 2.30.1.
+    -   **`y-websocket` bump REVERTED — do not retry before Phase 3 Stage 0**: 1.5.4 (and
+        even a fresh install of 1.3.17) nests a modern `lib0` whose optional chaining the
+        Expo 36 webpack 4 / acorn parser cannot handle — `build_web_production` fails with
+        `Module parse failed` in `y-websocket/node_modules/lib0` while jest stays green
+        (Babel transforms what webpack does not). Now pinned exact `1.3.17` with the nested
+        `lib0@0.2.42` block restored into the v1 lockfile from the last-good tree. Any
+        package whose transitive deps re-resolve can hit this class of failure: **verify
+        root-app bumps with a local `npm run build-web`, not just jest.**
     -   **Test layout**: root `npm test` (Node 14) now excludes `functions/` (aligning local
         runs with CI's web job) and three web-located bridge suites that require functions
         code — those moved into `ci/jest.functions.config.js` (`BRIDGE_SUITES`) and pass
