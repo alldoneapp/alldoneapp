@@ -151,6 +151,22 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
+-   2026-08-04 — **Stage 0 flip REVERTED after a production incident; re-gated.** The
+    first webpack-pipeline production deploy broke logged-in flows with runtime
+    ReferenceErrors (`versionUnsub`/`lastPushTime` implicit-global writes in
+    `utils/backends/firestore.js`, a TDZ crash in `utils/backends/openTasks.js`) that
+    the legacy pipeline masked for years: metro's preset compiled modules to
+    sloppy-mode CJS with var hoisting, while the webpack pipeline produced strict ES
+    modules. Neither the login-page smoke nor the logged-out preview QA could catch it.
+    Production was restored by reverting the flip (expo pipeline redeploy). The webpack
+    pipeline now compiles app + RN-family modules with
+    `@babel/plugin-transform-modules-commonjs` (strictMode:false, loose) + a
+    block-scoping→var transform, reproducing the legacy semantics wholesale (verified
+    in output; costs app-code tree-shaking). **Re-flip gate: logged-in QA on the
+    preview channel covering task views / URL processing.** Going strict-ESM later
+    requires an ESLint `no-undef` + `no-use-before-define` sweep first — the
+    `export default X =` fixes in Stage 0 were the compile-time tip of this iceberg.
+
 -   2026-08-04 — **Stage 0 built and locally verified** (`web-bundler/`): standalone
     webpack 5 pipeline on Node 22 building the unchanged app source (React 16, RNW 0.11)
     against the root Node-14-installed `node_modules`.
