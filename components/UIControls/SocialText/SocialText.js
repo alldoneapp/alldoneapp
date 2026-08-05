@@ -52,8 +52,10 @@ export default function SocialText({
     const textSection = useRef(null)
 
     const calculateTextSectionWidth = () => {
-        const textSectionWidth = ReactDOM.findDOMNode(textSection.current).offsetWidth
-        setTextSectionWidth(textSectionWidth)
+        const textSectionNode = ReactDOM.findDOMNode(textSection.current)
+        if (!textSectionNode) return
+
+        setTextSectionWidth(textSectionNode.offsetWidth)
 
         if (textItemWidth > 0) handleShowEllipsis()
     }
