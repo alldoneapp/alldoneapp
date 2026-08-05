@@ -6,7 +6,7 @@ import Hotkeys from 'react-hot-keys'
 
 import Button from '../../../UIControls/Button'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
-import { execShortcutFn, popoverToTop } from '../../../../utils/HelperFunctions'
+import { execShortcutFn, popoverToTop, popoverToTopContainerStyle } from '../../../../utils/HelperFunctions'
 import RichCommentModal from '../../../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { translate } from '../../../../i18n/TranslationService'
 import {
@@ -99,6 +99,7 @@ export default function CommentWrapper({
                 padding={4}
                 disableReposition={true}
                 contentLocation={popoverToTop}
+                containerStyle={popoverToTopContainerStyle}
             >
                 <Hotkeys
                     keyName={'alt+C'}

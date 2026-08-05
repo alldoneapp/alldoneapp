@@ -16,7 +16,7 @@ import OpenDvButton from './OpenDvButton'
 import GhostButton from '../../UIControls/GhostButton'
 import { updateFocusedTask } from '../../../utils/backends/Tasks/tasksFirestore'
 import Hotkeys from 'react-hot-keys'
-import { execShortcutFn, popoverToTop } from '../../../utils/HelperFunctions'
+import { execShortcutFn, popoverToTop, popoverToTopContainerStyle } from '../../../utils/HelperFunctions'
 import { colors } from '../../styles/global'
 
 import TaskParentGoalModal from '../../UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal'
@@ -276,6 +276,7 @@ export default function SecondaryButtonsArea({
                     align={'end'}
                     disableReposition={true}
                     contentLocation={popoverToTop}
+                    containerStyle={popoverToTopContainerStyle}
                 >
                     <Hotkeys
                         keyName={'alt+g'}

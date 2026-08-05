@@ -151,6 +151,38 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
+-   2026-08-05 — **Stage 2 QA round 2 complete: gestures, navigation scroll, and the
+    popover-positioning saga all fixed** (user-verified on staging).
+
+    -   RNGH web patches v2/v3: event dispatchers threaded through
+        `attachGestureHandler` (DOM refs have no `.props`; swipe crashed on
+        delivery), and `createNativeWrapper` skips its prototype-chain method walk
+        for DOM refs (reading DOM accessor properties with the prototype as
+        receiver throws "Illegal invocation"; React 18's recovery then broke first
+        paint of anything containing RNGH buttons).
+    -   Navigation scroll reset: screens flow in the body now (old stack rendered
+        per-screen cards), so `AppNavigator` scrolls to top on route change.
+    -   **Popover positioning (three stacked root causes, found via write-level
+        instrumentation + a user-run DOM probe):** (1) React 18's batched commits
+        made `renderWithPosition` skip its completion callback when position info
+        was unchanged — the opacity flip lives in that callback (popover stayed
+        invisible); (2) all `contentLocation` helpers added window-scroll offsets
+        to viewport math and rendered `absolute` — correct only when the window is
+        the scroller, which the RNW 0.21 layout broke (invisible until scroll,
+        wobble while scrolling). Now: helpers return pure viewport coordinates and
+        the patched popover positions `fixed` for any active contentLocation,
+        `absolute` for anchored mode; (3) the patched popover's ResizeObserver
+        applied legacy document-coordinate math (+pageYOffset, bottom-edge clamp)
+        on every content resize, silently yanking the fixed container to the lower
+        viewport (user-measured styleTop 376 = 80 + scrollY 1560 clamped against
+        the 798px viewport — arithmetic reproduced exactly). It now recomputes
+        through the normal pipeline in contentLocation mode.
+    -   `getScrollOffsets` also fixed (`??` → `||` so a 0 `pageYOffset` falls
+        through to the body scroller) for any remaining document-coordinate users.
+    -   All popover diagnostics stripped after confirmation; 930 tests across the
+        touched suites pass. **Remaining Stage 2 exit criterion: the user's
+        general click-around + drag & drop verdict, then the merge decision.**
+
 -   2026-08-05 — **Stage 0 ACCEPTED (second attempt): deploys flipped to the webpack
     pipeline after a logged-in QA pass on staging live.** The re-flip gate was met:
     the corrected artifact (scoped sloppy-CJS + require-cycle fix below) was

@@ -4,7 +4,7 @@ import store from '../../redux/store'
 import PropTypes from 'prop-types'
 import GhostButton from './GhostButton'
 import Hotkeys from 'react-hot-keys'
-import { execShortcutFn, popoverToTop } from '../../utils/HelperFunctions'
+import { execShortcutFn, popoverToTop, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import { RECORD_VIDEO_MODAL_ID, RECORD_SCREEN_MODAL_ID } from '../Feeds/CommentsTextInput/textInputHelper'
 import {
@@ -155,6 +155,7 @@ class CommentButton extends Component {
                 align={'end'}
                 disableReposition={true}
                 contentLocation={popoverToTop}
+                containerStyle={popoverToTopContainerStyle}
             >
                 <Hotkeys
                     keyName={`alt+${shortcutText}`}

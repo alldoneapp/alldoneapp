@@ -16,7 +16,7 @@ import {
 import RichCommentModal from '../../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
 import {} from '../../../utils/backends/firestore'
 import { translate } from '../../../i18n/TranslationService'
-import { popoverToTop } from '../../../utils/HelperFunctions'
+import { popoverToTop, popoverToTopContainerStyle } from '../../../utils/HelperFunctions'
 import { createObjectMessage } from '../../../utils/backends/Chats/chatsComments'
 
 export default function CreateCommentWrapper({
@@ -95,6 +95,7 @@ export default function CreateCommentWrapper({
                 align={'start'}
                 disableReposition={true}
                 contentLocation={popoverToTop}
+                containerStyle={popoverToTopContainerStyle}
             >
                 <Hotkeys
                     keyName={'alt+C'}
