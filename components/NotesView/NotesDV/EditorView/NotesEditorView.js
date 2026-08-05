@@ -88,6 +88,7 @@ import { checkIsLimitedByTraffic } from '../../../Premium/PremiumHelper'
 import { updateXpByEditingNote } from '../../../../utils/Levels'
 import { getDb, getNotesCollaborationServerData } from '../../../../utils/backends/firestore'
 import { setNoteData } from '../../../../utils/backends/Notes/notesFirestore'
+import { loadNoteContentWithRetry } from './noteContentLoader'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -108,6 +109,7 @@ export let exportRef = null
 export let exportLoadingRef = null
 export let loadedNote = null
 const SAVE_INTERVAL = 3000
+const NOTE_CONTENT_RETRY_DELAY = 5000
 
 const NotesEditorView = ({
     project,
@@ -148,6 +150,7 @@ const NotesEditorView = ({
     let binding = useRef(null)
     let dirtyEditor = useRef(false)
     let saveTimeoutHandle = useRef(null)
+    const noteContentRetryTimeoutRef = useRef(null)
     const initialUserMentionsIdsRef = useRef({})
     const color = useRef(getRandomCollabColor())
     const dispatch = useDispatch()
@@ -507,6 +510,8 @@ const NotesEditorView = ({
         dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
         clearTimeout(saveTimeoutHandle.current)
         saveTimeoutHandle.current = null
+        clearTimeout(noteContentRetryTimeoutRef.current)
+        noteContentRetryTimeoutRef.current = null
 
         if (!loadingRef.current && dirtyEditor.current) {
             const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
@@ -721,16 +726,19 @@ const NotesEditorView = ({
             }
         })
 
-        ydoc.current = new Y.Doc()
-        const type = ydoc.current.getText('quill')
-        Backend.getNoteData(projectId, note.id).then(data => {
-            dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
-            if (!noteUnmountedRef.current) {
+        const loadNoteContent = async () => {
+            try {
+                const data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id))
+                if (noteUnmountedRef.current) return
+
+                const nextYdoc = new Y.Doc()
                 const update = new Uint8Array(data)
                 if (update.length > 0) {
-                    Y.applyUpdate(ydoc.current, update)
+                    Y.applyUpdate(nextYdoc, update)
                 }
 
+                ydoc.current = nextYdoc
+                const type = ydoc.current.getText('quill')
                 provider.current = new WebsocketProvider(
                     getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
                     note.id,
@@ -749,8 +757,6 @@ const NotesEditorView = ({
                 })
                 binding.current = new QuillBinding(type, quillRef.current, provider.current.awareness)
 
-                loadingRef.current = false
-                exportLoadingRef = false
                 quillRef.current.focus()
                 quillRef.current.setSelection(0, 0)
 
@@ -772,8 +778,23 @@ const NotesEditorView = ({
                     }
                 }
                 checkMaxLength()
+                loadingRef.current = false
+                exportLoadingRef = false
+                dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
+            } catch (error) {
+                if (noteUnmountedRef.current) return
+                binding.current?.destroy()
+                provider.current?.destroy()
+                ydoc.current?.destroy()
+                binding.current = null
+                provider.current = null
+                ydoc.current = null
+                console.error('Failed to load note content; keeping the editor locked and retrying', error)
+                noteContentRetryTimeoutRef.current = setTimeout(loadNoteContent, NOTE_CONTENT_RETRY_DELAY)
             }
-        })
+        }
+
+        loadNoteContent()
         return cleanup
     }, [])
 
