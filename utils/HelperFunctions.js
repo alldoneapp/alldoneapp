@@ -30,6 +30,7 @@ import { BACKWARD_COMMENT, FORDWARD_COMMENT } from '../components/Feeds/Utils/He
 import { DONE_STEP, OPEN_STEP } from '../components/TaskListView/Utils/TasksHelper'
 import { updateQuotaTraffic } from './backends/Premium/premiumFirestore'
 import { compareWorkflowEntries, getWorkflowStepsIdsSorted as getSortedWorkflowStepIds } from './workflowOrder'
+import { FIXED_MODAL_TOP_OFFSET } from './fixedModalPosition'
 
 class HelperFunctions {
     static isValidEmail = email => {
@@ -309,9 +310,8 @@ export const popoverToTopContainerStyle = { position: 'fixed' }
 export const popoverToTop = ({ targetRect, popoverRect, position, align, nudgedLeft, nudgedTop }, isMobile = true) => {
     const dim = Dimensions.get('window')
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
-    const top = 80
     const left = dim.width / 2 - popoverRect.width / 2
-    return { top, left: left + sidebarDiff }
+    return { top: FIXED_MODAL_TOP_OFFSET, left: left + sidebarDiff }
 }
 
 export const shortcutPreviewMount = () => {
