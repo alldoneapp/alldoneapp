@@ -376,6 +376,38 @@ deploy:web-webpack-preview:
           when: manual
           allow_failure: true
 
+# Staging's live site is normally published by deploy:web-dev from `develop`, but
+# that branch has drifted far behind master, so a feature branch has no way to
+# reach it. The preview channel above covers most QA, but NOT Google sign-in:
+# Google Identity Services enforces an authorized-JavaScript-origin allowlist on
+# the OAuth client, and a generated preview origin is not on it (that list lives
+# in Google Cloud Console, so no deploy can add it). This job publishes a branch
+# build to the staging site's live channel, on the registered origin, so auth
+# flows can actually be tested before a stage merges.
+# Manual and never automatic — it replaces whatever staging currently serves. The
+# project is named explicitly rather than relying on the .firebaserc default, so a
+# mis-click cannot reach production.
+deploy:web-staging-live:
+    image: $CI_REGISTRY_IMAGE/build_firebase:latest
+    stage: deploy_web
+    needs:
+        - job: 'build_web_webpack_check'
+          optional: true
+    script:
+        - firebase --version
+        - firebase use $GOOGLE_FIREBASE_WEB_PROJECT_ID_DEV --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+    environment:
+        name: staging
+    interruptible: false
+    rules:
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          changes:
+              compare_to: 'refs/heads/master'
+              paths: *web-relevant-paths
+          when: manual
+          allow_failure: true
+
 deploy:web:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
