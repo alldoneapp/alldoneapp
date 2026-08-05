@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View, ViewPropTypes } from 'react-native'
 import * as PropTypes from 'prop-types'
 import Icon from '../Icon'
 import Spinner from '../UIComponents/Spinner'
@@ -325,19 +325,19 @@ Button.propTypes = {
     type: PropTypes.oneOf(['primary', 'danger', 'secondary', 'text', 'ghost']).isRequired,
     title: PropTypes.string,
     subtitle: PropTypes.string,
-    subtitleStyle: PropTypes.any,
+    subtitleStyle: Text.propTypes.style,
     disabled: PropTypes.bool,
     icon: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),
     textColor: PropTypes.oneOf(['blue', 'red']),
     iconColor: PropTypes.string,
     noBorder: PropTypes.bool,
     onPress: PropTypes.func,
-    buttonStyle: PropTypes.any,
-    titleStyle: PropTypes.any,
+    buttonStyle: ViewPropTypes.style,
+    titleStyle: Text.propTypes.style,
     shortcutText: PropTypes.string,
-    shortcutTextStyle: PropTypes.any,
+    shortcutTextStyle: Text.propTypes.style,
     forceShowShortcut: PropTypes.bool,
-    shortcutStyle: PropTypes.any,
+    shortcutStyle: ViewPropTypes.style,
     numberTitleLines: PropTypes.number,
     onlyLayout: PropTypes.bool,
     accessible: PropTypes.bool,

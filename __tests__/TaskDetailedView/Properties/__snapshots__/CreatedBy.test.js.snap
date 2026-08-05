@@ -1,118 +1,147 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`CreatedBy component CreatedBy snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-1mwlp6a r-maxHeight-ormnx7 r-minHeight-10gryf7 r-paddingBlock-11f147o r-paddingLeft-1m04atk"
-  dir={null}
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "flexDirection": "row",
+      "height": 56,
+      "maxHeight": 56,
+      "minHeight": 56,
+      "paddingLeft": 8,
+      "paddingVertical": 8,
+    }
+  }
 >
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+  <View
     style={
       Object {
-        "marginRight": "8px",
+        "marginRight": 8,
       }
     }
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
+    <View>
+      <Text
         style={
           Object {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "#8A94A6",
             "fontFamily": "alldone",
-            "fontSize": "24px",
+            "fontSize": 24,
             "opacity": 1,
           }
         }
       >
         
-      </div>
-    </div>
-  </div>
-  <div
-    className="css-text-146c3p1"
-    dir="auto"
+      </Text>
+    </View>
+  </View>
+  <Text
     style={
-      Object {
-        "color": "rgba(138,148,166,1.00)",
-        "fontFamily": "Roboto-Medium",
-        "fontSize": "14px",
-        "letterSpacing": "0.16px",
-        "lineHeight": "22px",
-      }
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.16,
+          "lineHeight": 22,
+        },
+        Object {
+          "color": "#8A94A6",
+        },
+      ]
     }
   >
     Owner
-  </div>
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+  </Text>
+  <View
     style={
       Object {
         "marginLeft": "auto",
       }
     }
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-paddingBlock-11f147o r-paddingLeft-1j3zfw3"
-      dir={null}
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flex": 1,
+          "flexDirection": "row",
+          "paddingLeft": 11,
+          "paddingVertical": 8,
+        }
+      }
     >
-      <div
-        className="css-view-g5y9jx r-flex-13awgt0 r-marginRight-1b7u577"
-        dir={null}
+      <View
+        style={
+          Object {
+            "flex": 1,
+            "marginRight": 12,
+          }
+        }
       >
-        <div
-          className="css-view-g5y9jx r-flexBasis-1mlwlqe r-zIndex-417010 r-borderRadius-18c69zk r-height-eu3ka r-overflow-1udh08x r-width-1aockid"
-          dir={null}
-        >
-          <div
-            className="css-view-g5y9jx r-backgroundColor-1niwhzg r-backgroundPosition-vvn4in r-backgroundRepeat-u6sd8q r-bottom-1p0dtai r-height-1pi2tsx r-left-1d2f490 r-position-u8s1d r-right-zchlnj r-top-ipm5af r-width-13qz1uu r-zIndex-1wyyakw r-backgroundSize-4gszlv"
-            dir={null}
-            suppressHydrationWarning={true}
-          />
-        </div>
-      </div>
-      <div
-        className="css-view-g5y9jx r-flexDirection-eqz5dr"
-        dir={null}
-      >
-        <div
-          className="css-text-146c3p1"
-          dir="auto"
+        <Image
+          source={
+            Object {
+              "uri": "https://",
+            }
+          }
           style={
             Object {
-              "color": "rgba(4,20,47,1.00)",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": "16px",
-              "letterSpacing": "0.32px",
-              "lineHeight": "24px",
+              "borderRadius": 100,
+              "height": 40,
+              "overflow": "hidden",
+              "width": 40,
             }
+          }
+        />
+      </View>
+      <View
+        style={
+          Object {
+            "flexDirection": "column",
+          }
+        }
+      >
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Regular",
+                "fontSize": 16,
+                "letterSpacing": 0.32,
+                "lineHeight": 24,
+              },
+              Object {
+                "color": "#04142F",
+              },
+            ]
           }
         >
           Master Yoda
-        </div>
-        <div
-          className="css-text-146c3p1"
-          dir="auto"
+        </Text>
+        <Text
           style={
-            Object {
-              "color": "rgba(138,148,166,1.00)",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": "12px",
-              "letterSpacing": "0.48px",
-              "lineHeight": "20px",
-            }
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Regular",
+                "fontSize": 12,
+                "letterSpacing": 0.48,
+                "lineHeight": 20,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+            ]
           }
         >
           on the 07.01.1970
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
 `;

@@ -1,20 +1,31 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`SocialText component SocialText snapshot test should render correctly 1`] = `
-<div
-  className="css-text-146c3p1 r-cursor-1loqt21"
-  dir="auto"
-  onClick={[Function]}
+<Text
+  onLayout={[Function]}
+  onPress={[Function]}
   style={
-    Object {
-      "flexDirection": "row",
-      "verticalAlign": "middle",
-    }
+    Array [
+      undefined,
+      Object {
+        "flexDirection": "row",
+        "textAlignVertical": "center",
+      },
+      undefined,
+    ]
   }
 >
-  <div
-    className="css-view-g5y9jx r-display-xoduu5 r-alignItems-1awozwy r-flexDirection-18u37iz"
-    dir={null}
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+        },
+        undefined,
+        undefined,
+      ]
+    }
   />
-</div>
+</Text>
 `;

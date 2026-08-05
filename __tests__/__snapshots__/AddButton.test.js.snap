@@ -1,91 +1,97 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`AddButton component AddButton empty snapshot test should render correctly 1`] = `
-<button
-  className="css-view-g5y9jx"
-  dir={null}
-  role="button"
+<RNGestureHandlerButton
+  collapsable={false}
+  onGestureEvent={[Function]}
+  onGestureHandlerEvent={[Function]}
+  onGestureHandlerStateChange={[Function]}
+  onHandlerStateChange={[Function]}
+  rippleColor={0}
   style={
-    Object {
-      "overflowX": "hidden",
-      "overflowY": "hidden",
-    }
+    Array [
+      Object {
+        "overflow": "hidden",
+      },
+      undefined,
+    ]
   }
-  type="button"
 >
-  <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-z2wwpe r-height-eu3ka r-justifyContent-1777fci r-paddingInline-is05cd"
-    dir={null}
+  <View
+    accessible={false}
     style={
       Object {
+        "alignItems": "center",
+        "borderRadius": 4,
+        "height": 40,
+        "justifyContent": "center",
         "opacity": 1,
+        "paddingHorizontal": 8,
       }
     }
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
+    <View>
+      <Text
         style={
           Object {
-            "color": "rgba(255,255,255,1.00)",
+            "color": "#ffffff",
             "fontFamily": "alldone",
-            "fontSize": "24px",
+            "fontSize": 24,
             "opacity": 1,
           }
         }
       >
         
-      </div>
-    </div>
-  </div>
-</button>
+      </Text>
+    </View>
+  </View>
+</RNGestureHandlerButton>
 `;
 
 exports[`AddButton component AddButton empty snapshot test should render correctly when platform is web 1`] = `
-<button
-  className="css-view-g5y9jx"
-  dir={null}
-  role="button"
+<RNGestureHandlerButton
+  collapsable={false}
+  onGestureEvent={[Function]}
+  onGestureHandlerEvent={[Function]}
+  onGestureHandlerStateChange={[Function]}
+  onHandlerStateChange={[Function]}
+  rippleColor={0}
   style={
-    Object {
-      "overflowX": "hidden",
-      "overflowY": "hidden",
-    }
+    Array [
+      Object {
+        "overflow": "hidden",
+      },
+      undefined,
+    ]
   }
-  type="button"
 >
-  <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-z2wwpe r-height-eu3ka r-justifyContent-1777fci r-paddingInline-is05cd"
-    dir={null}
+  <View
+    accessible={false}
     style={
       Object {
+        "alignItems": "center",
+        "borderRadius": 4,
+        "height": 40,
+        "justifyContent": "center",
         "opacity": 1,
+        "paddingHorizontal": 8,
       }
     }
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
+    <View>
+      <Text
         style={
           Object {
-            "color": "rgba(255,255,255,1.00)",
+            "color": "#ffffff",
             "fontFamily": "alldone",
-            "fontSize": "24px",
+            "fontSize": 24,
             "opacity": 1,
           }
         }
       >
         
-      </div>
-    </div>
-  </div>
-</button>
+      </Text>
+    </View>
+  </View>
+</RNGestureHandlerButton>
 `;

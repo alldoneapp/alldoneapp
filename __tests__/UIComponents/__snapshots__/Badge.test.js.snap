@@ -1,57 +1,169 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Badge component Badge snapshot test should render correctly for a blue badge 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-o6kplv"
-  dir={null}
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "alignSelf": "center",
+        "borderRadius": 50,
+        "height": 24,
+        "justifyContent": "center",
+        "minWidth": 24,
+        "paddingHorizontal": 8,
+      },
+      Object {
+        "backgroundColor": "#152560",
+      },
+      undefined,
+    ]
+  }
 >
-  <div
-    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-jwli3a"
-    dir="auto"
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.16,
+          "lineHeight": 22,
+        },
+        Object {
+          "color": "white",
+        },
+        undefined,
+      ]
+    }
   >
     5
-  </div>
-</div>
+  </Text>
+</View>
 `;
 
 exports[`Badge component Badge snapshot test should render correctly for a grey badge 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-1v0ekwd"
-  dir={null}
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "alignSelf": "center",
+        "borderRadius": 50,
+        "height": 24,
+        "justifyContent": "center",
+        "minWidth": 24,
+        "paddingHorizontal": 8,
+      },
+      Object {
+        "backgroundColor": "#E7ECEF",
+      },
+      undefined,
+    ]
+  }
 >
-  <div
-    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-hiecfz"
-    dir="auto"
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.16,
+          "lineHeight": 22,
+        },
+        Object {
+          "color": "#8A94A6",
+        },
+        undefined,
+      ]
+    }
   >
     5
-  </div>
-</div>
+  </Text>
+</View>
 `;
 
 exports[`Badge component Badge snapshot test should render correctly passing number 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-1v0ekwd"
-  dir={null}
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "alignSelf": "center",
+        "borderRadius": 50,
+        "height": 24,
+        "justifyContent": "center",
+        "minWidth": 24,
+        "paddingHorizontal": 8,
+      },
+      Object {
+        "backgroundColor": "#E7ECEF",
+      },
+      undefined,
+    ]
+  }
 >
-  <div
-    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-hiecfz"
-    dir="auto"
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.16,
+          "lineHeight": 22,
+        },
+        Object {
+          "color": "#8A94A6",
+        },
+        undefined,
+      ]
+    }
   >
     5
-  </div>
-</div>
+  </Text>
+</View>
 `;
 
 exports[`Badge component Badge snapshot test should render correctly passing text 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-alignSelf-1kihuf0 r-borderRadius-1tw7wh r-height-1472mwg r-justifyContent-1777fci r-minWidth-lp5zef r-paddingInline-is05cd r-backgroundColor-1v0ekwd"
-  dir={null}
+<View
+  style={
+    Array [
+      Object {
+        "alignItems": "center",
+        "alignSelf": "center",
+        "borderRadius": 50,
+        "height": 24,
+        "justifyContent": "center",
+        "minWidth": 24,
+        "paddingHorizontal": 8,
+      },
+      Object {
+        "backgroundColor": "#E7ECEF",
+      },
+      undefined,
+    ]
+  }
 >
-  <div
-    className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-color-hiecfz"
-    dir="auto"
+  <Text
+    style={
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 14,
+          "letterSpacing": 0.16,
+          "lineHeight": 22,
+        },
+        Object {
+          "color": "#8A94A6",
+        },
+        undefined,
+      ]
+    }
   >
     2
-  </div>
-</div>
+  </Text>
+</View>
 `;

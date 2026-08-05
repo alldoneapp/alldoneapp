@@ -1,6 +1,6 @@
 import React from 'react'
 import { View } from 'react-native'
-import { Draggable } from '@hello-pangea/dnd'
+import { Draggable } from 'react-beautiful-dnd'
 
 import ParentTaskContainer from '../TaskListView/ParentTaskContainer'
 import { useSelector } from 'react-redux'

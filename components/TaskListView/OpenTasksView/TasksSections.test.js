@@ -8,7 +8,7 @@ let mockState
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
-jest.mock('@hello-pangea/dnd', () => ({
+jest.mock('react-beautiful-dnd', () => ({
     DragDropContext: ({ children }) => children,
 }))
 jest.mock('../../../redux/store', () => ({

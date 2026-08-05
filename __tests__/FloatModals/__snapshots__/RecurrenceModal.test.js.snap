@@ -1,877 +1,1539 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`RecurrenceModal component Should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-overflow-bztko3 r-paddingBottom-xd6kpl r-paddingTop-95jzfe"
-  dir={null}
+<View
   style={
-    Object {
-      "maxHeight": "736px",
-      "maxWidth": "432px",
-      "minWidth": "432px",
-      "width": "432px",
-    }
+    Array [
+      Object {
+        "backgroundColor": "#091540",
+        "borderRadius": 4,
+        "elevation": 3,
+        "overflow": "visible",
+        "paddingBottom": 8,
+        "paddingTop": 16,
+        "shadowColor": "rgba(78, 93, 120, 0.56)",
+        "shadowOffset": Object {
+          "height": 4,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 16,
+        "width": 305,
+      },
+      Object {
+        "maxWidth": 432,
+        "minWidth": 432,
+        "width": 432,
+      },
+      Object {
+        "maxHeight": 736,
+      },
+    ]
   }
 >
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+  <View
     style={
-      Object {
-        "flex": 1,
-      }
+      Array [
+        Object {
+          "flex": 1,
+        },
+        undefined,
+        undefined,
+      ]
     }
   >
-    <div
-      className="css-view-g5y9jx r-WebkitOverflowScrolling-150rngu r-flexDirection-eqz5dr r-flexGrow-16y2uox r-flexShrink-1wbh5a2 r-overflowX-11yh6sk r-overflowY-1rnoaur r-transform-agouwx r-scrollbarWidth-2eszeu"
-      dir={null}
+    <RCTScrollView
+      onContentSizeChange={[Function]}
+      onLayout={[Function]}
       onScroll={[Function]}
-      onTouchEnd={[Function]}
-      onTouchMove={[Function]}
-      onTouchStart={[Function]}
-      onWheel={[Function]}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
     >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <div
-          className="css-view-g5y9jx r-marginBottom-117bsoe r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
-          dir={null}
+      <View>
+        <View
+          style={
+            Object {
+              "marginBottom": 20,
+              "paddingLeft": 16,
+              "paddingRight": 16,
+            }
+          }
         >
-          <div
-            className="css-text-146c3p1"
-            dir="auto"
+          <Text
             style={
-              Object {
-                "color": "rgba(255,255,255,1.00)",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": "18px",
-                "lineHeight": "26px",
-              }
+              Array [
+                Object {
+                  "color": "#04142F",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 18,
+                  "lineHeight": 26,
+                },
+                Object {
+                  "color": "#ffffff",
+                },
+              ]
             }
           >
             Recurring
-          </div>
-          <div
-            className="css-text-146c3p1"
-            dir="auto"
+          </Text>
+          <Text
             style={
-              Object {
-                "color": "rgba(138,148,166,1.00)",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": "14px",
-                "letterSpacing": "0.32px",
-                "lineHeight": "22px",
-              }
+              Array [
+                Object {
+                  "color": "#04142F",
+                  "fontFamily": "Roboto-Regular",
+                  "fontSize": 14,
+                  "letterSpacing": 0.32,
+                  "lineHeight": 22,
+                },
+                Object {
+                  "color": "#8A94A6",
+                },
+              ]
             }
           >
             Select the recurrence for this task
-          </div>
-        </div>
-        <div
-          className="css-view-g5y9jx r-flex-13awgt0 r-justifyContent-a2tzq0 r-overflow-bztko3 r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
-          dir={null}
+          </Text>
+        </View>
+        <View
+          style={
+            Object {
+              "flex": 1,
+              "justifyContent": "space-around",
+              "overflow": "visible",
+              "paddingLeft": 16,
+              "paddingRight": 16,
+            }
+          }
         >
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Never
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           0
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-        <div
-          className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-109y4c4 r-marginBlock-bx70bn r-opacity-1oec5bt r-width-13qz1uu"
-          dir={null}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+        </View>
+        <View
+          style={
+            Object {
+              "backgroundColor": "#ffffff",
+              "height": 1,
+              "marginVertical": 8,
+              "opacity": 0.2,
+              "width": "100%",
+            }
+          }
         />
-        <div
-          className="css-view-g5y9jx r-flex-13awgt0 r-justifyContent-a2tzq0 r-overflow-bztko3 r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
-          dir={null}
+        <View
+          style={
+            Object {
+              "flex": 1,
+              "justifyContent": "space-around",
+              "overflow": "visible",
+              "paddingLeft": 16,
+              "paddingRight": 16,
+            }
+          }
         >
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Daily
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           1
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Every workday (Mo-Fr)
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           2
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Weekly
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           3
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Every 2 weeks
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           4
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Every 3 weeks
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           5
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Monthly
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           6
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Every 3 months
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           7
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Annually
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           8
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-          <div
-            className="css-view-g5y9jx"
-            dir={null}
-          >
-            <button
-              className="css-view-g5y9jx"
-              dir={null}
-              role="button"
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+          <View>
+            <RNGestureHandlerButton
+              collapsable={false}
+              onGestureEvent={[Function]}
+              onGestureHandlerEvent={[Function]}
+              onGestureHandlerStateChange={[Function]}
+              onHandlerStateChange={[Function]}
+              rippleColor={0}
               style={
-                Object {
-                  "overflowX": "hidden",
-                  "overflowY": "hidden",
-                }
+                Array [
+                  Object {
+                    "overflow": "hidden",
+                  },
+                  undefined,
+                ]
               }
-              type="button"
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                dir={null}
+              <View
+                accessible={true}
                 style={
                   Object {
+                    "alignItems": "center",
+                    "flex": 1,
+                    "flexDirection": "row",
+                    "height": 40,
                     "opacity": 1,
+                    "overflow": "visible",
                   }
                 }
               >
-                <div
-                  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
-                  dir={null}
+                <View
+                  style={
+                    Object {
+                      "alignItems": "center",
+                      "flex": 1,
+                      "flexDirection": "row",
+                      "height": 40,
+                      "overflow": "visible",
+                    }
+                  }
                 >
-                  <div
-                    className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                    dir={null}
+                  <View
+                    style={
+                      Object {
+                        "flexDirection": "row",
+                        "flexGrow": 1,
+                      }
+                    }
                   >
-                    <div
-                      className="css-text-146c3p1"
-                      dir="auto"
+                    <Text
                       style={
-                        Object {
-                          "color": "rgba(255,255,255,1.00)",
-                          "fontFamily": "Roboto-Medium",
-                          "fontSize": "16px",
-                          "letterSpacing": "0.16px",
-                          "lineHeight": "24px",
-                        }
+                        Array [
+                          Object {
+                            "fontFamily": "Roboto-Medium",
+                            "fontSize": 16,
+                            "letterSpacing": 0.16,
+                            "lineHeight": 24,
+                          },
+                          Object {
+                            "color": "#ffffff",
+                          },
+                        ]
                       }
                     >
                       Custom
-                    </div>
-                  </div>
-                  <div
-                    className="css-view-g5y9jx r-justifyContent-17s6mgv"
-                    dir={null}
+                    </Text>
+                  </View>
+                  <View
+                    style={
+                      Object {
+                        "justifyContent": "flex-end",
+                      }
+                    }
                   >
-                    <div
-                      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-                      dir={null}
+                    <View
+                      style={
+                        Array [
+                          Object {
+                            "alignItems": "center",
+                            "flexDirection": "row",
+                            "justifyContent": "center",
+                          },
+                          undefined,
+                          undefined,
+                        ]
+                      }
                     >
-                      <div
-                        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-                        dir={null}
+                      <View
+                        style={
+                          Array [
+                            Object {
+                              "alignItems": "center",
+                              "backgroundColor": "#091540",
+                              "borderRadius": 4,
+                              "flexDirection": "row",
+                              "justifyContent": "center",
+                              "minHeight": 16,
+                              "minWidth": 16,
+                              "paddingHorizontal": 4,
+                              "paddingVertical": 2,
+                            },
+                            Object {
+                              "borderColor": "#8A94A6",
+                              "borderWidth": 1,
+                            },
+                            undefined,
+                          ]
+                        }
                       >
-                        <div
-                          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-                          dir="auto"
+                        <Text
+                          style={
+                            Array [
+                              Object {
+                                "color": "#04142F",
+                                "fontFamily": "Roboto-Medium",
+                                "fontSize": 12,
+                                "letterSpacing": 0.48,
+                                "lineHeight": 12,
+                              },
+                              Object {
+                                "color": "#8A94A6",
+                              },
+                              undefined,
+                            ]
+                          }
                         >
                           9
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-        <div
-          className="css-view-g5y9jx r-position-u8s1d r-right-3mc0re r-top-1ld3bg"
-          dir={null}
-        >
-          <button
-            className="css-view-g5y9jx"
-            dir={null}
-            role="button"
-            style={
-              Object {
-                "overflowX": "hidden",
-                "overflowY": "hidden",
-              }
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </RNGestureHandlerButton>
+          </View>
+        </View>
+        <View
+          style={
+            Object {
+              "position": "absolute",
+              "right": 8,
+              "top": -4,
             }
-            type="button"
+          }
+        >
+          <RNGestureHandlerButton
+            collapsable={false}
+            onGestureEvent={[Function]}
+            onGestureHandlerEvent={[Function]}
+            onGestureHandlerStateChange={[Function]}
+            onHandlerStateChange={[Function]}
+            rippleColor={0}
+            style={
+              Array [
+                Object {
+                  "overflow": "hidden",
+                },
+                undefined,
+              ]
+            }
           >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-justifyContent-1777fci"
-              dir={null}
+            <View
+              accessible={true}
               style={
                 Object {
+                  "alignItems": "center",
+                  "justifyContent": "center",
                   "opacity": 1,
                 }
               }
             >
-              <div
-                className="css-view-g5y9jx"
-                dir={null}
-              >
-                <div
-                  className="css-text-146c3p1"
-                  dir="auto"
+              <View>
+                <Text
                   style={
                     Object {
-                      "color": "rgba(138,148,166,1.00)",
+                      "color": "#8A94A6",
                       "fontFamily": "alldone",
-                      "fontSize": "24px",
+                      "fontSize": 24,
                       "opacity": 1,
                     }
                   }
                 >
                   
-                </div>
-              </div>
-            </div>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+                </Text>
+              </View>
+            </View>
+          </RNGestureHandlerButton>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</View>
 `;

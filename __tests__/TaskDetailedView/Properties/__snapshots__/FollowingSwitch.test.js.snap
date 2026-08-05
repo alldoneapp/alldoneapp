@@ -1,196 +1,247 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`FollowingSwitch component should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz"
-  dir={null}
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "flexDirection": "row",
+    }
+  }
 >
-  <div
-    className="css-view-g5y9jx r-marginRight-1b7u577"
-    dir={null}
+  <View
+    style={
+      Object {
+        "marginRight": 12,
+      }
+    }
   >
-    <div
-      className="css-text-146c3p1"
-      dir="auto"
+    <Text
       style={
         Object {
-          "color": "rgba(78,93,120,1.00)",
+          "color": "rgba(78, 93, 120, 1)",
           "fontFamily": "Roboto-Regular",
-          "fontSize": "16px",
-          "letterSpacing": "0.32px",
-          "lineHeight": "24px",
+          "fontSize": 16,
+          "letterSpacing": 0.32,
+          "lineHeight": 24,
         }
       }
     >
       No
-    </div>
-  </div>
-  <button
-    className="css-view-g5y9jx"
-    dir={null}
-    role="button"
+    </Text>
+  </View>
+  <RNGestureHandlerButton
+    collapsable={false}
+    onGestureEvent={[Function]}
+    onGestureHandlerEvent={[Function]}
+    onGestureHandlerStateChange={[Function]}
+    onHandlerStateChange={[Function]}
+    rippleColor={0}
     style={
-      Object {
-        "overflowX": "hidden",
-        "overflowY": "hidden",
-      }
+      Array [
+        Object {
+          "overflow": "hidden",
+        },
+        undefined,
+      ]
     }
-    type="button"
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
+    <View
+      accessible={true}
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-10jnvle r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1472mwg r-paddingRight-rierb r-width-1mhb1uw"
-        dir={null}
+      <View
         style={
           Object {
-            "backgroundColor": "rgba(231,236,239,1.00)",
-            "borderBottomColor": "rgba(231,236,239,1.00)",
-            "borderLeftColor": "rgba(231,236,239,1.00)",
-            "borderRightColor": "rgba(231,236,239,1.00)",
-            "borderTopColor": "rgba(231,236,239,1.00)",
-            "paddingLeft": "1px",
+            "alignItems": "center",
+            "backgroundColor": "rgba(231, 236, 239, 1)",
+            "borderColor": "rgba(231, 236, 239, 1)",
+            "borderRadius": 21,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "height": 24,
+            "paddingLeft": 1,
+            "paddingRight": 1,
+            "width": 42,
           }
         }
       >
-        <div
-          className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
-          dir={null}
+        <View
+          style={
+            Object {
+              "backgroundColor": "white",
+              "borderRadius": 100,
+              "height": 20,
+              "width": 20,
+            }
+          }
         />
-      </div>
-    </div>
-  </button>
-</div>
+      </View>
+    </View>
+  </RNGestureHandlerButton>
+</View>
 `;
 
 exports[`FollowingSwitch component should render correctly after call onPress with state "yes" as false 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz"
-  dir={null}
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "flexDirection": "row",
+    }
+  }
 >
-  <div
-    className="css-view-g5y9jx r-marginRight-1b7u577"
-    dir={null}
+  <View
+    style={
+      Object {
+        "marginRight": 12,
+      }
+    }
   >
-    <div
-      className="css-text-146c3p1"
-      dir="auto"
+    <Text
       style={
         Object {
-          "color": "rgba(78,93,120,1.00)",
+          "color": "rgba(78, 93, 120, 1)",
           "fontFamily": "Roboto-Medium",
-          "fontSize": "16px",
-          "letterSpacing": "0.16px",
-          "lineHeight": "24px",
+          "fontSize": 16,
+          "letterSpacing": 0.16,
+          "lineHeight": 24,
         }
       }
     >
       Yes
-    </div>
-  </div>
-  <button
-    className="css-view-g5y9jx"
-    dir={null}
-    role="button"
+    </Text>
+  </View>
+  <RNGestureHandlerButton
+    collapsable={false}
+    onGestureEvent={[Function]}
+    onGestureHandlerEvent={[Function]}
+    onGestureHandlerStateChange={[Function]}
+    onHandlerStateChange={[Function]}
+    rippleColor={0}
     style={
-      Object {
-        "overflowX": "hidden",
-        "overflowY": "hidden",
-      }
+      Array [
+        Object {
+          "overflow": "hidden",
+        },
+        undefined,
+      ]
     }
-    type="button"
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
+    <View
+      accessible={true}
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-10jnvle r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1472mwg r-paddingRight-rierb r-width-1mhb1uw"
-        dir={null}
+      <View
         style={
           Object {
-            "backgroundColor": "rgba(231,236,239,1.00)",
-            "borderBottomColor": "rgba(231,236,239,1.00)",
-            "borderLeftColor": "rgba(231,236,239,1.00)",
-            "borderRightColor": "rgba(231,236,239,1.00)",
-            "borderTopColor": "rgba(231,236,239,1.00)",
-            "paddingLeft": "1px",
+            "alignItems": "center",
+            "backgroundColor": "rgba(231, 236, 239, 1)",
+            "borderColor": "rgba(231, 236, 239, 1)",
+            "borderRadius": 21,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "height": 24,
+            "paddingLeft": 1,
+            "paddingRight": 1,
+            "width": 42,
           }
         }
       >
-        <div
-          className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
-          dir={null}
+        <View
+          style={
+            Object {
+              "backgroundColor": "white",
+              "borderRadius": 100,
+              "height": 20,
+              "width": 20,
+            }
+          }
         />
-      </div>
-    </div>
-  </button>
-</div>
+      </View>
+    </View>
+  </RNGestureHandlerButton>
+</View>
 `;
 
 exports[`FollowingSwitch component should render correctly after call onPress with state "yes" as true 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz"
-  dir={null}
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flex": 1,
+      "flexDirection": "row",
+    }
+  }
 >
-  <div
-    className="css-view-g5y9jx r-marginRight-1b7u577"
-    dir={null}
+  <View
+    style={
+      Object {
+        "marginRight": 12,
+      }
+    }
   >
-    <div
-      className="css-text-146c3p1"
-      dir="auto"
+    <Text
       style={
         Object {
-          "color": "rgba(78,93,120,1.00)",
+          "color": "rgba(78, 93, 120, 1)",
           "fontFamily": "Roboto-Regular",
-          "fontSize": "16px",
-          "letterSpacing": "0.32px",
-          "lineHeight": "24px",
+          "fontSize": 16,
+          "letterSpacing": 0.32,
+          "lineHeight": 24,
         }
       }
     >
       No
-    </div>
-  </div>
-  <button
-    className="css-view-g5y9jx"
-    dir={null}
-    role="button"
+    </Text>
+  </View>
+  <RNGestureHandlerButton
+    collapsable={false}
+    onGestureEvent={[Function]}
+    onGestureHandlerEvent={[Function]}
+    onGestureHandlerStateChange={[Function]}
+    onHandlerStateChange={[Function]}
+    rippleColor={0}
     style={
-      Object {
-        "overflowX": "hidden",
-        "overflowY": "hidden",
-      }
+      Array [
+        Object {
+          "overflow": "hidden",
+        },
+        undefined,
+      ]
     }
-    type="button"
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
+    <View
+      accessible={true}
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-10jnvle r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1472mwg r-paddingRight-rierb r-width-1mhb1uw"
-        dir={null}
+      <View
         style={
           Object {
-            "backgroundColor": "rgba(231,236,239,1.00)",
-            "borderBottomColor": "rgba(231,236,239,1.00)",
-            "borderLeftColor": "rgba(231,236,239,1.00)",
-            "borderRightColor": "rgba(231,236,239,1.00)",
-            "borderTopColor": "rgba(231,236,239,1.00)",
-            "paddingLeft": "1px",
+            "alignItems": "center",
+            "backgroundColor": "rgba(231, 236, 239, 1)",
+            "borderColor": "rgba(231, 236, 239, 1)",
+            "borderRadius": 21,
+            "borderWidth": 1,
+            "flexDirection": "row",
+            "height": 24,
+            "paddingLeft": 1,
+            "paddingRight": 1,
+            "width": 42,
           }
         }
       >
-        <div
-          className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderRadius-18c69zk r-height-z80fyv r-width-19wmn03"
-          dir={null}
+        <View
+          style={
+            Object {
+              "backgroundColor": "white",
+              "borderRadius": 100,
+              "height": 20,
+              "width": 20,
+            }
+          }
         />
-      </div>
-    </div>
-  </button>
-</div>
+      </View>
+    </View>
+  </RNGestureHandlerButton>
+</View>
 `;

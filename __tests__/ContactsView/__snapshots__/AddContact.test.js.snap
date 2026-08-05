@@ -1,62 +1,66 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`AddContact component AddContact snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-f727ji"
-  dir={null}
+<View
+  accessible={true}
+  focusable={false}
+  isTVSelectable={true}
   onClick={[Function]}
-  onContextMenu={[Function]}
-  onKeyDown={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
   style={
     Object {
-      "transitionDuration": "0s",
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 56,
+      "opacity": 1,
+      "paddingLeft": 12,
     }
   }
-  tabIndex="0"
 >
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
-  >
-    <div
-      className="css-text-146c3p1"
-      dir="auto"
+  <View>
+    <Text
       style={
         Object {
-          "color": "rgba(0,127,255,1.00)",
+          "color": "#007FFF",
           "fontFamily": "alldone",
-          "fontSize": "24px",
+          "fontSize": 24,
           "opacity": 1,
         }
       }
     >
       
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+    </Text>
+  </View>
+  <View
     style={
       Object {
-        "marginLeft": "20px",
+        "marginLeft": 20,
       }
     }
   >
-    <div
-      className="css-text-146c3p1"
-      dir="auto"
+    <Text
       style={
-        Object {
-          "color": "rgba(138,148,166,1.00)",
-          "fontFamily": "Roboto-Regular",
-          "fontSize": "16px",
-          "letterSpacing": "0.32px",
-          "lineHeight": "24px",
-        }
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 16,
+            "letterSpacing": 0.32,
+            "lineHeight": 24,
+          },
+          Object {
+            "color": "#8A94A6",
+          },
+        ]
       }
     >
       Type email or name to add person
-    </div>
-  </div>
-</div>
+    </Text>
+  </View>
+</View>
 `;

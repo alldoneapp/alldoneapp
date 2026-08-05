@@ -1,38 +1,72 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`EditMember component EditMember snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-backgroundColor-14lw9ot r-borderColor-xld3ed r-borderRadius-z2wwpe r-borderStyle-1phboty r-borderWidth-rs99b7 r-boxShadow-qmdso3 r-flex-13awgt0 r-marginBottom-1ifxtd0 r-marginLeft-1nkf79l r-marginRight-xzortm"
-  dir={null}
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "#ffffff",
+        "borderColor": "#F1F3F4",
+        "borderRadius": 4,
+        "borderStyle": "solid",
+        "borderWidth": 1,
+        "elevation": 3,
+        "flex": 1,
+        "marginBottom": 16,
+        "marginLeft": -16,
+        "marginRight": -16,
+        "shadowColor": "rgba(0,0,0,0.08)",
+        "shadowOffset": Object {
+          "height": 4,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 8,
+      },
+      undefined,
+      undefined,
+    ]
+  }
 >
-  <div
-    className="css-view-g5y9jx r-flexDirection-18u37iz r-minHeight-10gryf7"
-    dir={null}
+  <View
+    style={
+      Array [
+        Object {
+          "flexDirection": "row",
+          "minHeight": 56,
+        },
+      ]
+    }
   >
-    <div
-      className="css-view-g5y9jx r-left-gycqh2 r-margin-crgep1 r-padding-t60dpp r-position-u8s1d r-top-1s7wq8y"
-      dir={null}
+    <View
+      style={
+        Array [
+          Object {
+            "left": 23,
+            "margin": 0,
+            "padding": 0,
+            "position": "absolute",
+            "top": 15,
+          },
+          undefined,
+        ]
+      }
     >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <div
-          className="css-text-146c3p1"
-          dir="auto"
+      <View>
+        <Text
           style={
             Object {
-              "color": "rgba(0,127,255,1.00)",
+              "color": "#007FFF",
               "fontFamily": "alldone",
-              "fontSize": "24px",
+              "fontSize": 24,
               "opacity": 1,
             }
           }
         >
           
-        </div>
-      </div>
-    </div>
+        </Text>
+      </View>
+    </View>
     <CustomTextInput3
       autoFocus={true}
       containerStyle={
@@ -61,82 +95,176 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
       placeholder="Type an email to send invitation"
       placeholderTextColor="#8A94A6"
     />
-  </div>
-  <div
-    className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderStyle-1phboty r-borderTopColor-1h5c48e r-borderTopWidth-5kkj8d r-flex-13awgt0 r-flexDirection-18u37iz r-paddingBlock-11f147o r-paddingInline-1ezpcd1"
-    dir={null}
+  </View>
+  <View
+    style={
+      Object {
+        "backgroundColor": "#FAFBFB",
+        "borderStyle": "solid",
+        "borderTopColor": "#E7ECEF",
+        "borderTopWidth": 1,
+        "flex": 1,
+        "flexDirection": "row",
+        "paddingHorizontal": 9,
+        "paddingVertical": 8,
+      }
+    }
   >
-    <div
-      className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox"
-      dir={null}
+    <View
+      style={
+        Array [
+          Object {
+            "flexDirection": "row",
+            "flexGrow": 1,
+          },
+        ]
+      }
     >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
+      <View
         style={
           Object {
-            "marginRight": "32px",
+            "marginRight": 32,
           }
         }
       />
-    </div>
-    <div
-      className="css-view-g5y9jx r-flexDirection-18u37iz r-flexGrow-16y2uox r-justifyContent-17s6mgv"
-      dir={null}
+    </View>
+    <View
+      style={
+        Array [
+          Object {
+            "flexDirection": "row",
+            "flexGrow": 1,
+          },
+          Object {
+            "justifyContent": "flex-end",
+          },
+        ]
+      }
     >
-      <div
-        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-backgroundColor-1uxh0fu r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
-        dir={null}
+      <View
+        accessible={false}
+        focusable={false}
+        isTVSelectable={true}
         onClick={[Function]}
-        onContextMenu={[Function]}
-        onKeyDown={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
         style={
           Object {
-            "marginRight": "4px",
-            "transitionDuration": "0s",
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#EAF0F5",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "marginRight": 4,
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
           }
         }
-        tabIndex="0"
       >
-        <div
-          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
-          dir="auto"
+        <Text
+          numberOfLines={1}
           style={
-            Object {
-              "marginLeft": "0px",
-            }
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#04142F",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
           }
         >
           Cancel
-        </div>
-      </div>
-      <div
-        aria-disabled={true}
-        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-backgroundColor-t6fudj r-paddingLeft-1qhn6m8 r-paddingRight-i023vh r-opacity-icoktb r-pointerEvents-12vffkv"
-        dir={null}
+        </Text>
+      </View>
+      <View
+        accessible={false}
+        focusable={true}
+        isTVSelectable={true}
         onClick={[Function]}
-        onContextMenu={[Function]}
-        onKeyDown={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
         style={
           Object {
-            "transitionDuration": "0s",
+            "alignItems": "center",
+            "alignSelf": "flex-start",
+            "backgroundColor": "#0D55CF",
+            "borderRadius": 4,
+            "flexDirection": "row",
+            "flexWrap": "nowrap",
+            "height": 40,
+            "justifyContent": "center",
+            "maxHeight": 40,
+            "minHeight": 40,
+            "opacity": 1,
+            "paddingLeft": 16,
+            "paddingRight": 16,
+            "paddingVertical": 8,
           }
         }
-        tabIndex="-1"
       >
-        <div
-          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
-          dir="auto"
+        <Text
+          numberOfLines={1}
           style={
-            Object {
-              "marginLeft": "0px",
-            }
+            Array [
+              Array [
+                Object {
+                  "alignSelf": "center",
+                  "color": "#FFFFFF",
+                  "flexWrap": "nowrap",
+                  "fontFamily": "Roboto-Medium",
+                  "fontSize": 14,
+                  "letterSpacing": 0.8,
+                  "lineHeight": 16,
+                  "margin": 0,
+                  "paddingHorizontal": 0,
+                  "paddingVertical": 0,
+                },
+                Object {
+                  "color": "#ffffff",
+                },
+                Object {},
+              ],
+              Object {
+                "marginLeft": 0,
+              },
+            ]
           }
         >
           Invite
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
 `;

@@ -55,14 +55,3 @@ jest.mock('react-native/Libraries/StyleSheet/StyleSheetValidation', () => ({
     validateStyleProp: () => {},
     addValidStylePropTypes: () => {},
 }))
-
-// React 18 defers passive effects (useEffect) to the scheduler. Legacy suites
-// that render with react-test-renderer and never unmount would have those
-// effects fire AFTER jest tears down jsdom, crashing the worker with
-// "The `document` global was defined when React was initialized, but is not
-// defined anymore" (and taking the whole run down with it). Flushing inside
-// act() after every test absorbs the deferred work while the DOM still exists.
-afterEach(async () => {
-    const { act } = require('react-test-renderer')
-    await act(async () => {})
-})
