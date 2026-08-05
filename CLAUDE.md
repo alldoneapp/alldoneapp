@@ -78,9 +78,14 @@ bundler problem.
 -   `@hello-pangea/dnd` — adds `index` to the drag `combine` payload (pointer path);
     `DragHelper.onDragEnd` needs the combine target's index to sort a task dropped onto
     another task. Carried over from the retired react-beautiful-dnd patch (esm + cjs dist).
--   `react-native-gesture-handler` — guards `GestureComponents.web.js` against
-    react-native-web ≥0.19 removing `DrawerLayoutAndroid` (unguarded `.positions` access
-    crashed module eval; the app never renders that component).
+-   `react-native-gesture-handler` — four-file compatibility patch for
+    react-native-web ≥0.19: `GestureComponents.web.js` guards the removed
+    `DrawerLayoutAndroid` (unguarded `.positions` crashed module eval);
+    `web/GestureHandler.js` resolves the DOM node from the ref (`findNodeHandle`
+    now throws) and reads event callbacks through the threaded wrapper instance
+    (refs are DOM nodes without `.props`); `RNGestureHandlerModule.web.js` +
+    `createHandler.js` thread that wrapper through `attachGestureHandler`
+    (extra argument, ignored on native).
 -   `react-dismissible`, `react-tiny-popover` — modal dismiss-behavior patches (see the
     popover notes below).
 -   `react-native` (`VirtualizedList`/`FlatList`) — native-era patches; inert on web
