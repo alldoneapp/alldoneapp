@@ -151,6 +151,35 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
+-   2026-08-05 — **Stage 0 ACCEPTED (second attempt): deploys flipped to the webpack
+    pipeline after a logged-in QA pass on staging live.** The re-flip gate was met:
+    the corrected artifact (scoped sloppy-CJS + require-cycle fix below) was
+    boot-verified locally, deployed to staging live, and passed the user's logged-in
+    QA on the exact task-view flow that broke production on the first attempt.
+    `build_web_production` / `build_web_staging` now run the web-bundler build on the
+    Node 22 tooling image (same env injection + GitHub mirror before_script as
+    before), the expo build jobs are deleted, and `build_web_webpack_check` remains
+    as the feature-branch build + preview feed. The expo toolchain (expo-cli, root
+    webpack.config.js, `npm run build-web`) is local-legacy only and gets removed
+    with the Stage 2 branch.
+
+-   2026-08-04/05 — **First flip REVERTED after a production incident; two root causes
+    fixed.** (1) The webpack pipeline produced strict ES modules while metro's preset
+    had compiled sloppy-mode CJS with var hoisting for years — implicit-global writes
+    (`versionUnsub`/`lastPushTime` in `utils/backends/firestore.js`) and a TDZ crash
+    (`utils/backends/openTasks.js`) became runtime ReferenceErrors on logged-in flows.
+    Fix: `@babel/plugin-transform-modules-commonjs` (strictMode:false, loose) +
+    block-scoping→var, scoped to APP SOURCE ONLY. (2) Applying that transform to
+    node_modules exposed a second landmine: the replacement_node_modules RNW
+    TouchableOpacity patch imported app code from inside react-native-web, creating a
+    node_modules→app→gesture-handler→react-native require cycle that only harmony-ESM
+    builds tolerated (webpack hands out partially evaluated exports:
+    strictModuleExceptionHandling is off). Fix: patch deleted; dismissible-touch
+    capture is a document-level capture-phase listener in AppContent (superset
+    semantics). Lessons encoded: logged-in staging QA is the flip gate; artifacts get
+    a local debug-harness boot check before staging deploys; going strict-ESM later
+    requires an ESLint `no-undef` + `no-use-before-define` sweep first.
+
 -   2026-08-04 — **Stage 0 built and locally verified** (`web-bundler/`): standalone
     webpack 5 pipeline on Node 22 building the unchanged app source (React 16, RNW 0.11)
     against the root Node-14-installed `node_modules`.
