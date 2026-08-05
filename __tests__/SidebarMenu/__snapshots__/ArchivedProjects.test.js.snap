@@ -1,75 +1,70 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ArchivedProjects component ArchivedProjects snapshot test should render correctly 1`] = `
-<View
+<div
+  className="css-view-g5y9jx"
+  dir={null}
   style={
     Object {
-      "marginTop": 32,
+      "marginTop": "32px",
     }
   }
 >
-  <View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
+  >
+    <div
+      className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-height-1mwlp6a r-justifyContent-1777fci r-paddingLeft-1937ghh"
+      dir={null}
       onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
+      onContextMenu={[Function]}
+      onKeyDown={[Function]}
+      onMouseEnter={[Function]}
+      onMouseLeave={[Function]}
       style={
         Object {
-          "height": 56,
-          "justifyContent": "center",
-          "opacity": 1,
-          "paddingLeft": 17,
+          "transitionDuration": "0s",
         }
       }
+      tabIndex="0"
     >
-      <View
-        style={
-          Object {
-            "alignItems": "center",
-            "flexDirection": "row",
-            "justifyContent": "space-between",
-          }
-        }
+      <div
+        className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1wtj0ep"
+        dir={null}
       >
-        <View
-          style={
-            Object {
-              "alignItems": "center",
-              "flexDirection": "row",
-            }
-          }
+        <div
+          className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz"
+          dir={null}
         >
-          <View
+          <div
+            className="css-view-g5y9jx"
+            dir={null}
             style={
               Object {
-                "marginRight": 10,
+                "marginRight": "10px",
                 "opacity": 0.64,
               }
             }
           >
-            <Text
+            <div
+              className="css-text-146c3p1"
+              dir="auto"
               style={
                 Object {
-                  "color": "#B7BDC8",
+                  "color": "rgba(183,189,200,1.00)",
                   "fontFamily": "alldone",
-                  "fontSize": 22,
+                  "fontSize": "22px",
                   "opacity": 1,
                 }
               }
             >
               
-            </Text>
-          </View>
-        </View>
-      </View>
-    </View>
-  </View>
-</View>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `;

@@ -120,7 +120,7 @@ module.exports = (env, argv) => {
     return {
         mode,
         context: rootDir,
-        entry: [require.resolve('setimmediate'), path.join(rootDir, 'node_modules', 'expo', 'AppEntry.js')],
+        entry: [path.join(__dirname, 'entry.js')],
         output: {
             path: outputDir,
             publicPath: '/',

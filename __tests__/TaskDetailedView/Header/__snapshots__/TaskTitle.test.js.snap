@@ -1,61 +1,45 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`TaskTitle component TaskTitle snapshot test should render correctly 1`] = `
-<View
+<div
+  className="css-view-g5y9jx r-flex-13awgt0 r-minHeight-adacv r-overflow-1udh08x"
+  dir={null}
   style={
-    Array [
-      Object {
-        "flex": 1,
-        "maxHeight": 800,
-        "minHeight": 64,
-        "overflow": "hidden",
-      },
-      Object {
-        "maxHeight": 70,
-      },
-    ]
+    Object {
+      "maxHeight": "70px",
+    }
   }
 >
-  <View
+  <div
+    className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-mabqd8"
+    dir={null}
+  />
+  <div
+    className="css-view-g5y9jx r-alignContent-e8mqni r-alignItems-1habvwh r-backgroundColor-14lw9ot r-flexDirection-18u37iz r-justifyContent-1h0z5md r-minHeight-15ysp7h r-overflow-1udh08x"
+    dir={null}
     style={
       Object {
-        "backgroundColor": "white",
-        "height": 32,
+        "top": "0px",
       }
     }
-  />
-  <View
-    style={
-      Array [
-        Object {
-          "alignContent": "flex-start",
-          "alignItems": "flex-start",
-          "backgroundColor": "white",
-          "flexDirection": "row",
-          "justifyContent": "flex-start",
-          "minHeight": 32,
-          "overflow": "hidden",
-        },
-        Object {
-          "top": 0,
-        },
-      ]
-    }
   >
-    <View
-      onLayout={[Function]}
-      pointerEvents="auto"
+    <div
+      className="css-view-g5y9jx r-pointerEvents-105ug2t"
+      dir={null}
       style={
         Object {
           "flex": 1,
-          "marginRight": 16,
+          "marginRight": "16px",
         }
       }
     >
-      <Text>
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
+      >
         dsa
-      </Text>
-    </View>
-  </View>
-</View>
+      </div>
+    </div>
+  </div>
+</div>
 `;

@@ -1,10 +1,12 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`SendTo component SendTo snapshot test should render correctly 1`] = `
-<View
+<div
+  className="css-view-g5y9jx"
+  dir={null}
   style={
     Object {
-      "marginRight": 4,
+      "marginRight": "4px",
     }
   }
 />

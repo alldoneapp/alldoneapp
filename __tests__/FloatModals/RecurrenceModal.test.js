@@ -9,6 +9,14 @@ import renderer from 'react-test-renderer'
 import RecurrenceModal from '../../components/UIComponents/FloatModals/RecurrenceModal'
 import store from '../../redux/store'
 
+// Selecting a recurrence really persists now that RNW events execute - keep the
+// firestore write (which needs the uninitialized `db`) out of the test.
+jest.mock('../../utils/backends/Tasks/tasksFirestore', () =>
+    Object.assign(Object.create(jest.requireActual('../../utils/backends/Tasks/tasksFirestore')), {
+        setTaskRecurrence: jest.fn(),
+    })
+)
+
 const dummyProjectId = '-LcRVRo6mhbC0oXCcZ2F'
 const dummyTaskId = '-LcRVT6MEWlqGQRkE2xw'
 const task = { id: dummyTaskId, name: 'My task', recurrence: { type: 'never' } }

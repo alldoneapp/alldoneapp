@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import TaskInputArea from './TaskInputArea'
@@ -9,7 +9,7 @@ import { taskPresentationLayout } from './TaskPresentation/TaskPresentationLayou
 jest.mock('./TaskInput', () => 'TaskInput')
 
 const renderInlineInput = newTaskInFocus =>
-    renderer.create(<TaskInputArea adding={true} newTaskInFocus={newTaskInFocus} />).root.findByType('View')
+    renderer.create(<TaskInputArea adding={true} newTaskInFocus={newTaskInFocus} />).root.findByType(View)
 
 describe('TaskInputArea inline task styling', () => {
     test('matches the normal task row while initially deselected', () => {
@@ -34,7 +34,7 @@ describe('TaskInputArea inline task styling', () => {
 
     test('does not apply inline task styling to an existing task editor', () => {
         const style = StyleSheet.flatten(
-            renderer.create(<TaskInputArea adding={false} />).root.findByType('View').props.style
+            renderer.create(<TaskInputArea adding={false} />).root.findByType(View).props.style
         )
 
         expect(style.marginHorizontal).toBeUndefined()

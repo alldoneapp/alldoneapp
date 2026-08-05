@@ -1,6 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, Text } from 'react-native'
 
 import CommentPopupWorkflowControls, {
     getCommentPopupSelectableSteps,
@@ -112,7 +112,7 @@ describe('CommentPopupWorkflowControls', () => {
         const selector = tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })
 
         expect(selector.props.accessibilityLabel).toBe(`Select workflow step: ${longStepName}`)
-        expect(selector.findByType('Text').props.numberOfLines).toBe(2)
+        expect(selector.findByType(Text).props.numberOfLines).toBe(2)
         expect(StyleSheet.flatten(selector.props.style)).toMatchObject({
             height: 'auto',
             minHeight: 44,
@@ -123,7 +123,7 @@ describe('CommentPopupWorkflowControls', () => {
         act(() => selector.props.onPress())
 
         const currentStep = tree.root.findByProps({ testID: 'comment-popup-current-workflow-step' })
-        expect(currentStep.findAllByType('Text')[0].props.numberOfLines).toBe(3)
+        expect(currentStep.findAllByType(Text)[0].props.numberOfLines).toBe(3)
         expect(currentStep.props.accessibilityLabel).toBe(`Select workflow step: ${longStepName}`)
     })
 
@@ -156,7 +156,7 @@ describe('CommentPopupWorkflowControls', () => {
             colors.Text02,
             colors.Text02,
         ])
-        expect(hoveredSelector.findByType('Text').props.style).toEqual(
+        expect(hoveredSelector.findByType(Text).props.style).toEqual(
             expect.arrayContaining([expect.objectContaining({ color: colors.Text02 })])
         )
     })
@@ -170,7 +170,7 @@ describe('CommentPopupWorkflowControls', () => {
 
         expect(StyleSheet.flatten(container.props.style).backgroundColor).toBe(colors.Secondary400)
         expect(StyleSheet.flatten(selector.props.style).backgroundColor).toBe(colors.Secondary250)
-        expect(selector.findByType('Text').props.style).toEqual(
+        expect(selector.findByType(Text).props.style).toEqual(
             expect.arrayContaining([expect.objectContaining({ color: 'white' })])
         )
     })
@@ -191,14 +191,14 @@ describe('CommentPopupWorkflowControls', () => {
         const selector = tree.root.findByProps({ testID: 'comment-popup-workflow-selector' })
 
         expect(selector.props.accessibilityLabel).toBe('Select workflow step: First review')
-        expect(selector.findByType('Text').props.children).toBe('Current workflow step: First review')
+        expect(selector.findByType(Text).props.children).toBe('Current workflow step: First review')
 
         await act(async () => Promise.resolve())
         act(() => selector.props.onPress())
 
         const currentStep = tree.root.findByProps({ testID: 'comment-popup-current-workflow-step' })
         expect(currentStep.props.accessibilityState).toEqual({ selected: true, disabled: true })
-        expect(currentStep.findAllByType('Text').map(text => text.props.children)).toEqual(['First review', 'Current'])
+        expect(currentStep.findAllByType(Text).map(text => text.props.children)).toEqual(['First review', 'Current'])
     })
 
     it('moves directly to a selected non-adjacent workflow step', async () => {

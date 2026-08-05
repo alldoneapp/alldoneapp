@@ -3,153 +3,95 @@
 exports[`Task Sub Tasks tag component Task Estimation snapshot test should render correctly 1`] = `null`;
 
 exports[`Task Sub Tasks tag component Task Estimation snapshot test should render correctly for amount 1 1`] = `
-<View
-  accessible={true}
-  focusable={false}
-  isTVSelectable={true}
+<div
+  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
+  dir={null}
   onClick={[Function]}
-  onResponderGrant={[Function]}
-  onResponderMove={[Function]}
-  onResponderRelease={[Function]}
-  onResponderTerminate={[Function]}
-  onResponderTerminationRequest={[Function]}
-  onStartShouldSetResponder={[Function]}
+  onContextMenu={[Function]}
+  onKeyDown={[Function]}
   style={
     Object {
-      "opacity": 1,
+      "transitionDuration": "0s",
     }
   }
+  tabIndex="0"
 >
-  <View
-    style={
-      Array [
-        Object {
-          "alignItems": "center",
-          "backgroundColor": "#E7ECEF",
-          "borderRadius": 12,
-          "flexDirection": "row",
-          "height": 24,
-          "justifyContent": "center",
-        },
-        undefined,
-      ]
-    }
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1v0ekwd r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
+    dir={null}
   >
-    <View
-      style={
-        Object {
-          "marginHorizontal": 4,
-        }
-      }
+    <div
+      className="css-view-g5y9jx r-marginInline-1537yvj"
+      dir={null}
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#8A94A6",
+            "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 16,
+            "fontSize": "16px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-    <Text
-      style={
-        Array [
-          Object {
-            "color": "#8A94A6",
-            "fontFamily": "Roboto-Medium",
-            "fontSize": 14,
-            "letterSpacing": 0.16,
-            "lineHeight": 22,
-            "marginLeft": 2,
-            "marginRight": 10,
-            "marginVertical": 1,
-          },
-          undefined,
-        ]
-      }
+      </div>
+    </div>
+    <div
+      className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-marginBlock-s49dbf r-marginLeft-9cviqr r-marginRight-zso239"
+      dir="auto"
     >
       1 Subtask
-    </Text>
-  </View>
-</View>
+    </div>
+  </div>
+</div>
 `;
 
 exports[`Task Sub Tasks tag component Task Estimation snapshot test should render correctly for amount 2 1`] = `
-<View
-  accessible={true}
-  focusable={false}
-  isTVSelectable={true}
+<div
+  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
+  dir={null}
   onClick={[Function]}
-  onResponderGrant={[Function]}
-  onResponderMove={[Function]}
-  onResponderRelease={[Function]}
-  onResponderTerminate={[Function]}
-  onResponderTerminationRequest={[Function]}
-  onStartShouldSetResponder={[Function]}
+  onContextMenu={[Function]}
+  onKeyDown={[Function]}
   style={
     Object {
-      "opacity": 1,
+      "transitionDuration": "0s",
     }
   }
+  tabIndex="0"
 >
-  <View
-    style={
-      Array [
-        Object {
-          "alignItems": "center",
-          "backgroundColor": "#E7ECEF",
-          "borderRadius": 12,
-          "flexDirection": "row",
-          "height": 24,
-          "justifyContent": "center",
-        },
-        undefined,
-      ]
-    }
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1v0ekwd r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
+    dir={null}
   >
-    <View
-      style={
-        Object {
-          "marginHorizontal": 4,
-        }
-      }
+    <div
+      className="css-view-g5y9jx r-marginInline-1537yvj"
+      dir={null}
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#8A94A6",
+            "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 16,
+            "fontSize": "16px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-    <Text
-      style={
-        Array [
-          Object {
-            "color": "#8A94A6",
-            "fontFamily": "Roboto-Medium",
-            "fontSize": 14,
-            "letterSpacing": 0.16,
-            "lineHeight": 22,
-            "marginLeft": 2,
-            "marginRight": 10,
-            "marginVertical": 1,
-          },
-          undefined,
-        ]
-      }
+      </div>
+    </div>
+    <div
+      className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-marginBlock-s49dbf r-marginLeft-9cviqr r-marginRight-zso239"
+      dir="auto"
     >
       2 Subtasks
-    </Text>
-  </View>
-</View>
+    </div>
+  </div>
+</div>
 `;

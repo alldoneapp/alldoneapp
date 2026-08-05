@@ -21,15 +21,20 @@ jest.mock('../../../../i18n/TranslationService', () => ({
     translate: text => text,
 }))
 
-const createStore = projectAssistants => ({
-    getState: () => ({
+// react-redux 8 reads through useSyncExternalStore, which requires getState to
+// return a stable reference - a fresh object per call loops the renderer.
+const createStore = projectAssistants => {
+    const state = {
         globalAssistants: [],
         projectAssistants: { project: projectAssistants },
         loggedUser: { defaultProjectId: 'default-project' },
-    }),
-    subscribe: () => () => {},
-    dispatch: jest.fn(),
-})
+    }
+    return {
+        getState: () => state,
+        subscribe: () => () => {},
+        dispatch: jest.fn(),
+    }
+}
 
 const renderArea = projectAssistants =>
     renderer.create(

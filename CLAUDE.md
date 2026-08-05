@@ -39,13 +39,9 @@ replacement for `expo build:web` and runs on **Node 22** (own `.nvmrc` + lockfil
 the Cloudflare worker's Node 20 carve-out). It builds the unchanged app source against the
 root `node_modules` (still installed under Node 14 / npm 6) and reproduces the exact
 `web-build/` output contract. Env injection stays sed-based outside the bundler; the
-`replacement_node_modules` swap still applies before building. **Since 2026-08-04 this IS
-the deployed pipeline**: `build_web_production` (master) and `build_web_staging` (develop)
-build through web-bundler on the Node 22 tooling image; `build_web_webpack_check` gives
-feature branches compile signal + a manual preview-channel deploy
-(`deploy:web-webpack-preview`, channel `webpack-<ref>` on the staging project). The expo
-build jobs are deleted; `npm run build-web` (expo) remains only as a local legacy script.
-See `web-bundler/README.md`. **Strict-mode gotcha**: the
+`replacement_node_modules` swap still applies before building. CI shadow-builds it via
+`build_web_webpack_check` (allow_failure) — the expo pipeline remains the deployed artifact
+until staging parity is confirmed. See `web-bundler/README.md`. **Strict-mode gotcha**: the
 RN-era sloppy idiom `export default Name = (...)` (assignment to an undeclared identifier)
 crashes under real ES modules with a `ReferenceError` that aborts the whole main chunk with
 zero console errors — write `const Name = (...); export default Name` instead. Four
@@ -75,6 +71,26 @@ bundler problem.
 **DetailedView Pattern**: Entity screens follow `[Entity]DetailedView` naming (TaskDetailedView, GoalDetailedView, ContactDetailedView).
 
 **Real-time Collaboration**: Quill editor + Yjs for notes. Custom Quill modifications require replacing `node_modules/quill/dist/quill.js` with `replacement_node_modules/quill/dist/quill.js` after npm install.
+
+**`replacement_node_modules/` full inventory** (the blanket `cp -R -f replacement_node_modules/* node_modules/` applies ALL of these after every install — when upgrading any of these packages, the patch must be re-derived or retired first, never blindly re-copied over the new version):
+
+-   `quill`, `y-quill`, `y-webrtc` — the collab-editor patches (see the Yjs gotchas above).
+-   `@hello-pangea/dnd` — adds `index` to the drag `combine` payload (pointer path);
+    `DragHelper.onDragEnd` needs the combine target's index to sort a task dropped onto
+    another task. Carried over from the retired react-beautiful-dnd patch (esm + cjs dist).
+-   `react-native-gesture-handler` — guards `GestureComponents.web.js` against
+    react-native-web ≥0.19 removing `DrawerLayoutAndroid` (unguarded `.positions` access
+    crashed module eval; the app never renders that component).
+-   `react-dismissible`, `react-tiny-popover` — modal dismiss-behavior patches (see the
+    popover notes below).
+-   `react-native` (`VirtualizedList`/`FlatList`) — native-era patches; inert on web
+    (the web bundle aliases react-native → react-native-web).
+-   `expo-font` — obsolete since migration Stage 1 (app uses `utils/WebShims/Fonts.js`);
+    inert.
+-   Retired in migration Stage 2: `react-native-web` (TouchableOpacity dismissible-touch
+    hook → now a document-level capture listener in `AppNavigator.js`; ScrollViewBase
+    `onScrollWhenDisabled` → had no users; TextInput `outline: none` → covered by the
+    global `*:focus` rule) and `react-beautiful-dnd` (→ the @hello-pangea/dnd patch above).
 
 **Yjs Text Formatting**: When inserting text with `ytext.insert()`, passing `undefined` for attributes causes attribute inheritance from adjacent text. Always explicitly set formatting attributes to `null` to clear them (e.g., `{ bold: segment.bold ? true : null }`). This applies to markdown-to-Yjs conversion in `functions/Assistant/markdownToYjs.js`.
 

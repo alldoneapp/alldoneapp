@@ -38,7 +38,10 @@ describe('AllProjectsEmptyInbox', () => {
 
         const openTasksEmptyInbox = renderer.create(<AllProjectsEmptyInbox showEmptyInboxOverview />)
         const overview = openTasksEmptyInbox.root.findByType('EmptyInboxOverview')
-        const children = openTasksEmptyInbox.root.findByType('View').children
+        // react-native-web renders the container View as a host div, so order
+        // the mocked children through the overview's rendered parent instead
+        // of a 'View' node type lookup.
+        const children = overview.parent.children
 
         expect(overview.props.user).toBe(loggedUser)
         expect(overview.props.celebrateNewDay).toBe(true)

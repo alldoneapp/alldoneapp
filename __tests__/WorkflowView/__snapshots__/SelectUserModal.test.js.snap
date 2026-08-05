@@ -1,183 +1,137 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`SelectUserModal component SelectUserModal snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "elevation": 3,
-      "flexDirection": "row",
-      "shadowColor": "rgba(78, 93, 120, 0.56)",
-      "shadowOffset": Object {
-        "height": 4,
-        "width": 0,
-      },
-      "shadowOpacity": 1,
-      "shadowRadius": 16,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-boxShadow-v80qx2 r-flexDirection-18u37iz"
+  dir={null}
 >
-  <View
+  <div
+    className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-eqz5dr"
+    dir={null}
     style={
-      Array [
-        Object {
-          "backgroundColor": "#091540",
-          "borderRadius": 4,
-          "flexDirection": "column",
-        },
-        Object {
-          "maxWidth": 432,
-          "minWidth": 432,
-          "width": 432,
-        },
-        Object {
-          "maxHeight": 736,
-        },
-      ]
+      Object {
+        "maxHeight": "736px",
+        "maxWidth": "432px",
+        "minWidth": "432px",
+        "width": "432px",
+      }
     }
   >
-    <View
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
-        Array [
-          Object {
-            "flex": 1,
-          },
-          undefined,
-          undefined,
-        ]
+        Object {
+          "flex": 1,
+        }
       }
     >
-      <RCTScrollView
-        onContentSizeChange={[Function]}
-        onLayout={[Function]}
+      <div
+        className="css-view-g5y9jx r-WebkitOverflowScrolling-150rngu r-flexDirection-eqz5dr r-flexGrow-16y2uox r-flexShrink-1wbh5a2 r-overflowX-11yh6sk r-overflowY-1rnoaur r-transform-agouwx r-scrollbarWidth-2eszeu"
+        dir={null}
         onScroll={[Function]}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
+        onTouchEnd={[Function]}
+        onTouchMove={[Function]}
+        onTouchStart={[Function]}
+        onWheel={[Function]}
       >
-        <View>
-          <View
-            style={
-              Object {
-                "flexDirection": "row",
-                "paddingLeft": 16,
-                "paddingRight": 8,
-                "paddingTop": 8,
-              }
-            }
+        <div
+          className="css-view-g5y9jx"
+          dir={null}
+        >
+          <div
+            className="css-view-g5y9jx r-flexDirection-18u37iz r-paddingLeft-1qhn6m8 r-paddingRight-1pyaxff r-paddingTop-tskmnb"
+            dir={null}
           >
-            <View
-              style={
-                Object {
-                  "flexDirection": "column",
-                  "marginTop": 8,
-                }
-              }
+            <div
+              className="css-view-g5y9jx r-flexDirection-eqz5dr r-marginTop-knv0ih"
+              dir={null}
             >
-              <Text
+              <div
+                className="css-text-146c3p1"
+                dir="auto"
                 style={
-                  Array [
-                    Object {
-                      "color": "#04142F",
-                      "fontFamily": "Roboto-Medium",
-                      "fontSize": 18,
-                      "lineHeight": 26,
-                    },
-                    Object {
-                      "color": "white",
-                    },
-                  ]
+                  Object {
+                    "color": "rgba(255,255,255,1.00)",
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": "18px",
+                    "lineHeight": "26px",
+                  }
                 }
               >
                 Choose a user
-              </Text>
-              <Text
+              </div>
+              <div
+                className="css-text-146c3p1"
+                dir="auto"
                 style={
-                  Array [
-                    Object {
-                      "color": "#04142F",
-                      "fontFamily": "Roboto-Regular",
-                      "fontSize": 14,
-                      "letterSpacing": 0.32,
-                      "lineHeight": 22,
-                    },
-                    Object {
-                      "color": "#8A94A6",
-                    },
-                  ]
+                  Object {
+                    "color": "rgba(138,148,166,1.00)",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": "14px",
+                    "letterSpacing": "0.32px",
+                    "lineHeight": "22px",
+                  }
                 }
               >
                 Select who will review the step
-              </Text>
-            </View>
-            <View
-              style={
-                Object {
-                  "flexDirection": "row",
-                  "height": 40,
-                  "justifyContent": "flex-end",
-                  "marginLeft": "auto",
-                  "width": 40,
-                }
-              }
+              </div>
+            </div>
+            <div
+              className="css-view-g5y9jx r-flexDirection-18u37iz r-height-eu3ka r-justifyContent-17s6mgv r-marginLeft-1jj8364 r-width-1aockid"
+              dir={null}
             >
-              <RNGestureHandlerButton
-                collapsable={false}
-                onGestureEvent={[Function]}
-                onGestureHandlerEvent={[Function]}
-                onGestureHandlerStateChange={[Function]}
-                onHandlerStateChange={[Function]}
-                rippleColor={0}
+              <button
+                className="css-view-g5y9jx"
+                dir={null}
+                role="button"
                 style={
-                  Array [
-                    Object {
-                      "overflow": "hidden",
-                    },
-                    undefined,
-                  ]
+                  Object {
+                    "overflowX": "hidden",
+                    "overflowY": "hidden",
+                  }
                 }
+                type="button"
               >
-                <View
-                  accessible={true}
+                <div
+                  className="css-view-g5y9jx r-alignItems-1awozwy r-height-1472mwg r-justifyContent-1777fci r-width-lrsllp"
+                  dir={null}
                   style={
                     Object {
-                      "alignItems": "center",
-                      "height": 24,
-                      "justifyContent": "center",
                       "opacity": 1,
-                      "width": 24,
                     }
                   }
                 >
-                  <View>
-                    <Text
+                  <div
+                    className="css-view-g5y9jx"
+                    dir={null}
+                  >
+                    <div
+                      className="css-text-146c3p1"
+                      dir="auto"
                       style={
                         Object {
-                          "color": "#8A94A6",
+                          "color": "rgba(138,148,166,1.00)",
                           "fontFamily": "alldone",
-                          "fontSize": 24,
+                          "fontSize": "24px",
                           "opacity": 1,
                         }
                       }
                     >
                       
-                    </Text>
-                  </View>
-                </View>
-              </RNGestureHandlerButton>
-            </View>
-          </View>
-          <View
-            style={
-              Object {
-                "flexDirection": "column",
-                "marginTop": 20,
-                "paddingBottom": 8,
-                "paddingHorizontal": 8,
-              }
-            }
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+          <div
+            className="css-view-g5y9jx r-flexDirection-eqz5dr r-marginTop-1x0uki6 r-paddingBottom-xd6kpl r-paddingInline-is05cd"
+            dir={null}
           />
-        </View>
-      </RCTScrollView>
-    </View>
-  </View>
-</View>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `;

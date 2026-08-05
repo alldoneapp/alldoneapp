@@ -2,13 +2,14 @@ import React, { useRef, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Icon from '../components/Icon'
 import { colors } from './styles/global'
+import { setDomAttributes } from '../utils/setDomAttributes'
 
 export default function CheckBox({ checked, isSubtask, dragMode, checkOnDrag, externalContainerStyle, checkBoxId }) {
     const checkBoxRef = useRef(null)
 
     useEffect(() => {
         if (checkBoxId) {
-            checkBoxRef.current.setNativeProps({
+            setDomAttributes(checkBoxRef.current, {
                 'check-box-id': checkBoxId,
             })
         }

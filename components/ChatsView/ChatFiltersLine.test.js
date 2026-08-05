@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
@@ -52,9 +53,11 @@ describe('ChatFiltersLine', () => {
             setUnreadOnly,
         })
 
-        expect(
-            component.root.findByProps({ testID: 'chat-filter-unread' }).findAllByType('Text')[1].props.children
-        ).toBe(2)
+        // react-native-web renders host DOM tags, so 'Text' no longer matches
+        // a node type - find the Text component itself instead.
+        expect(component.root.findByProps({ testID: 'chat-filter-unread' }).findAllByType(Text)[1].props.children).toBe(
+            2
+        )
         act(() => component.root.findByProps({ testID: 'chat-filter-unread' }).props.onPress())
         expect(setUnreadOnly).toHaveBeenCalledWith(true)
         act(() => component.root.findByProps({ testID: 'chat-filter-all' }).props.onPress())

@@ -12,24 +12,28 @@ import renderer from 'react-test-renderer'
 
 jest.mock('firebase', () => ({ firestore: {} }))
 
-jest.mock('react-redux', () => ({
-    ...jest.requireActual('react-redux'),
-    useSelector: jest.fn().mockImplementation(fnc => {
-        return fnc({
-            loggedUser: {
-                id: '0',
-                uid: '0',
-                projectIds: [],
-                archivedProjectIds: [],
-                templateProjectIds: [],
-                guideProjectIds: [],
-            },
-            screenDimensions: { height: 1024 },
-            // The picker filters the projects it can move the item to.
-            loggedUserProjects: [],
-        })
-    }),
-}))
+jest.mock('react-redux', () => {
+    // The state has to be built once: the modal's project-filter effect depends
+    // on the selected references, and a fresh object per selector call re-runs
+    // it (and its setStates) on every render until the runner OOMs.
+    const mockState = {
+        loggedUser: {
+            id: '0',
+            uid: '0',
+            projectIds: [],
+            archivedProjectIds: [],
+            templateProjectIds: [],
+            guideProjectIds: [],
+        },
+        screenDimensions: { height: 1024 },
+        // The picker filters the projects it can move the item to.
+        loggedUserProjects: [],
+    }
+    return {
+        ...jest.requireActual('react-redux'),
+        useSelector: jest.fn().mockImplementation(fnc => fnc(mockState)),
+    }
+})
 
 describe('SelectProjectModal component', () => {
     // The modal takes the item being moved - a { type, data } pair - rather

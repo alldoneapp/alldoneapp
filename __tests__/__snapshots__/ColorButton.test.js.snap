@@ -1,129 +1,85 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ColorButton component ColorButton empty snapshot test should render correctly 1`] = `
-<View
-  accessible={false}
-  focusable={true}
-  isTVSelectable={true}
+<div
+  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-eu3ka r-justifyContent-1777fci r-paddingLeft-f727ji r-paddingRight-i023vh"
+  dir={null}
   onClick={[Function]}
-  onResponderGrant={[Function]}
-  onResponderMove={[Function]}
-  onResponderRelease={[Function]}
-  onResponderTerminate={[Function]}
-  onResponderTerminationRequest={[Function]}
-  onStartShouldSetResponder={[Function]}
+  onContextMenu={[Function]}
+  onKeyDown={[Function]}
   style={
     Object {
-      "alignItems": "center",
-      "backgroundColor": "#FAFBFB",
-      "borderColor": "#C6CDD2",
-      "borderRadius": 4,
-      "borderWidth": 1,
-      "flexDirection": "row",
-      "height": 40,
-      "justifyContent": "center",
-      "opacity": 1,
-      "paddingLeft": 12,
-      "paddingRight": 16,
+      "backgroundColor": "rgba(250,251,251,1.00)",
+      "borderBottomColor": "rgba(198,205,210,1.00)",
+      "borderLeftColor": "rgba(198,205,210,1.00)",
+      "borderRightColor": "rgba(198,205,210,1.00)",
+      "borderTopColor": "rgba(198,205,210,1.00)",
+      "transitionDuration": "0s",
     }
   }
+  tabIndex="0"
 >
-  <View
+  <div
+    className="css-view-g5y9jx r-borderRadius-18c69zk r-height-10ptun7 r-width-1janqcz"
+    dir={null}
     style={
-      Array [
-        Object {
-          "borderRadius": 100,
-          "height": 16,
-          "width": 16,
-        },
-        Object {
-          "backgroundColor": "#47DEFF",
-        },
-      ]
+      Object {
+        "backgroundColor": "rgba(71,222,255,1.00)",
+      }
     }
   />
-  <Text
+  <div
+    className="css-text-146c3p1 r-alignItems-1awozwy r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1f529hi r-marginLeft-19u6a5r"
+    dir="auto"
     style={
-      Array [
-        Object {
-          "alignItems": "center",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": 14,
-          "letterSpacing": 0.8,
-          "lineHeight": 14,
-          "marginLeft": 12,
-        },
-        Object {
-          "color": "#8A94A6",
-        },
-      ]
+      Object {
+        "color": "rgba(138,148,166,1.00)",
+      }
     }
   >
     Color
-  </Text>
-</View>
+  </div>
+</div>
 `;
 
 exports[`ColorButton component ColorButton empty snapshot test should render correctly when platform is web 1`] = `
-<View
-  accessible={false}
-  focusable={true}
-  isTVSelectable={true}
+<div
+  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-eu3ka r-justifyContent-1777fci r-paddingLeft-f727ji r-paddingRight-i023vh"
+  dir={null}
   onClick={[Function]}
-  onResponderGrant={[Function]}
-  onResponderMove={[Function]}
-  onResponderRelease={[Function]}
-  onResponderTerminate={[Function]}
-  onResponderTerminationRequest={[Function]}
-  onStartShouldSetResponder={[Function]}
+  onContextMenu={[Function]}
+  onKeyDown={[Function]}
   style={
     Object {
-      "alignItems": "center",
-      "backgroundColor": "#FAFBFB",
-      "borderColor": "#C6CDD2",
-      "borderRadius": 4,
-      "borderWidth": 1,
-      "flexDirection": "row",
-      "height": 40,
-      "justifyContent": "center",
-      "opacity": 1,
-      "paddingLeft": 12,
-      "paddingRight": 16,
+      "backgroundColor": "rgba(250,251,251,1.00)",
+      "borderBottomColor": "rgba(198,205,210,1.00)",
+      "borderLeftColor": "rgba(198,205,210,1.00)",
+      "borderRightColor": "rgba(198,205,210,1.00)",
+      "borderTopColor": "rgba(198,205,210,1.00)",
+      "transitionDuration": "0s",
     }
   }
+  tabIndex="0"
 >
-  <View
+  <div
+    className="css-view-g5y9jx r-borderRadius-18c69zk r-height-10ptun7 r-width-1janqcz"
+    dir={null}
     style={
-      Array [
-        Object {
-          "borderRadius": 100,
-          "height": 16,
-          "width": 16,
-        },
-        Object {
-          "backgroundColor": "#47DEFF",
-        },
-      ]
+      Object {
+        "backgroundColor": "rgba(71,222,255,1.00)",
+      }
     }
   />
-  <Text
+  <div
+    className="css-text-146c3p1 r-alignItems-1awozwy r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1f529hi r-marginLeft-19u6a5r"
+    dir="auto"
     style={
-      Array [
-        Object {
-          "alignItems": "center",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": 14,
-          "letterSpacing": 0.8,
-          "lineHeight": 14,
-          "marginLeft": 12,
-        },
-        Object {
-          "color": "#8A94A6",
-        },
-      ]
+      Object {
+        "color": "rgba(138,148,166,1.00)",
+      }
     }
   >
     Color
-  </Text>
-</View>
+  </div>
+</div>
 `;

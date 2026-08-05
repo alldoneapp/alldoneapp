@@ -8,7 +8,6 @@ import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
 import Backend from './utils/BackendBridge'
 import NavigationService from './utils/NavigationService'
 import GlobalModalsContainerApp from './components/UIComponents/GlobalModalsContainerApp'
-import DismissibleModal from './components/UIComponents/DismissibleModal'
 import { deleteCacheAndRefresh } from './utils/Observers'
 import SharedHelper from './utils/SharedHelper'
 import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
@@ -27,30 +26,6 @@ import UndoActionBar from './components/Undo/UndoActionBar'
 
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
-
-    // Dismissible-touch capture for every press on the page. This replaces the
-    // replacement_node_modules react-native-web TouchableOpacity patch, whose
-    // import of DismissibleModal from inside react-native-web created a
-    // node_modules -> app -> gesture-handler -> react-native require cycle that
-    // only survived when every module compiled as harmony ESM (it broke the
-    // webpack pipeline's staging builds on 2026-08-05). A DOM capture-phase
-    // listener sees every press regardless of which touchable claims it.
-    useEffect(() => {
-        const handleDomPointerDown = e => {
-            const touch = e.touches ? e.touches[0] : e
-            if (!touch || touch.pageX === undefined) return
-            DismissibleModal.captureDismissibleTouch({
-                persist: () => {},
-                nativeEvent: { pageX: touch.pageX, pageY: touch.pageY },
-            })
-        }
-        document.addEventListener('mousedown', handleDomPointerDown, true)
-        document.addEventListener('touchstart', handleDomPointerDown, true)
-        return () => {
-            document.removeEventListener('mousedown', handleDomPointerDown, true)
-            document.removeEventListener('touchstart', handleDomPointerDown, true)
-        }
-    }, [])
     const processedInitialURL = useSelector(state => state.processedInitialURL)
     const navigationRoute = useSelector(state => state.route)
     const loadingStep = useSelector(state => state.loadingStep)

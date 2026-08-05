@@ -1,13 +1,42 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`DismissibleItem component DismissibleItem empty snapshot test Should render correctly 1`] = `<View />`;
-
-exports[`DismissibleItem component Function toggleModal snapshot test Should execute and render correctly 1`] = `<View />`;
-
-exports[`DismissibleItem component Function toggleModal snapshot test Should execute and render correctly 2`] = `
-<View>
-  <Text />
-</View>
+exports[`DismissibleItem component DismissibleItem empty snapshot test Should render correctly 1`] = `
+<div
+  className="css-view-g5y9jx"
+  dir={null}
+/>
 `;
 
-exports[`DismissibleItem component Function toggleModal snapshot test Should execute and render correctly 3`] = `<View />`;
+exports[`DismissibleItem component Function toggleModal snapshot test Should execute and render correctly 1`] = `
+<div
+  className="css-view-g5y9jx"
+  dir={null}
+/>
+`;
+
+exports[`DismissibleItem component Function toggleModal snapshot test Should execute and render correctly 2`] = `
+<div
+  className="css-view-g5y9jx"
+  dir={null}
+>
+  <div
+    aria-label="dismissible-edit-item"
+    className="css-view-g5y9jx"
+    dir={null}
+  >
+    <div>
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
+      />
+    </div>
+  </div>
+</div>
+`;
+
+exports[`DismissibleItem component Function toggleModal snapshot test Should execute and render correctly 3`] = `
+<div
+  className="css-view-g5y9jx"
+  dir={null}
+/>
+`;

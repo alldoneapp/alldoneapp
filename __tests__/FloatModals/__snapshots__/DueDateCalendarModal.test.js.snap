@@ -1,15 +1,9 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Should render correctly 1`] = `
-<View
-  style={
-    Array [
-      Object {
-        "marginTop": -10,
-      },
-      undefined,
-    ]
-  }
+<div
+  className="css-view-g5y9jx r-marginTop-ymp9ed"
+  dir={null}
 >
   <Calendar
     current="2019-04-22"
@@ -105,5 +99,5 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
       }
     }
   />
-</View>
+</div>
 `;

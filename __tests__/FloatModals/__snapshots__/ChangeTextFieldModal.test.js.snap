@@ -1,254 +1,176 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Should render correctly 1`] = `
-<View
+<div
+  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2"
+  dir={null}
   style={
-    Array [
-      Object {
-        "backgroundColor": "#091540",
-        "borderRadius": 4,
-        "elevation": 3,
-        "shadowColor": "rgba(78, 93, 120, 0.56)",
-        "shadowOffset": Object {
-          "height": 4,
-          "width": 0,
-        },
-        "shadowOpacity": 1,
-        "shadowRadius": 16,
-        "width": 305,
-      },
-      Object {
-        "maxWidth": 432,
-        "minWidth": 432,
-        "width": 432,
-      },
-      Object {
-        "maxHeight": 736,
-      },
-    ]
+    Object {
+      "maxHeight": "736px",
+      "maxWidth": "432px",
+      "minWidth": "432px",
+      "width": "432px",
+    }
   }
 >
-  <View
+  <div
+    className="css-view-g5y9jx r-paddingBottom-1l7z4oj r-paddingLeft-1qhn6m8 r-paddingRight-i023vh r-paddingTop-95jzfe"
+    dir={null}
     style={
-      Array [
-        Object {
-          "flex": 1,
-        },
-        undefined,
-        Object {
-          "paddingBottom": 16,
-          "paddingLeft": 16,
-          "paddingRight": 16,
-          "paddingTop": 16,
-        },
-      ]
+      Object {
+        "flex": 1,
+      }
     }
   >
-    <RCTScrollView
-      onContentSizeChange={[Function]}
-      onLayout={[Function]}
+    <div
+      className="css-view-g5y9jx r-WebkitOverflowScrolling-150rngu r-flexDirection-eqz5dr r-flexGrow-16y2uox r-flexShrink-1wbh5a2 r-overflowX-11yh6sk r-overflowY-1rnoaur r-transform-agouwx r-scrollbarWidth-2eszeu"
+      dir={null}
       onScroll={[Function]}
-      scrollEventThrottle={16}
-      showsVerticalScrollIndicator={false}
+      onTouchEnd={[Function]}
+      onTouchMove={[Function]}
+      onTouchStart={[Function]}
+      onWheel={[Function]}
     >
-      <View>
-        <View
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
+      >
+        <div
+          className="css-view-g5y9jx"
+          dir={null}
           style={
             Object {
-              "marginBottom": 20,
+              "marginBottom": "20px",
             }
           }
         >
-          <Text
+          <div
+            className="css-text-146c3p1"
+            dir="auto"
             style={
-              Array [
-                Object {
-                  "color": "#04142F",
-                  "fontFamily": "Roboto-Medium",
-                  "fontSize": 18,
-                  "lineHeight": 26,
-                },
-                Object {
-                  "color": "#ffffff",
-                },
-              ]
+              Object {
+                "color": "rgba(255,255,255,1.00)",
+                "fontFamily": "Roboto-Medium",
+                "fontSize": "18px",
+                "lineHeight": "26px",
+              }
             }
           >
             [missing "en.Testing" translation]
-          </Text>
-        </View>
-        <View
-          style={
-            Object {
-              "flex": 1,
-            }
-          }
+          </div>
+        </div>
+        <div
+          className="css-view-g5y9jx r-flex-13awgt0"
+          dir={null}
         >
-          <Text
-            style={
-              Object {
-                "color": "#4E5D78",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.16,
-                "lineHeight": 22,
-                "marginBottom": 4,
-              }
-            }
+          <div
+            className="css-text-146c3p1 r-color-1gpwqf8 r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-marginBottom-15zivkp"
+            dir="auto"
           >
             [missing "en.Text" translation]
-          </Text>
-          <TextInput
-            allowFontScaling={true}
-            multiline={false}
-            numberOfLines={1}
-            onChangeText={[Function]}
-            placeholderTextColor="#8A94A6"
-            rejectResponderTermination={true}
+          </div>
+          <input
+            autoCapitalize="sentences"
+            autoComplete="on"
+            autoCorrect="on"
+            className="css-textinput-11aywtz r-placeholderTextColor-6taxm2 r-borderColor-ql2gnw r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-color-jwli3a r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7 r-paddingBlock-11f147o r-paddingInline-3pj75a"
+            dir="auto"
+            onBlur={[Function]}
+            onChange={[Function]}
+            onFocus={[Function]}
+            onKeyDown={[Function]}
+            onSelect={[Function]}
+            readOnly={false}
+            rows={1}
+            spellCheck={true}
             style={
               Object {
-                "borderColor": "#C6CDD2",
-                "borderRadius": 4,
-                "borderWidth": 1,
-                "color": "#ffffff",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-                "paddingHorizontal": 16,
-                "paddingVertical": 8,
+                "--placeholderTextColor": "#8A94A6",
               }
             }
-            textAlignVertical="center"
-            underlineColorAndroid="transparent"
             value=""
+            virtualkeyboardpolicy="auto"
           />
-        </View>
-        <View
-          style={
-            Object {
-              "flexDirection": "row",
-              "justifyContent": "center",
-              "marginTop": 16,
-            }
-          }
+        </div>
+        <div
+          className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-1777fci r-marginTop-1wzrnnt"
+          dir={null}
         >
-          <View
-            accessible={false}
-            focusable={true}
-            isTVSelectable={true}
+          <div
+            className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-backgroundColor-t6fudj r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
+            dir={null}
             onClick={[Function]}
-            onResponderGrant={[Function]}
-            onResponderMove={[Function]}
-            onResponderRelease={[Function]}
-            onResponderTerminate={[Function]}
-            onResponderTerminationRequest={[Function]}
-            onStartShouldSetResponder={[Function]}
+            onContextMenu={[Function]}
+            onKeyDown={[Function]}
             style={
               Object {
-                "alignItems": "center",
-                "alignSelf": "flex-start",
-                "backgroundColor": "#0D55CF",
-                "borderRadius": 4,
-                "flexDirection": "row",
-                "flexWrap": "nowrap",
-                "height": 40,
-                "justifyContent": "center",
-                "maxHeight": 40,
-                "minHeight": 40,
-                "opacity": 1,
-                "paddingLeft": 16,
-                "paddingRight": 16,
-                "paddingVertical": 8,
+                "transitionDuration": "0s",
               }
             }
+            tabIndex="0"
           >
-            <Text
-              numberOfLines={1}
+            <div
+              className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
+              dir="auto"
               style={
-                Array [
-                  Array [
-                    Object {
-                      "alignSelf": "center",
-                      "color": "#FFFFFF",
-                      "flexWrap": "nowrap",
-                      "fontFamily": "Roboto-Medium",
-                      "fontSize": 14,
-                      "letterSpacing": 0.8,
-                      "lineHeight": 16,
-                      "margin": 0,
-                      "paddingHorizontal": 0,
-                      "paddingVertical": 0,
-                    },
-                    Object {
-                      "color": "#ffffff",
-                    },
-                    Object {},
-                  ],
-                  Object {
-                    "marginLeft": 0,
-                  },
-                ]
+                Object {
+                  "marginLeft": "0px",
+                }
               }
             >
               Save [missing "en.Text" translation]
-            </Text>
-          </View>
-        </View>
-        <View
-          style={
-            Object {
-              "position": "absolute",
-              "right": -4,
-              "top": -4,
-            }
-          }
+            </div>
+          </div>
+        </div>
+        <div
+          className="css-view-g5y9jx r-position-u8s1d r-right-kquydp r-top-1ld3bg"
+          dir={null}
         >
-          <RNGestureHandlerButton
-            collapsable={false}
-            onGestureEvent={[Function]}
-            onGestureHandlerEvent={[Function]}
-            onGestureHandlerStateChange={[Function]}
-            onHandlerStateChange={[Function]}
-            rippleColor={0}
+          <button
+            className="css-view-g5y9jx"
+            dir={null}
+            role="button"
             style={
-              Array [
-                Object {
-                  "overflow": "hidden",
-                },
-                undefined,
-              ]
+              Object {
+                "overflowX": "hidden",
+                "overflowY": "hidden",
+              }
             }
+            type="button"
           >
-            <View
-              accessible={true}
+            <div
+              className="css-view-g5y9jx r-alignItems-1awozwy r-justifyContent-1777fci"
+              dir={null}
               style={
                 Object {
-                  "alignItems": "center",
-                  "justifyContent": "center",
                   "opacity": 1,
                 }
               }
             >
-              <View>
-                <Text
+              <div
+                className="css-view-g5y9jx"
+                dir={null}
+              >
+                <div
+                  className="css-text-146c3p1"
+                  dir="auto"
                   style={
                     Object {
-                      "color": "#8A94A6",
+                      "color": "rgba(138,148,166,1.00)",
                       "fontFamily": "alldone",
-                      "fontSize": 24,
+                      "fontSize": "24px",
                       "opacity": 1,
                     }
                   }
                 >
                   
-                </Text>
-              </View>
-            </View>
-          </RNGestureHandlerButton>
-        </View>
-      </View>
-    </RCTScrollView>
-  </View>
-</View>
+                </div>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `;

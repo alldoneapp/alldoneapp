@@ -31,17 +31,6 @@ npm run build:analyze  # same + webpack-bundle-analyzer report
 npm run dev            # dev server on http://localhost:19006 (needs ../.env)
 ```
 
-## Module semantics (production parity)
-
-`babel.config.js` compiles app + RN-family modules to **sloppy-mode CommonJS with
-var-hoisted bindings** — the exact semantics metro's preset gave the legacy pipeline.
-This is deliberate and load-bearing: the codebase contains implicit-global writes and
-use-before-declaration that strict ES modules turn into runtime ReferenceErrors on
-logged-in flows (production incident 2026-08-04). Do not remove the
-transform-modules-commonjs / block-scoping plugins until an ESLint `no-undef` +
-`no-use-before-define` sweep makes the code strict-clean; the cost is app-code
-tree-shaking, the benefit is byte-level behavioral parity.
-
 Env injection is unchanged from the old pipeline and happens **outside** the bundler:
 CI runs `sed` over the `BEGIN-ENVS` blocks before building (`ci/replace-envs.sh` /
 the inline job before_scripts); local builds read `../.env` via react-native-dotenv.

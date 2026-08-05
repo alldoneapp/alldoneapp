@@ -18,6 +18,25 @@ if (typeof global.ResizeObserver === 'undefined') {
     }
 }
 
+// jsdom has no CacheStorage either, and utils/Observers.js references the bare
+// `caches` global when clearing the app cache before a refresh - a plain
+// ReferenceError here, a real API in every supported browser.
+if (typeof global.caches === 'undefined') {
+    global.caches = {
+        keys: () => Promise.resolve([]),
+        delete: () => Promise.resolve(true),
+        open: () => Promise.resolve({ keys: () => Promise.resolve([]), delete: () => Promise.resolve(true) }),
+        match: () => Promise.resolve(undefined),
+    }
+}
+
+// The react-native jest preset used to define __DEV__ for every suite; the
+// jsdom runner does not, and app code (utils/backends/EmailLine, firestore
+// logging) references it as a bare global. Match the old preset's value.
+if (typeof global.__DEV__ === 'undefined') {
+    global.__DEV__ = true
+}
+
 // jsdom does not put TextEncoder/TextDecoder on the global in this Jest
 // version, but Node has had both in `util` since 8. Cloud Functions code
 // reaches them through its JOSE dependency while merely being imported.
@@ -55,3 +74,14 @@ jest.mock('react-native/Libraries/StyleSheet/StyleSheetValidation', () => ({
     validateStyleProp: () => {},
     addValidStylePropTypes: () => {},
 }))
+
+// React 18 defers passive effects (useEffect) to the scheduler. Legacy suites
+// that render with react-test-renderer and never unmount would have those
+// effects fire AFTER jest tears down jsdom, crashing the worker with
+// "The `document` global was defined when React was initialized, but is not
+// defined anymore" (and taking the whole run down with it). Flushing inside
+// act() after every test absorbs the deferred work while the DOM still exists.
+afterEach(async () => {
+    const { act } = require('react-test-renderer')
+    await act(async () => {})
+})

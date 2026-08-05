@@ -1,5 +1,6 @@
 import React from 'react'
 import renderer from 'react-test-renderer'
+import { nodeMockOptions } from '../../../../../testUtils/domNodeStub'
 import { TouchableOpacity } from 'react-native'
 
 jest.mock('../../../../../i18n/TranslationService', () => ({ translate: text => text }))
@@ -33,7 +34,7 @@ const getProps = overrides => ({
 describe('CheckBoxContainer action popup indicator', () => {
     test('shows the workflow-style dot and opens an interaction for an email-linked task', () => {
         const props = getProps({ showEmailCompletionIndicator: true })
-        const tree = renderer.create(<CheckBoxContainer {...props} />)
+        const tree = renderer.create(<CheckBoxContainer {...props} />, nodeMockOptions)
 
         expect(tree.root.findByType(ActionPopupIndicator).props.visible).toBe(true)
         tree.root.findByType(TouchableOpacity).props.onPress()
@@ -42,7 +43,7 @@ describe('CheckBoxContainer action popup indicator', () => {
 
     test('preserves direct checkbox behavior for a regular task', () => {
         const props = getProps()
-        const tree = renderer.create(<CheckBoxContainer {...props} />)
+        const tree = renderer.create(<CheckBoxContainer {...props} />, nodeMockOptions)
 
         expect(tree.root.findByType(ActionPopupIndicator).props.visible).toBe(false)
         tree.root.findByType(TouchableOpacity).props.onPress()
@@ -53,7 +54,7 @@ describe('CheckBoxContainer action popup indicator', () => {
 
     test('replaces the unchecked control for an AI next step without changing its interaction', () => {
         const props = getProps({ isNextStepAi: true })
-        const tree = renderer.create(<CheckBoxContainer {...props} />)
+        const tree = renderer.create(<CheckBoxContainer {...props} />, nodeMockOptions)
         const button = tree.root.findByType(TouchableOpacity)
 
         expect(tree.root.findAllByType(CheckBox)).toHaveLength(0)
@@ -67,14 +68,18 @@ describe('CheckBoxContainer action popup indicator', () => {
 
     test('shows the AI control running state while its transition is pending', () => {
         const tree = renderer.create(
-            <CheckBoxContainer {...getProps({ isNextStepAi: true, aiStepRunning: true, checked: true })} />
+            <CheckBoxContainer {...getProps({ isNextStepAi: true, aiStepRunning: true, checked: true })} />,
+            nodeMockOptions
         )
 
         expect(tree.root.findByType(AiStepCheckBox).props.running).toBe(true)
     })
 
     test('uses the normal completed treatment after an AI action completes', () => {
-        const tree = renderer.create(<CheckBoxContainer {...getProps({ isNextStepAi: true, checked: true })} />)
+        const tree = renderer.create(
+            <CheckBoxContainer {...getProps({ isNextStepAi: true, checked: true })} />,
+            nodeMockOptions
+        )
 
         expect(tree.root.findAllByType(AiStepCheckBox)).toHaveLength(0)
         expect(tree.root.findByType(CheckBox).props.checked).toBe(true)

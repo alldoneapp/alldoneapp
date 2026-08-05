@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
@@ -48,7 +49,7 @@ describe('UserDescriptionField', () => {
         )
 
         expect(
-            tree.root.findAllByType('Text').some(node => node.props.children === 'Global user description helper text')
+            tree.root.findAllByType(Text).some(node => node.props.children === 'Global user description helper text')
         ).toBe(true)
     })
 

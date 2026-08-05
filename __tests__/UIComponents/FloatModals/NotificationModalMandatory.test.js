@@ -30,13 +30,16 @@ describe('NotificationModalMandatory component', () => {
     })
 
     describe('Clicking the resfresh button works', () => {
-        it('test', async () => {
-            const { findByTestId } = render(
+        it('test', () => {
+            // getByTestId only matches host elements, and react-native-web
+            // hosts are DOM tags that carry data-testid instead of testID -
+            // match the touchable component by prop instead.
+            const { UNSAFE_getByProps } = render(
                 <Provider store={store}>
                     <NotificationModalMandatory />
                 </Provider>
             )
-            const button = await findByTestId('refreshMandatory')
+            const button = UNSAFE_getByProps({ testID: 'refreshMandatory' })
             fireEvent.press(button)
         })
     })

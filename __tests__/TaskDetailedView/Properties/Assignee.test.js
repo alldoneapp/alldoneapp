@@ -9,6 +9,15 @@ import { setAssignee } from '../../../redux/actions'
 
 import renderer from 'react-test-renderer'
 
+// onSelectUser now really persists the assignee change, which reaches the
+// uninitialized firestore `db`. Object.create keeps the real module on the
+// prototype without eagerly resolving its circular re-exports.
+jest.mock('../../../utils/backends/Tasks/tasksFirestore', () =>
+    Object.assign(Object.create(jest.requireActual('../../../utils/backends/Tasks/tasksFirestore')), {
+        setTaskAssigneeAndObservers: jest.fn(),
+    })
+)
+
 const dummyTask = { id: '-Asd', title: 'My task', done: false }
 const dummyUser = { id: '-Asd1', photoURL: 'http:path.to.photo', displayName: 'Chicho', workflow: [] }
 

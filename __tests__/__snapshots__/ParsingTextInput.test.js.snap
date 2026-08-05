@@ -1,176 +1,189 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ParsingTextInput component ParsingTextInput snapshot test should render correctly 1`] = `
-<View
+<div
+  className="css-view-g5y9jx"
+  dir={null}
   style={
     Object {
       "flexDirection": "row",
     }
   }
 >
-  <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
+  <div
+    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
+    dir={null}
     onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+    onContextMenu={[Function]}
+    onKeyDown={[Function]}
     style={
       Object {
         "flex": 1,
-        "opacity": 1,
+        "transitionDuration": "0s",
       }
     }
+    tabIndex="0"
   >
-    <RCTScrollView
-      horizontal={true}
-      showsHorizontalScrollIndicator={false}
+    <div
+      className="css-view-g5y9jx r-WebkitOverflowScrolling-150rngu r-flexDirection-18u37iz r-flexGrow-16y2uox r-flexShrink-1wbh5a2 r-overflowX-lltvgl r-overflowY-buy8e9 r-transform-agouwx r-scrollbarWidth-2eszeu"
+      dir={null}
+      onScroll={[Function]}
+      onTouchEnd={[Function]}
+      onTouchMove={[Function]}
+      onTouchStart={[Function]}
+      onWheel={[Function]}
       style={
         Object {
           "flex": 1,
         }
       }
     >
-      <View>
-        <View>
-          <TextInput
-            allowFontScaling={true}
+      <div
+        className="css-view-g5y9jx r-flexDirection-18u37iz"
+        dir={null}
+      >
+        <div
+          className="css-view-g5y9jx"
+          dir={null}
+        >
+          <input
+            autoCapitalize="sentences"
+            autoComplete="on"
+            autoCorrect="on"
             autoFocus={true}
-            onChangeText={[Function]}
-            onSubmitEditing={[Function]}
-            rejectResponderTermination={true}
-            selectionColor="transparent"
-            style={
-              Array [
-                Object {
-                  "color": "transparent",
-                  "display": "flex",
-                  "fontFamily": "Roboto-Regular",
-                  "fontSize": 16,
-                  "height": 40,
-                  "letterSpacing": 0.32,
-                  "paddingLeft": 16,
-                  "position": "absolute",
-                  "textAlignVertical": "center",
-                  "top": -0.5,
-                },
-                Object {
-                  "width": 0,
-                },
-                Object {
-                  "caretColor": "#0C66FF",
-                  "outlineWidth": 0,
-                },
-                undefined,
-              ]
-            }
-            underlineColorAndroid="transparent"
-            value="Sample @mention #hashtag a@gmail.com http://link.com"
-          />
-          <Text
-            onLayout={[Function]}
+            className="css-textinput-11aywtz r-placeholderTextColor-6taxm2 r-color-fpub7 r-display-6koalj r-fontFamily-k9x4vz r-fontSize-ubezar r-height-eu3ka r-letterSpacing-1wudzfh r-paddingLeft-1qhn6m8 r-position-u8s1d r-top-1gn8etr r-verticalAlign-9iso6"
+            dir="auto"
+            onBlur={[Function]}
+            onChange={[Function]}
+            onFocus={[Function]}
+            onKeyDown={[Function]}
+            onSelect={[Function]}
+            readOnly={false}
+            rows={1}
+            spellCheck={true}
             style={
               Object {
-                "color": "#04142F",
-                "display": "flex",
-                "flexDirection": "row",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-                "paddingLeft": 16,
-                "paddingTop": 8,
+                "caretColor": "#0C66FF",
+                "outlineWidth": "0px",
+                "width": "0px",
               }
             }
+            value="Sample @mention #hashtag a@gmail.com http://link.com"
+            virtualkeyboardpolicy="auto"
+          />
+          <div
+            className="css-text-146c3p1 r-color-qmo3aw r-display-6koalj r-flexDirection-18u37iz r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7 r-paddingLeft-1qhn6m8 r-paddingTop-tskmnb"
+            dir="auto"
           >
-            <Text
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
               style={
                 Object {
-                  "color": "#04142F",
+                  "color": "rgba(4,20,47,1.00)",
                   "fontFamily": "Roboto-Regular",
-                  "fontSize": 16,
-                  "letterSpacing": 0.32,
-                  "lineHeight": 24,
+                  "fontSize": "16px",
+                  "letterSpacing": "0.32px",
+                  "lineHeight": "24px",
                 }
               }
             >
               Sample
-            </Text>
-            <Text>
+            </span>
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
+            >
                
-            </Text>
-            <Text
+            </span>
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
               style={
                 Object {
-                  "color": "#07A873",
+                  "color": "rgba(7,168,115,1.00)",
                   "fontFamily": "Roboto-Regular",
-                  "fontSize": 16,
-                  "letterSpacing": 0.32,
-                  "lineHeight": 24,
+                  "fontSize": "16px",
+                  "letterSpacing": "0.32px",
+                  "lineHeight": "24px",
                 }
               }
             >
               @mention
-            </Text>
-            <Text>
+            </span>
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
+            >
                
-            </Text>
-            <Text
+            </span>
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
               style={
                 Object {
-                  "color": "#702EE6",
+                  "color": "rgba(112,46,230,1.00)",
                   "fontFamily": "Roboto-Regular",
-                  "fontSize": 16,
-                  "letterSpacing": 0.32,
-                  "lineHeight": 24,
+                  "fontSize": "16px",
+                  "letterSpacing": "0.32px",
+                  "lineHeight": "24px",
                 }
               }
             >
               #hashtag
-            </Text>
-            <Text>
+            </span>
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
+            >
                
-            </Text>
-            <Text
+            </span>
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
               style={
                 Object {
-                  "color": "#F58E0A",
+                  "color": "rgba(245,142,10,1.00)",
                   "fontFamily": "Roboto-Regular",
-                  "fontSize": 16,
-                  "letterSpacing": 0.32,
-                  "lineHeight": 24,
+                  "fontSize": "16px",
+                  "letterSpacing": "0.32px",
+                  "lineHeight": "24px",
                 }
               }
             >
               a@gmail.com
-            </Text>
-            <Text>
+            </span>
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
+            >
                
-            </Text>
-            <Text
+            </span>
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
               style={
                 Object {
-                  "color": "#5AACFF",
+                  "color": "rgba(90,172,255,1.00)",
                   "fontFamily": "Roboto-Regular",
-                  "fontSize": 16,
-                  "letterSpacing": 0.32,
-                  "lineHeight": 24,
+                  "fontSize": "16px",
+                  "letterSpacing": "0.32px",
+                  "lineHeight": "24px",
                 }
               }
             >
               http://link.com
-            </Text>
-            <Text>
+            </span>
+            <span
+              className="css-textHasAncestor-1jxf684"
+              dir={null}
+            >
                
-            </Text>
-          </Text>
-        </View>
-      </View>
-    </RCTScrollView>
-  </View>
-</View>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `;

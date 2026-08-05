@@ -1,316 +1,279 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`WorkflowView component WorkflowView snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "flex": 1,
-      "flexDirection": "column",
-    }
-  }
+<div
+  className="css-view-g5y9jx r-flex-13awgt0 r-flexDirection-eqz5dr"
+  dir={null}
 >
-  <View
-    style={
-      Object {
-        "alignItems": "center",
-        "flexDirection": "row",
-        "height": 72,
-        "paddingBottom": 12,
-        "paddingTop": 32,
-        "width": "100%",
-      }
-    }
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-wy61xf r-paddingBottom-kzbkwu r-paddingTop-fd4yh7 r-width-13qz1uu"
+    dir={null}
   >
-    <Text
+    <div
+      className="css-text-146c3p1"
+      dir="auto"
       style={
-        Array [
-          Object {
-            "color": "#04142F",
-            "fontFamily": "Roboto-Medium",
-            "fontSize": 20,
-            "lineHeight": 28,
-          },
-          Object {
-            "color": "#04142F",
-          },
-        ]
+        Object {
+          "color": "rgba(4,20,47,1.00)",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": "20px",
+          "lineHeight": "28px",
+        }
       }
     >
       Workflow
-    </Text>
-    <View
+    </div>
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
-          "height": 28,
+          "height": "28px",
           "justifyContent": "flex-end",
-          "marginLeft": 16,
+          "marginLeft": "16px",
         }
       }
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 12,
-              "letterSpacing": 0.48,
-              "lineHeight": 20,
-            },
-            Object {
-              "color": "#4E5D78",
-            },
-          ]
+          Object {
+            "color": "rgba(78,93,120,1.00)",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": "12px",
+            "letterSpacing": "0.48px",
+            "lineHeight": "20px",
+          }
         }
       >
         No steps yet
-      </Text>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "flexDirection": "row",
-        "height": 40,
-        "paddingBottom": 12,
-        "paddingTop": 8,
-      }
-    }
+      </div>
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-flexDirection-18u37iz r-height-eu3ka r-paddingBottom-kzbkwu r-paddingTop-tskmnb"
+    dir={null}
   >
-    <View
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
           "alignSelf": "center",
         }
       }
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#8A94A6",
+            "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 16,
+            "fontSize": "16px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-    <View
+      </div>
+    </div>
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
-          "marginLeft": 8,
+          "marginLeft": "8px",
         }
       }
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 12,
-              "letterSpacing": 0.48,
-              "lineHeight": 20,
-            },
-            Object {
-              "color": "#8A94A6",
-            },
-          ]
+          Object {
+            "color": "rgba(138,148,166,1.00)",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": "12px",
+            "letterSpacing": "0.48px",
+            "lineHeight": "20px",
+          }
         }
       >
         Customize the steps asd's tasks will go through when marked as completed
-      </Text>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "alignItems": "center",
-        "borderColor": "#E7ECEF",
-        "borderRadius": 4,
-        "borderWidth": 1,
-        "flexDirection": "row",
-        "height": 56,
-        "paddingLeft": 10,
-      }
-    }
+      </div>
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-1sx5dzk r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1hfyk0a"
+    dir={null}
   >
-    <View>
-      <Text
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
+    >
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#C6CDD2",
+            "color": "rgba(198,205,210,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 24,
+            "fontSize": "24px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-    <View
+      </div>
+    </div>
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
-          "marginLeft": 8,
+          "marginLeft": "8px",
         }
       }
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 14,
-              "letterSpacing": 0.16,
-              "lineHeight": 22,
-            },
-            Object {
-              "color": "#8A94A6",
-            },
-          ]
+          Object {
+            "color": "rgba(138,148,166,1.00)",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": "14px",
+            "letterSpacing": "0.16px",
+            "lineHeight": "22px",
+          }
         }
       >
         Open task
-      </Text>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "flexDirection": "column",
-        "marginTop": 16,
-      }
-    }
+      </div>
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-flexDirection-eqz5dr r-marginTop-1wzrnnt"
+    dir={null}
   />
-  <View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
+  >
+    <div
+      className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderColor-1sx5dzk r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1m04atk"
+      dir={null}
       onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
+      onContextMenu={[Function]}
+      onKeyDown={[Function]}
       style={
         Object {
-          "alignItems": "center",
-          "borderColor": "#E7ECEF",
-          "borderRadius": 4,
-          "borderWidth": 1,
-          "flexDirection": "row",
-          "height": 56,
-          "opacity": 1,
-          "paddingLeft": 8,
+          "transitionDuration": "0s",
         }
       }
+      tabIndex="0"
     >
-      <View>
-        <Text
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
+      >
+        <div
+          className="css-text-146c3p1"
+          dir="auto"
           style={
             Object {
-              "color": "#007FFF",
+              "color": "rgba(0,127,255,1.00)",
               "fontFamily": "alldone",
-              "fontSize": 24,
+              "fontSize": "24px",
               "opacity": 1,
             }
           }
         >
           
-        </Text>
-      </View>
-      <View
+        </div>
+      </div>
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
         style={
           Object {
-            "marginLeft": 12,
+            "marginLeft": "12px",
           }
         }
       >
-        <Text
+        <div
+          className="css-text-146c3p1"
+          dir="auto"
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 16,
-                "letterSpacing": 0.32,
-                "lineHeight": 24,
-              },
-              Object {
-                "color": "#8A94A6",
-              },
-            ]
+            Object {
+              "color": "rgba(138,148,166,1.00)",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": "16px",
+              "letterSpacing": "0.32px",
+              "lineHeight": "24px",
+            }
           }
         >
           Type to add new step
-        </Text>
-      </View>
-    </View>
-  </View>
-  <View
+        </div>
+      </div>
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-1sx5dzk r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1hfyk0a"
+    dir={null}
     style={
-      Array [
-        Object {
-          "alignItems": "center",
-          "borderColor": "#E7ECEF",
-          "borderRadius": 4,
-          "borderWidth": 1,
-          "flexDirection": "row",
-          "height": 56,
-          "paddingLeft": 10,
-        },
-        Object {
-          "marginTop": 16,
-        },
-      ]
+      Object {
+        "marginTop": "16px",
+      }
     }
   >
-    <View>
-      <Text
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
+    >
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#C6CDD2",
+            "color": "rgba(198,205,210,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 24,
+            "fontSize": "24px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-    <View
+      </div>
+    </div>
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
-          "marginLeft": 8,
+          "marginLeft": "8px",
         }
       }
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 14,
-              "letterSpacing": 0.16,
-              "lineHeight": 22,
-            },
-            Object {
-              "color": "#8A94A6",
-            },
-          ]
+          Object {
+            "color": "rgba(138,148,166,1.00)",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": "14px",
+            "letterSpacing": "0.16px",
+            "lineHeight": "22px",
+          }
         }
       >
         Done task
-      </Text>
-    </View>
-  </View>
-</View>
+      </div>
+    </div>
+  </div>
+</div>
 `;

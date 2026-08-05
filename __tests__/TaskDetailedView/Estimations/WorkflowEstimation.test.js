@@ -11,6 +11,16 @@ import Backend from '../../../utils/BackendBridge'
 
 import renderer from 'react-test-renderer'
 
+// The workflow listener effect really runs under RNW and reaches the
+// uninitialized firestore `db`. Object.create keeps the real module on the
+// prototype without eagerly resolving its circular re-exports.
+jest.mock('../../../utils/backends/firestore', () =>
+    Object.assign(Object.create(jest.requireActual('../../../utils/backends/firestore')), {
+        onUserWorkflowChange: jest.fn(),
+        offOnUserWorkflowChange: jest.fn(),
+    })
+)
+
 jest.mock('react-redux', () => ({
     ...jest.requireActual('react-redux'),
     useSelector: jest.fn().mockImplementation(fnc => {
