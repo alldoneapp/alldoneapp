@@ -326,9 +326,32 @@ Note: Standard syntax checkers like `acorn` may fail on modern JavaScript featur
 
 -   **GitLab CI/CD**: All deployments are handled via GitLab pipelines (`.gitlab-ci.yml`)
 -   **Environment secrets**: Stored in GitLab CI/CD variables, not in the repository
--   **Branches**: `develop` deploys to staging, `master` deploys to production
+-   **Branches**: `develop` deploys to staging, `master` deploys to production. Note
+    `develop` has drifted far behind (~1660 commits as of 2026-08-05), so the practical
+    pre-merge QA surface for a feature branch is the **manual `deploy:web-webpack-preview`
+    job**, which publishes a Firebase hosting preview channel `webpack-<ref-slug>` on the
+    staging project.
 -   **Build process**: `ci/replace-envs.sh` injects environment variables during build
 -   **Firebase projects**: `alldonestaging` (staging) and `alldonealeph` (production)
+-   **CI images bake `node_modules`, so a branch that changes dependencies needs its own
+    image.** `build_base` (node:12, `npm ci` on the v1 lockfile) and `build_web_bundler`
+    (node:22 tooling + the app tree copied from the base image) are built by the
+    `modules_cache` / `web_bundler_cache` kaniko jobs. `build_web_webpack_check` and
+    `test:web:changed` do **not** install anything — they `ln -s /app/node_modules` from
+    the image. Before 2026-08-05 the cache jobs only ran on develop/master, so any branch
+    bumping a dependency compiled and tested against the _previous_ lockfile's tree and
+    failed with unresolvable imports (the firebase 8 → 12 branch: `Can't resolve 'firebase/compat/app'`) while being green locally. Now a feature branch whose
+    dependency manifests differ from master builds its own images tagged
+    `:$CI_COMMIT_REF_SLUG`, selected by the consuming jobs through a rules-level
+    `APP_IMAGE_TAG` (default `latest`); `:latest` is still only ever written from
+    develop/master, because master builds from it. Two consequences: the branch's first
+    pipeline is slow (full `npm ci` + two image pushes), and each such branch leaves an
+    image in the registry — bound that with a tag cleanup policy.
+-   **Never fix a missing dependency by copying packages into `node_modules`.** Install
+    through the lockfile. Example of why: firebase 12 keeps root `tslib` at 1.11.1 while
+    nesting `tslib` 2.8.1 inside 29 of its 44 `@firebase/*` packages; a flat copy hoists
+    2.8.1 to the root and breaks the 1.x consumers (Stage 0 hit the inverse of this, where
+    root tslib 1.11.1 shadowed the nested 2.x and threw `__spreadArray is not a function`).
 
 ### Firestore indexes (`firestore.indexes.json`)
 
