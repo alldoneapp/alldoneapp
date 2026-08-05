@@ -151,9 +151,29 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
--   2026-08-05 — **Stage 3 step 1 executed: firebase 8.10.1 → 12.17.1 via `firebase/compat`**
-    (step 2 — file-by-file modular conversion behind BackendBridge — deliberately waits for
-    staging parity, per the stage discipline).
+-   2026-08-05 — **Stage 3 step 1 executed and ACCEPTED ON STAGING: firebase 8.10.1 →
+    12.17.1 via `firebase/compat`** (step 2 — file-by-file modular conversion behind
+    BackendBridge — deliberately waits, per the stage discipline). Branch
+    `frontend-migration-stage-3`, deployed to `alldonestaging.web.app` via the new manual
+    `deploy:web-staging-live` job and confirmed working by the user.
+
+    -   **A preview channel is NOT sufficient for this stage's QA.** Google Identity
+        Services enforces an authorized-JavaScript-origin allowlist on the OAuth client,
+        that list lives in Google Cloud Console, and a generated preview origin is not on
+        it — so Google sign-in cannot be exercised there. Since `deploy:web-dev` (staging
+        live) is gated on the long-stale `develop`, a feature branch had no route to a
+        registered origin at all; `deploy:web-staging-live` is that route, manual and with
+        the project named explicitly so a mis-click cannot reach production.
+    -   **Boot verified on the deployed artifact** (the Stage 0 lesson — a clean compile
+        proves little): zero console errors, `Deferred Firebase modules loaded`,
+        `onAuthStateChanged` + `getRedirectResult` firing, GSI accepting the origin, and
+        the service worker serving the 12.17.1 compat builds with no unsubstituted
+        `__FIREBASE_*` placeholders.
+    -   **One v12 behavior change caught by that boot check**: Firestore logged
+        `You are overriding the original host` on every load, because firebase 9+ makes
+        `settings()` replace the whole settings object; the call now passes
+        `merge: true` (verified against the compat source, which is where that warning
+        and its recommendation come from).
 
     -   **Install**: `firebase@12.17.1` (exact pin) under the pinned Node 14 / npm 6;
         lockfile stayed v1; `replacement_node_modules` patches re-applied and diff-verified.
