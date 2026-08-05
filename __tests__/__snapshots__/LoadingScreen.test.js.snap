@@ -1,82 +1,64 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`LoadingScreen component LoadingScreen snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "alignContent": "center",
-      "alignItems": "center",
-      "backgroundColor": "white",
-      "flex": 1,
-      "justifyContent": "center",
-      "paddingHorizontal": 10,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-alignContent-uia4a0 r-alignItems-1awozwy r-backgroundColor-14lw9ot r-flex-13awgt0 r-justifyContent-1777fci r-paddingInline-1ubuhtd"
+  dir={null}
 >
-  <View
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-gjgjzp r-justifyContent-1777fci"
+    dir={null}
     style={
-      Array [
-        Object {
-          "alignItems": "center",
-          "borderRadius": 10000,
-          "justifyContent": "center",
-        },
-        Object {
-          "backgroundColor": "#E7ECEF",
-          "height": 200,
-          "maxHeight": 200,
-          "maxWidth": 200,
-          "minHeight": 200,
-          "minWidth": 200,
-          "width": 200,
-        },
-        undefined,
-      ]
+      Object {
+        "backgroundColor": "rgba(231,236,239,1.00)",
+        "height": "200px",
+        "maxHeight": "200px",
+        "maxWidth": "200px",
+        "minHeight": "200px",
+        "minWidth": "200px",
+        "width": "200px",
+      }
     }
   >
-    <View
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
-          "transform": Array [
-            Object {
-              "rotate": "0deg",
-            },
-          ],
+          "transform": "rotate(0deg)",
         }
       }
     >
-      <View>
-        <Text
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
+      >
+        <div
+          className="css-text-146c3p1"
+          dir="auto"
           style={
             Object {
-              "color": "#007FFF",
+              "color": "rgba(0,127,255,1.00)",
               "fontFamily": "alldone",
-              "fontSize": 150,
+              "fontSize": "150px",
               "opacity": 1,
             }
           }
         >
           
-        </Text>
-      </View>
-    </View>
-  </View>
-  <Text
+        </div>
+      </div>
+    </div>
+  </div>
+  <div
+    className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1ra0lkn r-textAlign-q4m81j"
+    dir="auto"
     style={
-      Array [
-        Object {
-          "fontFamily": "Roboto-Regular",
-          "fontSize": 30,
-          "textAlign": "center",
-        },
-        Object {
-          "paddingTop": 40,
-        },
-        Object {
-          "marginBottom": 30,
-        },
-      ]
+      Object {
+        "marginBottom": "30px",
+        "paddingTop": "40px",
+      }
     }
   />
-</View>
+</div>
 `;

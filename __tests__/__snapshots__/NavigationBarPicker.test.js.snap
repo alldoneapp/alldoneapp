@@ -1,119 +1,101 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`NavigationBarPicker component NavigationBarPicker snapshot test should render correctly 1`] = `
-<View
-  accessible={true}
-  focusable={false}
-  isTVSelectable={true}
+<div
+  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-height-195d4m8 r-justifyContent-1wtj0ep r-paddingLeft-1qhn6m8 r-paddingRight-6kxu1i r-width-phivbo"
+  dir={null}
   onClick={[Function]}
-  onResponderGrant={[Function]}
-  onResponderMove={[Function]}
-  onResponderRelease={[Function]}
-  onResponderTerminate={[Function]}
-  onResponderTerminationRequest={[Function]}
-  onStartShouldSetResponder={[Function]}
+  onContextMenu={[Function]}
+  onKeyDown={[Function]}
   style={
     Object {
-      "alignItems": "center",
-      "flexDirection": "row",
-      "height": 46,
-      "justifyContent": "space-between",
-      "opacity": 1,
-      "paddingLeft": 16,
-      "paddingRight": 21,
-      "width": 102,
+      "transitionDuration": "0s",
     }
   }
+  tabIndex="0"
 >
-  <Text
+  <div
+    className="css-text-146c3p1"
+    dir="auto"
     style={
-      Array [
-        Object {
-          "color": "#04142F",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": 14,
-          "letterSpacing": 0.16,
-          "lineHeight": 22,
-        },
-        Object {
-          "color": "white",
-          "marginRight": 4,
-        },
-      ]
+      Object {
+        "color": "rgba(255,255,255,1.00)",
+        "fontFamily": "Roboto-Medium",
+        "fontSize": "14px",
+        "letterSpacing": "0.16px",
+        "lineHeight": "22px",
+        "marginRight": "4px",
+      }
     }
   />
-  <View>
-    <Text
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
+  >
+    <div
+      className="css-text-146c3p1"
+      dir="auto"
       style={
         Object {
-          "color": "white",
+          "color": "rgba(255,255,255,1.00)",
           "fontFamily": "alldone",
-          "fontSize": 24,
+          "fontSize": "24px",
           "opacity": 1,
         }
       }
     >
       
-    </Text>
-  </View>
-</View>
+    </div>
+  </div>
+</div>
 `;
 
 exports[`NavigationBarPicker component NavigationBarPicker snapshot test should render correctly when is expanded 1`] = `
-<View
-  accessible={true}
-  focusable={false}
-  isTVSelectable={true}
+<div
+  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-height-195d4m8 r-justifyContent-1wtj0ep r-paddingLeft-1qhn6m8 r-paddingRight-6kxu1i r-width-phivbo"
+  dir={null}
   onClick={[Function]}
-  onResponderGrant={[Function]}
-  onResponderMove={[Function]}
-  onResponderRelease={[Function]}
-  onResponderTerminate={[Function]}
-  onResponderTerminationRequest={[Function]}
-  onStartShouldSetResponder={[Function]}
+  onContextMenu={[Function]}
+  onKeyDown={[Function]}
   style={
     Object {
-      "alignItems": "center",
-      "flexDirection": "row",
-      "height": 46,
-      "justifyContent": "space-between",
-      "opacity": 1,
-      "paddingLeft": 16,
-      "paddingRight": 21,
-      "width": 102,
+      "transitionDuration": "0s",
     }
   }
+  tabIndex="0"
 >
-  <Text
+  <div
+    className="css-text-146c3p1"
+    dir="auto"
     style={
-      Array [
-        Object {
-          "color": "#04142F",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": 14,
-          "letterSpacing": 0.16,
-          "lineHeight": 22,
-        },
-        Object {
-          "color": "white",
-          "marginRight": 4,
-        },
-      ]
+      Object {
+        "color": "rgba(255,255,255,1.00)",
+        "fontFamily": "Roboto-Medium",
+        "fontSize": "14px",
+        "letterSpacing": "0.16px",
+        "lineHeight": "22px",
+        "marginRight": "4px",
+      }
     }
   />
-  <View>
-    <Text
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
+  >
+    <div
+      className="css-text-146c3p1"
+      dir="auto"
       style={
         Object {
-          "color": "white",
+          "color": "rgba(255,255,255,1.00)",
           "fontFamily": "alldone",
-          "fontSize": 24,
+          "fontSize": "24px",
           "opacity": 1,
         }
       }
     >
       
-    </Text>
-  </View>
-</View>
+    </div>
+  </div>
+</div>
 `;

@@ -1,146 +1,109 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`NotificationModalOptional component NotificationModalOptional snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "backgroundColor": "#C7F5E5",
-      "borderRadius": 4,
-      "bottom": 56,
-      "height": 136,
-      "paddingLeft": 16,
-      "paddingTop": 16,
-      "position": "absolute",
-      "right": 56,
-      "width": 256,
-      "zIndex": 100000,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-backgroundColor-th0y25 r-borderRadius-z2wwpe r-bottom-1prstla r-boxShadow-1kiz81i r-height-1i6j0pn r-paddingLeft-1qhn6m8 r-paddingTop-95jzfe r-position-u8s1d r-right-17e4thx r-width-1qewag5 r-zIndex-145dblm"
+  dir={null}
 >
-  <Text
-    style={
-      Array [
-        Object {
-          "color": "#04142F",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": 18,
-          "lineHeight": 26,
-        },
-        Object {
-          "color": "#07A873",
-          "fontWeight": "500",
-        },
-      ]
-    }
-  >
-    Version 0.0 available
-  </Text>
-  <Text
-    style={
-      Array [
-        Object {
-          "color": "#04142F",
-          "fontFamily": "Roboto-Regular",
-          "fontSize": 14,
-          "letterSpacing": 0.32,
-          "lineHeight": 22,
-        },
-        Object {
-          "color": "#4E5D78",
-        },
-      ]
-    }
-  >
-    Please reload to get updated
-  </Text>
-  <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
-    onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+  <div
+    className="css-text-146c3p1 r-color-p9jc69 r-fontWeight-majxgm"
+    dir="auto"
     style={
       Object {
-        "alignItems": "center",
-        "flexDirection": "row",
-        "height": 40,
-        "justifyContent": "center",
-        "marginLeft": 50,
-        "marginTop": 16,
-        "opacity": 1,
-        "width": 123,
+        "fontFamily": "Roboto-Medium",
+        "fontSize": "18px",
+        "lineHeight": "26px",
       }
     }
   >
-    <View>
-      <Text
+    Version 0.0 available
+  </div>
+  <div
+    className="css-text-146c3p1"
+    dir="auto"
+    style={
+      Object {
+        "color": "rgba(78,93,120,1.00)",
+        "fontFamily": "Roboto-Regular",
+        "fontSize": "14px",
+        "letterSpacing": "0.32px",
+        "lineHeight": "22px",
+      }
+    }
+  >
+    Please reload to get updated
+  </div>
+  <div
+    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-height-eu3ka r-justifyContent-1777fci r-marginLeft-1fk2ywr r-marginTop-1wzrnnt r-width-3egmai"
+    dir={null}
+    onClick={[Function]}
+    onContextMenu={[Function]}
+    onKeyDown={[Function]}
+    style={
+      Object {
+        "transitionDuration": "0s",
+      }
+    }
+    tabIndex="0"
+  >
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
+    >
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#0D55CF",
+            "color": "rgba(13,85,207,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 24,
+            "fontSize": "24px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-    <Text
-      style={
-        Object {
-          "color": "#0D55CF",
-          "fontFamily": "Roboto-Regular",
-          "fontSize": 14,
-          "fontWeight": "500",
-          "letterSpacing": 0.8,
-          "lineHeight": 14,
-          "marginLeft": 12,
-        }
-      }
+      </div>
+    </div>
+    <div
+      className="css-text-146c3p1 r-color-ujv0fi r-fontFamily-k9x4vz r-fontSize-1b43r93 r-fontWeight-majxgm r-letterSpacing-1smd7e2 r-lineHeight-1f529hi r-marginLeft-19u6a5r"
+      dir="auto"
     >
       Reload
-    </Text>
-  </View>
-  <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-position-u8s1d r-right-3mc0re r-top-1yxedwg"
+    dir={null}
     onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+    onContextMenu={[Function]}
+    onKeyDown={[Function]}
     style={
       Object {
-        "opacity": 1,
-        "position": "absolute",
-        "right": 8,
-        "top": 8,
+        "transitionDuration": "0s",
       }
     }
+    tabIndex="0"
   >
-    <View>
-      <Text
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
+    >
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#8A94A6",
+            "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 24,
+            "fontSize": "24px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-  </View>
-</View>
+      </div>
+    </div>
+  </div>
+</div>
 `;

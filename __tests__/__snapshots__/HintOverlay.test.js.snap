@@ -1,26 +1,13 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`HintOverlay component HintOverlay snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "alignItems": "center",
-      "backgroundColor": "white",
-      "borderRadius": 100,
-      "height": 12,
-      "justifyContent": "center",
-      "width": 12,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-14lw9ot r-borderRadius-18c69zk r-height-tbmifm r-justifyContent-1777fci r-width-16eto9q"
+  dir={null}
 >
-  <View
-    style={
-      Object {
-        "backgroundColor": "#E00000",
-        "height": 8,
-        "width": 8,
-      }
-    }
+  <div
+    className="css-view-g5y9jx r-backgroundColor-67xh9u r-height-3da1kt r-width-1jg9483"
+    dir={null}
   />
-</View>
+</div>
 `;

@@ -1,93 +1,38 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`WorkflowPicker component WorkflowPicker snapshot test should render correctly 1`] = `
-<View
-  accessible={false}
-  focusable={true}
-  isTVSelectable={true}
+<div
+  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-paddingLeft-f727ji r-paddingRight-i023vh r-backgroundColor-1niwhzg r-borderColor-ql2gnw r-borderStyle-1phboty r-borderWidth-rs99b7"
+  dir={null}
   onClick={[Function]}
-  onResponderGrant={[Function]}
-  onResponderMove={[Function]}
-  onResponderRelease={[Function]}
-  onResponderTerminate={[Function]}
-  onResponderTerminationRequest={[Function]}
-  onStartShouldSetResponder={[Function]}
+  onContextMenu={[Function]}
+  onKeyDown={[Function]}
   style={
     Object {
-      "alignItems": "center",
-      "alignSelf": "flex-start",
-      "backgroundColor": "transparent",
-      "borderColor": "#C6CDD2",
-      "borderRadius": 4,
-      "borderStyle": "solid",
-      "borderWidth": 1,
-      "flexDirection": "row",
-      "flexWrap": "nowrap",
-      "height": 40,
-      "justifyContent": "center",
-      "maxHeight": 40,
-      "minHeight": 40,
-      "opacity": 1,
-      "paddingLeft": 12,
-      "paddingRight": 16,
-      "paddingVertical": 8,
+      "transitionDuration": "0s",
     }
   }
+  tabIndex="0"
 >
-  <View
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-t1myqv r-borderRadius-z2wwpe r-borderWidth-d045u9 r-height-z80fyv r-justifyContent-1777fci r-width-19wmn03"
+    dir={null}
+  >
+    <div
+      className="css-text-146c3p1 r-color-hiecfz r-fontFamily-k9x4vz r-fontSize-10x49cs"
+      dir="auto"
+    />
+  </div>
+  <div
+    className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
+    dir="auto"
     style={
       Object {
-        "alignItems": "center",
-        "borderColor": "#8A94A6",
-        "borderRadius": 4,
-        "borderWidth": 2,
-        "height": 20,
-        "justifyContent": "center",
-        "width": 20,
+        "marginLeft": "12px",
       }
-    }
-  >
-    <Text
-      style={
-        Object {
-          "color": "#8A94A6",
-          "fontFamily": "Roboto-Regular",
-          "fontSize": 10,
-        }
-      }
-    >
-      
-    </Text>
-  </View>
-  <Text
-    numberOfLines={1}
-    style={
-      Array [
-        Array [
-          Object {
-            "alignSelf": "center",
-            "color": "#FFFFFF",
-            "flexWrap": "nowrap",
-            "fontFamily": "Roboto-Medium",
-            "fontSize": 14,
-            "letterSpacing": 0.8,
-            "lineHeight": 16,
-            "margin": 0,
-            "paddingHorizontal": 0,
-            "paddingVertical": 0,
-          },
-          Object {
-            "color": "#8A94A6",
-          },
-          Object {},
-        ],
-        Object {
-          "marginLeft": 12,
-        },
-      ]
     }
   >
     Open
-  </Text>
-</View>
+  </div>
+</div>
 `;

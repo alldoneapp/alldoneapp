@@ -1,80 +1,55 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`NotificationModalMandatory component NotificationModalMandatory snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "backgroundColor": "#091540",
-      "borderRadius": 4,
-      "height": 184,
-      "padding": 16,
-      "width": 317,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-179vn59 r-height-9rh5za r-padding-nsbfu8 r-width-w38km2"
+  dir={null}
 >
-  <Text
+  <div
+    className="css-text-146c3p1 r-color-jwli3a r-fontWeight-majxgm"
+    dir="auto"
     style={
-      Array [
-        Object {
-          "color": "#04142F",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": 18,
-          "lineHeight": 26,
-        },
-        Object {
-          "color": "#FFFFFF",
-          "fontWeight": "500",
-        },
-      ]
+      Object {
+        "fontFamily": "Roboto-Medium",
+        "fontSize": "18px",
+        "lineHeight": "26px",
+      }
     }
   >
     Alldone.app needs to reload
-  </Text>
-  <Text
+  </div>
+  <div
+    className="css-text-146c3p1"
+    dir="auto"
     style={
-      Array [
-        Object {
-          "color": "#04142F",
-          "fontFamily": "Roboto-Regular",
-          "fontSize": 14,
-          "letterSpacing": 0.32,
-          "lineHeight": 22,
-        },
-        Object {
-          "color": "#8A94A6",
-        },
-      ]
+      Object {
+        "color": "rgba(138,148,166,1.00)",
+        "fontFamily": "Roboto-Regular",
+        "fontSize": "14px",
+        "letterSpacing": "0.32px",
+        "lineHeight": "22px",
+      }
     }
   >
     Alldone app needs to reload in order to update features. Do not worry, we will take care of everything for you.
-  </Text>
-  <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
+  </div>
+  <div
+    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignSelf-1kihuf0 r-backgroundColor-vul7mk r-borderRadius-z2wwpe r-height-eu3ka r-justifyContent-1777fci r-marginTop-1x0uki6 r-paddingLeft-1qhn6m8 r-width-3egmai"
+    data-testid="refreshMandatory"
+    dir={null}
     onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+    onContextMenu={[Function]}
+    onKeyDown={[Function]}
     style={
       Object {
-        "alignSelf": "center",
-        "backgroundColor": "#0C66FF",
-        "borderRadius": 4,
-        "height": 40,
-        "justifyContent": "center",
-        "marginTop": 20,
-        "opacity": 1,
-        "paddingLeft": 16,
-        "width": 123,
+        "transitionDuration": "0s",
       }
     }
-    testID="refreshMandatory"
+    tabIndex="0"
   >
-    <View
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
           "alignItems": "center",
@@ -82,36 +57,32 @@ exports[`NotificationModalMandatory component NotificationModalMandatory snapsho
         }
       }
     >
-      <View>
-        <Text
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
+      >
+        <div
+          className="css-text-146c3p1"
+          dir="auto"
           style={
             Object {
-              "color": "#FFFFFF",
+              "color": "rgba(255,255,255,1.00)",
               "fontFamily": "alldone",
-              "fontSize": 24,
+              "fontSize": "24px",
               "opacity": 1,
             }
           }
         >
           
-        </Text>
-      </View>
-      <Text
-        style={
-          Object {
-            "color": "#FFFFFF",
-            "fontFamily": "Roboto-regular",
-            "fontSize": 14,
-            "fontWeight": "500",
-            "letterSpacing": 0.8,
-            "lineHeight": 14,
-            "marginLeft": 12,
-          }
-        }
+        </div>
+      </div>
+      <div
+        className="css-text-146c3p1 r-color-jwli3a r-fontFamily-x4jph8 r-fontSize-1b43r93 r-fontWeight-majxgm r-letterSpacing-1smd7e2 r-lineHeight-1f529hi r-marginLeft-19u6a5r"
+        dir="auto"
       >
         Refresh
-      </Text>
-    </View>
-  </View>
-</View>
+      </div>
+    </div>
+  </div>
+</div>
 `;

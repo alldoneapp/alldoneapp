@@ -1,89 +1,56 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ConfirmPopup component renders nothing while there is nothing to confirm 1`] = `
-<View
-  style={
-    Object {
-      "alignItems": "center",
-      "backgroundColor": "rgba(138,148,166,0.24)",
-      "bottom": 0,
-      "justifyContent": "center",
-      "left": 0,
-      "position": "absolute",
-      "right": 0,
-      "top": 0,
-      "zIndex": 10000,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1bap62n r-bottom-1p0dtai r-justifyContent-1777fci r-left-1d2f490 r-position-u8s1d r-right-zchlnj r-top-ipm5af r-zIndex-1pozq62"
+  dir={null}
 >
-  <View
-    style={
-      Array [
-        Object {
-          "alignItems": "center",
-          "backgroundColor": "#091540",
-          "borderRadius": 4,
-          "padding": 16,
-          "shadowColor": "rgba(0,0,0,0.04)",
-          "shadowOffset": Object {
-            "height": 16,
-            "width": 0,
-          },
-          "shadowOpacity": 1,
-          "shadowRadius": 24,
-        },
-        false,
-        null,
-      ]
-    }
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-1loqnew r-padding-nsbfu8"
+    dir={null}
   >
-    <View
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
-        Array [
-          Object {
-            "marginBottom": 20,
-          },
-          null,
-        ]
+        Object {
+          "marginBottom": "20px",
+        }
       }
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 18,
-              "lineHeight": 26,
-            },
-            Object {
-              "color": "#ffffff",
-            },
-          ]
+          Object {
+            "color": "rgba(255,255,255,1.00)",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": "18px",
+            "lineHeight": "26px",
+          }
         }
       >
         Be careful with this action
-      </Text>
-      <Text
+      </div>
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 14,
-              "letterSpacing": 0.32,
-              "lineHeight": 22,
-            },
-            Object {
-              "color": "#8A94A6",
-            },
-          ]
+          Object {
+            "color": "rgba(138,148,166,1.00)",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": "14px",
+            "letterSpacing": "0.32px",
+            "lineHeight": "22px",
+          }
         }
       >
         Do you really want to perform this action?
-      </Text>
-    </View>
-    <View
+      </div>
+    </div>
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
           "flex": 0,
@@ -91,218 +58,113 @@ exports[`ConfirmPopup component renders nothing while there is nothing to confir
         }
       }
     >
-      <View
-        accessible={false}
-        focusable={true}
-        isTVSelectable={true}
+      <div
+        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-backgroundColor-1uxh0fu r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
+        dir={null}
         onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
+        onContextMenu={[Function]}
+        onKeyDown={[Function]}
         style={
           Object {
-            "alignItems": "center",
-            "alignSelf": "flex-start",
-            "backgroundColor": "#EAF0F5",
-            "borderRadius": 4,
-            "flexDirection": "row",
-            "flexWrap": "nowrap",
-            "height": 40,
-            "justifyContent": "center",
-            "marginRight": 16,
-            "maxHeight": 40,
-            "minHeight": 40,
-            "opacity": 1,
-            "paddingLeft": 16,
-            "paddingRight": 16,
-            "paddingVertical": 8,
+            "marginRight": "16px",
+            "transitionDuration": "0s",
           }
         }
+        tabIndex="0"
       >
-        <Text
-          numberOfLines={1}
+        <div
+          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
+          dir="auto"
           style={
-            Array [
-              Array [
-                Object {
-                  "alignSelf": "center",
-                  "color": "#FFFFFF",
-                  "flexWrap": "nowrap",
-                  "fontFamily": "Roboto-Medium",
-                  "fontSize": 14,
-                  "letterSpacing": 0.8,
-                  "lineHeight": 16,
-                  "margin": 0,
-                  "paddingHorizontal": 0,
-                  "paddingVertical": 0,
-                },
-                Object {
-                  "color": "#04142F",
-                },
-                Object {},
-              ],
-              Object {
-                "marginLeft": 0,
-              },
-            ]
+            Object {
+              "marginLeft": "0px",
+            }
           }
         >
           Cancel
-        </Text>
-      </View>
-      <View
-        accessible={false}
-        focusable={true}
-        isTVSelectable={true}
+        </div>
+      </div>
+      <div
+        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-backgroundColor-67xh9u r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
+        dir={null}
         onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
+        onContextMenu={[Function]}
+        onKeyDown={[Function]}
         style={
           Object {
-            "alignItems": "center",
-            "alignSelf": "flex-start",
-            "backgroundColor": "#E00000",
-            "borderRadius": 4,
-            "flexDirection": "row",
-            "flexWrap": "nowrap",
-            "height": 40,
-            "justifyContent": "center",
-            "maxHeight": 40,
-            "minHeight": 40,
-            "opacity": 1,
-            "paddingLeft": 16,
-            "paddingRight": 16,
-            "paddingVertical": 8,
+            "transitionDuration": "0s",
           }
         }
+        tabIndex="0"
       >
-        <Text
-          numberOfLines={1}
+        <div
+          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
+          dir="auto"
           style={
-            Array [
-              Array [
-                Object {
-                  "alignSelf": "center",
-                  "color": "#FFFFFF",
-                  "flexWrap": "nowrap",
-                  "fontFamily": "Roboto-Medium",
-                  "fontSize": 14,
-                  "letterSpacing": 0.8,
-                  "lineHeight": 16,
-                  "margin": 0,
-                  "paddingHorizontal": 0,
-                  "paddingVertical": 0,
-                },
-                Object {
-                  "color": "#ffffff",
-                },
-                Object {},
-              ],
-              Object {
-                "marginLeft": 0,
-              },
-            ]
+            Object {
+              "marginLeft": "0px",
+            }
           }
         >
           Proceed
-        </Text>
-      </View>
-    </View>
-  </View>
-</View>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `;
 
 exports[`ConfirmPopup component renders once a confirmation is requested 1`] = `
-<View
-  style={
-    Object {
-      "alignItems": "center",
-      "backgroundColor": "rgba(138,148,166,0.24)",
-      "bottom": 0,
-      "justifyContent": "center",
-      "left": 0,
-      "position": "absolute",
-      "right": 0,
-      "top": 0,
-      "zIndex": 10000,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1bap62n r-bottom-1p0dtai r-justifyContent-1777fci r-left-1d2f490 r-position-u8s1d r-right-zchlnj r-top-ipm5af r-zIndex-1pozq62"
+  dir={null}
 >
-  <View
-    style={
-      Array [
-        Object {
-          "alignItems": "center",
-          "backgroundColor": "#091540",
-          "borderRadius": 4,
-          "padding": 16,
-          "shadowColor": "rgba(0,0,0,0.04)",
-          "shadowOffset": Object {
-            "height": 16,
-            "width": 0,
-          },
-          "shadowOpacity": 1,
-          "shadowRadius": 24,
-        },
-        false,
-        null,
-      ]
-    }
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-1loqnew r-padding-nsbfu8"
+    dir={null}
   >
-    <View
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
-        Array [
-          Object {
-            "marginBottom": 20,
-          },
-          null,
-        ]
+        Object {
+          "marginBottom": "20px",
+        }
       }
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 18,
-              "lineHeight": 26,
-            },
-            Object {
-              "color": "#ffffff",
-            },
-          ]
+          Object {
+            "color": "rgba(255,255,255,1.00)",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": "18px",
+            "lineHeight": "26px",
+          }
         }
       >
         Be careful with this action
-      </Text>
-      <Text
+      </div>
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Regular",
-              "fontSize": 14,
-              "letterSpacing": 0.32,
-              "lineHeight": 22,
-            },
-            Object {
-              "color": "#8A94A6",
-            },
-          ]
+          Object {
+            "color": "rgba(138,148,166,1.00)",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": "14px",
+            "letterSpacing": "0.32px",
+            "lineHeight": "22px",
+          }
         }
       >
         Do you really want to perform this action?
-      </Text>
-    </View>
-    <View
+      </div>
+    </div>
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
           "flex": 0,
@@ -310,130 +172,58 @@ exports[`ConfirmPopup component renders once a confirmation is requested 1`] = `
         }
       }
     >
-      <View
-        accessible={false}
-        focusable={true}
-        isTVSelectable={true}
+      <div
+        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-backgroundColor-1uxh0fu r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
+        dir={null}
         onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
+        onContextMenu={[Function]}
+        onKeyDown={[Function]}
         style={
           Object {
-            "alignItems": "center",
-            "alignSelf": "flex-start",
-            "backgroundColor": "#EAF0F5",
-            "borderRadius": 4,
-            "flexDirection": "row",
-            "flexWrap": "nowrap",
-            "height": 40,
-            "justifyContent": "center",
-            "marginRight": 16,
-            "maxHeight": 40,
-            "minHeight": 40,
-            "opacity": 1,
-            "paddingLeft": 16,
-            "paddingRight": 16,
-            "paddingVertical": 8,
+            "marginRight": "16px",
+            "transitionDuration": "0s",
           }
         }
+        tabIndex="0"
       >
-        <Text
-          numberOfLines={1}
+        <div
+          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
+          dir="auto"
           style={
-            Array [
-              Array [
-                Object {
-                  "alignSelf": "center",
-                  "color": "#FFFFFF",
-                  "flexWrap": "nowrap",
-                  "fontFamily": "Roboto-Medium",
-                  "fontSize": 14,
-                  "letterSpacing": 0.8,
-                  "lineHeight": 16,
-                  "margin": 0,
-                  "paddingHorizontal": 0,
-                  "paddingVertical": 0,
-                },
-                Object {
-                  "color": "#04142F",
-                },
-                Object {},
-              ],
-              Object {
-                "marginLeft": 0,
-              },
-            ]
+            Object {
+              "marginLeft": "0px",
+            }
           }
         >
           Cancel
-        </Text>
-      </View>
-      <View
-        accessible={false}
-        focusable={true}
-        isTVSelectable={true}
+        </div>
+      </div>
+      <div
+        className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-backgroundColor-67xh9u r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
+        dir={null}
         onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
+        onContextMenu={[Function]}
+        onKeyDown={[Function]}
         style={
           Object {
-            "alignItems": "center",
-            "alignSelf": "flex-start",
-            "backgroundColor": "#E00000",
-            "borderRadius": 4,
-            "flexDirection": "row",
-            "flexWrap": "nowrap",
-            "height": 40,
-            "justifyContent": "center",
-            "maxHeight": 40,
-            "minHeight": 40,
-            "opacity": 1,
-            "paddingLeft": 16,
-            "paddingRight": 16,
-            "paddingVertical": 8,
+            "transitionDuration": "0s",
           }
         }
+        tabIndex="0"
       >
-        <Text
-          numberOfLines={1}
+        <div
+          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
+          dir="auto"
           style={
-            Array [
-              Array [
-                Object {
-                  "alignSelf": "center",
-                  "color": "#FFFFFF",
-                  "flexWrap": "nowrap",
-                  "fontFamily": "Roboto-Medium",
-                  "fontSize": 14,
-                  "letterSpacing": 0.8,
-                  "lineHeight": 16,
-                  "margin": 0,
-                  "paddingHorizontal": 0,
-                  "paddingVertical": 0,
-                },
-                Object {
-                  "color": "#ffffff",
-                },
-                Object {},
-              ],
-              Object {
-                "marginLeft": 0,
-              },
-            ]
+            Object {
+              "marginLeft": "0px",
+            }
           }
         >
           Proceed
-        </Text>
-      </View>
-    </View>
-  </View>
-</View>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `;
