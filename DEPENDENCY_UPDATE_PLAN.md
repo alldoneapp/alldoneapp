@@ -104,8 +104,9 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
 ## Status log
 
 -   2026-08-05 (Phase 3 / migration Stage 3 step 1): **firebase client 8.10.1 → 12.17.1 via
-    `firebase/compat`** — kills the client-side `@firebase/firestore` highs and the
-    auth/persistence CVEs (npm audit now reports zero firebase findings). 23 import sites
+    `firebase/compat` — accepted on staging** — kills the client-side `@firebase/firestore`
+    highs and the auth/persistence CVEs (npm audit now reports zero firebase findings).
+    23 import sites
     rewritten, FCM service worker moved to the 12.17.1 compat CDN builds +
     `onBackgroundMessage`, three dead `messaging.onTokenRefresh` blocks removed (API gone
     in v9+), 47 vestigial `jest.mock('firebase', …)` lines deleted (v12's root package is
