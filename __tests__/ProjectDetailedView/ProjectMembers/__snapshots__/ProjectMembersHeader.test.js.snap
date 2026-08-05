@@ -1,43 +1,61 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ProjectMembersHeader component ProjectMembersHeader snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-obd0qt r-flexDirection-18u37iz r-height-wy61xf r-paddingBottom-kzbkwu r-paddingTop-fd4yh7"
-  dir={null}
+<View
+  style={
+    Object {
+      "alignItems": "flex-end",
+      "flexDirection": "row",
+      "height": 72,
+      "paddingBottom": 12,
+      "paddingTop": 32,
+    }
+  }
 >
-  <div
-    className="css-text-146c3p1"
-    dir="auto"
+  <Text
     style={
-      Object {
-        "color": "rgba(4,20,47,1.00)",
-        "fontFamily": "Roboto-Medium",
-        "fontSize": "20px",
-        "lineHeight": "28px",
-      }
+      Array [
+        Object {
+          "color": "#04142F",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 20,
+          "lineHeight": 28,
+        },
+        Object {
+          "color": "#04142F",
+        },
+      ]
     }
   >
     Project members
-  </div>
-  <div
-    className="css-view-g5y9jx r-height-18yzcnr r-justifyContent-1777fci r-marginLeft-1ow6zhx"
-    dir={null}
+  </Text>
+  <View
+    style={
+      Object {
+        "height": 22,
+        "justifyContent": "center",
+        "marginLeft": 16,
+      }
+    }
   >
-    <div
-      className="css-text-146c3p1"
-      dir="auto"
+    <Text
       style={
-        Object {
-          "color": "rgba(78,93,120,1.00)",
-          "fontFamily": "Roboto-Regular",
-          "fontSize": "12px",
-          "letterSpacing": "0.48px",
-          "lineHeight": "20px",
-        }
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 12,
+            "letterSpacing": 0.48,
+            "lineHeight": 20,
+          },
+          Object {
+            "color": "#4E5D78",
+          },
+        ]
       }
     >
       No members yet
-    </div>
-  </div>
-</div>
+    </Text>
+  </View>
+</View>
 `;

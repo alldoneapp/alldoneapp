@@ -1,686 +1,826 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ColorPickerModal component Should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-paddingBottom-xd6kpl r-paddingLeft-1qhn6m8 r-paddingRight-i023vh r-paddingTop-95jzfe r-width-1tecaoj"
-  dir={null}
+<View
+  style={
+    Array [
+      Object {
+        "backgroundColor": "#091540",
+        "borderRadius": 4,
+        "elevation": 3,
+        "paddingBottom": 8,
+        "paddingLeft": 16,
+        "paddingRight": 16,
+        "paddingTop": 16,
+        "shadowColor": "rgba(78, 93, 120, 0.56)",
+        "shadowOffset": Object {
+          "height": 4,
+          "width": 0,
+        },
+        "shadowOpacity": 1,
+        "shadowRadius": 16,
+        "width": 272,
+      },
+      false,
+    ]
+  }
 >
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+  <View
     style={
       Object {
-        "marginBottom": "20px",
+        "marginBottom": 20,
       }
     }
   >
-    <div
-      className="css-text-146c3p1"
-      dir="auto"
+    <Text
       style={
-        Object {
-          "color": "rgba(255,255,255,1.00)",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": "18px",
-          "lineHeight": "26px",
-        }
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 18,
+            "lineHeight": 26,
+          },
+          Object {
+            "color": "#ffffff",
+          },
+        ]
       }
     >
       Project color
-    </div>
-    <div
-      className="css-text-146c3p1"
-      dir="auto"
+    </Text>
+    <Text
       style={
-        Object {
-          "color": "rgba(138,148,166,1.00)",
-          "fontFamily": "Roboto-Regular",
-          "fontSize": "14px",
-          "letterSpacing": "0.32px",
-          "lineHeight": "22px",
-        }
+        Array [
+          Object {
+            "color": "#04142F",
+            "fontFamily": "Roboto-Regular",
+            "fontSize": 14,
+            "letterSpacing": 0.32,
+            "lineHeight": 22,
+          },
+          Object {
+            "color": "#8A94A6",
+          },
+        ]
       }
     >
       Select a color for your project
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx r-flex-13awgt0"
-    dir={null}
+    </Text>
+  </View>
+  <View
+    style={
+      Object {
+        "flex": 1,
+      }
+    }
   >
-    <div
-      className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-1wtj0ep"
-      dir={null}
-    >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
-          style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
-          }
-          type="button"
-        >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
-            style={
-              Object {
-                "opacity": 1,
-              }
-            }
-          >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
-              >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
-                    style={
-                      Object {
-                        "color": "rgba(71,222,255,1.00)",
-                        "fontFamily": "alldone",
-                        "fontSize": "24px",
-                        "opacity": 1,
-                      }
-                    }
-                  >
-                    
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
-          style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
-          }
-          type="button"
-        >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
-            style={
-              Object {
-                "opacity": 1,
-              }
-            }
-          >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
-              >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
-                    style={
-                      Object {
-                        "color": "rgba(124,112,255,1.00)",
-                        "fontFamily": "alldone",
-                        "fontSize": "24px",
-                        "opacity": 1,
-                      }
-                    }
-                  >
-                    
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
-          style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
-          }
-          type="button"
-        >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
-            style={
-              Object {
-                "opacity": 1,
-              }
-            }
-          >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
-              >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
-                    style={
-                      Object {
-                        "color": "rgba(255,146,92,1.00)",
-                        "fontFamily": "alldone",
-                        "fontSize": "24px",
-                        "opacity": 1,
-                      }
-                    }
-                  >
-                    
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
-          style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
-          }
-          type="button"
-        >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
-            style={
-              Object {
-                "opacity": 1,
-              }
-            }
-          >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
-              >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
-                    style={
-                      Object {
-                        "color": "rgba(10,255,190,1.00)",
-                        "fontFamily": "alldone",
-                        "fontSize": "24px",
-                        "opacity": 1,
-                      }
-                    }
-                  >
-                    
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
-          style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
-          }
-          type="button"
-        >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
-            style={
-              Object {
-                "opacity": 1,
-              }
-            }
-          >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
-            >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
-              >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
-                    style={
-                      Object {
-                        "color": "rgba(240,226,25,1.00)",
-                        "fontFamily": "alldone",
-                        "fontSize": "24px",
-                        "opacity": 1,
-                      }
-                    }
-                  >
-                    
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-    </div>
-    <div
-      className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-1wtj0ep"
-      dir={null}
+    <View
       style={
         Object {
-          "marginBottom": "12px",
-          "marginTop": "19px",
+          "flexDirection": "row",
+          "justifyContent": "space-between",
         }
       }
     >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
           style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
           }
-          type="button"
         >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
+          <View
+            accessible={true}
             style={
               Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
                 "opacity": 1,
+                "width": 32,
               }
             }
           >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
               >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
+                <View>
+                  <Text
                     style={
                       Object {
-                        "color": "rgba(0,244,119,1.00)",
+                        "color": "#47DEFF",
                         "fontFamily": "alldone",
-                        "fontSize": "24px",
+                        "fontSize": 24,
                         "opacity": 1,
                       }
                     }
                   >
                     
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
           style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
           }
-          type="button"
         >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
+          <View
+            accessible={true}
             style={
               Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
                 "opacity": 1,
+                "width": 32,
               }
             }
           >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
               >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
+                <View>
+                  <Text
                     style={
                       Object {
-                        "color": "rgba(255,112,179,1.00)",
+                        "color": "#7C70FF",
                         "fontFamily": "alldone",
-                        "fontSize": "24px",
+                        "fontSize": 24,
                         "opacity": 1,
                       }
                     }
                   >
                     
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
           style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
           }
-          type="button"
         >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
+          <View
+            accessible={true}
             style={
               Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
                 "opacity": 1,
+                "width": 32,
               }
             }
           >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
               >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
+                <View>
+                  <Text
                     style={
                       Object {
-                        "color": "rgba(255,82,116,1.00)",
+                        "color": "#FF925C",
                         "fontFamily": "alldone",
-                        "fontSize": "24px",
+                        "fontSize": 24,
                         "opacity": 1,
                       }
                     }
                   >
                     
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
           style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
           }
-          type="button"
         >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
+          <View
+            accessible={true}
             style={
               Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
                 "opacity": 1,
+                "width": 32,
               }
             }
           >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
               >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
+                <View>
+                  <Text
                     style={
                       Object {
-                        "color": "rgba(191,255,10,1.00)",
+                        "color": "#0AFFBE",
                         "fontFamily": "alldone",
-                        "fontSize": "24px",
+                        "fontSize": 24,
                         "opacity": 1,
                       }
                     }
                   >
                     
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <button
-          className="css-view-g5y9jx"
-          dir={null}
-          role="button"
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
           style={
-            Object {
-              "overflowX": "hidden",
-              "overflowY": "hidden",
-            }
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
           }
-          type="button"
         >
-          <div
-            className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-            dir={null}
+          <View
+            accessible={true}
             style={
               Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
                 "opacity": 1,
+                "width": 32,
               }
             }
           >
-            <div
-              className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
-              dir={null}
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
             >
-              <div
-                className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexGrow-16y2uox"
-                dir={null}
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
               >
-                <div
-                  className="css-view-g5y9jx"
-                  dir={null}
-                >
-                  <div
-                    className="css-text-146c3p1"
-                    dir="auto"
+                <View>
+                  <Text
                     style={
                       Object {
-                        "color": "rgba(203,112,255,1.00)",
+                        "color": "#F0E219",
                         "fontFamily": "alldone",
-                        "fontSize": "24px",
+                        "fontSize": 24,
                         "opacity": 1,
                       }
                     }
                   >
                     
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </button>
-      </div>
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx r-position-u8s1d r-right-3mc0re r-top-1yxedwg"
-    dir={null}
-  >
-    <button
-      className="css-view-g5y9jx"
-      dir={null}
-      role="button"
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+    </View>
+    <View
       style={
-        Object {
-          "overflowX": "hidden",
-          "overflowY": "hidden",
-        }
+        Array [
+          Object {
+            "flexDirection": "row",
+            "justifyContent": "space-between",
+          },
+          Object {
+            "marginBottom": 12,
+            "marginTop": 19,
+          },
+        ]
       }
-      type="button"
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-justifyContent-1777fci"
-        dir={null}
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+          style={
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
+          }
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
+                "opacity": 1,
+                "width": 32,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#00F477",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+          style={
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
+          }
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
+                "opacity": 1,
+                "width": 32,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#FF70B3",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+          style={
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
+          }
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
+                "opacity": 1,
+                "width": 32,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#FF5274",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+          style={
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
+          }
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
+                "opacity": 1,
+                "width": 32,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#BFFF0A",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+      <View>
+        <RNGestureHandlerButton
+          collapsable={false}
+          onGestureEvent={[Function]}
+          onGestureHandlerEvent={[Function]}
+          onGestureHandlerStateChange={[Function]}
+          onHandlerStateChange={[Function]}
+          rippleColor={0}
+          style={
+            Array [
+              Object {
+                "overflow": "hidden",
+              },
+              undefined,
+            ]
+          }
+        >
+          <View
+            accessible={true}
+            style={
+              Object {
+                "alignItems": "center",
+                "height": 32,
+                "justifyContent": "center",
+                "opacity": 1,
+                "width": 32,
+              }
+            }
+          >
+            <View
+              style={
+                Object {
+                  "alignItems": "center",
+                  "height": 32,
+                  "justifyContent": "center",
+                  "width": 32,
+                }
+              }
+            >
+              <View
+                style={
+                  Object {
+                    "alignItems": "center",
+                    "flexDirection": "row",
+                    "flexGrow": 1,
+                  }
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      Object {
+                        "color": "#CB70FF",
+                        "fontFamily": "alldone",
+                        "fontSize": 24,
+                        "opacity": 1,
+                      }
+                    }
+                  >
+                    
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </RNGestureHandlerButton>
+      </View>
+    </View>
+  </View>
+  <View
+    style={
+      Object {
+        "position": "absolute",
+        "right": 8,
+        "top": 8,
+      }
+    }
+  >
+    <RNGestureHandlerButton
+      collapsable={false}
+      onGestureEvent={[Function]}
+      onGestureHandlerEvent={[Function]}
+      onGestureHandlerStateChange={[Function]}
+      onHandlerStateChange={[Function]}
+      rippleColor={0}
+      style={
+        Array [
+          Object {
+            "overflow": "hidden",
+          },
+          undefined,
+        ]
+      }
+    >
+      <View
+        accessible={true}
         style={
           Object {
+            "alignItems": "center",
+            "justifyContent": "center",
             "opacity": 1,
           }
         }
       >
-        <div
-          className="css-view-g5y9jx"
-          dir={null}
-        >
-          <div
-            className="css-text-146c3p1"
-            dir="auto"
+        <View>
+          <Text
             style={
               Object {
-                "color": "rgba(138,148,166,1.00)",
+                "color": "#8A94A6",
                 "fontFamily": "alldone",
-                "fontSize": "24px",
+                "fontSize": 24,
                 "opacity": 1,
               }
             }
           >
             
-          </div>
-        </div>
-      </div>
-    </button>
-  </div>
-</div>
+          </Text>
+        </View>
+      </View>
+    </RNGestureHandlerButton>
+  </View>
+</View>
 `;

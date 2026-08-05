@@ -1,22 +1,28 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`SocialTextInput component SocialTextInput snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx"
-  dir={null}
+<View
+  onLayout={[Function]}
   style={
     Object {
       "flexDirection": "row",
     }
   }
 >
-  <div
-    className="css-view-g5y9jx r-borderColor-plf49q r-borderRadius-z2wwpe r-borderWidth-d045u9 r-minHeight-ero68b r-paddingInline-3pj75a"
-    dir={null}
+  <View
     style={
-      Object {
-        "flex": 1,
-      }
+      Array [
+        Object {
+          "flex": 1,
+        },
+        Object {
+          "borderColor": "#5AACFF",
+          "borderRadius": 4,
+          "borderWidth": 2,
+          "minHeight": 40,
+          "paddingHorizontal": 16,
+        },
+      ]
     }
   >
     <CustomTextInput3
@@ -42,6 +48,6 @@ exports[`SocialTextInput component SocialTextInput snapshot test should render c
       setMentionsModalActive={[Function]}
       updateMentions={[Function]}
     />
-  </div>
-</div>
+  </View>
+</View>
 `;

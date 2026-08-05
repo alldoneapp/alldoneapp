@@ -1,133 +1,229 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`DateItem component DateItem snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-height-eu3ka"
-  dir={null}
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
   onClick={[Function]}
-  onContextMenu={[Function]}
-  onKeyDown={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
   style={
     Object {
-      "transitionDuration": "0s",
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 40,
+      "opacity": 1,
     }
   }
-  tabIndex="0"
 >
-  <div
-    className="css-text-146c3p1"
-    dir="auto"
+  <Text
     style={
-      Object {
-        "color": "rgba(255,255,255,1.00)",
-        "fontFamily": "Roboto-Medium",
-        "fontSize": "16px",
-        "letterSpacing": "0.16px",
-        "lineHeight": "24px",
-      }
+      Array [
+        Object {
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 16,
+          "letterSpacing": 0.16,
+          "lineHeight": 24,
+        },
+        Object {
+          "color": "white",
+        },
+      ]
     }
   >
     Today
-    <span
-      className="css-textHasAncestor-1jxf684"
-      dir={null}
+    <Text
       style={
-        Object {
-          "color": "rgba(255,255,255,1.00)",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": "16px",
-          "letterSpacing": "0.16px",
-          "lineHeight": "24px",
-        }
+        Array [
+          Object {
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+          },
+          Object {
+            "color": "white",
+          },
+        ]
       }
     >
        • 
       22 Apr
-    </span>
-  </div>
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+    </Text>
+  </Text>
+  <View
     style={
       Object {
         "marginLeft": "auto",
       }
     }
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-      dir={null}
+    <View
+      style={
+        Array [
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "justifyContent": "center",
+          },
+          undefined,
+          undefined,
+        ]
+      }
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-        dir={null}
+      <View
+        style={
+          Array [
+            Object {
+              "alignItems": "center",
+              "backgroundColor": "#091540",
+              "borderRadius": 4,
+              "flexDirection": "row",
+              "justifyContent": "center",
+              "minHeight": 16,
+              "minWidth": 16,
+              "paddingHorizontal": 4,
+              "paddingVertical": 2,
+            },
+            Object {
+              "borderColor": "#8A94A6",
+              "borderWidth": 1,
+            },
+            undefined,
+          ]
+        }
       >
-        <div
-          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-          dir="auto"
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 12,
+                "letterSpacing": 0.48,
+                "lineHeight": 12,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+              undefined,
+            ]
+          }
         >
           1
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
 `;
 
 exports[`DateItem component DateItem snapshot test should render correctly 2`] = `
-<div
-  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flexDirection-18u37iz r-height-eu3ka"
-  dir={null}
+<View
+  accessible={true}
+  focusable={true}
+  isTVSelectable={true}
   onClick={[Function]}
-  onContextMenu={[Function]}
-  onKeyDown={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
   style={
     Object {
-      "transitionDuration": "0s",
+      "alignItems": "center",
+      "flexDirection": "row",
+      "height": 40,
+      "opacity": 1,
     }
   }
-  tabIndex="0"
 >
-  <div
-    className="css-text-146c3p1"
-    dir="auto"
+  <Text
     style={
-      Object {
-        "color": "rgba(255,255,255,1.00)",
-        "fontFamily": "Roboto-Medium",
-        "fontSize": "16px",
-        "letterSpacing": "0.16px",
-        "lineHeight": "24px",
-      }
+      Array [
+        Object {
+          "fontFamily": "Roboto-Medium",
+          "fontSize": 16,
+          "letterSpacing": 0.16,
+          "lineHeight": 24,
+        },
+        Object {
+          "color": "white",
+        },
+      ]
     }
   >
     Custom date
-  </div>
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+  </Text>
+  <View
     style={
       Object {
         "marginLeft": "auto",
       }
     }
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
-      dir={null}
+    <View
+      style={
+        Array [
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "justifyContent": "center",
+          },
+          undefined,
+          undefined,
+        ]
+      }
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
-        dir={null}
+      <View
+        style={
+          Array [
+            Object {
+              "alignItems": "center",
+              "backgroundColor": "#091540",
+              "borderRadius": 4,
+              "flexDirection": "row",
+              "justifyContent": "center",
+              "minHeight": 16,
+              "minWidth": 16,
+              "paddingHorizontal": 4,
+              "paddingVertical": 2,
+            },
+            Object {
+              "borderColor": "#8A94A6",
+              "borderWidth": 1,
+            },
+            undefined,
+          ]
+        }
       >
-        <div
-          className="css-text-146c3p1 r-fontFamily-1k9400p r-fontSize-1enofrn r-letterSpacing-3da313 r-lineHeight-56xrmm r-color-hiecfz"
-          dir="auto"
+        <Text
+          style={
+            Array [
+              Object {
+                "color": "#04142F",
+                "fontFamily": "Roboto-Medium",
+                "fontSize": 12,
+                "letterSpacing": 0.48,
+                "lineHeight": 12,
+              },
+              Object {
+                "color": "#8A94A6",
+              },
+              undefined,
+            ]
+          }
         >
           Q
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
 `;

@@ -1,5 +1,5 @@
 import React from 'react'
-import { DragDropContext } from '@hello-pangea/dnd'
+import { DragDropContext } from 'react-beautiful-dnd'
 import { useSelector } from 'react-redux'
 
 import MentionSection from './MentionSection'

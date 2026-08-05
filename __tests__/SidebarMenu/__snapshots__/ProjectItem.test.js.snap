@@ -1,104 +1,156 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ProjectItem component should render correctly 1`] = `
-<div
-  aria-label="sidebar-project-undefined"
-  className="css-view-g5y9jx"
-  dir={null}
-  id="sidebar-project--LcRVRo6mhbC0oXCcZ2F-0"
+<View
+  accessibilityLabel="sidebar-project-undefined"
+  nativeID="sidebar-project--LcRVRo6mhbC0oXCcZ2F-0"
 >
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
-    dir={null}
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
     onClick={[Function]}
-    onContextMenu={[Function]}
-    onKeyDown={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
     style={
       Object {
-        "transitionDuration": "0s",
+        "opacity": 1,
       }
     }
-    tabIndex="0"
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-1mwlp6a r-justifyContent-1wtj0ep r-paddingLeft-1937ghh"
-      dir={null}
+    <View
       onMouseEnter={[Function]}
       onMouseLeave={[Function]}
       style={
-        Object {
-          "backgroundColor": "rgba(245,245,245,1.00)",
-        }
+        Array [
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "height": 56,
+            "justifyContent": "space-between",
+            "paddingLeft": 24,
+          },
+          Object {
+            "backgroundColor": "#F5F5F5",
+          },
+          false,
+          Object {
+            "paddingLeft": 17,
+          },
+        ]
       }
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz"
-        dir={null}
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+          }
+        }
       >
-        <div
-          className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-18c69zk r-height-18yzcnr r-justifyContent-1777fci r-marginRight-zso239 r-width-yc9v9c"
-          dir={null}
+        <View
           style={
-            Object {
-              "backgroundColor": "rgba(71,163,255,1.00)",
-              "opacity": 0.4,
-            }
+            Array [
+              Object {
+                "alignItems": "center",
+                "borderRadius": 100,
+                "height": 22,
+                "justifyContent": "center",
+                "marginRight": 10,
+                "width": 22,
+              },
+              Object {
+                "backgroundColor": "#47A3FF",
+                "opacity": 0.4,
+              },
+            ]
           }
         />
-      </div>
-    </div>
-  </div>
-</div>
+      </View>
+    </View>
+  </View>
+</View>
 `;
 
 exports[`ProjectItem component should render correctly when it is the selected project 1`] = `
-<div
-  aria-label="sidebar-project-undefined"
-  className="css-view-g5y9jx"
-  dir={null}
-  id="sidebar-project--LcRVRo6mhbC0oXCcZ2F-0"
+<View
+  accessibilityLabel="sidebar-project-undefined"
+  nativeID="sidebar-project--LcRVRo6mhbC0oXCcZ2F-0"
 >
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
-    dir={null}
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
     onClick={[Function]}
-    onContextMenu={[Function]}
-    onKeyDown={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
     style={
       Object {
-        "transitionDuration": "0s",
+        "opacity": 1,
       }
     }
-    tabIndex="0"
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-1mwlp6a r-justifyContent-1wtj0ep r-paddingLeft-1937ghh"
-      dir={null}
+    <View
       onMouseEnter={[Function]}
       onMouseLeave={[Function]}
       style={
-        Object {
-          "backgroundColor": "rgba(214,235,255,1.00)",
-        }
+        Array [
+          Object {
+            "alignItems": "center",
+            "flexDirection": "row",
+            "height": 56,
+            "justifyContent": "space-between",
+            "paddingLeft": 24,
+          },
+          Object {
+            "backgroundColor": "#D6EBFF",
+          },
+          false,
+          Object {
+            "paddingLeft": 17,
+          },
+        ]
       }
     >
-      <div
-        className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz"
-        dir={null}
+      <View
+        style={
+          Object {
+            "alignItems": "center",
+            "flex": 1,
+            "flexDirection": "row",
+          }
+        }
       >
-        <div
-          className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-18c69zk r-height-18yzcnr r-justifyContent-1777fci r-marginRight-zso239 r-width-yc9v9c"
-          dir={null}
+        <View
           style={
-            Object {
-              "backgroundColor": "rgba(71,163,255,1.00)",
-              "opacity": 1,
-            }
+            Array [
+              Object {
+                "alignItems": "center",
+                "borderRadius": 100,
+                "height": 22,
+                "justifyContent": "center",
+                "marginRight": 10,
+                "width": 22,
+              },
+              Object {
+                "backgroundColor": "#47A3FF",
+                "opacity": 1,
+              },
+            ]
           }
         />
-      </div>
-    </div>
-  </div>
+      </View>
+    </View>
+  </View>
   <ProjectSectionList
     projectData={
       Object {
@@ -112,5 +164,5 @@ exports[`ProjectItem component should render correctly when it is the selected p
       }
     }
   />
-</div>
+</View>
 `;

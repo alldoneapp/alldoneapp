@@ -1,58 +1,57 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Detailed Project Indicator component Detailed Project Indicator snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx"
-  dir={null}
->
-  <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-14lw9ot r-flexDirection-18u37iz r-justifyContent-1777fci r-marginTop-jv1ppg"
-    dir={null}
+<View>
+  <View
+    style={
+      Object {
+        "alignItems": "center",
+        "backgroundColor": "white",
+        "flexDirection": "row",
+        "justifyContent": "center",
+        "marginTop": 36,
+      }
+    }
   >
-    <div
-      className="css-text-146c3p1"
-      dir="auto"
+    <Text
       style={
-        Object {
-          "color": "rgba(138,148,166,1.00)",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": "16px",
-          "letterSpacing": "0.16px",
-          "lineHeight": "24px",
-        }
+        Array [
+          Object {
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 16,
+            "letterSpacing": 0.16,
+            "lineHeight": 24,
+          },
+          Object {
+            "color": "#8A94A6",
+          },
+        ]
       }
     >
       RELEVANT CONTACT
-    </div>
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
+    </Text>
+    <View
       style={
         Object {
-          "marginLeft": "14px",
+          "marginLeft": 14,
         }
       }
     >
-      <div
-        className="css-view-g5y9jx"
-        dir={null}
-      >
-        <div
-          className="css-text-146c3p1"
-          dir="auto"
+      <View>
+        <Text
           style={
             Object {
-              "color": "rgba(138,148,166,1.00)",
+              "color": "#8A94A6",
               "fontFamily": "alldone",
-              "fontSize": "20px",
+              "fontSize": 20,
               "opacity": 1,
             }
           }
         >
           
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+        </Text>
+      </View>
+    </View>
+  </View>
+</View>
 `;

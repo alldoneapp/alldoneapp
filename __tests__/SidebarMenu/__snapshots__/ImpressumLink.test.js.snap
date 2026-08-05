@@ -1,163 +1,272 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ImpressumLink component ImpressumLink snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexWrap-tzz3ar r-maxHeight-1dlgt49 r-overflow-1udh08x r-paddingInline-cxgwc0 r-width-13qz1uu"
-  dir={null}
+<View
+  style={
+    Object {
+      "alignItems": "center",
+      "flexDirection": "row",
+      "flexWrap": "nowrap",
+      "maxHeight": 30,
+      "overflow": "hidden",
+      "paddingHorizontal": 24,
+      "width": "100%",
+    }
+  }
 >
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
-    dir={null}
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
     onClick={[Function]}
-    onContextMenu={[Function]}
-    onKeyDown={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
     style={
       Object {
-        "transitionDuration": "0s",
+        "opacity": 1,
       }
     }
-    tabIndex="0"
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-h3s6tt"
-      dir={null}
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 48,
+        }
+      }
     >
-      <div
-        className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
-        dir="auto"
+      <Text
+        numberOfLines={1}
         style={
-          Object {
-            "color": "rgba(138,148,166,1.00)",
-            "opacity": 0.4,
-          }
+          Array [
+            Object {
+              "color": "#FFFFFF",
+              "flexWrap": "nowrap",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "opacity": 0.4,
+            },
+            Object {
+              "color": "#8A94A6",
+              "opacity": 0.4,
+            },
+          ]
         }
       >
         Impressum
-      </div>
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx r-borderRadius-1tw7wh r-height-hdaws3 r-marginInline-8dgmk1 r-width-10g5efv"
-    dir={null}
+      </Text>
+    </View>
+  </View>
+  <View
     style={
-      Object {
-        "backgroundColor": "rgba(138,148,166,1.00)",
-        "opacity": 0.4,
-      }
+      Array [
+        Object {
+          "backgroundColor": "#ffffff",
+          "borderRadius": 50,
+          "height": 4,
+          "marginHorizontal": 8,
+          "opacity": 0.4,
+          "width": 4,
+        },
+        Object {
+          "backgroundColor": "#8A94A6",
+          "opacity": 0.4,
+        },
+      ]
     }
   />
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
-    dir={null}
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
     onClick={[Function]}
-    onContextMenu={[Function]}
-    onKeyDown={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
     style={
       Object {
-        "transitionDuration": "0s",
+        "opacity": 1,
       }
     }
-    tabIndex="0"
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-h3s6tt"
-      dir={null}
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 48,
+        }
+      }
     >
-      <div
-        className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
-        dir="auto"
+      <Text
+        numberOfLines={1}
         style={
-          Object {
-            "color": "rgba(138,148,166,1.00)",
-            "opacity": 0.4,
-          }
+          Array [
+            Object {
+              "color": "#FFFFFF",
+              "flexWrap": "nowrap",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "opacity": 0.4,
+            },
+            Object {
+              "color": "#8A94A6",
+              "opacity": 0.4,
+            },
+          ]
         }
       >
         Privacy
-      </div>
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx r-borderRadius-1tw7wh r-height-hdaws3 r-marginInline-8dgmk1 r-width-10g5efv"
-    dir={null}
+      </Text>
+    </View>
+  </View>
+  <View
     style={
-      Object {
-        "backgroundColor": "rgba(138,148,166,1.00)",
-        "opacity": 0.4,
-      }
+      Array [
+        Object {
+          "backgroundColor": "#ffffff",
+          "borderRadius": 50,
+          "height": 4,
+          "marginHorizontal": 8,
+          "opacity": 0.4,
+          "width": 4,
+        },
+        Object {
+          "backgroundColor": "#8A94A6",
+          "opacity": 0.4,
+        },
+      ]
     }
   />
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
-    dir={null}
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
     onClick={[Function]}
-    onContextMenu={[Function]}
-    onKeyDown={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
     style={
       Object {
-        "transitionDuration": "0s",
+        "opacity": 1,
       }
     }
-    tabIndex="0"
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-h3s6tt"
-      dir={null}
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 48,
+        }
+      }
     >
-      <div
-        className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
-        dir="auto"
+      <Text
+        numberOfLines={1}
         style={
-          Object {
-            "color": "rgba(138,148,166,1.00)",
-            "opacity": 0.4,
-          }
+          Array [
+            Object {
+              "color": "#FFFFFF",
+              "flexWrap": "nowrap",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "opacity": 0.4,
+            },
+            Object {
+              "color": "#8A94A6",
+              "opacity": 0.4,
+            },
+          ]
         }
       >
         Terms
-      </div>
-    </div>
-  </div>
-  <div
-    className="css-view-g5y9jx r-borderRadius-1tw7wh r-height-hdaws3 r-marginInline-8dgmk1 r-width-10g5efv"
-    dir={null}
+      </Text>
+    </View>
+  </View>
+  <View
     style={
-      Object {
-        "backgroundColor": "rgba(138,148,166,1.00)",
-        "opacity": 0.4,
-      }
+      Array [
+        Object {
+          "backgroundColor": "#ffffff",
+          "borderRadius": 50,
+          "height": 4,
+          "marginHorizontal": 8,
+          "opacity": 0.4,
+          "width": 4,
+        },
+        Object {
+          "backgroundColor": "#8A94A6",
+          "opacity": 0.4,
+        },
+      ]
     }
   />
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
-    dir={null}
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
     onClick={[Function]}
-    onContextMenu={[Function]}
-    onKeyDown={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
     style={
       Object {
-        "transitionDuration": "0s",
+        "opacity": 1,
       }
     }
-    tabIndex="0"
   >
-    <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-h3s6tt"
-      dir={null}
+    <View
+      style={
+        Object {
+          "alignItems": "center",
+          "flexDirection": "row",
+          "height": 48,
+        }
+      }
     >
-      <div
-        className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
-        dir="auto"
+      <Text
+        numberOfLines={1}
         style={
-          Object {
-            "color": "rgba(138,148,166,1.00)",
-            "opacity": 0.4,
-          }
+          Array [
+            Object {
+              "color": "#FFFFFF",
+              "flexWrap": "nowrap",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": 14,
+              "letterSpacing": 0.32,
+              "lineHeight": 22,
+              "opacity": 0.4,
+            },
+            Object {
+              "color": "#8A94A6",
+              "opacity": 0.4,
+            },
+          ]
         }
       >
         Cookie settings
-      </div>
-    </div>
-  </div>
-</div>
+      </Text>
+    </View>
+  </View>
+</View>
 `;

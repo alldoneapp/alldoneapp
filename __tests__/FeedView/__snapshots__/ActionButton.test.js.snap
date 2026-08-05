@@ -1,70 +1,75 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ActionButton component should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx"
-  dir={null}
+<View
   style={
-    Object {
-      "marginRight": "4px",
-    }
+    Array [
+      Object {
+        "marginRight": 4,
+      },
+      null,
+    ]
   }
 >
-  <div
-    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderRadius-z2wwpe r-flexDirection-18u37iz r-height-eu3ka r-paddingInline-3pj75a"
-    data-testid="touchableOpacity"
-    dir={null}
+  <View
+    accessible={true}
+    focusable={true}
+    isTVSelectable={true}
     onClick={[Function]}
-    onContextMenu={[Function]}
-    onKeyDown={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
     style={
       Object {
-        "transitionDuration": "0s",
+        "alignItems": "center",
+        "borderRadius": 4,
+        "flexDirection": "row",
+        "height": 40,
+        "opacity": 1,
+        "paddingHorizontal": 16,
       }
     }
-    tabIndex="0"
+    testID="touchableOpacity"
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
+    <View>
+      <Text
         style={
           Object {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "#8A94A6",
             "fontFamily": "alldone",
-            "fontSize": "24px",
+            "fontSize": 24,
             "opacity": 1,
           }
         }
       />
-    </div>
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
+    </View>
+    <View
       style={
         Object {
-          "marginLeft": "12px",
+          "marginLeft": 12,
         }
       }
     >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
+      <Text
         style={
-          Object {
-            "color": "rgba(138,148,166,1.00)",
-            "fontFamily": "Roboto-Medium",
-            "fontSize": "14px",
-            "fontStyle": "normal",
-            "letterSpacing": "0.8px",
-            "lineHeight": "14px",
-          }
+          Array [
+            Object {
+              "fontFamily": "Roboto-Medium",
+              "fontSize": 14,
+              "fontStyle": "normal",
+              "letterSpacing": 0.8,
+              "lineHeight": 14,
+            },
+            Object {
+              "color": "#8A94A6",
+            },
+          ]
         }
       />
-    </div>
-  </div>
-</div>
+    </View>
+  </View>
+</View>
 `;

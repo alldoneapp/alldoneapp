@@ -1,145 +1,154 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Spinner component Spinner snapshot test should render correctly as default 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-gjgjzp r-justifyContent-1777fci"
-  dir={null}
+<View
   style={
-    Object {
-      "backgroundColor": "rgba(231,236,239,1.00)",
-      "height": "24px",
-      "maxHeight": "24px",
-      "maxWidth": "24px",
-      "minHeight": "24px",
-      "minWidth": "24px",
-      "width": "24px",
-    }
+    Array [
+      Object {
+        "alignItems": "center",
+        "borderRadius": 10000,
+        "justifyContent": "center",
+      },
+      Object {
+        "backgroundColor": "#E7ECEF",
+        "height": 24,
+        "maxHeight": 24,
+        "maxWidth": 24,
+        "minHeight": 24,
+        "minWidth": 24,
+        "width": 24,
+      },
+      undefined,
+    ]
   }
 >
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+  <View
     style={
       Object {
-        "transform": "rotate(0deg)",
+        "transform": Array [
+          Object {
+            "rotate": "0deg",
+          },
+        ],
       }
     }
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
+    <View>
+      <Text
         style={
           Object {
-            "color": "rgba(0,127,255,1.00)",
+            "color": "#007FFF",
             "fontFamily": "alldone",
-            "fontSize": "16px",
+            "fontSize": 16,
             "opacity": 1,
           }
         }
       >
         
-      </div>
-    </div>
-  </div>
-</div>
+      </Text>
+    </View>
+  </View>
+</View>
 `;
 
 exports[`Spinner component Spinner snapshot test should render correctly passing custom colors 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-gjgjzp r-justifyContent-1777fci"
-  dir={null}
+<View
   style={
-    Object {
-      "backgroundColor": "rgba(255,0,0,1.00)",
-      "height": "24px",
-      "maxHeight": "24px",
-      "maxWidth": "24px",
-      "minHeight": "24px",
-      "minWidth": "24px",
-      "width": "24px",
-    }
+    Array [
+      Object {
+        "alignItems": "center",
+        "borderRadius": 10000,
+        "justifyContent": "center",
+      },
+      Object {
+        "backgroundColor": "red",
+        "height": 24,
+        "maxHeight": 24,
+        "maxWidth": 24,
+        "minHeight": 24,
+        "minWidth": 24,
+        "width": 24,
+      },
+      undefined,
+    ]
   }
 >
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+  <View
     style={
       Object {
-        "transform": "rotate(0deg)",
+        "transform": Array [
+          Object {
+            "rotate": "0deg",
+          },
+        ],
       }
     }
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
+    <View>
+      <Text
         style={
           Object {
-            "color": "rgba(0,0,255,1.00)",
+            "color": "blue",
             "fontFamily": "alldone",
-            "fontSize": "16px",
+            "fontSize": 16,
             "opacity": 1,
           }
         }
       >
         
-      </div>
-    </div>
-  </div>
-</div>
+      </Text>
+    </View>
+  </View>
+</View>
 `;
 
 exports[`Spinner component Spinner snapshot test should render correctly passing custom sizes 1`] = `
-<div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-gjgjzp r-justifyContent-1777fci"
-  dir={null}
+<View
   style={
-    Object {
-      "backgroundColor": "rgba(231,236,239,1.00)",
-      "height": "100px",
-      "maxHeight": "100px",
-      "maxWidth": "100px",
-      "minHeight": "100px",
-      "minWidth": "100px",
-      "width": "100px",
-    }
+    Array [
+      Object {
+        "alignItems": "center",
+        "borderRadius": 10000,
+        "justifyContent": "center",
+      },
+      Object {
+        "backgroundColor": "#E7ECEF",
+        "height": 100,
+        "maxHeight": 100,
+        "maxWidth": 100,
+        "minHeight": 100,
+        "minWidth": 100,
+        "width": 100,
+      },
+      undefined,
+    ]
   }
 >
-  <div
-    className="css-view-g5y9jx"
-    dir={null}
+  <View
     style={
       Object {
-        "transform": "rotate(0deg)",
+        "transform": Array [
+          Object {
+            "rotate": "0deg",
+          },
+        ],
       }
     }
   >
-    <div
-      className="css-view-g5y9jx"
-      dir={null}
-    >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
+    <View>
+      <Text
         style={
           Object {
-            "color": "rgba(0,127,255,1.00)",
+            "color": "#007FFF",
             "fontFamily": "alldone",
-            "fontSize": "70px",
+            "fontSize": 70,
             "opacity": 1,
           }
         }
       >
         
-      </div>
-    </div>
-  </div>
-</div>
+      </Text>
+    </View>
+  </View>
+</View>
 `;

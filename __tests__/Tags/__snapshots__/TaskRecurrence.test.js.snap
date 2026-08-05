@@ -1,48 +1,77 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`TaskRecurrence component TaskRecurrence empty snapshot test should render correctly 1`] = `
-<div
-  className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
-  dir={null}
+<View
+  accessible={false}
+  focusable={true}
+  isTVSelectable={true}
   onClick={[Function]}
-  onContextMenu={[Function]}
-  onKeyDown={[Function]}
+  onResponderGrant={[Function]}
+  onResponderMove={[Function]}
+  onResponderRelease={[Function]}
+  onResponderTerminate={[Function]}
+  onResponderTerminationRequest={[Function]}
+  onStartShouldSetResponder={[Function]}
   style={
     Object {
-      "transitionDuration": "0s",
+      "opacity": 1,
     }
   }
-  tabIndex="0"
 >
-  <div
-    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1v0ekwd r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
-    dir={null}
+  <View
+    style={
+      Array [
+        Object {
+          "alignItems": "center",
+          "backgroundColor": "#E7ECEF",
+          "borderRadius": 12,
+          "flexDirection": "row",
+          "height": 24,
+          "justifyContent": "center",
+        },
+        undefined,
+      ]
+    }
   >
-    <div
-      className="css-view-g5y9jx r-marginInline-1537yvj"
-      dir={null}
+    <View
+      style={
+        Object {
+          "marginHorizontal": 4,
+        }
+      }
     >
-      <div
-        className="css-text-146c3p1"
-        dir="auto"
+      <Text
         style={
           Object {
-            "color": "rgba(138,148,166,1.00)",
+            "color": "#8A94A6",
             "fontFamily": "alldone",
-            "fontSize": "16px",
+            "fontSize": 16,
             "opacity": 1,
           }
         }
       >
         
-      </div>
-    </div>
-    <div
-      className="css-text-146c3p1 r-color-hiecfz r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-marginBlock-s49dbf r-marginLeft-9cviqr r-marginRight-zso239"
-      dir="auto"
+      </Text>
+    </View>
+    <Text
+      style={
+        Array [
+          Object {
+            "color": "#8A94A6",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": 14,
+            "letterSpacing": 0.16,
+            "lineHeight": 22,
+            "marginLeft": 2,
+            "marginRight": 10,
+            "marginVertical": 1,
+          },
+          undefined,
+        ]
+      }
     >
       Never
-    </div>
-  </div>
-</div>
+    </Text>
+  </View>
+</View>
 `;
