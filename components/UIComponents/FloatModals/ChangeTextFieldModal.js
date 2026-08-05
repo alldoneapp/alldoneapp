@@ -23,7 +23,9 @@ class ChangeTextFieldModal extends Component {
 
     componentDidMount() {
         document.addEventListener('keydown', this.onPressEnter)
-        setTimeout(() => this.inputText && this.inputText.current.focus(), 1)
+        // The ref object always exists, so guarding it alone still threw once the
+        // modal unmounted before this fired; `current` is the part that goes null.
+        setTimeout(() => this.inputText && this.inputText.current && this.inputText.current.focus(), 1)
     }
 
     componentWillUnmount() {
