@@ -84,7 +84,7 @@ export const deleteCache = async () => {
     //     }
     // }
 
-    if (caches) {
+    if (typeof caches !== 'undefined') {
         caches.keys().then(function (names) {
             for (let name of names) caches.delete(name)
         })
