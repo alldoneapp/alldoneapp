@@ -56,6 +56,7 @@ import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getDvMainTabLink } from '../../utils/LinkingHelper'
 import { DEFAULT_WORKSTREAM_ID } from '../Workstreams/WorkstreamHelper'
+import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 
 const getProjectAccessIds = (loggedUser, projectId) => {
     if (loggedUser.isAnonymous) return [FEED_PUBLIC_FOR_ALL]
@@ -792,6 +793,7 @@ export default function GlobalSearchModal() {
                         placeholder="Search term..."
                         buttonIcon="search"
                         disabledButton={projects.length === 0 || indexing || indexingFullSearchInAllProjects}
+                        onSubmitEditing={onSearch}
                     />
 
                     <ResultLists
@@ -830,14 +832,9 @@ export default function GlobalSearchModal() {
 
 const localStyles = StyleSheet.create({
     container: {
-        position: 'absolute',
+        ...fixedModalOverlayStyle,
         zIndex: 10000,
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
-        justifyContent: 'center',
         alignItems: 'center',
     },
     backdrop: {
@@ -858,8 +855,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
         alignItems: 'center',
         height: 512,
-        maxHeight: 512,
-        minHeight: 512,
+        maxHeight: '100%',
         zIndex: 11000,
     },
     titleContainer: {
