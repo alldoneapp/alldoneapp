@@ -105,6 +105,8 @@ modules_cache:
           changes:
               - package.json
               - package-lock.json
+              # The image is also stale when its own recipe changes.
+              - ci/Dockerfile_base
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
           changes:
               compare_to: 'refs/heads/master'
@@ -138,6 +140,9 @@ web_bundler_cache:
               - web-bundler/package.json
               - web-bundler/package-lock.json
               - ci/Dockerfile_web_bundler
+              # This image COPYs /app/node_modules out of the base image, so it
+              # is stale whenever the base image's recipe changes too.
+              - ci/Dockerfile_base
         # Same union of paths as modules_cache's branch rule, so the branch-scoped
         # base image this is built FROM has always been produced by that job.
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
