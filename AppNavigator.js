@@ -1,9 +1,8 @@
 import React from 'react'
 import { Dimensions, View } from 'react-native'
-import { createAppContainer } from 'react-navigation'
-import { createStackNavigator } from 'react-navigation-stack'
 
 import store from './redux/store'
+import NavigationService from './utils/NavigationService'
 import RootView from './components/RootView/RootView'
 import LoginScreen from './components/LoginScreen/LoginScreen'
 import TaskDetailedView from './components/TaskDetailedView/TaskDetailedView'
@@ -45,215 +44,6 @@ import ChatDetailedView from './components/ChatsView/ChatDetailedView'
 import SkillDetailedView from './components/SkillDetailedView/SkillDetailedView'
 import AdminPanelView from './components/AdminPanel/AdminPanelView'
 import AssistantDetailedView from './components/AssistantDetailedView/AssistantDetailedView'
-
-const AppStack = createStackNavigator(
-    {
-        Root: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <RootView navigation={props.navigation} />
-                        <NoteChangedNotificationModal />
-                    </View>
-                </View>
-            ),
-        },
-        TaskDetailedView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <TaskDetailedView navigation={props.navigation}></TaskDetailedView>
-                    </View>
-                </View>
-            ),
-        },
-        UserDetailedView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <UserDetailedView navigation={props.navigation}></UserDetailedView>
-                    </View>
-                </View>
-            ),
-        },
-        ContactDetailedView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <ContactDetailedView navigation={props.navigation} />
-                    </View>
-                </View>
-            ),
-        },
-        SettingsView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <SettingsView navigation={props.navigation} />
-                    </View>
-                </View>
-            ),
-        },
-        AdminPanelView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <AdminPanelView navigation={props.navigation} />
-                    </View>
-                </View>
-            ),
-        },
-        ProjectDetailedView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <ProjectDetailedView navigation={props.navigation} />
-                    </View>
-                </View>
-            ),
-        },
-        NotesDetailedView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <NotesDetailedView navigation={props.navigation} />
-                        <NoteMaxLengthModal />
-                    </View>
-                </View>
-            ),
-        },
-        GoalDetailedView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <GoalDetailedView navigation={props.navigation}></GoalDetailedView>
-                    </View>
-                </View>
-            ),
-        },
-        SkillDetailedView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <SkillDetailedView navigation={props.navigation} />
-                    </View>
-                </View>
-            ),
-        },
-        AssistantDetailedView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <AssistantDetailedView navigation={props.navigation} />
-                    </View>
-                </View>
-            ),
-        },
-        ChatDetailedView: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <ChatDetailedView navigation={props.navigation} />
-                    </View>
-                </View>
-            ),
-        },
-        LoginScreen: LoginScreen,
-        PrivateResource: PrivateResourcePage,
-        PaymentSuccess: PaymentSuccessPage,
-        AppAuth: AppAuthPage,
-        Onboarding: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <OnboardingView navigation={props.navigation} />
-                    </View>
-                </View>
-            ),
-        },
-        WhatsAppOnboarding: {
-            screen: props => (
-                <View
-                    style={{ flex: 1 }}
-                    onStartShouldSetResponder={DismissibleModal.captureDismissibleTouch}
-                    onLayout={onLayoutChange}
-                >
-                    <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
-                        <WhatsAppOnboarding navigation={props.navigation} />
-                    </View>
-                </View>
-            ),
-        },
-        MeetingBooking: {
-            screen: props => <MeetingBookingPage navigation={props.navigation} />,
-        },
-    },
-
-    {
-        initialRouteName: 'LoginScreen',
-        headerMode: 'none',
-        navigationOptions: {
-            gesturesEnabled: false,
-            animationEnabled: false,
-        },
-        defaultNavigationOptions: {
-            gestureEnabled: false,
-            animationEnabled: false,
-        },
-    }
-)
 
 const onLayoutChange = layout => {
     const {
@@ -358,4 +148,96 @@ const onLayoutChange = layout => {
     }
 }
 
-export const AppContainer = createAppContainer(AppStack)
+// The standard screen chrome the old stack navigator wrapped around most
+// screens: responsive relayout on the outer View, click-observer notification
+// on the inner one. Dismissible-touch capture is a document-level listener now
+// (installed by AppContainer below) instead of the old pair of a wrapper
+// responder + a patched react-native-web TouchableOpacity: the responder
+// negotiation never reached the wrapper when an inner touchable claimed the
+// touch, which is exactly why replacement_node_modules carried that patch.
+// A DOM capture-phase listener sees every press regardless of what claims it.
+const ScreenWrapper = ({ children }) => (
+    <View style={{ flex: 1 }} onLayout={onLayoutChange}>
+        <View onStartShouldSetResponder={notifyClickObservers} style={{ flex: 1 }}>
+            {children}
+        </View>
+    </View>
+)
+
+// Route map replacing the old createStackNavigator config. `wrapped` mirrors
+// which screens had the chrome wrapper; `extra` renders the wrapper-level
+// modals some screens carried.
+const ROUTES = {
+    Root: { screen: RootView, wrapped: true, extra: NoteChangedNotificationModal },
+    TaskDetailedView: { screen: TaskDetailedView, wrapped: true },
+    UserDetailedView: { screen: UserDetailedView, wrapped: true },
+    ContactDetailedView: { screen: ContactDetailedView, wrapped: true },
+    SettingsView: { screen: SettingsView, wrapped: true },
+    AdminPanelView: { screen: AdminPanelView, wrapped: true },
+    ProjectDetailedView: { screen: ProjectDetailedView, wrapped: true },
+    NotesDetailedView: { screen: NotesDetailedView, wrapped: true, extra: NoteMaxLengthModal },
+    GoalDetailedView: { screen: GoalDetailedView, wrapped: true },
+    SkillDetailedView: { screen: SkillDetailedView, wrapped: true },
+    AssistantDetailedView: { screen: AssistantDetailedView, wrapped: true },
+    ChatDetailedView: { screen: ChatDetailedView, wrapped: true },
+    LoginScreen: { screen: LoginScreen, wrapped: false },
+    PrivateResource: { screen: PrivateResourcePage, wrapped: false },
+    PaymentSuccess: { screen: PaymentSuccessPage, wrapped: false },
+    AppAuth: { screen: AppAuthPage, wrapped: false },
+    Onboarding: { screen: OnboardingView, wrapped: true },
+    WhatsAppOnboarding: { screen: WhatsAppOnboarding, wrapped: true },
+    MeetingBooking: { screen: MeetingBookingPage, wrapped: false },
+}
+
+// Renders the single active screen from NavigationService's route store
+// (initial route: LoginScreen, as before). A class component so AppContent's
+// legacy ref callback stays harmless. Each navigation remounts the subtree via
+// the state id key — the old navigator reset the stack on every navigate, so
+// screens rely on fresh mounts.
+export class AppContainer extends React.Component {
+    state = NavigationService.getCurrentState()
+
+    componentDidMount() {
+        this.unsubscribe = NavigationService.subscribe(navState => this.setState(navState))
+        document.addEventListener('mousedown', this.handleDomPointerDown, true)
+        document.addEventListener('touchstart', this.handleDomPointerDown, true)
+    }
+
+    componentWillUnmount() {
+        this.unsubscribe && this.unsubscribe()
+        document.removeEventListener('mousedown', this.handleDomPointerDown, true)
+        document.removeEventListener('touchstart', this.handleDomPointerDown, true)
+    }
+
+    // Feeds every press on the page into the dismissible-modal system with the
+    // minimal synthetic-event shape captureDismissibleTouch reads.
+    handleDomPointerDown = e => {
+        const touch = e.touches ? e.touches[0] : e
+        if (!touch || touch.pageX === undefined) return
+        DismissibleModal.captureDismissibleTouch({
+            persist: () => {},
+            nativeEvent: { pageX: touch.pageX, pageY: touch.pageY },
+        })
+    }
+
+    render() {
+        const { routeName, id } = this.state
+        const route = ROUTES[routeName] || ROUTES.LoginScreen
+        const navigation = NavigationService.createNavigationProp()
+        const Screen = route.screen
+        const Extra = route.extra
+
+        const content = (
+            <React.Fragment>
+                <Screen navigation={navigation} />
+                {Extra ? <Extra /> : null}
+            </React.Fragment>
+        )
+
+        return (
+            <React.Fragment key={id}>
+                {route.wrapped ? <ScreenWrapper>{content}</ScreenWrapper> : content}
+            </React.Fragment>
+        )
+    }
+}

@@ -151,22 +151,6 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
--   2026-08-04 — **Stage 0 flip REVERTED after a production incident; re-gated.** The
-    first webpack-pipeline production deploy broke logged-in flows with runtime
-    ReferenceErrors (`versionUnsub`/`lastPushTime` implicit-global writes in
-    `utils/backends/firestore.js`, a TDZ crash in `utils/backends/openTasks.js`) that
-    the legacy pipeline masked for years: metro's preset compiled modules to
-    sloppy-mode CJS with var hoisting, while the webpack pipeline produced strict ES
-    modules. Neither the login-page smoke nor the logged-out preview QA could catch it.
-    Production was restored by reverting the flip (expo pipeline redeploy). The webpack
-    pipeline now compiles app + RN-family modules with
-    `@babel/plugin-transform-modules-commonjs` (strictMode:false, loose) + a
-    block-scoping→var transform, reproducing the legacy semantics wholesale (verified
-    in output; costs app-code tree-shaking). **Re-flip gate: logged-in QA on the
-    preview channel covering task views / URL processing.** Going strict-ESM later
-    requires an ESLint `no-undef` + `no-use-before-define` sweep first — the
-    `export default X =` fixes in Stage 0 were the compile-time tip of this iceberg.
-
 -   2026-08-04 — **Stage 0 built and locally verified** (`web-bundler/`): standalone
     webpack 5 pipeline on Node 22 building the unchanged app source (React 16, RNW 0.11)
     against the root Node-14-installed `node_modules`.
@@ -249,6 +233,36 @@ Isolated last because it touches production collaborative documents:
     -   **Remaining for stage acceptance**: QA smoke checklist on staging (image
         upload/resize paths — avatar, company logo — plus meeting-link opening and
         language detection all now run on the shims).
+
+-   2026-08-05 — **Stage 2 core landed on `frontend-migration-stage-2`** (React 18.3.1,
+    react-native-web 0.21.2, react-redux 8.1.3, @hello-pangea/dnd 16.6, react-navigation
+    deleted). Webpack build compiles clean with the prod-parity sloppy-CJS babel
+    semantics. Key changes beyond version bumps:
+    -   `utils/NavigationService.js` + `AppNavigator.js` rewritten as a ~50-line
+        observable route store (the old code reset the stack on every navigate, so
+        remount-per-navigate is the only semantic; 467 `navigation.*` call sites work
+        unchanged through a compat prop). Dismissible-touch capture moved from the
+        patched RNW TouchableOpacity to a document-level capture listener.
+    -   `replacement_node_modules` dispositioned: RNW patches retired (obsolete or
+        replaced), rbd patch ported to @hello-pangea/dnd (`combine.index`), new RNGH
+        guard for RNW 0.21's removed DrawerLayoutAndroid. Full inventory in CLAUDE.md.
+    -   Webpack entry replaced (`web-bundler/entry.js`): RNW 0.19+ AppRegistry mounts
+        through createRoot; the expo 36 launch chain is dropped.
+    -   **Jest now tests react-native-web** (what ships): RN preset replaced with
+        explicit babel-jest + web-only haste platforms; `__mocks__/react-native.js`
+        wraps react-native-web (RN 0.61's React-16 renderer cannot coexist with React
+        18). Global act() flush in `ci/jestSetup.js` absorbs React 18's deferred
+        passive effects before jsdom teardown (was crashing workers). Removed-API
+        fixes: ViewPropTypes/Text.propTypes in `Button.js`.
+    -   **Test state: 297/333 suites green (1428/1503 tests), 146 snapshots
+        re-baselined.** 36 suites (50 tests) remain red in three classes, none
+        blocking the build: (1) firestore-mock insufficiency — press handlers really
+        execute backend chains now that events fire through RNW; (2) RNW DOM-API
+        calls (`addEventListener`/`setNativeProps`/`offsetWidth`) under the DOM-less
+        react-test-renderer — these suites need react-dom/RTL rendering; (3)
+        assertion drift (MyPlatform, text/style output). Full list in the CI log —
+        rehab is per-suite work, tracked as the Stage 2 exit criterion together with
+        the visual QA pass on the branch preview channel.
 
 ## What this plan deliberately does NOT do
 

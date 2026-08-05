@@ -1,115 +1,97 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`PrivacyButton component PrivacyButton empty snapshot test should render correctly 1`] = `
-<RNGestureHandlerButton
-  collapsable={false}
-  onGestureEvent={[Function]}
-  onGestureHandlerEvent={[Function]}
-  onGestureHandlerStateChange={[Function]}
-  onHandlerStateChange={[Function]}
-  rippleColor={0}
+<button
+  className="css-view-g5y9jx"
+  dir={null}
+  role="button"
   style={
-    Array [
-      Object {
-        "overflow": "hidden",
-      },
-      undefined,
-    ]
+    Object {
+      "overflowX": "hidden",
+      "overflowY": "hidden",
+    }
   }
+  type="button"
 >
-  <View
-    accessible={true}
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-99ywz4 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
+    dir={null}
     style={
       Object {
-        "alignItems": "center",
-        "backgroundColor": "#1A3289",
-        "borderRadius": 4,
-        "flexDirection": "row",
         "opacity": 1,
       }
     }
   >
-    <View
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "paddingHorizontal": 10,
-          "width": 40,
-        }
-      }
+    <div
+      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-eu3ka r-paddingInline-1ubuhtd r-width-1aockid"
+      dir={null}
     >
-      <View>
-        <Text
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
+      >
+        <div
+          className="css-text-146c3p1"
+          dir="auto"
           style={
             Object {
-              "color": "#FAFBFB",
+              "color": "rgba(250,251,251,1.00)",
               "fontFamily": "alldone",
-              "fontSize": 20,
+              "fontSize": "20px",
               "opacity": 1,
             }
           }
         />
-      </View>
-    </View>
-  </View>
-</RNGestureHandlerButton>
+      </div>
+    </div>
+  </div>
+</button>
 `;
 
 exports[`PrivacyButton component PrivacyButton empty snapshot test should render correctly when is web 1`] = `
-<RNGestureHandlerButton
-  collapsable={false}
-  onGestureEvent={[Function]}
-  onGestureHandlerEvent={[Function]}
-  onGestureHandlerStateChange={[Function]}
-  onHandlerStateChange={[Function]}
-  rippleColor={0}
+<button
+  className="css-view-g5y9jx"
+  dir={null}
+  role="button"
   style={
-    Array [
-      Object {
-        "overflow": "hidden",
-      },
-      undefined,
-    ]
+    Object {
+      "overflowX": "hidden",
+      "overflowY": "hidden",
+    }
   }
+  type="button"
 >
-  <View
-    accessible={true}
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-99ywz4 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
+    dir={null}
     style={
       Object {
-        "alignItems": "center",
-        "backgroundColor": "#1A3289",
-        "borderRadius": 4,
-        "flexDirection": "row",
         "opacity": 1,
       }
     }
   >
-    <View
-      style={
-        Object {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "height": 40,
-          "paddingHorizontal": 10,
-          "width": 40,
-        }
-      }
+    <div
+      className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-eu3ka r-paddingInline-1ubuhtd r-width-1aockid"
+      dir={null}
     >
-      <View>
-        <Text
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
+      >
+        <div
+          className="css-text-146c3p1"
+          dir="auto"
           style={
             Object {
-              "color": "#FAFBFB",
+              "color": "rgba(250,251,251,1.00)",
               "fontFamily": "alldone",
-              "fontSize": 20,
+              "fontSize": "20px",
               "opacity": 1,
             }
           }
         />
-      </View>
-    </View>
-  </View>
-</RNGestureHandlerButton>
+      </div>
+    </div>
+  </div>
+</button>
 `;

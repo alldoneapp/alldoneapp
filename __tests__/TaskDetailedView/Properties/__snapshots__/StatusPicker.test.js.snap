@@ -1,334 +1,245 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`StatusPicker component StatusPicker snapshot test should render correctly 1`] = `
-<View
+<div
+  className="css-view-g5y9jx r-boxShadow-v80qx2 r-flexDirection-eqz5dr"
+  dir={null}
   style={
-    Array [
-      Object {
-        "elevation": 3,
-        "flexDirection": "column",
-        "shadowColor": "rgba(78, 93, 120, 0.56)",
-        "shadowOffset": Object {
-          "height": 4,
-          "width": 0,
-        },
-        "shadowOpacity": 1,
-        "shadowRadius": 16,
-        "width": 305,
-      },
-      Object {
-        "maxWidth": 432,
-        "minWidth": 432,
-        "width": 432,
-      },
-      Object {
-        "maxHeight": 736,
-      },
-    ]
+    Object {
+      "maxHeight": "736px",
+      "maxWidth": "432px",
+      "minWidth": "432px",
+      "width": "432px",
+    }
   }
 >
-  <View
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
     style={
-      Array [
-        Object {
-          "flex": 1,
-        },
-        undefined,
-        undefined,
-      ]
+      Object {
+        "flex": 1,
+      }
     }
   >
-    <RCTScrollView
-      onContentSizeChange={[Function]}
-      onLayout={[Function]}
+    <div
+      className="css-view-g5y9jx r-WebkitOverflowScrolling-150rngu r-flexDirection-eqz5dr r-flexGrow-16y2uox r-flexShrink-1wbh5a2 r-overflowX-11yh6sk r-overflowY-1rnoaur r-transform-agouwx r-scrollbarWidth-2eszeu"
+      dir={null}
       onScroll={[Function]}
-      scrollEventThrottle={16}
-      showsVerticalScrollIndicator={false}
+      onTouchEnd={[Function]}
+      onTouchMove={[Function]}
+      onTouchStart={[Function]}
+      onWheel={[Function]}
     >
-      <View>
-        <View
-          style={
-            Object {
-              "backgroundColor": "#091540",
-              "borderRadius": 4,
-              "flexDirection": "column",
-            }
-          }
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
+      >
+        <div
+          className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-eqz5dr"
+          dir={null}
         >
-          <View
-            style={
-              Object {
-                "flexDirection": "row",
-                "paddingLeft": 16,
-                "paddingRight": 8,
-                "paddingTop": 8,
-              }
-            }
+          <div
+            className="css-view-g5y9jx r-flexDirection-18u37iz r-paddingLeft-1qhn6m8 r-paddingRight-1pyaxff r-paddingTop-tskmnb"
+            dir={null}
           >
-            <View
-              style={
-                Object {
-                  "flexDirection": "column",
-                  "marginTop": 8,
-                }
-              }
+            <div
+              className="css-view-g5y9jx r-flexDirection-eqz5dr r-marginTop-knv0ih"
+              dir={null}
             >
-              <Text
+              <div
+                className="css-text-146c3p1"
+                dir="auto"
                 style={
-                  Array [
-                    Object {
-                      "color": "#04142F",
-                      "fontFamily": "Roboto-Medium",
-                      "fontSize": 18,
-                      "lineHeight": 26,
-                    },
-                    Object {
-                      "color": "white",
-                    },
-                  ]
+                  Object {
+                    "color": "rgba(255,255,255,1.00)",
+                    "fontFamily": "Roboto-Medium",
+                    "fontSize": "18px",
+                    "lineHeight": "26px",
+                  }
                 }
               >
                 Task status
-              </Text>
-              <Text
+              </div>
+              <div
+                className="css-text-146c3p1"
+                dir="auto"
                 style={
-                  Array [
-                    Object {
-                      "color": "#04142F",
-                      "fontFamily": "Roboto-Regular",
-                      "fontSize": 14,
-                      "letterSpacing": 0.32,
-                      "lineHeight": 22,
-                    },
-                    Object {
-                      "color": "#8A94A6",
-                      "width": 273,
-                    },
-                  ]
+                  Object {
+                    "color": "rgba(138,148,166,1.00)",
+                    "fontFamily": "Roboto-Regular",
+                    "fontSize": "14px",
+                    "letterSpacing": "0.32px",
+                    "lineHeight": "22px",
+                    "width": "273px",
+                  }
                 }
               >
                 Choose a workflow step to move this task
-              </Text>
-            </View>
-          </View>
-          <View
-            style={
-              Object {
-                "marginTop": 20,
-                "paddingBottom": 8,
-                "paddingHorizontal": 16,
-              }
-            }
+              </div>
+            </div>
+          </div>
+          <div
+            className="css-view-g5y9jx r-marginTop-1x0uki6 r-paddingBottom-xd6kpl r-paddingInline-3pj75a"
+            dir={null}
           >
-            <View
-              accessible={true}
-              focusable={true}
-              isTVSelectable={true}
+            <div
+              className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-justifyContent-1wtj0ep"
+              dir={null}
               onClick={[Function]}
-              onResponderGrant={[Function]}
-              onResponderMove={[Function]}
-              onResponderRelease={[Function]}
-              onResponderTerminate={[Function]}
-              onResponderTerminationRequest={[Function]}
-              onStartShouldSetResponder={[Function]}
+              onContextMenu={[Function]}
+              onKeyDown={[Function]}
               style={
                 Object {
-                  "alignItems": "center",
-                  "flex": 1,
-                  "flexDirection": "row",
-                  "height": 40,
-                  "justifyContent": "space-between",
-                  "opacity": 1,
+                  "transitionDuration": "0s",
                 }
               }
+              tabIndex="0"
             >
-              <View
-                style={
-                  Object {
-                    "alignItems": "center",
-                    "flex": 1,
-                    "flexDirection": "row",
-                    "height": 40,
-                  }
-                }
+              <div
+                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka"
+                dir={null}
               >
-                <View
+                <div
+                  className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-z2wwpe r-borderWidth-d045u9 r-height-z80fyv r-justifyContent-1777fci r-width-19wmn03"
+                  dir={null}
                   style={
-                    Array [
-                      Object {
-                        "alignItems": "center",
-                        "borderColor": "white",
-                        "borderRadius": 4,
-                        "borderWidth": 2,
-                        "height": 20,
-                        "justifyContent": "center",
-                        "width": 20,
-                      },
-                      Object {
-                        "backgroundColor": undefined,
-                        "borderColor": "white",
-                      },
-                    ]
+                    Object {
+                      "borderBottomColor": "rgba(255,255,255,1.00)",
+                      "borderLeftColor": "rgba(255,255,255,1.00)",
+                      "borderRightColor": "rgba(255,255,255,1.00)",
+                      "borderTopColor": "rgba(255,255,255,1.00)",
+                    }
                   }
                 />
-                <Text
-                  numberOfLines={1}
+                <div
+                  className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a"
+                  dir="auto"
                   style={
-                    Array [
-                      Object {
-                        "fontFamily": "Roboto-Medium",
-                        "fontSize": 16,
-                        "letterSpacing": 0.16,
-                        "lineHeight": 24,
-                      },
-                      Object {
-                        "color": "white",
-                        "marginLeft": 10,
-                      },
-                    ]
+                    Object {
+                      "color": "rgba(255,255,255,1.00)",
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": "16px",
+                      "letterSpacing": "0.16px",
+                      "lineHeight": "24px",
+                      "marginLeft": "10px",
+                    }
                   }
                 >
                   Open
-                </Text>
-              </View>
-            </View>
-            <View
-              accessible={true}
-              focusable={true}
-              isTVSelectable={true}
+                </div>
+              </div>
+            </div>
+            <div
+              className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-justifyContent-1wtj0ep"
+              dir={null}
               onClick={[Function]}
-              onResponderGrant={[Function]}
-              onResponderMove={[Function]}
-              onResponderRelease={[Function]}
-              onResponderTerminate={[Function]}
-              onResponderTerminationRequest={[Function]}
-              onStartShouldSetResponder={[Function]}
+              onContextMenu={[Function]}
+              onKeyDown={[Function]}
               style={
                 Object {
-                  "alignItems": "center",
-                  "flex": 1,
-                  "flexDirection": "row",
-                  "height": 40,
-                  "justifyContent": "space-between",
-                  "opacity": 1,
+                  "transitionDuration": "0s",
                 }
               }
+              tabIndex="0"
             >
-              <View
-                style={
-                  Object {
-                    "alignItems": "center",
-                    "flex": 1,
-                    "flexDirection": "row",
-                    "height": 40,
-                  }
-                }
+              <div
+                className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka"
+                dir={null}
               >
-                <View
-                  style={
-                    Array [
-                      Object {
-                        "alignItems": "center",
-                        "height": 20,
-                        "justifyContent": "center",
-                        "width": 20,
-                      },
-                      undefined,
-                    ]
-                  }
+                <div
+                  className="css-view-g5y9jx r-alignItems-1awozwy r-height-z80fyv r-justifyContent-1777fci r-width-19wmn03"
+                  dir={null}
                 >
-                  <View>
-                    <Text
+                  <div
+                    className="css-view-g5y9jx"
+                    dir={null}
+                  >
+                    <div
+                      className="css-text-146c3p1"
+                      dir="auto"
                       style={
                         Object {
-                          "color": "white",
+                          "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "alldone",
-                          "fontSize": 24,
+                          "fontSize": "24px",
                           "opacity": 1,
                         }
                       }
                     >
                       
-                    </Text>
-                  </View>
-                </View>
-                <Text
-                  numberOfLines={1}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a"
+                  dir="auto"
                   style={
-                    Array [
-                      Object {
-                        "fontFamily": "Roboto-Medium",
-                        "fontSize": 16,
-                        "letterSpacing": 0.16,
-                        "lineHeight": 24,
-                      },
-                      Object {
-                        "color": "white",
-                        "marginLeft": 10,
-                      },
-                    ]
+                    Object {
+                      "color": "rgba(255,255,255,1.00)",
+                      "fontFamily": "Roboto-Medium",
+                      "fontSize": "16px",
+                      "letterSpacing": "0.16px",
+                      "lineHeight": "24px",
+                      "marginLeft": "10px",
+                    }
                   }
                 >
                   Done
-                </Text>
-              </View>
-            </View>
-          </View>
-          <View
-            style={
-              Object {
-                "position": "absolute",
-                "right": 8,
-                "top": 8,
-              }
-            }
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            className="css-view-g5y9jx r-position-u8s1d r-right-3mc0re r-top-1yxedwg"
+            dir={null}
           >
-            <RNGestureHandlerButton
-              collapsable={false}
-              onGestureEvent={[Function]}
-              onGestureHandlerEvent={[Function]}
-              onGestureHandlerStateChange={[Function]}
-              onHandlerStateChange={[Function]}
-              rippleColor={0}
+            <button
+              className="css-view-g5y9jx"
+              dir={null}
+              role="button"
               style={
-                Array [
-                  Object {
-                    "overflow": "hidden",
-                  },
-                  undefined,
-                ]
+                Object {
+                  "overflowX": "hidden",
+                  "overflowY": "hidden",
+                }
               }
+              type="button"
             >
-              <View
-                accessible={true}
+              <div
+                className="css-view-g5y9jx r-alignItems-1awozwy r-justifyContent-1777fci"
+                dir={null}
                 style={
                   Object {
-                    "alignItems": "center",
-                    "justifyContent": "center",
                     "opacity": 1,
                   }
                 }
               >
-                <View>
-                  <Text
+                <div
+                  className="css-view-g5y9jx"
+                  dir={null}
+                >
+                  <div
+                    className="css-text-146c3p1"
+                    dir="auto"
                     style={
                       Object {
-                        "color": "#8A94A6",
+                        "color": "rgba(138,148,166,1.00)",
                         "fontFamily": "alldone",
-                        "fontSize": 24,
+                        "fontSize": "24px",
                         "opacity": 1,
                       }
                     }
                   >
                     
-                  </Text>
-                </View>
-              </View>
-            </RNGestureHandlerButton>
-          </View>
-        </View>
-      </View>
-    </RCTScrollView>
-  </View>
-</View>
+                  </div>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `;

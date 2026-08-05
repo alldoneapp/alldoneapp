@@ -1,51 +1,42 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`CloseButton component CloseButton snapshot test should render correctly 1`] = `
-<View
-  style={
-    Array [
-      Object {
-        "position": "absolute",
-        "right": 13,
-        "top": 13,
-      },
-      undefined,
-    ]
-  }
+<div
+  className="css-view-g5y9jx r-position-u8s1d r-right-1sd1n6o r-top-xj4fhj"
+  dir={null}
 >
-  <View
-    accessible={true}
-    focusable={true}
-    isTVSelectable={true}
+  <div
+    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-justifyContent-1777fci"
+    dir={null}
     onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+    onContextMenu={[Function]}
+    onKeyDown={[Function]}
     style={
       Object {
-        "alignItems": "center",
-        "justifyContent": "center",
-        "opacity": 1,
+        "transitionDuration": "0s",
       }
     }
+    tabIndex="0"
   >
-    <View>
-      <Text
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
+    >
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#8A94A6",
+            "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 24,
+            "fontSize": "24px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-  </View>
-</View>
+      </div>
+    </div>
+  </div>
+</div>
 `;

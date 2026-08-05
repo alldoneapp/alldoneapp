@@ -1,369 +1,289 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`WorkflowEstimation component should render correctly 1`] = `
-<View>
-  <View
-    style={
-      Object {
-        "alignItems": "flex-end",
-        "flexDirection": "row",
-        "height": 72,
-        "paddingBottom": 12,
-        "paddingTop": 32,
-      }
-    }
+<div
+  className="css-view-g5y9jx"
+  dir={null}
+>
+  <div
+    className="css-view-g5y9jx r-alignItems-obd0qt r-flexDirection-18u37iz r-height-wy61xf r-paddingBottom-kzbkwu r-paddingTop-fd4yh7"
+    dir={null}
   >
-    <Text
+    <div
+      className="css-text-146c3p1"
+      dir="auto"
       style={
-        Array [
-          Object {
-            "color": "#04142F",
-            "fontFamily": "Roboto-Medium",
-            "fontSize": 20,
-            "lineHeight": 28,
-          },
-          Object {
-            "color": "#04142F",
-          },
-        ]
+        Object {
+          "color": "rgba(4,20,47,1.00)",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": "20px",
+          "lineHeight": "28px",
+        }
       }
     >
       Estimations
-    </Text>
-    <Text
+    </div>
+    <div
+      className="css-text-146c3p1 r-color-1gpwqf8 r-height-z80fyv r-marginLeft-1ow6zhx"
+      dir="auto"
       style={
-        Array [
-          Object {
-            "color": "#04142F",
-            "fontFamily": "Roboto-Regular",
-            "fontSize": 12,
-            "letterSpacing": 0.48,
-            "lineHeight": 20,
-          },
-          Object {
-            "color": "#4E5D78",
-            "height": 20,
-            "marginLeft": 16,
-          },
-        ]
+        Object {
+          "fontFamily": "Roboto-Regular",
+          "fontSize": "12px",
+          "letterSpacing": "0.48px",
+          "lineHeight": "20px",
+        }
       }
     >
       4 steps
-    </Text>
-  </View>
-  <View
-    style={
-      Object {
-        "flexDirection": "row",
-        "marginBottom": 12,
-        "marginTop": 8,
-      }
-    }
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-flexDirection-18u37iz r-marginBottom-6gpygo r-marginTop-knv0ih"
+    dir={null}
   >
-    <View>
-      <Text
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
+    >
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#8A94A6",
+            "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 16,
+            "fontSize": "16px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-    <Text
+      </div>
+    </div>
+    <div
+      className="css-text-146c3p1 r-color-hiecfz r-marginLeft-1jkjb r-marginTop-1bq57o9 r-maxWidth-sb58tz"
+      dir="auto"
       style={
-        Array [
-          Object {
-            "color": "#04142F",
-            "fontFamily": "Roboto-Regular",
-            "fontSize": 12,
-            "letterSpacing": 0.48,
-            "lineHeight": 20,
-          },
-          Object {
-            "color": "#8A94A6",
-            "marginLeft": 8,
-            "marginTop": -2,
-            "maxWidth": 1000,
-          },
-        ]
+        Object {
+          "fontFamily": "Roboto-Regular",
+          "fontSize": "12px",
+          "letterSpacing": "0.48px",
+          "lineHeight": "20px",
+        }
       }
     >
       Here you can estimate each workflow step and choose to which step the task will move.
        
       Follow this
        
-      <View
-        accessible={true}
-        focusable={true}
-        isTVSelectable={true}
+      <div
+        className="css-view-g5y9jx r-display-xoduu5 r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73"
+        dir={null}
         onClick={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
+        onContextMenu={[Function]}
+        onKeyDown={[Function]}
         style={
           Object {
-            "opacity": 1,
+            "transitionDuration": "0s",
           }
         }
+        tabIndex="0"
       >
-        <Text
+        <span
+          className="css-textHasAncestor-1jxf684"
+          dir={null}
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Regular",
-                "fontSize": 12,
-                "letterSpacing": 0.48,
-                "lineHeight": 20,
-              },
-              Object {
-                "color": "#5AACFF",
-                "textDecorationLine": "underline",
-              },
-            ]
+            Object {
+              "color": "rgba(90,172,255,1.00)",
+              "fontFamily": "Roboto-Regular",
+              "fontSize": "12px",
+              "letterSpacing": "0.48px",
+              "lineHeight": "20px",
+              "textDecoration": "underline",
+            }
           }
         >
           Link
-        </Text>
-      </View>
+        </span>
+      </div>
        
       if you want to edit  workflow steps for [missing %{project} value] project
-    </Text>
-  </View>
-  <View>
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
+  >
+    <div
+      className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderColor-1sx5dzk r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1hfyk0a"
+      dir={null}
       onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
+      onContextMenu={[Function]}
+      onKeyDown={[Function]}
       style={
         Object {
-          "alignItems": "center",
-          "borderColor": "#E7ECEF",
-          "borderRadius": 4,
-          "borderWidth": 1,
-          "flexDirection": "row",
-          "height": 56,
-          "opacity": 1,
-          "paddingLeft": 10,
+          "transitionDuration": "0s",
         }
       }
+      tabIndex="0"
     >
-      <View>
-        <Text
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
+      >
+        <div
+          className="css-text-146c3p1"
+          dir="auto"
           style={
             Object {
-              "color": "#C6CDD2",
+              "color": "rgba(198,205,210,1.00)",
               "fontFamily": "alldone",
-              "fontSize": 24,
+              "fontSize": "24px",
               "opacity": 1,
             }
           }
         >
           
-        </Text>
-      </View>
-      <View
+        </div>
+      </div>
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
         style={
           Object {
-            "marginLeft": 8,
+            "marginLeft": "8px",
           }
         }
       >
-        <Text
-          style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "fontFamily": "Roboto-Medium",
-                "fontSize": 14,
-                "letterSpacing": 0.16,
-                "lineHeight": 22,
-              },
-              Object {
-                "color": "#4E5D78",
-              },
-            ]
-          }
-        >
-          Open task
-        </Text>
-      </View>
-      <View
-        style={
-          Object {
-            "marginLeft": "auto",
-            "paddingRight": 8,
-          }
-        }
-      >
-        <View
-          accessible={false}
-          focusable={true}
-          isTVSelectable={true}
-          onClick={[Function]}
-          onResponderGrant={[Function]}
-          onResponderMove={[Function]}
-          onResponderRelease={[Function]}
-          onResponderTerminate={[Function]}
-          onResponderTerminationRequest={[Function]}
-          onStartShouldSetResponder={[Function]}
+        <div
+          className="css-text-146c3p1"
+          dir="auto"
           style={
             Object {
-              "alignItems": "center",
-              "alignSelf": "flex-start",
-              "backgroundColor": "transparent",
-              "borderColor": "#C6CDD2",
-              "borderRadius": 4,
-              "borderStyle": "solid",
-              "borderWidth": 1,
-              "flexDirection": "row",
-              "flexWrap": "nowrap",
-              "height": 40,
-              "justifyContent": "center",
-              "maxHeight": 40,
-              "minHeight": 40,
-              "opacity": 1,
-              "paddingLeft": 12,
-              "paddingRight": 16,
-              "paddingVertical": 8,
+              "color": "rgba(78,93,120,1.00)",
+              "fontFamily": "Roboto-Medium",
+              "fontSize": "14px",
+              "letterSpacing": "0.16px",
+              "lineHeight": "22px",
             }
           }
         >
-          <View>
-            <Text
+          Open task
+        </div>
+      </div>
+      <div
+        className="css-view-g5y9jx r-marginLeft-1jj8364 r-paddingRight-1pyaxff"
+        dir={null}
+      >
+        <div
+          className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-alignSelf-k200y r-borderRadius-z2wwpe r-flexDirection-18u37iz r-flexWrap-tzz3ar r-height-eu3ka r-justifyContent-1777fci r-maxHeight-yca7ao r-minHeight-ero68b r-paddingBlock-11f147o r-paddingLeft-f727ji r-paddingRight-i023vh r-backgroundColor-1niwhzg r-borderColor-ql2gnw r-borderStyle-1phboty r-borderWidth-rs99b7"
+          dir={null}
+          onClick={[Function]}
+          onContextMenu={[Function]}
+          onKeyDown={[Function]}
+          style={
+            Object {
+              "transitionDuration": "0s",
+            }
+          }
+          tabIndex="0"
+        >
+          <div
+            className="css-view-g5y9jx"
+            dir={null}
+          >
+            <div
+              className="css-text-146c3p1"
+              dir="auto"
               style={
                 Object {
-                  "color": "#8A94A6",
+                  "color": "rgba(138,148,166,1.00)",
                   "fontFamily": "alldone",
-                  "fontSize": 24,
+                  "fontSize": "24px",
                   "opacity": 1,
                 }
               }
             >
               
-            </Text>
-          </View>
-          <Text
-            numberOfLines={1}
+            </div>
+          </div>
+          <div
+            className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
+            dir="auto"
             style={
-              Array [
-                Array [
-                  Object {
-                    "alignSelf": "center",
-                    "color": "#FFFFFF",
-                    "flexWrap": "nowrap",
-                    "fontFamily": "Roboto-Medium",
-                    "fontSize": 14,
-                    "letterSpacing": 0.8,
-                    "lineHeight": 16,
-                    "margin": 0,
-                    "paddingHorizontal": 0,
-                    "paddingVertical": 0,
-                  },
-                  Object {
-                    "color": "#8A94A6",
-                  },
-                  Object {},
-                ],
-                Object {
-                  "marginLeft": 12,
-                },
-              ]
+              Object {
+                "marginLeft": "12px",
+              }
             }
           >
             No estimation
-          </Text>
-        </View>
-      </View>
-    </View>
-  </View>
-  <View
-    style={
-      Object {
-        "flexDirection": "column",
-        "marginTop": 16,
-      }
-    }
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div
+    className="css-view-g5y9jx r-flexDirection-eqz5dr r-marginTop-1wzrnnt"
+    dir={null}
   />
-  <View
-    accessible={false}
-    focusable={true}
-    isTVSelectable={true}
+  <div
+    className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignItems-1awozwy r-borderColor-1sx5dzk r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1hfyk0a"
+    dir={null}
     onClick={[Function]}
-    onResponderGrant={[Function]}
-    onResponderMove={[Function]}
-    onResponderRelease={[Function]}
-    onResponderTerminate={[Function]}
-    onResponderTerminationRequest={[Function]}
-    onStartShouldSetResponder={[Function]}
+    onContextMenu={[Function]}
+    onKeyDown={[Function]}
     style={
       Object {
-        "alignItems": "center",
-        "borderColor": "#E7ECEF",
-        "borderRadius": 4,
-        "borderWidth": 1,
-        "flexDirection": "row",
-        "height": 56,
-        "opacity": 1,
-        "paddingLeft": 10,
+        "transitionDuration": "0s",
       }
     }
+    tabIndex="0"
   >
-    <View>
-      <Text
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
+    >
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
           Object {
-            "color": "#C6CDD2",
+            "color": "rgba(198,205,210,1.00)",
             "fontFamily": "alldone",
-            "fontSize": 24,
+            "fontSize": "24px",
             "opacity": 1,
           }
         }
       >
         
-      </Text>
-    </View>
-    <View
+      </div>
+    </div>
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
       style={
         Object {
-          "marginLeft": 8,
+          "marginLeft": "8px",
         }
       }
     >
-      <Text
+      <div
+        className="css-text-146c3p1"
+        dir="auto"
         style={
-          Array [
-            Object {
-              "color": "#04142F",
-              "fontFamily": "Roboto-Medium",
-              "fontSize": 14,
-              "letterSpacing": 0.16,
-              "lineHeight": 22,
-            },
-            Object {
-              "color": "#4E5D78",
-            },
-          ]
+          Object {
+            "color": "rgba(78,93,120,1.00)",
+            "fontFamily": "Roboto-Medium",
+            "fontSize": "14px",
+            "letterSpacing": "0.16px",
+            "lineHeight": "22px",
+          }
         }
       >
         Done task
-      </Text>
-    </View>
-  </View>
-</View>
+      </div>
+    </div>
+  </div>
+</div>
 `;

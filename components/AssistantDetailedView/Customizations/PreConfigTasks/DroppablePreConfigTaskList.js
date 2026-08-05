@@ -1,6 +1,6 @@
 import React from 'react'
 import { StyleSheet, View } from 'react-native'
-import { Droppable } from 'react-beautiful-dnd'
+import { Droppable } from '@hello-pangea/dnd'
 
 import { colors } from '../../../styles/global'
 import DraggablePreConfigTask from './DraggablePreConfigTask'

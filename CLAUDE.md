@@ -72,6 +72,26 @@ bundler problem.
 
 **Real-time Collaboration**: Quill editor + Yjs for notes. Custom Quill modifications require replacing `node_modules/quill/dist/quill.js` with `replacement_node_modules/quill/dist/quill.js` after npm install.
 
+**`replacement_node_modules/` full inventory** (the blanket `cp -R -f replacement_node_modules/* node_modules/` applies ALL of these after every install — when upgrading any of these packages, the patch must be re-derived or retired first, never blindly re-copied over the new version):
+
+-   `quill`, `y-quill`, `y-webrtc` — the collab-editor patches (see the Yjs gotchas above).
+-   `@hello-pangea/dnd` — adds `index` to the drag `combine` payload (pointer path);
+    `DragHelper.onDragEnd` needs the combine target's index to sort a task dropped onto
+    another task. Carried over from the retired react-beautiful-dnd patch (esm + cjs dist).
+-   `react-native-gesture-handler` — guards `GestureComponents.web.js` against
+    react-native-web ≥0.19 removing `DrawerLayoutAndroid` (unguarded `.positions` access
+    crashed module eval; the app never renders that component).
+-   `react-dismissible`, `react-tiny-popover` — modal dismiss-behavior patches (see the
+    popover notes below).
+-   `react-native` (`VirtualizedList`/`FlatList`) — native-era patches; inert on web
+    (the web bundle aliases react-native → react-native-web).
+-   `expo-font` — obsolete since migration Stage 1 (app uses `utils/WebShims/Fonts.js`);
+    inert.
+-   Retired in migration Stage 2: `react-native-web` (TouchableOpacity dismissible-touch
+    hook → now a document-level capture listener in `AppNavigator.js`; ScrollViewBase
+    `onScrollWhenDisabled` → had no users; TextInput `outline: none` → covered by the
+    global `*:focus` rule) and `react-beautiful-dnd` (→ the @hello-pangea/dnd patch above).
+
 **Yjs Text Formatting**: When inserting text with `ytext.insert()`, passing `undefined` for attributes causes attribute inheritance from adjacent text. Always explicitly set formatting attributes to `null` to clear them (e.g., `{ bold: segment.bold ? true : null }`). This applies to markdown-to-Yjs conversion in `functions/Assistant/markdownToYjs.js`.
 
 **Yjs applyDelta() Format Removal Bug**: Yjs's `applyDelta()` doesn't properly handle `null` attributes for format removal (see [GitHub Issue #474](https://github.com/yjs/yjs/issues/474)). When Quill sends `{retain: N, attributes: {bold: null}}` to remove formatting, `applyDelta()` doesn't reliably remove the attribute. The fix in `replacement_node_modules/y-quill/src/y-quill.js` intercepts these operations and uses `type.format(index, length, {bold: null})` instead, which properly removes formatting. **Critical**: The `applyDelta()` and `type.format()` calls MUST be wrapped in a single `doc.transact()` to ensure atomicity. Without this, the insert (which may inherit attributes from adjacent formatted text) and the format fix are separate Yjs transactions — if the document is synced/persisted between them (app close, network interruption), the format fix is lost and attributes "bleed" on reload.

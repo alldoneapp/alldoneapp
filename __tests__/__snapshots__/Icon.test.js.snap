@@ -1,31 +1,37 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Icon component Icon snapshot test should render correctly 1`] = `
-<View>
-  <Text
+<div
+  className="css-view-g5y9jx"
+  dir={null}
+>
+  <div
+    className="css-text-146c3p1"
+    dir="auto"
     style={
       Object {
-        "color": undefined,
         "fontFamily": "alldone",
-        "fontSize": undefined,
         "opacity": 1,
       }
     }
   />
-</View>
+</div>
 `;
 
 exports[`Icon component Icon with opacity animation snapshot test should render correctly 1`] = `
-<View>
-  <Text
+<div
+  className="css-view-g5y9jx"
+  dir={null}
+>
+  <div
+    className="css-text-146c3p1"
+    dir="auto"
     style={
       Object {
-        "color": undefined,
         "fontFamily": "alldone",
-        "fontSize": undefined,
         "opacity": 1,
       }
     }
   />
-</View>
+</div>
 `;

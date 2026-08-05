@@ -1,27 +1,15 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Lock component Lock locked snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "flex": -1,
-      "height": 24,
-      "justifyContent": "center",
-      "marginRight": 5,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-flex-9c3h7m r-height-1472mwg r-justifyContent-1777fci r-marginRight-7o8qx1"
+  dir={null}
 />
 `;
 
 exports[`Lock component Lock unocked snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "flex": -1,
-      "height": 24,
-      "justifyContent": "center",
-      "marginRight": 5,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-flex-9c3h7m r-height-1472mwg r-justifyContent-1777fci r-marginRight-7o8qx1"
+  dir={null}
 />
 `;

@@ -1,38 +1,23 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`ProjectList component ProjectList snapshot test should render correctly 1`] = `
-<View>
-  <RCTScrollView
-    disableVirtualization={false}
-    extraData={
-      Array [
-        false,
-      ]
-    }
-    getItem={[Function]}
-    getItemCount={[Function]}
-    horizontal={false}
-    initialNumToRender={10}
-    keyExtractor={[Function]}
-    maxToRenderPerBatch={10}
-    numColumns={1}
-    onContentSizeChange={[Function]}
-    onEndReachedThreshold={2}
-    onLayout={[Function]}
-    onMomentumScrollEnd={[Function]}
+<div
+  className="css-view-g5y9jx"
+  dir={null}
+>
+  <div
+    className="css-view-g5y9jx r-WebkitOverflowScrolling-150rngu r-flexDirection-eqz5dr r-flexGrow-16y2uox r-flexShrink-1wbh5a2 r-overflowX-11yh6sk r-overflowY-1rnoaur r-transform-agouwx r-scrollbarWidth-2eszeu"
+    dir={null}
     onScroll={[Function]}
-    onScrollBeginDrag={[Function]}
-    onScrollEndDrag={[Function]}
-    removeClippedSubviews={false}
-    renderItem={[Function]}
-    scrollEventThrottle={50}
-    showsVerticalScrollIndicator={false}
-    stickyHeaderIndices={Array []}
-    updateCellsBatchingPeriod={50}
-    viewabilityConfigCallbackPairs={Array []}
-    windowSize={21}
+    onTouchEnd={[Function]}
+    onTouchMove={[Function]}
+    onTouchStart={[Function]}
+    onWheel={[Function]}
   >
-    <View />
-  </RCTScrollView>
-</View>
+    <div
+      className="css-view-g5y9jx"
+      dir={null}
+    />
+  </div>
+</div>
 `;
