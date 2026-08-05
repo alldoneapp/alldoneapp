@@ -456,7 +456,9 @@ export async function initFirebase(onComplete) {
     db = firebase.firestore()
     if (!firestoreSettingsApplied) {
         try {
-            db.settings({ ignoreUndefinedProperties: true })
+            // firebase 9+ replaces the whole settings object unless merge is set,
+            // which resets host and logs "You are overriding the original host".
+            db.settings({ ignoreUndefinedProperties: true, merge: true })
             firestoreSettingsApplied = true
         } catch (error) {
             console.warn('Failed to apply Firestore client settings:', error.message)
