@@ -180,8 +180,14 @@ Isolated last because it touches production collaborative documents:
     -   `getScrollOffsets` also fixed (`??` → `||` so a 0 `pageYOffset` falls
         through to the body scroller) for any remaining document-coordinate users.
     -   All popover diagnostics stripped after confirmation; 930 tests across the
-        touched suites pass. **Remaining Stage 2 exit criterion: the user's
-        general click-around + drag & drop verdict, then the merge decision.**
+        touched suites pass.
+
+-   2026-08-05 — **Stage 2 MERGED to master and verified in production.** Drag &
+    drop (incl. drop-onto-task) and the general click-around passed the user's
+    staging QA; the merge rebuilt the CI images with the React 18 tree (branch
+    jobs blocking again per the TODO), the production deploy succeeded, and
+    my.alldone.app serves the React 18 + RNW 0.21 build. Next: Stage 3
+    (Firebase 8 → 12 via compat) under the same staging-slot discipline.
 
 -   2026-08-05 — **Stage 0 ACCEPTED (second attempt): deploys flipped to the webpack
     pipeline after a logged-in QA pass on staging live.** The re-flip gate was met:
