@@ -196,6 +196,25 @@ Isolated last because it touches production collaborative documents:
         Firebase): `URLsContacts` push history (db53675e4, spun off as its own task) and a
         stale `SocialText` snapshot that 378e4cf6f forgot to re-baseline (updated here —
         the onClick-less render is that commit's intended behavior).
+    -   **CI could not build the branch at all until the image strategy was fixed**
+        (second commit on the branch). `build_base` / `build_web_bundler` bake
+        `node_modules` and were rebuilt only on develop/master, while branch jobs just
+        `ln -s /app/node_modules` and never install — so the branch built against the
+        _previous_ lockfile and every new import failed to resolve (`Can't resolve 'firebase/compat/app'` from webpack, `Cannot find module …` from jest, both green
+        locally). Rebuilding `:latest` from a branch is unsafe because master builds from
+        that tag, so a dependency-changing branch now builds its own images under
+        `:$CI_COMMIT_REF_SLUG` and the two consuming jobs select it via a rules-level
+        `APP_IMAGE_TAG` (default `latest`). The trigger path list is the union of what
+        both images bake, shared by both cache jobs, so the base image the bundler image
+        is built FROM always exists; the new rule goes first in the consuming jobs since
+        first match wins. Leaves one image per such branch in the registry — a tag
+        cleanup policy is the way to bound that. **Stage 4 (quill/yjs) and Stage 5
+        (jest/prettier/TypeScript) would each have hit this same wall.**
+    -   **Note for the tslib-shaped trap**: firebase 12 keeps root `tslib` at 1.11.1 and
+        nests `tslib` 2.8.1 inside 29 of its 44 `@firebase/*` packages. Any future
+        "just copy the new packages into node_modules" shortcut risks hoisting 2.8.1 to
+        the root — the mirror image of the Stage 0 resolution bug. Install through the
+        lockfile, never by copying.
     -   **Remaining for stage acceptance (staging QA)**: login flows (Google popup + GSI
         credential), Firestore listeners on the main views, **web push** (grant permission,
         receive a background FCM notification, click-through — the SW is the riskiest
