@@ -52,6 +52,7 @@ import { PROJECT_TYPE_SHARED } from '../SettingsView/ProjectsSettings/ProjectsSe
 import NavigationService from '../../utils/NavigationService'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
+import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 const UserDetailedView = ({ navigation }) => {
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -113,6 +114,7 @@ const UserDetailedView = ({ navigation }) => {
     }, [])
 
     const scrollViewRef = useRef()
+    useResetDetailedViewScroll(selectedTab, scrollViewRef)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     const navigationTabs = [

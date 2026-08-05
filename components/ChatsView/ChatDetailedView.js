@@ -32,6 +32,7 @@ import { watchChat } from '../../utils/backends/Chats/chatsFirestore'
 import { unwatch } from '../../utils/backends/firestore'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
+import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 const ChatDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
@@ -49,6 +50,7 @@ const ChatDetailedView = ({ navigation }) => {
     const [assistantId, setAssistantId] = useState(chat?.assistantId || '')
     const CustomView = selectedTab === DV_TAB_CHAT_BOARD || selectedTab === DV_TAB_CHAT_NOTE ? View : CustomScrollView
     const scrollRef = useRef()
+    useResetDetailedViewScroll(selectedTab, scrollRef)
     // Members get the full tabbed view; shared-resource viewers (anonymous + logged-in non-members)
     // are locked to the specifically shared chat board.
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)

@@ -54,6 +54,7 @@ import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSide
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
 import TaskChatWorkflowControls from './TaskChatWorkflowControls'
+import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 const TaskDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
@@ -73,6 +74,7 @@ const TaskDetailedView = ({ navigation }) => {
     usePrivateProject(projectId)
     const scrollRef = useRef()
     const isAssistant = task?.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
+    useResetDetailedViewScroll(selectedTab, scrollRef)
 
     const { overlay } = useCollapsibleSidebar()
 
@@ -175,9 +177,7 @@ const TaskDetailedView = ({ navigation }) => {
     }, [selectedTab, taskInDetailView])
 
     useEffect(() => {
-        if (selectedTab === DV_TAB_TASK_PROPERTIES) {
-            setTimeout(() => scrollRef?.current?.scrollTo?.({ y: 0, animated: false }))
-        } else if (selectedTab === DV_TAB_TASK_SUBTASKS && isAssistant) {
+        if (selectedTab === DV_TAB_TASK_SUBTASKS && isAssistant) {
             dispatch(setSelectedNavItem(DV_TAB_TASK_PROPERTIES))
         }
     }, [selectedTab])
