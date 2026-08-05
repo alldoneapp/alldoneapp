@@ -1,4 +1,9 @@
-FROM node:12-alpine
+# Node 14.21.3 is the version CLAUDE.md pins for the app tree and the one the
+# lockfile is maintained under locally; this image had drifted to node:12.
+# firebase 12 forced the alignment: @firebase/util's postinstall script uses
+# optional chaining, which node 12 cannot parse, so `npm ci` died with
+# "SyntaxError: Unexpected token '.'". npm stays on 6.x, so lockfile v1 is safe.
+FROM node:14.21.3-alpine
 
 WORKDIR /app
 
