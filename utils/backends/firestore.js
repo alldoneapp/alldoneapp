@@ -126,7 +126,7 @@ import {
     getUserPresentationDataInProject,
 } from '../../components/ContactsView/Utils/ContactsHelper'
 
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import { PLAN_STATUS_FREE } from '../../components/Premium/PremiumHelper'
 import { AUTO_POSTPONE_AFTER_DAYS_OVERDUE_DEFAULT } from '../../components/SettingsView/Customizations/Properties/autoPostponeAfterDaysOverdueHelper'
 import { COLOR_KEY_4 } from '../../components/NotesView/NotesDV/EditorView/HashtagInteractionPopup/HashtagsInteractionPopup'
@@ -441,8 +441,8 @@ export async function initFirebase(onComplete) {
     }
 
     // Load only critical modules first for faster initialization
-    require('firebase/auth')
-    require('firebase/firestore')
+    require('firebase/compat/auth')
+    require('firebase/compat/firestore')
 
     try {
         firebase.initializeApp(firebaseConfig)
@@ -487,7 +487,7 @@ export async function initFirebase(onComplete) {
         }
         try {
             // Connect to Functions emulator only
-            require('firebase/functions')
+            require('firebase/compat/functions')
             // Initialize functions with the correct region for emulator
             const functionsInstance = firebase.app().functions('europe-west1')
 
@@ -551,7 +551,7 @@ export async function initFirebase(onComplete) {
 function loadDeferredFirebaseModules() {
     try {
         // Load functions (but don't overwrite if emulator is already set)
-        require('firebase/functions')
+        require('firebase/compat/functions')
         if (!functions) {
             functions = firebase.app().functions('europe-west1')
             console.log('🌐 Using production Firebase Functions (europe-west1)')
@@ -560,17 +560,17 @@ function loadDeferredFirebaseModules() {
         }
 
         // Load storage
-        require('firebase/storage')
+        require('firebase/compat/storage')
         notesStorage = firebase.app().storage(`gs://${GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET}`)
 
         // Load messaging
-        require('firebase/messaging')
+        require('firebase/compat/messaging')
         if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
             messaging = firebase.messaging()
         }
 
         // Load database
-        require('firebase/database')
+        require('firebase/compat/database')
 
         console.log('Deferred Firebase modules loaded')
     } catch (error) {
@@ -613,23 +613,8 @@ export function initFCM(userId) {
             .catch(err => {
                 console.error('Failed to get FCM token:', err)
             })
-        messaging.onTokenRefresh(() => {
-            messaging
-                .getToken()
-                .then(refreshedToken => {
-                    userRef.get().then(doc => {
-                        const user = mapUserData(doc.id, doc.data())
-                        if (!user.fcmToken.some(item => item === refreshedToken)) {
-                            doc.ref.update({
-                                fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
-                            })
-                        }
-                    })
-                })
-                .catch(err => {
-                    console.log('Unable to retrieve refreshed token ', err)
-                })
-        })
+        // firebase 9+ removed messaging.onTokenRefresh (even in compat); token
+        // freshness is covered by calling getToken() on every app load above.
     }
     userRef.update({ pushNotificationsStatus: true })
 }
@@ -659,22 +644,6 @@ export async function requestNotificationPermission() {
                     fcmToken: firebase.firestore.FieldValue.arrayUnion(token),
                 })
             }
-            // Setup token refresh listener
-            messaging.onTokenRefresh(() => {
-                messaging
-                    .getToken()
-                    .then(refreshedToken => {
-                        const { fcmToken, uid } = store.getState().loggedUser
-                        if (!fcmToken.some(item => item === refreshedToken)) {
-                            db.doc(`/users/${uid}`).update({
-                                fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
-                            })
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Unable to retrieve refreshed token ', err)
-                    })
-            })
             return { success: true, token }
         } else {
             return { success: false, reason: 'Permission denied by user' }
@@ -709,22 +678,6 @@ export function initFCMonLoad() {
                 .catch(err => {
                     console.error('Failed to get FCM token:', err)
                 })
-
-            messaging.onTokenRefresh(() => {
-                messaging
-                    .getToken()
-                    .then(refreshedToken => {
-                        const { fcmToken, uid } = store.getState().loggedUser
-                        if (!fcmToken.some(item => item === refreshedToken)) {
-                            db.doc(`/users/${uid}`).update({
-                                fcmToken: firebase.firestore.FieldValue.arrayUnion(refreshedToken),
-                            })
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Unable to retrieve refreshed token ', err)
-                    })
-            })
         } else {
             // Permission not granted yet - wait for user gesture
             console.log(
@@ -7698,7 +7651,7 @@ export async function runHttpsCallableFunction(functionName, data, options = {})
     // Ensure functions is initialized before using it
     if (!functions) {
         console.warn(`⚠️  Functions not initialized when calling ${functionName}, initializing now...`)
-        require('firebase/functions')
+        require('firebase/compat/functions')
 
         // Use the same helper function for consistent environment detection
         const useEmulator = shouldUseEmulator()

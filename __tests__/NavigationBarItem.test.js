@@ -11,8 +11,6 @@ Platform.OS = 'web'
 import renderer from 'react-test-renderer'
 import { DV_TAB_ROOT_TASKS } from '../utils/TabNavigationConstants'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 window.location = { origin: '' }
 
 describe('NavigationBarItem component', () => {

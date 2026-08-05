@@ -151,6 +151,59 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
+-   2026-08-05 — **Stage 3 step 1 executed: firebase 8.10.1 → 12.17.1 via `firebase/compat`**
+    (step 2 — file-by-file modular conversion behind BackendBridge — deliberately waits for
+    staging parity, per the stage discipline).
+
+    -   **Install**: `firebase@12.17.1` (exact pin) under the pinned Node 14 / npm 6;
+        lockfile stayed v1; `replacement_node_modules` patches re-applied and diff-verified.
+        npm audit: **zero firebase-related findings remain** (was the v8 client SDK +
+        `@firebase/firestore` highs and auth/persistence CVEs).
+    -   **Import rewrite (23 files, mechanical)**: every client import used the same v8-era
+        deep import `import { firebase } from '@firebase/app'` → now
+        `import firebase from 'firebase/compat/app'` (that named export no longer exists in
+        v12, so the deep import had to die anyway). The 7 lazy service loads in
+        `utils/backends/firestore.js` (`require('firebase/auth')` etc., incl. the deferred
+        functions/storage/messaging/database block) → `firebase/compat/*`. Compat keeps the
+        v8 lazy-attachment semantics (services appear on the namespace when their compat
+        module loads), so the deferred-load boot flow is unchanged.
+    -   **Only real API break: `messaging.onTokenRefresh()`** — removed in v9+, absent even
+        from compat. The three listener blocks in `firestore.js` were deleted; token
+        freshness is already covered by the `getToken()`-on-every-load calls that remain.
+        Everything else the app uses (namespace Firestore/auth/functions/storage,
+        `FieldValue`/`Timestamp` statics, `signInWithPopup`, `GoogleAuthProvider.credential`,
+        `setPersistence`, `db.settings`, `useEmulator`, `messaging.isSupported`) is
+        compat-supported unchanged.
+    -   **FCM service worker** (`web/firebase-messaging-sw.js`): CDN importScripts bumped to
+        `12.17.1/firebase-{app,messaging}-compat.js`; `setBackgroundMessageHandler` (also
+        removed) → `onBackgroundMessage`. Placeholder env injection in `ci/replace-envs.sh`
+        untouched. The app never registers the SW explicitly — the SDK still auto-registers
+        `/firebase-messaging-sw.js` at `getToken()` time in v12 compat.
+    -   **Jest fallout — the root `firebase` package is exports-only in v12** (no `main`),
+        which jest 25's resolver cannot see. 47 test files carried an identical vestigial
+        `jest.mock('firebase', () => ({ firestore: {} }))` (nothing imports the root
+        package — before or after); those lines started throwing "Cannot find module
+        'firebase'" at mock-resolution time and were deleted (behavior-identical).
+        `firebase/compat/app` itself resolves fine everywhere: it ships a physical
+        directory with a `main`-carrying package.json stub, loads under plain Node 14, and
+        sets `__esModule` so babel default-import interop is correct. Two co-located suites
+        that mocked `@firebase/app` now mock `firebase/compat/app` (default-export shape).
+    -   **Verified**: web-bundler prod build compiles clean on Node 22 (only the 3 known
+        RNGH DrawerLayoutAndroid warnings; webpack parses firebase's ES2017 dist directly —
+        babel never touches it — and the nearest-first `resolve.modules` note from Stage 0
+        already covers @firebase's nested tslib). Full root jest suite: green except two
+        failures **proven pre-existing on master** (both from same-day master commits, not
+        Firebase): `URLsContacts` push history (db53675e4, spun off as its own task) and a
+        stale `SocialText` snapshot that 378e4cf6f forgot to re-baseline (updated here —
+        the onClick-less render is that commit's intended behavior).
+    -   **Remaining for stage acceptance (staging QA)**: login flows (Google popup + GSI
+        credential), Firestore listeners on the main views, **web push** (grant permission,
+        receive a background FCM notification, click-through — the SW is the riskiest
+        piece), functions calls (e.g. a transcription or assistant call), notes storage
+        upload, and the Gmail/calendar connected flows. After parity: Stage 3 step 2
+        (compat → modular, file-by-file behind BackendBridge, where the tree-shaking win
+        lands).
+
 -   2026-08-05 — **Stage 2 QA round 2 complete: gestures, navigation scroll, and the
     popover-positioning saga all fixed** (user-verified on staging).
 

@@ -3,8 +3,6 @@ import renderer from 'react-test-renderer'
 
 import ProjectModalItem from '../../../components/UIComponents/FloatModals/SelectProjectModal/ProjectModalItem'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 // The row no longer writes the choice into the store through setProject, nor
 // calls Backend.setTaskProject itself - it reports the selection upwards via
 // onProjectSelect and lets the caller decide. It also takes no task any more.

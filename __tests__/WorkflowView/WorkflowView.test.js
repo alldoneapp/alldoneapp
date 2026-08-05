@@ -8,7 +8,6 @@ import renderer from 'react-test-renderer'
 import Backend from '../../utils/BackendBridge'
 
 jest.mock('../../utils/BackendBridge')
-jest.mock('firebase', () => ({ firestore: {} }))
 
 jest.mock('react-redux', () => ({
     ...jest.requireActual('react-redux'),

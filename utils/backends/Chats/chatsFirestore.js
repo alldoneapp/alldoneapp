@@ -1,4 +1,4 @@
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import TasksHelper, { GENERIC_CHAT_TYPE } from '../../../components/TaskListView/Utils/TasksHelper'
 import {
     getDb,

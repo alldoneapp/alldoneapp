@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import EditorToolbarButton from './EditorToolbarButton'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import { Quill } from 'react-quill'
 import moment from 'moment'
 import v4 from 'uuid/v4'

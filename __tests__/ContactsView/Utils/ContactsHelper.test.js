@@ -11,7 +11,6 @@ jest.mock('../../../utils/WebShims/Localization', () => ({
     getLocales: () => [{ languageCode: 'en' }],
 }))
 
-jest.mock('firebase', () => ({ firestore: {} }))
 jest.mock('../../../utils/BackendBridge', () => {
     return {
         getUserDataByUidOrEmail: async () => {

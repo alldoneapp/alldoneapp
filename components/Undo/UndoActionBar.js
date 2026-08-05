@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, SafeAreaView, Text, TouchableOpacity, View } from 'react-native'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../styles/global'

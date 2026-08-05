@@ -1,4 +1,4 @@
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import { cloneDeep, uniq } from 'lodash'
 import moment from 'moment'
 

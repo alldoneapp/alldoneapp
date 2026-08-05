@@ -5,8 +5,6 @@ import Header from '../../components/UserDetailedView/Header/Header'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('Header component', () => {
     describe('Header snapshot test', () => {
         it('should render correctly', () => {

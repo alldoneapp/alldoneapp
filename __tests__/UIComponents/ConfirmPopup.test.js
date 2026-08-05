@@ -10,8 +10,6 @@ import ConfirmPopup, { CONFIRM_POPUP_TRIGGER_DELETE_TASK } from '../../component
 import store from '../../redux/store'
 import { hideConfirmPopup, showConfirmPopup } from '../../redux/actions'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 const dummyProjectId = '-LcRVRo6mhbC0oXCcZ2F'
 const dummyTaskId = '-LcRVT6MEWlqGQRkE2xw'
 

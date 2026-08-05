@@ -7,7 +7,6 @@ import Project from '../../../components/TaskDetailedView/Properties/Project'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
 jest.mock('react-redux', () => ({
     ...jest.requireActual('react-redux'),
     useSelector: jest.fn().mockImplementation(fnc => {

@@ -10,8 +10,6 @@ import URLsSettings, {
     URL_SETTINGS_PROJECTS,
 } from '../../URLSystem/Settings/URLsSettings'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('SettingsHelper class', () => {
     let navigation = {}
 

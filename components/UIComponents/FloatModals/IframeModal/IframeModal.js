@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { StyleSheet, View, Text, TouchableOpacity, Modal } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import '@firebase/functions'
 import Icon from '../../../Icon'
 import { colors } from '../../../styles/global'

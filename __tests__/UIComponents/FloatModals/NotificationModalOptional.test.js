@@ -10,8 +10,6 @@ Platform.OS = 'web'
 
 import NotificationModalOptional from '../../../components/UIComponents/FloatModals/NotificationModalOptional'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('NotificationModalOptional component', () => {
     describe('NotificationModalOptional snapshot test', () => {
         it('should render correctly', () => {

@@ -13,8 +13,9 @@ jest.mock('react-redux', () => ({
             loggedUser: { uid: 'user-1' },
         }),
 }))
-jest.mock('@firebase/app', () => ({
-    firebase: {
+jest.mock('firebase/compat/app', () => ({
+    __esModule: true,
+    default: {
         firestore: () => ({
             collection: () => ({
                 orderBy: () => ({

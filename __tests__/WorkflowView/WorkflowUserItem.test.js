@@ -4,7 +4,6 @@ import WorkflowUserItem from '../../components/WorkflowView/WorkflowUserItem'
 import renderer from 'react-test-renderer'
 
 jest.mock('../../utils/BackendBridge')
-jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('WorkflowUserItem component', () => {
     const user = { uid: '0', displayName: 'asd', photoURL: 'a' }

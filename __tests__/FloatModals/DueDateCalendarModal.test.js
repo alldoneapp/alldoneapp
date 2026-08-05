@@ -11,8 +11,6 @@ Platform.OS = 'web'
 import renderer from 'react-test-renderer'
 import moment from 'moment'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 // The modal hands react-native-calendars a default locale taken from
 // loggedUser.language, which only the login flow populates. Without it xdate
 // looks up an undefined locale and throws while formatting month names. The

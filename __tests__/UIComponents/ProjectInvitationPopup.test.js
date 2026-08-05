@@ -11,8 +11,6 @@ Platform.OS = 'web'
 import renderer from 'react-test-renderer'
 import ProjectInvitationPopup from '../../components/UIComponents/ProjectInvitation/ProjectInvitationPopup'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 // The popup reads the invited project and user out of
 // showProjectInvitationPopup.data, which is null until an invitation is set.
 beforeAll(() => {

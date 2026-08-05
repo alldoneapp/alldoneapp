@@ -8,7 +8,6 @@ import { updateShowAllProjectsByTime } from '../../utils/backends/Users/usersFir
 import { COLORS_THEME_MODERN } from '../../Themes/Themes'
 
 jest.mock('../../utils/NavigationService')
-jest.mock('firebase', () => ({ firestore: {} }))
 // The expanded row renders the whole project section subtree - tasks, boards,
 // invite people - which reads far more of the store than this suite is about.
 jest.mock('../../components/SidebarMenu/ProjectFolding/ProjectSectionList', () => 'ProjectSectionList')
