@@ -203,6 +203,15 @@ export class AppContainer extends React.Component {
         document.addEventListener('touchstart', this.handleDomPointerDown, true)
     }
 
+    componentDidUpdate(prevProps, prevState) {
+        // The old stack navigator rendered each screen in its own card, so the
+        // window scroll position never carried over. Screens flow in the body
+        // now — start every freshly navigated screen at the top.
+        if (prevState.id !== this.state.id) {
+            window.scrollTo(0, 0)
+        }
+    }
+
     componentWillUnmount() {
         this.unsubscribe && this.unsubscribe()
         document.removeEventListener('mousedown', this.handleDomPointerDown, true)
