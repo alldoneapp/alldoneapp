@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { DragDropContext } from 'react-beautiful-dnd'
+import { DragDropContext } from '@hello-pangea/dnd'
 import { useSelector, useDispatch } from 'react-redux'
 import moment from 'moment'
 

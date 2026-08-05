@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
+import { setDomAttributes } from '../../../utils/setDomAttributes'
 
 import DismissibleItem from '../../UIComponents/DismissibleItem'
 import TaskPresentation from '../TaskItem/TaskPresentation/TaskPresentation'
@@ -46,8 +47,10 @@ export default function SubTasksView({
         for (let index in renderedSubtaskList) {
             const task = renderedSubtaskList[index]
             if (task && parentRefsList.current[index]) {
-                parentRefsList.current[index].setNativeProps({ 'aria-task-id': task.id })
-                parentRefsList.current[index].setNativeProps({ 'is-observed-task': isObservedTask ? 'true' : 'false' })
+                setDomAttributes(parentRefsList.current[index], { 'aria-task-id': task.id })
+                setDomAttributes(parentRefsList.current[index], {
+                    'is-observed-task': isObservedTask ? 'true' : 'false',
+                })
             }
         }
     }

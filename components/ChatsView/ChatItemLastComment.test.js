@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { Text } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import ChatItemLastComment from './ChatItemLastComment'
@@ -33,6 +34,8 @@ describe('ChatItemLastComment', () => {
         )
 
         expect(getUserPresentationDataInProject).toHaveBeenCalledWith('project-1', 'project-assistant')
-        expect(tree.root.findByType('Text').props.children).toBe('Anna: Interesting email')
+        // react-native-web renders host DOM tags, so 'Text' no longer matches
+        // a node type - find the Text component itself instead.
+        expect(tree.root.findByType(Text).props.children).toBe('Anna: Interesting email')
     })
 })

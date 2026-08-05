@@ -320,6 +320,10 @@ components/UITestView.js
 # Exclude VSCode files
 .vscode
 !/replacement_node_modules/*
+# The global dist/ rule above would swallow patch files nested under
+# replacement_node_modules (e.g. @hello-pangea/dnd/dist) - re-include the
+# whole tree; every file in there is a deliberate, committed patch.
+!/replacement_node_modules/**
 envs/env.develop
 envs/env.master
 replacement_node_modules/.DS_Store
@@ -365,3 +369,4 @@ claude-code-config.json
 # Firebase emulator data
 ./firestore-data
 /firestore-data
+.firebase/

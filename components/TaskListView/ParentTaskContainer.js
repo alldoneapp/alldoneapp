@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
+import { setDomAttributes } from '../../utils/setDomAttributes'
 
 import SubTasksView from './Subtask/SubTasksView'
 import { setFocusedTaskItem, unsetUploadedNewSubtask } from '../../redux/actions'
@@ -40,8 +41,8 @@ export default function ParentTaskContainer({
     const taskItemRef = useRef(null)
 
     const setAriaTaskId = () => {
-        parentRef.current.setNativeProps({ 'aria-task-id': task.id })
-        parentRef.current.setNativeProps({ 'is-observed-task': isObservedTask ? 'true' : 'false' })
+        setDomAttributes(parentRef.current, { 'aria-task-id': task.id })
+        setDomAttributes(parentRef.current, { 'is-observed-task': isObservedTask ? 'true' : 'false' })
     }
 
     const toggleSubTaskList = () => {

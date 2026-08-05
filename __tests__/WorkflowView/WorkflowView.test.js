@@ -55,20 +55,30 @@ describe('WorkflowView component', () => {
             expect(instance.getFormattedName('sa')).toEqual(`sa's tasks`)
         })
 
+        // React 18 defers the listener effect until act flushes it, so each
+        // test mounts inside act and counts only its own backend calls
+        // instead of relying on leftovers from earlier renders.
         it('componentWillUnmount should turn off steps listener on backend', () => {
-            const tree = renderer.create(<WorkflowView projectId="0" user={{ uid: '1', displayName: 'asd b' }} />)
-            tree.unmount()
+            jest.clearAllMocks()
+            let tree
+            renderer.act(() => {
+                tree = renderer.create(<WorkflowView projectId="0" user={{ uid: '1', displayName: 'asd b' }} />)
+            })
+            renderer.act(() => tree.unmount())
 
             expect(Backend.offOnUserWorkflowChange.mock.calls.length).toEqual(1)
             expect(Backend.offOnUserWorkflowChange.mock.calls[0]).toEqual([])
         })
 
         it('componentDidMount should turn on steps listener on backend', () => {
-            renderer.create(<WorkflowView projectId="0" user={{ uid: '1', displayName: 'asd b' }} />)
+            jest.clearAllMocks()
+            renderer.act(() => {
+                renderer.create(<WorkflowView projectId="0" user={{ uid: '1', displayName: 'asd b' }} />)
+            })
             const mockCalls = Backend.onUserWorkflowChange.mock.calls
 
-            expect(mockCalls.length).toEqual(2)
-            expect(mockCalls[1][0]).toEqual('1')
+            expect(mockCalls.length).toEqual(1)
+            expect(mockCalls[0][0]).toEqual('1')
             expect(typeof mockCalls[0][1]).toEqual('function')
         })
     })

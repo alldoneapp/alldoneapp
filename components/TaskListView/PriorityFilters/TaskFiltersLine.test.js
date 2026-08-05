@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { Text, View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -101,16 +102,16 @@ describe('TaskFiltersLine', () => {
             component = renderer.create(<TaskFiltersLine projectId="project-1" />)
         })
 
-        expect(
-            component.root.findAll(node => node.type === 'View' && node.props.testID === 'task-filters')
-        ).toHaveLength(1)
+        expect(component.root.findAll(node => node.type === View && node.props.testID === 'task-filters')).toHaveLength(
+            1
+        )
         expect(component.root.findByProps({ testID: 'task-filter-priority-group' })).toBeTruthy()
         expect(component.root.findByProps({ testID: 'task-filter-vm-state-group' })).toBeTruthy()
         expect(component.root.findAll(node => node.props.children === 'Priority')).toHaveLength(0)
         expect(component.root.findAll(node => node.props.children === 'VM States')).toHaveLength(0)
-        expect(
-            component.root.findByProps({ testID: 'task-filter-active-count' }).findByType('Text').props.children
-        ).toBe(2)
+        expect(component.root.findByProps({ testID: 'task-filter-active-count' }).findByType(Text).props.children).toBe(
+            2
+        )
     })
 
     test('keeps all available filter options in one horizontally scrollable line', () => {

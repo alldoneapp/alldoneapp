@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react'
 import { View } from 'react-native'
 import { useSelector } from 'react-redux'
 import Popover from 'react-tiny-popover'
+import { setDomAttributes } from '../../../../utils/setDomAttributes'
 
 import Button from '../../../UIControls/Button'
 import RunOutOfGoldAssistantModal from './BotOption/RunOutOfGoldAssistantModal'
@@ -15,7 +16,7 @@ export default function SubmitButton({ onSubmit, title, disabled, setShowRunOutG
     }
 
     useEffect(() => {
-        buttonContainerRef.current.setNativeProps({
+        setDomAttributes(buttonContainerRef.current, {
             'check-box-id': 'buttonContainerId',
         })
     }, [])

@@ -3,7 +3,7 @@
  */
 
 import React from 'react'
-import { Text, View } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import OKRSection from './OKRSection'
@@ -85,10 +85,12 @@ const createState = ({ okrs = [baseOkr], hiddenTodayById = {}, smallScreenNaviga
     smallScreenNavigation,
 })
 
+// react-native-web spreads the accessibility/press props across the
+// touchable's inner views too, so constrain the match to the touchable itself.
 const findUndoAllButtons = tree =>
-    tree.root.findAll(
-        node => node.props.accessibilityLabel === 'Undo all OKRs for today' && typeof node.props.onPress === 'function'
-    )
+    tree.root
+        .findAllByType(TouchableOpacity)
+        .filter(node => node.props.accessibilityLabel === 'Undo all OKRs for today')
 
 describe('OKRSection', () => {
     beforeEach(() => {

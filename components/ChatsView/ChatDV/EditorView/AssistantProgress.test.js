@@ -49,7 +49,13 @@ describe('AssistantProgress', () => {
     })
 
     test('builds a visible activity trail as the wait continues', () => {
-        const tree = renderer.create(<AssistantProgress activity={{ phase: 'preparing', startedAt: 1 }} />)
+        // The rotation interval is registered in a passive effect; under React
+        // 18 that effect only flushes inside act, so mount within act or the
+        // timer advance below fires before the interval exists.
+        let tree
+        act(() => {
+            tree = renderer.create(<AssistantProgress activity={{ phase: 'preparing', startedAt: 1 }} />)
+        })
 
         expect(renderedText(tree)).toContain('assistant_progress_preparing_1')
         expect(renderedText(tree)).not.toContain('assistant_progress_preparing_2')

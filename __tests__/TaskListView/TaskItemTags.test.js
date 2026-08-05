@@ -10,6 +10,16 @@ import renderer from 'react-test-renderer'
 import TaskItemTags from '../../components/TaskListView/TaskItemTags'
 import { Text } from 'react-native'
 
+// The backlinks-counter effect really runs under RNW and reaches the
+// uninitialized firestore `db`. Object.create keeps the real module on the
+// prototype without eagerly resolving its circular re-exports.
+jest.mock('../../utils/backends/firestore', () =>
+    Object.assign(Object.create(jest.requireActual('../../utils/backends/firestore')), {
+        watchBacklinksCount: jest.fn(),
+        unwatchBacklinksCount: jest.fn(),
+    })
+)
+
 // MyPlatform.osType only consults window.navigator off the mobile path,
 // and the react-native preset reports ios.
 Platform.OS = 'web'
@@ -33,6 +43,7 @@ describe('TaskItemTags component', () => {
                                 stepHistory: ['open'],
                             }}
                             projectId={'project-1'}
+                            setTagsExpandedHeight={() => {}}
                         >
                             <Text>Some text</Text>
                         </TaskItemTags>

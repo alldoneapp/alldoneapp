@@ -11,6 +11,21 @@ import UserProperties from '../../../components/UserDetailedView/UserProperties/
 import store from '../../../redux/store'
 import { seedLoggedUser, seedProjectUsers, seedProjects } from '../../../testUtils/seedStore'
 
+// The follower/contact effects really run under RNW and reach the
+// uninitialized firestore `db`. Object.create keeps the real modules on the
+// prototype without eagerly resolving their circular re-exports.
+jest.mock('../../../utils/backends/firestore', () =>
+    Object.assign(Object.create(jest.requireActual('../../../utils/backends/firestore')), {
+        watchFollowers: jest.fn(),
+        unwatch: jest.fn(),
+    })
+)
+jest.mock('../../../utils/backends/Contacts/contactsFirestore', () =>
+    Object.assign(Object.create(jest.requireActual('../../../utils/backends/Contacts/contactsFirestore')), {
+        getContactData: jest.fn(() => Promise.resolve(null)),
+    })
+)
+
 // MyPlatform.osType only consults window.navigator off the mobile path,
 // and the react-native preset reports ios.
 Platform.OS = 'web'

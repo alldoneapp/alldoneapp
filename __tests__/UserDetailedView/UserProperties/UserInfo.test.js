@@ -3,6 +3,7 @@
  */
 
 import React from 'react'
+import { Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
@@ -72,7 +73,7 @@ describe('UserInfo', () => {
 
         const modal = tree.root.findByType('ChangeContactInfoModal')
         const renderedTexts = tree.root
-            .findAllByType('Text')
+            .findAllByType(Text)
             .map(node => node.props.children)
             .flat()
 

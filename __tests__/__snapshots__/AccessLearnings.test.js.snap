@@ -1,47 +1,34 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`AccessLearning component AccessLearning snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "alignItems": "center",
-      "backgroundColor": "#0D55CF",
-      "borderColor": "#0D55CF",
-      "borderRadius": 4,
-      "flexDirection": "row",
-      "height": 40,
-      "paddingLeft": 19,
-      "width": 198,
-    }
-  }
+<div
+  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-t6fudj r-borderColor-b8zu0c r-borderRadius-z2wwpe r-flexDirection-18u37iz r-height-eu3ka r-paddingLeft-1oknz3f r-width-z6m0to"
+  dir={null}
 >
-  <View>
-    <Text
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
+  >
+    <div
+      className="css-text-146c3p1"
+      dir="auto"
       style={
         Object {
-          "color": "white",
+          "color": "rgba(255,255,255,1.00)",
           "fontFamily": "alldone",
-          "fontSize": 24,
+          "fontSize": "24px",
           "opacity": 1,
         }
       }
     >
       
-    </Text>
-  </View>
-  <Text
-    style={
-      Object {
-        "color": "white",
-        "fontFamily": "Roboto-Medium",
-        "fontSize": 14,
-        "letterSpacing": 0.05,
-        "lineHeight": 14,
-        "paddingLeft": 15,
-      }
-    }
+    </div>
+  </div>
+  <div
+    className="css-text-146c3p1 r-color-jwli3a r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-plk3f5 r-lineHeight-1f529hi r-paddingLeft-1yt7n81"
+    dir="auto"
   >
     Access Learnings
-  </Text>
-</View>
+  </div>
+</div>
 `;

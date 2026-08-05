@@ -81,6 +81,9 @@ jest.mock('../redux/store', () => {
                     loggedIn: innerState.loggedIn,
                     loggedUser: innerState.user,
                     online: innerState.online,
+                    // The login effect now really runs under RNW and pushes a
+                    // browser URL, which reads the navigation history state.
+                    lastVisitedScreen: [],
                 }
             },
             dispatch: x => {

@@ -24,12 +24,16 @@ const realGetState = store.getState.bind(store)
 beforeEach(() => {
     jest.mock('../../redux/store')
 
-    store.getState = jest.fn(() => ({
+    // react-redux 8 reads the state through useSyncExternalStore, which
+    // requires getSnapshot to return a stable reference - building a fresh
+    // object on every getState() call loops the renderer until it OOMs.
+    const stubbedState = {
         ...realGetState(),
         showSideBarVersionRefresher: true,
         alldoneVersion: { major: 5, minor: 3 },
         alldoneNewVersion: { major: 5, minor: 3, isMandatory: false },
-    }))
+    }
+    store.getState = jest.fn(() => stubbedState)
 })
 
 afterEach(() => {
@@ -51,13 +55,16 @@ describe('Version component', () => {
     })
 
     describe('Clicking the resfresh button works', () => {
-        it('test', async () => {
-            const { findByTestId } = render(
+        it('test', () => {
+            // getByTestId only matches host elements, and react-native-web
+            // hosts are DOM tags that carry data-testid instead of testID -
+            // match the touchable component by prop instead.
+            const { UNSAFE_getByProps } = render(
                 <Provider store={store}>
                     <Version />
                 </Provider>
             )
-            const button = await findByTestId('refreshButton')
+            const button = UNSAFE_getByProps({ testID: 'refreshButton' })
             fireEvent.press(button)
         })
     })

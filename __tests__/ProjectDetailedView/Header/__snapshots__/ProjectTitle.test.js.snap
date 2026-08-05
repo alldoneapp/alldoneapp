@@ -1,48 +1,38 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Detailed Project Title component Detailed Project Title snapshot test should render correctly 1`] = `
-<View
+<div
+  className="css-view-g5y9jx"
+  dir={null}
   style={
     Object {
       "flex": 1,
-      "height": 64,
+      "height": "64px",
     }
   }
 >
-  <View
-    style={
-      Object {
-        "backgroundColor": "white",
-        "height": 32,
-      }
-    }
+  <div
+    className="css-view-g5y9jx r-backgroundColor-14lw9ot r-height-mabqd8"
+    dir={null}
   />
-  <View
-    style={
-      Object {
-        "alignItems": "center",
-        "backgroundColor": "white",
-        "flex": 1,
-        "flexDirection": "row",
-        "height": 32,
-        "justifyContent": "flex-start",
-      }
-    }
+  <div
+    className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-14lw9ot r-flex-13awgt0 r-flexDirection-18u37iz r-height-mabqd8 r-justifyContent-1h0z5md"
+    dir={null}
   >
-    <Text
+    <div
+      className="css-text-146c3p1"
+      dir="auto"
       style={
-        Array [
-          Object {
-            "color": "#04142F",
-            "fontFamily": "Roboto-Medium",
-            "fontSize": 24,
-            "lineHeight": 32,
-          },
-        ]
+        Object {
+          "color": "rgba(4,20,47,1.00)",
+          "fontFamily": "Roboto-Medium",
+          "fontSize": "24px",
+          "lineHeight": "32px",
+        }
       }
     >
       My Project
-    </Text>
-  </View>
-</View>
+    </div>
+  </div>
+</div>
 `;

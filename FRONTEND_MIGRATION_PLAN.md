@@ -151,35 +151,6 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
--   2026-08-05 — **Stage 0 ACCEPTED (second attempt): deploys flipped to the webpack
-    pipeline after a logged-in QA pass on staging live.** The re-flip gate was met:
-    the corrected artifact (scoped sloppy-CJS + require-cycle fix below) was
-    boot-verified locally, deployed to staging live, and passed the user's logged-in
-    QA on the exact task-view flow that broke production on the first attempt.
-    `build_web_production` / `build_web_staging` now run the web-bundler build on the
-    Node 22 tooling image (same env injection + GitHub mirror before_script as
-    before), the expo build jobs are deleted, and `build_web_webpack_check` remains
-    as the feature-branch build + preview feed. The expo toolchain (expo-cli, root
-    webpack.config.js, `npm run build-web`) is local-legacy only and gets removed
-    with the Stage 2 branch.
-
--   2026-08-04/05 — **First flip REVERTED after a production incident; two root causes
-    fixed.** (1) The webpack pipeline produced strict ES modules while metro's preset
-    had compiled sloppy-mode CJS with var hoisting for years — implicit-global writes
-    (`versionUnsub`/`lastPushTime` in `utils/backends/firestore.js`) and a TDZ crash
-    (`utils/backends/openTasks.js`) became runtime ReferenceErrors on logged-in flows.
-    Fix: `@babel/plugin-transform-modules-commonjs` (strictMode:false, loose) +
-    block-scoping→var, scoped to APP SOURCE ONLY. (2) Applying that transform to
-    node_modules exposed a second landmine: the replacement_node_modules RNW
-    TouchableOpacity patch imported app code from inside react-native-web, creating a
-    node_modules→app→gesture-handler→react-native require cycle that only harmony-ESM
-    builds tolerated (webpack hands out partially evaluated exports:
-    strictModuleExceptionHandling is off). Fix: patch deleted; dismissible-touch
-    capture is a document-level capture-phase listener in AppContent (superset
-    semantics). Lessons encoded: logged-in staging QA is the flip gate; artifacts get
-    a local debug-harness boot check before staging deploys; going strict-ESM later
-    requires an ESLint `no-undef` + `no-use-before-define` sweep first.
-
 -   2026-08-04 — **Stage 0 built and locally verified** (`web-bundler/`): standalone
     webpack 5 pipeline on Node 22 building the unchanged app source (React 16, RNW 0.11)
     against the root Node-14-installed `node_modules`.
@@ -262,6 +233,48 @@ Isolated last because it touches production collaborative documents:
     -   **Remaining for stage acceptance**: QA smoke checklist on staging (image
         upload/resize paths — avatar, company logo — plus meeting-link opening and
         language detection all now run on the shims).
+
+-   2026-08-05 — **Stage 2 core landed on `frontend-migration-stage-2`** (React 18.3.1,
+    react-native-web 0.21.2, react-redux 8.1.3, @hello-pangea/dnd 16.6, react-navigation
+    deleted). Webpack build compiles clean with the prod-parity sloppy-CJS babel
+    semantics. Key changes beyond version bumps:
+    -   `utils/NavigationService.js` + `AppNavigator.js` rewritten as a ~50-line
+        observable route store (the old code reset the stack on every navigate, so
+        remount-per-navigate is the only semantic; 467 `navigation.*` call sites work
+        unchanged through a compat prop). Dismissible-touch capture moved from the
+        patched RNW TouchableOpacity to a document-level capture listener.
+    -   `replacement_node_modules` dispositioned: RNW patches retired (obsolete or
+        replaced), rbd patch ported to @hello-pangea/dnd (`combine.index`), new RNGH
+        guard for RNW 0.21's removed DrawerLayoutAndroid. Full inventory in CLAUDE.md.
+    -   Webpack entry replaced (`web-bundler/entry.js`): RNW 0.19+ AppRegistry mounts
+        through createRoot; the expo 36 launch chain is dropped.
+    -   **Jest now tests react-native-web** (what ships): RN preset replaced with
+        explicit babel-jest + web-only haste platforms; `__mocks__/react-native.js`
+        wraps react-native-web (RN 0.61's React-16 renderer cannot coexist with React
+        18). Global act() flush in `ci/jestSetup.js` absorbs React 18's deferred
+        passive effects before jsdom teardown (was crashing workers). Removed-API
+        fixes: ViewPropTypes/Text.propTypes in `Button.js`.
+    -   **Test state: FULL GREEN — 333/333 suites (1483 tests), zero failures**
+        after the rehab pass: shared `testUtils/domNodeStub.js` (createNodeMock) +
+        `testUtils/mockFirebase.js`, per-suite backend-function mocks (NOTE: spread
+        of `jest.requireActual` crashes on this codebase's circular re-exports —
+        use the Object.create prototype trick), correct-for-web assertions
+        (`findByType(Text)` not `'Text'`, `UNSAFE_getByProps({testID})` since
+        testID becomes data-testid on hosts), and memoized store stubs — fresh
+        objects from stubbed `getState` made react-redux 8's useSyncExternalStore
+        loop forever, which was the real cause of the "Call retries exceeded"
+        worker crashes. `__DEV__` + `caches` globals added to jestSetup.
+    -   **RNGH web patch** (`replacement_node_modules/react-native-gesture-handler/ web/GestureHandler.js`): RNW 0.19+ removed `findNodeHandle` (throws), which
+        killed every gesture-handler attachment at mount (staging QA finding).
+        The patch resolves the DOM node directly from the ref.
+    -   Three latent app-source bugs flagged during rehab (not fixed, pre-existing):
+        bare `caches` reference in `utils/Observers.js` (`typeof` guard needed),
+        unguarded `findDOMNode` deref in `SocialText.js`, `lastVisitedScreen`
+        array assumption + in-place mutation in `URLSystem/URLSystem.js`.
+    -   **Remaining Stage 2 exit criteria**: user's logged-in gesture QA on staging
+        (RNGH patch verification: swipes, taps, drag & drop), then the merge
+        decision. First staging QA round passed everything except the RNGH gesture
+        attachment; backend 500s/CORS in that log are staging-infra, not build.
 
 ## What this plan deliberately does NOT do
 

@@ -1,77 +1,52 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Version component Version snapshot test should render correctly 1`] = `
-<View
-  style={
-    Object {
-      "alignItems": "center",
-      "flexDirection": "row",
-      "height": 48,
-      "paddingHorizontal": 24,
-      "width": "100%",
-    }
-  }
+<div
+  className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-height-h3s6tt r-paddingInline-cxgwc0 r-width-13qz1uu"
+  dir={null}
 >
-  <Text
-    numberOfLines={1}
+  <div
+    className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flex-13awgt0 r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
+    dir="auto"
     style={
-      Array [
-        Object {
-          "color": "#04142F",
-          "flex": 1,
-          "flexWrap": "nowrap",
-          "fontFamily": "Roboto-Regular",
-          "fontSize": 14,
-          "letterSpacing": 0.32,
-          "lineHeight": 22,
-          "opacity": 0.4,
-        },
-        Object {
-          "color": "#8A94A6",
-          "opacity": 0.4,
-        },
-      ]
+      Object {
+        "color": "rgba(138,148,166,1.00)",
+        "opacity": 0.4,
+      }
     }
   >
     Alldone.app v
     5
     .
     3
-  </Text>
-  <View
+  </div>
+  <div
+    className="css-view-g5y9jx"
+    dir={null}
     style={
       Object {
         "flex": 1,
       }
     }
   >
-    <View
-      accessible={true}
-      focusable={true}
-      isTVSelectable={true}
+    <div
+      className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-cursor-1loqt21 r-touchAction-1otgn73 r-alignSelf-173mn98 r-borderRadius-1q9bdsx r-height-1472mwg r-justifyContent-1777fci r-minWidth-1q8sk3r r-paddingLeft-m2pi6t r-paddingRight-1qfoi16"
+      data-testid="refreshButton"
+      dir={null}
       onClick={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
+      onContextMenu={[Function]}
+      onKeyDown={[Function]}
       style={
         Object {
-          "alignSelf": "flex-end",
-          "backgroundColor": "#0C66FF",
-          "borderRadius": 12,
-          "height": 24,
-          "justifyContent": "center",
-          "minWidth": 64,
-          "opacity": 1,
-          "paddingLeft": 4,
-          "paddingRight": 10,
+          "backgroundColor": "rgba(12,102,255,1.00)",
+          "transitionDuration": "0s",
         }
       }
-      testID="refreshButton"
+      tabIndex="0"
     >
-      <View
+      <div
+        className="css-view-g5y9jx"
+        dir={null}
         style={
           Object {
             "alignItems": "center",
@@ -79,47 +54,41 @@ exports[`Version component Version snapshot test should render correctly 1`] = `
           }
         }
       >
-        <View>
-          <Text
+        <div
+          className="css-view-g5y9jx"
+          dir={null}
+        >
+          <div
+            className="css-text-146c3p1"
+            dir="auto"
             style={
               Object {
-                "color": "#FFFFFF",
+                "color": "rgba(255,255,255,1.00)",
                 "fontFamily": "alldone",
-                "fontSize": 16,
+                "fontSize": "16px",
                 "opacity": 1,
               }
             }
           >
             
-          </Text>
-        </View>
-        <Text
-          numberOfLines={1}
+          </div>
+        </div>
+        <div
+          className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-x4jph8 r-fontSize-1b43r93 r-fontWeight-majxgm r-letterSpacing-uz4sb0 r-lineHeight-hbpseb r-marginLeft-1rngwi6"
+          dir="auto"
           style={
-            Array [
-              Object {
-                "color": "#04142F",
-                "flexWrap": "nowrap",
-                "fontFamily": "Roboto-regular",
-                "fontSize": 14,
-                "fontWeight": "500",
-                "letterSpacing": 0.16,
-                "lineHeight": 22,
-                "marginLeft": 6,
-              },
-              Object {
-                "color": "#FFFFFF",
-              },
-            ]
+            Object {
+              "color": "rgba(255,255,255,1.00)",
+            }
           }
         >
           v
           5
           .
           3
-        </Text>
-      </View>
-    </View>
-  </View>
-</View>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 `;

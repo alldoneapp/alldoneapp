@@ -1,27 +1,22 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Hashtag component Hashtag snapshot test should render correctly 1`] = `
-<View>
-  <Text
+<div
+  className="css-view-g5y9jx"
+  dir={null}
+>
+  <div
+    className="css-text-146c3p1 r-backgroundColor-2lf47b r-borderRadius-1867qdf r-color-ujv0fi r-paddingBlock-1559e4e r-paddingInline-is05cd"
+    dir="auto"
     style={
-      Array [
-        Object {
-          "color": "#04142F",
-          "fontFamily": "Roboto-Medium",
-          "fontSize": 20,
-          "lineHeight": 28,
-        },
-        Object {
-          "backgroundColor": "#EBF5FF",
-          "borderRadius": 16,
-          "color": "#0D55CF",
-          "paddingHorizontal": 8,
-          "paddingVertical": 2,
-        },
-      ]
+      Object {
+        "fontFamily": "Roboto-Medium",
+        "fontSize": "20px",
+        "lineHeight": "28px",
+      }
     }
   >
     #TESTING HASHTAG
-  </Text>
-</View>
+  </div>
+</div>
 `;

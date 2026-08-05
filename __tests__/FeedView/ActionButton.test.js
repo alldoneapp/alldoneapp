@@ -33,11 +33,16 @@ describe('ActionButton component', () => {
         expect(instance.state.smallScreen).toEqual(expectedValue)
     })
 
+    // getByTestId only matches host elements, and react-native-web hosts are
+    // DOM tags that carry data-testid instead of testID - match the touchable
+    // component by prop instead.
     it('should invoke onPress correctly', () => {
         // Given
         const mockFn = jest.fn()
-        const { getByTestId } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} onPress={mockFn} />)
-        const touchableOpacity = getByTestId('touchableOpacity')
+        const { UNSAFE_getByProps } = render(
+            <ActionButton icon={{ icon: null }} text={{ text: null }} onPress={mockFn} />
+        )
+        const touchableOpacity = UNSAFE_getByProps({ testID: 'touchableOpacity' })
         // When
         fireEvent.press(touchableOpacity)
         // Then
@@ -47,8 +52,8 @@ describe('ActionButton component', () => {
     it('should not invoke onPress', () => {
         // Given
         const mockFn = jest.fn()
-        const { getByTestId } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} />)
-        const touchableOpacity = getByTestId('touchableOpacity')
+        const { UNSAFE_getByProps } = render(<ActionButton icon={{ icon: null }} text={{ text: null }} />)
+        const touchableOpacity = UNSAFE_getByProps({ testID: 'touchableOpacity' })
         // When
         fireEvent.press(touchableOpacity)
         // Then
