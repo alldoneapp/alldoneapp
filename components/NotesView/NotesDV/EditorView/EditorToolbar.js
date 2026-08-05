@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
+import EditorToolbarButton from './EditorToolbarButton'
 import { firebase } from '@firebase/app'
 import { Quill } from 'react-quill'
 import moment from 'moment'
@@ -1352,20 +1353,14 @@ export const EditorToolbar = ({
                         {(shortcutAlt || shortcutCtrl) && (
                             <Shortcut text={'f11'} parentStyle={localStyles.shortcuts.screenMode} />
                         )}
-                        <button
+                        <EditorToolbarButton
                             onClick={() => setFullscreen(!isFullscreen)}
                             style={{ paddingLeft: 6, paddingRight: 6 }}
                         >
-                            <TouchableOpacity style={{ flexDirection: 'row', maxHeight: 20 }}>
-                                <View style={{ width: 20 }}>
-                                    <Icon
-                                        name={isFullscreen ? 'minimize' : 'maximize'}
-                                        size={20}
-                                        color={colors.Text03}
-                                    />
-                                </View>
-                            </TouchableOpacity>
-                        </button>
+                            <View style={{ width: 20 }}>
+                                <Icon name={isFullscreen ? 'minimize' : 'maximize'} size={20} color={colors.Text03} />
+                            </View>
+                        </EditorToolbarButton>
                     </span>
                 </div>
 
@@ -1424,79 +1419,65 @@ export const EditorToolbar = ({
                     {accessGranted && (
                         <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                             {shortcutAlt && <Shortcut text={'4'} parentStyle={localStyles.shortcuts.regular} />}
-                            <button style={{ marginLeft: tablet ? 0 : 8, paddingLeft: 6, paddingRight: 6 }}>
-                                <TouchableOpacity
-                                    style={{ flexDirection: 'row', maxHeight: 20 }}
-                                    onPress={renderTimestamp}
-                                >
-                                    <View style={{ width: 20 }}>
-                                        <Timestamp />
-                                    </View>
-                                    {!tablet && (
-                                        <Text style={[styles.caption1, localStyles.barIconText]}>
-                                            {translate('Date')}
-                                        </Text>
-                                    )}
-                                </TouchableOpacity>
-                            </button>
+                            <EditorToolbarButton
+                                onClick={renderTimestamp}
+                                style={{ marginLeft: tablet ? 0 : 8, paddingLeft: 6, paddingRight: 6 }}
+                            >
+                                <View style={{ width: 20 }}>
+                                    <Timestamp />
+                                </View>
+                                {!tablet && (
+                                    <Text style={[styles.caption1, localStyles.barIconText]}>{translate('Date')}</Text>
+                                )}
+                            </EditorToolbarButton>
                         </span>
                     )}
                     {accessGranted && (
                         <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                             {shortcutAlt && <Shortcut text={'T'} parentStyle={localStyles.shortcuts.regular} />}
-                            <button onClick={renderTask} style={{ paddingLeft: 6, paddingRight: 6 }}>
-                                <TouchableOpacity style={{ flexDirection: 'row', maxHeight: 20 }}>
-                                    <View style={{ width: 20 }}>
-                                        <Task />
-                                    </View>
-                                    {!tablet && (
-                                        <Text style={[styles.caption1, localStyles.barIconText]}>
-                                            {translate('Task')}
-                                        </Text>
-                                    )}
-                                </TouchableOpacity>
-                            </button>
+                            <EditorToolbarButton onClick={renderTask} style={{ paddingLeft: 6, paddingRight: 6 }}>
+                                <View style={{ width: 20 }}>
+                                    <Task />
+                                </View>
+                                {!tablet && (
+                                    <Text style={[styles.caption1, localStyles.barIconText]}>{translate('Task')}</Text>
+                                )}
+                            </EditorToolbarButton>
                         </span>
                     )}
                     <span className={'ql-toolbar-item'} style={{ pointerEvents: commentPointerEvents }}>
                         {shortcutAlt && <Shortcut text={'C'} parentStyle={localStyles.shortcuts.regular} />}
-                        <button className="ql-comment">
-                            <TouchableOpacity style={{ flexDirection: 'row', maxHeight: 20 }}>
-                                <View style={{ width: 20 }}>
-                                    <Comment />
-                                </View>
-                                {!tablet && (
-                                    <Text style={[styles.caption1, localStyles.barIconText]}>
-                                        {translate('Comment')}
-                                    </Text>
-                                )}
-                            </TouchableOpacity>
-                        </button>
+                        <EditorToolbarButton className="ql-comment">
+                            <View style={{ width: 20 }}>
+                                <Comment />
+                            </View>
+                            {!tablet && (
+                                <Text style={[styles.caption1, localStyles.barIconText]}>{translate('Comment')}</Text>
+                            )}
+                        </EditorToolbarButton>
                     </span>
 
                     <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
-                        <button onClick={toggleTranscription} style={{ paddingLeft: 6, paddingRight: 6 }}>
-                            <TouchableOpacity style={{ flexDirection: 'row', maxHeight: 20 }}>
-                                <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
-                                    <Icon
-                                        name={isRecording ? 'mic-off' : 'mic'}
-                                        size={18}
-                                        color={isRecording ? colors.Red200 : colors.Text03}
-                                    />
-                                </View>
-                                {!tablet && (
-                                    <Text
-                                        style={[
-                                            styles.caption1,
-                                            localStyles.barIconText,
-                                            isRecording ? { color: colors.Red200 } : {},
-                                        ]}
-                                    >
-                                        {isRecording ? translate('Stop') : translate('Transcribe')}
-                                    </Text>
-                                )}
-                            </TouchableOpacity>
-                        </button>
+                        <EditorToolbarButton onClick={toggleTranscription} style={{ paddingLeft: 6, paddingRight: 6 }}>
+                            <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
+                                <Icon
+                                    name={isRecording ? 'mic-off' : 'mic'}
+                                    size={18}
+                                    color={isRecording ? colors.Red200 : colors.Text03}
+                                />
+                            </View>
+                            {!tablet && (
+                                <Text
+                                    style={[
+                                        styles.caption1,
+                                        localStyles.barIconText,
+                                        isRecording ? { color: colors.Red200 } : {},
+                                    ]}
+                                >
+                                    {isRecording ? translate('Stop') : translate('Transcribe')}
+                                </Text>
+                            )}
+                        </EditorToolbarButton>
                     </span>
                 </span>
 
