@@ -129,10 +129,14 @@ export default function SocialText({
                         paddingTop: 40 + tagsExpandedHeight,
                     },
             ]}
-            onPress={e => {
-                const pressAllowed = allowPressInsidePopover ? !blockOpen : shouldOnPressInput(e, blockOpen)
-                if (onPress && pressAllowed) onPress(e)
-            }}
+            onPress={
+                onPress
+                    ? e => {
+                          const pressAllowed = allowPressInsidePopover ? !blockOpen : shouldOnPressInput(e, blockOpen)
+                          if (pressAllowed) onPress(e)
+                      }
+                    : undefined
+            }
             numberOfLines={activeCalendarStyle ? 1 : numberOfLines}
             onLayout={onLayoutChange}
         >

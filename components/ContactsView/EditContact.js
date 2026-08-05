@@ -30,8 +30,8 @@ import {
     DV_TAB_PROJECT_TEAM_MEMBERS,
     DV_TAB_USER_PROFILE,
 } from '../../utils/TabNavigationConstants'
-import Spinner from '../UIComponents/Spinner'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
+import ContactPhoto from './ContactPhoto'
 import CommentsWrapper from '../Feeds/InteractionBar/CommentsWrapper'
 import { FEED_CONTACT_OBJECT_TYPE, FEED_USER_OBJECT_TYPE } from '../Feeds/Utils/FeedsConstants'
 import PrivacyButton from '../UIComponents/FloatModals/PrivacyModal/PrivacyButton'
@@ -65,7 +65,6 @@ export default class EditContact extends Component {
             loggedUserId: store.getState().loggedUser.uid,
             loggedUserProjects: storeState.loggedUserProjects,
             loggedUserProjectsMap: storeState.loggedUserProjectsMap,
-            loading: false,
             contact: contact,
             tmpContact: clonedContact,
             isEmail: false,
@@ -371,7 +370,6 @@ export default class EditContact extends Component {
             showCopyContactModal,
             contactToCopy,
             loggedUserProjectsMap,
-            loading,
             loggedUserId,
         } = this.state
         const { onCancelAction, style, projectId, isNew, projectIndex, isMember, dismissibleRef, contact } = this.props
@@ -415,18 +413,11 @@ export default class EditContact extends Component {
                             <View style={localStyles.userPhoto}>
                                 {tmpContact.photoURL != null && tmpContact.photoURL !== '' ? (
                                     <View>
-                                        <Image
-                                            onLoadStart={() => this.setState({ loading: true })}
-                                            onLoadEnd={() => this.setState({ loading: false })}
-                                            source={{ uri: contactPhoto50 }}
-                                            style={[localStyles.image, { display: loading ? 'none' : 'flex' }]}
+                                        <ContactPhoto
+                                            uri={contactPhoto50}
+                                            style={localStyles.image}
+                                            spinnerContainerStyle={{ backgroundColor: colors.Gray200 }}
                                         />
-
-                                        {loading && (
-                                            <View style={{ backgroundColor: colors.Gray200 }}>
-                                                <Spinner containerSize={48} spinnerSize={24} />
-                                            </View>
-                                        )}
                                     </View>
                                 ) : (
                                     <SVGGenericUser
