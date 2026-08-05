@@ -4,7 +4,7 @@ import Popover from 'react-tiny-popover'
 import Backend from '../../../utils/BackendBridge'
 import { getObjectData, OBJECT_DATA_ID, OBJECT_DATA_TYPE, STAYWARD_COMMENT } from '../Utils/HelperFunctions'
 import Button from '../../UIControls/Button'
-import { execShortcutFn, popoverToTop } from '../../../utils/HelperFunctions'
+import { execShortcutFn, popoverToTop, popoverToTopContainerStyle } from '../../../utils/HelperFunctions'
 import Hotkeys from 'react-hot-keys'
 import { useDispatch, useSelector } from 'react-redux'
 import { hideFloatPopup, showFloatPopup } from '../../../redux/actions'
@@ -218,6 +218,7 @@ export default function CommentsWrapper({
                 align={'start'}
                 disableReposition={true}
                 contentLocation={popoverToTop}
+                containerStyle={popoverToTopContainerStyle}
             >
                 <Hotkeys
                     disabled={true}

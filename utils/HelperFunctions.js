@@ -197,13 +197,25 @@ const getScrollOffsets = () => {
     const docElement = doc?.documentElement
     const body = doc?.body
 
-    const scrollX = window.pageXOffset ?? window.scrollX ?? docElement?.scrollLeft ?? body?.scrollLeft ?? 0
+    // The scroll can live on the window OR on the body: with the RNW 0.21
+    // layout the body is its own scroll container, so window.pageYOffset is 0
+    // (not undefined!) while body.scrollTop carries the real offset — a ??
+    // chain never reaches it and popovers positioned with these offsets land
+    // above the scrolled viewport (Stage 2 QA: comment modal only visible
+    // after scrolling). Use || so zeros fall through to the actual scroller.
+    const scrollX = window.pageXOffset || docElement?.scrollLeft || body?.scrollLeft || 0
 
-    const scrollY = window.pageYOffset ?? window.scrollY ?? docElement?.scrollTop ?? body?.scrollTop ?? 0
+    const scrollY = window.pageYOffset || docElement?.scrollTop || body?.scrollTop || 0
 
     return { scrollX, scrollY }
 }
 
+// NOTE: every contentLocation helper below returns VIEWPORT coordinates. The
+// patched react-tiny-popover positions the popover container `fixed` whenever
+// a contentLocation is in effect (and `absolute` for target-anchored mode), so
+// scroll offsets must NOT be added here — that is what made these popovers
+// invisible after scrolling and wobble while scrolling under the RNW 0.21
+// layout, where the body (not the window) is the scroll container.
 export const popoverToCenter = (
     { targetRect, popoverRect, position, align, nudgedLeft, nudgedTop },
     isMobile = true
@@ -212,8 +224,7 @@ export const popoverToCenter = (
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const top = dim.height / 2 - popoverRect.height / 2
     const left = dim.width / 2 - popoverRect.width / 2
-    const { scrollX, scrollY } = getScrollOffsets()
-    return { top: top + scrollY, left: left + sidebarDiff + scrollX }
+    return { top, left: left + sidebarDiff }
 }
 
 export const popoverToSafePosition = (
@@ -223,7 +234,6 @@ export const popoverToSafePosition = (
     const dim = Dimensions.get('window')
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const padding = 16 // Safe padding from screen edges
-    const { scrollX, scrollY } = getScrollOffsets()
     const viewportWidth = dim.width
     const viewportHeight = dim.height
 
@@ -242,7 +252,7 @@ export const popoverToSafePosition = (
                 viewportWidth - popoverRect.width - padding
             )
 
-            return { top: centeredTop + scrollY, left: centeredLeft + scrollX }
+            return { top: centeredTop, left: centeredLeft }
         }
 
         const anchorGap = 8
@@ -277,7 +287,7 @@ export const popoverToSafePosition = (
             left = clampToRange(desiredLeft, minLeft, maxLeft)
         }
 
-        return { top: top + scrollY, left: left + scrollX }
+        return { top, left }
     }
 
     // For desktop/tablet, use centered positioning with hard viewport clamping.
@@ -288,16 +298,20 @@ export const popoverToSafePosition = (
     top = clampToRange(top, padding, Math.max(padding, viewportHeight - popoverRect.height - padding))
     left = clampToRange(left, padding, Math.max(padding, viewportWidth - popoverRect.width - padding))
 
-    return { top: top + scrollY, left: left + scrollX }
+    return { top, left }
 }
+
+// Kept for explicitness at popoverToTop call sites; the patched
+// react-tiny-popover applies fixed positioning for ANY active contentLocation,
+// so this is redundant but harmless.
+export const popoverToTopContainerStyle = { position: 'fixed' }
 
 export const popoverToTop = ({ targetRect, popoverRect, position, align, nudgedLeft, nudgedTop }, isMobile = true) => {
     const dim = Dimensions.get('window')
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const top = 80
     const left = dim.width / 2 - popoverRect.width / 2
-    const { scrollX, scrollY } = getScrollOffsets()
-    return { top: top + scrollY, left: left + sidebarDiff + scrollX }
+    return { top, left: left + sidebarDiff }
 }
 
 export const shortcutPreviewMount = () => {

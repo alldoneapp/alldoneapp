@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import ObjectCommentsTag from '../../../Tags/ObjectCommentsTag'
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import RichCommentModal from '../../../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
-import { popoverToTop } from '../../../../utils/HelperFunctions'
+import { popoverToTop, popoverToTopContainerStyle } from '../../../../utils/HelperFunctions'
 import {
     BOT_OPTION_MODAL_ID,
     BOT_WARNING_MODAL_ID,
@@ -86,6 +86,7 @@ export default function CommentWrapperTag({
             align={'end'}
             disableReposition={true}
             contentLocation={popoverToTop}
+            containerStyle={popoverToTopContainerStyle}
         >
             <ObjectCommentsTag
                 commentsData={commentsData}

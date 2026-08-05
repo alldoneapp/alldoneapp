@@ -5,7 +5,7 @@ import ObjectCommentsTag from './ObjectCommentsTag'
 import { useDispatch, useSelector } from 'react-redux'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
-import { popoverToTop } from '../../utils/HelperFunctions'
+import { popoverToTop, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
 import { RECORD_SCREEN_MODAL_ID, RECORD_VIDEO_MODAL_ID } from '../Feeds/CommentsTextInput/textInputHelper'
 import {
     BOT_OPTION_MODAL_ID,
@@ -107,6 +107,7 @@ export default function ContactCommentsWrapper({
             align={'end'}
             disableReposition={true}
             contentLocation={popoverToTop}
+            containerStyle={popoverToTopContainerStyle}
         >
             <ObjectCommentsTag
                 commentsData={commentsData}
