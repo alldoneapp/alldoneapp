@@ -89,6 +89,7 @@ import { updateXpByEditingNote } from '../../../../utils/Levels'
 import { getDb, getNotesCollaborationServerData } from '../../../../utils/backends/firestore'
 import { setNoteData } from '../../../../utils/backends/Notes/notesFirestore'
 import { loadNoteContentWithRetry } from './noteContentLoader'
+import { prepareSyncedNoteDocument } from './noteCollaborationRecovery'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -138,7 +139,7 @@ const NotesEditorView = ({
     const userName = loggedUser.displayName
     const selectedTab = useSelector(state => state.selectedNavItem)
     const isLoadingData = useSelector(state => state.isLoadingData)
-    const [state, setState] = useState({ value: null })
+    const [editorRevision, setEditorRevision] = useState(0)
     const [synced, setSynced] = useState(false)
     const [editors, setEditors] = useState([])
     const [dataLoaded, setDataLoaded] = useState(false)
@@ -369,7 +370,7 @@ const NotesEditorView = ({
         }
     }
 
-    const handleChange = (value, delta, source) => {
+    const handleChange = (_value, delta, source) => {
         handleTextChangeForMentions()
         if (dataLoaded) {
             dirtyEditor.current = true
@@ -384,7 +385,7 @@ const NotesEditorView = ({
         }
         checkForInnerTasksChanges(delta.ops, source)
         checkIfNeedReplaceFormats(delta.ops)
-        setState({ value })
+        setEditorRevision(revision => revision + 1)
 
         resetTimeoutCounter()
     }
@@ -543,7 +544,7 @@ const NotesEditorView = ({
         if (needReplaceImageFormat.current) {
             replaceQuillImagesByCustomImagesFormat()
         }
-    }, [state])
+    }, [editorRevision])
 
     useEffect(() => {
         dispatch(resetLoadingData())
@@ -731,26 +732,30 @@ const NotesEditorView = ({
                 const data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id))
                 if (noteUnmountedRef.current) return
 
-                const nextYdoc = new Y.Doc()
-                const update = new Uint8Array(data)
-                if (update.length > 0) {
-                    Y.applyUpdate(nextYdoc, update)
+                const collaboration = await prepareSyncedNoteDocument(data, document => {
+                    return new WebsocketProvider(
+                        getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
+                        note.id,
+                        document
+                    )
+                })
+                if (noteUnmountedRef.current) {
+                    collaboration.provider.destroy()
+                    collaboration.document.destroy()
+                    return
                 }
 
-                ydoc.current = nextYdoc
+                ydoc.current = collaboration.document
+                provider.current = collaboration.provider
                 const type = ydoc.current.getText('quill')
-                provider.current = new WebsocketProvider(
-                    getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
-                    note.id,
-                    ydoc.current
-                )
                 /*provider.current = new WebrtcProvider(note.id, ydoc.current, {
                         peerOpts: { config },
                         signaling: signalingServers,
                     })*/
                 provider.current.on('synced', synced => {
-                    setSynced(true)
+                    setSynced(synced)
                 })
+                setSynced(provider.current.synced)
                 provider.current.awareness.setLocalStateField('user', {
                     name: userName,
                     color: color.current,
@@ -778,6 +783,11 @@ const NotesEditorView = ({
                     }
                 }
                 checkMaxLength()
+                if (collaboration.recovered) {
+                    console.warn('Recovered note content after a destructive collaboration sync', {
+                        noteId: note.id,
+                    })
+                }
                 loadingRef.current = false
                 exportLoadingRef = false
                 dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
@@ -1254,7 +1264,6 @@ const NotesEditorView = ({
                         exportRef = el
                     }}
                     theme="snow"
-                    value={state.value}
                     onChange={handleChange}
                     placeholder={createPlaceholder('Type your note...', QUILL_EDITOR_NOTE_TYPE, note.id)}
                     modules={modules}
