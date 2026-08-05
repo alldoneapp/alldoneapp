@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -51,6 +51,7 @@ import { objectIsLockedForUser } from '../Guides/guidesHelper'
 import { PROJECT_TYPE_SHARED } from '../SettingsView/ProjectsSettings/ProjectsSettings'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
+import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 export default function GoalDetailedView({ navigation }) {
     const projectId = navigation.getParam('projectId', undefined)
@@ -68,7 +69,9 @@ export default function GoalDetailedView({ navigation }) {
     const [goal, setGoal] = useState(initialGoal ? initialGoal : null)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const [isFullscreen, setFullscreen] = useState(false)
+    const scrollRef = useRef()
     usePrivateProject(projectId)
+    useResetDetailedViewScroll(selectedNavItem, scrollRef)
 
     const { overlay } = useCollapsibleSidebar()
 
@@ -198,6 +201,7 @@ export default function GoalDetailedView({ navigation }) {
                     {!isMiddleScreen && accessGranted && <BackButton projectId={projectId} goal={goal} />}
 
                     <CustomView
+                        ref={scrollRef}
                         style={[
                             localStyles.scrollPanel,
                             smallScreenNavigation

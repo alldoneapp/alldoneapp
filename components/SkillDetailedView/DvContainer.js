@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector, shallowEqual, useDispatch } from 'react-redux'
 
@@ -12,6 +12,7 @@ import NavigationBarContainer from './NavigationBarContainer'
 import { setDvIsFullScreen } from '../../redux/actions'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
+import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 export default function DvContainer({ projectId }) {
     const dispatch = useDispatch()
@@ -34,6 +35,8 @@ export default function DvContainer({ projectId }) {
 
     const CustomView =
         selectedNavItem === DV_TAB_SKILL_NOTE || selectedNavItem === DV_TAB_SKILL_CHAT ? View : CustomScrollView
+    const scrollRef = useRef()
+    useResetDetailedViewScroll(selectedNavItem, scrollRef)
 
     useEffect(() => {
         dispatch(setDvIsFullScreen(assistantEnabled))
@@ -44,6 +47,7 @@ export default function DvContainer({ projectId }) {
             {!isMiddleScreen && userHasAccessToProject && <BackButton projectId={projectId} />}
 
             <CustomView
+                ref={scrollRef}
                 style={[
                     localStyles.scrollPanel,
                     smallScreenNavigation

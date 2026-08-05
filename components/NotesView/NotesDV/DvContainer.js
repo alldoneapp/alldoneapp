@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
@@ -23,6 +23,7 @@ import TaskTagWrapper from '../../Feeds/CommentsTextInput/autoformat/tags/TaskTa
 import Sections from './Sections'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../../styles/global'
 import useCollapsibleSidebar from '../../SidebarMenu/Collapsible/UseCollapsibleSidebar'
+import useResetDetailedViewScroll from '../../../hooks/useResetDetailedViewScroll'
 
 export default function DvContainer({ projectId, note, navigation, updateObjectState }) {
     const openModals = useSelector(state => state.openModals)
@@ -31,6 +32,8 @@ export default function DvContainer({ projectId, note, navigation, updateObjectS
     const selectedTab = useSelector(state => state.selectedNavItem)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const [flag, setFlag] = useState(false)
+    const scrollRef = useRef()
+    useResetDetailedViewScroll(selectedTab, scrollRef)
 
     const project = ProjectHelper.getProjectById(projectId)
 
@@ -50,7 +53,7 @@ export default function DvContainer({ projectId, note, navigation, updateObjectS
     return (
         <>
             {selectedTab === DV_TAB_NOTE_EDITOR ? (
-                <View style={{ flex: 1 }}>
+                <View ref={scrollRef} style={{ flex: 1 }}>
                     {accessGranted && !isMiddleScreen && (
                         <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                             <BackButton projectId={projectId} note={note} />
@@ -97,6 +100,7 @@ export default function DvContainer({ projectId, note, navigation, updateObjectS
                 </View>
             ) : (
                 <CustomView
+                    ref={scrollRef}
                     style={[
                         localStyles.scrollPanel,
                         mobile ? localStyles.scrollPanelMobile : null,

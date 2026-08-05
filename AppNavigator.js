@@ -44,6 +44,7 @@ import ChatDetailedView from './components/ChatsView/ChatDetailedView'
 import SkillDetailedView from './components/SkillDetailedView/SkillDetailedView'
 import AdminPanelView from './components/AdminPanel/AdminPanelView'
 import AssistantDetailedView from './components/AssistantDetailedView/AssistantDetailedView'
+import { scrollDocumentToTop } from './utils/scrollUtils'
 
 const onLayoutChange = layout => {
     const {
@@ -205,10 +206,11 @@ export class AppContainer extends React.Component {
 
     componentDidUpdate(prevProps, prevState) {
         // The old stack navigator rendered each screen in its own card, so the
-        // window scroll position never carried over. Screens flow in the body
-        // now — start every freshly navigated screen at the top.
+        // page scroll position never carried over. Screens flow in the body
+        // now, and browsers can keep the offset on window, documentElement, or
+        // body — start every freshly navigated screen at the top in all cases.
         if (prevState.id !== this.state.id) {
-            window.scrollTo(0, 0)
+            scrollDocumentToTop()
         }
     }
 

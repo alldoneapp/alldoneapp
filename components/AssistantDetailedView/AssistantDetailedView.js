@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -44,6 +44,7 @@ import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import WorkflowView from '../WorkflowView/WorkflowView'
+import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 export default function AssistantDetailedView({ navigation }) {
     const assistantId = navigation.getParam('assistantId', undefined)
@@ -59,6 +60,8 @@ export default function AssistantDetailedView({ navigation }) {
     const [assistant, setAssistant] = useState(null)
     const [projectOriginId, setProjectOriginId] = useState('')
     const [isFullscreen, setFullscreen] = useState(false)
+    const scrollRef = useRef()
+    useResetDetailedViewScroll(selectedNavItem, scrollRef)
 
     const isGlobalAsisstant = projectId !== projectOriginId
     const isInGlobalProject = projectId === GLOBAL_PROJECT_ID
@@ -163,6 +166,7 @@ export default function AssistantDetailedView({ navigation }) {
                     {!isMiddleScreen && <BackButton assistant={assistant} />}
 
                     <CustomView
+                        ref={scrollRef}
                         style={[
                             localStyles.scrollPanel,
                             smallScreenNavigation
