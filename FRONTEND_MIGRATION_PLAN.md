@@ -215,6 +215,19 @@ Isolated last because it touches production collaborative documents:
         "just copy the new packages into node_modules" shortcut risks hoisting 2.8.1 to
         the root — the mirror image of the Stage 0 resolution bug. Install through the
         lockfile, never by copying.
+    -   **CI verified on branch `frontend-migration-stage-3`** once the image fix landed:
+        `modules_cache` + `web_bundler_cache` build the branch-scoped images (6.5 min cold,
+        1.2 min once kaniko's cache is warm), `build_web_webpack_check` **passes** with
+        firebase 12, and `test:web:changed` is 962/963 — the only failure is the
+        pre-existing `URLsContacts` push-history one that reproduces on clean master.
+        `deploy:web-webpack-preview` is then playable for the staging QA below. Note the
+        branch rebuilds its images on **every** push, because `changes: compare_to` diffs
+        against master and the lockfile always differs there; the warm cache keeps that
+        cheap. One unrelated latent bug was fixed to get there:
+        `ChangeTextFieldModal.componentDidMount` guarded `this.inputText` (the ref object,
+        always truthy) rather than `.current`, and threw whenever the modal unmounted
+        before its 1 ms focus timer fired — invisible locally, lost the race under CI's
+        loaded `--runInBand` run.
     -   **Remaining for stage acceptance (staging QA)**: login flows (Google popup + GSI
         credential), Firestore listeners on the main views, **web push** (grant permission,
         receive a background FCM notification, click-through — the SW is the riskiest
