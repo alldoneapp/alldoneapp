@@ -10,8 +10,6 @@ Platform.OS = 'web'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 let options = [
     { icon: 'square', text: 'Open' },
     { icon: 'clock', text: 'Pending' },

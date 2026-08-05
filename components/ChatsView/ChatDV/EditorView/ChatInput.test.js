@@ -31,8 +31,9 @@ jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
 
-jest.mock('@firebase/app', () => ({
-    firebase: {},
+jest.mock('firebase/compat/app', () => ({
+    __esModule: true,
+    default: {},
 }))
 
 jest.mock('react-quill', () => ({

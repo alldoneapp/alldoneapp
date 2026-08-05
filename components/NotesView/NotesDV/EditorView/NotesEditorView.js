@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import moment from 'moment'
 import v4 from 'uuid/v4'
 import Hotkeys from 'react-hot-keys'

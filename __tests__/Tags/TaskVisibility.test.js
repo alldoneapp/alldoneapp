@@ -8,8 +8,6 @@ Platform.OS = 'web'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('Task Visibility Tag component', () => {
     describe('Task Visibility snapshot test', () => {
         it('should render correctly', () => {

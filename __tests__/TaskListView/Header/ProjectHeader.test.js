@@ -6,8 +6,6 @@ import { storeCurrentUser } from '../../../redux/actions'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('ProjectHeader component', () => {
     describe('ProjectHeader snapshot test', () => {
         it('should render correctly', () => {

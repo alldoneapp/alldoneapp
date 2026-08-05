@@ -118,7 +118,7 @@
         "chartjs-plugin-datalabels": "^2.2.0",
         "expo": "36.0.0",
         "fbjs": "3.0.0",
-        "firebase": "8.10.1",
+        "firebase": "12.17.1",
         "i18n-js": "3.9.2",
         "isomorphic-fetch": "^3.0.0",
         "lodash": "4.17.21",

@@ -9,8 +9,6 @@ import UserTitle from '../../components/UserDetailedView/Header/UserTitle'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('UserTitle component', () => {
     describe('UserTitle snapshot test', () => {
         it('should render correctly', () => {

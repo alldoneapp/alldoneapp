@@ -11,7 +11,7 @@ import {
     Animated,
 } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 
 import styles from '../styles/global'
 import Colors from '../../Themes/Colors'

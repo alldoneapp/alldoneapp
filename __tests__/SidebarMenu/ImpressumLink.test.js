@@ -9,8 +9,6 @@ import renderer from 'react-test-renderer'
 // and the react-native preset reports ios.
 Platform.OS = 'web'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 // Overriding getState wholesale left the component without the rest of the
 // state it reads, themeName among it. Keep the real state and layer the few
 // fields this suite cares about on top.

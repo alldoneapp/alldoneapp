@@ -1,4 +1,4 @@
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import { intersection, isEqual, orderBy, uniq } from 'lodash'
 
 import TasksHelper, { GENERIC_SKILL_TYPE } from '../../../components/TaskListView/Utils/TasksHelper'

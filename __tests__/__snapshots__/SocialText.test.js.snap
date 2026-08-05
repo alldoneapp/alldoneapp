@@ -2,9 +2,8 @@
 
 exports[`SocialText component SocialText snapshot test should render correctly 1`] = `
 <div
-  className="css-text-146c3p1 r-cursor-1loqt21"
+  className="css-text-146c3p1"
   dir="auto"
-  onClick={[Function]}
   style={
     Object {
       "flexDirection": "row",

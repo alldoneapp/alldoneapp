@@ -5,8 +5,6 @@ import { Provider } from 'react-redux'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('ProjectList component', () => {
     describe('ProjectList snapshot test', () => {
         it('should render correctly', () => {

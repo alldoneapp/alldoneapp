@@ -1,5 +1,5 @@
 import moment from 'moment'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import { difference, uniq } from 'lodash'
 
 import TasksHelper, {

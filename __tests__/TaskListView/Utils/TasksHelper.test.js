@@ -16,8 +16,6 @@ import { storeCurrentUser, storeLoggedUser } from '../../../redux/actions'
 import { ALL_PROJECTS_INDEX } from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { DV_TAB_ROOT_TASKS } from '../../../utils/TabNavigationConstants'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 const dummyUser = { uid: 'C08CK8x1I5YS2lxVixuLHaF3SrA3' }
 
 const navigation = { navigate: route => route }

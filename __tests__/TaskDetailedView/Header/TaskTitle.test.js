@@ -7,7 +7,6 @@ jest.mock('../../../utils/WebShims/Localization', () => ({
     locale: 'en-US',
     getLocales: () => [{ languageCode: 'en' }],
 }))
-jest.mock('firebase', () => ({ firestore: {} }))
 jest.mock('../../../utils/BackendBridge', () => ({}))
 jest.mock('../../../redux/store', () => ({
     getState: () => ({

@@ -1,5 +1,5 @@
 import { intersection, uniq } from 'lodash'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 
 import {
     createGenericTaskWhenMentionInTitleEdition,

@@ -37,8 +37,6 @@ import {
 } from '../../redux/actions'
 import { PROJECT_TYPE_ARCHIVED } from '../../components/SettingsView/ProjectsSettings/ProjectsSettings'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('Redux Actions', () => {
     it('should create an action to log out', () => {
         const expectedAction = {

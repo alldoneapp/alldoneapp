@@ -6,8 +6,6 @@ import store from '../redux/store'
 import renderer from 'react-test-renderer'
 import { nodeMockOptions } from '../testUtils/domNodeStub'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 // The hashtag/mention tags' effects now really run under react-native-web and
 // reach the firestore watchers, whose `db` is never initialized in tests.
 // Object.create keeps the real module on the prototype (spreading it would

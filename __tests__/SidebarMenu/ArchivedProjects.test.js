@@ -10,8 +10,6 @@ Platform.OS = 'web'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 describe('ArchivedProjects component', () => {
     describe('ArchivedProjects snapshot test', () => {
         it('should render correctly', () => {

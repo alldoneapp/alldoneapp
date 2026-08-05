@@ -2,8 +2,8 @@
 // Note that you can only use Firebase Messaging here. Other Firebase libraries
 // are not available in the service worker.
 
-importScripts('https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js')
-importScripts('https://www.gstatic.com/firebasejs/8.10.0/firebase-messaging.js')
+importScripts('https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js')
+importScripts('https://www.gstatic.com/firebasejs/12.17.1/firebase-messaging-compat.js')
 
 // Initialize the Firebase app in the service worker by passing in
 // your app's Firebase config object.
@@ -79,7 +79,9 @@ if (firebase.messaging.isSupported()) {
         return openWindow(targetUrl.href)
     }
 
-    messaging.setBackgroundMessageHandler(payload => {
+    // firebase 9+ removed setBackgroundMessageHandler; onBackgroundMessage is the
+    // compat replacement (fires for the same data-only messages the app sends).
+    messaging.onBackgroundMessage(payload => {
         const options = {
             body: payload.data.body,
             icon: '/apple-touch-icon-57x57.png',

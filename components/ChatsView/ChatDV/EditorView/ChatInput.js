@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Keyboard, StyleSheet, View } from 'react-native'
 import { shallowEqual, useSelector, useDispatch } from 'react-redux'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import ReactQuill from 'react-quill'
 
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'

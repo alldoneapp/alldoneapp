@@ -1,4 +1,4 @@
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 
 import { getDb, globalWatcherUnsub, runHttpsCallableFunction } from '../firestore'
 import { getSubscriptionStatus, removeUsersPaidByOtherUser } from '../../../components/Premium/PremiumHelper'

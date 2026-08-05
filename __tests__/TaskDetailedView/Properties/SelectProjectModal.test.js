@@ -10,8 +10,6 @@ Platform.OS = 'web'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 jest.mock('react-redux', () => {
     // The state has to be built once: the modal's project-filter effect depends
     // on the selected references, and a fresh object per selector call re-runs

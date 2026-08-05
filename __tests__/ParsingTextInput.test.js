@@ -5,7 +5,6 @@ import MyPlatform from '../components/MyPlatform'
 import { nodeMockOptions } from '../testUtils/domNodeStub'
 
 jest.mock('react-native-web-webview')
-jest.mock('firebase', () => ({ firestore: {} }))
 
 describe('ParsingTextInput component', () => {
     describe('ParsingTextInput snapshot test', () => {

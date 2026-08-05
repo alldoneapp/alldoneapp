@@ -1,5 +1,5 @@
 import { chunk, cloneDeep, intersection, isEqual, uniq } from 'lodash'
-import { firebase } from '@firebase/app'
+import firebase from 'firebase/compat/app'
 import moment from 'moment'
 
 import {

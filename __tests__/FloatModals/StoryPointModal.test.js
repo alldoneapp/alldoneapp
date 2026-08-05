@@ -12,8 +12,6 @@ Platform.OS = 'web'
 
 import renderer from 'react-test-renderer'
 
-jest.mock('firebase', () => ({ firestore: {} }))
-
 jest.mock('react-redux', () => ({
     ...jest.requireActual('react-redux'),
     useStore: jest.fn().mockImplementation(() => ({
