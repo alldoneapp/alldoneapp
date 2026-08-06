@@ -148,3 +148,44 @@ describe('ensureVmHostThreadLinksInResponse', () => {
         expect(ensureVmHostThreadLinksInResponse('', [startedJob])).toBe(`Follow it here: ${startedJob.hostThreadUrl}`)
     })
 })
+
+describe('startsVmJobInCurrentThread', () => {
+    const { startsVmJobInCurrentThread } = require('./vmHostTaskHelper')
+
+    const startedJob = {
+        success: true,
+        hostProjectId: 'p1',
+        hostObjectType: 'tasks',
+        hostObjectId: 't1',
+        hostThreadUrl: 'https://my.alldone.app/projects/p1/tasks/t1/chat',
+    }
+    const currentThread = { projectId: 'p1', objectId: 't1' }
+
+    it('detects a VM job hosted in the thread the assistant is replying in', () => {
+        expect(startsVmJobInCurrentThread([startedJob], currentThread)).toBe(true)
+    })
+
+    it('detects it among several started jobs', () => {
+        const elsewhere = { ...startedJob, hostObjectId: 't2', hostThreadUrl: 'https://my.alldone.app/x/t2' }
+        expect(startsVmJobInCurrentThread([elsewhere, startedJob], currentThread)).toBe(true)
+    })
+
+    // Delegation and contextless triggers host the job in another task, whose result never reaches
+    // this conversation — so the hand-off reply is all the user gets here and must still notify.
+    it('ignores a job hosted in another thread or another project', () => {
+        expect(startsVmJobInCurrentThread([startedJob], { projectId: 'p1', objectId: 'other-thread' })).toBe(false)
+        expect(startsVmJobInCurrentThread([startedJob], { projectId: 'other-project', objectId: 't1' })).toBe(false)
+    })
+
+    it('ignores failed dispatches and results without host thread fields', () => {
+        expect(startsVmJobInCurrentThread([{ ...startedJob, success: false }], currentThread)).toBe(false)
+        expect(startsVmJobInCurrentThread([{ success: true, message: 'ok' }], currentThread)).toBe(false)
+    })
+
+    it('is false when nothing was started or the thread is unknown', () => {
+        expect(startsVmJobInCurrentThread([], currentThread)).toBe(false)
+        expect(startsVmJobInCurrentThread(undefined, currentThread)).toBe(false)
+        expect(startsVmJobInCurrentThread([startedJob], null)).toBe(false)
+        expect(startsVmJobInCurrentThread([startedJob], { projectId: 'p1' })).toBe(false)
+    })
+})
