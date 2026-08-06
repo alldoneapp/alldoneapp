@@ -125,3 +125,65 @@ describe('ChatsByProject chats-amount watcher', () => {
         expect(unwatchChatsAmount).toHaveBeenCalledTimes(1)
     })
 })
+
+describe('ChatsByProject collapse button', () => {
+    const ONE_CHAT = { 20260806: [{ id: 'chat-1', lastEditionDate: 1786000000000 }] }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        useGetChats.mockReturnValue({})
+    })
+
+    const findContractButtons = tree =>
+        tree.root.findAllByProps({ expanded: true }).filter(node => typeof node.props.contract === 'function')
+
+    it('is hidden while the list is still showing its first page', () => {
+        // A project with fewer chats than one page: `atEnd` is true, but there is nothing to
+        // collapse. Rendering the button here used to drive toRender to 0 and break the list.
+        useGetChats.mockReturnValue(ONE_CHAT)
+        const state = buildState(undefined, 0)
+        useSelector.mockImplementation(selector => selector(state))
+
+        let tree
+        act(() => {
+            tree = renderer.create(<ChatsByProject project={PROJECT} setChatXProject={jest.fn()} unreadOnly={false} />)
+        })
+        act(() => watchChatsAmount.mock.calls[0][2](1))
+
+        expect(findContractButtons(tree)).toHaveLength(0)
+    })
+
+    // Hiding the button is what actually prevents the underflow; the Math.max clamp in
+    // contractChat is defence in depth for a stale press or a changed page size. This guards the
+    // resulting invariant end to end: every page size handed to Firestore stays positive.
+    it('keeps every requested page size positive across expand and collapse', () => {
+        useGetChats.mockReturnValue(ONE_CHAT)
+        const state = buildState(undefined, 0)
+        useSelector.mockImplementation(selector => selector(state))
+
+        let tree
+        act(() => {
+            tree = renderer.create(<ChatsByProject project={PROJECT} setChatXProject={jest.fn()} unreadOnly={false} />)
+        })
+
+        // Expand to a second page, then collapse twice - one more time than there is to collapse.
+        act(() => watchChatsAmount.mock.calls[0][2](11))
+        const expandButton = tree.root
+            .findAllByProps({ expanded: false })
+            .find(node => typeof node.props.expand === 'function')
+        act(() => expandButton.props.expand())
+
+        act(() => watchChatsAmount.mock.calls[1][2](21))
+        // Grab the handler itself: after the first press the button unmounts, but a double click
+        // (or a queued press) can still invoke the same callback a second time.
+        const contract = findContractButtons(tree)[0].props.contract
+        act(() => contract())
+        act(() => contract())
+
+        // Back at the first page the button is gone, and every query stayed positive.
+        expect(findContractButtons(tree)).toHaveLength(0)
+        const requestedAmounts = watchChatsAmount.mock.calls.map(call => call[4])
+        expect(requestedAmounts).toEqual([10, 20, 10])
+        requestedAmounts.forEach(amount => expect(amount).toBeGreaterThan(0))
+    })
+})

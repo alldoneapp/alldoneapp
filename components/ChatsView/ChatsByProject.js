@@ -35,9 +35,11 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const dispatch = useDispatch()
     const [expanded, setExpanded] = useState(false)
     const [totalChats, setTotalChats] = useState(undefined)
-    const [toRender, setToRender] = useState(
-        isInAllProjects && loggedUser.numberChatsAllTeams ? loggedUser.numberChatsAllTeams : 10
-    )
+    // The smallest page this list ever shows. `toRender` must never fall below it: Firestore
+    // rejects `limit(n)` for n <= 0 with "limit() requires a positive number", which used to break
+    // the whole chat list when the collapse button was pressed with nothing to collapse (AT-2162).
+    const initialToRender = isInAllProjects && loggedUser.numberChatsAllTeams ? loggedUser.numberChatsAllTeams : 10
+    const [toRender, setToRender] = useState(initialToRender)
     const [atEnd, setAtEnd] = useState(false)
     const projectNotifications = useSelector(state => state.projectChatNotifications[project.id])
     const loadedChats = useGetChats(project.id, toRender, chatsActiveTab)
@@ -67,7 +69,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     }, [isThereChats])
 
     const contractChat = () => {
-        setToRender(toRender - 10)
+        setToRender(current => Math.max(initialToRender, current - 10))
     }
 
     const expandChat = () => {
@@ -157,16 +159,20 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                     />
                 )}
 
-                {(unreadOnly || toRender <= totalVisibleChats) && expanded && toRender !== 10 && isThereChats && (
-                    <ShowMoreButton
-                        expanded={true}
-                        contract={contractChat}
-                        style={localStyles.showMore}
-                        check={'toRender'}
-                    />
-                )}
+                {(unreadOnly || toRender <= totalVisibleChats) &&
+                    expanded &&
+                    toRender > initialToRender &&
+                    isThereChats && (
+                        <ShowMoreButton
+                            expanded={true}
+                            contract={contractChat}
+                            style={localStyles.showMore}
+                            check={'toRender'}
+                        />
+                    )}
 
-                {!unreadOnly && atEnd && isThereChats && (
+                {/* Only offer to collapse when the list actually grew past its first page. */}
+                {!unreadOnly && atEnd && isThereChats && toRender > initialToRender && (
                     <ShowMoreButton
                         expanded={true}
                         contract={contractChat}
