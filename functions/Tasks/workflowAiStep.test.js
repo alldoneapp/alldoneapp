@@ -1182,6 +1182,19 @@ describe('a VM job that stops to ask the user a question', () => {
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBeUndefined()
     })
 
+    it('leaves the task on its own step for the whole question, so the step can still complete', async () => {
+        seedVmJob('awaiting_user', { interactionExpiresAt: Date.now() + INTERACTION_TTL_MS })
+
+        expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(0)
+
+        // vmInteraction only holds the reviewer; the step itself is untouched. Advancing here would
+        // consume the step (finalizeWorkflowAiRun only advances a task still on its own step) while
+        // the agent is blocked on the answer.
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({ stepHistory: [-1, AI_STEP] })
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).done).toBeUndefined()
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('awaiting_vm')
+    })
+
     it('keeps the task active once the question expired and the job still has not settled', async () => {
         const expiredAt = Date.now() - 1000
         seedVmJob('awaiting_user', { interactionExpiresAt: expiredAt })
@@ -1192,19 +1205,28 @@ describe('a VM job that stops to ask the user a question', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).failureReason).toBe('vm_timeout')
     })
 
-    it('advances as soon as an answered question lets the job finish', async () => {
+    it('advances exactly one step once an answered question lets the job finish', async () => {
         seedVmJob('awaiting_user', { interactionExpiresAt: Date.now() + INTERACTION_TTL_MS })
         expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(0)
 
-        // The user answers, the VM resumes and completes.
+        // The user answers, so vmInteraction gives the held step back to the assistant reviewer.
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
+            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
+            currentReviewerId: ASSISTANT,
+            vmInteractionWorkflowStep: null,
+        })
+        // The VM resumes and completes.
         seedVmJob('completed', { interactionExpiresAt: 0 })
 
         expect(await resolveAwaitingVmRuns({ now: Date.now() })).toBe(1)
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
+            currentReviewerId: HUMAN_REVIEWER,
+            stepHistory: [-1, AI_STEP, NEXT_STEP],
+        })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
 
-    it('does not advance again after the interaction already moved the task to the next step', async () => {
+    it('does not advance again when the task was moved on independently while the VM ran', async () => {
         mockStore.set(
             `items/${PROJECT}/tasks/${TASK}`,
             taskOnAiStep({
