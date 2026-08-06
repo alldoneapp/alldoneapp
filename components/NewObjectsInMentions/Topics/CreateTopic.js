@@ -31,7 +31,6 @@ import { generateUserIdsToNotifyForNewComments } from '../../../utils/assistantH
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { updateChatAssistant } from '../../../utils/backends/Chats/chatsFirestore'
 import { createChat } from '../../../utils/backends/Chats/chatsComments'
-import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
 
 export default function CreateTopic({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
     const dispatch = useDispatch()
@@ -77,15 +76,13 @@ export default function CreateTopic({ projectId, containerStyle, selectItemToMen
         setTopicColor(color)
     }
 
-    // `sendingData` only feeds React state, which is applied asynchronously, so
-    // a second Return could still create another topic before the first landed.
-    const addTopic = useSingleFlightSubmit(() => {
+    const addTopic = () => {
         if (cleanedText.length > 0) {
             dispatch(startLoadingData())
             setSendingData(true)
-            return updateNewAttachmentsData(projectId, text).then(async title => {
+            updateNewAttachmentsData(projectId, text).then(async title => {
                 const chatId = getId()
-                return createChat(
+                createChat(
                     chatId,
                     projectId,
                     loggedUser.uid,
@@ -106,7 +103,7 @@ export default function CreateTopic({ projectId, containerStyle, selectItemToMen
                 })
             })
         }
-    }, RELEASE_AFTER_SUBMISSION)
+    }
 
     const addAttachmentTag = (text, uri) => {
         insertAttachmentInsideEditor(inputCursorIndex, editor, text, uri)

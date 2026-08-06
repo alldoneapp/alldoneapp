@@ -1,11 +1,20 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 
 import Button from '../../../UIControls/Button'
 
-export default function DoneButton({ done, disabled }) {
-    // Enter is handled once, by TaskEditForm's document listener. This button
-    // used to register a third identical listener for the same key, which made
-    // one Return press run the creation several times.
+export default function DoneButton({ enterKeyAction, done, disabled }) {
+    const onKeyDown = event => {
+        const { key } = event
+        if (!disabled && key === 'Enter') enterKeyAction(event)
+    }
+
+    useEffect(() => {
+        document.addEventListener('keydown', onKeyDown)
+        return () => {
+            document.removeEventListener('keydown', onKeyDown)
+        }
+    })
+
     return (
         <Button
             icon={'plus'}
