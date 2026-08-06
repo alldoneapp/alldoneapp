@@ -14,7 +14,6 @@ import { translate } from '../../i18n/TranslationService'
 import ProjectHelper, { PROJECT_PUBLIC } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import PrivacyButton from './PrivacyButton'
 import { uploadNewProject } from '../../utils/backends/firestore'
-import useSingleFlightSubmit from '../../hooks/useSingleFlightSubmit'
 
 export default function AddProjectForm({ closeForm, scrollToBottom, addingTemplate }) {
     const dispatch = useDispatch()
@@ -24,6 +23,7 @@ export default function AddProjectForm({ closeForm, scrollToBottom, addingTempla
     const [name, setName] = useState('')
     const inputText = useRef()
     const projectDataRef = useRef({ name, color, privacy })
+    let inProgress = useRef(false).current
 
     const theme = getTheme(Themes, loggedUser.themeName, 'CustomSideMenu.AddProject.AddProjectForm')
 
@@ -59,21 +59,17 @@ export default function AddProjectForm({ closeForm, scrollToBottom, addingTempla
     }
 
     const onPressEnter = e => {
-        if (e.key !== 'Enter') return
-        // Holding Return down repeats the keydown event, and an IME commit
-        // reports its own Enter. Neither is a second intended submission.
-        if (e.repeat || e.isComposing || e.keyCode === 229) return
-        e.preventDefault()
-        e.stopPropagation()
-        addNewProject()
+        if (e.key === 'Enter') {
+            e.preventDefault()
+            e.stopPropagation()
+            addNewProject()
+        }
     }
 
-    // The previous guard read `useRef(false).current`, a plain boolean copy, so
-    // reassigning it never persisted across renders and a double Return created
-    // several projects. The shared guard blocks re-entrant submissions properly.
-    const addNewProject = useSingleFlightSubmit(() => {
+    const addNewProject = () => {
         const pData = projectDataRef.current
-        if (pData.name.trim().length > 0) {
+        if (pData.name.trim().length > 0 && !inProgress) {
+            inProgress = true
             const project = ProjectHelper.getNewDefaultProject()
             project.name = pData.name.trim()
             project.color = pData.color
@@ -84,13 +80,13 @@ export default function AddProjectForm({ closeForm, scrollToBottom, addingTempla
             }
 
             dispatch(startLoadingData())
-            const creation = uploadNewProject(project, loggedUser, [], false, addingTemplate).then(() => {
+            uploadNewProject(project, loggedUser, [], false, addingTemplate).then(() => {
                 dispatch(stopLoadingData())
+                inProgress = false
             })
             closeForm()
-            return creation
         }
-    })
+    }
 
     return (
         <View style={[localStyles.container, theme.container]}>

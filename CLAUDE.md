@@ -177,6 +177,21 @@ When adding a new assistant tool, wire every layer, not just the backend schema:
 -   Check channel-specific allowlists before assuming the tool is available everywhere. Gmail labeling follow-up uses the normal assistant `allowedTools`, while email replies and realtime/WhatsApp flows may have separate safe-tool filters or schema adapters.
 -   If prompts mention the tool, ensure the responsible assistant can actually enable it in Tools Access; otherwise the prompt can ask for an action the runtime will block.
 
+### App shell scrolling (sidebar vs. main content)
+
+The web shell must keep a **definite** height: `html, body, #root { height: 100% }` in
+`web-bundler/index.html` (deployed) and `web/index.html` (legacy template). react-navigation
+used to supply that height — every screen lived in an absolutely-positioned card — and
+migration Stage 2 deleted it, so for a while the shell only had `min-height: 100%`. With no
+definite height every `flex: 1` box grows to its content, the inner `CustomScrollView`s
+(sidebar body, `MainViewsContainer`, each DetailedView) stop scrolling internally, and the
+**document becomes the only scroller**: scrolling the main content then drags the sidebar
+navigation and the top bar off-screen (AT-2177), and popovers need scroll-offset hacks
+(`getScrollOffsets` in `utils/HelperFunctions.js` is a leftover of that era). Keep
+`body { overflow-y: auto }` as the safety valve for a screen with no inner scroller, and keep
+`box-sizing: border-box` so the safe-area padding cannot push the shell past 100%.
+`__tests__/WebShellScrollContainers.test.js` guards the rule in both templates.
+
 ### Modals and Popups
 
 Handle event propagation carefully. Set proper z-index and container `<div>` elements.
