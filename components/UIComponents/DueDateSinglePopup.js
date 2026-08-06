@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
@@ -9,23 +9,6 @@ import Backend from '../../utils/BackendBridge'
 import { setTaskDueDate, setTaskToBacklog } from '../../utils/backends/Tasks/tasksFirestore'
 import { checkIfInMyDayOpenTab } from '../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { popoverToCenter, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
-
-// This popup is mounted from inside a swipe RELEASE handler (Swipeable's
-// onSwipeableRightWillOpen, see TaskPresentation/GoalItemPresentation/
-// SwipeableGeneralTasksHeader). On touch devices the browser then replays that
-// same gesture as compatibility mouse events (mousedown/mouseup/click) at the
-// release point — by which time the popup is already mounted and
-// react-tiny-popover is listening on `window` for a click outside its portal.
-// The replayed click lands on this component's own transparent full-screen
-// overlay, i.e. "outside", so the popup was dismissed in the very frame it
-// appeared and never became visible on mobile (AT-2189).
-//
-// Swallow at most ONE outside dismiss, and only in the short window right after
-// opening. Consume-once (rather than a plain time window) does not depend on how
-// far apart the touch release and the replayed click land, and the window keeps
-// it from ever eating a genuine outside tap on platforms that never replay one
-// — desktop mouse dismissal is unchanged.
-export const OPENING_GESTURE_REPLAY_WINDOW_MS = 400
 
 export default function DueDateSinglePopup() {
     const dispatch = useDispatch()
@@ -38,8 +21,6 @@ export default function DueDateSinglePopup() {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const data = useSelector(state => state.showSwipeDueDatePopup.data)
     const [visibleCalendar, setVisibleCalendar] = useState(false)
-    const openedAtRef = useRef(Date.now())
-    const openingDismissConsumedRef = useRef(false)
 
     const inMyDayOpenTab = checkIfInMyDayOpenTab(
         selectedProjectIndex,
@@ -63,19 +44,6 @@ export default function DueDateSinglePopup() {
         setTimeout(async () => {
             hidePopover()
         })
-    }
-
-    // See OPENING_GESTURE_REPLAY_WINDOW_MS above. Only guards the outside-click
-    // path; picking a date still closes the popup immediately.
-    const isOpeningGestureReplay = () => {
-        if (openingDismissConsumedRef.current) return false
-        openingDismissConsumedRef.current = true
-        return Date.now() - openedAtRef.current < OPENING_GESTURE_REPLAY_WINDOW_MS
-    }
-
-    const onClickOutside = () => {
-        if (isOpeningGestureReplay()) return
-        delayHidePopover()
     }
 
     const hideCalendar = () => {
@@ -144,7 +112,7 @@ export default function DueDateSinglePopup() {
                             />
                         </>
                     }
-                    onClickOutside={onClickOutside}
+                    onClickOutside={delayHidePopover}
                     isOpen={true}
                     padding={4}
                     contentLocation={popoverData => popoverToCenter(popoverData, smallScreenNavigation)}
