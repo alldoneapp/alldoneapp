@@ -347,6 +347,27 @@ Note: Standard syntax checkers like `acorn` may fail on modern JavaScript featur
     develop/master, because master builds from it. Two consequences: the branch's first
     pipeline is slow (full `npm ci` + two image pushes), and each such branch leaves an
     image in the registry — bound that with a tag cleanup policy.
+-   **`test:web:changed` runs only what a branch changed, so read the selection line
+    before trusting a green tick.** `ci/selectTargetedJestFiles.js` diffs
+    `origin/master...HEAD` and prints a `Targeted Jest selection: N file(s) …` summary to
+    stderr; `N` is the honest measure of what the job covered, not the green tick. Two
+    ways it legitimately selects nothing: a branch that changed no web-relevant JavaScript,
+    and a branch **already merged into master** — the pipeline for the last branch commit
+    often starts before the merge and fetches master after it, at which point the branch
+    diff is empty by definition and nothing is tested (`test:web:changed` never runs on
+    master, so no other job covers those commits either; re-run the job before merging, not
+    after). Every other outcome is a failure: the selector exits non-zero on an unresolvable
+    base ref (3), a missing merge base (4) or a failed diff (5), and the job fails on it.
+    Keep it that way — the original bug was `selector | xargs -0 -r npm test`, where
+    `xargs -r` skipped the run on empty input and the pipeline reported only xargs' status,
+    so a crashed selector and a clean run were indistinguishable. Check exit statuses
+    explicitly rather than through `set -e`; the runner's shell is busybox `sh`.
+-   **`ci/ensureMergeBase.sh` exists because the CI clone is shallow.** GitLab clones with
+    `git depth 50` and a plain fetch of the default branch inherits that boundary, so a
+    branch whose fork point is older has no common ancestor locally and the whole selection
+    collapses. The script fetches the default branch and the branch under test, then deepens
+    (250 → 1000 → `--unshallow`) only until `git merge-base` resolves, so the usual recent
+    branch pays nothing.
 -   **Never fix a missing dependency by copying packages into `node_modules`.** Install
     through the lockfile. Example of why: firebase 12 keeps root `tslib` at 1.11.1 while
     nesting `tslib` 2.8.1 inside 29 of its 44 `@firebase/*` packages; a flat copy hoists

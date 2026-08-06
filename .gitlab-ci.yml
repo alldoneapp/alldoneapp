@@ -190,9 +190,11 @@ test:web:changed:
     before_script:
         - ln -s /app/node_modules node_modules
         - cp -R -f replacement_node_modules/* node_modules/
-        # GitLab's checkout may not contain the default-branch ref. Fetch only
-        # that ref so Jest can select tests affected by the complete branch diff.
-        - git fetch --no-tags origin "+refs/heads/$CI_DEFAULT_BRANCH:refs/remotes/origin/$CI_DEFAULT_BRANCH"
+        # GitLab's checkout may not contain the default-branch ref, and what it
+        # does contain stops at the depth-50 shallow boundary. Fetch that ref and
+        # deepen only as far as a merge base needs, so Jest can select tests
+        # affected by the complete branch diff.
+        - sh ci/ensureMergeBase.sh "$CI_DEFAULT_BRANCH"
         # Unlike the web builds, this job never substitutes the BEGIN-ENVS block,
         # and .env is not in the repository. react-native-dotenv resolves those
         # imports during transform, so without placeholders every suite reaching
@@ -210,7 +212,25 @@ test:web:changed:
         # over traversing the source file's entire legacy dependency graph.
         - node --check ci/selectTargetedJestFiles.js
         - node --check ci/jest.web.config.js
-        - node ci/selectTargetedJestFiles.js "origin/$CI_DEFAULT_BRANCH" | xargs -0 -r npm test -- --config ci/jest.web.config.js --runInBand --findRelatedTests --passWithNoTests
+        # Never pipe the selection straight into xargs. `xargs -r` skips the run
+        # on empty input and a pipeline reports only its last exit status, so a
+        # selector that died looked exactly like a clean run: green job, no Jest.
+        # Materialise the selection instead, let a non-zero selector exit fail
+        # the job, and keep the "legitimately nothing to run" case explicit.
+        # The selector's exit status is checked explicitly rather than through
+        # `set -e`, whose behaviour varies by shell - implicit status handling is
+        # what hid this in the first place.
+        - |
+            if node ci/selectTargetedJestFiles.js "origin/$CI_DEFAULT_BRANCH" > /tmp/targeted-jest-files.z; then
+                if [ -s /tmp/targeted-jest-files.z ]; then
+                    xargs -0 npm test -- --config ci/jest.web.config.js --runInBand --findRelatedTests --passWithNoTests < /tmp/targeted-jest-files.z
+                else
+                    echo "No Jest input selected, so no suites will run. See the selection summary above for why."
+                fi
+            else
+                echo "ERROR: the targeted Jest selection failed, so this job would test nothing. Failing instead of reporting success." >&2
+                exit 1
+            fi
     rules:
         # Must precede the generic web-relevant rule: first match wins, and a
         # dependency-changing branch has to run against its own image.
@@ -229,9 +249,11 @@ test:web:changed:
               compare_to: 'refs/heads/master'
               paths:
                   - .gitlab-ci.yml
+                  - ci/ensureMergeBase.sh
                   - ci/jestSetup.js
                   - ci/jest.web.config.js
                   - ci/selectTargetedJestFiles.js
+                  - ci/writeTestEnv.js
 
 build_web_staging:
     stage: build_web
