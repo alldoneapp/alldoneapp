@@ -54,6 +54,7 @@ import {
     uploadNewSubTask,
 } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { createTaskWithService } from '../../../../utils/backends/Tasks/TaskServiceFrontendHelper'
+import { createSingleFlightSubmit } from '../../../../hooks/useSingleFlightSubmit'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -184,9 +185,11 @@ export default class TaskEditionMode extends Component {
 
     onKeyDown = event => {
         const { key } = event
-        if (key === 'Enter') {
-            this.enterKeyAction()
-        }
+        if (key !== 'Enter') return
+        // Holding Return down repeats the keydown event, and an IME commit
+        // reports its own Enter. Neither is a second intended submission.
+        if (event.repeat || event.isComposing || event.keyCode === 229) return
+        this.enterKeyAction()
     }
 
     setName = (
@@ -408,7 +411,10 @@ export default class TaskEditionMode extends Component {
         }
     }
 
-    createTask = async (tempTask, convertSubtask) => {
+    // A single Return can reach this modal through both the document listener
+    // and the done button, and each run mints a new task id, so the creation is
+    // guarded against duplicated in flight submissions.
+    createTask = createSingleFlightSubmit(async (tempTask, convertSubtask) => {
         const { projectId, closeModal, parentTask, toggleEditionMode, noteId } = this.props
         const { showSuggestedComment } = this.state
 
@@ -456,7 +462,7 @@ export default class TaskEditionMode extends Component {
             })
         }
         return storedTask
-    }
+    })
 
     trySetLinkedObjects = task => {
         const {
