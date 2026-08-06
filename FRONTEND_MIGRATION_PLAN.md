@@ -271,13 +271,17 @@ Isolated last because it touches production collaborative documents:
         always truthy) rather than `.current`, and threw whenever the modal unmounted
         before its 1 ms focus timer fired — invisible locally, lost the race under CI's
         loaded `--runInBand` run.
-    -   **Remaining for stage acceptance (staging QA)**: login flows (Google popup + GSI
-        credential), Firestore listeners on the main views, **web push** (grant permission,
-        receive a background FCM notification, click-through — the SW is the riskiest
-        piece), functions calls (e.g. a transcription or assistant call), notes storage
-        upload, and the Gmail/calendar connected flows. After parity: Stage 3 step 2
-        (compat → modular, file-by-file behind BackendBridge, where the tree-shaking win
-        lands).
+    -   **STAGE 3 COMPLETE — accepted on staging, merged, live in production, and web push
+        confirmed working there (2026-08-06).** Push was the last item no automated or
+        anonymous check could reach, and the riskiest: the service worker changed on two
+        axes at once (12.17.1 compat CDN builds, and `setBackgroundMessageHandler` →
+        `onBackgroundMessage`), and a regression would have been silent — no error, no
+        Sentry event, just notifications quietly not arriving. Note the SW rename was
+        **mandatory, not cosmetic**: the old method no longer exists in 12.17.1 (the only
+        occurrence left in the CDN bundle is an error-message string), so leaving it would
+        have broken background push on the first deploy.
+    -   Step 2 (compat → modular) is measured and deferred — see the Stage 3 section above
+        before reopening it.
 
 -   2026-08-05 — **Stage 2 QA round 2 complete: gestures, navigation scroll, and the
     popover-positioning saga all fixed** (user-verified on staging).
