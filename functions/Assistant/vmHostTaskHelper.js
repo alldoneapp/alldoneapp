@@ -77,19 +77,6 @@ function normalizeStartedVmJob(toolResult) {
 }
 
 /**
- * Whether a normalized started-job reference points at the conversation the assistant is replying
- * in. Shared by the link and the notification decisions below so they can never disagree about
- * what "this thread" means.
- */
-function isVmJobHostedInThread(job, currentThread) {
-    if (!job) return false
-    const currentProjectId = String(currentThread?.projectId || '').trim()
-    const currentObjectId = String(currentThread?.objectId || '').trim()
-    if (!currentObjectId) return false
-    return job.objectId === currentObjectId && job.projectId === currentProjectId
-}
-
-/**
  * Guarantee the user gets a way into the thread where a VM job is actually running.
  *
  * The assistant is asked to include the link (the tool result says so), but a dispatched job the
@@ -100,12 +87,14 @@ function isVmJobHostedInThread(job, currentThread) {
 function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], currentThread = null) {
     let response = typeof responseText === 'string' ? responseText.trim() : ''
     const seen = new Set()
+    const currentProjectId = String(currentThread?.projectId || '').trim()
+    const currentObjectId = String(currentThread?.objectId || '').trim()
 
     for (const job of startedVmJobs.map(normalizeStartedVmJob).filter(Boolean)) {
         if (seen.has(job.objectId)) continue
         seen.add(job.objectId)
         // The user is already reading the host thread — linking them to where they are is noise.
-        if (isVmJobHostedInThread(job, currentThread)) continue
+        if (currentObjectId && job.objectId === currentObjectId && job.projectId === currentProjectId) continue
         if (response.includes(job.url)) continue
 
         const label = 'Follow it here:'
@@ -115,28 +104,6 @@ function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], cur
     return response
 }
 
-/**
- * True when an assistant chat run handed its work to a VM job that runs in the very thread the
- * assistant is replying in.
- *
- * Such a reply is only a hand-off acknowledgement ("I started the VM…"). The VM immediately posts
- * its own live status comment into the same thread, keeps rewriting it in place while it thinks,
- * and finally overwrites it with the result. That status comment is what raises the unread marker
- * — when the run settles (result, failure, cancellation, gold exhausted) or when it stops to ask
- * the user something. Notifying for the acknowledgement as well means a red badge whose content is
- * a spinner, which is exactly the noise we want to avoid. Only the unread marker / push / email are
- * skipped: the comment, the chat preview and the last-assistant-comment data are still written.
- *
- * A job hosted in a DIFFERENT thread (delegation, or a contextless trigger that creates its own
- * host task) is deliberately excluded: its result never lands in this conversation, so this reply
- * is the only thing the user gets here and must still notify.
- */
-function startsVmJobInCurrentThread(startedVmJobs = [], currentThread = null) {
-    return (Array.isArray(startedVmJobs) ? startedVmJobs : [])
-        .map(normalizeStartedVmJob)
-        .some(job => isVmJobHostedInThread(job, currentThread))
-}
-
 module.exports = {
     buildVmJobTaskName,
     buildVmJobTaskDescription,
@@ -144,7 +111,6 @@ module.exports = {
     summarizeVmObjectiveForSession,
     normalizeStartedVmJob,
     ensureVmHostThreadLinksInResponse,
-    startsVmJobInCurrentThread,
     VM_JOB_TASK_NAME_MAX,
     VM_SESSION_OBJECTIVE_MAX,
 }
