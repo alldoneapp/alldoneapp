@@ -6,9 +6,12 @@ describe('calendarTagHelper', () => {
         end: { date: '2026-07-14' },
     }
 
+    // The helper renders in the runtime's local zone, so the offset here has to
+    // match the zone the suite runs in or the assertions below shift by it. The
+    // npm test script pins TZ=UTC for exactly that reason; keep this in UTC too.
     const timedEvent = {
-        start: { dateTime: '2026-07-13T08:00:00+02:00' },
-        end: { dateTime: '2026-07-13T16:00:00+02:00' },
+        start: { dateTime: '2026-07-13T08:00:00Z' },
+        end: { dateTime: '2026-07-13T16:00:00Z' },
     }
 
     it('recognizes date-only calendar events as all-day events', () => {
