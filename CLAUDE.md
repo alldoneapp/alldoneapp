@@ -386,9 +386,11 @@ Note: Standard syntax checkers like `acorn` may fail on modern JavaScript featur
     only rebuilds when `package.json`, `package-lock.json` or `ci/Dockerfile_base` changes.
     The policy is now `name_regex_keep: ^latest$`, `older_than: 14d`, `keep_n: 5`. Delete a
     merged branch's tags by hand (`DELETE /projects/:id/registry/repositories/:repo/tags/:tag`)
-    rather than loosening that. Note `keep_n: 5` also means the five 2022-era commit-SHA
-    tags in `build_base` are retained indefinitely; nothing references them (CI only ever
-    tags `latest` or a ref slug) and they are ~2.9 GB, so they are deletable by hand.
+    rather than loosening that. All four image repos now hold only `latest`: the commit-SHA
+    tags left behind by a retired CI convention (builds of November 2021 commits, present in
+    both `build_base` and `build_functions`) were deleted, having been checked for distinct
+    manifest digests and zero references. The `<repo>/cache` sub-repositories are kaniko's
+    layer cache and are meant to churn — the policy prunes them, and they simply rebuild.
 -   **Never fix a missing dependency by copying packages into `node_modules`.** Install
     through the lockfile. Example of why: firebase 12 keeps root `tslib` at 1.11.1 while
     nesting `tslib` 2.8.1 inside 29 of its 44 `@firebase/*` packages; a flat copy hoists
