@@ -115,6 +115,11 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
     day** (my.alldone.app serving 12.17.1, clean boot, GSI loading, service worker on the
     compat CDN builds).
 
+-   2026-08-06 (Phase 3 / migration Stage 3): **COMPLETE.** Web push verified working in
+    production, which was the last item outside automated reach. The client-side
+    `@firebase/firestore` highs and the auth/persistence CVEs that motivated this stage are
+    gone, with npm audit reporting zero firebase findings.
+
 -   2026-08-06 (Phase 3 / migration Stage 3 step 2): **measured and DEFERRED.** Converting
     compat → modular saves a measured 56.5 KB gzip (266.2 → 209.7 KB for this app's SDK
     surface), which is 2.5% of the 2.25 MB bundle, in exchange for ~3,200 call-site edits
