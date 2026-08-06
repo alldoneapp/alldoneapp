@@ -46,15 +46,6 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const chats = unreadOnly ? unreadChats.chats : loadedChats
     const stickyChats = unreadOnly ? unreadChats.stickyChats : loadedStickyChats
 
-    console.log(
-        '📊 ChatsByProject: Loading state for project:',
-        project.id,
-        'regularChats:',
-        Object.keys(chats).length,
-        'stickyChats:',
-        Object.keys(stickyChats).length
-    )
-
     const today = moment().format('YYYYMMDD')
     const { [today]: todayChats, ...rest } = chats
     const isThereChats = Object.keys(chats).length > 0 || Object.keys(stickyChats).length > 0
@@ -63,11 +54,13 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
 
     useEffect(() => {
         const watcherKey = v4()
-        watchChatsAmount(project.id, watcherKey, setTotalChats, chatsActiveTab)
+        // `toRender` is forwarded so the amount query can be capped at `toRender + 1` documents
+        // instead of downloading the project's whole chats collection just to count it (AT-2162).
+        watchChatsAmount(project.id, watcherKey, setTotalChats, chatsActiveTab, toRender)
         return () => {
             unwatchChatsAmount(watcherKey)
         }
-    }, [project.id, chatsActiveTab])
+    }, [project.id, chatsActiveTab, toRender])
 
     useEffect(() => {
         setChatXProject(current => ({ ...current, [project.id]: isThereChats }))
@@ -217,4 +210,9 @@ const localStyles = StyleSheet.create({
     },
 })
 
-export default ChatsByProject
+// The "All Projects" chats screen mounts one ChatsByProject per project (78 for a large account).
+// Without memoization every re-render of ChatsView re-rendered all of those subtrees, even though
+// each one already subscribes to the state it needs. All props are referentially stable: `project`
+// objects keep their identity through the parent's filter/sortBy, and `setChatXProject` is a
+// useState setter.
+export default React.memo(ChatsByProject)
