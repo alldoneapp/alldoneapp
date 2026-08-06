@@ -2071,9 +2071,21 @@ describe('VM completion chat metadata', () => {
         expect(transaction.update).not.toHaveBeenCalled()
     })
 
-    test('keeps task-list and chat previews in sync with live VM progress without incrementing counts', async () => {
-        const { refs, transaction } = createFirestoreMock()
-        const progressText = '⏳ Reading the task-list listeners'
+    // The live thinking/working log is rewritten into the same comment many times per run. None of
+    // those rewrites may create an unread marker: the red badge has to mean "there is something to
+    // read", not "the VM is still typing". Settled runs — including the unsuccessful ones — and
+    // questions the VM asks (written by vmInteraction, not here) are the only red-worthy events.
+    const chatNotificationWrites = transaction =>
+        transaction.set.mock.calls
+            .map(([ref]) => (ref && ref.path) || '')
+            .filter(path => path.startsWith('chatNotifications/'))
+
+    test.each([
+        ['a live progress update', {}],
+        ['a run waiting for the user to answer', { assistantRunStatus: 'awaiting_user' }],
+        ['a run whose cancellation was requested', { assistantRunStatus: 'cancel_requested' }],
+    ])('writes no unread notification for %s', async (_label, options) => {
+        const { transaction } = createFirestoreMock()
 
         await __private__.writeStatusComment(
             {
@@ -2083,31 +2095,47 @@ describe('VM completion chat metadata', () => {
                 objectId: 'task-1',
                 assistantId: 'assistant-1',
                 userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
                 statusCommentId: 'comment-1',
             },
-            progressText
+            '🖥️ Working with Claude in a VM…\n\n💻 npm test',
+            options
         )
 
-        expect(refs.get('chatObjects/project-1/chats/task-1').update).toHaveBeenCalledWith(
-            expect.objectContaining({
-                lastEditorId: 'assistant-1',
-                'commentsData.lastCommentOwnerId': 'assistant-1',
-                'commentsData.lastComment': progressText,
-                'commentsData.lastCommentType': 2,
-            })
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update).toHaveBeenCalledWith({
-            'commentsData.lastComment': expect.stringContaining('Reading the task-list'),
-            'commentsData.lastCommentType': 2,
-        })
-        expect(refs.get('chatObjects/project-1/chats/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
+        expect(chatNotificationWrites(transaction)).toEqual([])
         expect(transaction.set).not.toHaveBeenCalled()
-        expect(transaction.update).not.toHaveBeenCalled()
+    })
+
+    test.each([
+        ['the final result', { isFinal: true, output: 'Finished VM result' }],
+        ['a failed run', { assistantRunStatus: 'failed' }],
+        ['a cancelled run', { assistantRunStatus: 'cancelled' }],
+    ])('writes the unread notification for %s', async (_label, options) => {
+        const { transaction } = createFirestoreMock()
+
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+                statusCommentId: 'comment-1',
+            },
+            'Settled VM run',
+            options
+        )
+
+        expect(chatNotificationWrites(transaction)).toEqual(['chatNotifications/project-1/user-1/comment-1'])
+        expect(transaction.set).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'chatNotifications/project-1/user-1/comment-1' }),
+            // followed: true is what makes the badge red rather than grey.
+            expect.objectContaining({ followed: true, creatorType: 'assistant' })
+        )
     })
 
     test('does not treat the assistant as a user when it appears in the follower list', async () => {
