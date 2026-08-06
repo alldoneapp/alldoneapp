@@ -370,3 +370,6 @@ claude-code-config.json
 ./firestore-data
 /firestore-data
 .firebase/
+
+# browser-level regression harness build output
+browser-tests/**/.build/
