@@ -150,6 +150,7 @@ import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/workflowStepHelper'
 import { TASK_EXECUTION_MODE_DIRECT } from '../../taskExecutionMode'
 import { getAssistantSuggestedTaskRejection } from '../../suggestedTaskFlow'
+import { shouldReleaseFocusOnWorkflowMove } from './workflowFocusHandoff'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -2875,20 +2876,17 @@ export async function moveTasksFromMiddleOfWorkflow(
         batch,
     })
 
+    // AT-2193: every step change hands the task on, so it stops being the focus task — and it now
+    // picks the next one like a postpone instead of leaving the user with no focus at all.
+    const focusHandoffUserId = beginWorkflowFocusHandoff(projectId, task, updateData.currentReviewerId)
+
     await batch.commit()
 
     if (stepToMoveId === DONE_STEP && !isDayRateTimeLogTask(task)) {
         await reconcileExistingDayRateTimeLog(projectId, userId, updateData.completed)
     }
 
-    const assignee = TasksHelper.getUserInProject(projectId, task.userId)
-    if (assignee && assignee.inFocusTaskId === task.id) {
-        if (stepToMoveId === DONE_STEP) {
-            await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, task.id)
-        } else {
-            await updateFocusedTask(task.userId, projectId, null, null, null)
-        }
-    }
+    await finishWorkflowFocusHandoff(projectId, task, focusHandoffUserId)
 
     moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
 }
@@ -3074,44 +3072,9 @@ export async function moveTasksFromOpen(
         batch,
     })
 
-    const assignee = TasksHelper.getUserInProject(projectId, task.userId)
-
-    // Debug logging for focus task selection
-    console.log(`[moveTasksFromOpen] Focus task debug:`, {
-        taskId: task.id,
-        originalTaskUserId: task.userId,
-        newUserId,
-        stepToMoveId,
-        assignee: assignee
-            ? {
-                  uid: assignee.uid,
-                  inFocusTaskId: assignee.inFocusTaskId,
-              }
-            : null,
-        taskUserIds: task.userIds,
-        isWorkflow: task.userIds.length > 1,
-        focusTaskMatches: assignee?.inFocusTaskId === task.id,
-    })
-
-    // If this is the focus task being completed, optimistically set the next focus task
-    // before the batch commit to prevent UI jumping
-    if (assignee && assignee.inFocusTaskId === task.id) {
-        const optimisticNext = getOptimisticNextFocusTask(projectId, task)
-        console.log(`[moveTasksFromOpen] Optimistic focus task selection:`, {
-            completedTaskId: task.id,
-            completedTaskName: task.name,
-            completedTaskGoalId: task.parentGoalId,
-            optimisticNextId: optimisticNext?.id || null,
-            optimisticNextName: optimisticNext?.name || null,
-            optimisticNextGoalId: optimisticNext?.parentGoalId || null,
-            isWorkflow: optimisticNext?.userIds?.length > 1,
-        })
-        if (optimisticNext) {
-            store.dispatch(setOptimisticFocusTask(optimisticNext.id, projectId, optimisticNext.parentGoalId))
-        } else {
-            store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId))
-        }
-    }
+    // AT-2193: the task is leaving this user's plate, so it stops being their focus task exactly as
+    // a postpone would. Captured before the commit so the optimistic swap lands without UI jumping.
+    const focusHandoffUserId = beginWorkflowFocusHandoff(projectId, task, updateData.currentReviewerId)
 
     await batch.commit()
     moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
@@ -3122,14 +3085,7 @@ export async function moveTasksFromOpen(
 
     await updateLinkedContactsEditionData(projectId, task, completionDate)
 
-    if (assignee && assignee.inFocusTaskId === task.id) {
-        // When a user completes their part of a task (either to DONE_STEP or workflow step),
-        // they should get a new focus task since they're done with the current one
-        console.log(`[moveTasksFromOpen] User completed their part of task - calling findAndSetNewFocusedTask`)
-        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, task.id)
-    } else {
-        console.log(`[moveTasksFromOpen] NOT calling focus task functions - conditions not met`)
-    }
+    await finishWorkflowFocusHandoff(projectId, task, focusHandoffUserId)
 
     moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
 }
@@ -3236,11 +3192,18 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
         batch,
     })
 
+    // AT-2193: reopening a task into a step it did not previously sit on is a step change too, so
+    // the same handoff applies. Reopening straight to Open hands it back to the owner, who is then
+    // the incoming reviewer and therefore keeps it.
+    const focusHandoffUserId = beginWorkflowFocusHandoff(projectId, task, updateData.currentReviewerId)
+
     await batch.commit()
 
     if (ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
         await reconcileExistingDayRateTimeLog(projectId, userId, task.completed)
     }
+
+    await finishWorkflowFocusHandoff(projectId, task, focusHandoffUserId)
 
     moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, task.estimations, undoAction?.actionId)
 }
@@ -3979,6 +3942,42 @@ function setOptimisticNextFocusTask(projectId, task) {
     } else {
         store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId || NOT_PARENT_GOAL_INDEX))
     }
+}
+
+/**
+ * AT-2193 — call BEFORE committing a workflow move. Decides whether the logged-in user loses their
+ * focus task because of it and, if so, swaps the optimistic focus straight away so the task list
+ * does not jump. Returns the user id to hand off after the commit, or null.
+ *
+ * Only the logged-in user is considered: firestore.rules forbids a client from writing another
+ * user's doc, so a reviewer moving somebody else's focused task cannot clear the owner's focus from
+ * here. The onUpdateTask trigger (functions/Tasks/workflowFocusHandoff.js) covers everyone else.
+ */
+function beginWorkflowFocusHandoff(projectId, task, incomingReviewerId) {
+    const { loggedUser } = store.getState()
+    const focusUserId = loggedUser ? loggedUser.uid : null
+    const memberRecord = focusUserId ? TasksHelper.getUserInProject(projectId, focusUserId) : null
+
+    const shouldRelease = shouldReleaseFocusOnWorkflowMove({
+        taskId: task.id,
+        focusUserId,
+        observedFocusTaskIds: [loggedUser ? loggedUser.inFocusTaskId : null, memberRecord?.inFocusTaskId],
+        incomingReviewerId,
+    })
+
+    if (!shouldRelease) return null
+
+    setOptimisticNextFocusTask(projectId, task)
+    return focusUserId
+}
+
+/**
+ * Postpone semantics (see setTaskDueDate): pick the user's next focus task instead of leaving them
+ * with none. findAndSetNewFocusedTask clears the focus itself when it finds no replacement.
+ */
+async function finishWorkflowFocusHandoff(projectId, task, focusHandoffUserId) {
+    if (!focusHandoffUserId) return
+    await findAndSetNewFocusedTask(projectId, focusHandoffUserId, task.parentGoalId, task.id)
 }
 
 async function findAndSetNewFocusedTask(
