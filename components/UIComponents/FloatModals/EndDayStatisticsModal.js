@@ -43,6 +43,7 @@ import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { getSafeStatisticNumber, getSafeTextValue } from '../../../utils/StatisticDataHelper'
 import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
+import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 
 const getActiveProjectsInSidebarOrder = (projects, user) =>
     ProjectHelper.sortProjects(
@@ -681,6 +682,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     container: {
         backgroundColor: colors.Secondary400,
