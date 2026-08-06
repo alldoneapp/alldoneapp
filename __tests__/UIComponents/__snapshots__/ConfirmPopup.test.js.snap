@@ -2,7 +2,7 @@
 
 exports[`ConfirmPopup component renders nothing while there is nothing to confirm 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1bap62n r-bottom-1p0dtai r-justifyContent-1777fci r-left-1d2f490 r-position-u8s1d r-right-zchlnj r-top-ipm5af r-zIndex-1pozq62"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1bap62n r-bottom-1p0dtai r-justifyContent-1h0z5md r-left-1d2f490 r-paddingBottom-1l7z4oj r-paddingTop-1hy97zq r-position-1xcajam r-right-zchlnj r-top-ipm5af r-zIndex-1pozq62"
   dir={null}
 >
   <div
@@ -116,7 +116,7 @@ exports[`ConfirmPopup component renders nothing while there is nothing to confir
 
 exports[`ConfirmPopup component renders once a confirmation is requested 1`] = `
 <div
-  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1bap62n r-bottom-1p0dtai r-justifyContent-1777fci r-left-1d2f490 r-position-u8s1d r-right-zchlnj r-top-ipm5af r-zIndex-1pozq62"
+  className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1bap62n r-bottom-1p0dtai r-justifyContent-1h0z5md r-left-1d2f490 r-paddingBottom-1l7z4oj r-paddingTop-1hy97zq r-position-1xcajam r-right-zchlnj r-top-ipm5af r-zIndex-1pozq62"
   dir={null}
 >
   <div

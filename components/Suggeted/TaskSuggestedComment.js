@@ -1,5 +1,5 @@
 import React from 'react'
-import { Image, StyleSheet, Text, View } from 'react-native'
+import { Image, Platform, StyleSheet, Text, View } from 'react-native'
 import styles, { colors, hexColorToRGBa } from '../styles/global'
 import { useDispatch, useSelector } from 'react-redux'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
@@ -12,6 +12,7 @@ import { getWorkstreamById, WORKSTREAM_ID_PREFIX } from '../Workstreams/Workstre
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import { MENTION_MODAL_ID } from '../ModalsManager/modalsManager'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
+import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 
 export default function TaskSuggestedComment({ task, projectId }) {
     const dispatch = useDispatch()
@@ -101,6 +102,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         alignSelf: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     logo: {
         width: 20,

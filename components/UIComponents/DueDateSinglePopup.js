@@ -8,6 +8,7 @@ import { hideFloatPopup, hideSwipeDueDatePopup, setSwipeDueDatePopupData } from 
 import Backend from '../../utils/BackendBridge'
 import { setTaskDueDate, setTaskToBacklog } from '../../utils/backends/Tasks/tasksFirestore'
 import { checkIfInMyDayOpenTab } from '../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
+import { popoverToCenter, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
 
 export default function DueDateSinglePopup() {
     const dispatch = useDispatch()
@@ -81,11 +82,9 @@ export default function DueDateSinglePopup() {
         }
     }
 
-    let sidebarOpenStyle = smallScreenNavigation ? null : { marginLeft: 300 }
-
     return (
         <View style={localStyles.container}>
-            <View style={[localStyles.popup, sidebarOpenStyle]}>
+            <View style={localStyles.popup}>
                 <Popover
                     content={
                         <>
@@ -116,7 +115,8 @@ export default function DueDateSinglePopup() {
                     onClickOutside={delayHidePopover}
                     isOpen={true}
                     padding={4}
-                    contentLocation={smallScreenNavigation ? null : undefined}
+                    contentLocation={popoverData => popoverToCenter(popoverData, smallScreenNavigation)}
+                    containerStyle={popoverToTopContainerStyle}
                 >
                     <Text />
                 </Popover>
