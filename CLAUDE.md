@@ -374,6 +374,21 @@ Note: Standard syntax checkers like `acorn` may fail on modern JavaScript featur
     collapses. The script fetches the default branch and the branch under test, then deepens
     (250 → 1000 → `--unshallow`) only until `git merge-base` resolves, so the usual recent
     branch pays nothing.
+-   **The registry cleanup policy must always keep `latest`.** Branch-scoped images
+    (`build_base:<ref-slug>`, `build_web_bundler:<ref-slug>`) accumulate one per
+    dependency-changing branch, so a cleanup policy is needed — but the policy this project
+    had was `name_regex: ".*"` with `name_regex_keep: null`, i.e. **nothing protected**,
+    including `latest`. That is a live hazard rather than a theoretical one: GitLab reports
+    a tag's `created_at` from the _image config_, not the push time, so `build_base:latest`
+    read as 2022-04-29 and counted as far "older than" the threshold; only `keep_n`
+    ordering against other equally-stale tags was keeping it. Deleting `build_base:latest`
+    would break every job that pulls it, and **it would not self-heal** — `modules_cache`
+    only rebuilds when `package.json`, `package-lock.json` or `ci/Dockerfile_base` changes.
+    The policy is now `name_regex_keep: ^latest$`, `older_than: 14d`, `keep_n: 5`. Delete a
+    merged branch's tags by hand (`DELETE /projects/:id/registry/repositories/:repo/tags/:tag`)
+    rather than loosening that. Note `keep_n: 5` also means the five 2022-era commit-SHA
+    tags in `build_base` are retained indefinitely; nothing references them (CI only ever
+    tags `latest` or a ref slug) and they are ~2.9 GB, so they are deletable by hand.
 -   **Never fix a missing dependency by copying packages into `node_modules`.** Install
     through the lockfile. Example of why: firebase 12 keeps root `tslib` at 1.11.1 while
     nesting `tslib` 2.8.1 inside 29 of its 44 `@firebase/*` packages; a flat copy hoists
