@@ -255,6 +255,39 @@ test:web:changed:
                   - ci/selectTargetedJestFiles.js
                   - ci/writeTestEnv.js
 
+# test:web:changed selects suites from the branch-vs-master diff, which is empty
+# by construction on master and develop — so it is excluded there, and until this
+# job existed it was the ONLY job in the pipeline running Jest. Both deploy paths,
+# production and staging, therefore shipped on a successful webpack compile alone.
+# This runs the whole web suite on those two branches and gates their deploys
+# (see the `needs` on deploy:web and deploy:web-dev — without being in `needs` a
+# test job only goes red *beside* a deploy that already shipped).
+# The cost is small next to what it guards: it shares the build_web stage with a
+# ~9-minute production build, so it adds little wall clock.
+# Its rules deliberately mirror build_web_production/build_web_staging, so
+# whenever a deploy is in the pipeline this job is too and `needs` always resolves.
+test:web:full:
+    stage: build_web
+    image: $CI_REGISTRY_IMAGE/build_base:latest
+    before_script:
+        - ln -s /app/node_modules node_modules
+        - cp -R -f replacement_node_modules/* node_modules/
+        # Same reason as test:web:changed: .env is not in the repository and
+        # react-native-dotenv resolves those imports during transform, so without
+        # placeholders every suite reaching utils/backends/firestore.js fails to parse.
+        - node ci/writeTestEnv.js
+    script:
+        # No selection step here — this is the whole web suite by design.
+        # ci/jest.web.config.js excludes functions/, whose separate dependency
+        # tree this image does not carry.
+        - npm test -- --config ci/jest.web.config.js --runInBand
+    rules:
+        # TEMPORARY (remove before merge): proves the job works on a branch,
+        # since it otherwise only ever runs where a failure blocks deploys.
+        - if: '$CI_COMMIT_BRANCH == "ci-full-test-gate"'
+        - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+          changes: *web-relevant-paths
+
 build_web_staging:
     stage: build_web
     image: $CI_REGISTRY_IMAGE/build_web_bundler:latest
@@ -435,6 +468,9 @@ deploy:web:
     stage: deploy_web
     needs:
         - 'build_web_production'
+        # Blocking on purpose: a test job outside `needs` only turns red next to
+        # a deploy that has already shipped.
+        - 'test:web:full'
     script:
         - firebase use $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
@@ -450,6 +486,8 @@ deploy:web-dev:
     stage: deploy_web
     needs:
         - 'build_web_staging'
+        # Blocking on purpose, same as deploy:web.
+        - 'test:web:full'
     script:
         - firebase --version
         - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
