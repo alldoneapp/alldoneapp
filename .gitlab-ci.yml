@@ -282,9 +282,6 @@ test:web:full:
         # tree this image does not carry.
         - npm test -- --config ci/jest.web.config.js --runInBand
     rules:
-        # TEMPORARY (remove before merge): proves the job works on a branch,
-        # since it otherwise only ever runs where a failure blocks deploys.
-        - if: '$CI_COMMIT_BRANCH == "ci-full-test-gate"'
         - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
           changes: *web-relevant-paths
 
