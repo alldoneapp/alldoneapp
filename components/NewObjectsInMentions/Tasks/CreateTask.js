@@ -31,6 +31,7 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { DV_TAB_TASK_PROPERTIES } from '../../../utils/TabNavigationConstants'
 import { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 import { createTaskWithService } from '../../../utils/backends/Tasks/TaskServiceFrontendHelper'
+import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
 
 export default function CreateTask({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
     const isGuide = !!ProjectHelper.getProjectById(projectId)?.parentTemplateId
@@ -119,7 +120,9 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
         }
     }
 
-    const addTask = async (openDetails = false, directTask = null) => {
+    // `sendingData` only disables the buttons, and it is applied asynchronously,
+    // so Enter could still start a second creation before the first one landed.
+    const addTask = useSingleFlightSubmit(async (openDetails = false, directTask = null) => {
         const newTask = directTask || { ...task }
         newTask.extendedName = task.extendedName.trim()
         newTask.name = TasksHelper.getTaskNameWithoutMeta(newTask.extendedName)
@@ -158,7 +161,7 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
                 }
             })
         }
-    }
+    }, RELEASE_AFTER_SUBMISSION)
 
     const trySetLinkedObjects = task => {
         Backend.setLinkedParentObjects(

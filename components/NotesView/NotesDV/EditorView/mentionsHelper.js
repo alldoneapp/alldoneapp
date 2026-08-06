@@ -18,7 +18,6 @@ import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../../utils/Lin
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 import { copyContactToProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 import { isGlobalAssistant, GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
-import { normalizeSelection, resolveEditorSelection } from './noteSelection'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -41,20 +40,6 @@ let quillKeyboardBindingsTab = null
 let mentionLastHalfText = ''
 
 export const getSelection = () => {
-    return activeSelection
-}
-
-/**
- * Snapshots the editor's current selection into the shared cache.
- *
- * Toolbar actions (Task, Date, ...) must not depend on a `selection-change`
- * event having landed before the button press: reading the range straight off
- * the editor - falling back to Quill's own `savedRange` and only then to the
- * cache - is what makes "select text, press Task" reliable regardless of where
- * DOM focus went. Returns the resolved selection.
- */
-export const captureSelectionFromEditor = editor => {
-    activeSelection = resolveEditorSelection(editor, activeSelection)
     return activeSelection
 }
 
@@ -237,9 +222,8 @@ const checkMentionModalState = () => {
 }
 
 export const onChangeSelection = selection => {
-    const normalizedSelection = normalizeSelection(selection)
-    if (normalizedSelection && editorElement) {
-        activeSelection = normalizedSelection
+    if (selection && editorElement) {
+        activeSelection = { ...selection }
         if (!showMentionPopup) {
             getMentionModalLocation(activeSelection.index)
         }

@@ -37,7 +37,6 @@ import FollowUpWrapper from './FollowUpWrapper'
 import { execShortcutFn } from '../../ShortcutCheatSheet/HelperFunctions'
 import TaskIcon from './TaskIcon'
 import { getSelection } from '../../../NotesView/NotesDV/EditorView/mentionsHelper'
-import { resolveEditorSelection } from '../../../NotesView/NotesDV/EditorView/noteSelection'
 import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../../utils/LinkingHelper'
 import { FEED_TASK_OBJECT_TYPE } from '../../../Feeds/Utils/FeedsConstants'
 import { exportRef } from '../../../NotesView/NotesDV/EditorView/NotesEditorView'
@@ -55,6 +54,7 @@ import {
     uploadNewSubTask,
 } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { createTaskWithService } from '../../../../utils/backends/Tasks/TaskServiceFrontendHelper'
+import { createSingleFlightSubmit } from '../../../../hooks/useSingleFlightSubmit'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -143,14 +143,7 @@ export default class TaskEditionMode extends Component {
     getSelectedContent = editorId => {
         const { editorRef, projectId } = this.props
         const editor = editorRef.getEditor()
-        // The cached selection is only as fresh as the last selection-change
-        // event; the editor still knows the real range (live, or savedRange
-        // after it lost focus to this modal). Prefer it, keep the cache as
-        // fallback for editors that do not expose one.
-        const selection = resolveEditorSelection(editor, getSelection())
-        // Frozen for insertTag: the task tag has to replace exactly the range
-        // that was copied here, and task creation awaits the backend in between.
-        this.capturedNoteSelection = selection
+        const selection = getSelection()
         const selectionContent = editor.getContents(selection.index, selection.length)
 
         const content = cloneDeep(selectionContent)
@@ -192,9 +185,11 @@ export default class TaskEditionMode extends Component {
 
     onKeyDown = event => {
         const { key } = event
-        if (key === 'Enter') {
-            this.enterKeyAction()
-        }
+        if (key !== 'Enter') return
+        // Holding Return down repeats the keydown event, and an IME commit
+        // reports its own Enter. Neither is a second intended submission.
+        if (event.repeat || event.isComposing || event.keyCode === 229) return
+        this.enterKeyAction()
     }
 
     setName = (
@@ -332,7 +327,7 @@ export default class TaskEditionMode extends Component {
     insertTag = taskId => {
         const { editorRef, noteId, objectUrl } = this.props
         const editor = editorRef.getEditor()
-        const selection = this.capturedNoteSelection || getSelection()
+        const selection = getSelection()
         const taskTagFormat = { id: v4(), taskId, editorId: noteId, objectUrl }
         const delta = new Delta()
         delta.retain(selection.index)
@@ -416,7 +411,10 @@ export default class TaskEditionMode extends Component {
         }
     }
 
-    createTask = async (tempTask, convertSubtask) => {
+    // A single Return can reach this modal through both the document listener
+    // and the done button, and each run mints a new task id, so the creation is
+    // guarded against duplicated in flight submissions.
+    createTask = createSingleFlightSubmit(async (tempTask, convertSubtask) => {
         const { projectId, closeModal, parentTask, toggleEditionMode, noteId } = this.props
         const { showSuggestedComment } = this.state
 
@@ -464,7 +462,7 @@ export default class TaskEditionMode extends Component {
             })
         }
         return storedTask
-    }
+    })
 
     trySetLinkedObjects = task => {
         const {
