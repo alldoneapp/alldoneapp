@@ -26,7 +26,6 @@ import {
 } from '../../ModalsManager/modalsManager'
 import { DV_TAB_NOTE_EDITOR } from '../../../utils/TabNavigationConstants'
 import { uploadNewNote } from '../../../utils/backends/Notes/notesFirestore'
-import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
 
 export default function CreateNote({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
     const dispatch = useDispatch()
@@ -84,9 +83,7 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
         addNote(false, { ...note, stickyData })
     }
 
-    // `sendingData` only feeds React state, which is applied asynchronously, so
-    // a second Return could still start another note before the first landed.
-    const addNote = useSingleFlightSubmit(async (openDetails = false, directNote = null) => {
+    const addNote = async (openDetails = false, directNote = null) => {
         const newNote = directNote || { ...note }
         newNote.extendedTitle = note.extendedTitle.trim()
         newNote.title = TasksHelper.getTaskNameWithoutMeta(newNote.extendedTitle)
@@ -95,7 +92,7 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
             dispatch(startLoadingData())
             setSendingData(true)
 
-            return uploadNewNote(projectId, newNote, true).then(noteDB => {
+            uploadNewNote(projectId, newNote, true).then(noteDB => {
                 trySetLinkedObjects(noteDB)
 
                 dispatch(stopLoadingData())
@@ -114,7 +111,7 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
                 }
             })
         }
-    }, RELEASE_AFTER_SUBMISSION)
+    }
 
     const trySetLinkedObjects = note => {
         Backend.setLinkedParentObjects(

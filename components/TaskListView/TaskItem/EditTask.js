@@ -55,7 +55,6 @@ import SecondaryButtonsArea from './SecondaryButtonsArea'
 import TaskInputArea from './TaskInputArea'
 import CheckboxAndIcon from './CheckboxAndIcon'
 import { taskEditorLayout } from './TaskEditorLayout'
-import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
 
 const generateNewTask = (useLoggedUser, inBacklog, activeGoal, parentTask, defaultDate) => {
     const task = TasksHelper.getNewDefaultTask(useLoggedUser)
@@ -352,7 +351,7 @@ export default function EditTask({
         if (adding) dispatch(setTmpInputTextTask(text))
     }
 
-    const runCreateTask = (newTask, actionBeforeSave, showSuggested) => {
+    const createTask = (newTask, actionBeforeSave, showSuggested) => {
         newTask.name = newTask.name.trim()
         newTask.extendedName = newTask.extendedName.trim()
 
@@ -380,10 +379,8 @@ export default function EditTask({
                 parentTask.parentGoalId !== newTask.parentGoalId ||
                 parentTask.recurrence !== newTask.recurrence)
 
-        let creation
-
         if (isSubtask && !needToPromoteSubtask) {
-            creation = uploadNewSubTask(projectId, parentTask, newTask, false, true).then(uploadedTask =>
+            uploadNewSubTask(projectId, parentTask, newTask, false, true).then(uploadedTask =>
                 onSuccessUploadNewTask(uploadedTask, actionBeforeSave, showSuggested)
             )
         } else {
@@ -391,7 +388,7 @@ export default function EditTask({
                 newTask.parentId = null
                 newTask.isSubtask = false
             }
-            creation = createTaskWithService(
+            createTaskWithService(
                 {
                     projectId,
                     ...newTask,
@@ -424,18 +421,7 @@ export default function EditTask({
         }
 
         dispatch(setTmpInputTextTask(''))
-
-        // Returned so the single flight guard below knows when this creation is
-        // finished and the editor may accept the next one.
-        return creation
     }
-
-    // Enter reaches this editor through both a global document listener and
-    // Quill's newline callback, and each run mints a new task id, so a double or
-    // held Return used to create several tasks. The guard only blocks while a
-    // creation is in flight, which keeps the repeat mode ("add task" staying
-    // open) able to create consecutive distinct tasks.
-    const createTask = useSingleFlightSubmit(runCreateTask, RELEASE_AFTER_SUBMISSION)
 
     const editTask = (updatedTask, validDirectAction, showSuggested, followUpData, comment) => {
         updatedTask.name = updatedTask.name.trim()
@@ -634,11 +620,7 @@ export default function EditTask({
 
     const onKeyDown = event => {
         const { key } = event
-        if (key !== 'Enter') return
-        // Holding Return down repeats the keydown event, and an IME commit
-        // reports its own Enter. Neither is a second intended submission.
-        if (event.repeat || event.isComposing || event.keyCode === 229) return
-        onKeyEnterPressed(event)
+        if (key === 'Enter') onKeyEnterPressed(event)
     }
 
     useEffect(() => {
