@@ -37,7 +37,11 @@ import FollowUpWrapper from './FollowUpWrapper'
 import { execShortcutFn } from '../../ShortcutCheatSheet/HelperFunctions'
 import TaskIcon from './TaskIcon'
 import { getSelection } from '../../../NotesView/NotesDV/EditorView/mentionsHelper'
-import { resolveEditorSelection } from '../../../NotesView/NotesDV/EditorView/noteSelection'
+import {
+    consumeNoteSelectionSnapshot,
+    EMPTY_SELECTION,
+    resolveActionSelection,
+} from '../../../NotesView/NotesDV/EditorView/noteSelection'
 import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../../utils/LinkingHelper'
 import { FEED_TASK_OBJECT_TYPE } from '../../../Feeds/Utils/FeedsConstants'
 import { exportRef } from '../../../NotesView/NotesDV/EditorView/NotesEditorView'
@@ -143,12 +147,20 @@ export default class TaskEditionMode extends Component {
 
     getSelectedContent = editorId => {
         const { editorRef, projectId } = this.props
-        const editor = editorRef.getEditor()
-        // The cached selection is only as fresh as the last selection-change
-        // event; the editor still knows the real range (live, or savedRange
-        // after it lost focus to this modal). Prefer it, keep the cache as
-        // fallback for editors that do not expose one.
-        const selection = resolveEditorSelection(editor, getSelection())
+        // This runs in the constructor, i.e. during render: a throw here takes
+        // the whole tree down rather than just failing the popup.
+        const editor = typeof editorRef?.getEditor === 'function' ? editorRef.getEditor() : null
+        if (!editor) {
+            this.capturedNoteSelection = { ...EMPTY_SELECTION }
+            return new Delta()
+        }
+        // What the user had selected when they pressed the toolbar button is the
+        // authoritative answer, and it is the only one guaranteed to still exist
+        // by the time this modal is built. Reading the editor again here is the
+        // fallback, not the primary source: it can report a collapsed caret (the
+        // popup has taken focus) or Quill's default savedRange of
+        // {index: 0, length: 0}, both indistinguishable from "nothing selected".
+        const selection = resolveActionSelection(editor, consumeNoteSelectionSnapshot(editor), getSelection())
         // Frozen for insertTag: the task tag has to replace exactly the range
         // that was copied here, and task creation awaits the backend in between.
         this.capturedNoteSelection = selection
@@ -334,7 +346,11 @@ export default class TaskEditionMode extends Component {
 
     insertTag = taskId => {
         const { editorRef, noteId, objectUrl } = this.props
-        const editor = editorRef.getEditor()
+        const editor = typeof editorRef?.getEditor === 'function' ? editorRef.getEditor() : null
+        if (!editor) return
+        // The range frozen when the popup was built, so the tag replaces exactly
+        // the text that was copied into it even though task creation awaited the
+        // backend in between.
         const selection = this.capturedNoteSelection || getSelection()
         const taskTagFormat = { id: v4(), taskId, editorId: noteId, objectUrl }
         const delta = new Delta()
