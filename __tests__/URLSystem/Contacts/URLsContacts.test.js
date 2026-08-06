@@ -13,10 +13,9 @@ describe('URLsContacts', () => {
     })
 
     it('push function should work correctly', () => {
-        let { lastVisitedScreen } = store.getState()
-        expect(lastVisitedScreen.length).toEqual(1)
+        expect(store.getState().lastVisitedScreen).toEqual(['/projects/p1/contacts/c1'])
         URLsContacts.push('CONTACT_DETAILS', null, 'p2', 'c2')
-        expect(lastVisitedScreen.length).toEqual(2)
+        expect(store.getState().lastVisitedScreen).toEqual(['/projects/p1/contacts/c1', '/projects/p2/contacts/c2'])
     })
 
     it('getPath function should work correctly', () => {
