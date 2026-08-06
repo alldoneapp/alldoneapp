@@ -28,6 +28,7 @@ import NavigationService from '../../../../../utils/NavigationService'
 import { setSelectedNavItem, startLoadingData, stopLoadingData } from '../../../../../redux/actions'
 import SharedHelper from '../../../../../utils/SharedHelper'
 import { DV_TAB_SKILL_PROPERTIES } from '../../../../../utils/TabNavigationConstants'
+import useSingleFlightSubmit from '../../../../../hooks/useSingleFlightSubmit'
 
 export default function EditSkill({ refKey, projectId, adding, skill, onCancelAction }) {
     const dispatch = useDispatch()
@@ -62,13 +63,16 @@ export default function EditSkill({ refKey, projectId, adding, skill, onCancelAc
             : onCancelAction()
     }
 
-    const createSkill = async (newSkill, callback) => {
+    // Enter reaches this editor through a document listener, Quill's newline
+    // callback and the done button at once, and every run mints a new id, so
+    // the creation is guarded against duplicated in flight submissions.
+    const createSkill = useSingleFlightSubmit(async (newSkill, callback) => {
         const skill = Backend.uploadNewSkill(projectId, newSkill, false, null, callback, true)
         setTimeout(() => {
             onCancelAction()
         })
         return skill
-    }
+    })
 
     const updateSkill = (updatedSkill, avoidFollow) => {
         Backend.updateSkill(projectId, skill, updatedSkill, avoidFollow)
