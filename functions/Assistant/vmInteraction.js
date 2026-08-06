@@ -1,12 +1,12 @@
 const crypto = require('crypto')
 
 const { VM_DISPATCH_LEASE_MS, dispatchLeaseOwner } = require('./vmThreadQueue')
-const { buildWorkflowStepAdvanceUpdate } = require('../Tasks/workflowStepHelper')
 
 const VM_INTERACTION_STATUS_AWAITING = 'awaiting_user'
 const VM_INTERACTION_TTL_MS = 24 * 60 * 60 * 1000
 const VALID_VM_INTERACTION_KINDS = ['clarification', 'plan_review', 'tool_approval']
 const VALID_VM_INTERACTION_ACTIONS = ['submit', 'approve', 'revise', 'deny', 'cancel']
+const VM_INTERACTION_WORKFLOW_FIELD = 'vmInteractionWorkflowStep'
 
 function getVmInteractionTaskRef(db, pending) {
     if (!pending.projectId || !pending.objectId || (pending.objectType || 'tasks') !== 'tasks') return null
@@ -18,13 +18,75 @@ function getCurrentWorkflowStepId(task) {
     return stepHistory.length > 0 ? stepHistory[stepHistory.length - 1] : null
 }
 
-function getVmInteractionWorkflowRef(db, pending, task) {
-    if (!pending.projectId || !task?.userId || task.userId.startsWith('ws@')) return null
-    return db.doc(`users/${task.userId}`)
+/**
+ * A question is not a finished step.
+ *
+ * An agent that stops to ask something has not done the work the step asked for, so the task must
+ * stay exactly where it is: same `stepHistory`, same workflow position, no `completed`/`done`
+ * timestamps, and no subtask moves. Advancing here used to hand the task to the next reviewer while
+ * the agent was still blocked on the answer, which also consumed the parked `workflowAiRuns` step
+ * (finalizeWorkflowAiRun only advances a task it still finds on its own step) and looked like a
+ * completed step to awardGoldForTaskProgress.
+ *
+ * Open task lists are keyed by `currentReviewerId`, so the only thing that changes is a temporary
+ * hold: the current step is handed to the asking user so the task (and its red interaction comment)
+ * shows up in their list. The displaced reviewer is recorded on the task and given back as soon as
+ * the interaction is answered, cancelled or expired. `stepHistory` is deliberately untouched — it is
+ * what identifies the step, and growing it would enqueue a second AI run and invalidate the parked
+ * one.
+ *
+ * Returns the hold to record, and whether it still has to be written.
+ */
+function resolveVmInteractionWorkflowHold(task, correlationId, requestId, reviewerId, triggeredAt) {
+    const existing = task[VM_INTERACTION_WORKFLOW_FIELD]
+
+    if (existing && existing.correlationId === correlationId) {
+        // A retry of the very same question: the hold already describes it.
+        if (existing.requestId === requestId) return { hold: existing, changed: false }
+        // A follow-up question from the same job. Keep the originally displaced reviewer so the
+        // final release still restores the real workflow reviewer rather than the user themself.
+        return { hold: { ...existing, requestId, triggeredAt }, changed: true }
+    }
+
+    // Another job already holds this task, or the task is already the asking user's to act on.
+    if (existing || task.currentReviewerId === reviewerId) return { hold: existing || null, changed: false }
+
+    return {
+        hold: {
+            correlationId,
+            requestId,
+            reviewerId,
+            previousReviewerId: task.currentReviewerId ?? null,
+            workflowStepId: getCurrentWorkflowStepId(task),
+            triggeredAt,
+        },
+        changed: true,
+    }
 }
 
-function getProjectWorkflow(user, projectId) {
-    return user?.workflow?.[projectId] || {}
+/**
+ * Gives the workflow step back to the reviewer the interaction displaced.
+ *
+ * Every exit from `awaiting_user` runs through this: answering, cancelling and expiring. The task
+ * never moved off its step, so there is nothing to undo beyond the reviewer.
+ */
+function releaseVmInteractionWorkflowHold(transaction, taskRef, task, correlationId, requestId) {
+    if (!taskRef || !task) return
+    const hold = task[VM_INTERACTION_WORKFLOW_FIELD]
+    if (!hold || hold.correlationId !== correlationId || hold.requestId !== requestId) return
+
+    transaction.set(
+        taskRef,
+        {
+            // Only restore the reviewer while this hold still owns the task. A user may have moved
+            // the task on manually while the VM was waiting; that newer workflow decision wins.
+            ...(task.currentReviewerId === hold.reviewerId
+                ? { currentReviewerId: hold.previousReviewerId ?? null }
+                : {}),
+            [VM_INTERACTION_WORKFLOW_FIELD]: null,
+        },
+        { merge: true }
+    )
 }
 
 function getVmInteractionNotificationRef(db, pending, userId) {
@@ -155,34 +217,19 @@ async function createVmInteractionRequest({
         const taskRef = getVmInteractionTaskRef(db, pending)
         const taskSnapshot = taskRef ? await transaction.get(taskRef) : null
         const task = taskSnapshot?.exists ? taskSnapshot.data() || {} : null
-        const workflowRef = getVmInteractionWorkflowRef(db, pending, task)
-        const [interactionSnapshot, workflowSnapshot] = await Promise.all([
-            transaction.get(interactionRef),
-            workflowRef ? transaction.get(workflowRef) : Promise.resolve(null),
-        ])
 
-        // A VM question completes the current workflow step in the same way as the normal forward
-        // action. The request ID is the idempotency boundary: a retry updates the same interaction
-        // but must not move the task through another step.
-        if (task && !interactionSnapshot.exists && workflowSnapshot?.exists) {
-            const fromStepId = getCurrentWorkflowStepId(task)
-            const workflow = getProjectWorkflow(workflowSnapshot.data() || {}, pending.projectId)
-            const transition = buildWorkflowStepAdvanceUpdate(task, fromStepId, workflow, createdAt)
-            if (transition) {
-                transaction.set(taskRef, transition.updateData, { merge: true })
-                const subtaskIds = Array.isArray(task.subtaskIds) ? task.subtaskIds : []
-                subtaskIds.forEach(subtaskId => {
-                    transaction.set(
-                        db.doc(`items/${pending.projectId}/tasks/${subtaskId}`),
-                        {
-                            ...transition.updateData,
-                            parentDone: transition.movingToDone,
-                            inDone: transition.movingToDone,
-                        },
-                        { merge: true }
-                    )
-                })
-            }
+        // The task stays on its current workflow step for the whole question; only the reviewer is
+        // held so the user can see and answer it. See resolveVmInteractionWorkflowHold.
+        const { hold: workflowStep, changed: holdChanged } = task
+            ? resolveVmInteractionWorkflowHold(task, correlationId, requestId, userId, createdAt)
+            : { hold: null, changed: false }
+
+        if (holdChanged) {
+            transaction.set(
+                taskRef,
+                { currentReviewerId: userId, [VM_INTERACTION_WORKFLOW_FIELD]: workflowStep },
+                { merge: true }
+            )
         }
 
         transaction.set(interactionRef, {
@@ -212,6 +259,7 @@ async function createVmInteractionRequest({
                 expiresAt,
                 leaseOwner: null,
                 leaseExpiresAt: null,
+                interactionWorkflowStep: workflowStep,
             },
             { merge: true }
         )
@@ -258,15 +306,19 @@ async function answerVmInteractionRequest({
     const interactionRef = db.doc(`vmJobInteractions/${correlationId}/requests/${requestId}`)
     let result
     await db.runTransaction(async transaction => {
-        const [pendingSnapshot, interactionSnapshot, sessionSnapshot] = await Promise.all([
-            transaction.get(pendingRef),
+        const pendingSnapshot = await transaction.get(pendingRef)
+        if (!pendingSnapshot.exists) throw new Error('VM interaction was not found.')
+        const pending = pendingSnapshot.data() || {}
+        const taskRef = getVmInteractionTaskRef(db, pending)
+        const [interactionSnapshot, sessionSnapshot, taskSnapshot] = await Promise.all([
             transaction.get(interactionRef),
             transaction.get(sessionRef),
+            taskRef ? transaction.get(taskRef) : Promise.resolve(null),
         ])
-        if (!pendingSnapshot.exists || !interactionSnapshot.exists) throw new Error('VM interaction was not found.')
-        const pending = pendingSnapshot.data() || {}
+        if (!interactionSnapshot.exists) throw new Error('VM interaction was not found.')
         const interaction = interactionSnapshot.data() || {}
         const session = sessionSnapshot.exists ? sessionSnapshot.data() || {} : {}
+        const task = taskSnapshot?.exists ? taskSnapshot.data() || {} : null
         if (pending.userId !== userId || interaction.userId !== userId) {
             const error = new Error('Only the user who started the VM task can answer this interaction.')
             error.code = 'permission_denied'
@@ -317,6 +369,7 @@ async function answerVmInteractionRequest({
                 launchState: 'requested',
                 leaseOwner: null,
                 leaseExpiresAt: null,
+                interactionWorkflowStep: null,
             },
             { merge: true }
         )
@@ -338,6 +391,7 @@ async function answerVmInteractionRequest({
         // mark-as-read semantics.
         const notificationRef = getVmInteractionNotificationRef(db, pending, userId)
         if (notificationRef) transaction.delete(notificationRef)
+        releaseVmInteractionWorkflowHold(transaction, taskRef, task, correlationId, requestId)
         result = {
             cancelling,
             executionAttemptId,
@@ -365,12 +419,14 @@ async function expireVmInteractions(db, now = Date.now()) {
             const sessionRef = db.doc(`vmSessions/${pending.projectId}__${pending.objectId}`)
             const interactionRef = db.doc(`vmJobInteractions/${doc.id}/requests/${pending.interactionRequestId}`)
             const expired = await db.runTransaction(async transaction => {
-                const [latestSnapshot, interactionSnapshot, sessionSnapshot] = await Promise.all([
-                    transaction.get(doc.ref),
+                const latestSnapshot = await transaction.get(doc.ref)
+                const latest = latestSnapshot.exists ? latestSnapshot.data() || {} : {}
+                const taskRef = getVmInteractionTaskRef(db, latest)
+                const [interactionSnapshot, sessionSnapshot, taskSnapshot] = await Promise.all([
                     transaction.get(interactionRef),
                     transaction.get(sessionRef),
+                    taskRef ? transaction.get(taskRef) : Promise.resolve(null),
                 ])
-                const latest = latestSnapshot.exists ? latestSnapshot.data() || {} : {}
                 if (
                     latest.status !== VM_INTERACTION_STATUS_AWAITING ||
                     latest.interactionRequestId !== pending.interactionRequestId ||
@@ -385,6 +441,7 @@ async function expireVmInteractions(db, now = Date.now()) {
                         failureReason: 'interaction_expired',
                         failedAt: now,
                         currentInteraction: null,
+                        interactionWorkflowStep: null,
                     },
                     { merge: true }
                 )
@@ -408,6 +465,13 @@ async function expireVmInteractions(db, now = Date.now()) {
                 }
                 const notificationRef = getVmInteractionNotificationRef(db, latest, latest.userId)
                 if (notificationRef) transaction.delete(notificationRef)
+                releaseVmInteractionWorkflowHold(
+                    transaction,
+                    taskRef,
+                    taskSnapshot?.exists ? taskSnapshot.data() || {} : null,
+                    doc.id,
+                    pending.interactionRequestId
+                )
                 return true
             })
             if (!expired) continue

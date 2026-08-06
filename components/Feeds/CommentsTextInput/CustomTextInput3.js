@@ -159,7 +159,31 @@ function CustomTextInput3(
     const [editorElement, setEditorElement] = useState(null)
     const [containerElement, setContainerElement] = useState(null)
     const [selectionBounds, setSelectionBounds] = useState({ top: 0, left: 0 })
-    const [html, setHtml] = useState('')
+    const [html, setHtmlState] = useState('')
+    /**
+     * `html` is what ReactQuill is given as its controlled `value`, and
+     * react-quill overwrites the editor whenever that value disagrees with the
+     * editor's own contents (`shouldComponentUpdate` -> `setEditorContents`).
+     *
+     * React state alone is too slow for that contract: this component also
+     * writes into the editor imperatively (`setContents(initialDeltaOps)` at
+     * mount, `updateContents` in processInitialText/clearAndSetContent), and a
+     * re-render triggered from anywhere else - a redux dispatch, or the
+     * synchronous relayout CustomScrollView performs after measuring - can be
+     * flushed BEFORE the queued `setHtml` is applied. react-quill then sees the
+     * stale value, decides the editor is out of sync and wipes it. That is
+     * AT-2178: the create-task popup was pre-filled correctly and then emptied
+     * again a tick later.
+     *
+     * The ref is updated synchronously, so every render - including one that
+     * interleaves with a pending state update - passes the value the editor
+     * actually holds. The state is kept because other effects depend on it.
+     */
+    const htmlRef = useRef('')
+    const setHtml = value => {
+        htmlRef.current = value
+        setHtmlState(value)
+    }
     const [mentionModalHeight, setMentionModalHeight] = useState(0)
     const [flag, setFlag] = useState(false)
 
@@ -1246,7 +1270,7 @@ function CustomTextInput3(
                         beforeUndoRedo,
                     },
                 }}
-                value={html}
+                value={htmlRef.current}
                 onChange={updateText}
                 placeholder={createPlaceholder(
                     placeholder,

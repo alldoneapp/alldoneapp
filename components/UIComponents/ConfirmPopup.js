@@ -40,6 +40,7 @@ import { deleteNote } from '../../utils/backends/Notes/notesFirestore'
 import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import { removeChatTopic } from '../../utils/backends/Chats/chatsFirestore'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
+import { rejectAllSuggestedTasks } from '../../utils/suggestedTaskBulkActions'
 
 export const CONFIRM_POPUP_TRIGGER_DELETE_TASK = 'DELETE TASK'
 export const CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT = 'CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT'
@@ -59,6 +60,7 @@ export const CONFIRM_POPUP_TRIGGER_DELETE_SKILL = 'CONFIRM POPUP TRIGGER DELETE 
 export const CONFIRM_POPUP_TRIGGER_RESET_SKILLS = 'CONFIRM_POPUP_TRIGGER_RESET_SKILLS'
 export const CONFIRM_POPUP_TRIGGER_DELETE_ALL_GOALS = 'CONFIRM POPUP TRIGGER DELETE ALL GOALS'
 export const CONFIRM_POPUP_TRIGGER_DELETE_WORKSTREAM = 'CONFIRM POPUP TRIGGER DELETE WORKSTREAM'
+export const CONFIRM_POPUP_TRIGGER_REJECT_ALL_SUGGESTED_TASKS = 'CONFIRM POPUP TRIGGER REJECT ALL SUGGESTED TASKS'
 export const CONFIRM_POPUP_TIMEOUT = 'CONFIRM POPUP TIMEOUT'
 export const CONFIRM_POPUP_NOTE_REVISION_HISTORY = 'CONFIRM POPUP NOTE REVISION HISTORY'
 export const CONFIRM_POPUP_TRIGGER_INFO = 'CONFIRM POPUP TRIGGER INFO'
@@ -237,6 +239,19 @@ export default function ConfirmPopup() {
                 const { projectId, stream } = object
                 await deleteWorkstream(projectId, stream)
                 hidePopup()
+                break
+            }
+
+            case CONFIRM_POPUP_TRIGGER_REJECT_ALL_SUGGESTED_TASKS: {
+                const { projectId, tasks, workflow } = object
+                setProcessing(true)
+                try {
+                    // Rejecting is sequential, so a mid-list failure must still close the popup:
+                    // the suggestions already rejected are gone, the rest stay in the section.
+                    await rejectAllSuggestedTasks({ projectId, tasks, workflow })
+                } finally {
+                    hidePopup()
+                }
                 break
             }
 
