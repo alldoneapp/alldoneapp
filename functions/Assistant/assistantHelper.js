@@ -80,7 +80,7 @@ const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver'
 const {
     buildVmJobTaskName,
     buildVmJobTaskDescription,
-    normalizeStartedVmJob,
+    collectStartedVmJobs,
     ensureVmHostThreadLinksInResponse,
     startsVmJobInCurrentThread,
 } = require('./vmHostTaskHelper')
@@ -2364,10 +2364,7 @@ async function collectAssistantTextWithToolCalls({
                 const createdNote = normalizeCreatedNote(toolResult)
                 if (createdNote) createdNoteResults.push(createdNote)
             }
-            if (toolName === 'execute_task_in_vm') {
-                const startedVmJob = normalizeStartedVmJob(toolResult)
-                if (startedVmJob) startedVmJobResults.push(startedVmJob)
-            }
+            collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
             const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
             pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
             toolExecutions.push({
@@ -10065,14 +10062,7 @@ async function storeChunks(
                                 }
                             }
                         }
-                        if (toolName === 'execute_task_in_vm') {
-                            const startedVmJob = normalizeStartedVmJob(toolResult)
-                            if (
-                                startedVmJob &&
-                                !startedVmJobResults.some(job => job.objectId === startedVmJob.objectId)
-                            )
-                                startedVmJobResults.push(startedVmJob)
-                        }
+                        collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
                         const toolResultString = JSON.stringify(toolResult, null, 2)
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
