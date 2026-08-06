@@ -563,7 +563,12 @@ class SharedHelper {
     }
 
     static onHistoryPop = commonPath => {
-        const { lastVisitedScreen } = store.getState()
+        let { lastVisitedScreen } = store.getState()
+        // Pop from a copy, never the array held in the store. The reducer stores whatever
+        // reference it is handed, so mutating in place leaves the store identity-equal and the
+        // back buttons subscribed via useSelector never re-render. It also means the pops below
+        // would silently drop history entries on the bail-out path where nothing is dispatched.
+        lastVisitedScreen = Array.isArray(lastVisitedScreen) ? [...lastVisitedScreen] : []
         let path
 
         lastVisitedScreen.pop()
