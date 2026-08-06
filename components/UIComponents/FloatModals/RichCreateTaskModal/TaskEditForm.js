@@ -93,11 +93,7 @@ export default function TaskEditForm({
 
     const onKeyDown = event => {
         const { key } = event
-        if (key !== 'Enter') return
-        // Holding Return down repeats the keydown event, and an IME commit
-        // reports its own Enter. Neither is a second intended submission.
-        if (event.repeat || event.isComposing || event.keyCode === 229) return
-        enterKeyAction(event)
+        if (key === 'Enter') enterKeyAction(event)
     }
 
     useEffect(() => {
@@ -126,6 +122,7 @@ export default function TaskEditForm({
                 showRecurring={showRecurring}
                 showParentGoal={showParentGoal}
                 showMoreOptions={showMoreOptions}
+                enterKeyAction={enterKeyAction}
                 done={done}
             />
         </View>

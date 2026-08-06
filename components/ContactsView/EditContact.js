@@ -48,7 +48,6 @@ import {
     setProjectContactPicture,
 } from '../../utils/backends/Contacts/contactsFirestore'
 import { MENTION_MODAL_CONTACTS_TAB } from '../Feeds/CommentsTextInput/textInputHelper'
-import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
 import { setUserHighlightInProject, setUserPrivacyInProject } from '../../utils/backends/Users/usersFirestore'
 import { CONTACT_STATUS_FILTER_UNASSIGNED } from '../ContactStatusFilters/contactStatusFilterConstants'
 
@@ -695,25 +694,10 @@ export default class EditContact extends Component {
         )
     }
 
-    // Enter reaches this editor through the document listener, Quill's newline
-    // callback and the done button at once, and `addContactToProject` mints a
-    // new contact id per call, so creation is guarded.
-    addProjectContact = (openDetails = false) => {
-        const { tmpContact, contactChanged } = this.state
-        // Nothing to create: dismiss without consuming the single submission.
-        if (!contactChanged || tmpContact.displayName.trim().length === 0) {
-            this.dismiss()
-            return
-        }
-        return this.runAddProjectContact(openDetails)
-    }
-
-    runAddProjectContact = createSingleFlightSubmit(async (openDetails = false) => {
+    addProjectContact = async (openDetails = false) => {
         const { projectId } = this.props
         const { tmpContact, contactChanged } = this.state
         tmpContact.displayName = tmpContact.displayName.trim()
-
-        let creation
 
         if (contactChanged) {
             if (tmpContact.displayName.length > 0) {
@@ -742,7 +726,7 @@ export default class EditContact extends Component {
                         tmpContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
                         tmpContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
                     }
-                    creation = addContactToProject(projectId, tmpContact, contact => {
+                    addContactToProject(projectId, tmpContact, contact => {
                         store.dispatch(stopLoadingData())
 
                         if (openDetails) {
@@ -759,9 +743,7 @@ export default class EditContact extends Component {
         } else {
             this.dismiss()
         }
-
-        return creation
-    })
+    }
 
     openBeforeCreate = () => {
         this.addProjectContact(true)

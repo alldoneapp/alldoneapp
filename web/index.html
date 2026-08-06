@@ -122,6 +122,15 @@
                 padding: 0px;
                 /* Allows content to fill the viewport and go beyond the bottom */
                 min-height: 100%;
+                /* AND bind the app shell to the viewport (AT-2177). See the
+                   identical block in web-bundler/index.html (the deployed
+                   template): without a DEFINITE height the app tree grows to
+                   its content, the document becomes the only scroller, and
+                   scrolling the main content drags the sidebar navigation
+                   with it. */
+                height: 100%;
+                /* safe-area padding on body must not push the shell past 100% */
+                box-sizing: border-box;
             }
 
             #root {

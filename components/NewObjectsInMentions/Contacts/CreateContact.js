@@ -29,7 +29,6 @@ import {
 } from '../../ModalsManager/modalsManager'
 import { DV_TAB_CONTACT_PROPERTIES } from '../../../utils/TabNavigationConstants'
 import { addContactToProject } from '../../../utils/backends/Contacts/contactsFirestore'
-import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
 
 export default function CreateContact({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
     const dispatch = useDispatch()
@@ -69,9 +68,7 @@ export default function CreateContact({ projectId, containerStyle, selectItemToM
         setContact(contact => ({ ...contact, hasStar: color }))
     }
 
-    // `sendingData` only feeds React state, which is applied asynchronously, so
-    // a second Return could still start another contact before the first landed.
-    const addProjectContact = useSingleFlightSubmit(async (openDetails = false) => {
+    const addProjectContact = async (openDetails = false) => {
         const newContact = { ...contact }
         newContact.displayName = newContact.displayName.trim()
 
@@ -110,7 +107,7 @@ export default function CreateContact({ projectId, containerStyle, selectItemToM
                 }
             })
         }
-    }, RELEASE_AFTER_SUBMISSION)
+    }
 
     const enterKeyAction = () => {
         const { mentionModalStack } = store.getState()
