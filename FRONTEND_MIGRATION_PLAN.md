@@ -94,8 +94,31 @@ The riskiest framework jump, done as one stage because RNW 0.19+ requires React 
 
 -   Step 1: `firebase@8` → `firebase@12` using **`firebase/compat`** imports only — the v8
     API surface keeps working, isolated in `utils/backends/` + 25 import sites.
--   Step 2: convert file-by-file from compat to the modular API behind the existing
-    `BackendBridge` facade (tree-shaking win lands here).
+-   Step 2 (compat → modular): **measured 2026-08-06 and DEFERRED — do not start this
+    without re-reading the numbers below.** The tree-shaking win is real but small, and
+    the cost is not.
+    -   **Prize, measured rather than assumed**: the exact SDK surface this app uses
+        (app, auth, firestore, functions, storage, messaging, database), built both ways
+        and minified+gzipped, is **266.2 KB compat vs 209.7 KB modular — 56.5 KB saved,
+        2.5% of the 2.25 MB app JS bundle**.
+    -   **Cost**: ~3,200 chained call sites — 553 `.collection(`, 708 `.doc(`,
+        452 `.where(`, 538 `.get()`, 422 `.update(`, 245 `FieldValue.`, 135 `.onSnapshot(`
+        — over 25 files concentrated in `utils/backends/`, with the 7,778-line
+        `firestore.js` dominating. Every one is a live data path.
+    -   **"File-by-file" is misleading**: tree-shaking only drops compat when the LAST
+        compat import goes, so a partial conversion ships BOTH APIs and is temporarily
+        _larger_. The 56 KB lands at 100% or not at all — incremental risk, no incremental
+        benefit.
+    -   Compat is fully supported and not deprecated, so staying on it is a legitimate end
+        state rather than debt. The security objective that motivated Stage 3 was met in
+        full by step 1.
+    -   **If it is ever revisited, the blocking landmine is `getFirestore(app)`**: it does
+        NOT return the compat instance's client. Verified in both orderings — always two
+        distinct `Firestore` instances on the same app and same `(default)` database, so a
+        converted file using it would give the app two clients (two caches, two connection
+        streams, writes on one invisible to the other's listeners without a server round
+        trip). The only safe modular handle during a migration is the compat instance's
+        `_delegate`, confirmed working with `doc()`, `collection()`, `query()`, `where()`.
 -   Fixes the client-side `@firebase/firestore` highs and the auth/persistence CVEs.
 -   Acceptance: auth flows, Firestore listeners, RTDB presence, FCM web push
     (`firebase-messaging-sw.js` must be migrated in the same MR) verified on staging.

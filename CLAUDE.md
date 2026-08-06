@@ -70,6 +70,12 @@ bundler problem.
 
 **Backend Bridge**: `utils/BackendBridge.js` abstracts all Firebase operations. Feature-specific backends in `utils/backends/` (Tasks/, Goals/, Notes/, etc.).
 
+**Firebase client SDK is v12 used through `firebase/compat`** — `import firebase from 'firebase/compat/app'`, with services attached by lazy `require('firebase/compat/<service>')` in `utils/backends/firestore.js`. The v8-era deep import `import { firebase } from '@firebase/app'` no longer exists; do not reintroduce it. Compat is fully supported, so this is a deliberate end state, not debt: converting the ~3,200 chained call sites to the modular API was measured at only 56.5 KB gzip (2.5% of the bundle) and deferred — see `FRONTEND_MIGRATION_PLAN.md` Stage 3 before reopening it.
+
+**Never call `getFirestore(app)` in this codebase.** It does _not_ return the client that `firebase.firestore()` uses — verified in both initialization orders, they are always two distinct `Firestore` instances on the same app and the same `(default)` database. Using it would give the app two clients: two local caches, two connection streams, and writes through one not visible to the other's `onSnapshot` listeners until a server round trip. If modular helpers are ever needed, pass the compat instance's `_delegate` (`getDb()._delegate`) — that is the same client, and it works with `doc()`, `collection()`, `query()`, `where()`.
+
+Two v9+ API removals the app already worked around, worth knowing before touching messaging: `messaging.onTokenRefresh()` is gone (token freshness now relies on `getToken()` on every load), and `setBackgroundMessageHandler` is gone from the service worker in favour of `onBackgroundMessage`. Note compat keeps `messaging.isSupported()` **synchronous**, unlike the modular API where it returns a Promise — the app's `isSupported() && …` truthiness guards depend on that, and would silently pass everywhere if switched to modular.
+
 **URL System**: `URLSystem/URLSystemTrigger.js` handles navigation. Each feature has its own trigger file (e.g., `URLSystem/Tasks/`).
 
 **DetailedView Pattern**: Entity screens follow `[Entity]DetailedView` naming (TaskDetailedView, GoalDetailedView, ContactDetailedView).

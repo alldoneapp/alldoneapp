@@ -111,7 +111,18 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
     `onBackgroundMessage`, three dead `messaging.onTokenRefresh` blocks removed (API gone
     in v9+), 47 vestigial `jest.mock('firebase', …)` lines deleted (v12's root package is
     exports-only, invisible to jest 25). Full detail + staging QA checklist in
-    `FRONTEND_MIGRATION_PLAN.md`. Step 2 (compat → modular) follows staging parity.
+    `FRONTEND_MIGRATION_PLAN.md`. **Merged to master and verified in production the same
+    day** (my.alldone.app serving 12.17.1, clean boot, GSI loading, service worker on the
+    compat CDN builds).
+
+-   2026-08-06 (Phase 3 / migration Stage 3 step 2): **measured and DEFERRED.** Converting
+    compat → modular saves a measured 56.5 KB gzip (266.2 → 209.7 KB for this app's SDK
+    surface), which is 2.5% of the 2.25 MB bundle, in exchange for ~3,200 call-site edits
+    across every data path — and the saving only materializes at 100% conversion, since
+    tree-shaking cannot drop compat while any import remains. The security goal that drove
+    Phase 3's Firebase work is already fully met by step 1 (zero firebase audit findings).
+    Reasoning and the `getFirestore(app)` two-client landmine are recorded in
+    `FRONTEND_MIGRATION_PLAN.md`.
 
 -   2026-08-04 (Phase 1.4 correction): **firebase-admin runs at ^13.10, not 14.** The first
     production deploy of the Phase 1 batch failed at firebase-tools' source analysis:
