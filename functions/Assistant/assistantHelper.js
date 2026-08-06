@@ -82,6 +82,7 @@ const {
     buildVmJobTaskDescription,
     normalizeStartedVmJob,
     ensureVmHostThreadLinksInResponse,
+    startsVmJobInCurrentThread,
 } = require('./vmHostTaskHelper')
 const {
     addTimestampToContextContent,
@@ -10546,26 +10547,42 @@ async function storeChunks(
         }
         promises.push(updateLastAssistantCommentData(projectId, objectType, objectId, currentFollowerIds, assistantId))
 
-        if (ENABLE_DETAILED_LOGGING) {
-            console.log('Generating notifications...')
-        }
-        promises.push(
-            generateNotifications(
+        // A reply that only hands the work to a VM job running in this same thread must not raise
+        // an unread marker. The VM posts its own live status comment here, rewrites it while it
+        // thinks, and notifies when there is actually something to see: the final result, a
+        // failure/cancellation, or a question it needs answered. Notifying for the hand-off too
+        // would show a red badge whose content is a spinner. The comment, the chat preview and the
+        // last-assistant-comment data below are still written, so the thread reads normally.
+        const isVmHandoffReply = startsVmJobInCurrentThread(startedVmJobResults, { projectId, objectId })
+        if (isVmHandoffReply) {
+            console.log('🖥️ VM JOB: Skipping notifications for the in-thread VM hand-off reply', {
                 projectId,
                 objectType,
                 objectId,
-                userIdsToNotify,
-                objectName,
-                assistantName,
-                projectname,
-                chatLink,
                 commentId,
-                lastComment,
-                currentFollowerIds,
-                assistantId,
-                requestUserId
+            })
+        } else {
+            if (ENABLE_DETAILED_LOGGING) {
+                console.log('Generating notifications...')
+            }
+            promises.push(
+                generateNotifications(
+                    projectId,
+                    objectType,
+                    objectId,
+                    userIdsToNotify,
+                    objectName,
+                    assistantName,
+                    projectname,
+                    chatLink,
+                    commentId,
+                    lastComment,
+                    currentFollowerIds,
+                    assistantId,
+                    requestUserId
+                )
             )
-        )
+        }
 
         if (ENABLE_DETAILED_LOGGING) {
             console.log('Updating chat object...')
