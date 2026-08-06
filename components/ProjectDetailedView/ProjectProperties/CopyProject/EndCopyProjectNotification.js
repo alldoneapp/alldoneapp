@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import { useSelector } from 'react-redux'
-import { View, Text, StyleSheet } from 'react-native'
+import { Platform, View, Text, StyleSheet } from 'react-native'
 
 import Icon from '../../../Icon'
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
@@ -8,6 +8,7 @@ import Button from '../../../UIControls/Button'
 import { translate } from '../../../../i18n/TranslationService'
 import { deleteCacheAndRefresh } from '../../../../utils/Observers'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
+import { fixedModalOverlayStyle } from '../../../../utils/fixedModalPosition'
 
 export default function EndCopyProjectNotification({}) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -68,6 +69,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     backdrop: {
         position: 'absolute',

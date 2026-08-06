@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../../styles/global'
@@ -24,6 +24,7 @@ import ColoredCircleSmall from '../../SidebarMenu/ProjectFolding/ProjectItem/Col
 import store from '../../../redux/store'
 import { tryAddUserToProjectByUidOrEmail } from '../../../utils/backends/firestore'
 import { unwatchProjectData } from '../../../utils/InitialLoad/initialLoadHelper'
+import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 
 export default function ProjectInvitationPopup() {
     const dispatch = useDispatch()
@@ -147,6 +148,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     popup: {
         backgroundColor: colors.Secondary400,

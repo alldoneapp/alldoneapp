@@ -6,6 +6,7 @@ import Icon from '../../Icon'
 import { setShowNoteMaxLengthModal } from '../../../redux/actions'
 import { useDispatch, useSelector } from 'react-redux'
 import { translate } from '../../../i18n/TranslationService'
+import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 
 export default function NoteMaxLengthModal() {
     const dispatch = useDispatch()
@@ -48,6 +49,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     container: {
         width: 317,

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../styles/global'
@@ -7,6 +7,7 @@ import Button from '../UIControls/Button'
 import { setShowAccessDeniedPopup, hideFloatPopup } from '../../redux/actions'
 import Icon from '../Icon'
 import { translate } from '../../i18n/TranslationService'
+import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 
 export default function AccessDeniedPopup() {
     const dispatch = useDispatch()
@@ -74,6 +75,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     backdrop: {
         position: 'absolute',

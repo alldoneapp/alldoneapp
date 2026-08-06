@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../styles/global'
@@ -39,6 +39,7 @@ import { deleteProjectContact } from '../../utils/backends/Contacts/contactsFire
 import { deleteNote } from '../../utils/backends/Notes/notesFirestore'
 import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import { removeChatTopic } from '../../utils/backends/Chats/chatsFirestore'
+import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 
 export const CONFIRM_POPUP_TRIGGER_DELETE_TASK = 'DELETE TASK'
 export const CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT = 'CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT'
@@ -370,6 +371,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     infoPopup: {
         backgroundColor: colors.Secondary400,

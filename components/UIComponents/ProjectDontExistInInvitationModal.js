@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../styles/global'
@@ -7,6 +7,7 @@ import Button from '../UIControls/Button'
 import { setShowProjectDontExistInInvitationModal } from '../../redux/actions'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import { translate } from '../../i18n/TranslationService'
+import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 
 export default function ProjectDontExistInInvitationModal() {
     const dispatch = useDispatch()
@@ -44,6 +45,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     popup: {
         backgroundColor: colors.Secondary400,

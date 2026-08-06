@@ -1,10 +1,11 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Platform, StyleSheet, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import ChangeContactInfoModal from './ChangeContactInfoModal'
 import { setUserInfoModalWhenUserJoinsToGuide } from '../../../redux/actions'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
 
 export default function ChangeContactInfoModalContainerForNewGuideUsers() {
     const dispatch = useDispatch()
@@ -47,5 +48,6 @@ const localStyles = StyleSheet.create({
         bottom: 0,
         justifyContent: 'center',
         alignItems: 'center',
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
 })

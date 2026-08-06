@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Platform, StyleSheet, View } from 'react-native'
 import { useDispatch } from 'react-redux'
 
 import { colors, hexColorToRGBa } from '../../../../styles/global'
@@ -12,6 +12,7 @@ import { translate } from '../../../../../i18n/TranslationService'
 import { setShowNotificationAboutTheBotBehavior } from '../../../../../redux/actions'
 import { BOT_WARNING_MODAL_ID, removeModal, storeModal } from '../../../../ModalsManager/modalsManager'
 import { setThatTheUserWasNotifiedAboutTheBotBehavior } from '../../../../../utils/backends/Users/usersFirestore'
+import { fixedModalOverlayStyle } from '../../../../../utils/fixedModalPosition'
 
 export default function BotWarningModal() {
     const dispatch = useDispatch()
@@ -61,6 +62,7 @@ const localStyles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        ...Platform.select({ web: fixedModalOverlayStyle }),
     },
     container: {
         flexDirection: 'column',
