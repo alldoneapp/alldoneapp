@@ -9,13 +9,12 @@ jest.mock('googleapis', () => ({
 }))
 
 jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
-    getAccessToken: jest.fn(),
-    getOAuth2Client: jest.fn(),
+    getAuthorizedOAuth2Client: jest.fn(),
 }))
 
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
-const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 
 const firestoreState = {
     users: {},
@@ -44,13 +43,9 @@ function buildFirestore() {
     }
 }
 
-function createOAuthClient() {
-    return {
-        __projectId: null,
-        setCredentials(credentials) {
-            this.__projectId = String(credentials.access_token || '').replace(/^token-/, '')
-        },
-    }
+// The handler now returns a ready, fully-credentialed client instead of a bare token.
+function createOAuthClient(projectId) {
+    return { __projectId: projectId, setCredentials: jest.fn(), on: jest.fn() }
 }
 
 describe('assistantCalendarTools', () => {
@@ -62,8 +57,9 @@ describe('assistantCalendarTools', () => {
         jest.clearAllMocks()
 
         admin.firestore.mockImplementation(() => buildFirestore())
-        getAccessToken.mockImplementation((userId, projectId) => Promise.resolve(`token-${projectId}`))
-        getOAuth2Client.mockImplementation(() => createOAuthClient())
+        getAuthorizedOAuth2Client.mockImplementation((userId, projectId) =>
+            Promise.resolve(createOAuthClient(projectId))
+        )
         google.calendar.mockImplementation(({ auth }) => {
             const client = calendarClients[auth.__projectId]
             if (!client) throw new Error(`Missing mocked calendar client for project ${auth.__projectId}`)
