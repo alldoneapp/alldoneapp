@@ -822,6 +822,7 @@
     "Next step for all": "Alle zum nächsten Schritt",
     "Reject all suggested tasks": "Alle vorgeschlagenen Tasks ablehnen",
     "Reject all suggested tasks question": "{{count}} vorgeschlagene Tasks werden auf einmal abgelehnt. Möchtest Du wirklich fortfahren?",
+    "Accept and mark done": "Annehmen und erledigen",
     "Reject single suggested task question": "Dieser vorgeschlagene Task wird abgelehnt. Möchtest Du wirklich fortfahren?",
     "Subtask": "Subtask",
     "Create subtask": "Subtask erstellen",

@@ -31,7 +31,11 @@ import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
 import { getSuggestedById, isAssistantSuggestedTask, resolveSuggestedByIdentity } from '../../utils/suggestedTaskFlow'
 import SuggestedActions from './SuggestedActions'
-import { canBypassSuggestedTaskWorkflow, moveSuggestedTaskToDoneBypassingWorkflow } from './suggestedTaskBypass'
+import {
+    canBypassSuggestedTaskWorkflow,
+    getSuggestedTaskBypassLabel,
+    moveSuggestedTaskToDoneBypassingWorkflow,
+} from './suggestedTaskBypass'
 export default class SuggestedModal extends Component {
     constructor(props) {
         super(props)
@@ -448,7 +452,8 @@ export default class SuggestedModal extends Component {
                     <SuggestedActions
                         isAssistantSuggestion={isAssistantSuggestedTask(task)}
                         disabled={task.userId !== tmpTask.userId}
-                        showBypassWorkflow={canBypassSuggestedTaskWorkflow(currentUser, projectId)}
+                        showBypassWorkflow={canBypassSuggestedTaskWorkflow(currentUser, projectId, task)}
+                        bypassWorkflowLabel={getSuggestedTaskBypassLabel(currentUser, projectId)}
                         onNextStepPress={() => this.onDonePress(false)}
                         onAcceptPress={() => this.onDonePress(true)}
                         onBypassWorkflowPress={this.onBypassWorkflowPress}
