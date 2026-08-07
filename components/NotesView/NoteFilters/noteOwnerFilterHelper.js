@@ -50,6 +50,23 @@ export const findNoteOwnerInProject = (projectId, ownerId) => {
 }
 
 /**
+ * The owner a note should keep when it is moved into `targetProjectId`.
+ *
+ * Owners are project-scoped: a member, assistant, contact or workstream of project A means
+ * nothing in project B, where it would render as the "Unknown" owner chip. So the owner only
+ * survives a move when it still resolves in the target project; otherwise the note goes back
+ * to the acting user.
+ *
+ * Historically this was a plain "is the owner one of the target project's *users*" check,
+ * which silently stripped ownership from every assistant-owned note (AT-2194) because an
+ * assistant is not a project user.
+ */
+export const resolveMovedNoteOwnerId = (targetProjectId, ownerId, actingUserId) => {
+    if (!ownerId || ownerId === NOTE_OWNER_UNASSIGNED) return actingUserId
+    return findNoteOwnerInProject(targetProjectId, ownerId) ? ownerId : actingUserId
+}
+
+/**
  * Resolve an owner id to something renderable.
  *
  * Returns `{ uid, displayName, photoURL, isAssistant, isWorkstream }`. Never returns null,
