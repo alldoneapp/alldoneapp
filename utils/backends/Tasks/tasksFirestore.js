@@ -161,6 +161,7 @@ import {
     startFocusHandoff,
     supersedeFocusHandoffs,
 } from './focusHandoffRace'
+import { isTaskOnUserPlate } from './focusTaskEligibility'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -3848,7 +3849,9 @@ export async function autoPostponeTask(projectId, task, isObservedTask, targetUs
  * Synchronously picks the next focus task from the Redux store using the same
  * display order as the UI (goals ordered by milestone + general tasks last).
  */
-function getOptimisticNextFocusTask(projectId, completedTask) {
+function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = completedTask.userId) {
+    // `focusUserId` is the user whose focus task is being replaced (see setOptimisticNextFocusTask);
+    // it is only the owner by coincidence in the common single-assignee case.
     const {
         openTasksMap,
         goalsByProjectInTasks,
@@ -3874,6 +3877,8 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
     // AT-2191: isFocusTaskReleased skips tasks postponed earlier in the same burst — Redux still
     // shows them as due today until the Firestore listener catches up, so without it a rapid third
     // postpone can hand focus back to the task postponed first.
+    // AT-2193: a task parked in another reviewer's workflow step is not this user's to work on, so
+    // it can never be their focus task — the fallback below used to hand exactly those back.
     const candidateTasks = Object.values(projectTasks).filter(
         t =>
             t.id !== completedTask.id &&
@@ -3881,7 +3886,8 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
             !t.done &&
             !t.isSubtask &&
             !t.calendarData &&
-            t.dueDate <= endOfToday
+            t.dueDate <= endOfToday &&
+            isTaskOnUserPlate(t, focusUserId)
     )
 
     console.log(`[getOptimisticNextFocusTask] Candidates after filtering:`, {
@@ -3955,8 +3961,14 @@ function getOptimisticNextFocusTask(projectId, completedTask) {
     return result
 }
 
+/**
+ * `focusUserId` is who the replacement is being chosen FOR. It is only the task's owner by
+ * coincidence in the common single-assignee case: a reviewer handing a task on loses their OWN
+ * focus, not the owner's. AT-2193 makes that distinction matter, because the candidate list is now
+ * filtered by whether each task is still on that user's plate.
+ */
 function setOptimisticNextFocusTask(projectId, task, focusUserId = task.userId) {
-    const optimisticNext = getOptimisticNextFocusTask(projectId, task)
+    const optimisticNext = getOptimisticNextFocusTask(projectId, task, focusUserId)
     if (optimisticNext) {
         store.dispatch(setOptimisticFocusTask(optimisticNext.id, projectId, optimisticNext.parentGoalId, focusUserId))
     } else {
@@ -4034,6 +4046,8 @@ function beginWorkflowFocusHandoff(projectId, task, incomingReviewerId) {
     if (!shouldRelease) return null
 
     const handoffId = startFocusHandoff(task.id)
+    // The replacement is chosen for the user who is LOSING focus, who is not necessarily the task's
+    // owner — a reviewer handing the task on loses their own focus, not the owner's.
     setOptimisticNextFocusTask(projectId, task, focusUserId)
     return { focusUserId, handoffId }
 }
@@ -4112,6 +4126,8 @@ async function findAndSetNewFocusedTask(
             for (const doc of snapshot.docs) {
                 const task = { id: doc.id, ...doc.data() }
                 if (excludedTaskIds.has(task.id)) continue // AT-2191: never re-pick a just-released task
+                // AT-2193: skip tasks already handed on to another reviewer's workflow step.
+                if (!isTaskOnUserPlate(task, userId)) continue
                 // Verify it IS a calendar task and its explicit start time is within the window
                 if (task.calendarData && task.calendarData.start) {
                     const taskStartTimeString = task.calendarData.start.dateTime || task.calendarData.start.date
@@ -4166,12 +4182,22 @@ async function findAndSetNewFocusedTask(
         if (!openTasksSnapshot.empty) {
             const allTasksBeforeFilter = openTasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
             const allFetchedTasksInCurrentProject = allTasksBeforeFilter.filter(
-                task => task.dueDate <= endOfToday && !task.calendarData && !excludedTaskIds.has(task.id)
+                task =>
+                    task.dueDate <= endOfToday &&
+                    !task.calendarData &&
+                    !excludedTaskIds.has(task.id) &&
+                    // AT-2193: the query matches on ownership, which still includes tasks this user
+                    // has already handed on to the next workflow step's reviewer.
+                    isTaskOnUserPlate(task, userId)
             )
 
             // Log filtering results for current project
             const filteredOutTasks = allTasksBeforeFilter.filter(
-                task => task.dueDate > endOfToday || task.calendarData || excludedTaskIds.has(task.id)
+                task =>
+                    task.dueDate > endOfToday ||
+                    task.calendarData ||
+                    excludedTaskIds.has(task.id) ||
+                    !isTaskOnUserPlate(task, userId)
             )
 
             console.log(`[findAndSetNewFocusedTask] Current project ${currentProjectId} task analysis:`, {
@@ -4193,6 +4219,7 @@ async function findAndSetNewFocusedTask(
                               })(),
                               isCalendarTask: !!t.calendarData,
                               isExcludedTask: excludedTaskIds.has(t.id),
+                              parkedInOtherReviewersStep: !isTaskOnUserPlate(t, userId),
                           }))
                         : `${filteredOutTasks.length} tasks filtered (too many to log)`,
             })
@@ -4327,12 +4354,21 @@ async function findAndSetNewFocusedTask(
                 // Filter in memory for tasks that meet our criteria
                 const allTasksFromProject = otherProjectTasks.docs.map(doc => ({ id: doc.id, ...doc.data() }))
                 const validTasks = allTasksFromProject.filter(
-                    task => task.dueDate <= endOfToday && !task.calendarData && !excludedTaskIds.has(task.id)
+                    task =>
+                        task.dueDate <= endOfToday &&
+                        !task.calendarData &&
+                        !excludedTaskIds.has(task.id) &&
+                        // AT-2193: same rule as the current project.
+                        isTaskOnUserPlate(task, userId)
                 )
 
                 // Log why tasks were filtered out
                 const filteredOutTasks = allTasksFromProject.filter(
-                    task => task.dueDate > endOfToday || task.calendarData || excludedTaskIds.has(task.id)
+                    task =>
+                        task.dueDate > endOfToday ||
+                        task.calendarData ||
+                        excludedTaskIds.has(task.id) ||
+                        !isTaskOnUserPlate(task, userId)
                 )
 
                 console.log(`[findAndSetNewFocusedTask] Project ${pid} task analysis:`, {
