@@ -953,7 +953,6 @@
     "Next step for all": "Next step for all",
     "Reject all suggested tasks": "Reject all suggested tasks",
     "Reject all suggested tasks question": "{{count}} suggested tasks will be rejected at once. Do you really want to proceed?",
-    "Accept and mark done": "Accept and mark done",
     "Reject single suggested task question": "This suggested task will be rejected. Do you really want to proceed?",
     "Subtask": "Subtask",
     "Create subtask": "Create subtask",

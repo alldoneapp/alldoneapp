@@ -9,7 +9,6 @@ jest.mock('../../redux/store', () => ({
 }))
 jest.mock('./suggestedTaskBypass', () => ({
     canBypassSuggestedTaskWorkflow: jest.fn(),
-    getSuggestedTaskBypassLabel: jest.fn(() => 'Bypass workflow'),
     moveSuggestedTaskToDoneBypassingWorkflow: jest.fn(),
 }))
 jest.mock('../Feeds/Utils/HelperFunctions', () => ({
@@ -53,11 +52,7 @@ jest.mock('../TaskListView/Utils/TasksHelper', () => ({
 }))
 
 const store = require('../../redux/store')
-const {
-    canBypassSuggestedTaskWorkflow,
-    getSuggestedTaskBypassLabel,
-    moveSuggestedTaskToDoneBypassingWorkflow,
-} = require('./suggestedTaskBypass')
+const { canBypassSuggestedTaskWorkflow, moveSuggestedTaskToDoneBypassingWorkflow } = require('./suggestedTaskBypass')
 const SuggestedModal = require('./SuggestedModal').default
 
 const PROJECT_ID = 'project-1'
@@ -92,7 +87,6 @@ const renderModal = () => {
 describe('SuggestedModal workflow bypass', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        getSuggestedTaskBypassLabel.mockReturnValue('Bypass workflow')
         store.getState.mockReturnValue({
             smallScreenNavigation: false,
             loggedUser: { uid: 'owner-1' },
@@ -104,28 +98,11 @@ describe('SuggestedModal workflow bypass', () => {
         canBypassSuggestedTaskWorkflow.mockReturnValue(true)
         const { tree } = renderModal()
 
-        // The task has to be part of the decision: an assistant suggestion needs the bypass even
-        // when the project has no workflow (AT-2164).
         expect(canBypassSuggestedTaskWorkflow).toHaveBeenCalledWith(
-            expect.objectContaining({ uid: 'owner-1' }),
-            PROJECT_ID,
-            task
-        )
-        expect(tree.root.findAllByProps({ testID: 'bypass-workflow-button' }).length).toBeGreaterThan(0)
-    })
-
-    it('labels the bypass with what it actually does in this project', () => {
-        canBypassSuggestedTaskWorkflow.mockReturnValue(true)
-        getSuggestedTaskBypassLabel.mockReturnValue('Accept and mark done')
-        const { tree } = renderModal()
-
-        expect(getSuggestedTaskBypassLabel).toHaveBeenCalledWith(
             expect.objectContaining({ uid: 'owner-1' }),
             PROJECT_ID
         )
-        expect(tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.accessibilityLabel).toBe(
-            'Accept and mark done'
-        )
+        expect(tree.root.findAllByProps({ testID: 'bypass-workflow-button' }).length).toBeGreaterThan(0)
     })
 
     it('hides the bypass when there is no workflow to skip', () => {
