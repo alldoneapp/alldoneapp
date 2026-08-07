@@ -4,7 +4,7 @@ const admin = require('firebase-admin')
 const { google } = require('googleapis')
 const moment = require('moment-timezone')
 
-const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const {
     createMicrosoftCalendarEventForAssistantRequest,
     deleteMicrosoftCalendarEventForAssistantRequest,
@@ -210,10 +210,9 @@ function validateEventRange(start, end) {
 }
 
 async function getCalendarClient(userId, projectId) {
-    const accessToken = await getAccessToken(userId, projectId, 'calendar')
-    const oauth2Client = getOAuth2Client()
-    oauth2Client.setCredentials({ access_token: accessToken })
-    return google.calendar({ version: 'v3', auth: oauth2Client })
+    // Full refreshable credentials, not a bare access token (AT-2195).
+    const auth = await getAuthorizedOAuth2Client(userId, projectId, 'calendar')
+    return google.calendar({ version: 'v3', auth })
 }
 
 async function getConnectedCalendarAccounts(userId) {
