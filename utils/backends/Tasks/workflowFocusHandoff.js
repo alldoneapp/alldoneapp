@@ -14,6 +14,8 @@
  * (Cloud Functions cannot import from outside functions/).
  */
 
+import { isTaskOnUserPlate } from './focusTaskEligibility'
+
 /**
  * Whether `focusUserId` should hand their focus task off because `taskId` just moved to another
  * workflow step.
@@ -22,9 +24,11 @@
  * focus is mirrored in two places that can briefly disagree: the `loggedUser` slice (their own user
  * doc) and the project member list behind TasksHelper.getUserInProject.
  *
- * A user who is the step's INCOMING reviewer keeps the task: it just landed on their plate, which
- * is the opposite of it leaving. This is also what stops a backward move to Open from un-focusing
- * the owner it was just handed back to.
+ * The "incoming reviewer keeps the task" behaviour is not a special case: it falls out of the one
+ * rule shared with the focus pickers — a task may be your focus task exactly while it is on your
+ * plate (focusTaskEligibility.js). Expressing it that way is what keeps the release side and the
+ * selection side from disagreeing, which is the bug this ticket came back for: releasing focus is
+ * pointless if the replacement picked is itself parked in another reviewer's step.
  */
 export const shouldReleaseFocusOnWorkflowMove = ({
     taskId,
@@ -33,6 +37,6 @@ export const shouldReleaseFocusOnWorkflowMove = ({
     incomingReviewerId,
 } = {}) => {
     if (!taskId || !focusUserId) return false
-    if (focusUserId === incomingReviewerId) return false
+    if (isTaskOnUserPlate({ currentReviewerId: incomingReviewerId }, focusUserId)) return false
     return observedFocusTaskIds.some(observedId => observedId === taskId)
 }
