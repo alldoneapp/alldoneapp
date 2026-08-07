@@ -949,37 +949,36 @@ async function updateExistingMenubarNote(
 }
 
 // Assistants are stored per project (`assistants/{projectId}/items`) plus one shared
-// `assistants/globalProject/items` pool. Clients only ever watch the project they render
-// plus that global pool, so an assistant id from a *third* project cannot be resolved by
-// them at all — see `findNoteOwnerInProject` in
-// `components/NotesView/NoteFilters/noteOwnerFilterHelper.js`.
+// `assistants/globalProject/items` pool.
 const GLOBAL_ASSISTANTS_PROJECT_ID = 'globalProject'
 
 /**
  * Resolve the assistant the menubar acts as (feed author, note owner, note chat assistant).
  *
- * @param {string} [options.targetProjectId] The project the produced object lands in. When
- *   given, resolution is scoped to that project + globalProject so the resulting id is
- *   guaranteed to be resolvable by clients rendering that project (AT-2194). Without it the
- *   historical default-project behaviour is kept for the chat/message flows.
+ * This is deliberately the assistant from the user's DEFAULT project, matching the in-app
+ * default, and NOT the assistant configured on the project the note happens to land in: it is
+ * the assistant that actually transcribes and summarises the meeting (the Mac app stamps
+ * "Transcribed by <name>" into the note body), so it is the one that owns what it produced.
+ *
+ * The resulting id is resolvable by clients rendering any of the user's projects — assistants
+ * are looked up across projects, not just inside the rendered one (see `getAssistant` /
+ * `getUserPresentationDataInProject`). An earlier AT-2194 follow-up scoped this to the target
+ * project to dodge an "Unknown" owner chip in the notes list; that fixed the symptom in the
+ * wrong layer (it handed authorship to a project assistant that did none of the work) and the
+ * real gap — a missing cross-project fallback in `findNoteOwnerInProject` — is fixed instead.
  */
-async function getMenubarAssistantActor(db, userData, options = {}) {
+async function getMenubarAssistantActor(db, userData) {
     const defaultProjectId = typeof userData?.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
     const userDefaultAssistantId =
         typeof userData?.defaultAssistantId === 'string' ? userData.defaultAssistantId.trim() : ''
-    const targetProjectId = typeof options?.targetProjectId === 'string' ? options.targetProjectId.trim() : ''
-
-    // Everything we look up has to live where the object lands, otherwise the id we hand out
-    // is a phantom for every client rendering that project.
-    const lookupProjectId = targetProjectId || defaultProjectId
 
     const fetchAssistant = async candidateId => {
         if (!candidateId) return null
         const refs = []
         const refProjectIds = []
-        if (lookupProjectId) {
-            refs.push(db.doc(`assistants/${lookupProjectId}/items/${candidateId}`))
-            refProjectIds.push(lookupProjectId)
+        if (defaultProjectId) {
+            refs.push(db.doc(`assistants/${defaultProjectId}/items/${candidateId}`))
+            refProjectIds.push(defaultProjectId)
         }
         refs.push(db.doc(`assistants/${GLOBAL_ASSISTANTS_PROJECT_ID}/items/${candidateId}`))
         refProjectIds.push(GLOBAL_ASSISTANTS_PROJECT_ID)
@@ -1004,16 +1003,8 @@ async function getMenubarAssistantActor(db, userData, options = {}) {
 
     let resolved = null
 
-    // 0) The assistant configured on the project the object actually lands in. This is the
-    //    only candidate that is guaranteed to render for every member of that project.
-    if (targetProjectId) {
-        resolved = await fetchAssistant(await readProjectAssistantId(targetProjectId))
-    }
-
-    // 1) The default project's configured assistant. Scoped to the target project when there
-    //    is one, so a default-project-only assistant correctly falls through instead of
-    //    becoming an unresolvable owner somewhere else.
-    if (!resolved && defaultProjectId && defaultProjectId !== targetProjectId) {
+    // 1) The default project's configured assistant.
+    if (defaultProjectId) {
         resolved = await fetchAssistant(await readProjectAssistantId(defaultProjectId))
     }
 
@@ -1080,27 +1071,17 @@ async function getMenubarAssistantActor(db, userData, options = {}) {
 // assistant as well. The signed-in user stays the creator, a follower and the visible user,
 // exactly like the `create_note` tool.
 //
-// Falls back to the acting user whenever no assistant could be resolved *inside the note's
-// own project*. Two ids must never be written as an owner:
-//   - the actor's `anna-menubar` placeholder uid, which is not an assistant document at all;
-//   - an assistant belonging to a *different* project. Clients resolve a note owner against
-//     the note project's users/assistants plus the global assistant pool only, so a
-//     cross-project assistant id renders as the literal "Unknown" owner chip and a phantom
-//     entry in the owner filter. This is exactly what happened in production: a meeting note
-//     filed into another project was owned by the default project's assistant.
-function resolveMenubarNoteOwnerId(assistantActor, actingUserId, targetProjectId) {
+// Falls back to the acting user whenever no assistant could be resolved at all. The actor's
+// `anna-menubar` placeholder uid must never be written as an owner: it is not an assistant
+// document, so it would render an unresolvable avatar and a phantom owner-filter entry.
+//
+// A resolved assistant owns the note even when the note is filed into a project that assistant
+// does not belong to. That is the point of the feature — the assistant that produced the note
+// owns it — and it is resolvable on the client, which looks assistants up across the user's
+// projects rather than only inside the rendered one (AT-2194).
+function resolveMenubarNoteOwnerId(assistantActor, actingUserId) {
     const assistantId = typeof assistantActor?.assistantId === 'string' ? assistantActor.assistantId.trim() : ''
-    if (!assistantId) return actingUserId
-
-    const assistantProjectId =
-        typeof assistantActor?.assistantProjectId === 'string' ? assistantActor.assistantProjectId.trim() : ''
-    // A global assistant resolves in every project.
-    if (assistantProjectId === GLOBAL_ASSISTANTS_PROJECT_ID) return assistantId
-
-    const noteProjectId = typeof targetProjectId === 'string' ? targetProjectId.trim() : ''
-    if (noteProjectId && assistantProjectId === noteProjectId) return assistantId
-
-    return actingUserId
+    return assistantId || actingUserId
 }
 
 function normalizeNoteMove(rawMove) {
@@ -1279,11 +1260,7 @@ async function handleMenubarPushNote(req, res) {
             try {
                 const noteService = await getNoteService()
                 const notesBucketName = await noteService.getBucketName()
-                // The move feed is written into the *target* project, so its author has to
-                // resolve there too.
-                const assistantActor = await getMenubarAssistantActor(db, userData, {
-                    targetProjectId: resolution.projectId,
-                })
+                const assistantActor = await getMenubarAssistantActor(db, userData)
                 const sourceProjectDoc = await db.doc(`projects/${noteMove.sourceProjectId}`).get()
                 const sourceProject = sourceProjectDoc.exists ? sourceProjectDoc.data() || {} : {}
                 const { moveNoteToDifferentProject } = require('../shared/moveNoteToDifferentProject')
@@ -1454,11 +1431,10 @@ async function handleMenubarPushNote(req, res) {
         const enableAssistantChat = req.body?.enableAssistantChat === true
         const privacy = resolveMenubarNotePrivacy(userId, req.body?.isPrivate)
 
-        // Scoped to the project the note lands in: the actor is the note's feed author, its
-        // owner and its chat assistant, and all three must resolve inside that project.
-        const assistantActor = await getMenubarAssistantActor(db, userData, {
-            targetProjectId: resolution.projectId,
-        })
+        // The actor is the note's feed author, its owner and its chat assistant: the assistant
+        // that actually transcribed and summarised the meeting, regardless of which project
+        // the note is filed into.
+        const assistantActor = await getMenubarAssistantActor(db, userData)
         const feedUser = assistantActor.feedUser
 
         let noteResult
@@ -1477,7 +1453,7 @@ async function handleMenubarPushNote(req, res) {
                     // note stays visible for. `ownerId` is what the notes list avatar and
                     // the owner filter read (AT-2194).
                     userId,
-                    ownerId: resolveMenubarNoteOwnerId(assistantActor, userId, resolution.projectId),
+                    ownerId: resolveMenubarNoteOwnerId(assistantActor, userId),
                     creatorId: userId,
                     projectId: resolution.projectId,
                     assistantId: assistantActor.assistantId,

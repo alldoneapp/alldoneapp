@@ -1,5 +1,6 @@
 import store from '../../../redux/store'
 import { WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
+import { getAssistantFromState } from '../../AdminPanel/Assistants/assistantStateLookup'
 
 /**
  * Helpers backing the notes list owner filter (AT-2194).
@@ -21,8 +22,11 @@ export const getNoteOwnerId = note => {
 }
 
 /**
- * Look an owner id up across every entity that can own a note in the project.
- * Returns null when nothing matches (removed member, cross-project leftovers).
+ * Look an owner id up across every entity that can own a note in the project, then fall back
+ * to an assistant from any other project the user has loaded.
+ *
+ * Returns null only when nothing matches at all (a removed member, or an assistant living in
+ * a project this user is not a member of).
  */
 export const findNoteOwnerInProject = (projectId, ownerId) => {
     if (!ownerId || ownerId === NOTE_OWNER_UNASSIGNED) return null
@@ -46,16 +50,40 @@ export const findNoteOwnerInProject = (projectId, ownerId) => {
     const workstream = projectWorkstreams?.[projectId]?.find(item => item.uid === ownerId)
     if (workstream) return { ...workstream, isAssistant: false, isWorkstream: true }
 
+    // Last: an assistant from ANOTHER of the user's projects (AT-2194 production bug).
+    //
+    // An object in project A legitimately keeps an assistant from the user's default project
+    // — that is deliberate, long-standing behaviour, not drift (see
+    // `getAssignedAssistantInProjectContext` in `AdminPanel/Assistants/assistantsHelper.js`:
+    // "Objects can keep using an assistant from the user's default project even when they
+    // live in another project"). The Mac menubar meeting-notes flow does exactly this: the
+    // assistant that transcribes and summarises the meeting is the user's default assistant,
+    // and it owns the note it produced no matter which project the note is filed into.
+    //
+    // Every other owner/author resolver in the app already handles that with a cross-project
+    // assistant fallback — `getUserPresentationDataInProject` (ContactsHelper, used by the
+    // feeds and chat lists) and `TasksHelper.getTaskOwner` both fall back to `getAssistant`.
+    // This helper was the one place that stopped at the project boundary, which is why the
+    // feed entry read "Anna Alldone has created the note" while the notes list right next to
+    // it rendered the literal "Unknown" owner chip for the same note.
+    //
+    // Note the asymmetry, which is intentional and mirrors the established resolvers: only
+    // ASSISTANTS get a cross-project fallback. A human/contact/workstream from another
+    // project is not a meaningful owner here and still resolves to nothing.
+    const crossProjectAssistant = getAssistantFromState(store.getState(), ownerId)
+    if (crossProjectAssistant) return { ...crossProjectAssistant, isAssistant: true }
+
     return null
 }
 
 /**
  * The owner a note should keep when it is moved into `targetProjectId`.
  *
- * Owners are project-scoped: a member, assistant, contact or workstream of project A means
- * nothing in project B, where it would render as the "Unknown" owner chip. So the owner only
- * survives a move when it still resolves in the target project; otherwise the note goes back
- * to the acting user.
+ * Humans, contacts and workstreams are project-scoped: a member of project A means nothing in
+ * project B, where it would render as the "Unknown" owner chip, so such an owner is handed
+ * back to the acting user. An ASSISTANT owner survives the move, because assistants resolve
+ * across the user's projects (see `findNoteOwnerInProject`) and the assistant that produced a
+ * note keeps having produced it after the note is filed somewhere else.
  *
  * Historically this was a plain "is the owner one of the target project's *users*" check,
  * which silently stripped ownership from every assistant-owned note (AT-2194) because an
