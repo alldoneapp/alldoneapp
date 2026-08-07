@@ -1253,3 +1253,182 @@ describe('a VM job that stops to ask the user a question', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).failureReason).toBe('vm_timeout')
     })
 })
+
+// The regression AT-2188 left behind. A run is bound to the VM job it parked on; when that job dies
+// the run settles `failed` and the task correctly stays on the step. Retrying by starting another VM
+// task in the thread produces a job that belongs to no run, so before this its success — Merge
+// Request and all — moved nothing. It only looked fine while a VM *question* still performed a
+// forward move of its own, which advanced the step whether or not the work had succeeded.
+describe('a step retried by a later VM job after its own run failed', () => {
+    const RUN_ID = 'run-vm-retry'
+    const CORRELATION = 'vm-crashed'
+    const RETRY_CORRELATION = 'vm-retry'
+    const run = { projectId: PROJECT, taskId: TASK, stepId: AI_STEP, assistantId: ASSISTANT, assigneeUserId: ASSIGNEE }
+
+    const seedJob = (correlationId, status, overrides = {}) => {
+        const job = {
+            kind: 'vm_job',
+            correlationId,
+            projectId: PROJECT,
+            objectId: TASK,
+            createdAt: Date.now(),
+            status,
+            ...overrides,
+        }
+        mockStore.set(`pendingWebhooks/${correlationId}`, job)
+        return job
+    }
+
+    // Everything up to and including the crash: the step ran, dispatched its VM, the VM died, and the
+    // run settled `failed` with the task still sitting on the assistant step.
+    const failTheStep = async () => {
+        mockGeneratePreConfigTaskResult.mockImplementationOnce(async () => {
+            seedJob(CORRELATION, 'initiated')
+            return { success: true }
+        })
+        await runWorkflowAiStep(RUN_ID, run)
+        seedJob(CORRELATION, 'failed')
+        await resolveAwaitingVmRuns({ now: Date.now() })
+    }
+
+    // The retry has to look like one: started after the step failed, on the same task.
+    const seedRetry = (status, overrides = {}) =>
+        seedJob(RETRY_CORRELATION, status, {
+            createdAt: (mockStore.get(`workflowAiRuns/${RUN_ID}`).settledAt || Date.now()) + 1000,
+            ...overrides,
+        })
+
+    beforeEach(async () => {
+        seedAssignee()
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
+        mockStore.set(`workflowAiRuns/${RUN_ID}`, { ...run, status: 'running', createdAt: 1000 })
+        await failTheStep()
+    })
+
+    it('leaves the task on the failed step until something finishes its work', () => {
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({ stepHistory: [-1, AI_STEP] })
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: 'failed',
+            failureReason: 'vm_failed',
+        })
+    })
+
+    it('advances exactly one step when the retry succeeds', async () => {
+        const retry = seedRetry('completed')
+
+        expect(await resolveWorkflowRunsForSettledVmJob(retry, Date.now())).toBe(1)
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
+            stepHistory: [-1, AI_STEP, NEXT_STEP],
+            currentReviewerId: HUMAN_REVIEWER,
+        })
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
+            status: 'completed',
+            recoveredByCorrelationId: RETRY_CORRELATION,
+        })
+        expect(mockCreateTaskMovedInWorkflowFeed).toHaveBeenCalledTimes(1)
+    })
+
+    it('advances after the retry stopped to ask a question and the answer let it finish', async () => {
+        // The question holds only the reviewer (see vmInteraction); the step itself never moves.
+        seedRetry('awaiting_user', { interactionExpiresAt: Date.now() + 24 * 60 * 60 * 1000 })
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
+            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
+            currentReviewerId: ASSIGNEE,
+            vmInteractionWorkflowStep: { correlationId: RETRY_CORRELATION, previousReviewerId: ASSISTANT },
+        })
+        expect(await resolveWorkflowRunsForSettledVmJob(mockStore.get(`pendingWebhooks/${RETRY_CORRELATION}`))).toBe(0)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
+
+        // Answered: the hold is released, the VM resumes, opens its Merge Request and completes.
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
+            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
+            currentReviewerId: ASSISTANT,
+            vmInteractionWorkflowStep: null,
+        })
+        const finished = seedRetry('completed', { interactionExpiresAt: 0 })
+
+        expect(await resolveWorkflowRunsForSettledVmJob(finished, Date.now())).toBe(1)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`)).toMatchObject({
+            stepHistory: [-1, AI_STEP, NEXT_STEP],
+            currentReviewerId: HUMAN_REVIEWER,
+        })
+    })
+
+    it('does not advance twice when the retry completion is redelivered', async () => {
+        const retry = seedRetry('completed')
+
+        expect(await resolveWorkflowRunsForSettledVmJob(retry, Date.now())).toBe(1)
+        expect(await resolveWorkflowRunsForSettledVmJob(retry, Date.now())).toBe(0)
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
+        expect(mockCreateTaskMovedInWorkflowFeed).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not advance when the retry failed or was cancelled too', async () => {
+        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('failed'), Date.now())).toBe(0)
+        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('cancelled'), Date.now())).toBe(0)
+
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('failed')
+    })
+
+    it('ignores work that was already running when the step failed, which that settlement weighed', async () => {
+        const older = seedJob('vm-older', 'completed', {
+            createdAt: (mockStore.get(`workflowAiRuns/${RUN_ID}`).settledAt || Date.now()) - 1000,
+        })
+
+        expect(await resolveWorkflowRunsForSettledVmJob(older, Date.now())).toBe(0)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
+    })
+
+    it('leaves a task a human already moved on where they put it', async () => {
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
+            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
+            stepHistory: [-1, AI_STEP, NEXT_STEP],
+            currentReviewerId: HUMAN_REVIEWER,
+        })
+
+        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('completed'), Date.now())).toBe(0)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
+    })
+
+    it('never reopens a step that already completed, so a late VM job cannot double-advance it', async () => {
+        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('completed'), Date.now())).toBe(1)
+
+        const late = seedJob('vm-late', 'completed', { createdAt: Date.now() + 5000 })
+        expect(await resolveWorkflowRunsForSettledVmJob(late, Date.now())).toBe(0)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
+    })
+
+    it('leaves a step its own parked run still owns to that run, unrecovered', async () => {
+        // Rewind to a thread whose first job never crashed: the run is still parked, so the normal
+        // path owns the advance and the recovery must not reach the same step behind it.
+        mockStore.delete(`pendingWebhooks/${CORRELATION}`)
+        mockStore.set(`workflowAiRuns/${RUN_ID}`, {
+            ...run,
+            status: RUN_STATUS_AWAITING_VM,
+            createdAt: 1000,
+            awaitingAnyTaskVm: true,
+            awaitingCorrelationIds: [RETRY_CORRELATION],
+            awaitingSince: Date.now(),
+            awaitingUntil: Date.now() + AWAITING_VM_TIMEOUT_MS,
+        })
+        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, {
+            ...mockStore.get(`items/${PROJECT}/tasks/${TASK}`),
+            workflowAiStatus: { runId: RUN_ID, stepId: AI_STEP, status: RUN_STATUS_AWAITING_VM },
+        })
+
+        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('completed'), Date.now())).toBe(1)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
+        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).recoveredByCorrelationId).toBeUndefined()
+        expect(mockCreateTaskMovedInWorkflowFeed).toHaveBeenCalledTimes(1)
+    })
+
+    it('stays out of the way when the step is no longer an AI step', async () => {
+        seedAssignee({ [AI_STEP]: humanStep(), [NEXT_STEP]: humanStep() })
+
+        expect(await resolveWorkflowRunsForSettledVmJob(seedRetry('completed'), Date.now())).toBe(0)
+        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
+    })
+})

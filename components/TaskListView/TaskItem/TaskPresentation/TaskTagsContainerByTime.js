@@ -82,15 +82,10 @@ export default function TaskTagsContainerByTime({
                         {task && task.time && !task.calendarData && (
                             <TimeTagWrapper projectId={projectId} task={task} />
                         )}
-                        {/* A calendar task keeps its calendar tag once done so it stays recognizable as a
-                            calendar event. Its completedTime is derived from the event slot itself
-                            (getTaskCompletedTime), so the completed time tag would only duplicate it. */}
-                        {task && task.calendarData && (
+                        {task && task.calendarData && !task.completedTime && (
                             <CalendarTag calendarData={task.calendarData} containerStyle={{ marginRight: 8 }} />
                         )}
-                        {!inOpenSection && task && task.completedTime && !task.calendarData && (
-                            <CompletedTimeTag task={task} />
-                        )}
+                        {!inOpenSection && task && task.completedTime && <CompletedTimeTag task={task} />}
                         {leadingPriorityTag}
                     </View>
                     <View onLayout={onLayoutInRightArea} style={{ flexDirection: 'row', alignItems: 'center' }}>
