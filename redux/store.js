@@ -346,7 +346,6 @@ export const initialState = {
     optimisticFocusTaskId: null,
     optimisticFocusTaskProjectId: null,
     optimisticFocusGoalId: null,
-    optimisticFocusUserId: null,
     optimisticFocusActive: false,
     myDayAllTodayTasks: {},
     myDaySelectedTasks: [],
@@ -1217,7 +1216,6 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: action.optimisticFocusTaskId,
                 optimisticFocusTaskProjectId: action.optimisticFocusTaskProjectId,
                 optimisticFocusGoalId: action.optimisticFocusGoalId,
-                optimisticFocusUserId: action.optimisticFocusUserId || null,
                 optimisticFocusActive: true,
             }
         }
@@ -1227,7 +1225,6 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: null,
                 optimisticFocusTaskProjectId: null,
                 optimisticFocusGoalId: null,
-                optimisticFocusUserId: null,
                 optimisticFocusActive: false,
             }
         }
