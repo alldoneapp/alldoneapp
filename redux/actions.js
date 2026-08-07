@@ -1831,19 +1831,6 @@ export const setTaskVmStateFilters = vmStates => {
     return action
 }
 
-export const clearNoteOwnerFilters = () => {
-    const action = { type: 'Clear note owner filters' }
-    return action
-}
-
-export const setNoteOwnerFilters = ownerIds => {
-    const action = {
-        type: 'Set note owner filters',
-        ownerIds,
-    }
-    return action
-}
-
 export const updateTaskVmState = (taskKey, vmState) => {
     const action = {
         type: 'Update task VM state',

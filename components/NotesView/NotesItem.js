@@ -6,7 +6,7 @@ import moment from 'moment'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import ContactsHelper from '../ContactsView/Utils/ContactsHelper'
 import SocialText from '../UIControls/SocialText/SocialText'
-import { shallowEqual, useDispatch, useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import SharedHelper from '../../utils/SharedHelper'
 import BacklinksTag from '../Tags/BacklinksTag'
 import PrivacyTag from '../Tags/PrivacyTag'
@@ -27,8 +27,6 @@ import URLTrigger from '../../URLSystem/URLTrigger'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from '../RootView/Themes'
 import LastEditionData from './LastEditionData'
-import Avatar from '../Avatar'
-import { resolveNoteOwner } from './NoteFilters/noteOwnerFilterHelper'
 
 const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommentPopup, onPress }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -39,10 +37,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
     let hasTasks = false
     const trimmedPreview = note.preview.trim()
     const emptyNote = !hasTasks && trimmedPreview.length === 0
-    // The owner of a note can be an assistant since AT-2194, so resolve against assistants
-    // as well as project members. Selector form (rather than a bare store read) so the row
-    // repaints once the assistants/users slices finish loading.
-    const noteOwner = useSelector(() => resolveNoteOwner(project.id, note.userId), shallowEqual)
+    const noteOwner = TasksHelper.getUserInProject(project.id, note.userId)
     const accessGranted = SharedHelper.accessGranted(loggedUser, project.id)
     const { backlinksTasksCount, backlinkTaskObject, backlinksNotesCount, backlinkNoteObject } = useBacklinks(
         project.id,
@@ -331,11 +326,9 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                                             />
                                         )}
                                         <View style={localStyles.userImageContainer}>
-                                            <Avatar
-                                                avatarId={note.userId}
-                                                reviewerPhotoURL={noteOwner?.photoURL}
-                                                size={20}
-                                                borderSize={2}
+                                            <Image
+                                                source={{ uri: noteOwner?.photoURL }}
+                                                style={localStyles.userImage}
                                             />
                                         </View>
                                     </View>
@@ -459,6 +452,11 @@ const localStyles = StyleSheet.create({
     },
     userImageContainer: {
         marginLeft: 8,
+    },
+    userImage: {
+        width: 24,
+        height: 24,
+        borderRadius: 100,
     },
     swipeContainer: {
         height: '100%',
