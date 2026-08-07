@@ -47,7 +47,37 @@ function buildDetailRow(label, valueHtml) {
     )
 }
 
-function buildHostEmailHtml({ visitorName, visitorEmail, note, meetingTimeText, durationMinutes, eventHtmlLink }) {
+// A conferencing link is only rendered when the calendar provider actually
+// created one; bookings on a tenant that blocks Meet/Teams simply omit the row.
+function buildJoinRow(joinUrl) {
+    if (!joinUrl) return ''
+    return buildDetailRow(
+        'Join',
+        `<a href="${escapeHtml(joinUrl)}" style="color: #2563eb; text-decoration: none; word-break: break-all;">` +
+            `${escapeHtml(joinUrl)}</a>`
+    )
+}
+
+function buildPrimaryButton(url, label) {
+    if (!url) return ''
+    return (
+        `<div style="margin: 28px 0 8px 0;">` +
+        `<a href="${escapeHtml(url)}" ` +
+        `style="display: inline-block; background: #2563eb; color: #ffffff; text-decoration: none; ` +
+        `font-size: 14px; font-weight: 600; padding: 12px 22px; border-radius: 8px;">${escapeHtml(label)}</a>` +
+        `</div>`
+    )
+}
+
+function buildHostEmailHtml({
+    visitorName,
+    visitorEmail,
+    note,
+    meetingTimeText,
+    durationMinutes,
+    eventHtmlLink,
+    joinUrl,
+}) {
     const rows = [
         buildDetailRow('Name', escapeHtml(visitorName)),
         buildDetailRow(
@@ -59,17 +89,17 @@ function buildHostEmailHtml({ visitorName, visitorEmail, note, meetingTimeText, 
     ]
     if (meetingTimeText) rows.push(buildDetailRow('When', escapeHtml(meetingTimeText)))
     if (Number.isFinite(durationMinutes)) rows.push(buildDetailRow('Duration', `${durationMinutes} minutes`))
+    const joinRow = buildJoinRow(joinUrl)
+    if (joinRow) rows.push(joinRow)
     if (note) {
         rows.push(buildDetailRow('Note', escapeHtml(note).replace(/\n/g, '<br />')))
     }
 
-    const calendarButton = eventHtmlLink
-        ? `<div style="margin: 28px 0 8px 0;">` +
-          `<a href="${escapeHtml(eventHtmlLink)}" ` +
-          `style="display: inline-block; background: #2563eb; color: #ffffff; text-decoration: none; ` +
-          `font-size: 14px; font-weight: 600; padding: 12px 22px; border-radius: 8px;">View in your calendar</a>` +
-          `</div>`
-        : ''
+    // The join link is what the host actually needs at meeting time, so it wins
+    // the primary button when there is one.
+    const calendarButton = joinUrl
+        ? buildPrimaryButton(joinUrl, 'Join the meeting')
+        : buildPrimaryButton(eventHtmlLink, 'View in your calendar')
 
     return (
         `<div style="background: #f3f4f6; padding: 32px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">` +
@@ -104,6 +134,7 @@ async function sendBookingNotificationToHost({
     timeZone,
     durationMinutes,
     eventHtmlLink,
+    joinUrl,
 }) {
     try {
         const hostData = (await getUserData(userId)) || {}
@@ -124,6 +155,7 @@ async function sendBookingNotificationToHost({
             meetingTimeText,
             durationMinutes,
             eventHtmlLink,
+            joinUrl,
         })
 
         const sendSmtpEmail = {
@@ -158,25 +190,36 @@ function buildAlldonePitchFooter() {
     )
 }
 
-function buildVisitorEmailHtml({ visitorName, hostName, note, meetingTimeText, durationMinutes }) {
+function buildVisitorEmailHtml({ visitorName, hostName, note, meetingTimeText, durationMinutes, joinUrl }) {
     const safeHostName = escapeHtml(hostName) || 'your host'
     const rows = []
     rows.push(buildDetailRow('With', safeHostName))
     if (meetingTimeText) rows.push(buildDetailRow('When', escapeHtml(meetingTimeText)))
     if (Number.isFinite(durationMinutes)) rows.push(buildDetailRow('Duration', `${durationMinutes} minutes`))
+    const joinRow = buildJoinRow(joinUrl)
+    if (joinRow) rows.push(joinRow)
     if (note) {
         rows.push(buildDetailRow('Your note', escapeHtml(note).replace(/\n/g, '<br />')))
     }
+
+    // This email is the visitor's only reliable channel: the calendar insert
+    // does not send Google/Graph invitations, so if the link is not here the
+    // visitor has to hunt for it in their own calendar copy.
+    const intro = joinUrl
+        ? `Hi ${escapeHtml(visitorName) || 'there'}, your meeting with ${safeHostName} is booked. ` +
+          `Use the link below to join at the scheduled time, and reply to this email if you need to make a change.`
+        : `Hi ${escapeHtml(visitorName) || 'there'}, your meeting with ${safeHostName} is booked. ` +
+          `You'll find it on your calendar and can reply to this email if you need to make a change.`
 
     return (
         `<div style="background: #f3f4f6; padding: 32px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">` +
         `<div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">` +
         `<h1 style="margin: 0 0 8px 0; font-size: 20px; color: #111827;">Your meeting is confirmed</h1>` +
         `<p style="margin: 0 0 24px 0; font-size: 15px; color: #4b5563; line-height: 1.5;">` +
-        `Hi ${escapeHtml(visitorName) || 'there'}, your meeting with ${safeHostName} is booked. ` +
-        `You'll find it on your calendar and can reply to this email if you need to make a change.` +
+        intro +
         `</p>` +
         `<table style="width: 100%; border-collapse: collapse;">${rows.join('')}</table>` +
+        buildPrimaryButton(joinUrl, 'Join the meeting') +
         `</div>` +
         buildAlldonePitchFooter() +
         `</div>`
@@ -197,6 +240,7 @@ async function sendBookingConfirmationToVisitor({
     end,
     timeZone,
     durationMinutes,
+    joinUrl,
 }) {
     try {
         if (!visitorEmail || visitorEmail === EXCLUDED_EMAIL) return
@@ -214,6 +258,7 @@ async function sendBookingConfirmationToVisitor({
             note,
             meetingTimeText,
             durationMinutes,
+            joinUrl,
         })
 
         const subject = hostName ? `Meeting confirmed with ${hostName}` : 'Your meeting is confirmed'

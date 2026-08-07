@@ -4,6 +4,8 @@ const admin = require('firebase-admin')
 const moment = require('moment-timezone')
 const { buildQuery, encodePath, getMicrosoftGraphClient } = require('../../MicrosoftGraph/graphClient')
 const { normalizeEmailAddress, resolveCalendarConnection } = require('../../Integrations/providerConnections')
+const { extractMeetingJoinUrl } = require('../meetingJoinUrl')
+const { buildMicrosoftOnlineMeetingFields, isConferencingRejection, shouldAddConferencing } = require('../conferencing')
 
 const DEFAULT_CALENDAR_ID = 'primary'
 const DEFAULT_SEARCH_LIMIT = 10
@@ -445,6 +447,33 @@ async function resolveAccountForWrite(userId, calendarId) {
     }
 }
 
+/**
+ * Create the Graph event, asking for a Teams online meeting.
+ *
+ * Google Meet cannot be provisioned on a Microsoft calendar, so a Teams meeting
+ * is the equivalent guarantee: every meeting Alldone books carries a join link.
+ * Best-effort, exactly like the Google path — a tenant that refuses online
+ * meetings still gets its event.
+ */
+async function createGraphEventWithConferencing(client, payload, wantsConferencing) {
+    if (!wantsConferencing) {
+        return await client.request('/me/events', { method: 'POST', body: JSON.stringify(payload) })
+    }
+
+    const conferencingPayload = { ...payload, ...buildMicrosoftOnlineMeetingFields() }
+    try {
+        return await client.request('/me/events', { method: 'POST', body: JSON.stringify(conferencingPayload) })
+    } catch (error) {
+        if (!isConferencingRejection(error)) throw error
+        console.log(
+            `createMicrosoftCalendarEvent: Teams conferencing was rejected (${
+                error?.message || 'unknown error'
+            }); creating the event without a meeting link`
+        )
+        return await client.request('/me/events', { method: 'POST', body: JSON.stringify(payload) })
+    }
+}
+
 async function createMicrosoftCalendarEventForAssistantRequest(args) {
     const summary = safeTrim(args.summary)
     if (!summary) return { success: false, message: 'A calendar event summary is required.' }
@@ -454,15 +483,26 @@ async function createMicrosoftCalendarEventForAssistantRequest(args) {
 
     const payload = buildEventPayload({ ...args, summary }, { requireRange: true })
     const client = await getMicrosoftGraphClient(args.userId, resolution.account.projectId, 'calendar')
-    const event = await client.request('/me/events', { method: 'POST', body: JSON.stringify(payload) })
+    // Decide from the caller's own start value: buildEventPayload flattens an
+    // all-day `{ date }` into a Graph `{ dateTime }`, which would hide it.
+    const wantsConferencing = shouldAddConferencing({ start: args.start }, args.addConferencing)
+    const event = await createGraphEventWithConferencing(client, payload, wantsConferencing)
+
+    const normalizedEvent = normalizeCalendarEvent(event, resolution.account, resolution.calendarId, true)
+    const joinLink = extractMeetingJoinUrl(normalizedEvent)
+
     return {
         success: true,
         provider: 'microsoft',
         calendarEmail: resolution.account.calendarEmail,
         projectId: resolution.account.projectId,
         calendarId: resolution.calendarId,
-        event: normalizeCalendarEvent(event, resolution.account, resolution.calendarId, true),
-        message: 'Calendar event created successfully.',
+        event: normalizedEvent,
+        joinUrl: joinLink?.joinUrl || '',
+        joinProvider: joinLink?.joinProvider || '',
+        message: joinLink?.joinUrl
+            ? 'Calendar event created successfully with a Microsoft Teams link.'
+            : 'Calendar event created successfully.',
     }
 }
 
