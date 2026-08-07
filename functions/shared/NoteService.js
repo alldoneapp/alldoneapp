@@ -268,6 +268,12 @@ class NoteService {
     /**
      * Create a complete note object
      * @param {Object} params - Note creation parameters
+     * @param {string} params.userId - The acting user (who requested the note). Stays the
+     *   creator/follower and keeps the note visible in that user's "Followed" notes tab.
+     * @param {string} [params.ownerId] - The note owner shown in the notes list and used by
+     *   the owner filter. Defaults to `params.userId`. Assistant-created notes pass the
+     *   assistant id here so the assistant owns what it produced (AT-2194).
+     * @param {string} [params.creatorId] - Explicit creator override. Defaults to `params.userId`.
      * @returns {Object} Complete note object
      */
     async buildNote(params) {
@@ -285,6 +291,20 @@ class NoteService {
         const cleanTitle = params.title.trim()
         const extendedTitle = params.extendedTitle || cleanTitle
 
+        // Ownership vs. authorship are separate concerns. `userId` on the note is the OWNER
+        // (avatar in the notes list, owner filter); `creatorId` records who asked for it.
+        // They are the same person for every human-created note, so the defaults below keep
+        // the historical behaviour byte-for-byte when no override is supplied.
+        const actingUserId = params.userId
+        const ownerId = params.ownerId || actingUserId
+        const creatorId = params.creatorId || actingUserId
+
+        // The acting user must stay reachable through the access/visibility arrays even when
+        // somebody else owns the note, otherwise an assistant-owned note would silently drop
+        // out of the requesting user's default "Followed" notes tab.
+        const withActingUser = ids =>
+            Array.from(new Set(ids.filter(id => id !== undefined && id !== null && id !== '')))
+
         // Create note object following Alldone patterns (matching frontend structure)
         const note = {
             id: noteId,
@@ -292,21 +312,21 @@ class NoteService {
             extendedTitle: extendedTitle,
             description: params.description || '', // Not used for content in notes
             preview: this.generatePreview(params.content, cleanTitle),
-            userId: params.userId,
-            creatorId: params.userId,
+            userId: ownerId,
+            creatorId: creatorId,
             projectId: params.projectId,
 
             // Privacy settings
             isPrivate: params.isPrivate || false,
             isPremium: false, // Default for assistant-created notes
-            isPublicFor: params.isPublicFor || [0, params.userId],
-            isVisibleInFollowedFor: params.isPublicFor || [params.userId],
+            isPublicFor: params.isPublicFor || withActingUser([0, actingUserId, ownerId]),
+            isVisibleInFollowedFor: params.isPublicFor || withActingUser([actingUserId]),
 
             // Timestamps - Frontend expects both 'created' and 'createdAt'
             created: now,
             createdAt: now,
             lastEditionDate: now,
-            lastEditorId: params.userId,
+            lastEditorId: actingUserId,
 
             // Comments data
             commentsData: {
@@ -319,7 +339,7 @@ class NoteService {
             hasStar: '#ffffff', // Default highlight color
             shared: false,
             views: 0,
-            followersIds: [params.userId],
+            followersIds: withActingUser([actingUserId]),
 
             // Sticky note settings
             stickyData: {
