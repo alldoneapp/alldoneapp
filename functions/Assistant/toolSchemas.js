@@ -1954,7 +1954,7 @@ const toolSchemas = {
         function: {
             name: 'create_calendar_event',
             description:
-                'Create a Google Calendar event in a connected account. Use ISO 8601 times only. For timed events provide start/end as ISO strings or {dateTime,timeZone}; for all-day events provide {date}.',
+                'Create a Google Calendar event in a connected account. Use ISO 8601 times only. For timed events provide start/end as ISO strings or {dateTime,timeZone}; for all-day events provide {date}. Timed events automatically get a video conferencing link (Google Meet, or Microsoft Teams on Outlook calendars) — never put a placeholder meeting link in the description or location, and read the returned joinUrl to tell the user where to join.',
             parameters: {
                 type: 'object',
                 properties: {
