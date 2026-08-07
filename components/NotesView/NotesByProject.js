@@ -16,8 +16,6 @@ import { isEqual } from 'lodash'
 import { filterNotes, filterStickyNotes } from '../HashtagFilters/FilterHelpers/FilterNotes'
 import NotesHeader from './NotesHeader'
 import NoteMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Notes/NoteMoreButton'
-import NoteOwnerFiltersLine from './NoteFilters/NoteOwnerFiltersLine'
-import { filterNotesByOwner, filterStickyNotesByOwner } from './NoteFilters/noteOwnerFilterHelper'
 
 export default class NotesByProject extends PureComponent {
     constructor(props) {
@@ -29,12 +27,9 @@ export default class NotesByProject extends PureComponent {
             stickyNotes: [],
             filteredNotes: {},
             filteredStickyNotes: [],
-            hashtagFilteredNotes: {},
-            hashtagFilteredStickyNotes: [],
             pressedShowMore: false,
             needShowMoreButton: false,
             hashtagFilters: Array.from(storeState.hashtagFilters.keys()),
-            noteOwnerFilters: storeState.noteOwnerFilters,
             unsubscribe: store.subscribe(this.updateState),
         }
 
@@ -51,7 +46,7 @@ export default class NotesByProject extends PureComponent {
     }
 
     componentDidUpdate(prevProps, prevState) {
-        const { pressedShowMore, notes, stickyNotes, hashtagFilters, noteOwnerFilters } = this.state
+        const { pressedShowMore, notes, stickyNotes, hashtagFilters } = this.state
         const { filterBy, maxNotesToRender, project } = this.props
 
         const filterChanged = prevProps.filterBy !== filterBy
@@ -67,19 +62,16 @@ export default class NotesByProject extends PureComponent {
             this.watchNotesNeedShowMoreButton()
         }
 
-        // `updateState` runs on every store dispatch, so this comparison is hot. The notes
-        // watchers always hand setState a freshly built object/array, so identity is a
-        // sufficient (and much cheaper) change signal than a deep compare of the whole map.
-        // The filter arrays do need a value compare: hashtagFilters is rebuilt from the
-        // store's Map on each dispatch and would otherwise look changed every time.
-        const filtersChanged =
-            !isEqual(prevState.hashtagFilters, hashtagFilters) || !isEqual(prevState.noteOwnerFilters, noteOwnerFilters)
-
-        if (filtersChanged || prevState.notes !== notes) {
-            this.filterNotes()
-        }
-        if (filtersChanged || prevState.stickyNotes !== stickyNotes) {
-            this.filterStickyNotes()
+        if (hashtagFilters.length > 0) {
+            if (!isEqual(prevState.hashtagFilters, hashtagFilters) || !isEqual(prevState.notes, notes)) {
+                this.filterNotes()
+            }
+            if (!isEqual(prevState.hashtagFilters, hashtagFilters) || !isEqual(prevState.stickyNotes, stickyNotes)) {
+                this.filterStickyNotes()
+            }
+        } else {
+            this.setState({ filteredNotes: notes })
+            this.setState({ filteredStickyNotes: stickyNotes })
         }
     }
 
@@ -92,7 +84,6 @@ export default class NotesByProject extends PureComponent {
         const storeState = store.getState()
         this.setState({
             hashtagFilters: Array.from(storeState.hashtagFilters.keys()),
-            noteOwnerFilters: storeState.noteOwnerFilters,
         })
     }
 
@@ -295,27 +286,14 @@ export default class NotesByProject extends PureComponent {
         }
     }
 
-    // Hashtag filters and the owner filter compose: a note has to satisfy both. Each helper
-    // returns the original reference when its filter is inactive, so with no filters at all
-    // `filteredNotes` stays reference-equal to `notes` and the PureComponent does not churn.
-    // The intermediate hashtag-only result is kept so the owner chips can count what the
-    // hashtag filter left on screen without collapsing to the owner already selected.
     filterNotes = () => {
-        const { notes, hashtagFilters, noteOwnerFilters } = this.state
-        const byHashtag = hashtagFilters.length > 0 ? filterNotes(notes) : notes
-        this.setState({
-            hashtagFilteredNotes: byHashtag,
-            filteredNotes: filterNotesByOwner(byHashtag, noteOwnerFilters),
-        })
+        const { notes } = this.state
+        this.setState({ filteredNotes: filterNotes(notes) })
     }
 
     filterStickyNotes = () => {
-        const { stickyNotes, hashtagFilters, noteOwnerFilters } = this.state
-        const byHashtag = hashtagFilters.length > 0 ? filterStickyNotes(stickyNotes) : stickyNotes
-        this.setState({
-            hashtagFilteredStickyNotes: byHashtag,
-            filteredStickyNotes: filterStickyNotesByOwner(byHashtag, noteOwnerFilters),
-        })
+        const { stickyNotes } = this.state
+        this.setState({ filteredStickyNotes: filterStickyNotes(stickyNotes) })
     }
 
     unwatchUserNotes = () => {
@@ -379,14 +357,7 @@ export default class NotesByProject extends PureComponent {
         const { selectedProjectIndex, currentUser } = store.getState()
         const { project } = this.props
 
-        const {
-            filteredNotes,
-            filteredStickyNotes,
-            hashtagFilteredNotes,
-            hashtagFilteredStickyNotes,
-            pressedShowMore,
-            needShowMoreButton,
-        } = this.state
+        const { filteredNotes, filteredStickyNotes, pressedShowMore, needShowMoreButton } = this.state
 
         const notesArr = Object.entries(filteredNotes).sort((a, b) => b[0] - a[0])
 
@@ -419,13 +390,6 @@ export default class NotesByProject extends PureComponent {
                     showRootSectionNavigation={inSelectedProject}
                 />
                 {inSelectedProject && <NotesHeader />}
-                {inSelectedProject && (
-                    <NoteOwnerFiltersLine
-                        projectId={project.id}
-                        notes={hashtagFilteredNotes}
-                        stickyNotes={hashtagFilteredStickyNotes}
-                    />
-                )}
                 <NotesSticky
                     fStickyNotes={filteredStickyNotes}
                     inAllProjects={inAllProjects}
