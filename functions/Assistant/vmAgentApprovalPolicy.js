@@ -14,6 +14,15 @@ const path = require('path')
 //                 still pause.
 //
 // Regardless of level, downloading and executing a remote script always pauses.
+//
+// Deployment note: this module does NOT run in the Firebase Functions runtime. It is copied
+// verbatim into the sandbox as `approval-policy.cjs` by `prepareVmAgentBridge` and evaluated in
+// the Agent SDK's `canUseTool` hook, so it ships inside the `vm-job-runner` Cloud Run image.
+// A change here only takes effect once `deploy:cloud:runner:production` has rebuilt that image --
+// deploying functions alone leaves the old policy live. Both CI jobs are gated on
+// `changes: functions/**/*`, so a pipeline cancelled before the deploy stage (for example when a
+// later merge supersedes it) silently leaves this file merged but not deployed; verify the runner
+// job actually ran rather than trusting the merge.
 const APPROVAL_POLICY_LEVELS = ['strict', 'balanced', 'permissive']
 const DEFAULT_APPROVAL_POLICY_LEVEL = 'balanced'
 
