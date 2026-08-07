@@ -1,21 +1,93 @@
 const crypto = require('crypto')
 
 const { VM_DISPATCH_LEASE_MS, dispatchLeaseOwner } = require('./vmThreadQueue')
-const {
-    VM_WORKFLOW_HOLD_FIELD: VM_INTERACTION_WORKFLOW_FIELD,
-    getVmHoldTaskRef,
-    resolveVmInteractionWorkflowHold,
-    releaseVmInteractionWorkflowHold,
-    buildVmFailureHoldUpdate,
-} = require('./vmWorkflowHold')
 
 const VM_INTERACTION_STATUS_AWAITING = 'awaiting_user'
 const VM_INTERACTION_TTL_MS = 24 * 60 * 60 * 1000
 const VALID_VM_INTERACTION_KINDS = ['clarification', 'plan_review', 'tool_approval']
 const VALID_VM_INTERACTION_ACTIONS = ['submit', 'approve', 'revise', 'deny', 'cancel']
-const VM_INTERACTION_EXPIRED_FAILURE_REASON = 'interaction_expired'
+const VM_INTERACTION_WORKFLOW_FIELD = 'vmInteractionWorkflowStep'
 
-const getVmInteractionTaskRef = getVmHoldTaskRef
+function getVmInteractionTaskRef(db, pending) {
+    if (!pending.projectId || !pending.objectId || (pending.objectType || 'tasks') !== 'tasks') return null
+    return db.doc(`items/${pending.projectId}/tasks/${pending.objectId}`)
+}
+
+function getCurrentWorkflowStepId(task) {
+    const stepHistory = Array.isArray(task?.stepHistory) ? task.stepHistory : []
+    return stepHistory.length > 0 ? stepHistory[stepHistory.length - 1] : null
+}
+
+/**
+ * A question is not a finished step.
+ *
+ * An agent that stops to ask something has not done the work the step asked for, so the task must
+ * stay exactly where it is: same `stepHistory`, same workflow position, no `completed`/`done`
+ * timestamps, and no subtask moves. Advancing here used to hand the task to the next reviewer while
+ * the agent was still blocked on the answer, which also consumed the parked `workflowAiRuns` step
+ * (finalizeWorkflowAiRun only advances a task it still finds on its own step) and looked like a
+ * completed step to awardGoldForTaskProgress.
+ *
+ * Open task lists are keyed by `currentReviewerId`, so the only thing that changes is a temporary
+ * hold: the current step is handed to the asking user so the task (and its red interaction comment)
+ * shows up in their list. The displaced reviewer is recorded on the task and given back as soon as
+ * the interaction is answered, cancelled or expired. `stepHistory` is deliberately untouched — it is
+ * what identifies the step, and growing it would enqueue a second AI run and invalidate the parked
+ * one.
+ *
+ * Returns the hold to record, and whether it still has to be written.
+ */
+function resolveVmInteractionWorkflowHold(task, correlationId, requestId, reviewerId, triggeredAt) {
+    const existing = task[VM_INTERACTION_WORKFLOW_FIELD]
+
+    if (existing && existing.correlationId === correlationId) {
+        // A retry of the very same question: the hold already describes it.
+        if (existing.requestId === requestId) return { hold: existing, changed: false }
+        // A follow-up question from the same job. Keep the originally displaced reviewer so the
+        // final release still restores the real workflow reviewer rather than the user themself.
+        return { hold: { ...existing, requestId, triggeredAt }, changed: true }
+    }
+
+    // Another job already holds this task, or the task is already the asking user's to act on.
+    if (existing || task.currentReviewerId === reviewerId) return { hold: existing || null, changed: false }
+
+    return {
+        hold: {
+            correlationId,
+            requestId,
+            reviewerId,
+            previousReviewerId: task.currentReviewerId ?? null,
+            workflowStepId: getCurrentWorkflowStepId(task),
+            triggeredAt,
+        },
+        changed: true,
+    }
+}
+
+/**
+ * Gives the workflow step back to the reviewer the interaction displaced.
+ *
+ * Every exit from `awaiting_user` runs through this: answering, cancelling and expiring. The task
+ * never moved off its step, so there is nothing to undo beyond the reviewer.
+ */
+function releaseVmInteractionWorkflowHold(transaction, taskRef, task, correlationId, requestId) {
+    if (!taskRef || !task) return
+    const hold = task[VM_INTERACTION_WORKFLOW_FIELD]
+    if (!hold || hold.correlationId !== correlationId || hold.requestId !== requestId) return
+
+    transaction.set(
+        taskRef,
+        {
+            // Only restore the reviewer while this hold still owns the task. A user may have moved
+            // the task on manually while the VM was waiting; that newer workflow decision wins.
+            ...(task.currentReviewerId === hold.reviewerId
+                ? { currentReviewerId: hold.previousReviewerId ?? null }
+                : {}),
+            [VM_INTERACTION_WORKFLOW_FIELD]: null,
+        },
+        { merge: true }
+    )
+}
 
 function getVmInteractionNotificationRef(db, pending, userId) {
     if (!pending.projectId || !pending.objectId || !pending.statusCommentId || !userId) return null
@@ -366,7 +438,7 @@ async function expireVmInteractions(db, now = Date.now()) {
                     doc.ref,
                     {
                         status: 'failed',
-                        failureReason: VM_INTERACTION_EXPIRED_FAILURE_REASON,
+                        failureReason: 'interaction_expired',
                         failedAt: now,
                         currentInteraction: null,
                         interactionWorkflowStep: null,
@@ -393,22 +465,13 @@ async function expireVmInteractions(db, now = Date.now()) {
                 }
                 const notificationRef = getVmInteractionNotificationRef(db, latest, latest.userId)
                 if (notificationRef) transaction.delete(notificationRef)
-                // An expired question is a failed run, not a resolved one: the user never answered
-                // and nothing else will move this task. Keep it on their plate (AT-2196) by turning
-                // the interaction hold into a failure hold instead of handing the step back to the
-                // assistant, where it would silently disappear.
-                const task = taskSnapshot?.exists ? taskSnapshot.data() || {} : null
-                const failureHold = task
-                    ? buildVmFailureHoldUpdate(task, {
-                          correlationId: doc.id,
-                          reviewerId: latest.userId,
-                          triggeredAt: now,
-                          failureReason: VM_INTERACTION_EXPIRED_FAILURE_REASON,
-                          // A day is a long time: only reclaim a task still parked on the assistant.
-                          claimableReviewerIds: [latest.assistantId],
-                      })
-                    : null
-                if (failureHold && taskRef) transaction.set(taskRef, failureHold, { merge: true })
+                releaseVmInteractionWorkflowHold(
+                    transaction,
+                    taskRef,
+                    taskSnapshot?.exists ? taskSnapshot.data() || {} : null,
+                    doc.id,
+                    pending.interactionRequestId
+                )
                 return true
             })
             if (!expired) continue
