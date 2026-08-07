@@ -3,7 +3,7 @@
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
 
-const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { normalizeGmailMessage } = require('./gmailMessageParser')
 const {
     getConnectedMicrosoftEmailAccounts,
@@ -50,10 +50,9 @@ function normalizeLimit(limit) {
 }
 
 async function getGmailClient(userId, projectId) {
-    const accessToken = await getAccessToken(userId, projectId, 'gmail')
-    const oauth2Client = getOAuth2Client()
-    oauth2Client.setCredentials({ access_token: accessToken })
-    return google.gmail({ version: 'v1', auth: oauth2Client })
+    // Full refreshable credentials, not a bare access token (AT-2195).
+    const auth = await getAuthorizedOAuth2Client(userId, projectId, 'gmail')
+    return google.gmail({ version: 'v1', auth })
 }
 
 async function getConnectedGmailAccountMap(userId) {
