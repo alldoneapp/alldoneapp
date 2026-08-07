@@ -12,12 +12,9 @@ import { isAssistantSuggestedTask } from '../../utils/suggestedTaskFlow'
 
 // "Accept all" / "Reject all" for a whole "Suggested by X" section (AT-2173).
 //
-// Shown whenever the section holds at least one suggestion. These used to appear only from two
-// upwards, on the assumption that the per-task checkbox popup (SuggestedModal) was enough below
-// that — but a section that sometimes carries the actions and sometimes not reads as a bug, and
-// single-suggestion sections (a lone calendar suggestion, say) are the common case. Only a section
-// with nothing left to act on hides them.
-export const MIN_TASKS_FOR_BULK_ACTIONS = 1
+// Only shown from two suggestions upwards: with a single one the per-task checkbox popup
+// (SuggestedModal) is both faster and richer, so a bulk control would only add noise.
+export const MIN_TASKS_FOR_BULK_ACTIONS = 2
 
 export default function SuggestedBulkActions({ projectId, tasks, containerStyle }) {
     const dispatch = useDispatch()
@@ -53,13 +50,7 @@ export default function SuggestedBulkActions({ projectId, tasks, containerStyle 
                     tasks: suggestedTasks,
                     workflow,
                     headerText: rejectTitleKey === 'Reject all' ? 'Reject all suggested tasks' : 'Next step for all',
-                    // The button keeps its "all" label at any count, but the confirmation is a
-                    // sentence: "1 suggested tasks will be rejected" reads broken in all three
-                    // languages, so a section of one gets its own singular phrasing.
-                    headerQuestion:
-                        suggestedTasks.length === 1
-                            ? 'Reject single suggested task question'
-                            : 'Reject all suggested tasks question',
+                    headerQuestion: 'Reject all suggested tasks question',
                     headerQuestionParams: { count: suggestedTasks.length },
                 },
             })

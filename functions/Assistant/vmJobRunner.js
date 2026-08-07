@@ -4,7 +4,13 @@ const fs = require('fs')
 const path = require('path')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { advanceVmThreadQueue, requeueVmJobToThreadFront } = require('./vmThreadQueue')
+const {
+    buildVmFailureHoldUpdate,
+    prepareVmFailureHoldForRun,
+    restoreVmFailureWorkflowHold,
+} = require('./vmWorkflowHold')
 const { buildVmChatPath, summarizeVmObjectiveForSession } = require('./vmHostTaskHelper')
+const { DEFAULT_APPROVAL_POLICY_LEVEL } = require('./vmAgentApprovalPolicy')
 const {
     ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
     FEED_PUBLIC_FOR_ALL,
@@ -232,6 +238,11 @@ function buildVmBridgeTurnPrompt(basePrompt, pendingWebhook = {}, phase = 'execu
         }.`
     }
     if (answered.kind === 'tool_approval') {
+        if (response.action === 'approve_for_run') {
+            return `The user approved the previously requested operation, and approved this kind of operation for the rest of this run - equivalent operations will no longer pause.${
+                response.message ? ` Their note: ${response.message}` : ''
+            } Continue the task.`
+        }
         return response.action === 'approve'
             ? `The user approved the previously requested operation once.${
                   response.message ? ` Their note: ${response.message}` : ''
@@ -610,7 +621,12 @@ async function resolveVmCompletionFollowers(pendingWebhook) {
     )
 }
 
-async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { activateTaskAssistant = false } = {}) {
+async function applyVmCompletionMetadata(
+    pendingWebhook,
+    commentId,
+    text,
+    { activateTaskAssistant = false, failureHoldUserId = null, failureReason = null } = {}
+) {
     const { projectId, objectType = 'tasks', objectId, assistantId } = pendingWebhook
     if (!projectId || !objectId || !assistantId || !commentId) return { applied: false, reason: 'missing-context' }
 
@@ -637,7 +653,26 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
             transaction.get(assistantRef),
         ])
 
+        // AT-2196: a run that failed or was cancelled hands the task to the requesting user, the
+        // same way an agent question does — reviewer only, workflow step untouched. Otherwise the
+        // task keeps its assistant reviewer and vanishes from every human's list with only an unread
+        // comment to show for it.
+        const failureHold =
+            failureHoldUserId && objectType === 'tasks' && parentRef && parentSnap && parentSnap.exists
+                ? buildVmFailureHoldUpdate(parentSnap.data() || {}, {
+                      correlationId: pendingWebhook.correlationId,
+                      reviewerId: failureHoldUserId,
+                      triggeredAt: now,
+                      failureReason,
+                      claimableReviewerIds: [pendingWebhook.taskReviewerAtRunStart, assistantId],
+                  })
+                : null
+
         if (commentSnap.exists && commentSnap.data()?.vmCompletionMetadataAppliedAt) {
+            // The comment metadata is one-shot, but the hold is not: a run that already posted a
+            // final answer and then threw during billing settles as failed, and that failure still
+            // has to reach a human.
+            if (failureHold) transaction.update(parentRef, failureHold)
             return { applied: false, reason: 'already-applied' }
         }
 
@@ -687,6 +722,7 @@ async function applyVmCompletionMetadata(pendingWebhook, commentId, text, { acti
                           isAssistantEnabled: true,
                       }
                     : {}),
+                ...(failureHold || {}),
             })
         }
 
@@ -1037,7 +1073,14 @@ function buildGcpEnv(gcpContext) {
 async function writeStatusComment(
     pendingWebhook,
     text,
-    { isFinal = false, output = null, mediaContext = null, assistantRunStatus = null, interaction = null } = {}
+    {
+        isFinal = false,
+        output = null,
+        mediaContext = null,
+        assistantRunStatus = null,
+        interaction = null,
+        failureReason = null,
+    } = {}
 ) {
     const { projectId, objectType = 'tasks', objectId, assistantId, statusCommentId } = pendingWebhook
     const db = admin.firestore()
@@ -1108,6 +1151,7 @@ async function writeStatusComment(
     // cancelled run is also a settled result that users should see in the task list.
     // The idempotency marker on the comment prevents retries from incrementing twice.
     const isSettled = isFinal || runStatus === 'failed' || runStatus === VM_JOB_CANCELLED_STATUS
+    const settledUnfinished = runStatus === 'failed' || runStatus === VM_JOB_CANCELLED_STATUS
     if (isSettled) {
         try {
             await applyVmCompletionMetadata(pendingWebhook, commentId, text, {
@@ -1115,6 +1159,10 @@ async function writeStatusComment(
                 // Failed and cancelled runs still settle the status/comment metadata above,
                 // but must not opt the user back into assistant replies.
                 activateTaskAssistant: objectType === 'tasks' && isFinal && runStatus === 'completed',
+                // ...and they hand the task itself to the user who asked for the run, so the
+                // unfinished work is visible and actionable instead of parked on the assistant.
+                failureHoldUserId: settledUnfinished ? pendingWebhook.userId : null,
+                failureReason: settledUnfinished ? failureReason || runStatus : null,
             })
         } catch (error) {
             console.warn('🖥️ VM JOB: Failed applying completion metadata', {
@@ -1963,6 +2011,7 @@ function buildVmAgentBridgeInput({
     runDetails,
     agentCredentials,
     additionalWritableRoots = [],
+    gitContext = null,
 }) {
     const executionMode = vmJob.executionMode || 'automatic'
     const phase = resolveVmInteractionPhase(executionMode, pendingWebhook)
@@ -1991,6 +2040,14 @@ function buildVmAgentBridgeInput({
             phase === 'planning' ? 'plan' : executionMode === 'plan_first' ? 'bypassPermissions' : 'default'
         input.additionalDirectories = writableRoots
         input.settingSources = ['user', 'project', 'local']
+        // Approval strictness + the context the policy needs to tell a feature-branch push apart
+        // from a push that lands on the protected base branch. The allowlist carries the user's
+        // "Allow for this run" grants and is reset whenever a new job starts.
+        input.approvalPolicy = vmJob.approvalPolicy || DEFAULT_APPROVAL_POLICY_LEVEL
+        input.baseBranch = gitContext?.enabled ? gitContext.baseBranch || '' : ''
+        input.approvalAllowlist = Array.isArray(pendingWebhook?.approvalAllowlist)
+            ? pendingWebhook.approvalAllowlist
+            : []
     } else {
         input.approvalPolicy = phase === 'executing' && executionMode === 'plan_first' ? 'never' : 'on-request'
         input.approvalsReviewer = executionMode === 'interactive' ? 'auto_review' : 'user'
@@ -3208,6 +3265,7 @@ async function runAgentInSandbox(
                 runDetails,
                 agentCredentials,
                 additionalWritableRoots,
+                gitContext,
             })
             await sandbox.files.write(VM_AGENT_BRIDGE_INPUT_PATH, JSON.stringify(bridgeInput))
             agentCommand = `node ${shellQuoteArg(bridgePath)} ${shellQuoteArg(
@@ -3865,6 +3923,21 @@ async function runVmJobByCorrelationId(correlationId) {
     }
     const heartbeat = startVmJobHeartbeat(pendingRef, lease.leaseOwner)
 
+    // AT-2196: a previous run on this task may have failed and parked the task with the user so they
+    // could see it. Work is starting again, so give the step back to the reviewer that failure
+    // displaced — if this run fails too, the hold is simply re-applied when it settles. An
+    // interaction hold is never touched here; it releases through its own answer/cancel path.
+    // The reviewer the task ends up with is also the only one this run may claim back on failure:
+    // anything else means a human took the task over while the VM was working, and that wins.
+    const failureHoldState = await prepareVmFailureHoldForRun(db, pendingWebhook).catch(error => {
+        console.warn('🖥️ VM JOB RUNNER: Failed releasing previous failure hold', {
+            correlationId,
+            error: error.message,
+        })
+        return null
+    })
+    pendingWebhook.taskReviewerAtRunStart = failureHoldState ? failureHoldState.reviewerAtRunStart : null
+
     const env = getEnvFunctions()
     const e2bApiKey = env.E2B_API_KEY
     // Resolve the agent the assistant chose (defaults to Claude) and its config.
@@ -4186,6 +4259,11 @@ async function runVmJobByCorrelationId(correlationId) {
         if (isVmThreadBusyError(error)) {
             console.warn('🖥️ VM JOB RUNNER: thread busy at run start; job re-queued', { correlationId })
             await pendingRef.set({ status: 'queued', requeuedAt: Date.now() }, { merge: true }).catch(() => {})
+            // This deferral produces no failure comment and no settlement, so nothing would re-apply
+            // the earlier failure hold this run released at start. Put it back (AT-2196).
+            if (failureHoldState?.releasedHold) {
+                await restoreVmFailureWorkflowHold(db, pendingWebhook, failureHoldState.releasedHold).catch(() => {})
+            }
             return
         }
         console.error('🖥️ VM JOB RUNNER: Failed', { correlationId, error: error.message, stack: error.stack })
@@ -4194,7 +4272,10 @@ async function runVmJobByCorrelationId(correlationId) {
         const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
         if (isVmGoldExhaustedError(error) || latestPendingData.failureReason === VM_GOLD_EXHAUSTED_FAILURE_REASON) {
-            await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, { assistantRunStatus: 'failed' })
+            await writeStatusComment(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
+                assistantRunStatus: 'failed',
+                failureReason: VM_GOLD_EXHAUSTED_FAILURE_REASON,
+            })
             await notifyVmResultChannels(pendingWebhook, VM_GOLD_EXHAUSTED_TEXT, {
                 pendingRef,
                 notificationType: 'failed',
@@ -4234,7 +4315,10 @@ async function runVmJobByCorrelationId(correlationId) {
 
         if (isVmRuntimeTimeoutError(error)) {
             const timeoutText = buildVmRuntimeTimeoutText(error.runtimeMs || MAX_VM_RUNTIME_MS)
-            await writeStatusComment(pendingWebhook, timeoutText, { assistantRunStatus: 'failed' })
+            await writeStatusComment(pendingWebhook, timeoutText, {
+                assistantRunStatus: 'failed',
+                failureReason: VM_RUNTIME_TIMEOUT_FAILURE_REASON,
+            })
             await notifyVmResultChannels(pendingWebhook, timeoutText, {
                 pendingRef,
                 notificationType: 'failed',
@@ -4264,7 +4348,10 @@ async function runVmJobByCorrelationId(correlationId) {
             ? buildVmSubscriptionAuthFailureText(agentLabel).replace(/^❌\s*/, '')
             : `The VM task could not be completed: ${error.message}`
         const failureText = `❌ ${message}`
-        await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
+        await writeStatusComment(pendingWebhook, failureText, {
+            assistantRunStatus: 'failed',
+            ...(subscriptionAuthFailure ? { failureReason: VM_SUBSCRIPTION_AUTH_FAILURE_REASON } : {}),
+        })
         await notifyVmResultChannels(pendingWebhook, failureText, {
             pendingRef,
             notificationType: 'failed',

@@ -50,18 +50,10 @@ describe('SuggestedBulkActions visibility', () => {
         mockState = { smallScreenNavigation: false, currentUser: { workflow: {} } }
     })
 
-    test('stays hidden only when the section has nothing to act on', () => {
+    test('stays hidden while the per-task flow is enough', () => {
         expect(render([]).toJSON()).toBeNull()
         expect(render(undefined).toJSON()).toBeNull()
-        expect(render([null, {}]).toJSON()).toBeNull()
-    })
-
-    test('appears for a single suggestion, with the unchanged "all" labels', () => {
-        const tree = render([assistantTask('task-1')])
-
-        expect(tree.toJSON()).not.toBeNull()
-        expect(buttonWithTitle(tree, 'Accept all')).toHaveLength(1)
-        expect(buttonWithTitle(tree, 'Reject all')).toHaveLength(1)
+        expect(render([assistantTask('task-1')]).toJSON()).toBeNull()
     })
 
     test('appears from two suggestions upwards', () => {
@@ -72,25 +64,8 @@ describe('SuggestedBulkActions visibility', () => {
         expect(buttonWithTitle(tree, 'Reject all')).toHaveLength(1)
     })
 
-    test('ignores malformed entries but still shows for the one real suggestion', () => {
-        const tree = render([null, {}, assistantTask('task-1')])
-
-        expect(tree.toJSON()).not.toBeNull()
-        expect(buttonWithTitle(tree, 'Accept all')).toHaveLength(1)
-    })
-
-    test('keeps the actions reachable on small screens for a single suggestion', () => {
-        mockState.smallScreenNavigation = true
-
-        const tree = render([assistantTask('task-1')])
-        const buttons = tree.root.findAllByType('Button')
-
-        expect(buttons).toHaveLength(2)
-        buttons.forEach(button => {
-            expect(button.props.title).toBeNull()
-            expect(button.props.icon).toBeTruthy()
-            expect(button.props.accessibilityLabel).toBeTruthy()
-        })
+    test('ignores malformed entries when counting the section', () => {
+        expect(render([null, {}, assistantTask('task-1')]).toJSON()).toBeNull()
     })
 
     test('drops the labels on small screens but keeps the actions reachable', () => {
@@ -127,16 +102,6 @@ describe('SuggestedBulkActions wording', () => {
         expect(buttonWithTitle(tree, 'Next step for all')).toHaveLength(1)
         expect(buttonWithTitle(tree, 'Reject all')).toHaveLength(0)
     })
-
-    test('keeps the "all" wording for a section of one, per suggester kind', () => {
-        const assistantSection = render([assistantTask('task-1')])
-        expect(buttonWithTitle(assistantSection, 'Reject all')).toHaveLength(1)
-        expect(buttonWithTitle(assistantSection, 'Accept all')).toHaveLength(1)
-
-        const humanSection = render([humanTask('task-1')])
-        expect(buttonWithTitle(humanSection, 'Next step for all')).toHaveLength(1)
-        expect(buttonWithTitle(humanSection, 'Accept all')).toHaveLength(1)
-    })
 })
 
 describe('SuggestedBulkActions behavior', () => {
@@ -155,42 +120,6 @@ describe('SuggestedBulkActions behavior', () => {
 
         expect(acceptAllSuggestedTasks).toHaveBeenCalledWith({ projectId: 'project-1', tasks })
         expect(mockDispatch).not.toHaveBeenCalled()
-    })
-
-    test('accepts a section of one through the same bulk path', () => {
-        const tasks = [assistantTask('task-1')]
-        const tree = render(tasks)
-
-        act(() => {
-            buttonWithTitle(tree, 'Accept all')[0].props.onPress()
-        })
-
-        expect(acceptAllSuggestedTasks).toHaveBeenCalledWith({ projectId: 'project-1', tasks })
-        expect(mockDispatch).not.toHaveBeenCalled()
-    })
-
-    test('still asks for confirmation when a section holds a single suggestion', () => {
-        const tasks = [assistantTask('task-1')]
-        mockState.currentUser.workflow = { 'project-1': { 'step-a': { reviewerUid: 'user-1' } } }
-        const tree = render(tasks)
-
-        act(() => {
-            buttonWithTitle(tree, 'Reject all')[0].props.onPress()
-        })
-
-        expect(showConfirmPopup).toHaveBeenCalledTimes(1)
-        expect(showConfirmPopup).toHaveBeenCalledWith({
-            trigger: 'REJECT_ALL_SUGGESTED',
-            object: expect.objectContaining({
-                projectId: 'project-1',
-                tasks,
-                headerText: 'Reject all suggested tasks',
-                // The button label stays "Reject all", but the question is a sentence and has to
-                // be singular for a section of one.
-                headerQuestion: 'Reject single suggested task question',
-                headerQuestionParams: { count: 1 },
-            }),
-        })
     })
 
     test('asks for confirmation before rejecting the whole section', () => {
@@ -240,26 +169,5 @@ describe('SuggestedBulkActions behavior', () => {
         })
 
         expect(showConfirmPopup.mock.calls[0][0].object.workflow).toBeUndefined()
-    })
-})
-
-describe('SuggestedBulkActions confirmation strings', () => {
-    // The component picks one of two keys by count, so a missing singular entry would only show up
-    // as a raw key in the dialog at runtime — cheap to pin here instead.
-    const locales = {
-        en: require('../../i18n/translations/en.json'),
-        de: require('../../i18n/translations/de.json'),
-        es: require('../../i18n/translations/es.json'),
-    }
-
-    Object.entries(locales).forEach(([language, translations]) => {
-        test(`${language} carries both the singular and the plural rejection question`, () => {
-            expect(typeof translations['Reject all suggested tasks question']).toBe('string')
-            expect(typeof translations['Reject single suggested task question']).toBe('string')
-
-            // The singular sentence names no count, so it must not carry the interpolation.
-            expect(translations['Reject single suggested task question']).not.toContain('{{count}}')
-            expect(translations['Reject all suggested tasks question']).toContain('{{count}}')
-        })
     })
 })
