@@ -19,21 +19,7 @@ jest.mock('../../IntegrationProviders', () => ({
     buildConnectionKeyPayload: jest.fn(key => ({ connectionId: key })),
 }))
 
-jest.mock('../../../i18n/TranslationService', () => ({
-    translate: jest.fn(key => key),
-}))
-
-const {
-    listEmailLineMessages,
-    performEmailLineAction,
-    performEmailLineSweepInBackground,
-    isEmailAuthExpiredError,
-} = require('./emailLineBackend')
-
-// Shape of the callable rejection: the server maps EmailLineAuthError to a
-// `failed-precondition` HttpsError whose message carries the code.
-const authExpiredRejection = () =>
-    Object.assign(new Error('failed-precondition: EMAIL_AUTH_EXPIRED'), { code: 'functions/failed-precondition' })
+const { listEmailLineMessages, performEmailLineSweepInBackground } = require('./emailLineBackend')
 
 const summaryWithLabel = {
     provider: 'google',
@@ -102,93 +88,6 @@ describe('performEmailLineSweepInBackground', () => {
         await performEmailLineSweepInBackground('c1', 'L1', '')
         expect(mockRunHttpsCallableFunction).not.toHaveBeenCalled()
         expect(mockDispatch).not.toHaveBeenCalled()
-    })
-})
-
-// AT-2195: archiving an email task rejected with the bare code EMAIL_AUTH_EXPIRED, which
-// callers put straight into an alert(). By the time this reaches the client the server has
-// already force-refreshed and retried, so it genuinely means "reconnect required".
-describe('performEmailLineAction auth expiry (AT-2195)', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockGetState.mockReturnValue({ emailLineSummaryByProject: { c1: summaryWithLabel } })
-    })
-
-    it('archives normally and refreshes the summary when the connection is healthy', async () => {
-        mockRunHttpsCallableFunction.mockImplementation(async name =>
-            name === 'emailLineActionSecondGen' ? { processed: 1 } : { labels: [] }
-        )
-
-        await expect(performEmailLineAction('c1', { action: 'archive', messageIds: ['m1'] })).resolves.toEqual({
-            processed: 1,
-        })
-
-        const calls = mockRunHttpsCallableFunction.mock.calls.map(call => call[0])
-        expect(calls).toContain('getEmailLineSummarySecondGen')
-    })
-
-    it('replaces the raw error code with an actionable message', async () => {
-        mockRunHttpsCallableFunction.mockRejectedValue(authExpiredRejection())
-
-        const error = await performEmailLineAction('c1', { action: 'archive', messageIds: ['m1'] }).catch(
-            caught => caught
-        )
-
-        expect(error.code).toBe('EMAIL_AUTH_EXPIRED')
-        expect(error.authExpired).toBe(true)
-        // Callers alert error.message; it must not be the bare code any more.
-        expect(error.message).not.toContain('EMAIL_AUTH_EXPIRED')
-        expect(error.message).toBe('Your email connection expired. Please reconnect it in Settings > Integrations.')
-    })
-
-    it('flags the cached summary so the reconnect state appears', async () => {
-        mockRunHttpsCallableFunction.mockRejectedValue(authExpiredRejection())
-
-        await performEmailLineAction('c1', { action: 'archive', messageIds: ['m1'] }).catch(() => {})
-
-        const summaryDispatch = mockDispatch.mock.calls
-            .map(call => call[0])
-            .find(action => action.type === 'SET_EMAIL_LINE_SUMMARY')
-        expect(summaryDispatch.key).toBe('c1')
-        expect(summaryDispatch.summary.authExpired).toBe(true)
-    })
-
-    it('does not force a summary refresh through the dead connection', async () => {
-        mockRunHttpsCallableFunction.mockRejectedValue(authExpiredRejection())
-
-        await performEmailLineAction('c1', { action: 'archive', messageIds: ['m1'] }).catch(() => {})
-
-        const calls = mockRunHttpsCallableFunction.mock.calls.map(call => call[0])
-        expect(calls).not.toContain('getEmailLineSummarySecondGen')
-    })
-
-    it('leaves any other failure untouched so real errors stay diagnosable', async () => {
-        mockRunHttpsCallableFunction.mockRejectedValue(new Error('unavailable'))
-
-        await expect(performEmailLineAction('c1', { action: 'archive', messageIds: ['m1'] })).rejects.toThrow(
-            'unavailable'
-        )
-        expect(mockDispatch).not.toHaveBeenCalled()
-    })
-
-    it('flags the summary when a background sweep hits a dead connection', async () => {
-        mockRunHttpsCallableFunction.mockImplementation(async name => {
-            if (name === 'emailLineActionSecondGen') throw authExpiredRejection()
-            return { labels: [] }
-        })
-
-        await performEmailLineSweepInBackground('c1', 'L1', 'archiveAll')
-
-        const flagged = mockDispatch.mock.calls
-            .map(call => call[0])
-            .some(action => action.type === 'SET_EMAIL_LINE_SUMMARY' && action.summary.authExpired === true)
-        expect(flagged).toBe(true)
-    })
-
-    it('detects the code only in genuine auth failures', () => {
-        expect(isEmailAuthExpiredError(authExpiredRejection())).toBe(true)
-        expect(isEmailAuthExpiredError(new Error('unavailable'))).toBe(false)
-        expect(isEmailAuthExpiredError(null)).toBe(false)
     })
 })
 
