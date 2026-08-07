@@ -9180,6 +9180,8 @@ async function executeToolNatively(
                     success: result.success,
                     calendarId: result.calendarId || toolArgs.calendarId || null,
                     eventId: result.event?.eventId || null,
+                    joinProvider: result.joinProvider || null,
+                    hasJoinUrl: !!result.joinUrl,
                 })
 
                 return result
