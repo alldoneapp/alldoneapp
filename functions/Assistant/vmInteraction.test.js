@@ -124,24 +124,13 @@ describe('VM interactions', () => {
             blockedReason: 'plan_review',
             activeLeaseOwner: null,
         })
-        // A question is not a finished step: the task stays exactly where it is and only the
-        // reviewer is held, so the user sees it in their open tasks.
         expect(store['items/project-1/tasks/chat-1']).toMatchObject({
             currentReviewerId: 'user-1',
-            stepHistory: [-1, 'ai-step'],
-            userIds: ['user-1', 'assistant-1'],
-            vmInteractionWorkflowStep: {
-                correlationId: 'run-1',
-                requestId: 'request-1',
-                reviewerId: 'user-1',
-                previousReviewerId: 'assistant-1',
-                workflowStepId: 'ai-step',
-                triggeredAt: 1000,
-            },
+            stepHistory: [-1, 'ai-step', 'human-step'],
+            dueDate: 1000,
+            done: false,
+            inDone: false,
         })
-        expect(store['items/project-1/tasks/chat-1'].completed).toBeUndefined()
-        expect(store['items/project-1/tasks/chat-1'].dueDate).toBeUndefined()
-        expect(store['items/project-1/tasks/chat-1'].done).toBeUndefined()
         expect(store['chatNotifications/project-1/user-1/comment-1']).toMatchObject({
             chatId: 'chat-1',
             chatType: 'tasks',
@@ -178,76 +167,11 @@ describe('VM interactions', () => {
         })
         // Retries upsert the notification for the live status comment instead of adding another.
         expect(Object.keys(store).filter(path => path.includes('chatNotifications/'))).toHaveLength(1)
-        // Retrying the same request must not move the task or lose the displaced reviewer.
+        // Retrying the same request must not advance the task through a second workflow step.
         expect(store['items/project-1/tasks/chat-1']).toMatchObject({
             currentReviewerId: 'user-1',
-            stepHistory: [-1, 'ai-step'],
-            vmInteractionWorkflowStep: { previousReviewerId: 'assistant-1', triggeredAt: 1000 },
+            stepHistory: [-1, 'ai-step', 'human-step'],
         })
-    })
-
-    test('keeps the originally displaced reviewer when the same job asks a follow-up question', async () => {
-        const database = db()
-        const request = {
-            db: database,
-            pendingRef: ref('pendingWebhooks/run-1'),
-            sessionRef: ref('vmSessions/project-1__chat-1'),
-            correlationId: 'run-1',
-            userId: 'user-1',
-            provider: 'codex',
-            kind: 'clarification',
-            payload: { questions: [{ question: 'Which implementation?' }] },
-        }
-        // A second question supersedes the first without the reviewer ever going back, so the hold
-        // must rebind rather than record the user as the reviewer to restore.
-        await createVmInteractionRequest({ ...request, requestId: 'request-1', now: 1000 })
-        await createVmInteractionRequest({ ...request, requestId: 'request-2', now: 3000 })
-
-        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'user-1',
-            stepHistory: [-1, 'ai-step'],
-            vmInteractionWorkflowStep: { requestId: 'request-2', previousReviewerId: 'assistant-1' },
-        })
-
-        await answerVmInteractionRequest({
-            db: database,
-            pendingRef: ref('pendingWebhooks/run-1'),
-            sessionRef: ref('vmSessions/project-1__chat-1'),
-            correlationId: 'run-1',
-            requestId: 'request-2',
-            userId: 'user-1',
-            response: { action: 'submit', answers: { approach: 'Safe' } },
-            now: 4000,
-        })
-
-        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'assistant-1',
-            stepHistory: [-1, 'ai-step'],
-            vmInteractionWorkflowStep: null,
-        })
-    })
-
-    test('holds nothing when the asking user already owns the current step', async () => {
-        store['items/project-1/tasks/chat-1'].currentReviewerId = 'user-1'
-
-        await createVmInteractionRequest({
-            db: db(),
-            pendingRef: ref('pendingWebhooks/run-1'),
-            sessionRef: ref('vmSessions/project-1__chat-1'),
-            correlationId: 'run-1',
-            requestId: 'request-1',
-            userId: 'user-1',
-            provider: 'codex',
-            kind: 'tool_approval',
-            payload: { toolName: 'bash', command: 'rm -rf build' },
-            now: 1000,
-        })
-
-        expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'user-1',
-            stepHistory: [-1, 'ai-step'],
-        })
-        expect(store['items/project-1/tasks/chat-1'].vmInteractionWorkflowStep).toBeUndefined()
     })
 
     test('answers exactly once and grants the resume attempt a dispatch lease', async () => {
@@ -288,11 +212,9 @@ describe('VM interactions', () => {
             activeLeaseOwner: 'dispatch:run-1',
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
-        // Answering gives the step straight back to the reviewer the question displaced.
         expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'assistant-1',
-            stepHistory: [-1, 'ai-step'],
-            vmInteractionWorkflowStep: null,
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
         })
 
         await expect(
@@ -375,9 +297,8 @@ describe('VM interactions', () => {
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
         expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'assistant-1',
-            stepHistory: [-1, 'ai-step'],
-            vmInteractionWorkflowStep: null,
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
         })
     })
 
@@ -410,22 +331,13 @@ describe('VM interactions', () => {
             currentInteraction: null,
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
-        // AT-2196: expiring is a failed run, not a resolved question. Handing the step back to the
-        // assistant would hide a task nothing else will ever move, so the user keeps it — still on
-        // the very same workflow step.
         expect(store['items/project-1/tasks/chat-1']).toMatchObject({
             currentReviewerId: 'user-1',
-            stepHistory: [-1, 'ai-step'],
-            vmInteractionWorkflowStep: expect.objectContaining({
-                reason: 'failure',
-                failureReason: 'interaction_expired',
-                previousReviewerId: 'assistant-1',
-                workflowStepId: 'ai-step',
-            }),
+            stepHistory: [-1, 'ai-step', 'human-step'],
         })
     })
 
-    test('does not overwrite a newer manual workflow move when the user answers', async () => {
+    test('keeps the normal workflow move when the user answers', async () => {
         const database = db()
         await createVmInteractionRequest({
             db: database,
@@ -439,9 +351,6 @@ describe('VM interactions', () => {
             payload: { questions: [{ question: 'Which implementation?' }] },
             now: 1000,
         })
-        // The user moved the task on themselves while the VM was waiting.
-        store['items/project-1/tasks/chat-1'].currentReviewerId = 'reviewer-2'
-        store['items/project-1/tasks/chat-1'].stepHistory = [-1, 'ai-step', 'human-step', 'later-step']
 
         await answerVmInteractionRequest({
             db: database,
@@ -455,13 +364,12 @@ describe('VM interactions', () => {
         })
 
         expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'reviewer-2',
-            stepHistory: [-1, 'ai-step', 'human-step', 'later-step'],
-            vmInteractionWorkflowStep: null,
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
         })
     })
 
-    test('leaves subtasks alone, because the parent never leaves its step', async () => {
+    test('moves subtasks with the task using the standard workflow fields', async () => {
         store['items/project-1/tasks/chat-1'].subtaskIds = ['subtask-1']
         store['items/project-1/tasks/subtask-1'] = {
             userId: 'user-1',
@@ -482,14 +390,15 @@ describe('VM interactions', () => {
             now: 1000,
         })
 
-        expect(store['items/project-1/tasks/subtask-1']).toEqual({
-            userId: 'user-1',
-            currentReviewerId: 'assistant-1',
-            stepHistory: [-1, 'ai-step'],
+        expect(store['items/project-1/tasks/subtask-1']).toMatchObject({
+            currentReviewerId: 'user-1',
+            stepHistory: [-1, 'ai-step', 'human-step'],
+            parentDone: false,
+            inDone: false,
         })
     })
 
-    test('never completes the task when the question comes on the last workflow step', async () => {
+    test('uses the normal Done transition when the current step is the last one', async () => {
         store['items/project-1/tasks/chat-1'].stepHistory = [-1, 'later-step']
         store['items/project-1/tasks/chat-1'].currentReviewerId = 'reviewer-2'
 
@@ -507,13 +416,12 @@ describe('VM interactions', () => {
         })
 
         expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'user-1',
-            stepHistory: [-1, 'later-step'],
-            vmInteractionWorkflowStep: { previousReviewerId: 'reviewer-2', workflowStepId: 'later-step' },
+            currentReviewerId: -2,
+            userIds: ['user-1'],
+            completed: 1000,
+            done: true,
+            inDone: true,
         })
-        expect(store['items/project-1/tasks/chat-1'].done).toBeUndefined()
-        expect(store['items/project-1/tasks/chat-1'].inDone).toBeUndefined()
-        expect(store['items/project-1/tasks/chat-1'].completed).toBeUndefined()
     })
 
     test('leaves non-task VM interactions out of the task workflow', async () => {

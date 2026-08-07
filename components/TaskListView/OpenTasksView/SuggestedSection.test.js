@@ -153,6 +153,14 @@ describe('SuggestedSection bulk actions', () => {
         expect(bulkActions.props.tasks.map(task => task.id)).toEqual(['task-1', 'task-2'])
     })
 
+    test('still mounts the bulk actions for a section holding a single suggestion', () => {
+        const tree = renderSectionWithGroups([['no-goal', [{ ...assistantTask, id: 'task-1' }]]])
+
+        const bulkActions = tree.root.findByType('SuggestedBulkActions')
+        expect(bulkActions.props.projectId).toBe('project-1')
+        expect(bulkActions.props.tasks.map(task => task.id)).toEqual(['task-1'])
+    })
+
     test('never passes a task suggested by somebody else into the bulk actions', () => {
         const tree = renderSectionWithGroups([
             [

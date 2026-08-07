@@ -249,7 +249,6 @@ export const initialState = {
     taskPriorityFilters: [],
     taskVmStateFilters: [],
     taskVmStatesByTask: {},
-    noteOwnerFilters: [],
     goldEarnedData: { goldEarned: 0, checkBoxId: '' },
     showGoldChain: false,
     showGoldCoin: false,
@@ -347,7 +346,6 @@ export const initialState = {
     optimisticFocusTaskId: null,
     optimisticFocusTaskProjectId: null,
     optimisticFocusGoalId: null,
-    optimisticFocusUserId: null,
     optimisticFocusActive: false,
     myDayAllTodayTasks: {},
     myDaySelectedTasks: [],
@@ -1218,7 +1216,6 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: action.optimisticFocusTaskId,
                 optimisticFocusTaskProjectId: action.optimisticFocusTaskProjectId,
                 optimisticFocusGoalId: action.optimisticFocusGoalId,
-                optimisticFocusUserId: action.optimisticFocusUserId || null,
                 optimisticFocusActive: true,
             }
         }
@@ -1228,7 +1225,6 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: null,
                 optimisticFocusTaskProjectId: null,
                 optimisticFocusGoalId: null,
-                optimisticFocusUserId: null,
                 optimisticFocusActive: false,
             }
         }
@@ -1557,21 +1553,6 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 taskVmStateFilters: action.vmStates,
-            }
-        }
-
-        case 'Clear note owner filters': {
-            if (state.noteOwnerFilters.length === 0) return state
-            return {
-                ...state,
-                noteOwnerFilters: [],
-            }
-        }
-
-        case 'Set note owner filters': {
-            return {
-                ...state,
-                noteOwnerFilters: action.ownerIds,
             }
         }
 

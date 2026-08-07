@@ -598,14 +598,9 @@ const parkWorkflowAiRunForExecution = async (
 /**
  * Moves the task off the step and settles the run. Split out of runWorkflowAiStep because a run that
  * dispatched VM work reaches this point later, from resolveAwaitingVmRuns.
- *
- * `recoveredByCorrelationId` reopens an already-failed run exactly once, for the case in
- * recoverWorkflowStepAfterVmSuccess: the work the step asked for did finish, just under a later VM
- * job than the one this run had parked on.
  */
-const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipReason = null, options = {}) => {
+const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipReason = null) => {
     const { projectId, taskId, stepId } = run
-    const { recoveredByCorrelationId = null } = options
     const db = admin.firestore()
     const taskRef = db.doc(`items/${projectId}/tasks/${taskId}`)
     const runRef = db.doc(`${RUNS_COLLECTION}/${runId}`)
@@ -620,14 +615,7 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipRe
         const [runSnapshot, latestDoc] = await Promise.all([transaction.get(runRef), transaction.get(taskRef)])
         const persistedRun = runSnapshot.exists ? runSnapshot.data() || {} : null
         if (persistedRun && RUN_TERMINAL_STATUSES.includes(persistedRun.status)) {
-            // A failed run may be reopened, but only by a recovery and only once. The stamp is what
-            // makes that one-shot: a redelivered VM completion finds it already set. `completed` and
-            // `skipped` runs already moved the task and are never reopened.
-            const reopening =
-                recoveredByCorrelationId &&
-                persistedRun.status === RUN_STATUS_FAILED &&
-                !persistedRun.recoveredByCorrelationId
-            if (!reopening) return { finalized: false, moved: false }
+            return { finalized: false, moved: false }
         }
 
         const latest = latestDoc.exists ? { ...latestDoc.data(), id: taskId } : null
@@ -663,7 +651,6 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipRe
                 status: settledStatus,
                 ...(skipReason ? { reason: skipReason } : {}),
                 ...(failureReason ? { failureReason } : {}),
-                ...(recoveredByCorrelationId ? { recoveredByCorrelationId, recoveredAt: settledAt } : {}),
                 settledAt,
             },
             { merge: true }
@@ -949,76 +936,6 @@ const resolveAwaitingVmRuns = async ({ now = Date.now(), projectId = null, taskI
 }
 
 /**
- * Completes an AI step whose run already failed, when a later VM job finished its work.
- *
- * A run is bound to the VM job it parked on. If that job dies — a rate-limited agent, a crashed
- * sandbox — the run settles `failed` and the task correctly stays on the step. But the natural way
- * to retry is to start another VM task in the same thread, and that job belongs to no run: when it
- * succeeds and opens its Merge Request, there is nothing left to move the task on, so a finished
- * step sits there looking unfinished.
- *
- * Until AT-2188 this was invisible, because a VM agent's *question* performed a full forward move on
- * its own — any retry that asked anything advanced the workflow whether or not the work succeeded.
- * Removing that (correctly) exposed the gap underneath it.
- *
- * Deliberately narrow. Only a job that (a) genuinely succeeded, (b) started after the step failed,
- * so it is a retry rather than work the failed settlement already accounted for, and (c) belongs to
- * a task still sitting on that same failed step, can complete it. `recoveredByCorrelationId` on the
- * run and the step identity check in finalizeWorkflowAiRun each independently cap this at one
- * advance.
- */
-const recoverWorkflowStepAfterVmSuccess = async job => {
-    const projectId = job.projectId
-    const taskId = job.objectId
-    const db = admin.firestore()
-
-    try {
-        const taskDoc = await db.doc(`items/${projectId}/tasks/${taskId}`).get()
-        if (!taskDoc.exists) return 0
-        const task = { ...taskDoc.data(), id: taskId }
-
-        // workflowAiStatus is the task's own pointer at the run that owns its current step, kept up
-        // to date by every settlement. It saves querying workflowAiRuns for a failed run.
-        const status = task.workflowAiStatus
-        const stepId = getCurrentStepId(task)
-        if (!stepId || !status || status.status !== RUN_STATUS_FAILED || !status.runId) return 0
-        if (status.stepId !== stepId) return 0
-
-        const runDoc = await db.doc(`${RUNS_COLLECTION}/${status.runId}`).get()
-        if (!runDoc.exists) return 0
-        const run = runDoc.data() || {}
-        if (run.status !== RUN_STATUS_FAILED || run.recoveredByCorrelationId) return 0
-        if (run.projectId !== projectId || run.taskId !== taskId || run.stepId !== stepId) return 0
-
-        // Work that was already in flight when the step failed was weighed by that settlement.
-        // Only something started afterwards is a retry of it.
-        if (Number(job.createdAt || 0) < (Number(run.settledAt) || 0)) return 0
-
-        const workflow = await loadRunWorkflow(run)
-        if (!isAiWorkflowStep(workflow[stepId])) return 0
-
-        const finalized = await finalizeWorkflowAiRun(status.runId, run, workflow, null, null, {
-            recoveredByCorrelationId: job.correlationId || job.id || 'vm_job',
-        })
-        if (!finalized) return 0
-
-        console.log('[workflowAiStep] Completed a failed step from a later successful VM job', {
-            runId: status.runId,
-            taskId,
-            stepId,
-            correlationId: job.correlationId,
-        })
-        return 1
-    } catch (error) {
-        console.error('[workflowAiStep] Could not recover the step after a successful VM job', {
-            taskId,
-            error: error.message,
-        })
-        return 0
-    }
-}
-
-/**
  * Immediately re-check a parked workflow when its task VM enters a terminal state.
  *
  * The VM runner invokes this after result delivery, billing/refunds and its terminal status write.
@@ -1035,11 +952,7 @@ const resolveWorkflowRunsForSettledVmJob = async (job = {}, now = Date.now()) =>
         return 0
     }
 
-    const resolved = await resolveAwaitingVmRuns({ now, projectId: job.projectId, taskId: job.objectId })
-    // Only a fallback: a parked run that just moved the task has already taken this step's advance.
-    if (resolved > 0 || job.status !== 'completed') return resolved
-
-    return recoverWorkflowStepAfterVmSuccess(job)
+    return resolveAwaitingVmRuns({ now, projectId: job.projectId, taskId: job.objectId })
 }
 
 /**
@@ -1222,7 +1135,6 @@ module.exports = {
     dispatchPendingWorkflowAiRuns,
     enqueueWorkflowAiRunIfNeeded,
     hasActiveAiTaskJob,
-    recoverWorkflowStepAfterVmSuccess,
     resolveAwaitingVmRuns,
     resolveWorkflowRunsForAssistantRunUpdate,
     resolveWorkflowRunsForSettledVmJob,

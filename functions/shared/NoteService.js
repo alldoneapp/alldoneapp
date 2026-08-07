@@ -268,12 +268,6 @@ class NoteService {
     /**
      * Create a complete note object
      * @param {Object} params - Note creation parameters
-     * @param {string} params.userId - The acting user (who requested the note). Stays the
-     *   creator/follower and keeps the note visible in that user's "Followed" notes tab.
-     * @param {string} [params.ownerId] - The note owner shown in the notes list and used by
-     *   the owner filter. Defaults to `params.userId`. Assistant-created notes pass the
-     *   assistant id here so the assistant owns what it produced (AT-2194).
-     * @param {string} [params.creatorId] - Explicit creator override. Defaults to `params.userId`.
      * @returns {Object} Complete note object
      */
     async buildNote(params) {
@@ -291,20 +285,6 @@ class NoteService {
         const cleanTitle = params.title.trim()
         const extendedTitle = params.extendedTitle || cleanTitle
 
-        // Ownership vs. authorship are separate concerns. `userId` on the note is the OWNER
-        // (avatar in the notes list, owner filter); `creatorId` records who asked for it.
-        // They are the same person for every human-created note, so the defaults below keep
-        // the historical behaviour byte-for-byte when no override is supplied.
-        const actingUserId = params.userId
-        const ownerId = params.ownerId || actingUserId
-        const creatorId = params.creatorId || actingUserId
-
-        // The acting user must stay reachable through the access/visibility arrays even when
-        // somebody else owns the note, otherwise an assistant-owned note would silently drop
-        // out of the requesting user's default "Followed" notes tab.
-        const withActingUser = ids =>
-            Array.from(new Set(ids.filter(id => id !== undefined && id !== null && id !== '')))
-
         // Create note object following Alldone patterns (matching frontend structure)
         const note = {
             id: noteId,
@@ -312,21 +292,21 @@ class NoteService {
             extendedTitle: extendedTitle,
             description: params.description || '', // Not used for content in notes
             preview: this.generatePreview(params.content, cleanTitle),
-            userId: ownerId,
-            creatorId: creatorId,
+            userId: params.userId,
+            creatorId: params.userId,
             projectId: params.projectId,
 
             // Privacy settings
             isPrivate: params.isPrivate || false,
             isPremium: false, // Default for assistant-created notes
-            isPublicFor: params.isPublicFor || withActingUser([0, actingUserId, ownerId]),
-            isVisibleInFollowedFor: params.isPublicFor || withActingUser([actingUserId]),
+            isPublicFor: params.isPublicFor || [0, params.userId],
+            isVisibleInFollowedFor: params.isPublicFor || [params.userId],
 
             // Timestamps - Frontend expects both 'created' and 'createdAt'
             created: now,
             createdAt: now,
             lastEditionDate: now,
-            lastEditorId: actingUserId,
+            lastEditorId: params.userId,
 
             // Comments data
             commentsData: {
@@ -339,7 +319,7 @@ class NoteService {
             hasStar: '#ffffff', // Default highlight color
             shared: false,
             views: 0,
-            followersIds: withActingUser([actingUserId]),
+            followersIds: [params.userId],
 
             // Sticky note settings
             stickyData: {
@@ -449,28 +429,11 @@ class NoteService {
         }
     }
 
-    // Followers seeded when the note is first created. Kept next to (and shaped like)
-    // getNoteUpdateFeedFollowers because both answer the same question: who should hear
-    // about this note. See that method for why creatorId has to be listed explicitly.
-    getNoteCreateFeedFollowers(note, feedUser) {
-        const actorId = feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
-        const ownerId = note && note.userId
-        const creatorId = note && note.creatorId
-        return Array.from(new Set([actorId, ownerId, creatorId].filter(Boolean)))
-    }
-
     getNoteUpdateFeedFollowers(note, feedUser) {
         const actorId = feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
         const ownerId = note && note.userId
-        // The creator must be listed explicitly. Once an assistant both acts (feedUser)
-        // and owns the note (note.userId), actor and owner collapse onto the same
-        // assistant id and the human who asked for the note would silently stop
-        // following it — losing every notification about their own note. For
-        // human-created notes creator, owner and actor are the same id, so this is a
-        // no-op there (AT-2194).
-        const creatorId = note && note.creatorId
         const existingFollowers = Array.isArray(note?.followersIds) ? note.followersIds : []
-        return Array.from(new Set([actorId, ownerId, creatorId, ...existingFollowers].filter(Boolean)))
+        return Array.from(new Set([actorId, ownerId, ...existingFollowers].filter(Boolean)))
     }
 
     async persistNoteUpdateFeed({ projectId, noteId, note, feedUser, feedData }) {
@@ -691,7 +654,7 @@ class NoteService {
                         if (feedsBatch.setProjectContext) {
                             feedsBatch.setProjectContext(finalProjectId)
                         }
-                        const initialFollowers = this.getNoteCreateFeedFollowers(note, creator)
+                        const initialFollowers = Array.from(new Set([creator.uid, note.userId].filter(Boolean)))
                         feedsBatch.feedChainFollowersIds = {
                             ...(feedsBatch.feedChainFollowersIds || {}),
                             [noteId]: initialFollowers,
