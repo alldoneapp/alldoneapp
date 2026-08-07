@@ -20,7 +20,6 @@
 const admin = require('firebase-admin')
 
 const { OPEN_STEP, DONE_STEP, WORKSTREAM_ID_PREFIX } = require('../Utils/HelperFunctionsCloud')
-const { isTaskOnUserPlate } = require('../shared/focusTaskEligibility')
 
 // Sentinels that occupy the same fields as a real uid but are not users.
 const NON_USER_REVIEWER_IDS = [OPEN_STEP, DONE_STEP, 'Open', 'Done']
@@ -53,18 +52,11 @@ const isRealUserId = candidate =>
     !NON_USER_REVIEWER_IDS.includes(candidate)
 
 /**
- * Everyone who could have been focusing the task before it moved and for whom it is no longer
- * actionable.
+ * Everyone who could have been focusing the task before it moved, minus whoever holds it now.
  *
- * AT-2193 follow-up: this used to skip `newTask.currentReviewerId` as a deliberate, hand-reasoned
- * exception ("the task landing on your plate is the opposite of it leaving"). That exception was
- * suspected of violating the ticket's literal wording, so it has been re-derived rather than kept
- * on a hunch: the rule is now the SAME predicate the focus pickers use — a task may be your focus
- * task exactly while it is on your plate (shared/focusTaskEligibility.js). Release focus from every
- * user the task is no longer actionable for. The incoming reviewer keeping it is now a consequence
- * of that one rule instead of a special case, so the release side and the selection side cannot
- * drift apart: whoever keeps the task focused here is precisely whoever the picker would have been
- * allowed to hand it to anyway.
+ * The task landing on your plate is the opposite of it leaving your plate, so the incoming
+ * reviewer keeps its focus if they had it — only the people it moved AWAY from lose it. This also
+ * keeps a backward move to Open from un-focusing the owner it just returned to.
  *
  * Returns [] when the step did not actually change, which is what keeps unrelated task updates
  * (renames, descriptions, estimations, assistant comments, VM interaction holds) from touching
@@ -76,18 +68,15 @@ const getWorkflowFocusHandoffCandidates = (oldTask = {}, newTask = {}) => {
     if (newTask.parentId) return []
     if (!hasWorkflowStepChanged(oldTask, newTask)) return []
 
+    const incomingReviewerId = newTask.currentReviewerId
     const previousUserIds = Array.isArray(oldTask.userIds) ? oldTask.userIds : []
-    // Also consider the destination's participants: a user can have focused the task while only
-    // being a later step's reviewer, in which case they never appear in the old task's userIds.
-    const nextUserIds = Array.isArray(newTask.userIds) ? newTask.userIds : []
 
-    const candidates = [oldTask.userId, newTask.userId, oldTask.currentReviewerId, ...previousUserIds, ...nextUserIds]
+    const candidates = [oldTask.userId, newTask.userId, oldTask.currentReviewerId, ...previousUserIds]
 
     const handoffUserIds = []
     for (const candidate of candidates) {
         if (!isRealUserId(candidate)) continue
-        // Still theirs to act on — the one rule, shared with the pickers.
-        if (isTaskOnUserPlate(newTask, candidate)) continue
+        if (candidate === incomingReviewerId) continue
         if (handoffUserIds.includes(candidate)) continue
         handoffUserIds.push(candidate)
     }
