@@ -449,11 +449,28 @@ class NoteService {
         }
     }
 
+    // Followers seeded when the note is first created. Kept next to (and shaped like)
+    // getNoteUpdateFeedFollowers because both answer the same question: who should hear
+    // about this note. See that method for why creatorId has to be listed explicitly.
+    getNoteCreateFeedFollowers(note, feedUser) {
+        const actorId = feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
+        const ownerId = note && note.userId
+        const creatorId = note && note.creatorId
+        return Array.from(new Set([actorId, ownerId, creatorId].filter(Boolean)))
+    }
+
     getNoteUpdateFeedFollowers(note, feedUser) {
         const actorId = feedUser && (feedUser.uid || feedUser.id || feedUser.userId)
         const ownerId = note && note.userId
+        // The creator must be listed explicitly. Once an assistant both acts (feedUser)
+        // and owns the note (note.userId), actor and owner collapse onto the same
+        // assistant id and the human who asked for the note would silently stop
+        // following it — losing every notification about their own note. For
+        // human-created notes creator, owner and actor are the same id, so this is a
+        // no-op there (AT-2194).
+        const creatorId = note && note.creatorId
         const existingFollowers = Array.isArray(note?.followersIds) ? note.followersIds : []
-        return Array.from(new Set([actorId, ownerId, ...existingFollowers].filter(Boolean)))
+        return Array.from(new Set([actorId, ownerId, creatorId, ...existingFollowers].filter(Boolean)))
     }
 
     async persistNoteUpdateFeed({ projectId, noteId, note, feedUser, feedData }) {
@@ -674,7 +691,7 @@ class NoteService {
                         if (feedsBatch.setProjectContext) {
                             feedsBatch.setProjectContext(finalProjectId)
                         }
-                        const initialFollowers = Array.from(new Set([creator.uid, note.userId].filter(Boolean)))
+                        const initialFollowers = this.getNoteCreateFeedFollowers(note, creator)
                         feedsBatch.feedChainFollowersIds = {
                             ...(feedsBatch.feedChainFollowersIds || {}),
                             [noteId]: initialFollowers,

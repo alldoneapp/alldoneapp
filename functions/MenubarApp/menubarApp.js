@@ -1028,6 +1028,20 @@ async function getMenubarAssistantActor(db, userData) {
     }
 }
 
+// AT-2194 follow-up: the menubar meeting-notes flow already *acts* as the user's
+// default assistant — the feed entry reads "Anna has created the note" — so the note
+// it produces should belong to that assistant as well. The signed-in user stays the
+// creator, a follower and the visible user, exactly like the `create_note` tool.
+//
+// Falls back to the acting user whenever no real assistant could be resolved. The
+// actor's `anna-menubar` placeholder uid is deliberately NOT used as an owner: it is
+// not a real assistant document, so the notes list would render an unresolvable owner
+// avatar and the owner filter would group notes under a phantom entry.
+function resolveMenubarNoteOwnerId(assistantActor, actingUserId) {
+    const assistantId = typeof assistantActor?.assistantId === 'string' ? assistantActor.assistantId.trim() : ''
+    return assistantId || actingUserId
+}
+
 function normalizeNoteMove(rawMove) {
     if (rawMove === undefined || rawMove === null) return null
     if (!rawMove || typeof rawMove !== 'object') throw new Error('move must be an object')
@@ -1390,7 +1404,12 @@ async function handleMenubarPushNote(req, res) {
                     noteId,
                     title,
                     content: noteContent,
+                    // `userId` is the acting user: creator, follower and the person the
+                    // note stays visible for. `ownerId` is what the notes list avatar and
+                    // the owner filter read (AT-2194).
                     userId,
+                    ownerId: resolveMenubarNoteOwnerId(assistantActor, userId),
+                    creatorId: userId,
                     projectId: resolution.projectId,
                     assistantId: assistantActor.assistantId,
                     isPrivate: privacy.isPrivate,
@@ -2567,6 +2586,7 @@ module.exports = {
         buildLegacyNotePushDocId,
         normalizeNoteMove,
         resolveMenubarNotePrivacy,
+        resolveMenubarNoteOwnerId,
         getMenubarAssistantActor,
         decodeNoteAttachments,
         rewriteMarkdownAttachmentUrls,

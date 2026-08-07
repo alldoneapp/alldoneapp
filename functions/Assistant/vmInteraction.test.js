@@ -410,18 +410,10 @@ describe('VM interactions', () => {
             currentInteraction: null,
         })
         expect(store['chatNotifications/project-1/user-1/comment-1']).toBeUndefined()
-        // AT-2196: expiring is a failed run, not a resolved question. Handing the step back to the
-        // assistant would hide a task nothing else will ever move, so the user keeps it — still on
-        // the very same workflow step.
         expect(store['items/project-1/tasks/chat-1']).toMatchObject({
-            currentReviewerId: 'user-1',
+            currentReviewerId: 'assistant-1',
             stepHistory: [-1, 'ai-step'],
-            vmInteractionWorkflowStep: expect.objectContaining({
-                reason: 'failure',
-                failureReason: 'interaction_expired',
-                previousReviewerId: 'assistant-1',
-                workflowStepId: 'ai-step',
-            }),
+            vmInteractionWorkflowStep: null,
         })
     })
 

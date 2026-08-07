@@ -178,6 +178,26 @@ describe('NoteService patch storage updates', () => {
         ).toEqual(['assistant-1', 'user-1', 'user-2'])
     })
 
+    // AT-2194 follow-up. Once an assistant both ACTS (feedUser) and OWNS the note,
+    // actorId and ownerId collapse onto the same assistant id. Without the creator in
+    // this list the human who asked for the note stops following it and loses every
+    // notification about their own meeting note.
+    test('keeps the human creator following a note the assistant acts on and owns', () => {
+        const service = createService()
+
+        expect(
+            service.getNoteUpdateFeedFollowers({ userId: 'assistant-1', creatorId: 'human-1' }, { uid: 'assistant-1' })
+        ).toEqual(['assistant-1', 'human-1'])
+    })
+
+    test('does not duplicate the id for a human-created note', () => {
+        const service = createService()
+
+        expect(
+            service.getNoteUpdateFeedFollowers({ userId: 'human-1', creatorId: 'human-1' }, { uid: 'human-1' })
+        ).toEqual(['human-1'])
+    })
+
     test('updates storage content and metadata for a safe patch', async () => {
         let savedBuffer = null
         const file = {
@@ -549,6 +569,35 @@ describe('NoteService feed persistence', () => {
         )
         expect(createNoteFollowedFeed).toHaveBeenCalled()
         jest.dontMock('../Feeds/notesFeeds')
+    })
+
+    // AT-2194 follow-up: the menubar meeting-notes flow acts as the assistant AND now
+    // owns the note with it. Both ids the follower list was previously built from
+    // (feedUser.uid, note.userId) are then the assistant, so only note.creatorId keeps
+    // the requesting human subscribed to their own meeting note.
+    test('seeds the human creator as a follower of an assistant-owned note', () => {
+        const service = createService()
+
+        expect(
+            service.getNoteCreateFeedFollowers({ userId: 'assistant-1', creatorId: 'human-1' }, { uid: 'assistant-1' })
+        ).toEqual(['assistant-1', 'human-1'])
+    })
+
+    test('seeds a single follower for a note a human created and owns', () => {
+        const service = createService()
+
+        expect(
+            service.getNoteCreateFeedFollowers({ userId: 'human-1', creatorId: 'human-1' }, { uid: 'human-1' })
+        ).toEqual(['human-1'])
+    })
+
+    test('tolerates a note with no explicit creator', () => {
+        const service = createService()
+
+        expect(service.getNoteCreateFeedFollowers({ userId: 'human-1' }, { uid: 'assistant-1' })).toEqual([
+            'assistant-1',
+            'human-1',
+        ])
     })
 })
 
