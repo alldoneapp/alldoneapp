@@ -4,7 +4,7 @@ const admin = require('firebase-admin')
 const crypto = require('crypto')
 const moment = require('moment-timezone')
 const { google } = require('googleapis')
-const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const {
     CONNECTION_SERVICE_EMAIL,
     findConnectionsForProject,
@@ -165,10 +165,10 @@ function createPostLabelPromptHash(ruleKey = '', prompt = '') {
 }
 
 async function getGmailClient(userId, projectId) {
-    // Full refreshable credentials, not a bare access token: a stored token of unknown or
-    // past expiry is refreshed before use, and the client can refresh again mid-run (AT-2195).
-    const auth = await getAuthorizedOAuth2Client(userId, projectId, 'gmail')
-    return google.gmail({ version: 'v1', auth })
+    const accessToken = await getAccessToken(userId, projectId, 'gmail')
+    const oauth2Client = getOAuth2Client()
+    oauth2Client.setCredentials({ access_token: accessToken })
+    return google.gmail({ version: 'v1', auth: oauth2Client })
 }
 
 function buildBootstrapQuery(config) {

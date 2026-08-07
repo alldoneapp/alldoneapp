@@ -556,8 +556,8 @@ export default class Backend {
         return bridge.unsubStoreFeedsTab(projectId)
     }
 
-    static watchNewFeedsAllTabsRedux(projectId, userId) {
-        return bridge.watchNewFeedsAllTabsRedux(projectId, userId)
+    static watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount) {
+        return bridge.watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount)
     }
 
     static async getFeedObject(projectId, dateFormated, objectId, feedType, lastChangeDate) {
