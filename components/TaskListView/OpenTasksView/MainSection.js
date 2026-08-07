@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 
@@ -37,8 +37,6 @@ import SortModeActiveInfo from '../../GoalsView/SortModeActiveInfo'
 import { getGoalData, watchGoal } from '../../../utils/backends/Goals/goalsFirestore'
 import { unwatch } from '../../../utils/backends/firestore'
 import TasksHelper from '../Utils/TasksHelper'
-import { useIsUserEditing } from '../../../utils/editingGuard'
-import { createSectionRenderBudget } from './sectionRenderBudget'
 
 export default function MainSection({
     projectId,
@@ -50,14 +48,6 @@ export default function MainSection({
     setPressedShowMoreMainSection,
 }) {
     const dispatch = useDispatch()
-    // While the user is typing, background snapshots must not restructure what
-    // is already on screen: a section that unmounts takes the open editor (and
-    // the typed text) with it, and a section that merely *moves* blurs the
-    // focused input. See utils/editingGuard.js.
-    const isUserEditing = useIsUserEditing()
-    // Last section render sizes observed while the user was NOT editing. Used
-    // as a floor during editing so no mounted section can drop out.
-    const renderedAmountsRef = useRef({})
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const mainTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][MAIN_TASK_INDEX])
     const emptyGoalsAmount = useSelector(
@@ -354,12 +344,7 @@ export default function MainSection({
         focusedTaskSectionId = optimisticFocusGoalId
     }
 
-    // Pinning the focused section to the top reorders the keyed section list.
-    // React handles that by MOVING the existing DOM nodes, and moving a node
-    // blurs whatever is focused inside it - so a background change to
-    // `inFocusTaskId` would yank the caret out of an open editor. Defer the
-    // reorder until the user is done; it re-applies on the next idle render.
-    if (focusedTaskSectionId && !isUserEditing) {
+    if (focusedTaskSectionId) {
         const focusedSectionIndex = sortedMainTasks.findIndex(data => data[0] === focusedTaskSectionId)
         if (focusedSectionIndex > 0) {
             // Move focused section to the top
@@ -379,11 +364,6 @@ export default function MainSection({
     const loggedUserCanUpdateObject =
         loggedUserIsBoardOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
-    // Holds already-mounted sections at their last idle size while the user is
-    // typing, so a background task cannot starve one out of the shared budget
-    // and unmount an open editor. See sectionRenderBudget.js.
-    const sectionBudget = createSectionRenderBudget(isUserEditing, renderedAmountsRef)
-
     return (
         <View style={localStyles.container}>
             {sortedMainTasks.map((goalTasksData, index) => {
@@ -394,12 +374,8 @@ export default function MainSection({
                 if (isEmptyGoal) {
                     // --- Render Empty Goal ---
                     const goal = goalTasksData[1]
-                    const amountToRenderForEmptyGoal = sectionBudget.resolve(
-                        goal.id,
-                        globalAmountToRender > 1 ? 1 : globalAmountToRender
-                    )
-                    if (sectionBudget.shouldSkip(goal.id, amountToRenderForEmptyGoal, !showTheFullList)) return null // Adjusted condition for amountToRender
-                    sectionBudget.remember(goal.id, amountToRenderForEmptyGoal)
+                    const amountToRenderForEmptyGoal = globalAmountToRender > 1 ? 1 : globalAmountToRender
+                    if (amountToRenderForEmptyGoal <= 0 && !showTheFullList) return null // Adjusted condition for amountToRender
                     globalAmountToRender = globalAmountToRender > 1 ? globalAmountToRender - 1 : 0
 
                     return (
@@ -417,26 +393,14 @@ export default function MainSection({
                     // --- Render General Tasks Section ---
                     const taskList = goalTasksData[1]
                     amountOfTasksWithoutParent = taskList.length // Track amount for Add Task button logic
-                    const amountToRenderForGeneral = sectionBudget.resolve(
-                        goalId,
-                        showTheFullList
-                            ? taskList.length
-                            : globalAmountToRender > taskList.length
-                            ? taskList.length
-                            : globalAmountToRender
-                    )
+                    const amountToRenderForGeneral = showTheFullList
+                        ? taskList.length
+                        : globalAmountToRender > taskList.length
+                        ? taskList.length
+                        : globalAmountToRender
 
                     // Don't render the section if no tasks are visible unless it's the only section
-                    if (
-                        sectionBudget.shouldSkip(
-                            goalId,
-                            amountToRenderForGeneral,
-                            sortedMainTasks.length > 1 && !showTheFullList
-                        )
-                    )
-                        return null
-
-                    sectionBudget.remember(goalId, amountToRenderForGeneral)
+                    if (amountToRenderForGeneral <= 0 && sortedMainTasks.length > 1 && !showTheFullList) return null
 
                     globalAmountToRender =
                         globalAmountToRender > taskList.length ? globalAmountToRender - taskList.length : 0
@@ -509,18 +473,13 @@ export default function MainSection({
                     // --- Render Parent Goal Section ---
                     const goalIndex = mainTasks.findIndex(data => data[0] === goalId)
                     const taskList = goalTasksData[1]
-                    const amountToRenderForGoal = sectionBudget.resolve(
-                        goalId,
-                        showTheFullList
-                            ? taskList.length
-                            : globalAmountToRender > taskList.length
-                            ? taskList.length
-                            : globalAmountToRender
-                    )
+                    const amountToRenderForGoal = showTheFullList
+                        ? taskList.length
+                        : globalAmountToRender > taskList.length
+                        ? taskList.length
+                        : globalAmountToRender
 
-                    if (sectionBudget.shouldSkip(goalId, amountToRenderForGoal, !showTheFullList)) return null // Adjusted condition for amountToRender
-
-                    sectionBudget.remember(goalId, amountToRenderForGoal)
+                    if (amountToRenderForGoal <= 0 && !showTheFullList) return null // Adjusted condition for amountToRender
 
                     globalAmountToRender =
                         globalAmountToRender > taskList.length ? globalAmountToRender - taskList.length : 0
