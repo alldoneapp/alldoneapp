@@ -4,13 +4,24 @@
  * AT-2189 regression: the swipe "postpone" popup was not visible on mobile.
  *
  * These drive the REAL (patched) react-tiny-popover and the REAL viewport math
- * from utils/popoverPositioning, because both failure modes only appear once
+ * from utils/popoverPositioning, because the failure modes only appear once
  * those two are combined:
  *   1. an unclamped centred contentLocation placed the portal above the top
- *      edge of a short phone viewport, and
+ *      edge of a short phone viewport,
  *   2. the compatibility mouse events a touch device replays after the swipe
  *      release reached the popover's own window `click` listener and dismissed
- *      the popup in the frame it appeared.
+ *      the popup in the frame it appeared, and
+ *   3. the dominant one, which survived the first two fixes: with a centred
+ *      target every candidate position violates on a phone, and the popover
+ *      gave up mid-render - portal and overlay mounted, container left at
+ *      opacity 0. See __tests__/UIComponents/ReactTinyPopoverNoFittingPosition
+ *      for the library-level contract.
+ *
+ * TARGET GEOMETRY MATTERS. Version one of this suite mocked every non-container
+ * element - the Popover's target included - as 0x0 at (0, 0), which put the
+ * target in the top-left corner where the 'right' position is viable. That hid
+ * mode 3 completely. The target is an empty <Text /> inside a full-screen
+ * overlay that centres its children, so it must be modelled CENTRED.
  */
 import React from 'react'
 import ReactDOM from 'react-dom'
@@ -96,9 +107,17 @@ describe('DueDateSinglePopup on a phone viewport', () => {
             disconnect() {}
         }
         setViewport(PHONE_WIDTH, PHONE_HEIGHT)
+        // react-tiny-popover's outside-click handler consults the selection.
+        window.getSelection = () => ({ toString: () => '' })
 
-        // jsdom has no layout: give the portal container the size the real modal
-        // would have, positioned wherever the popover just placed it.
+        host = document.createElement('div')
+        document.body.appendChild(host)
+
+        // jsdom has no layout, so model what a real browser produces:
+        //  - the portal container: the size the real modal would have, at
+        //    wherever the popover just placed it;
+        //  - everything in the app tree, i.e. the Popover's TARGET: a zero-size
+        //    box at the CENTRE of the viewport (see the file header).
         jest.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function () {
             if (this.classList && this.classList.contains('react-tiny-popover-container')) {
                 const top = parseFloat(this.style.top) || 0
@@ -112,11 +131,13 @@ describe('DueDateSinglePopup on a phone viewport', () => {
                     bottom: top + contentSize.height,
                 }
             }
+            if (host.contains(this)) {
+                const midX = PHONE_WIDTH / 2
+                const midY = PHONE_HEIGHT / 2
+                return { top: midY, left: midX, width: 0, height: 0, right: midX, bottom: midY }
+            }
             return { top: 0, left: 0, width: 0, height: 0, right: 0, bottom: 0 }
         })
-
-        host = document.createElement('div')
-        document.body.appendChild(host)
     })
 
     afterEach(() => {
@@ -139,6 +160,27 @@ describe('DueDateSinglePopup on a phone viewport', () => {
         left: parseFloat(popover.style.left),
     })
 
+    // The reported symptom, and the one that survived the first round of fixes:
+    // the overlay mounted and locked the rest of the UI, but the popup itself
+    // stayed invisible. No position fits a 305x450 modal around a centred target
+    // on a 390x664 phone, and the popover used to abandon the render at that
+    // point - leaving the container at its initial opacity 0, with the
+    // contentLocation helper never called (so also at top 0 / left 0).
+    it('makes the popup visible instead of leaving a locked, invisible overlay', () => {
+        const popover = mount()
+
+        expect(popover).not.toBeNull()
+        expect(popover.style.opacity).toBe('1')
+    })
+
+    it('makes a popup taller than the viewport visible too', () => {
+        contentSize = { width: 304, height: 900 }
+
+        const popover = mount()
+
+        expect(popover.style.opacity).toBe('1')
+    })
+
     it('centres the popup in the viewport when it fits', () => {
         const popover = mount()
         const { top, left } = geometry(popover)
@@ -157,6 +199,9 @@ describe('DueDateSinglePopup on a phone viewport', () => {
         const popover = mount()
         const { top, left } = geometry(popover)
 
+        // Assert visibility as well: an abandoned render leaves the container at
+        // top/left 0, which would satisfy the bounds checks vacuously.
+        expect(popover.style.opacity).toBe('1')
         expect(top).toBeGreaterThanOrEqual(0)
         expect(left).toBeGreaterThanOrEqual(0)
         expect(top).toBeLessThan(PHONE_HEIGHT)
@@ -168,6 +213,7 @@ describe('DueDateSinglePopup on a phone viewport', () => {
         const popover = mount()
         const { left } = geometry(popover)
 
+        expect(popover.style.opacity).toBe('1')
         expect(left).toBeGreaterThanOrEqual(0)
         expect(left + contentSize.width).toBeLessThanOrEqual(PHONE_WIDTH)
     })
