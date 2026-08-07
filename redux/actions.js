@@ -1831,19 +1831,6 @@ export const setTaskVmStateFilters = vmStates => {
     return action
 }
 
-export const clearNoteOwnerFilters = () => {
-    const action = { type: 'Clear note owner filters' }
-    return action
-}
-
-export const setNoteOwnerFilters = ownerIds => {
-    const action = {
-        type: 'Set note owner filters',
-        ownerIds,
-    }
-    return action
-}
-
 export const updateTaskVmState = (taskKey, vmState) => {
     const action = {
         type: 'Update task VM state',
@@ -2884,17 +2871,13 @@ export const setTaskInFocus = taskInFocus => {
  * @param {string|null} taskId - Task ID to show as focused, or null to clear
  * @param {string|null} projectId - Project ID of the task
  * @param {string|null} goalId - Goal ID to keep pinned at top during transition
- * @param {string|null} userId - Focus holder. AT-2191 uses it to tell whether a task being
- *   postponed is the one currently shown as focused, without mistaking another user's swap for
- *   this user's. Optional: callers that omit it are simply not user-scoped.
  */
-export const setOptimisticFocusTask = (taskId, projectId, goalId, userId) => {
+export const setOptimisticFocusTask = (taskId, projectId, goalId) => {
     const action = {
         type: 'Set optimistic focus task',
         optimisticFocusTaskId: taskId,
         optimisticFocusTaskProjectId: projectId,
         optimisticFocusGoalId: goalId || null,
-        optimisticFocusUserId: userId || null,
         optimisticFocusActive: true,
     }
     return action
