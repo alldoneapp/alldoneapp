@@ -60,10 +60,15 @@ import {
 } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { createTaskWithService } from '../../../../utils/backends/Tasks/TaskServiceFrontendHelper'
 import { createSingleFlightSubmit } from '../../../../hooks/useSingleFlightSubmit'
+import { mergeUserTaskEdits } from './mergeUserTaskEdits'
 
 const Delta = ReactQuill.Quill.import('delta')
 
 export default class TaskEditionMode extends Component {
+    // True once the user has typed in the title. Guards the unsaved title
+    // against remote task updates - see mergeUserTaskEdits.js.
+    userEditedExtendedName = false
+
     constructor(props) {
         super(props)
 
@@ -110,28 +115,27 @@ export default class TaskEditionMode extends Component {
         }
     }
 
-    componentDidUpdate(prevProps, prevState) {
-        if (this.props.task && !isEqual(this.props.task, prevProps.task)) {
-            const newTempTaskState = Backend.mapTaskData(this.props.task.id, cloneDeep(this.props.task))
-            const newAssignee =
-                newTempTaskState.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
-                    ? getAssistant(newTempTaskState.userId)
-                    : isWorkstream(newTempTaskState.userId)
-                    ? getWorkstreamById(this.props.projectId, newTempTaskState.userId)
-                    : TasksHelper.getUserInProject(this.props.projectId, newTempTaskState.userId) ||
-                      TasksHelper.getContactInProject(this.props.projectId, newTempTaskState.userId)
+    resolveAssignee = tempTask =>
+        tempTask.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
+            ? getAssistant(tempTask.userId)
+            : isWorkstream(tempTask.userId)
+            ? getWorkstreamById(this.props.projectId, tempTask.userId)
+            : TasksHelper.getUserInProject(this.props.projectId, tempTask.userId) ||
+              TasksHelper.getContactInProject(this.props.projectId, tempTask.userId)
 
-            this.setState({ tempTask: newTempTaskState, assignee: newAssignee })
-        } else if (this.props.task && prevProps.task && this.props.task.dueDate !== prevProps.task.dueDate) {
-            const newTempTaskState = Backend.mapTaskData(this.props.task.id, cloneDeep(this.props.task))
-            const newAssignee =
-                newTempTaskState.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
-                    ? getAssistant(newTempTaskState.userId)
-                    : isWorkstream(newTempTaskState.userId)
-                    ? getWorkstreamById(this.props.projectId, newTempTaskState.userId)
-                    : TasksHelper.getUserInProject(this.props.projectId, newTempTaskState.userId) ||
-                      TasksHelper.getContactInProject(this.props.projectId, newTempTaskState.userId)
-            this.setState({ tempTask: newTempTaskState, assignee: newAssignee })
+    componentDidUpdate(prevProps, prevState) {
+        const taskChanged = this.props.task && !isEqual(this.props.task, prevProps.task)
+        const dueDateChanged = this.props.task && prevProps.task && this.props.task.dueDate !== prevProps.task.dueDate
+
+        if (taskChanged || dueDateChanged) {
+            // Keep the unsaved, user-typed title; take everything else from the
+            // incoming document. See mergeUserTaskEdits.js.
+            const newTempTaskState = mergeUserTaskEdits(
+                Backend.mapTaskData(this.props.task.id, cloneDeep(this.props.task)),
+                this.state.tempTask,
+                this.userEditedExtendedName
+            )
+            this.setState({ tempTask: newTempTaskState, assignee: this.resolveAssignee(newTempTaskState) })
         }
     }
 
@@ -224,6 +228,9 @@ export default class TaskEditionMode extends Component {
     ) => {
         const { tempTask } = this.state
         const { editing } = this.props
+        // Remember that the title is user-owned from here on, so an incoming
+        // remote update cannot revert it (see mergeUserTaskEdits.js).
+        if (extendedName !== tempTask.extendedName) this.userEditedExtendedName = true
         tempTask.extendedName = extendedName
         if (extendedName !== '') {
             this.setState({
