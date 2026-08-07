@@ -5486,23 +5486,11 @@ async function executeToolNatively(
 
             try {
                 // Create note using unified service
-                // AT-2194: the assistant owns the notes it creates. `userId` here is the
-                // acting user (kept as creator/follower and in isVisibleInFollowedFor, so the
-                // note still shows up in that user's default "Followed" notes tab); `ownerId`
-                // is what the notes list avatar and the owner filter read.
-                //
-                // `assistantId` is the assistant that actually ran this tool, so it owns the
-                // note even when it is a default-project assistant working in another project:
-                // clients resolve assistant owners across the user's projects, not only inside
-                // the rendered one (see `findNoteOwnerInProject`).
-                const noteOwnerId = assistantId || creatorId
                 const result = await cachedNoteService.createAndPersistNote(
                     {
                         title: toolArgs.title,
                         content: toolArgs.content,
                         userId: creatorId,
-                        ownerId: noteOwnerId,
-                        creatorId: creatorId,
                         projectId: projectId,
                         isPrivate: false,
                         feedUser,
@@ -9147,8 +9135,6 @@ async function executeToolNatively(
                     success: result.success,
                     calendarId: result.calendarId || toolArgs.calendarId || null,
                     eventId: result.event?.eventId || null,
-                    joinProvider: result.joinProvider || null,
-                    hasJoinUrl: !!result.joinUrl,
                 })
 
                 return result

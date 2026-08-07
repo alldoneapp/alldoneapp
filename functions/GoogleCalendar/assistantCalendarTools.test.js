@@ -9,12 +9,13 @@ jest.mock('googleapis', () => ({
 }))
 
 jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
-    getAuthorizedOAuth2Client: jest.fn(),
+    getAccessToken: jest.fn(),
+    getOAuth2Client: jest.fn(),
 }))
 
 const admin = require('firebase-admin')
 const { google } = require('googleapis')
-const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 
 const firestoreState = {
     users: {},
@@ -43,9 +44,13 @@ function buildFirestore() {
     }
 }
 
-// The handler now returns a ready, fully-credentialed client instead of a bare token.
-function createOAuthClient(projectId) {
-    return { __projectId: projectId, setCredentials: jest.fn(), on: jest.fn() }
+function createOAuthClient() {
+    return {
+        __projectId: null,
+        setCredentials(credentials) {
+            this.__projectId = String(credentials.access_token || '').replace(/^token-/, '')
+        },
+    }
 }
 
 describe('assistantCalendarTools', () => {
@@ -57,9 +62,8 @@ describe('assistantCalendarTools', () => {
         jest.clearAllMocks()
 
         admin.firestore.mockImplementation(() => buildFirestore())
-        getAuthorizedOAuth2Client.mockImplementation((userId, projectId) =>
-            Promise.resolve(createOAuthClient(projectId))
-        )
+        getAccessToken.mockImplementation((userId, projectId) => Promise.resolve(`token-${projectId}`))
+        getOAuth2Client.mockImplementation(() => createOAuthClient())
         google.calendar.mockImplementation(({ auth }) => {
             const client = calendarClients[auth.__projectId]
             if (!client) throw new Error(`Missing mocked calendar client for project ${auth.__projectId}`)
@@ -447,14 +451,7 @@ describe('assistantCalendarTools', () => {
                 summary: 'Local Time Event',
                 start: { dateTime: '2026-03-11T09:00:00', timeZone: 'Europe/Berlin' },
                 end: { dateTime: '2026-03-11T10:00:00', timeZone: 'Europe/Berlin' },
-                conferenceData: {
-                    createRequest: {
-                        requestId: expect.any(String),
-                        conferenceSolutionKey: { type: 'hangoutsMeet' },
-                    },
-                },
             },
-            conferenceDataVersion: 1,
         })
     })
 
@@ -597,172 +594,6 @@ describe('assistantCalendarTools', () => {
         expect(result.projectId).toBe('p2')
         expect(defaultClient.events.insert).toHaveBeenCalled()
         expect(calendarClients.p1.events.insert).not.toHaveBeenCalled()
-    })
-
-    // AT-2198: every meeting Anna books must come with a join link already attached.
-    describe('automatic Google Meet conferencing', () => {
-        function connectSingleAccount() {
-            setUser('user-1', {
-                projectIds: ['p1'],
-                apisConnected: { p1: { calendar: true, calendarEmail: 'one@example.com' } },
-            })
-            return setCalendarClient('p1')
-        }
-
-        const TIMED_EVENT = {
-            userId: 'user-1',
-            summary: 'Meeting with Karsten',
-            start: '2026-03-11T09:00:00+01:00',
-            end: '2026-03-11T10:00:00+01:00',
-        }
-
-        function meetEventResponse(overrides = {}) {
-            return {
-                data: {
-                    id: 'evt-meet',
-                    summary: 'Meeting with Karsten',
-                    start: { dateTime: '2026-03-11T09:00:00+01:00' },
-                    end: { dateTime: '2026-03-11T10:00:00+01:00' },
-                    hangoutLink: 'https://meet.google.com/abc-defg-hij',
-                    conferenceData: {
-                        createRequest: { status: { statusCode: 'success' } },
-                        entryPoints: [{ entryPointType: 'video', uri: 'https://meet.google.com/abc-defg-hij' }],
-                    },
-                    ...overrides,
-                },
-            }
-        }
-
-        test('requests a Meet conference and returns the join URL', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(meetEventResponse())
-
-            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            expect(result.success).toBe(true)
-            expect(result.joinUrl).toBe('https://meet.google.com/abc-defg-hij')
-            expect(result.joinProvider).toBe('google_meet')
-            expect(result.provider).toBe('google')
-
-            const insertArgs = client.events.insert.mock.calls[0][0]
-            // Without conferenceDataVersion:1 Google silently ignores conferenceData.
-            expect(insertArgs.conferenceDataVersion).toBe(1)
-            expect(insertArgs.requestBody.conferenceData.createRequest.conferenceSolutionKey).toEqual({
-                type: 'hangoutsMeet',
-            })
-            expect(insertArgs.requestBody.conferenceData.createRequest.requestId).toEqual(expect.any(String))
-        })
-
-        test('uses a unique conference requestId per event', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(meetEventResponse())
-
-            await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-            await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            const [first, second] = client.events.insert.mock.calls.map(
-                call => call[0].requestBody.conferenceData.createRequest.requestId
-            )
-            expect(first).not.toBe(second)
-        })
-
-        test('exposes the Meet link on the normalized event so downstream readers see it', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(meetEventResponse())
-
-            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            expect(result.event.hangoutLink).toBe('https://meet.google.com/abc-defg-hij')
-            expect(result.event.conferenceData).toBeTruthy()
-        })
-
-        // A Workspace policy can disable Meet. The booking must still succeed.
-        test('falls back to a plain event when Google rejects conferencing', async () => {
-            const client = connectSingleAccount()
-            const rejection = Object.assign(new Error('Invalid conference type value.'), { code: 403 })
-            client.events.insert.mockRejectedValueOnce(rejection).mockResolvedValueOnce({
-                data: {
-                    id: 'evt-plain',
-                    summary: 'Meeting with Karsten',
-                    start: { dateTime: '2026-03-11T09:00:00+01:00' },
-                    end: { dateTime: '2026-03-11T10:00:00+01:00' },
-                },
-            })
-
-            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            expect(result.success).toBe(true)
-            expect(result.joinUrl).toBe('')
-            expect(result.event.eventId).toBe('evt-plain')
-            expect(client.events.insert).toHaveBeenCalledTimes(2)
-            // The retry must not carry conferencing fields.
-            const retryArgs = client.events.insert.mock.calls[1][0]
-            expect(retryArgs.requestBody.conferenceData).toBeUndefined()
-            expect(retryArgs.conferenceDataVersion).toBeUndefined()
-        })
-
-        // A 5xx may have created the event server-side; retrying could double-book.
-        test('does not retry a transient failure', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockRejectedValue(Object.assign(new Error('Backend Error'), { code: 500 }))
-
-            await expect(assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)).rejects.toThrow(
-                'Backend Error'
-            )
-            expect(client.events.insert).toHaveBeenCalledTimes(1)
-        })
-
-        test('succeeds without a link when Google reports a failed conference', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(
-                meetEventResponse({
-                    hangoutLink: undefined,
-                    conferenceData: { createRequest: { status: { statusCode: 'failure' } } },
-                })
-            )
-
-            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest(TIMED_EVENT)
-
-            expect(result.success).toBe(true)
-            expect(result.joinUrl).toBe('')
-            expect(client.events.insert).toHaveBeenCalledTimes(1)
-        })
-
-        // Holidays and vacations are not meetings.
-        test('does not add conferencing to all-day events', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue({
-                data: {
-                    id: 'evt-allday',
-                    summary: 'Vacation',
-                    start: { date: '2026-03-12' },
-                    end: { date: '2026-03-13' },
-                },
-            })
-
-            await assistantCalendarTools.createCalendarEventForAssistantRequest({
-                userId: 'user-1',
-                summary: 'Vacation',
-                start: { date: '2026-03-12' },
-                end: { date: '2026-03-13' },
-            })
-
-            const insertArgs = client.events.insert.mock.calls[0][0]
-            expect(insertArgs.requestBody.conferenceData).toBeUndefined()
-            expect(insertArgs.conferenceDataVersion).toBeUndefined()
-        })
-
-        test('honours the internal addConferencing opt-out', async () => {
-            const client = connectSingleAccount()
-            client.events.insert.mockResolvedValue(meetEventResponse())
-
-            await assistantCalendarTools.createCalendarEventForAssistantRequest({
-                ...TIMED_EVENT,
-                addConferencing: false,
-            })
-
-            expect(client.events.insert.mock.calls[0][0].requestBody.conferenceData).toBeUndefined()
-        })
     })
 
     test('returns reconnect guidance when no calendar account is connected', async () => {

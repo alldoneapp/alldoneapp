@@ -28,9 +28,9 @@ jest.mock('googleapis', () => ({
 }))
 
 jest.mock('../GoogleOAuth/googleOAuthHandler', () => ({
-    getAuthorizedOAuth2Client: jest.fn(async () => ({
+    getAccessToken: jest.fn(async () => 'access-token'),
+    getOAuth2Client: jest.fn(() => ({
         setCredentials: mockSetCredentials,
-        on: jest.fn(),
     })),
 }))
 
