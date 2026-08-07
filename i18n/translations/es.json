@@ -944,6 +944,7 @@
     "Next step for all": "Siguiente paso para todos",
     "Reject all suggested tasks": "Rechazar todas las tareas sugeridas",
     "Reject all suggested tasks question": "{{count}} tareas sugeridas se rechazarán a la vez. ¿Realmente quieres continuar?",
+    "Accept and mark done": "Aceptar y marcar como hecho",
     "Reject single suggested task question": "Esta tarea sugerida será rechazada. ¿Realmente quieres continuar?",
     "Subtask": "Subtarea",
     "Create subtask": "Crear subtarea",

@@ -50,6 +50,34 @@ describe('SuggestedActions', () => {
         expect(baseProps.onAcceptPress).not.toHaveBeenCalled()
     })
 
+    it('labels the bypass as a workflow bypass by default', () => {
+        const tree = renderer.create(<SuggestedActions {...baseProps} showBypassWorkflow />)
+
+        expect(tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.accessibilityLabel).toBe(
+            'Bypass workflow'
+        )
+    })
+
+    // AT-2164: on an assistant/email suggestion in a project without a workflow there is nothing
+    // to "bypass" — the link accepts the task and completes it.
+    it('uses the given label when there is no workflow to bypass', () => {
+        const tree = renderer.create(
+            <SuggestedActions
+                {...baseProps}
+                isAssistantSuggestion
+                showBypassWorkflow
+                bypassWorkflowLabel="Accept and mark done"
+            />
+        )
+        const bypass = tree.root.findByProps({ testID: 'bypass-workflow-button' })
+
+        expect(bypass.props.accessibilityLabel).toBe('Accept and mark done')
+
+        bypass.props.onPress()
+        expect(baseProps.onBypassWorkflowPress).toHaveBeenCalledTimes(1)
+        expect(baseProps.onNextStepPress).not.toHaveBeenCalled()
+    })
+
     it('disables the bypass together with the next step action', () => {
         const tree = renderer.create(<SuggestedActions {...baseProps} showBypassWorkflow disabled />)
 
