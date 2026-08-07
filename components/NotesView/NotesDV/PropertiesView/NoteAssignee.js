@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux'
 import { translate } from '../../../../i18n/TranslationService'
 import { getUserData } from '../../../../utils/backends/Users/usersFirestore'
 import { setNoteOwner } from '../../../../utils/backends/Notes/notesFirestore'
+import { findNoteOwnerInProject } from '../../NoteFilters/noteOwnerFilterHelper'
 
 export default function NoteAssignee({ projectId, note, disabled }) {
     const smallScreen = useSelector(state => state.smallScreen)
@@ -25,8 +26,18 @@ export default function NoteAssignee({ projectId, note, disabled }) {
     }
 
     useEffect(() => {
-        getUserData(note.userId, false).then(user => setOwner(user))
-    }, [note.userId])
+        let cancelled = false
+        getUserData(note.userId, false).then(user => {
+            if (cancelled) return
+            // An assistant-owned note (AT-2194) has no doc in `users/`, so fall back to the
+            // project's assistants/contacts/workstreams before giving up — otherwise the
+            // owner button silently disappears from the note's detailed view.
+            setOwner(user || findNoteOwnerInProject(projectId, note.userId))
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [note.userId, projectId])
 
     const onSelectUser = user => {
         setNoteOwner(projectId, note.id, user.uid, owner, user, note, true)
