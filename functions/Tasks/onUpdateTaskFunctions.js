@@ -15,6 +15,7 @@ const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
 const { earnGold } = require('../Gold/goldHelper')
 const { captureTaskPriorityTaskUpdateFeedback } = require('../Assistant/taskPriorityLearning')
 const { enqueueWorkflowAiRunIfNeeded } = require('./workflowAiStep')
+const { releaseFocusTaskOnWorkflowStepChange } = require('./workflowFocusHandoff')
 const { reconcileTaskMergeStatusAfterWorkflowChange } = require('../Repositories/taskMergeStatusReconciliation')
 const { FieldValue } = require('firebase-admin/firestore')
 
@@ -373,6 +374,14 @@ const onUpdateTask = async (taskId, projectId, change) => {
     if (newTask.userId !== oldTask.userId || (newTask.isSubtask && !oldTask.isSubtask)) {
         promises.push(clearUserTaskInFocusIfMatch(oldTask.userId, taskId))
     }
+    // AT-2193: a task that moved to another workflow step is no longer what its previous holders
+    // should be working on. Same handoff as a postpone, and the only place that can reach a focus
+    // holder who is not the user that performed the move (firestore.rules blocks cross-user writes).
+    promises.push(
+        releaseFocusTaskOnWorkflowStepChange(projectId, taskId, oldTask, newTask).catch(error =>
+            console.error('[workflowFocusHandoff] Focus handoff failed', { taskId, error: error.message })
+        )
+    )
     promises.push(syncLinkedNoteTitle(projectId, oldTask, newTask))
     promises.push(awardGoldForTaskProgress(projectId, taskId, oldTask, newTask))
     promises.push(captureTaskPriorityFeedbackSafely(projectId, taskId, oldTask, newTask))

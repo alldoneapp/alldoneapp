@@ -4,7 +4,15 @@ const admin = require('firebase-admin')
 const { google } = require('googleapis')
 const moment = require('moment-timezone')
 
-const { getAccessToken, getOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { extractMeetingJoinUrl } = require('../Calendar/meetingJoinUrl')
+const {
+    GOOGLE_CONFERENCE_DATA_VERSION,
+    buildGoogleMeetCreateRequest,
+    googleConferenceSucceeded,
+    isConferencingRejection,
+    shouldAddConferencing,
+} = require('../Calendar/conferencing')
 const {
     createMicrosoftCalendarEventForAssistantRequest,
     deleteMicrosoftCalendarEventForAssistantRequest,
@@ -210,10 +218,9 @@ function validateEventRange(start, end) {
 }
 
 async function getCalendarClient(userId, projectId) {
-    const accessToken = await getAccessToken(userId, projectId, 'calendar')
-    const oauth2Client = getOAuth2Client()
-    oauth2Client.setCredentials({ access_token: accessToken })
-    return google.calendar({ version: 'v3', auth: oauth2Client })
+    // Full refreshable credentials, not a bare access token (AT-2195).
+    const auth = await getAuthorizedOAuth2Client(userId, projectId, 'calendar')
+    return google.calendar({ version: 'v3', auth })
 }
 
 async function getConnectedCalendarAccounts(userId) {
@@ -634,6 +641,9 @@ function normalizeCalendarEvent(event, account, calendarId, includeDescription =
             : [],
         organizer: event?.organizer || null,
         creator: event?.creator || null,
+        // hangoutLink is the canonical Google Meet URL and the first thing
+        // extractMeetingJoinUrl looks at, so it has to survive normalization.
+        hangoutLink: event?.hangoutLink || '',
         conferenceData: event?.conferenceData || null,
         recurringEventId: event?.recurringEventId || null,
     }
@@ -1000,6 +1010,43 @@ function buildEventPayload(args, { requireRange = true } = {}) {
     return payload
 }
 
+/**
+ * Insert a Google event, asking Calendar to provision a Google Meet.
+ *
+ * Conferencing is best-effort: if Google refuses the conference outright the
+ * event is inserted again without it, so a booking is never lost because Meet
+ * is unavailable. Only definitive 400/403 rejections are retried — see
+ * isConferencingRejection.
+ */
+async function insertGoogleEventWithConferencing(calendar, calendarId, payload, addConferencing) {
+    if (!shouldAddConferencing(payload, addConferencing)) {
+        const response = await calendar.events.insert({ calendarId, requestBody: payload })
+        return { data: response?.data || {}, conferencingRequested: false }
+    }
+
+    try {
+        const response = await calendar.events.insert({
+            calendarId,
+            requestBody: { ...payload, conferenceData: buildGoogleMeetCreateRequest() },
+            conferenceDataVersion: GOOGLE_CONFERENCE_DATA_VERSION,
+        })
+        const data = response?.data || {}
+        if (!googleConferenceSucceeded(data)) {
+            console.log('createCalendarEvent: Google accepted the event but did not provision a Meet conference')
+        }
+        return { data, conferencingRequested: true }
+    } catch (error) {
+        if (!isConferencingRejection(error)) throw error
+        console.log(
+            `createCalendarEvent: Google Meet conferencing was rejected (${
+                error?.message || 'unknown error'
+            }); creating the event without a meeting link`
+        )
+        const response = await calendar.events.insert({ calendarId, requestBody: payload })
+        return { data: response?.data || {}, conferencingRequested: true, conferencingFailed: true }
+    }
+}
+
 async function createCalendarEventForAssistantRequest({
     userId,
     summary,
@@ -1010,6 +1057,7 @@ async function createCalendarEventForAssistantRequest({
     location,
     attendees,
     calendarId,
+    addConferencing,
 }) {
     const trimmedSummary = safeTrim(summary)
     if (!trimmedSummary) {
@@ -1033,6 +1081,7 @@ async function createCalendarEventForAssistantRequest({
             location,
             attendees,
             calendarId,
+            addConferencing,
         })
     }
     const resolution = await resolveCalendarAccountForWrite({ userId, calendarId })
@@ -1059,18 +1108,24 @@ async function createCalendarEventForAssistantRequest({
     )
 
     const calendar = await getCalendarClient(userId, resolution.account.projectId)
-    const response = await calendar.events.insert({
-        calendarId: resolution.calendarId,
-        requestBody: payload,
-    })
+    const inserted = await insertGoogleEventWithConferencing(calendar, resolution.calendarId, payload, addConferencing)
+
+    const event = normalizeCalendarEvent(inserted.data, resolution.account, resolution.calendarId, true)
+    const joinLink = extractMeetingJoinUrl(event)
 
     return {
         success: true,
+        provider: 'google',
         calendarEmail: resolution.account.calendarEmail,
         projectId: resolution.account.projectId,
         calendarId: resolution.calendarId,
-        event: normalizeCalendarEvent(response?.data || {}, resolution.account, resolution.calendarId, true),
-        message: 'Calendar event created successfully.',
+        event,
+        joinUrl: joinLink?.joinUrl || '',
+        joinProvider: joinLink?.joinProvider || '',
+        conferencingRequested: !!inserted.conferencingRequested,
+        message: joinLink?.joinUrl
+            ? 'Calendar event created successfully with a Google Meet link.'
+            : 'Calendar event created successfully.',
     }
 }
 
