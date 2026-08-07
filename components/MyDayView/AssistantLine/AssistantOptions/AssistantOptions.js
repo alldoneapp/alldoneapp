@@ -26,9 +26,9 @@ import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButton
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import {
     ASSISTANT_INPUT_MAX_HEIGHT,
-    ASSISTANT_INPUT_MIN_HEIGHT,
+    getAssistantControlsStacked,
+    getAssistantInputDisplayHeight,
     getAssistantInputLayout,
-    getStableControlsWidth,
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from '../assistantInputLayout'
 
@@ -54,17 +54,12 @@ export default function AssistantOptions({
     const [isSending, setIsSending] = useState(false)
     const [showRunOutOfGoldModal, setShowRunOutOfGoldModal] = useState(false)
     const [inputLayout, setInputLayout] = useState(INITIAL_ASSISTANT_INPUT_LAYOUT)
-    const [controlsWidth, setControlsWidth] = useState(null)
+    const [controlsStacked, setControlsStacked] = useState(false)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const [quickActionsExpanded, setQuickActionsExpanded] = useState(showAllQuickActions)
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
-    // Read by the controls onLayout callback so it can tell whether a layout
-    // pass happened while the cluster was collapsed (row, authoritative) or
-    // expanded (column, narrow — ignore). Kept in a ref so the callback stays
-    // stable while always seeing the current expanded state.
-    const isInputExpandedRef = useRef(false)
 
     const assistantId = assistantIdOverride || defaultAssistantId
 
@@ -158,17 +153,19 @@ export default function AssistantOptions({
         setInputLayout(previousLayout => getAssistantInputLayout(contentHeight, previousLayout))
     }, [])
 
-    // Capture the control cluster's natural width while it is collapsed (row
-    // layout) and keep it when the cluster stacks into a column on expand, so
-    // the flex:1 input never changes width with its own height. Without this,
-    // expanding narrows the cluster, widens the input, re-wraps the text and
-    // starts the height oscillation the user sees as a "wiggle".
-    const onControlsLayout = useCallback(event => {
-        const measuredWidth = event?.nativeEvent?.layout?.width
-        setControlsWidth(previousWidth =>
-            getStableControlsWidth(measuredWidth, isInputExpandedRef.current, previousWidth)
+    // Stack the voice + send buttons into a column as soon as the field grows
+    // past one line, and release that only when the field is emptied again. See
+    // getAssistantControlsStacked for why the release must not depend on the
+    // measured height.
+    useEffect(() => {
+        setControlsStacked(wasStacked =>
+            getAssistantControlsStacked({
+                inputHeight: inputLayout.height,
+                hasText: message.length > 0,
+                wasStacked,
+            })
         )
-    }, [])
+    }, [inputLayout.height, message])
 
     const updateMessage = useCallback(text => {
         setMessage(text)
@@ -220,10 +217,7 @@ export default function AssistantOptions({
 
     const hasQuickActions = true
     const canSend = message.trim().length > 0 && !isSending
-    const isInputExpanded = inputLayout.height > ASSISTANT_INPUT_MIN_HEIGHT
-    // Keep the ref in sync so the (stable) onControlsLayout callback can tell
-    // whether the measurement it receives came from the row or the column layout.
-    isInputExpandedRef.current = isInputExpanded
+    const inputDisplayHeight = getAssistantInputDisplayHeight(inputLayout.height, controlsStacked)
 
     const sendLabel = translate('Send')
     const sendButtonTitle = isMobile ? '' : sendLabel
@@ -250,7 +244,7 @@ export default function AssistantOptions({
                 <CustomTextInput3
                     ref={inputRef}
                     containerStyle={localStyles.messageInput}
-                    fixedHeight={inputLayout.height}
+                    fixedHeight={inputDisplayHeight}
                     maxHeight={ASSISTANT_INPUT_MAX_HEIGHT}
                     onChangeText={updateMessage}
                     onContentSizeChange={(width, height) => updateInputHeight(height)}
@@ -274,14 +268,9 @@ export default function AssistantOptions({
                 >
                     <View
                         testID={'assistant-message-controls'}
-                        onLayout={onControlsLayout}
                         style={[
                             localStyles.sendButtonWrapper,
-                            isInputExpanded && localStyles.sendButtonWrapperExpanded,
-                            // Pin the cluster to its collapsed (row) width so the
-                            // switch to a column on expand can't shrink it, widen
-                            // the input, and re-trigger the wrap/height wiggle.
-                            controlsWidth != null && { width: controlsWidth },
+                            controlsStacked && localStyles.sendButtonWrapperExpanded,
                         ]}
                     >
                         <AssistantVoiceCallButton
@@ -289,14 +278,14 @@ export default function AssistantOptions({
                             assistant={assistant}
                             projectId={conversationProjectId}
                             skipNavigationOnThreadCreate
-                            buttonStyle={[localStyles.voiceButton, isInputExpanded && localStyles.voiceButtonExpanded]}
+                            buttonStyle={[localStyles.voiceButton, controlsStacked && localStyles.voiceButtonExpanded]}
                         />
                         <Button
                             title={isSending ? null : sendButtonTitle}
                             icon={isSending ? <Spinner spinnerSize={18} color={'white'} /> : 'send'}
                             onPress={handleSendMessage}
                             disabled={!canSend}
-                            buttonStyle={sendButtonStyle}
+                            buttonStyle={[sendButtonStyle, controlsStacked && localStyles.sendButtonStacked]}
                             titleStyle={localStyles.sendButtonTitle}
                             accessibilityLabel={sendLabel}
                             accessible={true}
@@ -384,6 +373,13 @@ const localStyles = StyleSheet.create({
     },
     sendButtonWrapperExpanded: {
         flexDirection: 'column',
+        // The cluster shrinks to the widest control (the send button), so the
+        // send button keeps its collapsed position at the right edge of the row
+        // and the voice button sits centred directly above it. The ~48px the
+        // row layout needed for the second button is handed back to the flex:1
+        // input, which is what "the input field should expand accordingly" means.
+        alignItems: 'center',
+        justifyContent: 'flex-end',
     },
     voiceButton: {
         marginLeft: 0,
@@ -404,6 +400,12 @@ const localStyles = StyleSheet.create({
         paddingVertical: 0,
         height: 40,
         minHeight: 40,
+    },
+    sendButtonStacked: {
+        // Button's own buttonMaster sets alignSelf: 'flex-start', which would
+        // win over the wrapper's alignItems and pull the send button off the
+        // shared centre axis. Re-assert it here.
+        alignSelf: 'center',
     },
     sendButtonTitle: {
         fontSize: 14,
