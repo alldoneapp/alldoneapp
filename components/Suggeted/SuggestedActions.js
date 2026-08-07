@@ -9,6 +9,7 @@ export default function SuggestedActions({
     isAssistantSuggestion,
     disabled,
     showBypassWorkflow,
+    bypassWorkflowLabel,
     onNextStepPress,
     onAcceptPress,
     onBypassWorkflowPress,
@@ -26,7 +27,9 @@ export default function SuggestedActions({
                 />
                 <Button title={translate('Accept')} type={'primary'} onPress={onAcceptPress} />
             </View>
-            {showBypassWorkflow && <BypassWorkflowButton disabled={disabled} onPress={onBypassWorkflowPress} />}
+            {showBypassWorkflow && (
+                <BypassWorkflowButton disabled={disabled} label={bypassWorkflowLabel} onPress={onBypassWorkflowPress} />
+            )}
         </View>
     )
 }
