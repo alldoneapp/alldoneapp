@@ -232,6 +232,93 @@ describe('findNoteOwnerInProject / resolveNoteOwner', () => {
     })
 })
 
+// AT-2194 production bug (the "Unknown" owner chip).
+//
+// Reproduces the exact production shape of note `dsSHRqBYKPJsw4S3hpAa`: a Mac menubar meeting
+// note filed into "JTL Software - Project Juno", owned by the assistant that transcribed it
+// ("Anna Alldone"), which lives in the user's DEFAULT project. Juno has its own assistants and
+// Anna is in none of them, nor in the global pool — so the project-scoped lookup found nothing
+// and the notes list rendered the literal "Unknown" owner chip, while the feed entry right next
+// to it correctly read "Anna Alldone has created the note" (feeds resolve assistants across
+// projects via `getUserPresentationDataInProject` -> `getAssistant`).
+describe('findNoteOwnerInProject: assistant owner outside the note project', () => {
+    const NOTE_PROJECT_ID = '-Ona1ph4uu0mdSl9zizI' // JTL Software - Project Juno
+    const DEFAULT_PROJECT_ID = '-MChwoc_417bzbCi0yuw' // the user's default project
+    const ANNA_ID = '-OkEJjitS1l877eST9X8' // "Anna Alldone", lives in the default project
+
+    const productionStore = () =>
+        setStoreState({
+            projectUsers: { [NOTE_PROJECT_ID]: [{ uid: HUMAN_ID, displayName: 'Karsten Wysk' }] },
+            projectAssistants: {
+                // Juno's own assistants — Anna is deliberately NOT among them.
+                [NOTE_PROJECT_ID]: [
+                    { uid: '-Opl-0IPPlv26577k_M2', displayName: 'JTL Assistant' },
+                    { uid: '-Oq7EO-vvIZsv8RHM2fJ', displayName: 'Paul Product Manager' },
+                ],
+                [DEFAULT_PROJECT_ID]: [
+                    { uid: ANNA_ID, displayName: 'Anna Alldone', photoURL: 'anna.png' },
+                    { uid: '-OkEJd9-RxF0ka4mTHi2', displayName: 'Sarah Songwriter' },
+                ],
+            },
+            globalAssistants: [],
+        })
+
+    it('resolves the assistant from the user’s default project instead of returning null', () => {
+        productionStore()
+
+        const owner = findNoteOwnerInProject(NOTE_PROJECT_ID, ANNA_ID)
+
+        expect(owner).not.toBeNull()
+        expect(owner.uid).toBe(ANNA_ID)
+        expect(owner.displayName).toBe('Anna Alldone')
+        expect(owner.isAssistant).toBe(true)
+    })
+
+    it('renders the assistant instead of the "Unknown" owner chip', () => {
+        productionStore()
+
+        const owner = resolveNoteOwner(NOTE_PROJECT_ID, ANNA_ID)
+
+        expect(owner.displayName).toBe('Anna Alldone')
+        expect(owner.displayName).not.toBe('Unknown')
+        expect(owner.photoURL).toBe('anna.png')
+        expect(owner.isAssistant).toBe(true)
+    })
+
+    it('still prefers an in-project match over the cross-project fallback', () => {
+        // Same id present in both projects: the note's own project wins, so a project-local
+        // assistant is never shadowed by a same-id entry loaded from elsewhere.
+        setStoreState({
+            projectAssistants: {
+                [NOTE_PROJECT_ID]: [{ uid: ANNA_ID, displayName: 'Anna (Juno copy)' }],
+                [DEFAULT_PROJECT_ID]: [{ uid: ANNA_ID, displayName: 'Anna (default copy)' }],
+            },
+        })
+
+        expect(findNoteOwnerInProject(NOTE_PROJECT_ID, ANNA_ID).displayName).toBe('Anna (Juno copy)')
+    })
+
+    it('does NOT resolve a human from another project', () => {
+        // The cross-project fallback is assistant-only, matching every other owner/author
+        // resolver in the app. A human who is not a member of this project stays unknown.
+        setStoreState({ projectUsers: { [DEFAULT_PROJECT_ID]: [{ uid: HUMAN_ID, displayName: 'Karsten' }] } })
+
+        expect(findNoteOwnerInProject(NOTE_PROJECT_ID, HUMAN_ID)).toBeNull()
+        expect(resolveNoteOwner(NOTE_PROJECT_ID, HUMAN_ID).displayName).toBe('Unknown')
+    })
+
+    it('groups the note under the assistant in the owner filter row', () => {
+        productionStore()
+
+        const notes = { 20260807: [note('n1', ANNA_ID), note('n2', ANNA_ID), note('n3', HUMAN_ID)] }
+        const { counts, ownerIds } = collectNoteOwnerCounts(notes, [])
+
+        expect(counts[ANNA_ID]).toBe(2)
+        expect(ownerIds).toContain(ANNA_ID)
+        expect(resolveNoteOwner(NOTE_PROJECT_ID, ownerIds[0]).displayName).toBe('Anna Alldone')
+    })
+})
+
 // AT-2194 production follow-up: moving a note between projects used to check the target
 // project's *users* only, so an assistant-owned note silently went back to the human on
 // every move — including the move a user makes right after the menubar files a meeting note
@@ -251,11 +338,19 @@ describe('resolveMovedNoteOwnerId', () => {
         expect(resolveMovedNoteOwnerId(TARGET_ID, ASSISTANT_ID, HUMAN_ID)).toBe(ASSISTANT_ID)
     })
 
-    it('hands the note back to the acting user when the owner does not resolve over there', () => {
-        // The assistant belongs to the *source* project only.
+    it('keeps an assistant owner that lives in another of the user’s projects', () => {
+        // The assistant belongs to the *source* project only. It still resolves — assistants
+        // are looked up across projects — and the assistant that wrote the note keeps having
+        // written it after the note is filed somewhere else.
         setStoreState({ projectAssistants: { [PROJECT_ID]: [{ uid: ASSISTANT_ID, displayName: 'Anna' }] } })
 
-        expect(resolveMovedNoteOwnerId(TARGET_ID, ASSISTANT_ID, HUMAN_ID)).toBe(HUMAN_ID)
+        expect(resolveMovedNoteOwnerId(TARGET_ID, ASSISTANT_ID, HUMAN_ID)).toBe(ASSISTANT_ID)
+    })
+
+    it('hands the note back to the acting user when the owner resolves nowhere at all', () => {
+        setStoreState({ projectUsers: { [PROJECT_ID]: [{ uid: 'ex-member', displayName: 'Gone' }] } })
+
+        expect(resolveMovedNoteOwnerId(TARGET_ID, 'ex-member', HUMAN_ID)).toBe(HUMAN_ID)
     })
 
     it('keeps a human owner who is a member of the target project', () => {

@@ -4,52 +4,51 @@ const { __private__ } = require('./menubarApp')
 
 const { resolveMenubarNoteOwnerId, getMenubarAssistantActor } = __private__
 
-// AT-2194 follow-up. The Mac menubar meeting-notes flow already acts as an assistant when it
-// writes the feed entry ("… has created the note"), so the note itself should belong to that
-// assistant too, with the human kept as creator and follower.
+// AT-2194. The Mac menubar meeting-notes flow already acts as an assistant when it writes the
+// feed entry ("… has created the note"), so the note itself belongs to that assistant too, with
+// the human kept as creator and follower.
 //
-// The production regression these tests pin: assistants live per project
-// (`assistants/{projectId}/items`) plus a shared `assistants/globalProject/items` pool, and a
-// client resolves a note owner against the *note project's* users/assistants plus that global
-// pool only. The menubar used to always resolve the user's DEFAULT project assistant, so a
-// meeting note filed into any other project was owned by an id nothing in that project could
-// resolve — the notes list rendered the literal "Unknown" owner chip.
+// The assistant that owns the note is the one that ACTUALLY produced it: the user's default
+// assistant, which transcribes and summarises the meeting (the Mac app stamps
+// "Transcribed by <name>" into the note body). It keeps ownership no matter which project the
+// note is filed into.
+//
+// An earlier follow-up scoped this resolution to the note's project so the owner id would be
+// found by the notes list. That fixed an "Unknown" owner chip in the wrong layer — it handed
+// authorship to a project assistant that did none of the work, and left the note body crediting
+// a different assistant than the owner avatar. The real gap was a missing cross-project
+// assistant fallback in `findNoteOwnerInProject`; these tests pin the ownership semantics that
+// fix restores.
 describe('resolveMenubarNoteOwnerId', () => {
-    const NOTE_PROJECT = 'note-project'
-
-    test('hands ownership to an assistant that lives in the note project', () => {
-        const actor = { assistantId: 'assistant-1', assistantProjectId: NOTE_PROJECT }
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', NOTE_PROJECT)).toBe('assistant-1')
+    test('hands ownership to the assistant that produced the note', () => {
+        const actor = { assistantId: 'assistant-1', assistantProjectId: 'note-project' }
+        expect(resolveMenubarNoteOwnerId(actor, 'user-1')).toBe('assistant-1')
     })
 
-    test('hands ownership to a global assistant, which resolves in every project', () => {
+    test('hands ownership to a global assistant', () => {
         const actor = { assistantId: 'assistant-global', assistantProjectId: 'globalProject' }
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', NOTE_PROJECT)).toBe('assistant-global')
+        expect(resolveMenubarNoteOwnerId(actor, 'user-1')).toBe('assistant-global')
     })
 
-    test('never owns a note with an assistant from a different project', () => {
-        // The AT-2194 production bug: default-project assistant, note filed elsewhere.
-        const actor = { assistantId: 'assistant-of-other-project', assistantProjectId: 'default-project' }
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', NOTE_PROJECT)).toBe('user-1')
-    })
-
-    test('falls back to the acting user when the note project is unknown', () => {
-        const actor = { assistantId: 'assistant-1', assistantProjectId: 'some-project' }
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', '')).toBe('user-1')
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', undefined)).toBe('user-1')
+    test('keeps ownership with an assistant from another project than the note', () => {
+        // The production shape of note dsSHRqBYKPJsw4S3hpAa: "Anna Alldone" lives in the user's
+        // default project and the note was filed into "JTL Software - Project Juno". Anna
+        // transcribed it, so Anna owns it — the client resolves assistants across projects.
+        const actor = { assistantId: 'anna', assistantProjectId: 'default-project' }
+        expect(resolveMenubarNoteOwnerId(actor, 'user-1')).toBe('anna')
     })
 
     test('falls back to the acting user when no assistant could be resolved', () => {
         // getMenubarAssistantActor returns assistantId: null together with an
         // `anna-menubar` placeholder feed user when nothing resolves.
-        expect(resolveMenubarNoteOwnerId({ assistantId: null }, 'user-1', NOTE_PROJECT)).toBe('user-1')
-        expect(resolveMenubarNoteOwnerId({}, 'user-1', NOTE_PROJECT)).toBe('user-1')
-        expect(resolveMenubarNoteOwnerId(undefined, 'user-1', NOTE_PROJECT)).toBe('user-1')
+        expect(resolveMenubarNoteOwnerId({ assistantId: null }, 'user-1')).toBe('user-1')
+        expect(resolveMenubarNoteOwnerId({}, 'user-1')).toBe('user-1')
+        expect(resolveMenubarNoteOwnerId(undefined, 'user-1')).toBe('user-1')
     })
 
-    test('treats a blank assistant id as unresolved rather than owning the note with it', () => {
-        expect(resolveMenubarNoteOwnerId({ assistantId: '   ' }, 'user-1', NOTE_PROJECT)).toBe('user-1')
-        expect(resolveMenubarNoteOwnerId({ assistantId: 42 }, 'user-1', NOTE_PROJECT)).toBe('user-1')
+    test('treats a blank or non-string assistant id as unresolved', () => {
+        expect(resolveMenubarNoteOwnerId({ assistantId: '   ' }, 'user-1')).toBe('user-1')
+        expect(resolveMenubarNoteOwnerId({ assistantId: 42 }, 'user-1')).toBe('user-1')
     })
 
     test('never assigns the anna-menubar placeholder as the owner', async () => {
@@ -62,15 +61,15 @@ describe('resolveMenubarNoteOwnerId', () => {
             }),
         }
 
-        const actor = await getMenubarAssistantActor(db, {}, { targetProjectId: NOTE_PROJECT })
+        const actor = await getMenubarAssistantActor(db, {})
 
         // The placeholder still drives the feed entry's display name...
         expect(actor.feedUser.uid).toBe('anna-menubar')
         expect(actor.assistantId).toBeNull()
         // ...but it is not a real assistant document, so owning a note with it would
         // render an unresolvable avatar and a phantom entry in the owner filter.
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', NOTE_PROJECT)).toBe('user-1')
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', NOTE_PROJECT)).not.toBe('anna-menubar')
+        expect(resolveMenubarNoteOwnerId(actor, 'user-1')).toBe('user-1')
+        expect(resolveMenubarNoteOwnerId(actor, 'user-1')).not.toBe('anna-menubar')
     })
 })
 
@@ -112,7 +111,10 @@ describe('getMenubarAssistantActor', () => {
         }),
     })
 
-    test('prefers the assistant of the project the note lands in', async () => {
+    test("uses the default project's assistant — the one that actually processes the note", async () => {
+        // Both projects have an assistant configured. The default project's wins, because that
+        // is the assistant that transcribed the meeting; the note project's assistant did
+        // nothing and must not be credited with the work.
         const db = buildDb(
             {
                 'assistants/note-project/items/note-project-assistant': { displayName: 'JTL Assistant' },
@@ -121,65 +123,18 @@ describe('getMenubarAssistantActor', () => {
             { 'note-project': 'note-project-assistant', 'default-project': 'default-assistant' }
         )
 
-        const actor = await getMenubarAssistantActor(
-            db,
-            { defaultProjectId: 'default-project' },
-            { targetProjectId: 'note-project' }
-        )
+        const actor = await getMenubarAssistantActor(db, { defaultProjectId: 'default-project' })
 
-        expect(actor.assistantId).toBe('note-project-assistant')
-        expect(actor.assistantProjectId).toBe('note-project')
-        expect(actor.feedUser.displayName).toBe('JTL Assistant')
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', 'note-project')).toBe('note-project-assistant')
+        expect(actor.assistantId).toBe('default-assistant')
+        expect(actor.assistantProjectId).toBe('default-project')
+        expect(actor.feedUser.displayName).toBe('Anna Alldone')
+        expect(resolveMenubarNoteOwnerId(actor, 'user-1')).toBe('default-assistant')
     })
 
-    test('does not leak the default project assistant into another project', async () => {
-        // The exact production shape: the note project has no assistant configured, and the
-        // default project's assistant is a project-scoped copy (not a global one).
-        const db = buildDb(
-            { 'assistants/default-project/items/default-assistant': { displayName: 'Anna Alldone' } },
-            { 'default-project': 'default-assistant' }
-        )
-
-        const actor = await getMenubarAssistantActor(
-            db,
-            { defaultProjectId: 'default-project' },
-            { targetProjectId: 'note-project' }
-        )
-
-        expect(actor.assistantId).toBeNull()
-        // ...so the human keeps the note instead of an owner nobody can resolve.
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', 'note-project')).toBe('user-1')
-    })
-
-    test('falls back to the global default assistant, which is resolvable everywhere', async () => {
-        const db = buildDb({}, {}, { id: 'global-anna', data: { displayName: 'Anna Alldone' } })
-
-        const actor = await getMenubarAssistantActor(
-            db,
-            { defaultProjectId: 'default-project' },
-            { targetProjectId: 'note-project' }
-        )
-
-        expect(actor.assistantId).toBe('global-anna')
-        expect(actor.assistantProjectId).toBe('globalProject')
-        expect(resolveMenubarNoteOwnerId(actor, 'user-1', 'note-project')).toBe('global-anna')
-    })
-
-    test("uses the user's global default assistant when the note project has none", async () => {
-        const db = buildDb({ 'assistants/globalProject/items/user-default': { displayName: 'Lenny' } }, {})
-
-        const actor = await getMenubarAssistantActor(
-            db,
-            { defaultProjectId: 'default-project', defaultAssistantId: 'user-default' },
-            { targetProjectId: 'note-project' }
-        )
-
-        expect(actor.assistantId).toBe('user-default')
-        expect(actor.assistantProjectId).toBe('globalProject')
-    })
-
-    test('keeps the default-project behaviour for the chat flows that pass no target project', async () => {
+    test('owns the note with the default project assistant even when filed into another project', async () => {
+        // The exact production shape: the default project's assistant is a project-scoped copy
+        // (not a global one) and the note lands in a project it does not belong to. It still
+        // owns the note; the client resolves it across projects.
         const db = buildDb(
             { 'assistants/default-project/items/default-assistant': { displayName: 'Anna Alldone' } },
             { 'default-project': 'default-assistant' }
@@ -189,5 +144,28 @@ describe('getMenubarAssistantActor', () => {
 
         expect(actor.assistantId).toBe('default-assistant')
         expect(actor.assistantProjectId).toBe('default-project')
+        expect(resolveMenubarNoteOwnerId(actor, 'user-1')).toBe('default-assistant')
+    })
+
+    test('falls back to the global default assistant', async () => {
+        const db = buildDb({}, {}, { id: 'global-anna', data: { displayName: 'Anna Alldone' } })
+
+        const actor = await getMenubarAssistantActor(db, { defaultProjectId: 'default-project' })
+
+        expect(actor.assistantId).toBe('global-anna')
+        expect(actor.assistantProjectId).toBe('globalProject')
+        expect(resolveMenubarNoteOwnerId(actor, 'user-1')).toBe('global-anna')
+    })
+
+    test("uses the user's stored default assistant when the default project has none", async () => {
+        const db = buildDb({ 'assistants/globalProject/items/user-default': { displayName: 'Lenny' } }, {})
+
+        const actor = await getMenubarAssistantActor(db, {
+            defaultProjectId: 'default-project',
+            defaultAssistantId: 'user-default',
+        })
+
+        expect(actor.assistantId).toBe('user-default')
+        expect(actor.assistantProjectId).toBe('globalProject')
     })
 })

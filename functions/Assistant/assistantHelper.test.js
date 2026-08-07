@@ -1173,9 +1173,12 @@ describe('assistant attachment handoff helpers', () => {
         )
     })
 
-    test('never owns a note with an assistant that does not exist in the note project', async () => {
-        // AT-2194 production bug: the note was owned by an assistant living in a *different*
-        // project, so the notes list could not resolve it and rendered an "Unknown" owner.
+    test('owns the note with the running assistant even when it belongs to another project', async () => {
+        // AT-2194: an assistant from the user's default project legitimately works in another
+        // project, and it owns what it creates there. The client resolves assistant owners
+        // across the user's projects (`findNoteOwnerInProject`), so this is renderable — an
+        // earlier attempt to gate ownership on an in-project assistant document silently
+        // handed these notes back to the human and undid the feature.
         mockDocGet.mockResolvedValue({ exists: false })
         mockCreateAndPersistNote.mockResolvedValue({
             success: true,
@@ -1194,7 +1197,11 @@ describe('assistant attachment handoff helpers', () => {
         )
 
         expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
-            expect.objectContaining({ ownerId: 'user-1', creatorId: 'user-1', userId: 'user-1' }),
+            expect.objectContaining({
+                ownerId: 'assistant-of-other-project',
+                creatorId: 'user-1',
+                userId: 'user-1',
+            }),
             expect.anything()
         )
     })
