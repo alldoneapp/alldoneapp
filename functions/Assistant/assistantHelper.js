@@ -4753,6 +4753,37 @@ async function executeExternalIntegrationTool({
     }
 }
 
+/**
+ * Whether `assistantId` is an assistant clients rendering `projectId` can actually resolve —
+ * i.e. it lives in that project's assistants or in the shared global assistant pool.
+ *
+ * Ownership must never be handed to an id that fails this check (AT-2194): the notes list
+ * resolves a note owner against the note project's users/assistants + global assistants only,
+ * so a stray id renders as an "Unknown" owner and a phantom owner-filter chip.
+ */
+async function isAssistantResolvableInProject(projectId, assistantId) {
+    if (!assistantId || !projectId) return false
+    // Deliberately NOT getAssistantForChat(): that helper is built for *running* an assistant,
+    // so it never fails — it falls back to the global default assistant and even to a copy in
+    // the user's default project, which is precisely the cross-project id that cannot be
+    // resolved by a client rendering this project.
+    try {
+        const db = admin.firestore()
+        const [projectDoc, globalDoc] = await Promise.all([
+            db.doc(`assistants/${projectId}/items/${assistantId}`).get(),
+            db.doc(`assistants/${GLOBAL_PROJECT_ID}/items/${assistantId}`).get(),
+        ])
+        return Boolean(projectDoc?.exists || globalDoc?.exists)
+    } catch (error) {
+        console.warn('Assistant tool: could not verify assistant for note ownership', {
+            assistantId,
+            projectId,
+            error: error.message,
+        })
+        return false
+    }
+}
+
 async function getAssistantFeedUserForTool(db, projectId, assistantId, requestUserId) {
     if (!assistantId) {
         const { UserHelper } = require('../shared/UserHelper')
@@ -5490,7 +5521,14 @@ async function executeToolNatively(
                 // acting user (kept as creator/follower and in isVisibleInFollowedFor, so the
                 // note still shows up in that user's default "Followed" notes tab); `ownerId`
                 // is what the notes list avatar and the owner filter read.
-                const noteOwnerId = assistantId || creatorId
+                //
+                // Only an assistant that actually resolves inside the note's own project may
+                // own it: clients look an owner up in that project's users/assistants plus the
+                // global assistant pool, so anything else renders as the literal "Unknown"
+                // owner chip and a phantom entry in the owner filter.
+                const noteOwnerId = (await isAssistantResolvableInProject(projectId, assistantId))
+                    ? assistantId
+                    : creatorId
                 const result = await cachedNoteService.createAndPersistNote(
                     {
                         title: toolArgs.title,
@@ -9142,8 +9180,6 @@ async function executeToolNatively(
                     success: result.success,
                     calendarId: result.calendarId || toolArgs.calendarId || null,
                     eventId: result.event?.eventId || null,
-                    joinProvider: result.joinProvider || null,
-                    hasJoinUrl: !!result.joinUrl,
                 })
 
                 return result

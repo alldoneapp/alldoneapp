@@ -16,6 +16,7 @@ import {
     flattenNotesByDate,
     getNoteOwnerId,
     NOTE_OWNER_UNASSIGNED,
+    resolveMovedNoteOwnerId,
     resolveNoteOwner,
 } from './noteOwnerFilterHelper'
 import store from '../../../redux/store'
@@ -228,5 +229,45 @@ describe('findNoteOwnerInProject / resolveNoteOwner', () => {
     it('resolveNoteOwner describes the unassigned sentinel', () => {
         expect(resolveNoteOwner(PROJECT_ID, NOTE_OWNER_UNASSIGNED).uid).toBe(NOTE_OWNER_UNASSIGNED)
         expect(resolveNoteOwner(PROJECT_ID, undefined).displayName).toBe('No owner')
+    })
+})
+
+// AT-2194 production follow-up: moving a note between projects used to check the target
+// project's *users* only, so an assistant-owned note silently went back to the human on
+// every move — including the move a user makes right after the menubar files a meeting note
+// into the wrong project.
+describe('resolveMovedNoteOwnerId', () => {
+    const TARGET_ID = 'project-2'
+
+    it('keeps an assistant owner that exists in the target project', () => {
+        setStoreState({ projectAssistants: { [TARGET_ID]: [{ uid: ASSISTANT_ID, displayName: 'Anna' }] } })
+
+        expect(resolveMovedNoteOwnerId(TARGET_ID, ASSISTANT_ID, HUMAN_ID)).toBe(ASSISTANT_ID)
+    })
+
+    it('keeps a global assistant owner, which resolves in every project', () => {
+        setStoreState({ globalAssistants: [{ uid: ASSISTANT_ID, displayName: 'Anna' }] })
+
+        expect(resolveMovedNoteOwnerId(TARGET_ID, ASSISTANT_ID, HUMAN_ID)).toBe(ASSISTANT_ID)
+    })
+
+    it('hands the note back to the acting user when the owner does not resolve over there', () => {
+        // The assistant belongs to the *source* project only.
+        setStoreState({ projectAssistants: { [PROJECT_ID]: [{ uid: ASSISTANT_ID, displayName: 'Anna' }] } })
+
+        expect(resolveMovedNoteOwnerId(TARGET_ID, ASSISTANT_ID, HUMAN_ID)).toBe(HUMAN_ID)
+    })
+
+    it('keeps a human owner who is a member of the target project', () => {
+        setStoreState({ projectUsers: { [TARGET_ID]: [{ uid: HUMAN_ID, displayName: 'Human' }] } })
+
+        expect(resolveMovedNoteOwnerId(TARGET_ID, HUMAN_ID, 'someone-else')).toBe(HUMAN_ID)
+    })
+
+    it('falls back to the acting user for notes without an owner', () => {
+        setStoreState()
+
+        expect(resolveMovedNoteOwnerId(TARGET_ID, undefined, HUMAN_ID)).toBe(HUMAN_ID)
+        expect(resolveMovedNoteOwnerId(TARGET_ID, NOTE_OWNER_UNASSIGNED, HUMAN_ID)).toBe(HUMAN_ID)
     })
 })

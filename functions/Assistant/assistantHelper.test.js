@@ -1141,6 +1141,9 @@ describe('assistant attachment handoff helpers', () => {
     })
 
     test('makes the assistant the owner of a note it creates, keeping the human as creator', async () => {
+        // The assistant has to exist in the note's own project (or in the global pool) before
+        // it may own the note — see the cross-project guard below.
+        mockDocGet.mockResolvedValue({ exists: true, id: 'assistant-1', data: () => ({ displayName: 'Anna' }) })
         mockCreateAndPersistNote.mockResolvedValue({
             success: true,
             noteId: 'note-1',
@@ -1167,6 +1170,32 @@ describe('assistant attachment handoff helpers', () => {
                 userId: 'user-1',
             }),
             expect.objectContaining({ userId: 'user-1', projectId: 'project-1' })
+        )
+    })
+
+    test('never owns a note with an assistant that does not exist in the note project', async () => {
+        // AT-2194 production bug: the note was owned by an assistant living in a *different*
+        // project, so the notes list could not resolve it and rendered an "Unknown" owner.
+        mockDocGet.mockResolvedValue({ exists: false })
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-4',
+            message: 'Note created',
+            note: { id: 'note-4', projectId: 'project-1', extendedTitle: 'Cross project note' },
+        })
+
+        await executeToolNatively(
+            'create_note',
+            { title: 'Cross project note' },
+            'project-1',
+            'assistant-of-other-project',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+            expect.objectContaining({ ownerId: 'user-1', creatorId: 'user-1', userId: 'user-1' }),
+            expect.anything()
         )
     })
 
