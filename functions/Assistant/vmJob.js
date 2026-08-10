@@ -19,6 +19,11 @@ const {
     formatOpenRouterModelLabel,
     OPENROUTER_LABEL,
 } = require('./vmModelRouting')
+const {
+    BASE_VM_TOKENS_PER_GOLD: VM_TOKENS_PER_GOLD,
+    resolveTokensPerGold,
+    formatTokenDiscountNote,
+} = require('./vmTokenPricing')
 const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
 const { buildVmChatPath } = require('./vmHostTaskHelper')
 const { applyVmFailureWorkflowHold } = require('./vmWorkflowHold')
@@ -28,13 +33,14 @@ const { Timestamp } = require('firebase-admin/firestore')
 
 // Hybrid Gold pricing for a VM run:
 //   total = VM_JOB_BASE_GOLD + ceil(runtimeMinutes) * VM_GOLD_PER_MINUTE
-//                            + round(totalTokens / VM_TOKENS_PER_GOLD)
+//                            + round(totalTokens / resolveTokensPerGold(agentModel))
 // The base reserve is charged up-front (refunded if the run fails); the per-minute
 // (E2B compute) + per-token (LLM usage) top-up is charged by the worker on completion
-// from the agent's actual reported usage. Per-token rate matches in-app assistant usage.
+// from the agent's actual reported usage. The per-token rate matches in-app assistant
+// usage for every model except the discounted ones (DeepSeek via OpenRouter, at 1/5 the
+// Gold cost) — vmTokenPricing.js owns that decision for every charge site.
 const VM_JOB_BASE_GOLD = 20
 const VM_GOLD_PER_MINUTE = 10
-const VM_TOKENS_PER_GOLD = 100
 
 // Gold transaction sources (labels live in GoldTransactionsModal.getTransactionLabel).
 const VM_JOB_GOLD_SOURCE = 'vm_execution'
@@ -120,7 +126,11 @@ function formatAgentRunSuffix(model, effort) {
     return parts.length ? ` (${parts.join(' · ')})` : ''
 }
 
-function formatVmBillingStatus(agentLabel, credentialMode) {
+// `agentModel` is optional and only affects the platform-billing line: a discounted model (DeepSeek
+// via OpenRouter) says so, because otherwise the only way to notice the cheaper rate is to compare
+// Gold history entries after the fact. Subscription/BYOK runs charge no token Gold at all, so the
+// note would be meaningless there and is omitted.
+function formatVmBillingStatus(agentLabel, credentialMode, agentModel = '') {
     const mode = typeof credentialMode === 'boolean' ? (credentialMode ? 'subscription' : 'api') : credentialMode
     if (mode === 'subscription') {
         return `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
@@ -128,7 +138,7 @@ function formatVmBillingStatus(agentLabel, credentialMode) {
     if (mode === 'byok') {
         return `🔐 Using your personal ${agentLabel} API key. Provider token costs are billed directly to you; Alldone charges no token Gold.`
     }
-    return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
+    return `🔑 Using Alldone API billing. VM tokens will cost Gold.${formatTokenDiscountNote(agentModel)}`
 }
 
 function isClaudeModelId(model) {
@@ -532,12 +542,17 @@ async function startVmJob({
                   effortResult.value
               )} will start on this as soon as the running task finishes.\n\n${formatVmBillingStatus(
                   selectedAgentLabel,
-                  credentialMode
+                  credentialMode,
+                  modelResult.value
               )}`
             : `🖥️ Spinning up ${selectedAgentLabel}${formatAgentRunSuffix(
                   modelResult.value,
                   effortResult.value
-              )} in a VM to work on this…\n\n${formatVmBillingStatus(selectedAgentLabel, credentialMode)}`
+              )} in a VM to work on this…\n\n${formatVmBillingStatus(
+                  selectedAgentLabel,
+                  credentialMode,
+                  modelResult.value
+              )}`
         statusCommentId = await createInitialStatusMessage(
             projectId,
             objectType,
@@ -585,6 +600,12 @@ async function startVmJob({
         isPublicFor,
         statusCommentId,
         goldCharged: VM_JOB_BASE_GOLD,
+        // The resolved model selection, mirrored here (it also lives on the vmJobs doc) purely so
+        // the LLM proxy can price its incremental token charges. The proxy already reads this doc
+        // inside the charging transaction, so this costs no extra read — and reading the rate from
+        // persisted job state rather than from the sandbox's request body means a compromised agent
+        // cannot talk its own tokens down to the discounted rate. See vmTokenPricing.js.
+        agentModel: modelResult.value,
         credentialMode,
         subscriptionUsed,
         personalApiKeyUsed,

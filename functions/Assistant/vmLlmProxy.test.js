@@ -281,6 +281,114 @@ describe('vmLlmProxy token Gold charging', () => {
             })
         )
     })
+
+    // AT-2230 pricing: the live half of the DeepSeek discount. The rate is read from the job doc's
+    // persisted agentModel — NOT from the sandbox's request body — so a compromised agent cannot
+    // talk its own tokens down to the discounted rate.
+    test('charges DeepSeek token Gold at a fifth of the standard rate', async () => {
+        const { db, writes } = buildFakeDb({
+            userGold: 1000,
+            pendingData: { agentModel: 'openrouter:deepseek/deepseek-v3.2' },
+        })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 2 }))
+
+        const result = await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openrouter',
+            usage: { inputTokens: 800, outputTokens: 200, cacheTokens: 0, totalTokens: 1000 },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+
+        // 1000 tokens: 10 Gold at the standard rate, 2 here.
+        expect(result).toEqual(expect.objectContaining({ charged: 2 }))
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -2 }))
+        expect(writes[writes.length - 1].data).toEqual(expect.objectContaining({ proxyTokenGoldCharged: 2 }))
+    })
+
+    test('charges a non-DeepSeek OpenRouter model at the standard rate', async () => {
+        const { db } = buildFakeDb({ userGold: 1000, pendingData: { agentModel: 'openrouter:qwen/qwen3-coder' } })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 10 }))
+
+        await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openrouter',
+            usage: { totalTokens: 1000 },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -10 }))
+    })
+
+    // A job doc written before agentModel was persisted must bill exactly as it did before.
+    test('a job doc with no recorded model charges at the standard rate', async () => {
+        const { db } = buildFakeDb({ userGold: 1000, pendingData: {} })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 10 }))
+
+        await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openai',
+            usage: { totalTokens: 1000 },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -10 }))
+    })
+
+    // Guards the revenue hole a bigger divisor could open: at 500 tokens/Gold a single small request
+    // rounds to zero, so the tokens must stay banked in the running total and be billed once the
+    // total crosses the threshold — never dropped.
+    test('DeepSeek token dust below the rounding threshold is banked, then billed', async () => {
+        const first = buildFakeDb({
+            userGold: 1000,
+            pendingData: { agentModel: 'openrouter:deepseek/deepseek-v3.2' },
+        })
+        const firstCharge = jest.fn(() => ({ success: true, amount: 0 }))
+
+        const dust = await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openrouter',
+            usage: { totalTokens: 200 },
+            db: first.db,
+            applyGoldChangeInTransactionFn: firstCharge,
+        })
+
+        // Nothing charged yet, but the tokens are recorded.
+        expect(dust.charged).toBe(0)
+        expect(firstCharge).not.toHaveBeenCalled()
+        expect(first.writes[first.writes.length - 1].data).toEqual(
+            expect.objectContaining({ proxyTokenUsage: expect.objectContaining({ totalTokens: 200 }) })
+        )
+
+        // Next request resumes from that banked total rather than starting over.
+        const second = buildFakeDb({
+            userGold: 1000,
+            pendingData: {
+                agentModel: 'openrouter:deepseek/deepseek-v3.2',
+                proxyTokenUsage: { inputTokens: 0, outputTokens: 0, cacheTokens: 0, totalTokens: 200 },
+                proxyTokenGoldCharged: 0,
+            },
+        })
+        const secondCharge = jest.fn(() => ({ success: true, amount: 1 }))
+
+        const result = await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openrouter',
+            usage: { totalTokens: 400 },
+            db: second.db,
+            applyGoldChangeInTransactionFn: secondCharge,
+        })
+
+        // 600 cumulative tokens → round(600/500) = 1 Gold. The first 200 were not lost.
+        expect(result).toEqual(expect.objectContaining({ charged: 1, totalTokensTracked: 600 }))
+    })
 })
 
 describe('buildVmAgentCredentials', () => {
