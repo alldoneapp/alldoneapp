@@ -5914,6 +5914,48 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
 
+    // AT-2224: startVmJob can only tell an agent the user asked for from one the model invented if
+    // it is given the user's own words. Model-authored arguments must never be part of that text.
+    test('forwards the user-authored request text so per-run overrides can be corroborated', async () => {
+        await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Model-authored objective mentioning codex should not count as evidence.',
+                task_type: 'prototype',
+                agent: 'codex',
+                target_task_id: 'task-1',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Work on this task in the VM' },
+            { userRequestText: 'Earlier I said: please use claude for the repository work' }
+        )
+
+        const payload = startVmJobSpy.mock.calls[0][0]
+        expect(payload.requestText).toContain('please use claude')
+        expect(payload.requestText).toContain('Work on this task in the VM')
+        expect(payload.requestText).not.toContain('Model-authored objective')
+        expect(payload.agent).toBe('codex')
+    })
+
+    test('sends empty request text when there is no user-authored message', async () => {
+        await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Do the work.',
+                task_type: 'prototype',
+                target_task_id: 'task-1',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(startVmJobSpy.mock.calls[0][0].requestText).toBe('')
+    })
+
     test('rejects ambiguous target and continuation arguments before launching', async () => {
         const result = await executeToolNatively(
             'execute_task_in_vm',
