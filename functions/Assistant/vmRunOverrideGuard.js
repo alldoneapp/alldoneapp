@@ -37,9 +37,23 @@ const MAX_EVIDENCE_CHARS = 20000
 
 // Naming an agent's model is naming the agent: "run it with opus" is a Claude request even though
 // the word "claude" never appears.
+// Naming an OpenRouter-only model names the Codex harness too (AT-2230): OpenRouter models run
+// *through* Codex, so "do this one with deepseek" is as much an agent request as "use codex".
 const AGENT_EVIDENCE_PATTERNS = {
     claude: [/\bclaude\b/, /\bopus\b/, /\bsonnet\b/, /\bhaiku\b/, /\bfable\b/, /\banthropic\b/],
-    codex: [/\bcodex\b/, /\bopenai\b/, /\bgpt[-\s]?\d/],
+    codex: [
+        /\bcodex\b/,
+        /\bopenai\b/,
+        /\bgpt[-\s]?\d/,
+        /\bopen\s?router\b/,
+        /\bdeepseek\b/,
+        /\bqwen\b/,
+        /\bkimi\b/,
+        /\bmoonshot\b/,
+        /\bminimax\b/,
+        /\bmistral\b/,
+        /\bglm\b/,
+    ],
 }
 
 // Bare Claude aliases that count as naming a model on their own. Anything else has to appear in
@@ -125,11 +139,63 @@ function isAgentRequested(evidence, agent) {
     return !!patterns && patterns.some(pattern => pattern.test(evidence))
 }
 
+/**
+ * Nobody types "openrouter:deepseek/deepseek-v3.2" — they type "use deepseek". So an OpenRouter
+ * selection is corroborated by any of the tokens its id is built from (vendor, model name parts),
+ * with the noise words that carry no choice in them ('chat', 'instruct', 'free', version numbers)
+ * excluded, since matching those would let almost any sentence corroborate almost any model.
+ */
+const OPENROUTER_GENERIC_TOKENS = new Set([
+    'chat',
+    'instruct',
+    'free',
+    'preview',
+    'exp',
+    'experimental',
+    'latest',
+    'beta',
+    'thinking',
+    'reasoner',
+    'coder',
+    'max',
+    'mini',
+    'pro',
+    'plus',
+    'lite',
+    'base',
+    'it',
+    'ai',
+])
+
+// The `agentModel` reaching this guard is MODEL-authored and has not been validated yet
+// (normalizeAgentModel runs later, in startVmJob), so a token from it must never be interpolated
+// into a RegExp unchecked. `openrouter:foo/(((` would throw a SyntaxError that surfaces as a generic
+// "failed to start VM job", and a token like `(a+)+b` would backtrack catastrophically against up
+// to 20k characters of evidence text. The alphanumeric filter makes every surviving token inert as
+// a pattern; a token that fails it simply cannot corroborate anything, which costs the user at most
+// an explicit override they expressed in an unmatchable way — never their saved default.
+const SAFE_EVIDENCE_TOKEN_PATTERN = /^[a-z][a-z0-9]*$/
+
+function openRouterEvidenceTokens(modelId) {
+    return modelId
+        .split(/[/:\-_.]/)
+        .map(token => token.trim().toLowerCase())
+        .filter(
+            token =>
+                token.length >= 3 && SAFE_EVIDENCE_TOKEN_PATTERN.test(token) && !OPENROUTER_GENERIC_TOKENS.has(token)
+        )
+}
+
 function isModelRequested(evidence, agentModel) {
     const model = String(agentModel || '')
         .trim()
         .toLowerCase()
     if (!model) return false
+    if (model.startsWith('openrouter:')) {
+        if (/\bopen\s?router\b/.test(evidence)) return true
+        const tokens = openRouterEvidenceTokens(model.slice('openrouter:'.length))
+        return tokens.some(token => new RegExp(`\\b${token}\\b`).test(evidence))
+    }
     if (BARE_MODEL_ALIASES.includes(model)) return new RegExp(`\\b${model}\\b`).test(evidence)
     return evidence.includes(model)
 }
