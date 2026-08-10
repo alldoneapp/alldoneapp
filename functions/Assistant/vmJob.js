@@ -5,10 +5,14 @@ const { MAX_CONCURRENT_VM_JOBS_PER_USER } = require('./vmJobConfig')
 const {
     VALID_VM_AGENTS: VALID_AGENTS,
     SYSTEM_DEFAULT_VM_AGENT: DEFAULT_AGENT,
+    VALID_VM_APPROVAL_POLICIES,
+    isValidVmApprovalPolicy,
     resolveVmAgentSettings,
+    resolveVmApprovalPolicy,
 } = require('./vmAgentSettings')
 const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
 const { buildVmChatPath } = require('./vmHostTaskHelper')
+const { applyVmFailureWorkflowHold } = require('./vmWorkflowHold')
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { sanitizeTaskDescriptionText, buildTaskDescriptionMediaContextLines } = require('./taskDescriptionContext')
 const { Timestamp } = require('firebase-admin/firestore')
@@ -239,6 +243,7 @@ async function startVmJob({
     agent,
     agentModel,
     agentReasoningEffort,
+    approvalPolicy,
     executionMode = DEFAULT_VM_EXECUTION_MODE,
     contextObjectIds = [],
     deliverable = '',
@@ -282,7 +287,16 @@ async function startVmJob({
             message: `executionMode must be one of: ${VALID_VM_EXECUTION_MODES.join(', ')}.`,
         }
     }
+    if (approvalPolicy != null && approvalPolicy !== '' && !isValidVmApprovalPolicy(approvalPolicy)) {
+        return {
+            success: false,
+            message: `approvalPolicy must be one of: ${VALID_VM_APPROVAL_POLICIES.join(', ')}.`,
+        }
+    }
 
+    // Explicit per-run value wins, then the requesting user's saved preference, then the system
+    // default. Only consulted by interactive runs; automatic runs never pause for approvals.
+    const resolvedApprovalPolicy = await resolveVmApprovalPolicy(requestUserId, approvalPolicy)
     const resolvedAgentSettings = await resolveVmAgentSettings(requestUserId, agent, agentReasoningEffort)
     const selectedAgent = resolvedAgentSettings.agent
     const selectedAgentLabel = getAgentLabel(selectedAgent)
@@ -443,6 +457,7 @@ async function startVmJob({
         personalApiKeyUsed,
         tokenBillingExempt,
         executionMode,
+        approvalPolicy: resolvedApprovalPolicy,
         threadRunOrder: admission.sequence,
         threadRunCreatedAt: admission.admittedAt,
         // A queued job waits in the thread's FIFO queue and is flipped to 'pending' + launched by
@@ -495,6 +510,7 @@ async function startVmJob({
             personalApiKeyUsed,
             tokenBillingExempt,
             executionMode,
+            approvalPolicy: resolvedApprovalPolicy,
             threadRunOrder: admission.sequence,
             threadRunCreatedAt: admission.admittedAt,
             deliverable: deliverable || '',
@@ -551,6 +567,7 @@ async function startVmJob({
         objectId,
         requestUserId,
         statusCommentId,
+        assistantId,
     })
     if (launch.outcome === 'ambiguous') {
         return {
@@ -607,6 +624,7 @@ async function performVmCloudRunLaunch({
     objectId,
     requestUserId,
     statusCommentId,
+    assistantId = null,
     executionAttemptId = crypto.randomUUID(),
 }) {
     // The HTTP request only launches the detached execution; the five-hour sliced E2B supervision
@@ -675,6 +693,13 @@ async function performVmCloudRunLaunch({
                 )
                 .catch(() => {})
         }
+        // AT-2196: the job never ran, so nothing else will ever move its task. Hand it to the
+        // requesting user (workflow step untouched) the same way a failed run does.
+        await applyVmFailureWorkflowHold(
+            admin.firestore(),
+            { projectId, objectId, objectType, assistantId },
+            { correlationId, reviewerId: requestUserId, failureReason: 'launch_failed' }
+        ).catch(() => {})
         // Don't wedge the thread behind a job that never started: advance to the next queued job.
         await advanceThreadAndLaunchNext(projectId, objectId)
         return { outcome: 'failed' }
@@ -764,6 +789,13 @@ async function settleQueuedVmJobInsufficientGold(pending) {
             )
             .catch(() => {})
     }
+    // AT-2196: this job failed without ever running, so nothing else will move its task. Hand it to
+    // the requesting user (workflow step untouched) the same way a failed run does.
+    await applyVmFailureWorkflowHold(admin.firestore(), pending, {
+        correlationId,
+        reviewerId: pending.userId,
+        failureReason: VM_GOLD_EXHAUSTED_FAILURE_REASON,
+    }).catch(() => {})
 }
 
 /**
@@ -805,6 +837,7 @@ async function launchQueuedVmJob(correlationId) {
         objectId: pending.objectId,
         requestUserId: pending.userId,
         statusCommentId: pending.statusCommentId,
+        assistantId: pending.assistantId || null,
     })
     return { success: launch.outcome !== 'failed', outcome: launch.outcome }
 }
@@ -889,6 +922,12 @@ async function reconcileUnknownVmCloudRunLaunches(now = Date.now()) {
                     )
                     .catch(() => {})
             }
+            // AT-2196: same as any other job that never ran — the task goes to its requesting user.
+            await applyVmFailureWorkflowHold(db, pending, {
+                correlationId: pending.correlationId || doc.id,
+                reviewerId: pending.userId,
+                failureReason: 'launch_unconfirmed',
+            }).catch(() => {})
             // Hand the thread to the next queued job so a follow-up isn't stuck behind a launch that
             // was never confirmed (its dispatch lease would otherwise have to expire first).
             await advanceThreadAndLaunchNext(pending.projectId, pending.objectId)

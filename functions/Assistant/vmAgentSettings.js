@@ -1,9 +1,17 @@
 const admin = require('firebase-admin')
 
+const {
+    APPROVAL_POLICY_LEVELS,
+    DEFAULT_APPROVAL_POLICY_LEVEL,
+    isValidApprovalPolicyLevel,
+} = require('./vmAgentApprovalPolicy')
+
 const VALID_VM_AGENTS = ['claude', 'codex']
 const VALID_VM_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh']
 const SYSTEM_DEFAULT_VM_AGENT = 'codex'
 const SYSTEM_DEFAULT_VM_REASONING_EFFORT = 'medium'
+const VALID_VM_APPROVAL_POLICIES = APPROVAL_POLICY_LEVELS
+const SYSTEM_DEFAULT_VM_APPROVAL_POLICY = DEFAULT_APPROVAL_POLICY_LEVEL
 
 function isValidVmAgent(agent) {
     return VALID_VM_AGENTS.includes(agent)
@@ -13,12 +21,27 @@ function isValidVmReasoningEffort(effort) {
     return VALID_VM_REASONING_EFFORTS.includes(effort)
 }
 
+function isValidVmApprovalPolicy(policy) {
+    return isValidApprovalPolicyLevel(policy)
+}
+
 async function readStoredVmAgentSettings(userId) {
-    if (!userId) return { defaultAgent: null, defaultReasoningEffort: null, hasStoredReasoningEffort: false }
+    if (!userId)
+        return {
+            defaultAgent: null,
+            defaultReasoningEffort: null,
+            hasStoredReasoningEffort: false,
+            defaultApprovalPolicy: null,
+        }
 
     const snapshot = await admin.firestore().doc(`users/${userId}`).get()
     if (!snapshot.exists) {
-        return { defaultAgent: null, defaultReasoningEffort: null, hasStoredReasoningEffort: false }
+        return {
+            defaultAgent: null,
+            defaultReasoningEffort: null,
+            hasStoredReasoningEffort: false,
+            defaultApprovalPolicy: null,
+        }
     }
 
     const data = snapshot.data() || {}
@@ -35,6 +58,9 @@ async function readStoredVmAgentSettings(userId) {
             ? data.defaultVmAgentReasoningEffort
             : null,
         hasStoredReasoningEffort,
+        defaultApprovalPolicy: isValidVmApprovalPolicy(data.defaultVmApprovalPolicy)
+            ? data.defaultVmApprovalPolicy
+            : null,
     }
 }
 
@@ -48,7 +74,12 @@ async function getVmAgentSettings({ userId }) {
         throw new HttpsError('unauthenticated', 'Authentication required.')
     }
 
-    const { defaultAgent, defaultReasoningEffort, hasStoredReasoningEffort } = await readStoredVmAgentSettings(userId)
+    const {
+        defaultAgent,
+        defaultReasoningEffort,
+        hasStoredReasoningEffort,
+        defaultApprovalPolicy,
+    } = await readStoredVmAgentSettings(userId)
     return {
         defaultAgent,
         effectiveDefaultAgent: defaultAgent || SYSTEM_DEFAULT_VM_AGENT,
@@ -56,8 +87,47 @@ async function getVmAgentSettings({ userId }) {
         effectiveDefaultReasoningEffort: hasStoredReasoningEffort
             ? defaultReasoningEffort
             : SYSTEM_DEFAULT_VM_REASONING_EFFORT,
+        defaultApprovalPolicy,
+        effectiveDefaultApprovalPolicy: defaultApprovalPolicy || SYSTEM_DEFAULT_VM_APPROVAL_POLICY,
         validAgents: VALID_VM_AGENTS,
         validReasoningEfforts: VALID_VM_REASONING_EFFORTS,
+        validApprovalPolicies: VALID_VM_APPROVAL_POLICIES,
+    }
+}
+
+async function setDefaultVmApprovalPolicy({ userId, policy }) {
+    const { HttpsError } = require('firebase-functions/v2/https')
+    if (!userId) throw new HttpsError('unauthenticated', 'Authentication required.')
+    if (!isValidVmApprovalPolicy(policy)) {
+        throw new HttpsError('invalid-argument', `policy must be one of: ${VALID_VM_APPROVAL_POLICIES.join(', ')}.`)
+    }
+
+    const updatedAt = Date.now()
+    await admin.firestore().doc(`users/${userId}`).update({
+        defaultVmApprovalPolicy: policy,
+        defaultVmApprovalPolicyUpdatedAt: updatedAt,
+    })
+
+    return { success: true, defaultApprovalPolicy: policy, effectiveDefaultApprovalPolicy: policy, updatedAt }
+}
+
+/**
+ * Resolve the approval strictness for one VM run. An explicit per-run value wins, then the
+ * requesting user's preference, then the system default. As with the agent defaults, a settings
+ * read failure must never make VM execution unavailable - it degrades to the system default.
+ */
+async function resolveVmApprovalPolicy(userId, explicitPolicy) {
+    if (isValidVmApprovalPolicy(explicitPolicy)) return explicitPolicy
+
+    try {
+        const stored = await readStoredVmAgentSettings(userId)
+        return stored.defaultApprovalPolicy || SYSTEM_DEFAULT_VM_APPROVAL_POLICY
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Failed reading user VM approval policy, using system default', {
+            userId,
+            error: error.message,
+        })
+        return SYSTEM_DEFAULT_VM_APPROVAL_POLICY
     }
 }
 
@@ -151,15 +221,20 @@ async function resolveVmAgentSettings(userId, explicitAgent, explicitReasoningEf
 module.exports = {
     VALID_VM_AGENTS,
     VALID_VM_REASONING_EFFORTS,
+    VALID_VM_APPROVAL_POLICIES,
     SYSTEM_DEFAULT_VM_AGENT,
     SYSTEM_DEFAULT_VM_REASONING_EFFORT,
+    SYSTEM_DEFAULT_VM_APPROVAL_POLICY,
     isValidVmAgent,
     isValidVmReasoningEffort,
+    isValidVmApprovalPolicy,
     readStoredVmAgentSettings,
     readStoredDefaultVmAgent,
     getVmAgentSettings,
     setDefaultVmAgent,
     setDefaultVmAgentReasoningEffort,
+    setDefaultVmApprovalPolicy,
     resolveVmAgent,
     resolveVmAgentSettings,
+    resolveVmApprovalPolicy,
 }

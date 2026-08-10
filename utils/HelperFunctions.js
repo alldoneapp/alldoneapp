@@ -25,6 +25,7 @@ import {
 } from '../redux/actions'
 import Backend from './BackendBridge'
 import { registerPopupDismiss } from './popupDismissGuard'
+import { centerPopoverInWindow, clampToRange } from './popoverPositioning'
 import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormatPickerModal'
 import { BACKWARD_COMMENT, FORDWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { DONE_STEP, OPEN_STEP } from '../components/TaskListView/Utils/TasksHelper'
@@ -176,19 +177,6 @@ export const parsePastDate = (date, format) => {
     return toShowDate
 }
 
-const clampToRange = (value, min, max) => {
-    if (max < min) {
-        return min
-    }
-    if (value < min) {
-        return min
-    }
-    if (value > max) {
-        return max
-    }
-    return value
-}
-
 const getScrollOffsets = () => {
     if (typeof window === 'undefined') {
         return { scrollX: 0, scrollY: 0 }
@@ -217,16 +205,18 @@ const getScrollOffsets = () => {
 // scroll offsets must NOT be added here — that is what made these popovers
 // invisible after scrolling and wobble while scrolling under the RNW 0.21
 // layout, where the body (not the window) is the scroll container.
-export const popoverToCenter = (
-    { targetRect, popoverRect, position, align, nudgedLeft, nudgedTop },
-    isMobile = true
-) => {
-    const dim = Dimensions.get('window')
-    const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
-    const top = dim.height / 2 - popoverRect.height / 2
-    const left = dim.width / 2 - popoverRect.width / 2
-    return { top, left: left + sidebarDiff }
-}
+// A contentLocation function switches react-tiny-popover into "the caller
+// places it" mode: the library skips its own nudging/reposition pass entirely,
+// so whatever we return here is used verbatim on a `position: fixed`,
+// `overflow: hidden` container. Every helper must therefore keep the popover
+// inside the viewport itself. Centering without a clamp is what hid the swipe
+// postpone popup on phones (AT-2189): a modal taller than a short mobile
+// viewport centers to a NEGATIVE top, so its header and close button render
+// above the top edge; and on a narrow screen the desktop sidebar offset pushes
+// the container past the right edge, where `overflow: hidden` clips it.
+// The math lives in utils/popoverPositioning.js so it can be unit-tested.
+export const popoverToCenter = (positioningData = {}, isMobile = true) =>
+    centerPopoverInWindow(positioningData, isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2)
 
 export const popoverToSafePosition = (
     { targetRect, popoverRect, position, align, nudgedLeft, nudgedTop },

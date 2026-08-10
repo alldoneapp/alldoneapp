@@ -10,6 +10,7 @@ import ProjectHelper, {
     checkIfSelectedProject,
 } from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { FOLLOWED_TAB } from '../components/Feeds/Utils/FeedsConstants'
+import { getOptimisticGoalPostponeKey } from '../utils/backends/Goals/optimisticGoalPostpone'
 import {
     DV_TAB_ADMIN_PANEL_USER,
     DV_TAB_ROOT_CHATS,
@@ -249,6 +250,7 @@ export const initialState = {
     taskPriorityFilters: [],
     taskVmStateFilters: [],
     taskVmStatesByTask: {},
+    noteOwnerFilters: [],
     goldEarnedData: { goldEarned: 0, checkBoxId: '' },
     showGoldChain: false,
     showGoldCoin: false,
@@ -346,7 +348,10 @@ export const initialState = {
     optimisticFocusTaskId: null,
     optimisticFocusTaskProjectId: null,
     optimisticFocusGoalId: null,
+    optimisticFocusUserId: null,
     optimisticFocusActive: false,
+    // AT-2160: `${projectId}_${goalId}` -> { date, startedAt } while a goal postpone is in flight
+    optimisticGoalPostpones: {},
     myDayAllTodayTasks: {},
     myDaySelectedTasks: [],
     myDaySortingSelectedTasks: [],
@@ -1216,6 +1221,7 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: action.optimisticFocusTaskId,
                 optimisticFocusTaskProjectId: action.optimisticFocusTaskProjectId,
                 optimisticFocusGoalId: action.optimisticFocusGoalId,
+                optimisticFocusUserId: action.optimisticFocusUserId || null,
                 optimisticFocusActive: true,
             }
         }
@@ -1225,8 +1231,27 @@ export const theReducer = (state = initialState, action) => {
                 optimisticFocusTaskId: null,
                 optimisticFocusTaskProjectId: null,
                 optimisticFocusGoalId: null,
+                optimisticFocusUserId: null,
                 optimisticFocusActive: false,
             }
+        }
+        case 'Set optimistic goal postpone': {
+            // AT-2160: the goal leaves today's list right away; the server write follows.
+            const { projectId, goalId, date, startedAt } = action
+            return {
+                ...state,
+                optimisticGoalPostpones: {
+                    ...state.optimisticGoalPostpones,
+                    [getOptimisticGoalPostponeKey(projectId, goalId)]: { date, startedAt },
+                },
+            }
+        }
+        case 'Clear optimistic goal postpone': {
+            const key = getOptimisticGoalPostponeKey(action.projectId, action.goalId)
+            if (state.optimisticGoalPostpones[key] === undefined) return state
+            const optimisticGoalPostpones = { ...state.optimisticGoalPostpones }
+            delete optimisticGoalPostpones[key]
+            return { ...state, optimisticGoalPostpones }
         }
         case 'Set shared mode': {
             return { ...state, inSharedMode: true }
@@ -1553,6 +1578,21 @@ export const theReducer = (state = initialState, action) => {
             return {
                 ...state,
                 taskVmStateFilters: action.vmStates,
+            }
+        }
+
+        case 'Clear note owner filters': {
+            if (state.noteOwnerFilters.length === 0) return state
+            return {
+                ...state,
+                noteOwnerFilters: [],
+            }
+        }
+
+        case 'Set note owner filters': {
+            return {
+                ...state,
+                noteOwnerFilters: action.ownerIds,
             }
         }
 
