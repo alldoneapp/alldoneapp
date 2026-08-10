@@ -58,22 +58,77 @@ function buildVmChatPath(projectId, objectType, objectId) {
     return `/projects/${projectId}/${objectType === 'topics' ? 'chats' : objectType}/${objectId}/chat`
 }
 
+/** The tool whose result starts a VM job. */
+const VM_JOB_TOOL_NAME = 'execute_task_in_vm'
+
 /**
  * Pick the host-thread reference out of a startVmJob result, or null when the call didn't start a
  * job (validation failure, launch failure) or predates the host-thread fields.
+ *
+ * MUST stay idempotent. It renames hostObjectId -> objectId and hostThreadUrl -> url, so a version
+ * that only understood the raw `host*` shape returned null for anything it had already normalized.
+ * Every consumer here maps this over its input list, and the collectors store the NORMALIZED job —
+ * so a second pass nulled the whole list. That is what silently disabled the in-thread VM hand-off
+ * notification guard (and, for longer, the "Follow it here:" link safety net) in production: the
+ * helper's own unit tests fed it raw tool results, which is not what the call sites hold.
+ * Accepting both shapes makes the round trip safe no matter what a caller keeps.
  */
 function normalizeStartedVmJob(toolResult) {
     if (!toolResult || typeof toolResult !== 'object') return null
     if (toolResult.success === false) return null
-    const url = String(toolResult.hostThreadUrl || '').trim()
-    const objectId = String(toolResult.hostObjectId || '').trim()
+    const url = String(toolResult.hostThreadUrl || toolResult.url || '').trim()
+    const objectId = String(toolResult.hostObjectId || toolResult.objectId || '').trim()
     if (!url || !objectId) return null
     return {
         objectId,
-        objectType: String(toolResult.hostObjectType || 'tasks').trim() || 'tasks',
-        projectId: String(toolResult.hostProjectId || '').trim(),
+        objectType: String(toolResult.hostObjectType || toolResult.objectType || 'tasks').trim() || 'tasks',
+        projectId: String(toolResult.hostProjectId || toolResult.projectId || '').trim(),
         url,
     }
+}
+
+/**
+ * Collect the VM jobs a single tool call started into the run's accumulator, deduplicated by host
+ * thread. The one place a tool result is turned into a started-job reference, so the "did this run
+ * start a VM job" question is answered identically by every assistant run path (streaming chat and
+ * the non-streaming collector) and cannot drift from what the consumers below expect.
+ *
+ * Two sources count:
+ *  - the direct execute_task_in_vm result, and
+ *  - a delegated assistant's result (talk_to_assistant_*), which reports the VM jobs the delegate
+ *    started. A delegate normally hosts its job in a task of its own, but it can be pointed at an
+ *    existing thread (target_task_id / continue_in_object_id); when that is the caller's own
+ *    thread, the caller's reply is just as much a hand-off as a direct dispatch.
+ *
+ * @returns {Array} the same accumulator, mutated in place.
+ */
+function collectStartedVmJobs(collected, toolName, toolResult) {
+    const jobs = Array.isArray(collected) ? collected : []
+    const candidates = []
+    if (toolName === VM_JOB_TOOL_NAME) candidates.push(toolResult)
+    if (toolResult && typeof toolResult === 'object' && Array.isArray(toolResult.startedVmJobResults)) {
+        candidates.push(...toolResult.startedVmJobResults)
+    }
+
+    for (const candidate of candidates) {
+        const job = normalizeStartedVmJob(candidate)
+        if (job && !jobs.some(existing => existing.objectId === job.objectId)) jobs.push(job)
+    }
+
+    return jobs
+}
+
+/**
+ * Whether a normalized started-job reference points at the conversation the assistant is replying
+ * in. Shared by the link and the notification decisions below so they can never disagree about
+ * what "this thread" means.
+ */
+function isVmJobHostedInThread(job, currentThread) {
+    if (!job) return false
+    const currentProjectId = String(currentThread?.projectId || '').trim()
+    const currentObjectId = String(currentThread?.objectId || '').trim()
+    if (!currentObjectId) return false
+    return job.objectId === currentObjectId && job.projectId === currentProjectId
 }
 
 /**
@@ -87,14 +142,12 @@ function normalizeStartedVmJob(toolResult) {
 function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], currentThread = null) {
     let response = typeof responseText === 'string' ? responseText.trim() : ''
     const seen = new Set()
-    const currentProjectId = String(currentThread?.projectId || '').trim()
-    const currentObjectId = String(currentThread?.objectId || '').trim()
 
     for (const job of startedVmJobs.map(normalizeStartedVmJob).filter(Boolean)) {
         if (seen.has(job.objectId)) continue
         seen.add(job.objectId)
         // The user is already reading the host thread — linking them to where they are is noise.
-        if (currentObjectId && job.objectId === currentObjectId && job.projectId === currentProjectId) continue
+        if (isVmJobHostedInThread(job, currentThread)) continue
         if (response.includes(job.url)) continue
 
         const label = 'Follow it here:'
@@ -104,13 +157,38 @@ function ensureVmHostThreadLinksInResponse(responseText, startedVmJobs = [], cur
     return response
 }
 
+/**
+ * True when an assistant chat run handed its work to a VM job that runs in the very thread the
+ * assistant is replying in.
+ *
+ * Such a reply is only a hand-off acknowledgement ("I started the VM…"). The VM immediately posts
+ * its own live status comment into the same thread, keeps rewriting it in place while it thinks,
+ * and finally overwrites it with the result. That status comment is what raises the unread marker
+ * — when the run settles (result, failure, cancellation, gold exhausted) or when it stops to ask
+ * the user something. Notifying for the acknowledgement as well means a red badge whose content is
+ * a spinner, which is exactly the noise we want to avoid. Only the unread marker / push / email are
+ * skipped: the comment, the chat preview and the last-assistant-comment data are still written.
+ *
+ * A job hosted in a DIFFERENT thread (delegation, or a contextless trigger that creates its own
+ * host task) is deliberately excluded: its result never lands in this conversation, so this reply
+ * is the only thing the user gets here and must still notify.
+ */
+function startsVmJobInCurrentThread(startedVmJobs = [], currentThread = null) {
+    return (Array.isArray(startedVmJobs) ? startedVmJobs : [])
+        .map(normalizeStartedVmJob)
+        .some(job => isVmJobHostedInThread(job, currentThread))
+}
+
 module.exports = {
     buildVmJobTaskName,
     buildVmJobTaskDescription,
     buildVmChatPath,
     summarizeVmObjectiveForSession,
     normalizeStartedVmJob,
+    collectStartedVmJobs,
     ensureVmHostThreadLinksInResponse,
+    startsVmJobInCurrentThread,
+    VM_JOB_TOOL_NAME,
     VM_JOB_TASK_NAME_MAX,
     VM_SESSION_OBJECTIVE_MAX,
 }

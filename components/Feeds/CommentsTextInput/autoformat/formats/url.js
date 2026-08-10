@@ -1,7 +1,8 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
+import { Text } from 'react-native'
 import Backend from '../../../../../utils/BackendBridge'
 import UrlWrapper from '../tags/UrlWrapper'
 import store from '../../../../../redux/store'
@@ -9,6 +10,8 @@ import { handleNestedLinks } from '../../../../../utils/LinkingHelper'
 import { isPrivateNote } from '../../../../NotesView/NotesHelper'
 
 const Embed = ReactQuill.Quill.import('blots/embed')
+const Inline = ReactQuill.Quill.import('blots/inline')
+const Cursor = ReactQuill.Quill.import('blots/cursor')
 const DEFAULT_URL = {
     open: false,
     url: '',
@@ -100,15 +103,13 @@ class Url extends Embed {
         //return domNode.__blot.blot.data
     }
 
-    constructor(scroll, domNode) {
-        super(scroll, domNode)
+    constructor(domNode) {
+        super(domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = Url.data
     }
 
-    static formats(node) {
-        return {}
-    }
+    static formats(node) {}
 }
 Url.blotName = 'url'
 Url.className = 'ql-url'
@@ -117,4 +118,26 @@ Url.ref = {}
 Url.urlItemRef = createRef()
 Url.BASE_URL = '#'
 
-export { Url as default }
+class UrlInline extends Inline {
+    static create(value) {
+        let node = super.create(value)
+        node.setAttribute('href', this.BASE_URL + value)
+        node.setAttribute('spellcheck', false)
+        return node
+    }
+
+    static formats(domNode) {
+        return domNode.getAttribute('href').substr(this.BASE_URL.length)
+    }
+
+    format(name, value) {
+        this.domNode.setAttribute('href', this.BASE_URL + value)
+    }
+}
+UrlInline.blotName = 'url'
+UrlInline.className = 'ql-url'
+UrlInline.tagName = 'span'
+UrlInline.allowedChildren = [Text, Cursor]
+UrlInline.BASE_URL = '#'
+
+export { Url as default, UrlInline }

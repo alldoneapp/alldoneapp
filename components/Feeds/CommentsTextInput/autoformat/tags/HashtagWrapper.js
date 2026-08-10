@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 
 import HashtagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/HashtagInteractionPopup/HashtagsInteractionPopup'
 import HashtagTag from './HashtagTag'

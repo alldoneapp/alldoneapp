@@ -2,7 +2,7 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 
 import { colors } from '../../../styles/global'
 import AddFeedAttachButton from '../../../Feeds/AddFeed/AddFeedAttachButton'

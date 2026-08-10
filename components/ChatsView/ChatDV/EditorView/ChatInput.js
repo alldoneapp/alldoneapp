@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Keyboard, StyleSheet, View } from 'react-native'
 import { shallowEqual, useSelector, useDispatch } from 'react-redux'
 import firebase from 'firebase/compat/app'
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
 import { colors } from '../../../styles/global'
@@ -344,7 +344,7 @@ export default function ChatInput({
         // The content should already be in HTML format from the PerplexityClient
         // We just need to ensure it's properly formatted for Quill
         console.log('Converting content to Quill delta format...')
-        const tempDelta = editor.clipboard.convert({ html: content })
+        const tempDelta = editor.clipboard.convert(content)
         console.log('Converted delta:', tempDelta)
 
         // Process each operation in the delta

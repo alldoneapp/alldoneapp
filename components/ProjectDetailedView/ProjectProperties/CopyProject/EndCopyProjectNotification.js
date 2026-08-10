@@ -11,7 +11,6 @@ import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import { fixedModalOverlayStyle } from '../../../../utils/fixedModalPosition'
 
 export default function EndCopyProjectNotification({}) {
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const name = useSelector(state => state.endCopyProjectPopupData.name)
     const color = useSelector(state => state.endCopyProjectPopupData.color)
 
@@ -34,7 +33,7 @@ export default function EndCopyProjectNotification({}) {
     return (
         <View style={localStyles.container}>
             <View style={localStyles.backdrop} />
-            <View style={[localStyles.popup, applyPopoverWidth(), smallScreenNavigation && { marginLeft: 300 }]}>
+            <View style={[localStyles.popup, applyPopoverWidth()]}>
                 <View style={localStyles.body}>
                     <View style={{ marginBottom: 20 }}>
                         <Text style={[styles.title7, { color: '#ffffff' }]}>

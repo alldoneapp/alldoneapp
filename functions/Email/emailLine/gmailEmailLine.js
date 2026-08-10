@@ -1,7 +1,8 @@
 'use strict'
 
 const { google } = require('googleapis')
-const { getAccessToken, getOAuth2Client } = require('../../GoogleOAuth/googleOAuthHandler')
+const { getAuthorizedOAuth2Client } = require('../../GoogleOAuth/googleOAuthHandler')
+const { runWithGoogleAuthRetry } = require('../../GoogleOAuth/googleAuthRetry')
 const { parseListUnsubscribe, chunk } = require('./emailLineShared')
 const {
     getCachedResolvedThreadIds,
@@ -41,11 +42,12 @@ const LABELED_THREAD_ID_LIMIT = 2000
 // sequential pagination, so fetching the caps above takes 2-4 round trips instead of 10-20.
 const THREAD_ID_PAGE_SIZE = 500
 const METADATA_HEADERS = ['Subject', 'From', 'Date', 'List-Unsubscribe', 'List-Unsubscribe-Post']
-// getAccessToken reads the token document, may refresh it, and writes lastUsed. A merged-label
-// modal can invoke several callables for the same account within a few seconds, so doing that work
-// per section dominates the request time and creates unnecessary Firestore traffic. Cache the
-// in-flight/resolved Gmail client briefly inside a warm function instance. Gmail access tokens live
-// much longer than this; the short TTL also bounds how long a reconnect/revocation could be hidden.
+// getAuthorizedOAuth2Client reads the token document, may refresh it, and writes lastUsed. A
+// merged-label modal can invoke several callables for the same account within a few seconds, so
+// doing that work per section dominates the request time and creates unnecessary Firestore traffic.
+// Cache the in-flight/resolved Gmail client briefly inside a warm function instance. Gmail access
+// tokens live much longer than this; the short TTL also bounds how long a reconnect/revocation could
+// be hidden. A forced rebuild after a 401 deliberately bypasses this cache.
 const GMAIL_CLIENT_TTL_MS = 30 * 1000
 const gmailClientCache = new Map()
 
@@ -84,16 +86,21 @@ const MAX_LABELS_TO_INSPECT = 60
 const LABEL_DETAIL_CONCURRENCY = 8
 const ALLDONE_LABEL_PREFIX = 'Alldone/'
 
-async function getGmailClient(userId, projectId) {
+async function getGmailClient(userId, projectId, { forceRefresh = false } = {}) {
     const key = `${userId}:${projectId}`
-    const cached = gmailClientCache.get(key)
-    if (cached && Date.now() - cached.cachedAt < GMAIL_CLIENT_TTL_MS) return cached.promise
+    // A forced rebuild is the recovery path after Gmail rejected the token, so it must not
+    // be served the cached client that is holding exactly that rejected token.
+    if (!forceRefresh) {
+        const cached = gmailClientCache.get(key)
+        if (cached && Date.now() - cached.cachedAt < GMAIL_CLIENT_TTL_MS) return cached.promise
+    }
 
     const promise = (async () => {
-        const accessToken = await getAccessToken(userId, projectId, 'gmail')
-        const oauth2Client = getOAuth2Client()
-        oauth2Client.setCredentials({ access_token: accessToken })
-        return google.gmail({ version: 'v1', auth: oauth2Client })
+        // Full credentials (refresh token + expiry), not a bare access token: the client can
+        // then refresh on its own, and getAuthorizedOAuth2Client has already replaced a stored
+        // token that was expired or of unknown age.
+        const auth = await getAuthorizedOAuth2Client(userId, projectId, 'gmail', { forceRefresh })
+        return google.gmail({ version: 'v1', auth })
     })()
     gmailClientCache.set(key, { cachedAt: Date.now(), promise })
     try {
@@ -103,6 +110,14 @@ async function getGmailClient(userId, projectId) {
         if (gmailClientCache.get(key)?.promise === promise) gmailClientCache.delete(key)
         throw error
     }
+}
+
+// Runs a Gmail operation, recovering once from a rejected access token (401) by
+// force-refreshing and rebuilding the client. Wrap only idempotent/read-only work: `run` can
+// execute twice. A dead refresh token throws GoogleAuthRevokedError out of the rebuild, so
+// this never loops on a connection that genuinely needs reconnecting.
+function withGmailClient(userId, projectId, run) {
+    return runWithGoogleAuthRetry(forceRefresh => getGmailClient(userId, projectId, { forceRefresh }), run)
 }
 
 function stripLabelPrefix(name = '') {
@@ -289,8 +304,7 @@ async function countInboxThreads(gmail, labelId, inboxThreadIds, { userId, proje
     return threadIds.length
 }
 
-async function getGmailLabelSummary(userId, projectId) {
-    const gmail = await getGmailClient(userId, projectId)
+async function getGmailLabelSummaryImpl(gmail, userId, projectId) {
     const listResponse = await gmail.users.labels.list({ userId: 'me' })
     const rawLabels = Array.isArray(listResponse?.data?.labels) ? listResponse.data.labels : []
 
@@ -371,8 +385,7 @@ function extractPlainTextBody(payload) {
 }
 
 // Fetches the subject/from/body of a message so a reply can be composed.
-async function getMessageContext(userId, projectId, messageId) {
-    const gmail = await getGmailClient(userId, projectId)
+async function getMessageContextImpl(gmail, userId, projectId, messageId) {
     const detail = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' })
     const data = detail?.data || {}
     const headers = data.payload?.headers || []
@@ -518,9 +531,15 @@ async function fetchThreadRows(gmail, threadIds, labelId, emailAddress) {
     return { rows: rows.filter(Boolean), failedCount }
 }
 
-async function listMessagesForLabel(userId, projectId, labelId, { pageToken, emailAddress } = {}) {
-    const startedAt = Date.now()
-    const gmail = await getGmailClient(userId, projectId)
+async function listMessagesForLabelImpl(
+    gmail,
+    userId,
+    projectId,
+    labelId,
+    { pageToken, emailAddress } = {},
+    timing = {}
+) {
+    const startedAt = timing.startedAt || Date.now()
     const clientReadyAt = Date.now()
 
     // A user label's inbox threads can carry the label on a non-inbox (sent) message and
@@ -631,8 +650,7 @@ async function listMessagesForLabel(userId, projectId, labelId, { pageToken, ema
 }
 
 // Ids of the newest unread inbox messages — a single list call, no per-message fetches.
-async function getUnreadInboxMessageIds(userId, projectId, limit = 100) {
-    const gmail = await getGmailClient(userId, projectId)
+async function getUnreadInboxMessageIdsImpl(gmail, userId, projectId, limit = 100) {
     const listResponse = await gmail.users.messages.list({
         userId: 'me',
         labelIds: ['INBOX', 'UNREAD'],
@@ -643,8 +661,7 @@ async function getUnreadInboxMessageIds(userId, projectId, limit = 100) {
 }
 
 // Newest unread inbox messages (subject/from/snippet only) for the needs-reply scan.
-async function getUnreadInboxMessages(userId, projectId, limit = 15) {
-    const gmail = await getGmailClient(userId, projectId)
+async function getUnreadInboxMessagesImpl(gmail, userId, projectId, limit = 15) {
     const listResponse = await gmail.users.messages.list({
         userId: 'me',
         labelIds: ['INBOX', 'UNREAD'],
@@ -710,9 +727,7 @@ async function archiveThreads(gmail, threadIds) {
 // The email line lists threads, so the row-level archive must archive the row's whole
 // conversation (like Gmail's own archive button) — and only thread-level modify can clear
 // a ghost inbox thread (see archiveThreads). Resolve each message to its thread first.
-async function archiveMessages(userId, projectId, messageIds) {
-    if (!Array.isArray(messageIds) || messageIds.length === 0) return { processed: 0 }
-    const gmail = await getGmailClient(userId, projectId)
+async function archiveMessagesImpl(gmail, userId, projectId, messageIds) {
     const threadIds = []
     const seen = new Set()
     for (const ids of chunk(messageIds, BATCH_MODIFY_CHUNK)) {
@@ -732,9 +747,7 @@ async function archiveMessages(userId, projectId, messageIds) {
     return { processed: messageIds.length }
 }
 
-async function markMessagesRead(userId, projectId, messageIds) {
-    if (!Array.isArray(messageIds) || messageIds.length === 0) return { processed: 0 }
-    const gmail = await getGmailClient(userId, projectId)
+async function markMessagesReadImpl(gmail, userId, projectId, messageIds) {
     await batchModifyMessages(gmail, messageIds, { removeLabelIds: ['UNREAD'] })
     return { processed: messageIds.length }
 }
@@ -833,8 +846,7 @@ async function collectMessageIdsFromThreads(gmail, threadIds, shouldModifyMessag
 // message-level sweeps report processed>0 while nothing left the inbox. Mark-read sweeps
 // stay message-level: they collect the target threads' UNREAD messages and batch-clear
 // them, matching the message-level unread counts on the chip.
-async function sweepLabel(userId, projectId, labelId, action) {
-    const gmail = await getGmailClient(userId, projectId)
+async function sweepLabelImpl(gmail, userId, projectId, labelId, action) {
     const isArchive = action === 'archiveAll'
     const matchesUnread = message => (Array.isArray(message?.labelIds) ? message.labelIds : []).includes('UNREAD')
 
@@ -891,6 +903,56 @@ async function sweepLabel(userId, projectId, labelId, action) {
     const result = await sweepThreads(labelThreadIds.filter(id => inboxThreadIds.has(id)))
     if (isArchive) invalidateResolvedThreadIds(userId, projectId)
     return result
+}
+
+// ---------------------------------------------------------------------------
+// Public entry points.
+//
+// Each one runs through withGmailClient, so a Gmail call that fails purely because the
+// access token was rejected (401) is retried exactly once on a force-refreshed token
+// instead of surfacing as EMAIL_AUTH_EXPIRED (AT-2195). Every operation below is
+// read-only or an idempotent label mutation — archiving an already-archived thread and
+// clearing an already-cleared UNREAD are both no-ops — so running twice is safe. Gold-
+// spending or comment-posting work (draftReply, createTask) lives in emailLineService and
+// is deliberately NOT wrapped; it only reaches Gmail through getMessageContext, which is.
+// ---------------------------------------------------------------------------
+
+function getGmailLabelSummary(userId, projectId) {
+    return withGmailClient(userId, projectId, gmail => getGmailLabelSummaryImpl(gmail, userId, projectId))
+}
+
+function getMessageContext(userId, projectId, messageId) {
+    return withGmailClient(userId, projectId, gmail => getMessageContextImpl(gmail, userId, projectId, messageId))
+}
+
+function listMessagesForLabel(userId, projectId, labelId, options = {}) {
+    // The timing log measures the whole call, including a token refresh and any retry.
+    const startedAt = Date.now()
+    return withGmailClient(userId, projectId, gmail =>
+        listMessagesForLabelImpl(gmail, userId, projectId, labelId, options, { startedAt })
+    )
+}
+
+function getUnreadInboxMessageIds(userId, projectId, limit = 100) {
+    return withGmailClient(userId, projectId, gmail => getUnreadInboxMessageIdsImpl(gmail, userId, projectId, limit))
+}
+
+function getUnreadInboxMessages(userId, projectId, limit = 15) {
+    return withGmailClient(userId, projectId, gmail => getUnreadInboxMessagesImpl(gmail, userId, projectId, limit))
+}
+
+function archiveMessages(userId, projectId, messageIds) {
+    if (!Array.isArray(messageIds) || messageIds.length === 0) return Promise.resolve({ processed: 0 })
+    return withGmailClient(userId, projectId, gmail => archiveMessagesImpl(gmail, userId, projectId, messageIds))
+}
+
+function markMessagesRead(userId, projectId, messageIds) {
+    if (!Array.isArray(messageIds) || messageIds.length === 0) return Promise.resolve({ processed: 0 })
+    return withGmailClient(userId, projectId, gmail => markMessagesReadImpl(gmail, userId, projectId, messageIds))
+}
+
+function sweepLabel(userId, projectId, labelId, action) {
+    return withGmailClient(userId, projectId, gmail => sweepLabelImpl(gmail, userId, projectId, labelId, action))
 }
 
 module.exports = {

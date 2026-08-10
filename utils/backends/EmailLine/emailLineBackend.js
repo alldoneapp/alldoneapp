@@ -2,6 +2,46 @@ import store from '../../../redux/store'
 import { setEmailLineSummary, setEmailLineLoading } from '../../../redux/actions'
 import { runHttpsCallableFunction } from '../firestore'
 import { buildConnectionKeyPayload } from '../../IntegrationProviders'
+import { translate } from '../../../i18n/TranslationService'
+
+// The server raises a typed `EMAIL_AUTH_EXPIRED` when the account's OAuth token cannot be
+// refreshed any more (revoked / expired refresh token, consent withdrawn). It reaches the
+// client as a callable `failed-precondition` whose message carries the code.
+export function isEmailAuthExpiredError(error) {
+    return String(error?.message || '').includes('EMAIL_AUTH_EXPIRED')
+}
+
+// Flags the connection's cached summary as expired so the Email line and the Integrations
+// screen immediately render their existing "Reconnect" state instead of silently failing.
+function markSummaryAuthExpired(projectId) {
+    const current = store.getState().emailLineSummaryByProject[projectId]
+    store.dispatch(
+        setEmailLineSummary(projectId, {
+            provider: '',
+            emailAddress: '',
+            labels: [],
+            needsReplyCount: 0,
+            needsReplyByMessageId: {},
+            inboxZero: false,
+            ...(current || {}),
+            connected: true,
+            authExpired: true,
+            scannedAt: Date.now(),
+        })
+    )
+}
+
+// Turns the raw `EMAIL_AUTH_EXPIRED` code into something a person can act on. Callers alert
+// `error.message`, so without this the user was shown the bare error code (AT-2195).
+function toEmailAuthExpiredError(error) {
+    const friendly = new Error(
+        translate('Your email connection expired. Please reconnect it in Settings > Integrations.')
+    )
+    friendly.code = 'EMAIL_AUTH_EXPIRED'
+    friendly.authExpired = true
+    friendly.cause = error
+    return friendly
+}
 
 // All functions here take a `key`: an account-level connection id (email_google_…) or a
 // legacy projectId. Redux summaries are stored under whichever key was used.
@@ -30,8 +70,7 @@ export async function fetchEmailLineSummary(projectId, { force = false, includeN
         store.dispatch(setEmailLineSummary(projectId, summary))
         return summary
     } catch (error) {
-        const authExpired = String(error?.message || '').includes('EMAIL_AUTH_EXPIRED')
-        if (authExpired) {
+        if (isEmailAuthExpiredError(error)) {
             const summary = {
                 provider: '',
                 emailAddress: '',
@@ -180,6 +219,9 @@ export async function performEmailLineSweepInBackground(projectId, labelId, acti
         }
     } catch (error) {
         failed = true
+        // A sweep is fire-and-forget, so it cannot alert. Flagging the summary is what makes
+        // the reconnect state appear after a background sweep hit a dead connection.
+        if (isEmailAuthExpiredError(error)) markSummaryAuthExpired(projectId)
         if (__DEV__) console.warn('[EmailLine] Background sweep failed:', error?.message || error)
     }
     // Empty (or failed) sweep: put the chip back the way it was so the still-present
@@ -213,16 +255,28 @@ export async function performEmailLineAction(
     { action, messageIds, labelId, labelName, guidance, sourceProjectId, sourceTaskId } = {}
 ) {
     if (!projectId || !action) return null
-    const result = await runHttpsCallableFunction('emailLineActionSecondGen', {
-        ...buildConnectionKeyPayload(projectId),
-        action,
-        messageIds,
-        labelId,
-        labelName,
-        guidance,
-        sourceProjectId,
-        sourceTaskId,
-    })
+    let result
+    try {
+        result = await runHttpsCallableFunction('emailLineActionSecondGen', {
+            ...buildConnectionKeyPayload(projectId),
+            action,
+            messageIds,
+            labelId,
+            labelName,
+            guidance,
+            sourceProjectId,
+            sourceTaskId,
+        })
+    } catch (error) {
+        // The server already tried a forced token refresh and a single retry, so this means
+        // the account genuinely needs a new consent. Light up the reconnect state and
+        // re-throw something the user can act on rather than the raw code.
+        if (isEmailAuthExpiredError(error)) {
+            markSummaryAuthExpired(projectId)
+            throw toEmailAuthExpiredError(error)
+        }
+        throw error
+    }
     if (action !== 'draftReply' && action !== 'createTask') {
         await fetchEmailLineSummary(projectId, { force: true })
     }

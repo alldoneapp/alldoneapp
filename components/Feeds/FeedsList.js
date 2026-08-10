@@ -11,6 +11,10 @@ import DateLine from './Commons/DateLine'
 import SkillObject from './FeedsObjects/SkillObject'
 import AssistantObject from './FeedsObjects/AssistantObject'
 
+// `customIndex` used to embed `JSON.stringify(feedObjectData.object)`. That serialized every feed
+// object on every render, and because any field change produced a different key React unmounted and
+// remounted the whole card - tearing down and re-creating the Firestore listeners each card opens.
+// The object id is unique inside a date bucket, so it identifies the card without either cost.
 export default function FeedsList({ projectId, feedObjects, feedViewData, feedActiveTab, date }) {
     return (
         <View style={{ marginBottom: 16 }}>
@@ -19,14 +23,14 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                 const { object } = feedObjectData
                 const { type } = object
                 let feedComponent = null
-                let customIndex = 'i_'
+                let customIndex = `i_${index}`
                 const style = index !== feedObjects.length - 1 ? localStyles.feed : null
 
                 if (type === 'user') {
-                    customIndex = `user_${JSON.stringify(feedObjectData.object)}`
+                    customIndex = `user_${object.id}`
                     feedComponent = (
                         <UserObject
-                            key={`${index}_${customIndex}`}
+                            key={customIndex}
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             feedActiveTab={feedActiveTab}
@@ -35,10 +39,10 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                         />
                     )
                 } else if (type === 'task') {
-                    customIndex = `task_${JSON.stringify(feedObjectData.object)}`
+                    customIndex = `task_${object.id}`
                     feedComponent = (
                         <TaskObject
-                            key={`${index}_${customIndex}`}
+                            key={customIndex}
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             feedViewData={feedViewData}
@@ -47,10 +51,10 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                         />
                     )
                 } else if (type === 'goal') {
-                    customIndex = `goal_${JSON.stringify(feedObjectData.object)}`
+                    customIndex = `goal_${object.id}`
                     feedComponent = (
                         <GoalObject
-                            key={`${index}_${customIndex}`}
+                            key={customIndex}
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             feedViewData={feedViewData}
@@ -59,10 +63,10 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                         />
                     )
                 } else if (type === 'assistant') {
-                    customIndex = `assistant_${JSON.stringify(feedObjectData.object)}`
+                    customIndex = `assistant_${object.id}`
                     feedComponent = (
                         <AssistantObject
-                            key={`${index}_${customIndex}`}
+                            key={customIndex}
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             feedViewData={feedViewData}
@@ -71,10 +75,10 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                         />
                     )
                 } else if (type === 'skill') {
-                    customIndex = `skill_${JSON.stringify(feedObjectData.object)}`
+                    customIndex = `skill_${object.id}`
                     feedComponent = (
                         <SkillObject
-                            key={`${index}_${customIndex}`}
+                            key={customIndex}
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             feedViewData={feedViewData}
@@ -83,10 +87,10 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                         />
                     )
                 } else if (type === 'project') {
-                    customIndex = `project_${JSON.stringify(feedObjectData.object)}`
+                    customIndex = `project_${object.id}`
                     feedComponent = (
                         <ProjectObject
-                            key={`${index}_${customIndex}`}
+                            key={customIndex}
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             feedViewData={feedViewData}
@@ -95,10 +99,10 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                         />
                     )
                 } else if (type === 'contact') {
-                    customIndex = `contact_${JSON.stringify(feedObjectData.object)}`
+                    customIndex = `contact_${object.id}`
                     feedComponent = (
                         <ContactObject
-                            key={`${index}_${customIndex}`}
+                            key={customIndex}
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             feedViewData={feedViewData}
@@ -107,10 +111,10 @@ export default function FeedsList({ projectId, feedObjects, feedViewData, feedAc
                         />
                     )
                 } else if (type === 'note') {
-                    customIndex = `note_${JSON.stringify(feedObjectData.object)}`
+                    customIndex = `note_${object.id}`
                     feedComponent = (
                         <NoteObject
-                            key={`${index}_${customIndex}`}
+                            key={customIndex}
                             feedObjectData={feedObjectData}
                             projectId={projectId}
                             feedViewData={feedViewData}
