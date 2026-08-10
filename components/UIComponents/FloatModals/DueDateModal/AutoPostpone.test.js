@@ -38,6 +38,18 @@ jest.mock('../../../../i18n/TranslationService', () => ({
 
 jest.mock('../../../../redux/actions', () => ({
     setLastSelectedDueDate: value => ({ type: 'SET_LAST_SELECTED_DUE_DATE', value }),
+    setOptimisticGoalPostpone: (projectId, goalId, date, startedAt) => ({
+        type: 'SET_OPTIMISTIC_GOAL_POSTPONE',
+        projectId,
+        goalId,
+        date,
+        startedAt,
+    }),
+    clearOptimisticGoalPostpone: (projectId, goalId) => ({
+        type: 'CLEAR_OPTIMISTIC_GOAL_POSTPONE',
+        projectId,
+        goalId,
+    }),
 }))
 
 jest.mock('../../../../utils/backends/Tasks/tasksFirestore', () => ({
@@ -136,6 +148,35 @@ describe('DueDateModal AutoPostpone', () => {
         await act(async () => pendingRequest)
     })
 
+    // AT-2160
+    test('marks the goal as optimistically postponed before the server call is even made', async () => {
+        const goal = { id: 'goal-1', timesPostponed: 2 }
+        let resolveRequest
+        mockAutoPostponeGoal.mockReturnValueOnce(
+            new Promise(resolve => {
+                resolveRequest = resolve
+            })
+        )
+
+        await renderAndPress({ goal, updateParentGoalReminderDate: jest.fn(), inParentGoal: true })
+
+        const optimisticDispatch = mockDispatch.mock.calls
+            .map(([action]) => action)
+            .find(action => action.type === 'SET_OPTIMISTIC_GOAL_POSTPONE')
+        expect(optimisticDispatch).toMatchObject({
+            projectId: 'project-1',
+            goalId: 'goal-1',
+            date: moment('2026-07-06T12:00:00').valueOf(),
+        })
+        expect(typeof optimisticDispatch.startedAt).toBe('number')
+        // Still pending: the row must stay hidden, so nothing clears it yet.
+        expect(mockDispatch).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'CLEAR_OPTIMISTIC_GOAL_POSTPONE' })
+        )
+
+        resolveRequest(654321)
+    })
+
     test('logs a goal auto-postpone background failure after closing', async () => {
         const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
         mockAutoPostponeGoal.mockRejectedValueOnce(new Error('network'))
@@ -148,6 +189,45 @@ describe('DueDateModal AutoPostpone', () => {
         expect(baseProps.closePopover).toHaveBeenCalled()
         expect(consoleError).toHaveBeenCalledWith('AutoPostpone: failed to apply auto-postpone', expect.any(Error))
         consoleError.mockRestore()
+    })
+
+    // AT-2160: a rejected postpone must put the goal straight back into the list.
+    test('rolls the optimistic postpone back when the server rejects it', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+        mockAutoPostponeGoal.mockRejectedValueOnce(new Error('network'))
+
+        await renderAndPress({
+            goal: { id: 'goal-1', timesPostponed: 2 },
+            updateParentGoalReminderDate: jest.fn(),
+        })
+
+        expect(mockDispatch).toHaveBeenCalledWith({
+            type: 'CLEAR_OPTIMISTIC_GOAL_POSTPONE',
+            projectId: 'project-1',
+            goalId: 'goal-1',
+        })
+        consoleError.mockRestore()
+    })
+
+    // AT-2160: swiping the general-tasks header, or a goal section holding exactly one task,
+    // arrives here with a one-element list. That used to take the Cloud Function path.
+    test('writes a one-element task list directly instead of using the bulk callable', async () => {
+        const onlyTask = { id: 'task-1', timesPostponed: 2 }
+        await renderAndPress({ task: onlyTask, tasks: [onlyTask] })
+
+        const expectedDate = moment('2026-07-05T12:00:00').valueOf()
+        expect(mockAutoPostponeMultipleTasks).not.toHaveBeenCalled()
+        expect(mockSetTaskDueDate).toHaveBeenCalledWith('project-1', 'task-1', expectedDate, onlyTask, false)
+        expect(baseProps.closePopover).toHaveBeenCalled()
+    })
+
+    test('still routes a one-element list to the backlog directly when the ladder says someday', async () => {
+        mockDateToMoveTask = BACKLOG_DATE_NUMERIC
+        const onlyTask = { id: 'task-1', timesPostponed: 6 }
+        await renderAndPress({ task: onlyTask, tasks: [onlyTask] })
+
+        expect(mockAutoPostponeMultipleTasks).not.toHaveBeenCalled()
+        expect(mockSetTaskToBacklog).toHaveBeenCalledWith('project-1', 'task-1', onlyTask, false, null)
     })
 
     test('keeps an unsaved draft local', async () => {

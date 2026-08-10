@@ -2910,6 +2910,38 @@ export const clearOptimisticFocusTask = () => {
     return action
 }
 
+/**
+ * AT-2160: mark a goal as being postponed so the task list can drop it from today's buckets
+ * immediately, while the authoritative postpone (undo record + task cascade) still runs on the
+ * server. Keyed per project + goal so two goals can be postponed in a row.
+ * @param {string} projectId
+ * @param {string} goalId
+ * @param {number} date - target reminder date, kept for diagnostics/tests
+ * @param {number} startedAt - epoch ms the postpone was requested; drives the safety TTL
+ */
+export const setOptimisticGoalPostpone = (projectId, goalId, date, startedAt) => {
+    const action = {
+        type: 'Set optimistic goal postpone',
+        projectId,
+        goalId,
+        date,
+        startedAt,
+    }
+    return action
+}
+
+/**
+ * Drop the optimistic postpone for a goal (server rejected it, or the entry aged out).
+ */
+export const clearOptimisticGoalPostpone = (projectId, goalId) => {
+    const action = {
+        type: 'Clear optimistic goal postpone',
+        projectId,
+        goalId,
+    }
+    return action
+}
+
 export const setProjectsSortIndex = projectsMap => {
     const action = {
         type: 'Set projects sortIndex',

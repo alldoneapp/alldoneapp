@@ -16,7 +16,11 @@ import {
     setTaskToBacklog,
 } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { autoPostponeGoal, getDateToMoveGoalInAutoPostpone } from '../../../../utils/backends/Goals/goalsFirestore'
-import { setLastSelectedDueDate } from '../../../../redux/actions'
+import {
+    clearOptimisticGoalPostpone,
+    setLastSelectedDueDate,
+    setOptimisticGoalPostpone,
+} from '../../../../redux/actions'
 
 export default function AutoPostpone({
     projectId,
@@ -39,23 +43,35 @@ export default function AutoPostpone({
         setApplying(true)
         const isGoalAutoPostpone = goal && updateParentGoalReminderDate
 
-        if (!isGoalAutoPostpone && tasks && tasks.length > 0) {
-            autoPostponeMultipleTasks(tasks, currentUserId, { background: true }).catch(error => {
+        if (!isGoalAutoPostpone && bulkTasks) {
+            autoPostponeMultipleTasks(bulkTasks, currentUserId, { background: true }).catch(error => {
                 console.error('AutoPostpone: failed to apply auto-postpone', error)
             })
             closePopover()
             return
         }
 
-        if (!isGoalAutoPostpone && task?.id) {
+        if (!isGoalAutoPostpone && singleTaskToPostpone?.id) {
             // Write directly to Firestore (like a manual due-date change) so the task moves
             // instantly via Firestore's local cache, instead of waiting on the auto-postpone
             // Cloud Function round-trip. The target date is already computed client-side below.
             const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
             const applyPromise =
                 dateTimestamp === BACKLOG_DATE_NUMERIC
-                    ? setTaskToBacklog(projectId, task.id, task, isObservedTabActive, null)
-                    : setTaskDueDate(projectId, task.id, dateTimestamp, task, isObservedTabActive)
+                    ? setTaskToBacklog(
+                          projectId,
+                          singleTaskToPostpone.id,
+                          singleTaskToPostpone,
+                          isObservedTabActive,
+                          null
+                      )
+                    : setTaskDueDate(
+                          projectId,
+                          singleTaskToPostpone.id,
+                          dateTimestamp,
+                          singleTaskToPostpone,
+                          isObservedTabActive
+                      )
             Promise.resolve(applyPromise).catch(error => {
                 console.error('AutoPostpone: failed to apply auto-postpone', error)
             })
@@ -66,7 +82,13 @@ export default function AutoPostpone({
 
         if (isGoalAutoPostpone) {
             const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
+            // AT-2160: the goal postpone stays on the server — it is one transaction that also
+            // records the undo entry and cascades the date onto the goal's open tasks. Drop the
+            // goal out of today's list right away so the UI does not wait for that round trip;
+            // a rejected postpone puts it straight back.
+            dispatch(setOptimisticGoalPostpone(projectId, goal.id, dateTimestamp, Date.now()))
             autoPostponeGoal(projectId, goal, currentUserId, inParentGoal, { background: true }).catch(error => {
+                dispatch(clearOptimisticGoalPostpone(projectId, goal.id))
                 console.error('AutoPostpone: failed to apply auto-postpone', error)
             })
             dispatch(setLastSelectedDueDate(dateTimestamp))
@@ -87,12 +109,19 @@ export default function AutoPostpone({
         }
     }
 
+    // AT-2160: a "list" of exactly one task is still a single task. Routing it through the bulk
+    // callable cost a Cloud Function round trip for a write the client can do itself, and that is
+    // not a corner case — swiping the general-tasks header, or a goal section holding one task,
+    // lands here with a one-element list.
+    const bulkTasks = tasks && tasks.length > 1 ? tasks : null
+    const singleTaskToPostpone = bulkTasks ? null : tasks && tasks.length === 1 ? tasks[0] : task
+
     // Calculate date based on goal or task
     const date = goal
         ? getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
-        : tasks
+        : bulkTasks
         ? null
-        : getDateToMoveTaskInAutoPostpone(task.timesPostponed, isObservedTabActive)
+        : getDateToMoveTaskInAutoPostpone(singleTaskToPostpone?.timesPostponed, isObservedTabActive)
 
     return (
         <TouchableOpacity

@@ -97,7 +97,12 @@ const { addAssistantTaskComment } = require('../shared/assistantTaskCommentHelpe
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
 const { resolvePreConfigTaskReasoningEffort } = require('./preConfigTaskReasoningEffort')
-const { buildInitialAssistantRunStatusMessage, buildToolProgressStatusMessage } = require('./assistantProgressStatus')
+const {
+    buildInitialAssistantRunStatusMessage,
+    buildToolProgressStatusMessage,
+    buildToolActivityDescriptor,
+    rememberDelegationDisplayName,
+} = require('./assistantProgressStatus')
 const {
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
@@ -1864,13 +1869,19 @@ async function getReachableDelegationTargets({
                 .filter(doc => doc.id !== assistantId)
                 .map(doc => {
                     const targetAssistant = doc.data() || {}
+                    const delegationToolName = buildTalkToAssistantToolName(
+                        targetProjectId,
+                        doc.id,
+                        targetAssistant.displayName || doc.id,
+                        projectName
+                    )
+                    // The tool name slugs the display name together with the project name
+                    // and a hash, so it cannot be parsed back. Remember it here so the
+                    // progress UI can say "Asking Alldone CTO for help" rather than the
+                    // anonymous fallback.
+                    rememberDelegationDisplayName(delegationToolName, targetAssistant.displayName)
                     return {
-                        toolName: buildTalkToAssistantToolName(
-                            targetProjectId,
-                            doc.id,
-                            targetAssistant.displayName || doc.id,
-                            projectName
-                        ),
+                        toolName: delegationToolName,
                         projectId: targetProjectId,
                         projectName,
                         assistantId: doc.id,
@@ -9977,12 +9988,18 @@ async function storeChunks(
                     // Show loading indicator
                     await flushPendingUpdate() // Flush any pending updates first
                     const toolExecutionStartedAt = Date.now()
+                    // What the user sees while this runs: an i18n key plus an already
+                    // sanitized subject (whitelisted per tool). Both null when the tool
+                    // exposes nothing safe, which makes the client keep its generic story.
+                    const toolActivityDescriptor = buildToolActivityDescriptor({ toolName, toolArgs })
                     if (assistantRun) {
                         assistantRun.activity = {
                             phase: 'tool',
                             toolName,
                             startedAt: toolExecutionStartedAt,
                             iteration: toolCallIteration,
+                            actionKey: toolActivityDescriptor.actionKey || null,
+                            subject: toolActivityDescriptor.subject || null,
                         }
                     }
                     let toolStatusMessage = buildToolProgressStatusMessage({
@@ -10017,7 +10034,9 @@ async function storeChunks(
                         })
                         if (nextStatusMessage === toolStatusMessage || stopToolProgressUpdates) return
 
-                        commentText = commentText.replace(toolStatusMessage, nextStatusMessage)
+                        // Function replacement: the status text now embeds a user-supplied
+                        // subject, and `$&` / `$$` in a string replacement are special.
+                        commentText = commentText.replace(toolStatusMessage, () => nextStatusMessage)
                         toolStatusMessage = nextStatusMessage
                         if (stopToolProgressUpdates) return
 

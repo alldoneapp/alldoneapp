@@ -6,10 +6,20 @@ import AssistantProgress, {
     ASSISTANT_PROGRESS_ROTATION_MS,
     getAssistantProgressKind,
     getAssistantProgressToolLabel,
+    getAssistantProgressDetail,
+    ACTION_EMOJI,
 } from './AssistantProgress'
 import { colors } from '../../../styles/global'
+import en from '../../../../i18n/translations/en.json'
 
-jest.mock('../../../../i18n/TranslationService', () => ({ translate: key => key }))
+// Mirrors i18n-js: returns the key when there is nothing to interpolate (so the existing
+// assertions keep reading as keys) and appends the interpolated values otherwise.
+jest.mock('../../../../i18n/TranslationService', () => ({
+    translate: (key, interpolations = {}) => {
+        const values = Object.values(interpolations || {})
+        return values.length ? `${key}|${values.join(',')}` : key
+    },
+}))
 
 const renderedText = tree =>
     tree.root
@@ -107,6 +117,116 @@ describe('AssistantProgress', () => {
         expect(footer.props.children).toBe('assistant_progress_using_tool: Search the internet')
         expect(renderedText(tree)).not.toContain('web_search')
         expect(StyleSheet.flatten(footer.props.style).height).toBe(20)
+    })
+
+    describe('specific activity detail', () => {
+        const searchingNotes = {
+            phase: 'tool',
+            toolName: 'search',
+            startedAt: 1,
+            actionKey: 'assistant_activity_search_notes',
+            subject: 'Pricing',
+        }
+
+        test('replaces the generic line with what is actually happening', () => {
+            const tree = renderer.create(<AssistantProgress activity={searchingNotes} />)
+            const text = renderedText(tree)
+
+            expect(text).toContain('assistant_activity_search_notes|Pricing')
+            expect(text).not.toContain('assistant_progress_workspace_1')
+        })
+
+        test('drops the tool name from the footer once a specific line is shown', () => {
+            const tree = renderer.create(<AssistantProgress activity={searchingNotes} />)
+            const footer = tree.root.findByProps({ testID: 'assistant-progress-reassurance' })
+
+            expect(footer.props.children).toBe('assistant_progress_reassurance')
+            expect(renderedText(tree)).not.toContain('assistant_progress_using_tool')
+        })
+
+        test('keeps the specific line pinned instead of rotating it away', () => {
+            let tree
+            act(() => {
+                tree = renderer.create(<AssistantProgress activity={searchingNotes} />)
+            })
+
+            act(() => jest.advanceTimersByTime(ASSISTANT_PROGRESS_ROTATION_MS * 4))
+
+            expect(renderedText(tree)).toContain('assistant_activity_search_notes|Pricing')
+            expect(tree.root.findAllByProps({ testID: 'assistant-progress-step-text' })).toHaveLength(1)
+        })
+
+        test('still reassures the user that a long call is alive', () => {
+            let tree
+            act(() => {
+                tree = renderer.create(<AssistantProgress activity={searchingNotes} />)
+            })
+
+            act(() => jest.advanceTimersByTime(ASSISTANT_PROGRESS_ROTATION_MS * 4))
+
+            expect(tree.root.findByProps({ testID: 'assistant-progress-reassurance' }).props.children).toBe(
+                'assistant_progress_reassurance_slow'
+            )
+        })
+
+        test('renders a subject-less action without an empty placeholder', () => {
+            const tree = renderer.create(
+                <AssistantProgress
+                    activity={{
+                        phase: 'tool',
+                        toolName: 'get_notes',
+                        startedAt: 1,
+                        actionKey: 'assistant_activity_read_notes',
+                        subject: null,
+                    }}
+                />
+            )
+
+            expect(renderedText(tree)).toContain('assistant_activity_read_notes')
+            expect(renderedText(tree)).not.toContain('|')
+        })
+
+        test.each([
+            ['an unknown key', { actionKey: 'assistant_activity_not_shipped_yet', subject: 'x' }],
+            ['no key at all', { actionKey: null, subject: null }],
+        ])('falls back to the generic story given %s', (_label, overrides) => {
+            const tree = renderer.create(
+                <AssistantProgress activity={{ phase: 'tool', toolName: 'get_notes', startedAt: 1, ...overrides }} />
+            )
+
+            expect(renderedText(tree)).toContain('assistant_progress_workspace_1')
+        })
+
+        test('ignores a detail that arrives on a non-tool phase', () => {
+            expect(
+                getAssistantProgressDetail({
+                    phase: 'thinking',
+                    actionKey: 'assistant_activity_search_notes',
+                    subject: 'x',
+                })
+            ).toBeNull()
+        })
+
+        test('truncates an over-long subject so the row stays on one line', () => {
+            const subject = 'x'.repeat(200)
+            const detail = getAssistantProgressDetail({
+                phase: 'tool',
+                actionKey: 'assistant_activity_search_notes',
+                subject,
+            })
+
+            expect(detail.text.length).toBeLessThan(120)
+            expect(detail.text.endsWith('…')).toBe(true)
+        })
+
+        test('every shipped activity key has an emoji and an English phrase', () => {
+            const translationKeys = Object.keys(en).filter(key => key.startsWith('assistant_activity_'))
+            const emojiKeys = Object.keys(ACTION_EMOJI)
+
+            expect(translationKeys.length).toBeGreaterThan(40)
+            expect(emojiKeys.filter(key => !translationKeys.includes(key))).toEqual([])
+            expect(translationKeys.filter(key => !emojiKeys.includes(key))).toEqual([])
+        })
     })
 
     test('resets the story when the backend moves to a real tool phase', () => {
