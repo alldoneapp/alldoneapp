@@ -82,6 +82,27 @@ describe('Button component', () => {
         })
     })
 
+    // AT-2223: a compact button (12px icon next to a 12px label) needs a tighter icon/label gap
+    // than the 40px default, and the gap is set in render(), out of reach of `titleStyle`.
+    describe('icon/label gap', () => {
+        const labelMargin = tree =>
+            StyleSheet.flatten(
+                tree.root.findAllByType(Text).find(label => label.props.children === 'Accept all').props.style
+            ).marginLeft
+
+        it('keeps the 12px gap when no override is given', () => {
+            expect(labelMargin(renderer.create(<Button title="Accept all" icon={'check'} />))).toBe(12)
+        })
+
+        it('applies an explicit iconGap', () => {
+            expect(labelMargin(renderer.create(<Button title="Accept all" icon={'check'} iconGap={4} />))).toBe(4)
+        })
+
+        it('still collapses the gap on a button with no icon at all', () => {
+            expect(labelMargin(renderer.create(<Button title="Accept all" iconGap={4} />))).toBe(0)
+        })
+    })
+
     describe('Button text with only icon and disabled snapshot test', () => {
         it('Should render a red text button correctly', () => {
             const tree = renderer
