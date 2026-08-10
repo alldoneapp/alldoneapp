@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 
 import styles, { colors, hexColorToRGBa } from '../styles/global'
 import Button from '../UIControls/Button'
@@ -11,6 +11,7 @@ import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 
 export default function AccessDeniedPopup() {
     const dispatch = useDispatch()
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     useEffect(() => {
         document.addEventListener('keydown', onKeyDown)
@@ -34,7 +35,7 @@ export default function AccessDeniedPopup() {
     return (
         <View style={localStyles.container} onTouchStart={closeModal}>
             <TouchableOpacity style={localStyles.backdrop} onPress={closeModal} />
-            <View style={localStyles.popup}>
+            <View style={[localStyles.popup, smallScreenNavigation && { marginLeft: 300 }]}>
                 <View style={localStyles.body}>
                     <View style={{ marginBottom: 20 }}>
                         <Text style={[styles.title7, { color: '#ffffff' }]}>

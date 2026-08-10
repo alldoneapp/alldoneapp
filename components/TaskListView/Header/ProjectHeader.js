@@ -45,6 +45,8 @@ export default function ProjectHeader({
             ? loggedUser
             : currentUser
 
+    const workflow = userInHeader.workflow ? userInHeader.workflow[projectId] : undefined
+
     const onClickWorkflowIndicator = () => {
         const { loggedUserProjectsMap } = store.getState()
         dispatch(setSelectedNavItem(DV_TAB_USER_WORKFLOW))
@@ -78,6 +80,8 @@ export default function ProjectHeader({
                     />
                     <TagsArea
                         projectId={projectId}
+                        workflow={workflow}
+                        user={userInHeader}
                         mobile={mobile || mobileCollapsed}
                         onClickWorkflowIndicator={onClickWorkflowIndicator}
                         showWorkflow={showWorkflow}
