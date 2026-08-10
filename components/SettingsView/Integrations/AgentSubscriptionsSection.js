@@ -19,6 +19,7 @@ const PROVIDERS = {
     claude: {
         label: 'Claude',
         apiLabel: 'Anthropic',
+        supportsSubscription: true,
         apiKeyPlaceholder: 'Paste your Anthropic API key',
         placeholder: 'Paste the token printed by claude setup-token',
         steps: [
@@ -31,6 +32,7 @@ const PROVIDERS = {
     codex: {
         label: 'Codex',
         apiLabel: 'OpenAI',
+        supportsSubscription: true,
         apiKeyPlaceholder: 'Paste your OpenAI API key',
         placeholder: 'Paste the complete contents of ~/.codex/auth.json',
         steps: [
@@ -39,6 +41,17 @@ const PROVIDERS = {
             'Run codex login and sign in with the ChatGPT account that has your Codex subscription.',
             'Open ~/.codex/auth.json, copy the complete JSON, and paste it below.',
         ],
+    },
+    // OpenRouter runs use the Codex harness but a different upstream, so they need their own key
+    // slot: an OpenAI key or ChatGPT plan cannot authenticate against OpenRouter. There is no
+    // OpenRouter subscription to connect, so this card offers only "my key" or "Alldone Gold".
+    openrouter: {
+        label: 'OpenRouter (Codex harness)',
+        apiLabel: 'OpenRouter',
+        supportsSubscription: false,
+        apiKeyPlaceholder: 'Paste your OpenRouter API key (sk-or-…)',
+        description:
+            'Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.',
     },
 }
 
@@ -49,7 +62,8 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
     const [processing, setProcessing] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
-    const subscriptionConnected = !!connection?.connected
+    const supportsSubscription = config.supportsSubscription !== false
+    const subscriptionConnected = supportsSubscription && !!connection?.connected
     const apiKeyConnected = !!connection?.apiKey?.connected
     const activeMode = connection?.activeMode || (subscriptionConnected ? 'subscription' : 'api')
 
@@ -147,9 +161,14 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
 
             <Text style={[styles.body2, localStyles.explanation]}>
                 {translate(
-                    'Choose one route for this provider. BYOK bills model usage directly to your provider account; subscription auth uses your Claude or ChatGPT plan; Alldone API billing charges Gold for model tokens. The 20 Gold base charge and 10 Gold per started VM minute apply to every route.'
+                    supportsSubscription
+                        ? 'Choose one route for this provider. BYOK bills model usage directly to your provider account; subscription auth uses your Claude or ChatGPT plan; Alldone API billing charges Gold for model tokens. The 20 Gold base charge and 10 Gold per started VM minute apply to every route.'
+                        : 'Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.'
                 )}
             </Text>
+            {!!config.description && (
+                <Text style={[styles.caption1, localStyles.securityNote]}>{translate(config.description)}</Text>
+            )}
 
             <View style={localStyles.modeActions}>
                 <Button
@@ -159,13 +178,15 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
                     disabled={processing || !apiKeyConnected}
                     buttonStyle={localStyles.modeAction}
                 />
-                <Button
-                    title={translate('Subscription')}
-                    type={activeMode === 'subscription' ? 'primary' : 'ghost'}
-                    onPress={() => selectMode('subscription')}
-                    disabled={processing || !subscriptionConnected}
-                    buttonStyle={localStyles.modeAction}
-                />
+                {supportsSubscription && (
+                    <Button
+                        title={translate('Subscription')}
+                        type={activeMode === 'subscription' ? 'primary' : 'ghost'}
+                        onPress={() => selectMode('subscription')}
+                        disabled={processing || !subscriptionConnected}
+                        buttonStyle={localStyles.modeAction}
+                    />
+                )}
                 <Button
                     title={translate('Alldone Gold')}
                     type={activeMode === 'api' ? 'primary' : 'ghost'}
@@ -230,53 +251,58 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
                 </View>
             </View>
 
-            <View style={localStyles.authSection}>
-                <Text style={[styles.subtitle2, localStyles.authTitle]}>
-                    {translate('Subscription authentication')}
-                </Text>
-                <Text
-                    style={[styles.caption1, subscriptionConnected ? localStyles.connected : localStyles.notConnected]}
-                >
-                    {translate(subscriptionConnected ? 'Subscription connected' : 'Subscription not connected')}
-                </Text>
-                <View style={localStyles.steps}>
-                    {config.steps.map((step, index) => (
-                        <Text key={step} style={[styles.body2, localStyles.step]}>
-                            {index + 1}. {translate(step)}
-                        </Text>
-                    ))}
-                </View>
+            {supportsSubscription && (
+                <View style={localStyles.authSection}>
+                    <Text style={[styles.subtitle2, localStyles.authTitle]}>
+                        {translate('Subscription authentication')}
+                    </Text>
+                    <Text
+                        style={[
+                            styles.caption1,
+                            subscriptionConnected ? localStyles.connected : localStyles.notConnected,
+                        ]}
+                    >
+                        {translate(subscriptionConnected ? 'Subscription connected' : 'Subscription not connected')}
+                    </Text>
+                    <View style={localStyles.steps}>
+                        {config.steps.map((step, index) => (
+                            <Text key={step} style={[styles.body2, localStyles.step]}>
+                                {index + 1}. {translate(step)}
+                            </Text>
+                        ))}
+                    </View>
 
-                <TextInput
-                    style={[localStyles.input, provider === 'codex' && localStyles.jsonInput]}
-                    value={credential}
-                    onChangeText={setCredential}
-                    placeholder={translate(config.placeholder)}
-                    placeholderTextColor={colors.Text03}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    multiline={provider === 'codex'}
-                    editable={!processing}
-                    secureTextEntry={provider === 'claude'}
-                />
-                <View style={localStyles.actions}>
-                    <Button
-                        title={translate(subscriptionConnected ? 'Reconnect subscription' : 'Connect subscription')}
-                        onPress={connect}
-                        processing={processing}
-                        processingTitle={translate('Saving')}
-                        buttonStyle={localStyles.primaryAction}
+                    <TextInput
+                        style={[localStyles.input, provider === 'codex' && localStyles.jsonInput]}
+                        value={credential}
+                        onChangeText={setCredential}
+                        placeholder={translate(config.placeholder)}
+                        placeholderTextColor={colors.Text03}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        multiline={provider === 'codex'}
+                        editable={!processing}
+                        secureTextEntry={provider === 'claude'}
                     />
-                    {subscriptionConnected && (
+                    <View style={localStyles.actions}>
                         <Button
-                            title={translate('Disconnect')}
-                            type="ghost"
-                            onPress={disconnect}
-                            disabled={processing}
+                            title={translate(subscriptionConnected ? 'Reconnect subscription' : 'Connect subscription')}
+                            onPress={connect}
+                            processing={processing}
+                            processingTitle={translate('Saving')}
+                            buttonStyle={localStyles.primaryAction}
                         />
-                    )}
+                        {subscriptionConnected && (
+                            <Button
+                                title={translate('Disconnect')}
+                                type="ghost"
+                                onPress={disconnect}
+                                disabled={processing}
+                            />
+                        )}
+                    </View>
                 </View>
-            </View>
+            )}
 
             {!!error && <Text style={localStyles.error}>{error}</Text>}
             {!!success && <Text style={localStyles.success}>{success}</Text>}
@@ -309,7 +335,7 @@ export default function AgentSubscriptionsSection() {
             <Text style={[styles.title6, localStyles.sectionTitle]}>{translate('AI agent authentication')}</Text>
             <Text style={[styles.body2, localStyles.sectionDescription]}>
                 {translate(
-                    'Choose how Claude and Codex VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.'
+                    'Choose how Claude, Codex, and OpenRouter VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.'
                 )}
             </Text>
             {/* Inside Settings > Integrations the region owns the single, bigger spinner. */}
@@ -318,6 +344,7 @@ export default function AgentSubscriptionsSection() {
             {/* Rendered while loading too (dimmed by the wrapper) so the cards do not pop in. */}
             <ProviderAuthCard provider="claude" connection={status?.claude} onChanged={loadStatus} />
             <ProviderAuthCard provider="codex" connection={status?.codex} onChanged={loadStatus} />
+            <ProviderAuthCard provider="openrouter" connection={status?.openrouter} onChanged={loadStatus} />
         </IntegrationsPendingContent>
     )
 }

@@ -115,6 +115,10 @@ const getEnvFunctions = () => {
                     TAVILY_API_KEY: envJson.TAVILY_API_KEY || '',
                     APIFY_API_KEY: envJson.APIFY_API_KEY || '',
                     ANTHROPIC_API_KEY: envJson.ANTHROPIC_API_KEY || '',
+                    // AT-2230. This map is an explicit allowlist, NOT a passthrough of the JSON: a
+                    // key added to GOOGLE_FUNCTIONS_ENV_DEV/_PROD but missing here is silently
+                    // invisible to every caller of getEnvFunctions(). That is exactly how the
+                    // platform OpenRouter key was configured in CI and still read as unconfigured.
                     OPENROUTER_API_KEY: envJson.OPENROUTER_API_KEY || '',
                     E2B_API_KEY: envJson.E2B_API_KEY || '',
                     VM_PROXY_SIGNING_SECRET: envJson.VM_PROXY_SIGNING_SECRET || '',
@@ -269,10 +273,12 @@ const getEnvFunctions = () => {
     }
 
     // Runtime environment variables/secrets can override missing realtime calling values.
+    // Listed here rather than only in the maps above so the JSON-missing / JSON-error / no-JSON
+    // fallback branches resolve them too.
     ;[
+        'OPENROUTER_API_KEY',
         'MENUBAR_APP_WEBHOOK_SECRET',
         'EXTERNAL_TOOLS_SIGNING_SECRET',
-        'OPENROUTER_API_KEY',
         'OPENAI_PROJECT_ID',
         'OPENAI_WEBHOOK_SECRET',
         'WHATSAPP_CALL_ROUTING_SECRET',

@@ -35,7 +35,12 @@ const {
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
 } = require('./vmJob')
-const { resolveModelRoute, isOpenRouterRun } = require('./vmModelRouting')
+const {
+    resolveModelRoute,
+    isOpenRouterRun,
+    resolveJobCredentialProvider,
+    OPENROUTER_LABEL,
+} = require('./vmModelRouting')
 const { resolveEffectiveTokensPerGold, calculateTokenGold } = require('./vmTokenPricing')
 const {
     MAX_VM_RUNTIME_MS,
@@ -1581,15 +1586,21 @@ function applyRuntimeAgentModel(evt, agent, runDetails) {
     return resolvedModel
 }
 
-function renderVmWorkingHeader(agentLabel, runDetails, credentialMode) {
+// `credentialLabel` names the key slot rather than the harness, so an OpenRouter run driven by the
+// Codex agent says "your personal OpenRouter API key". Deliberately does NOT pass agentModel /
+// tokensPerGold: the Alldone-Gold rate note belongs to the launch comment, which quotes the rate
+// frozen on the job — re-deriving it here could print a number different from the one being billed.
+function renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel = '') {
     const displayModel = runDetails?.resolvedModel || runDetails?.model
     const suffix = runDetails ? formatAgentRunSuffix(displayModel, runDetails.effort) : ''
     const header = `🖥️ Working with ${agentLabel}${suffix} in a VM…`
-    return credentialMode !== undefined ? `${header}\n\n${formatVmBillingStatus(agentLabel, credentialMode)}` : header
+    return credentialMode !== undefined
+        ? `${header}\n\n${formatVmBillingStatus(agentLabel, credentialMode, '', 0, credentialLabel)}`
+        : header
 }
 
-function renderActivityLog(lines, agentLabel, runDetails, credentialMode) {
-    return `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n${lines
+function renderActivityLog(lines, agentLabel, runDetails, credentialMode, credentialLabel = '') {
+    return `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel)}\n\n${lines
         .slice(-MAX_ACTIVITY_LINES)
         .join('\n')}`
 }
@@ -2926,6 +2937,9 @@ async function runAgentInSandbox(
     // Model + effort the agent runs with, surfaced in the live status header.
     const runDetails = sharedRunDetails || resolveAgentRunDetails(vmJob)
     const credentialMode = subscriptionAuth ? 'subscription' : vmJob.credentialMode === 'byok' ? 'byok' : 'api'
+    // The key slot, which for an OpenRouter model is not the agent (AT-2230 BYOK).
+    const credentialProvider = resolveJobCredentialProvider(vmJob)
+    const credentialLabel = credentialProvider === 'openrouter' ? OPENROUTER_LABEL : agentLabel
     // Always use E2B's managed prebuilt template for the selected agent.
     const template = config.defaultTemplate
     vmJob.vmTemplate = template
@@ -3136,7 +3150,7 @@ async function runAgentInSandbox(
         if (gitContext && gitContext.enabled) {
             if (typeof onActivity === 'function') {
                 onActivity(
-                    `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode)}\n\n📥 ${
+                    `${renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel)}\n\n📥 ${
                         isResume ? 'Refreshing' : 'Cloning'
                     } the connected repository…`
                 )
@@ -3173,7 +3187,7 @@ async function runAgentInSandbox(
             config,
             agentLabel,
             onActivity,
-            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth),
+            renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth, credentialLabel),
             { isResume }
         )
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
@@ -3183,7 +3197,7 @@ async function runAgentInSandbox(
                   sandbox,
                   vmJob.agent || DEFAULT_AGENT,
                   onActivity,
-                  renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth)
+                  renderVmWorkingHeader(agentLabel, runDetails, !!subscriptionAuth, credentialLabel)
               )
             : null
         await throwIfVmJobCancelled(pendingRef, runtimeGoldCharged)
@@ -3232,9 +3246,12 @@ async function runAgentInSandbox(
                         ])
                         const publishResolvedModel =
                             publishActivity && typeof onActivity === 'function'
-                                ? onActivity(renderVmWorkingHeader(agentLabel, runDetails, credentialMode), {
-                                      force: true,
-                                  })
+                                ? onActivity(
+                                      renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialLabel),
+                                      {
+                                          force: true,
+                                      }
+                                  )
                                 : null
                         return Promise.all([persistResolvedModel, publishResolvedModel])
                     })
@@ -3265,7 +3282,7 @@ async function runAgentInSandbox(
             const before = state.activity.length
             config.handleEvent(evt, state)
             if (publishActivity && state.activity.length > before && typeof onActivity === 'function') {
-                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, credentialMode))
+                onActivity(renderActivityLog(state.activity, agentLabel, runDetails, credentialMode, credentialLabel))
             }
         }
         const handleStdout = data => {
@@ -3296,6 +3313,9 @@ async function runAgentInSandbox(
                   agent: vmJob.agent || DEFAULT_AGENT,
                   realApiKey: apiKey,
                   credentialMode,
+                  // Scopes the minted token to this run's key slot, so it can only ever be spent on
+                  // the matching proxy route (see mintProxyToken).
+                  credentialProvider,
                   ttlMs: MAX_VM_RUNTIME_MS + VM_JOB_FINALIZATION_HEADROOM_MS,
               })
         console.log('🖥️ VM JOB: agent credential mode', {
@@ -3406,7 +3426,8 @@ async function runAgentInSandbox(
                                 `${renderVmWorkingHeader(
                                     agentLabel,
                                     runDetails,
-                                    credentialMode
+                                    credentialMode,
+                                    credentialLabel
                                 )}\n\n⏸️ Extending VM runtime after slice ${completedSliceCount}…`
                             )
                         }
@@ -4000,6 +4021,11 @@ async function runVmJobByCorrelationId(correlationId) {
     const runDetails = resolveAgentRunDetails(vmJob)
     const wantsSubscription = vmJob.credentialMode === 'subscription'
     const wantsByok = vmJob.credentialMode === 'byok'
+    // The key slot this run authenticates with — 'openrouter' for an OpenRouter model, otherwise the
+    // agent. Read from the job (falling back to a derivation for pre-AT-2230 docs) so the runner and
+    // the proxy answer the credential question identically.
+    const credentialProvider = resolveJobCredentialProvider(vmJob)
+    const credentialProviderLabel = credentialProvider === 'openrouter' ? OPENROUTER_LABEL : agentLabel
     let subscriptionAuth = wantsSubscription
         ? await require('./vmSubscriptionAuth').loadVmSubscriptionAuth(
               vmJob.requestUserId,
@@ -4011,8 +4037,11 @@ async function runVmJobByCorrelationId(correlationId) {
               .getVmApiKeyStatus(vmJob.requestUserId)
               .catch(() => null)
         : null
-    const byokAvailable = !!byokStatus?.[vmJob.agent || DEFAULT_AGENT]?.connected
-    const apiKey = env[config.apiKeyField]
+    const byokAvailable = !!byokStatus?.[credentialProvider]?.connected
+    // An OpenRouter run is platform-billed against the OpenRouter key, not the OpenAI one the Codex
+    // agent config names. Checking the agent's key here would pass on a missing OpenRouter key and
+    // fail later inside the proxy, mid-run, after Gold had been spent.
+    const apiKey = credentialProvider === 'openrouter' ? env.OPENROUTER_API_KEY : env[config.apiKeyField]
     if (
         (wantsSubscription && !subscriptionAuth) ||
         (wantsByok && !byokAvailable) ||
@@ -4022,8 +4051,10 @@ async function runVmJobByCorrelationId(correlationId) {
         const message = wantsSubscription
             ? `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
             : wantsByok
-              ? `VM task could not run: your personal ${agentLabel} API key is missing. Add or replace it in Settings → Integrations.`
-              : `VM task could not run: ${config.label} sandbox credentials are not configured.`
+              ? `VM task could not run: your personal ${credentialProviderLabel} API key is missing. Add or replace it in Settings → Integrations.`
+              : credentialProvider === 'openrouter' && !apiKey
+                ? `VM task could not run: OpenRouter is not configured for Alldone Gold on this environment (OPENROUTER_API_KEY is missing). Add your own OpenRouter API key in Settings → Integrations, or choose an OpenAI model.`
+                : `VM task could not run: ${config.label} sandbox credentials are not configured.`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
         await notifyVmResultChannels(pendingWebhook, failureText, {
@@ -4085,12 +4116,18 @@ async function runVmJobByCorrelationId(correlationId) {
         await pendingRef
             .update({
                 credentialMode,
+                // Re-asserted (not changed) so the doc the proxy reads always carries both halves of
+                // the billing route, including for a job launched before this field existed.
+                credentialProvider,
                 subscriptionUsed: credentialMode === 'subscription',
                 personalApiKeyUsed: credentialMode === 'byok',
                 tokenBillingExempt,
             })
             .catch(() => {})
-        await writeStatusComment(pendingWebhook, renderVmWorkingHeader(agentLabel, runDetails, credentialMode))
+        await writeStatusComment(
+            pendingWebhook,
+            renderVmWorkingHeader(agentLabel, runDetails, credentialMode, credentialProviderLabel)
+        )
         const runAgent = (allowAuthRecovery = true) =>
             runAgentInSandbox(
                 vmJob,
@@ -4174,7 +4211,8 @@ async function runVmJobByCorrelationId(correlationId) {
                     `${renderVmWorkingHeader(
                         agentLabel,
                         runDetails,
-                        credentialMode
+                        credentialMode,
+                        credentialProviderLabel
                     )}\n\n🔄 Subscription login refreshed; retrying automatically…`
                 )
                 retryStarted = true
