@@ -3649,6 +3649,116 @@ describe('assistant get project happiness tool', () => {
     })
 })
 
+describe('assistant get tasks tool cross-project failures', () => {
+    const projects = [
+        { id: 'project-1', name: 'Familie' },
+        { id: 'project-2', name: 'Marketing' },
+    ]
+
+    const mockProjects = () => {
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue(projects),
+        }))
+    }
+
+    const mockMultiProjectResult = result => {
+        TaskRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getTasks: jest.fn().mockResolvedValue({ tasks: [] }),
+            getTasksFromMultipleProjects: jest.fn().mockResolvedValue(result),
+        }))
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        ProjectService.mockClear()
+        TaskRetrievalService.mockClear()
+        mockProjects()
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({ timezone: 'UTC+02:00' }),
+        })
+    })
+
+    const callGetTasks = () =>
+        executeToolNatively(
+            'get_tasks',
+            { allProjects: true, status: 'all' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+    test('throws instead of reporting an empty list when every project query fails', async () => {
+        mockMultiProjectResult({
+            tasks: [],
+            projectSummary: {
+                'project-1': {
+                    projectName: 'Familie',
+                    taskCount: 0,
+                    success: false,
+                    error: '9 FAILED_PRECONDITION: The query requires an index.',
+                },
+                'project-2': {
+                    projectName: 'Marketing',
+                    taskCount: 0,
+                    success: false,
+                    error: '9 FAILED_PRECONDITION: The query requires an index.',
+                },
+            },
+        })
+
+        await expect(callGetTasks()).rejects.toThrow(/failed for all 2 project\(s\)/)
+        await expect(callGetTasks()).rejects.toThrow(/FAILED_PRECONDITION/)
+    })
+
+    test('flags incomplete results when only some projects fail', async () => {
+        mockMultiProjectResult({
+            tasks: [{ id: 'task-1', name: 'Buy milk', projectId: 'project-2' }],
+            projectSummary: {
+                'project-1': {
+                    projectName: 'Familie',
+                    taskCount: 0,
+                    success: false,
+                    error: 'boom',
+                },
+                'project-2': { projectName: 'Marketing', taskCount: 1, success: true },
+            },
+        })
+
+        const result = await callGetTasks()
+
+        expect(result.count).toBe(1)
+        expect(result.retrieval).toEqual(
+            expect.objectContaining({
+                resultsAreIncomplete: true,
+                projectsQueried: 2,
+                projectsFailed: 1,
+            })
+        )
+        expect(result.retrieval.failedProjects).toEqual([
+            { projectId: 'project-1', projectName: 'Familie', error: 'boom' },
+        ])
+    })
+
+    test('omits the retrieval warning when every project succeeds', async () => {
+        mockMultiProjectResult({
+            tasks: [],
+            projectSummary: {
+                'project-1': { projectName: 'Familie', taskCount: 0, success: true },
+                'project-2': { projectName: 'Marketing', taskCount: 0, success: true },
+            },
+        })
+
+        const result = await callGetTasks()
+
+        expect(result.count).toBe(0)
+        expect(result.retrieval).toBeUndefined()
+    })
+})
+
 describe('assistant get goals tool', () => {
     beforeEach(() => {
         jest.clearAllMocks()

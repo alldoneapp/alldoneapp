@@ -76,7 +76,7 @@ class HookedHistory extends History {
     }
 }
 
-const decoratePicker = picker => {
+export const decoratePicker = picker => {
     const { select } = picker
     const items = picker.container.querySelectorAll('.ql-picker-item')
     Array.from(select.options).forEach((option, index) => {
@@ -88,19 +88,30 @@ const decoratePicker = picker => {
         picker.label.innerHTML += select.getAttribute('data-html')
     }
     if (select.classList.contains('ql-header')) {
-        // The header picker label mirrors the selected item's icon instead of quill's
-        // default sort-arrows glyph.
-        picker.label.innerHTML = PICKER_CHEVRON_SVG
+        // The header picker label mirrors the selected item's icon (the quill-1 patched
+        // look) instead of quill's default sort-arrows glyph. Two quill-2 deltas matter
+        // here: selectItem() now copies the item's data-label onto the LABEL — which the
+        // vendored CSS renders as literal text via `content: attr(data-label)`, so it
+        // must be stripped — and selectItem() early-returns when the selection is
+        // unchanged, so the label is synced from the current .ql-selected item rather
+        // than from selectItem's argument.
+        const syncLabel = () => {
+            picker.label.removeAttribute('data-label')
+            const selectedItem = picker.container.querySelector('.ql-picker-item.ql-selected')
+            const selectedIcon = selectedItem && selectedItem.querySelector('.ql-header-item-icon')
+            picker.label.innerHTML = ''
+            if (selectedIcon) {
+                picker.label.appendChild(selectedIcon.cloneNode(true))
+            } else {
+                picker.label.innerHTML = PICKER_CHEVRON_SVG
+            }
+        }
         const originalSelectItem = picker.selectItem.bind(picker)
         picker.selectItem = (item, trigger) => {
             originalSelectItem(item, trigger)
-            const selectedIcon = item && item.querySelector('.ql-header-item-icon')
-            if (selectedIcon) {
-                picker.label.innerHTML = ''
-                picker.label.appendChild(selectedIcon.cloneNode(true))
-            }
+            syncLabel()
         }
-        picker.update()
+        syncLabel()
     }
 }
 
