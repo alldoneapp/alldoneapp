@@ -75,31 +75,19 @@ import { getWorkflowSortIndexUpdates } from '../../workflowOrder'
 
 //ACCESS FUNCTIONS
 
-/**
- * Reads a user document and reports WHY there is no user: a genuinely missing document
- * (`missing: true`) or a failed read (`error` set, e.g. a transient `permission-denied` while
- * the ID token refreshes). The login flow must not treat the second case as "account is broken"
- * and offer to delete the Firebase Auth user.
- */
-export async function fetchUserDataResult(userId, isLoggedUser) {
+export async function getUserData(userId, isLoggedUser) {
     try {
         const docSnapshot = await getDb().doc(`/users/${userId}`).get()
         if (!docSnapshot.exists) {
             console.error(`User document not found in Firestore: /users/${userId}`)
-            return { user: null, missing: true, error: null }
+            return null
         }
         const user = docSnapshot.data()
-        const mappedUser = user ? mapUserData(userId, user, isLoggedUser) : null
-        return { user: mappedUser, missing: !mappedUser, error: null }
+        return user ? mapUserData(userId, user, isLoggedUser) : null
     } catch (error) {
         console.error(`Error fetching user data for ${userId}:`, error)
-        return { user: null, missing: false, error }
+        return null
     }
-}
-
-export async function getUserData(userId, isLoggedUser) {
-    const { user } = await fetchUserDataResult(userId, isLoggedUser)
-    return user
 }
 
 const convertUserDocsInUsers = docs => {
