@@ -45,6 +45,7 @@ import {
     uploadNewNote,
 } from '../../utils/backends/Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../../utils/backends/Chats/chatsFirestore'
+import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
 
 class EditNote extends Component {
     constructor(props) {
@@ -218,6 +219,8 @@ class EditNote extends Component {
     /**
      * Update task data in Firebase
      */
+    submitOnce = createSingleFlightSubmit(submission => submission())
+
     updateNote = (e, actionBeforeSave) => {
         if (e) e.preventDefault()
 
@@ -234,21 +237,27 @@ class EditNote extends Component {
 
         if (noteChanged && loggedUserCanUpdateObject) {
             if (formType === 'new') {
-                // setting current info
-                const now = Date.now()
-                tmpNote.creatorId = loggedUser.uid
-                tmpNote.userId = tmpNote.userId || loggedUser.uid
-                tmpNote.created = now
+                // Enter reaches this editor through the document listener, Quill's
+                // newline callback and the done button at once, and each run mints
+                // a new note id, so creation is guarded against duplicates.
+                this.submitOnce(() => {
+                    // setting current info
+                    const now = Date.now()
+                    tmpNote.creatorId = loggedUser.uid
+                    tmpNote.userId = tmpNote.userId || loggedUser.uid
+                    tmpNote.created = now
 
-                const noteToUpload = { ...tmpNote }
-                store.dispatch(setTmpInputTextNote(''))
-                uploadNewNote(projectId, noteToUpload, true)
-                    .then(note => {
-                        this.onSuccessUploadNewNote(note, actionBeforeSave, linkedParentObject)
-                    })
-                    .catch(this.dismissEditMode)
+                    const noteToUpload = { ...tmpNote }
+                    store.dispatch(setTmpInputTextNote(''))
+                    const creation = uploadNewNote(projectId, noteToUpload, true)
+                        .then(note => {
+                            this.onSuccessUploadNewNote(note, actionBeforeSave, linkedParentObject)
+                        })
+                        .catch(this.dismissEditMode)
 
-                this.resetEditMode()
+                    this.resetEditMode()
+                    return creation
+                })
             } else {
                 if (tmpNote.title === '') {
                     this.askToDeleteNote()

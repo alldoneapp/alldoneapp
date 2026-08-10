@@ -23,41 +23,50 @@ export const INITIAL_ASSISTANT_INPUT_LAYOUT = {
     scrollEnabled: false,
 }
 
-// Pin the send/voice control cluster to a stable width.
+// Geometry of the send/voice control cluster when it is stacked into a column:
+// two 40px controls with an 8px gap between them.
+export const ASSISTANT_CONTROL_BUTTON_SIZE = 40
+export const ASSISTANT_CONTROL_STACK_GAP = 8
+export const ASSISTANT_CONTROLS_STACKED_HEIGHT = ASSISTANT_CONTROL_BUTTON_SIZE * 2 + ASSISTANT_CONTROL_STACK_GAP
+
+// Decide whether the voice + send cluster renders as a row (collapsed) or as a
+// column with the two buttons directly below each other (expanded).
 //
-// The control cluster (voice + send buttons) is a sibling of the flex:1 message
-// input in the same row. When the input expands it deliberately re-stacks those
-// buttons from a row into a column, which makes the cluster *narrower*. Because
-// the input is flex:1, a narrower cluster makes the input WIDER, the browser
-// re-wraps the last line, the measured height drops back to one line, the field
-// collapses, the cluster returns to a (wider) row, the input gets NARROWER, the
-// text wraps again — and the field oscillates forever, "unable to decide" if it
-// wants to expand. This width<->height feedback loop is the real cause of the
-// wiggle; height-only hysteresis (see getAssistantInputLayout) cannot damp it
-// because the content width, and therefore the content height, genuinely
+// Why this is a latch and not a plain `height > MIN` check:
+//
+// The cluster is a sibling of the flex:1 message input in the same row. When it
+// stacks into a column it becomes ~48px NARROWER, which is exactly what we want
+// — the input reclaims that space and expands accordingly. But a wider input
+// re-wraps the text, so the measured content height can drop straight back to a
+// single line. A naive `height > MIN` check would then un-stack, the cluster
+// would widen, the input would narrow, the text would wrap again — and the
+// field oscillates forever, "unable to decide" whether it wants to expand.
+// Height-only hysteresis (see getAssistantInputLayout) cannot damp that,
+// because the content *width*, and therefore the content height, genuinely
 // changes every cycle.
 //
-// The fix is to make the cluster's horizontal footprint invariant to the
-// expanded state: measure the cluster once while it is collapsed (row layout)
-// and keep that width when it stacks into a column. Only the collapsed
-// measurement is authoritative — a measurement taken while expanded would
-// capture the narrow column width and let the input widen again, re-arming the
-// loop. Sub-pixel jitter is ignored so a stable layout returns the same value
-// (no extra React state churn).
-export const getStableControlsWidth = (measuredWidth, isExpanded, previousWidth = null) => {
-    // While expanded the cluster is a column and reports its narrow width; never
-    // trust it. Hold whatever width we captured in the row layout.
-    if (isExpanded) return previousWidth
-    if (!Number.isFinite(measuredWidth) || measuredWidth <= 0) return previousWidth
+// The loop is broken by making the un-stack condition independent of any
+// width-sensitive measurement: once stacked, the cluster stays stacked until
+// the field is EMPTY. An empty field is a single line at every width, so the
+// release can never feed back into the wrapping. The cost is that deleting text
+// down to one line keeps the taller composer until the last character is gone —
+// deliberate, and far less jarring than a flapping layout.
+export const getAssistantControlsStacked = ({ inputHeight, hasText, wasStacked = false }) => {
+    // Grew past a single line: stack immediately so the buttons line up.
+    if (Number.isFinite(inputHeight) && inputHeight > ASSISTANT_INPUT_MIN_HEIGHT) return true
+    // Nothing typed: always return to the compact single-row layout.
+    if (!hasText) return false
+    // One line but text present: hold whatever we had, never flap.
+    return wasStacked
+}
 
-    // Compare the *raw* measurement (not the rounded one) against the pinned
-    // width. Rounding first would treat 120.2px as 121px and flip the pin
-    // 120<->121 on every sub-pixel layout jitter, re-arming exactly the kind of
-    // micro-wiggle this helper exists to kill. Only a change of a full pixel or
-    // more is a real resize worth adopting.
-    if (previousWidth != null && Math.abs(measuredWidth - previousWidth) < 1) return previousWidth
-
-    return Math.ceil(measuredWidth)
+// While stacked, the cluster is ASSISTANT_CONTROLS_STACKED_HEIGHT tall. Grow the
+// input to at least that height so the two layouts are exactly the same height
+// and the button column cannot overhang the field it belongs to.
+export const getAssistantInputDisplayHeight = (inputHeight, isStacked) => {
+    if (!Number.isFinite(inputHeight)) return ASSISTANT_INPUT_MIN_HEIGHT
+    if (!isStacked) return inputHeight
+    return Math.min(Math.max(inputHeight, ASSISTANT_CONTROLS_STACKED_HEIGHT), ASSISTANT_INPUT_MAX_HEIGHT)
 }
 
 export const getAssistantInputLayout = (contentHeight, previousLayout = INITIAL_ASSISTANT_INPUT_LAYOUT) => {

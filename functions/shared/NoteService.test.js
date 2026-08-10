@@ -178,6 +178,26 @@ describe('NoteService patch storage updates', () => {
         ).toEqual(['assistant-1', 'user-1', 'user-2'])
     })
 
+    // AT-2194 follow-up. Once an assistant both ACTS (feedUser) and OWNS the note,
+    // actorId and ownerId collapse onto the same assistant id. Without the creator in
+    // this list the human who asked for the note stops following it and loses every
+    // notification about their own meeting note.
+    test('keeps the human creator following a note the assistant acts on and owns', () => {
+        const service = createService()
+
+        expect(
+            service.getNoteUpdateFeedFollowers({ userId: 'assistant-1', creatorId: 'human-1' }, { uid: 'assistant-1' })
+        ).toEqual(['assistant-1', 'human-1'])
+    })
+
+    test('does not duplicate the id for a human-created note', () => {
+        const service = createService()
+
+        expect(
+            service.getNoteUpdateFeedFollowers({ userId: 'human-1', creatorId: 'human-1' }, { uid: 'human-1' })
+        ).toEqual(['human-1'])
+    })
+
     test('updates storage content and metadata for a safe patch', async () => {
         let savedBuffer = null
         const file = {
@@ -549,5 +569,103 @@ describe('NoteService feed persistence', () => {
         )
         expect(createNoteFollowedFeed).toHaveBeenCalled()
         jest.dontMock('../Feeds/notesFeeds')
+    })
+
+    // AT-2194 follow-up: the menubar meeting-notes flow acts as the assistant AND now
+    // owns the note with it. Both ids the follower list was previously built from
+    // (feedUser.uid, note.userId) are then the assistant, so only note.creatorId keeps
+    // the requesting human subscribed to their own meeting note.
+    test('seeds the human creator as a follower of an assistant-owned note', () => {
+        const service = createService()
+
+        expect(
+            service.getNoteCreateFeedFollowers({ userId: 'assistant-1', creatorId: 'human-1' }, { uid: 'assistant-1' })
+        ).toEqual(['assistant-1', 'human-1'])
+    })
+
+    test('seeds a single follower for a note a human created and owns', () => {
+        const service = createService()
+
+        expect(
+            service.getNoteCreateFeedFollowers({ userId: 'human-1', creatorId: 'human-1' }, { uid: 'human-1' })
+        ).toEqual(['human-1'])
+    })
+
+    test('tolerates a note with no explicit creator', () => {
+        const service = createService()
+
+        expect(service.getNoteCreateFeedFollowers({ userId: 'human-1' }, { uid: 'assistant-1' })).toEqual([
+            'assistant-1',
+            'human-1',
+        ])
+    })
+})
+
+describe('buildNote ownership (AT-2194)', () => {
+    const baseParams = { title: 'Some note', projectId: 'project-1', userId: 'human-1', noteId: 'note-1', now: 1000 }
+
+    it('keeps the acting user as owner, creator and follower when no override is given', async () => {
+        const note = await createService().buildNote({ ...baseParams })
+
+        expect(note.userId).toBe('human-1')
+        expect(note.creatorId).toBe('human-1')
+        expect(note.lastEditorId).toBe('human-1')
+        expect(note.followersIds).toEqual(['human-1'])
+        expect(note.isPublicFor).toEqual([0, 'human-1'])
+        expect(note.isVisibleInFollowedFor).toEqual(['human-1'])
+    })
+
+    it('makes the assistant the owner while the human stays the creator', async () => {
+        const note = await createService().buildNote({
+            ...baseParams,
+            ownerId: 'assistant-1',
+            creatorId: 'human-1',
+        })
+
+        expect(note.userId).toBe('assistant-1')
+        expect(note.creatorId).toBe('human-1')
+    })
+
+    it("keeps an assistant-owned note visible in the requesting human's Followed tab", async () => {
+        const note = await createService().buildNote({
+            ...baseParams,
+            ownerId: 'assistant-1',
+            creatorId: 'human-1',
+        })
+
+        // The regression this guards: deriving every field from the owner would drop the
+        // human out of these arrays and the note would vanish from their default notes tab.
+        expect(note.isVisibleInFollowedFor).toContain('human-1')
+        expect(note.followersIds).toContain('human-1')
+        expect(note.isPublicFor).toContain('human-1')
+    })
+
+    it('grants the assistant owner access alongside the human', async () => {
+        const note = await createService().buildNote({
+            ...baseParams,
+            ownerId: 'assistant-1',
+            creatorId: 'human-1',
+        })
+
+        expect(note.isPublicFor).toEqual([0, 'human-1', 'assistant-1'])
+    })
+
+    it('does not duplicate ids when the owner is the acting user', async () => {
+        const note = await createService().buildNote({ ...baseParams, ownerId: 'human-1', creatorId: 'human-1' })
+
+        expect(note.isPublicFor).toEqual([0, 'human-1'])
+        expect(note.followersIds).toEqual(['human-1'])
+    })
+
+    it('still honours an explicit isPublicFor (private notes)', async () => {
+        const note = await createService().buildNote({
+            ...baseParams,
+            ownerId: 'assistant-1',
+            isPrivate: true,
+            isPublicFor: ['human-1'],
+        })
+
+        expect(note.isPublicFor).toEqual(['human-1'])
+        expect(note.isVisibleInFollowedFor).toEqual(['human-1'])
     })
 })

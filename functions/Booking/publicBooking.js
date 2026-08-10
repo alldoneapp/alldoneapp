@@ -273,6 +273,10 @@ async function handleBook(req, res) {
             calendarId: eventResult.calendarId || '',
             eventId: eventResult.event?.eventId || '',
             htmlLink: eventResult.event?.htmlLink || '',
+            // Empty when the calendar provider refused to create a conference —
+            // the booking still stands, it just has no one-click join link.
+            joinUrl: eventResult.joinUrl || '',
+            joinProvider: eventResult.joinProvider || '',
         },
         createdAt: FieldValue.serverTimestamp(),
     })
@@ -291,6 +295,7 @@ async function handleBook(req, res) {
             timeZone: timeZone || page.settings.timeZone,
             durationMinutes: resolvedDurationMinutes,
             eventHtmlLink: eventResult.event?.htmlLink || '',
+            joinUrl: eventResult.joinUrl || '',
         }),
         sendBookingConfirmationToVisitor({
             visitorName,
@@ -301,6 +306,7 @@ async function handleBook(req, res) {
             end,
             timeZone: timeZone || page.settings.timeZone,
             durationMinutes: resolvedDurationMinutes,
+            joinUrl: eventResult.joinUrl || '',
         }),
     ])
 
@@ -310,6 +316,7 @@ async function handleBook(req, res) {
         start,
         end,
         durationMinutes: resolvedDurationMinutes,
+        joinUrl: eventResult.joinUrl || '',
     })
 }
 
