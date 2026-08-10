@@ -13,6 +13,7 @@ import store from '../../../redux/store'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import EditTask from '../TaskItem/EditTask'
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
+import { useIsUserEditing } from '../../../utils/editingGuard'
 
 export default function SubTasksView({
     projectId,
@@ -34,6 +35,7 @@ export default function SubTasksView({
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const projectIds = useSelector(state => state.loggedUser.projectIds, shallowEqual)
     const [firstLoadedEnded, setFirstLoadedEnded] = useState(false)
+    const isUserEditing = useIsUserEditing()
 
     const dismissibleRefs = useRef([])
     const taskItemRefs = useRef([])
@@ -80,9 +82,13 @@ export default function SubTasksView({
     }, [createSubtaskRequest])
 
     useEffect(() => {
-        if (firstLoadedEnded && subtaskList.length === 0) hideSubtaskList()
+        // `subtaskByTaskStore` is rewritten on every snapshot and can drop to 0
+        // transiently. Collapsing here would unmount the open "add subtask"
+        // editor together with its typed text, so hold off while the user is
+        // busy - `isUserEditing` is in the deps, so it collapses once they stop.
+        if (firstLoadedEnded && subtaskList.length === 0 && !isUserEditing) hideSubtaskList()
         setAriaTaskId()
-    }, [subtaskList.length])
+    }, [subtaskList.length, isUserEditing])
 
     useEffect(() => {
         if (focusedTaskItem.isObserved === !!isObservedTask) {

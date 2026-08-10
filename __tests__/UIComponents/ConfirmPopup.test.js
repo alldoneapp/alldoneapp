@@ -5,10 +5,14 @@
 import React from 'react'
 import { Provider } from 'react-redux'
 import renderer from 'react-test-renderer'
+import { View } from 'react-native'
 
-import ConfirmPopup, { CONFIRM_POPUP_TRIGGER_DELETE_TASK } from '../../components/UIComponents/ConfirmPopup'
+import ConfirmPopup, {
+    CONFIRM_POPUP_TRIGGER_DELETE_TASK,
+    CONFIRM_POPUP_TRIGGER_INFO,
+} from '../../components/UIComponents/ConfirmPopup'
 import store from '../../redux/store'
-import { hideConfirmPopup, showConfirmPopup } from '../../redux/actions'
+import { hideConfirmPopup, showConfirmPopup, toggleSmallScreenNavigation } from '../../redux/actions'
 
 const dummyProjectId = '-LcRVRo6mhbC0oXCcZ2F'
 const dummyTaskId = '-LcRVT6MEWlqGQRkE2xw'
@@ -53,6 +57,33 @@ describe('ConfirmPopup component', () => {
         expect(showConfirmPopupData.visible).toBe(true)
         expect(showConfirmPopupData.trigger).toBe(CONFIRM_POPUP_TRIGGER_DELETE_TASK)
         expect(showConfirmPopupData.object.taskId).toBe(dummyTaskId)
+    })
+
+    // AT-2210: the dialog is centered by the full-screen overlay, so nothing inside may add a
+    // horizontal offset. The old `smallScreenNavigation && { marginLeft: 300 }` did exactly that,
+    // and it fired on the narrow layout — where the 300px sidebar is not even on screen — so the
+    // dialog was pushed off-center on mobile only.
+    // react-native-web turns registered styles into class names in toJSON(), so the assertion has
+    // to read the resolved style props off the View elements instead.
+    const collectMarginLefts = tree =>
+        tree.root
+            .findAllByType(View)
+            .flatMap(view => (Array.isArray(view.props.style) ? view.props.style.flat(Infinity) : [view.props.style]))
+            .filter(style => style && typeof style === 'object' && style.marginLeft !== undefined)
+            .map(style => style.marginLeft)
+
+    it('stays centered on small screens', () => {
+        store.dispatch(toggleSmallScreenNavigation(true))
+        showDeleteTaskPopup()
+
+        expect(collectMarginLefts(render())).not.toContain(300)
+
+        store.dispatch(hideConfirmPopup())
+        store.dispatch(showConfirmPopup({ trigger: CONFIRM_POPUP_TRIGGER_INFO, object: { headerText: 'Be careful' } }))
+
+        expect(collectMarginLefts(render())).not.toContain(300)
+
+        store.dispatch(toggleSmallScreenNavigation(false))
     })
 
     it('clears the popup when it is dismissed', () => {

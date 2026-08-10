@@ -646,6 +646,52 @@ describe('startVmJob', () => {
         )
     })
 
+    // AT-2196: a queued job skipped for Gold never runs, so nothing else would ever move its task.
+    test('launchQueuedVmJob hands the skipped task to the user without moving its workflow step', async () => {
+        mockDocs['users/user-1'] = { get: jest.fn(async () => ({ exists: true, data: () => ({ gold: 3 }) })) }
+        mockDocs['items/project-1/tasks/task-1'] = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({ currentReviewerId: 'assistant-1', stepHistory: [-1, 'ai-step'] }),
+            })),
+            set: jest.fn(async () => {}),
+            update: jest.fn(async () => {}),
+        }
+        mockDocs['pendingWebhooks/queued-3'] = {
+            get: jest.fn(async () => ({
+                exists: true,
+                data: () => ({
+                    kind: 'vm_job',
+                    status: 'queued',
+                    correlationId: 'queued-3',
+                    projectId: 'project-1',
+                    objectType: 'tasks',
+                    objectId: 'task-1',
+                    userId: 'user-1',
+                    assistantId: 'assistant-1',
+                    goldCharged: 20,
+                    statusCommentId: 'status-comment-1',
+                }),
+            })),
+            set: jest.fn(async () => {}),
+            update: jest.fn(async () => {}),
+        }
+
+        await launchQueuedVmJob('queued-3')
+
+        const [holdUpdate] = mockDocs['items/project-1/tasks/task-1'].set.mock.calls[0]
+        expect(holdUpdate).toMatchObject({
+            currentReviewerId: 'user-1',
+            vmInteractionWorkflowStep: expect.objectContaining({
+                reason: 'failure',
+                failureReason: 'insufficient_gold',
+                previousReviewerId: 'assistant-1',
+                workflowStepId: 'ai-step',
+            }),
+        })
+        expect(holdUpdate).toEqual(expect.not.objectContaining({ stepHistory: expect.anything() }))
+    })
+
     test('launchQueuedVmJob is a no-op for a job cancelled while queued', async () => {
         mockDocs['pendingWebhooks/cancelled-1'] = {
             get: jest.fn(async () => ({

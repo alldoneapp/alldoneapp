@@ -179,6 +179,22 @@
                 padding: 0px;
                 /* Allows content to fill the viewport and go beyond the bottom */
                 min-height: 100%;
+                /* AND bind the app shell to the viewport (AT-2177).
+                   react-navigation used to render every screen in an
+                   absolutely-positioned card, which was the only thing giving
+                   the tree a DEFINITE height; migration Stage 2 deleted it
+                   (AppNavigator renders the screen in normal flow now), so with
+                   min-height alone every "flex: 1" box grew to its content
+                   instead. The sidebar's and the main view's CustomScrollViews
+                   then never scrolled internally: the document was the only
+                   scroller, so scrolling the main content dragged the sidebar
+                   navigation and the top bar off-screen with it. A definite
+                   height re-closes the chain and each pane scrolls on its own.
+                   body keeps overflow-y: auto below as a safety valve for any
+                   screen without an inner scroller. */
+                height: 100%;
+                /* safe-area padding on body must not push the shell past 100% */
+                box-sizing: border-box;
             }
 
             #root {

@@ -70,6 +70,7 @@ import {
 import { MANAGE_TASK_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import { DV_TAB_NOTE_EDITOR } from '../../../../utils/TabNavigationConstants'
 import {
+    captureSelectionFromEditor,
     getSelection,
     handleTextChangeForMentions,
     loadMentionsData,
@@ -914,10 +915,25 @@ const NotesEditorView = ({
         }
     }
 
+    // react-quill throws when the editor has not been instantiated yet, so every
+    // caller that only needs a best-effort read goes through this.
+    const getNoteEditor = () => {
+        try {
+            return reactQuillRef ? reactQuillRef.getEditor() : null
+        } catch (error) {
+            return null
+        }
+    }
+
     const renderTask = () => {
         if (blockShortcuts) {
             return
         }
+        // Snapshot what is selected right now, before the modal mounts and takes
+        // focus. The create-task popup pre-fills itself from this selection and
+        // the created task tag replaces it in the note, so it has to be read at
+        // press time rather than trusted to still be cached later.
+        captureSelectionFromEditor(getNoteEditor())
         storeModal(MANAGE_TASK_MODAL_ID)
     }
 

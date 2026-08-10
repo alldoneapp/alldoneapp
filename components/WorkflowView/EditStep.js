@@ -15,6 +15,7 @@ import { FEED_USER_WORKFLOW_CHANGED } from '../Feeds/Utils/FeedsConstants'
 import { translate } from '../../i18n/TranslationService'
 import { createWorkflowStepFeed, createWorkflowStepFeedChangeTitle } from '../../utils/backends/Users/userUpdates'
 import { addUserWorkflowStep, modifyUserWorkflowStep } from '../../utils/backends/Users/usersFirestore'
+import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
 import {
     addAssistantWorkflowStep,
     modifyAssistantWorkflowStep,
@@ -131,6 +132,8 @@ class EditStep extends Component {
         this.setState({ description: text })
     }
 
+    submitOnce = createSingleFlightSubmit(submission => submission())
+
     modifyWorkflowStep = () => {
         const {
             user,
@@ -148,18 +151,22 @@ class EditStep extends Component {
         const isAssistantWorkflow = ownerType === 'assistant'
 
         if (formType === 'new' && description.length > 0) {
-            const stepCopy = {
-                ...workflowStep,
-                description,
-                addedById: loggedUser.uid,
-                date: Date.now(),
-            }
-            if (isAssistantWorkflow) {
-                addAssistantWorkflowStep(project.id, user.uid, stepCopy)
-            } else {
-                addUserWorkflowStep(project.id, user.uid, stepCopy)
-            }
-            onCancelAction()
+            // Enter reaches this editor through both the document listener and
+            // Quill's newline callback, so adding a step is guarded against
+            // duplicated in flight submissions.
+            this.submitOnce(() => {
+                const stepCopy = {
+                    ...workflowStep,
+                    description,
+                    addedById: loggedUser.uid,
+                    date: Date.now(),
+                }
+                const creation = isAssistantWorkflow
+                    ? addAssistantWorkflowStep(project.id, user.uid, stepCopy)
+                    : addUserWorkflowStep(project.id, user.uid, stepCopy)
+                onCancelAction()
+                return creation
+            })
         } else if (formType === 'edit') {
             if (description.length === 0) {
                 if (!lockedStep) this.deleteStep()

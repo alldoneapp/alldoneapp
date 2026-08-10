@@ -64,6 +64,7 @@ import {
     processMyDayData,
 } from '../../../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { TO_ATTEND_TASKS_MY_DAY_TYPE, WORKSTREAM_TASKS_MY_DAY_TYPE } from '../../../../utils/backends/Tasks/myDayTasks'
+import useSingleFlightSubmit from '../../../../hooks/useSingleFlightSubmit'
 
 const buildLinkBack = (projectId, sourceType, sourceId, objectNoteType) => {
     const { selectedNavItem } = store.getState()
@@ -197,6 +198,13 @@ export default function RichCreateTaskModal({
     const [showSelectProjectModal, setShowSelectProjectModal] = useState(false)
     const [selectedProject, setSelectedProject] = useState(null)
     const [projects, setProjects] = useState([])
+
+    // Enter can reach the creation handlers through several independent
+    // listeners at once (see TaskEditForm/ButtonsArea/DoneButton and Quill's
+    // newline callback), and closing this popup is asynchronous. Route every
+    // creation path of this popup instance through one guard so a double
+    // Return, a held Return, or a rapid click can only ever create one task.
+    const submitOnce = useSingleFlightSubmit(submission => submission())
 
     const [task, setTask] = useState(
         initialTask
@@ -332,45 +340,47 @@ export default function RichCreateTaskModal({
         dispatch(hideFloatPopup())
     }
 
-    const assignAndComment = (user, observers) => {
-        const { uid } = user
-        const { loggedUser } = store.getState()
-        closeModal(task)
+    const assignAndComment = (user, observers) =>
+        submitOnce(() => {
+            const { uid } = user
+            const { loggedUser } = store.getState()
+            closeModal(task)
 
-        const updatedTask = { ...task }
-        if (uid) {
-            updatedTask.userId = uid
-            updatedTask.userIds = [uid]
-            updatedTask.currentReviewerId = uid
-            updatedTask.observersIds = observers.map(user => user.uid)
-            updatedTask.creatorId = uid
-            updatedTask.suggestedBy =
-                loggedUser.uid !== uid && !user.recorderUserId && !uid.startsWith(WORKSTREAM_ID_PREFIX)
-                    ? loggedUser.uid
-                    : null
-        }
-
-        setTask(updatedTask)
-        setShowAssigneeModal(false)
-        dispatch(hideFloatPopup())
-
-        if (expandTaskListIfNeeded) tryExpandTasksList(updatedTask)
-        if (tryExpandTasksListInGoalWhenAddTask) tryExpandTasksListInGoalWhenAddTask(updatedTask)
-        createTaskWithService(
-            {
-                projectId,
-                ...updatedTask,
-            },
-            {
-                awaitForTaskCreation: true,
-
-                notGenerateMentionTasks: false,
-                notGenerateUpdates: false,
+            const updatedTask = { ...task }
+            if (uid) {
+                updatedTask.userId = uid
+                updatedTask.userIds = [uid]
+                updatedTask.currentReviewerId = uid
+                updatedTask.observersIds = observers.map(user => user.uid)
+                updatedTask.creatorId = uid
+                updatedTask.suggestedBy =
+                    loggedUser.uid !== uid && !user.recorderUserId && !uid.startsWith(WORKSTREAM_ID_PREFIX)
+                        ? loggedUser.uid
+                        : null
             }
-        ).then(task => {
-            dispatch(updateTaskSuggestedCommentModalData(true, projectId, task, task.extendedName))
+
+            setTask(updatedTask)
+            setShowAssigneeModal(false)
+            dispatch(hideFloatPopup())
+
+            if (expandTaskListIfNeeded) tryExpandTasksList(updatedTask)
+            if (tryExpandTasksListInGoalWhenAddTask) tryExpandTasksListInGoalWhenAddTask(updatedTask)
+            return createTaskWithService(
+                {
+                    projectId,
+                    ...updatedTask,
+                },
+                {
+                    awaitForTaskCreation: true,
+
+                    notGenerateMentionTasks: false,
+                    notGenerateUpdates: false,
+                }
+            ).then(task => {
+                dispatch(updateTaskSuggestedCommentModalData(true, projectId, task, task.extendedName))
+                return task
+            })
         })
-    }
 
     const delayClosePopup = () => {
         setTimeout(async () => {
@@ -385,7 +395,11 @@ export default function RichCreateTaskModal({
     }
 
     const createTask = trySetLinkedObjects => {
-        if (task.name.length > 0) {
+        // The empty-name check stays outside the guard so that pressing Enter on
+        // an empty popup does not consume the single allowed submission.
+        if (task.name.trim().length === 0) return
+
+        return submitOnce(() => {
             closeModal(task)
             if (triggerWhenCreateTask) triggerWhenCreateTask()
 
@@ -425,7 +439,7 @@ export default function RichCreateTaskModal({
                     id: taskResult.id,
                 }
             })
-        }
+        })
     }
 
     const expandTasks = () => {

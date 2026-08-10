@@ -40,6 +40,7 @@ import { deleteNote } from '../../utils/backends/Notes/notesFirestore'
 import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import { removeChatTopic } from '../../utils/backends/Chats/chatsFirestore'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
+import { rejectAllSuggestedTasks } from '../../utils/suggestedTaskBulkActions'
 
 export const CONFIRM_POPUP_TRIGGER_DELETE_TASK = 'DELETE TASK'
 export const CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT = 'CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT'
@@ -59,13 +60,13 @@ export const CONFIRM_POPUP_TRIGGER_DELETE_SKILL = 'CONFIRM POPUP TRIGGER DELETE 
 export const CONFIRM_POPUP_TRIGGER_RESET_SKILLS = 'CONFIRM_POPUP_TRIGGER_RESET_SKILLS'
 export const CONFIRM_POPUP_TRIGGER_DELETE_ALL_GOALS = 'CONFIRM POPUP TRIGGER DELETE ALL GOALS'
 export const CONFIRM_POPUP_TRIGGER_DELETE_WORKSTREAM = 'CONFIRM POPUP TRIGGER DELETE WORKSTREAM'
+export const CONFIRM_POPUP_TRIGGER_REJECT_ALL_SUGGESTED_TASKS = 'CONFIRM POPUP TRIGGER REJECT ALL SUGGESTED TASKS'
 export const CONFIRM_POPUP_TIMEOUT = 'CONFIRM POPUP TIMEOUT'
 export const CONFIRM_POPUP_NOTE_REVISION_HISTORY = 'CONFIRM POPUP NOTE REVISION HISTORY'
 export const CONFIRM_POPUP_TRIGGER_INFO = 'CONFIRM POPUP TRIGGER INFO'
 
 export default function ConfirmPopup() {
     const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const showConfirmPopupData = useSelector(state => state.showConfirmPopupData)
     const [processing, setProcessing] = useState(false)
 
@@ -240,6 +241,19 @@ export default function ConfirmPopup() {
                 break
             }
 
+            case CONFIRM_POPUP_TRIGGER_REJECT_ALL_SUGGESTED_TASKS: {
+                const { projectId, tasks, workflow } = object
+                setProcessing(true)
+                try {
+                    // Rejecting is sequential, so a mid-list failure must still close the popup:
+                    // the suggestions already rejected are gone, the rest stay in the section.
+                    await rejectAllSuggestedTasks({ projectId, tasks, workflow })
+                } finally {
+                    hidePopup()
+                }
+                break
+            }
+
             case CONFIRM_POPUP_TRIGGER_INFO: {
                 hidePopup()
                 break
@@ -310,7 +324,7 @@ export default function ConfirmPopup() {
             ) : trigger === CONFIRM_POPUP_TRIGGER_PUSH_NOTIFICATIONS ? (
                 <PushNotificationsModalMandatory />
             ) : trigger === CONFIRM_POPUP_TRIGGER_INFO ? (
-                <View style={[localStyles.infoPopup, smallScreenNavigation && { marginLeft: 300 }]}>
+                <View style={localStyles.infoPopup}>
                     <View style={{ marginBottom: 16 }}>
                         <Text style={[styles.title7, { color: '#ffffff' }]}>
                             {translate(headerTextKey, object.headerTextParams)}
@@ -324,7 +338,7 @@ export default function ConfirmPopup() {
                     </View>
                 </View>
             ) : (
-                <View style={[localStyles.popup, smallScreenNavigation && { marginLeft: 300 }, customStyles.popup]}>
+                <View style={[localStyles.popup, customStyles.popup]}>
                     <View style={[{ marginBottom: 20 }, customStyles.popupTexts]}>
                         <Text style={[styles.title7, { color: '#ffffff' }]}>
                             {translate(headerTextKey, object.headerTextParams)}
@@ -361,6 +375,12 @@ export default function ConfirmPopup() {
 }
 
 const localStyles = StyleSheet.create({
+    // The overlay covers the whole viewport and centers its child, so the dialog needs no extra
+    // horizontal offset. It used to carry `smallScreenNavigation && { marginLeft: 300 }`, which was
+    // inverted: `smallScreenNavigation` is the *narrow* layout, where the 300px sidebar is hidden —
+    // so the offset only ever applied on mobile and pushed the dialog off-center there (AT-2210).
+    // Dialogs that do want to be centered next to an expanded sidebar (KickUserConfirmPopup,
+    // ProjectInvitationPopup) apply that offset themselves, on desktop only.
     container: {
         position: 'absolute',
         zIndex: 10000,

@@ -42,6 +42,7 @@ import { objectIsLockedForUser } from '../Guides/guidesHelper'
 import { updateNoteTitleWithoutFeed } from '../../utils/backends/Notes/notesFirestore'
 import { updateChatTitleWithoutFeeds } from '../../utils/backends/Chats/chatsFirestore'
 import GoalIndicator from '../TaskListView/GoalIndicator'
+import useSingleFlightSubmit from '../../hooks/useSingleFlightSubmit'
 import {
     GOAL_SCHEDULE_MODE_DYNAMIC,
     GOAL_SCHEDULE_MODE_FIXED,
@@ -108,7 +109,10 @@ export default function EditGoal({
         return adding ? cleanedName !== '' : cleanedName !== '' && cleanedName !== goal.extendedName.trim()
     }
 
-    const createGoal = async newGoal => {
+    // Enter reaches this editor through a document listener, Quill's newline
+    // callback and the done button at once, and every run mints a new id, so
+    // the creation is guarded against duplicated in flight submissions.
+    const createGoal = useSingleFlightSubmit(async newGoal => {
         setTimeout(() => {
             onCancelAction()
         })
@@ -116,7 +120,7 @@ export default function EditGoal({
         dispatch(setTmpInputTextGoal(''))
 
         return goal
-    }
+    })
 
     const updateGoal = (updatedGoal, avoidFollow) => {
         Backend.updateGoal(projectId, goal, updatedGoal, avoidFollow)
