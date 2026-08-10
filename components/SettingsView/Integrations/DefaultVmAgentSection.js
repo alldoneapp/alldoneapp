@@ -6,19 +6,9 @@ import { translate } from '../../../i18n/TranslationService'
 import {
     getVmAgentSettings,
     setDefaultVmAgent,
-    setDefaultVmAgentModel,
     setDefaultVmAgentReasoningEffort,
     setDefaultVmApprovalPolicy,
 } from '../../../utils/backends/firestore'
-
-const NO_MODEL_DEFAULT_KEY = 'none'
-
-// The picker offers families ("Opus", "Sol"), never concrete versions — the family is resolved
-// to its newest release when the VM task actually starts. See functions/Assistant/vmAgentModelCatalog.js.
-function familiesForAgent(modelCatalogs, agent) {
-    const catalog = modelCatalogs && agent ? modelCatalogs[agent] : null
-    return catalog && Array.isArray(catalog.families) ? catalog.families : []
-}
 
 const AGENTS = [
     { id: 'claude', label: 'Claude' },
@@ -48,10 +38,6 @@ export default function DefaultVmAgentSection() {
     const [savingPolicy, setSavingPolicy] = useState('')
     const [loaded, setLoaded] = useState(false)
     const [error, setError] = useState('')
-    // Per-agent map, so switching the agent toggle keeps the other agent's saved family.
-    const [selectedFamilies, setSelectedFamilies] = useState({ claude: null, codex: null })
-    const [modelCatalogs, setModelCatalogs] = useState(null)
-    const [savingFamily, setSavingFamily] = useState('')
 
     useEffect(() => {
         let mounted = true
@@ -65,11 +51,6 @@ export default function DefaultVmAgentSection() {
                             : settings.defaultReasoningEffort || 'medium'
                     )
                     setSelectedPolicy(settings.effectiveDefaultApprovalPolicy || 'balanced')
-                    setSelectedFamilies({
-                        claude: (settings.defaultModelFamilies && settings.defaultModelFamilies.claude) || null,
-                        codex: (settings.defaultModelFamilies && settings.defaultModelFamilies.codex) || null,
-                    })
-                    setModelCatalogs(settings.modelCatalogs || null)
                     setLoaded(true)
                 }
             })
@@ -82,7 +63,7 @@ export default function DefaultVmAgentSection() {
     }, [])
 
     const selectAgent = async agent => {
-        if (savingAgent || savingEffort || savingPolicy || savingFamily || agent === selectedAgent) return
+        if (savingAgent || savingEffort || agent === selectedAgent) return
 
         const previousAgent = selectedAgent
         setSelectedAgent(agent)
@@ -115,26 +96,6 @@ export default function DefaultVmAgentSection() {
         }
     }
 
-    const selectFamily = async family => {
-        const familyKey = family || NO_MODEL_DEFAULT_KEY
-        if (!selectedAgent || savingAgent || savingEffort || savingPolicy || savingFamily) return
-        if (family === selectedFamilies[selectedAgent]) return
-
-        const agent = selectedAgent
-        const previousFamily = selectedFamilies[agent]
-        setSelectedFamilies(current => ({ ...current, [agent]: family }))
-        setSavingFamily(familyKey)
-        setError('')
-        try {
-            await setDefaultVmAgentModel(agent, family)
-        } catch (saveError) {
-            setSelectedFamilies(current => ({ ...current, [agent]: previousFamily }))
-            setError(saveError?.message || translate('Could not save the default VM model.'))
-        } finally {
-            setSavingFamily('')
-        }
-    }
-
     const selectEffort = async effort => {
         const effortKey = effort || 'none'
         if (savingAgent || savingEffort || effort === selectedEffort) return
@@ -153,8 +114,6 @@ export default function DefaultVmAgentSection() {
         }
     }
 
-    const agentControlsDisabled = !!savingAgent || !!savingEffort || !!savingPolicy || !!savingFamily || !loaded
-
     return (
         <View style={localStyles.section}>
             <Text style={[styles.title6, localStyles.sectionTitle]}>{translate('Default VM agent')}</Text>
@@ -171,9 +130,9 @@ export default function DefaultVmAgentSection() {
                             key={agent.id}
                             style={[localStyles.option, selected && localStyles.selectedOption]}
                             onPress={() => selectAgent(agent.id)}
-                            disabled={agentControlsDisabled}
+                            disabled={!!savingAgent || !!savingEffort || !loaded}
                             accessibilityRole="radio"
-                            accessibilityState={{ selected, disabled: agentControlsDisabled }}
+                            accessibilityState={{ selected, disabled: !!savingAgent || !!savingEffort || !loaded }}
                         >
                             <Text style={[styles.subtitle2, selected && localStyles.selectedLabel]}>
                                 {translate(agent.label)}
@@ -185,58 +144,6 @@ export default function DefaultVmAgentSection() {
                     )
                 })}
             </View>
-            <Text style={[styles.title6, localStyles.effortTitle]}>{translate('Default VM model')}</Text>
-            <Text style={[styles.body2, localStyles.sectionDescription]}>
-                {translate(
-                    'Optionally pick the model family used by the selected agent. The latest version of that family is used automatically, so you never have to update a version number. Each agent keeps its own choice.'
-                )}
-            </Text>
-            <View style={[localStyles.options, localStyles.effortOptions]}>
-                {[{ id: null, key: NO_MODEL_DEFAULT_KEY, label: translate('No default') }]
-                    .concat(
-                        familiesForAgent(modelCatalogs, selectedAgent).map(family => ({
-                            id: family.id,
-                            key: family.id,
-                            // Provider-supplied family names ("Opus", "Sol") are proper nouns, not
-                            // translatable UI strings — render them as discovered.
-                            label: family.label,
-                        }))
-                    )
-                    .map(family => {
-                        const selected = selectedAgent ? selectedFamilies[selectedAgent] === family.id : false
-                        const disabled = !!savingAgent || !!savingEffort || !!savingPolicy || !!savingFamily || !loaded
-                        return (
-                            <TouchableOpacity
-                                key={family.key}
-                                style={[
-                                    localStyles.option,
-                                    localStyles.effortOption,
-                                    selected && localStyles.selectedOption,
-                                ]}
-                                onPress={() => selectFamily(family.id)}
-                                disabled={disabled}
-                                accessibilityRole="radio"
-                                accessibilityState={{ selected, disabled }}
-                            >
-                                <Text style={[styles.subtitle2, selected && localStyles.selectedLabel]}>
-                                    {family.label}
-                                </Text>
-                                {savingFamily === family.key && (
-                                    <ActivityIndicator
-                                        size="small"
-                                        color={colors.Primary100}
-                                        style={localStyles.spinner}
-                                    />
-                                )}
-                            </TouchableOpacity>
-                        )
-                    })}
-            </View>
-            {loaded && modelCatalogs && selectedAgent && modelCatalogs[selectedAgent]?.source === 'fallback' && (
-                <Text style={localStyles.hint}>
-                    {translate('Could not reach the model provider, so a built-in list of families is shown.')}
-                </Text>
-            )}
             <Text style={[styles.title6, localStyles.effortTitle]}>{translate('Default VM effort')}</Text>
             <Text style={[styles.body2, localStyles.sectionDescription]}>
                 {translate(
@@ -362,11 +269,5 @@ const localStyles = StyleSheet.create({
         ...styles.caption1,
         color: colors.UtilityRed200,
         marginTop: 8,
-    },
-    hint: {
-        ...styles.caption1,
-        color: colors.Text02,
-        marginTop: -4,
-        marginBottom: 4,
     },
 })
