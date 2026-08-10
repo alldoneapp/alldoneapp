@@ -87,7 +87,10 @@ export default function DueDateSinglePopup() {
     }
 
     const updateParentGoalReminderDate = date => {
-        Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date)
+        // AT-2160: hand over the goal we already hold. Without it the backend does a full
+        // getGoalData() read before it can write, so every goal postpone from this popup paid for
+        // a round trip before the row could move.
+        Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date, goal)
     }
 
     const handleSaveTaskDate = async (taskToUpdate, dateTimestamp, isObservedTabActive) => {
