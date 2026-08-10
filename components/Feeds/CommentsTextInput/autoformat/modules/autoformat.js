@@ -4,6 +4,7 @@ import v4 from 'uuid/v4'
 import { formatUrl, getUrlObject } from '../../../../../utils/LinkingHelper'
 import {
     checkIfInputHaveKarma,
+    getEditorMetaFromEditor,
     getPlaceholderData,
     NEW_ATTACHMENT,
     processPastedText,
@@ -534,7 +535,9 @@ function transformedMatchOps(quillInstance, atIndex, transform, result, editorId
 }
 
 function isTextInputEditor(quillInstance) {
-    const { editorType } = getPlaceholderData(quillInstance.options.placeholder)
+    // Same stripped-placeholder caveat as getEditorId (AT-2227): the editorMeta module
+    // clears the encoding off options.placeholder, so read the decoded metadata first.
+    const { editorType } = getEditorMetaFromEditor(quillInstance)
     return editorType === QUILL_EDITOR_TEXT_INPUT_TYPE
 }
 

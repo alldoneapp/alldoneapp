@@ -122,11 +122,17 @@ export const insertAttachmentInsideEditor = (inputCursorIndex, editor, text, uri
     }
 }
 
-const getEditorId = editor => {
-    const placeholder = editor.options.placeholder
-    const { editorId } = getPlaceholderData(placeholder)
-    return editorId
-}
+// The editorMeta module (quill2Setup) decodes the app-encoded placeholder during init and
+// then overwrites `options.placeholder` with the visible text only, so reading the raw
+// option here yields no metadata once the editor is live (AT-2227: every embed inserted
+// after init was stamped with `editorId: undefined`, which left images stuck on the
+// loading placeholder because their project could no longer be resolved). Read the decoded
+// metadata first and fall back to the raw placeholder for headless editors, which are
+// built with plain `new Quill(node)` and never run the module.
+export const getEditorMetaFromEditor = editor =>
+    editor?.editorMeta ? editor.editorMeta : getPlaceholderData(editor?.options?.placeholder || '')
+
+export const getEditorId = editor => getEditorMetaFromEditor(editor).editorId
 
 const insertAttachmentTag = (inputCursorIndex, editor, text, uri, id, isLoading) => {
     const editorId = getEditorId(editor)

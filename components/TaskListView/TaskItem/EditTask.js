@@ -32,7 +32,6 @@ import TasksHelper, {
 } from '../../TaskListView/Utils/TasksHelper'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { dismissAllPopups } from '../../../utils/HelperFunctions'
-import useRevealEditorOnOpen from '../../../hooks/useRevealEditorOnOpen'
 import { getLinkedParentUrl } from '../../../utils/LinkingHelper'
 import SharedHelper from '../../../utils/SharedHelper'
 import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
@@ -147,11 +146,6 @@ export default function EditTask({
     const [newTaskInFocus, setNewTaskInFocus] = useState(false)
 
     const inputTask = useRef(null)
-    // Opening a task line replaces a one-line row with a much taller editor, so
-    // one opened near the bottom edge would otherwise hang off the screen. See
-    // useRevealEditorOnOpen (AT-2220).
-    const editorContainerRef = useRef(null)
-    useRevealEditorOnOpen(editorContainerRef)
 
     if (currentUserId === ALL_GOALS_ID) currentUserId = loggedUserId
     const isSuggestedTask = loggedUserId !== currentUserId
@@ -706,7 +700,6 @@ export default function EditTask({
 
     return (
         <View
-            ref={editorContainerRef}
             onLayout={onContainerLayout}
             style={[
                 localStyles.container,

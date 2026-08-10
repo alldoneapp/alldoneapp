@@ -31,6 +31,7 @@ jest.mock('react-quill-new', () => ({
 
 jest.mock('../../textInputHelper', () => ({
     checkIfInputHaveKarma: jest.fn(),
+    getEditorMetaFromEditor: jest.fn(() => ({})),
     getPlaceholderData: jest.fn(),
     NEW_ATTACHMENT: '1',
     processPastedText: jest.fn(),

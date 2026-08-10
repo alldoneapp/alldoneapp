@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Button from '../UIControls/Button'
-import { colors } from '../styles/global'
+import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import { showConfirmPopup } from '../../redux/actions'
 import { CONFIRM_POPUP_TRIGGER_REJECT_ALL_SUGGESTED_TASKS } from '../UIComponents/ConfirmPopup'
@@ -71,15 +71,20 @@ export default function SuggestedBulkActions({ projectId, tasks, containerStyle 
         )
     }
 
+    const buttonStyle = smallScreenNavigation ? [localStyles.button, localStyles.buttonMobile] : localStyles.button
+
     return (
         <View style={[localStyles.container, containerStyle]}>
             <Button
                 type={'ghost'}
+                noBorder={true}
                 icon={rejectIcon}
+                iconSize={COMPACT_ICON_SIZE}
+                iconGap={COMPACT_ICON_GAP}
                 title={smallScreenNavigation ? null : translate(rejectTitleKey)}
-                titleStyle={{ color: colors.Text03 }}
+                titleStyle={localStyles.rejectTitle}
                 iconColor={colors.Text03}
-                buttonStyle={localStyles.button}
+                buttonStyle={buttonStyle}
                 onPress={onRejectAll}
                 disabled={processing}
                 // Icon-only on mobile: the label is the only accessible name, so the button has to
@@ -89,11 +94,14 @@ export default function SuggestedBulkActions({ projectId, tasks, containerStyle 
             />
             <Button
                 type={'ghost'}
+                noBorder={true}
                 icon={'check'}
+                iconSize={COMPACT_ICON_SIZE}
+                iconGap={COMPACT_ICON_GAP}
                 title={smallScreenNavigation ? null : translate('Accept all')}
-                titleStyle={{ color: colors.Primary100 }}
+                titleStyle={localStyles.acceptTitle}
                 iconColor={colors.Primary100}
-                buttonStyle={localStyles.button}
+                buttonStyle={buttonStyle}
                 onPress={onAcceptAll}
                 disabled={processing}
                 accessible={smallScreenNavigation}
@@ -103,6 +111,15 @@ export default function SuggestedBulkActions({ projectId, tasks, containerStyle 
     )
 }
 
+// Sized off the auto-postpone button in the Task Filters ("Priority") line — see
+// `AutoPostponeButton` in components/TaskListView/PriorityFilters/TaskFiltersLine.js: a 12px icon
+// with a caption-sized label, 4px apart, on a chrome-less row-height button. These bulk actions used
+// the default 40px bordered button, which made the "Suggested by X" header read like a form footer
+// (AT-2223).
+const COMPACT_ICON_SIZE = 12
+const COMPACT_ICON_GAP = 4
+const COMPACT_BUTTON_HEIGHT = 24
+
 const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'row',
@@ -110,8 +127,33 @@ const localStyles = StyleSheet.create({
         marginLeft: 8,
     },
     button: {
-        marginLeft: 4,
-        paddingLeft: 8,
-        paddingRight: 8,
+        // Button's master style pins all three, so a shorter button has to override all three.
+        height: COMPACT_BUTTON_HEIGHT,
+        minHeight: COMPACT_BUTTON_HEIGHT,
+        maxHeight: COMPACT_BUTTON_HEIGHT,
+        marginLeft: 8,
+        paddingVertical: 0,
+        paddingLeft: 4,
+        paddingRight: 4,
+        backgroundColor: 'transparent',
+    },
+    // Icon-only on mobile: a square keeps the tap target at the button height instead of letting
+    // the padding collapse around a 12px glyph.
+    buttonMobile: {
+        width: COMPACT_BUTTON_HEIGHT,
+        paddingLeft: 0,
+        paddingRight: 0,
+    },
+    // caption1's metrics (the label of the row these buttons sit in), not the 14px button text.
+    // Kept as static styles so the ref stays stable across renders.
+    rejectTitle: {
+        ...styles.caption1,
+        lineHeight: 16,
+        color: colors.Text03,
+    },
+    acceptTitle: {
+        ...styles.caption1,
+        lineHeight: 16,
+        color: colors.Primary100,
     },
 })

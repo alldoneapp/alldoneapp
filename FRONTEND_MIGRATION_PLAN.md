@@ -154,10 +154,54 @@ Isolated last because it touches production collaborative documents:
 
 ### Stage 6 — Optional / later
 
-- React 18 → 19 (small once 18 is stable), `redux` 5 / RTK, `moment` → `dayjs`, and the
-  **native apps decision**: if iOS/Android return to the roadmap, start a fresh Expo
-  SDK-current project that imports the (by then modern) shared components — do not
-  resurrect the Expo 36 native pipeline.
+Scoped and partly executed 2026-08-10. The stage was always a _menu_ of independent
+items rather than a sequence, and they resolved differently once measured:
+
+- **DONE — the dependency floor**: `redux` 4.0.5 → 5.0.1, `react-redux` 8 → 9,
+  `@hello-pangea/dnd` 16 → 18, `@sentry/react` 7 → 10. See the status log.
+- **DEFERRED on evidence — React 18 → 19.** The plan's original "small once 18 is
+  stable" estimate was wrong for this codebase, in both directions: the prize is
+  smaller and the cost is larger. Do not reopen this without re-reading the numbers
+  in the status log below.
+    - **Prize**: near zero _functionally_. React 19's headline features are Actions /
+      `useActionState` / `useFormStatus` / `useOptimistic` (HTML-form primitives — this
+      app has no `<form>` surface, it is RN-web dialect), Server Components and
+      hydration improvements (no SSR — static SPA bundle), and document-metadata
+      hoisting (not how this app manages head tags). `ref`-as-a-prop is cosmetic;
+      `use()` is marginal. The only real gains are strategic: staying on the version
+      that receives fixes, and keeping future dependency majors cheap as libraries
+      eventually drop React 18 peers.
+    - **Cost**: React 19 removes `ReactDOM.render` and `unmountComponentAtNode`, and
+      this codebase has **18 `render` call sites and 4 `unmountComponentAtNode` sites**
+      (grep for these with the alias in mind — four files do `import dom from
+'react-dom'`, which is why a naive `ReactDOM.render` search under-reports badly).
+      **13 of the render sites are live quill autoformat blots** registered by
+      `EditorToolbar.js` — hashtag, mention, url ×3, taskTag, commentTag, customImage,
+      video, milestone, email, attachment, karma.
+    - **Why those 13 are the blocker, not just volume**: each blot's `static create()`
+      renders React into a node and returns that node **synchronously** for quill to
+      insert. `createRoot().render()` is asynchronous, so quill would receive an empty
+      node. `flushSync` restores the old semantics but React defers it with a warning
+      when called during an existing render — and blot creation can be triggered from
+      inside React event handlers. That puts the riskiest edit of the whole migration
+      on the notes editor, the same surface that made Stage 4 the highest-risk stage,
+      with no upstream coverage of the path.
+    - **It also adds test debt rather than removing any**: React 19 deprecates
+      `react-test-renderer`, which **281 test files** depend on.
+    - Same shape as the Stage 3 step 2 deferral: a modest, strategic prize against
+      high-risk churn in the most delicate subsystem. Staying on React 18.3.1 is a
+      legitimate end state, not debt.
+- **DEFERRED — `moment` → `dayjs`.** Measured 2026-08-10: **184 root-app files + 81 in
+  `functions/` + 7 test files (272 total), 677 `moment(`/`moment.` call sites in the
+  root app alone, and `moment-timezone` in 47 files.** It is a pure bundle-size play
+  with no functional benefit, the failure mode (subtle date bugs in a productivity app)
+  is nasty and hard to test for, and it would break this plan's own standing rule of
+  not touching `functions/`. If it is ever revisited, measure the actual gzip delta
+  first — the Stage 3 step 2 precedent — because moment's cost is mostly locales, which
+  the build already prunes.
+- **OPEN — the native apps decision**: if iOS/Android return to the roadmap, start a
+  fresh Expo SDK-current project that imports the (by then modern) shared components —
+  do not resurrect the Expo 36 native pipeline.
 
 ## Sequencing, effort, risk
 
@@ -173,6 +217,63 @@ Isolated last because it touches production collaborative documents:
   every stage is revertable by itself.
 
 ## Status log
+
+- 2026-08-10 — **Stage 6 executed as its dependency floor only; React 19 and
+  `moment` → `dayjs` deferred on evidence.** Branch `frontend-migration-stage-6`.
+  With this the migration is complete: stages 0–5 shipped in full, and stage 6's
+  remaining items are deliberate, documented non-goals rather than unfinished work.
+
+    - **Four bumps landed, verified on React 18 first.** All four were React 19's
+      peer blockers, so doing them separately kept their breaking changes
+      separable from React 19's — which turned out to matter, since React 19 was
+      then dropped and these stand on their own.
+        - `redux` 4.0.5 → 5.0.1. The store is one `createStore(theReducer,
+reduxBatch)` (`redux/store.js`). `@manaflair/redux-batch` is unmaintained
+          and declares `peer: {redux: "*"}`, so it was **probed empirically rather
+          than assumed**: single dispatch, batched array dispatch and nested array
+          dispatch all produce correct state and still coalesce to one subscriber
+          notification per dispatch call.
+        - `react-redux` 8.1.3 → 9.3.0. Zero risk surface: the app has **no
+          `connect()` call sites at all** and is hooks-only (979 `useSelector`,
+          420 `useDispatch`, 24 `shallowEqual`, 16 `Provider`, 4 `useStore`), every
+          one of which survives v9. `connectAdvanced`/`ReactReduxContext` unused,
+          and `batch` is never imported from react-redux.
+        - `@sentry/react` 7.120.4 → 10.69.0 — three majors, and effectively a
+          version bump: the entire integration is one `Sentry.init({dsn})` in
+          `App.js`, no integrations, no tracing, no Sentry ErrorBoundary (the app
+          has its own `utils/ErrorBoundary`).
+        - `@hello-pangea/dnd` 16.6 → 18.0.1.
+    - **The dnd patch was re-derived, and this is the reusable lesson.** The
+      blanket `cp -R -f replacement_node_modules/* node_modules/` had put the
+      **v16** dist bundles back on top of a fresh v18 install — v18 metadata
+      wrapping v16 code, exactly the failure mode CLAUDE.md warns about, and
+      silent. Worse, the vendored v16 files had been prettier-formatted at some
+      point, so they diffed against upstream at **14,089 lines**, which is why
+      nobody could see what the patch actually did. The patch's whole content is
+      one line: expose the combine target's `index` so `DragHelper.onDragEnd` can
+      sort a task dropped **onto** another task (consumed at
+      `components/DragSystem/DragHelper.js:645`). It is now applied to the pristine
+      v18 dists in upstream formatting — **a 4-line diff**. `main`/`module` still
+      point at `dnd.cjs.js`/`dnd.esm.js` in v18, so patching those two files still
+      covers both webpack and jest. `.prettierignore` already mandates this
+      ("their diffs against upstream must stay minimal and re-derivable, so they
+      keep upstream's formatting"); the formatted v16 file predated that rule.
+    - **React 19 was scoped, measured, and dropped** — see the Stage 6 section
+      above for the full reasoning. Short version: the feature set is unusable by
+      an RN-web SPA with no forms and no SSR, while the cost is rewriting 13 live
+      quill blots from synchronous `ReactDOM.render` to asynchronous `createRoot`
+      in the notes editor, plus 281 test files' worth of new `react-test-renderer`
+      deprecation debt. The remaining React 19 work is genuinely routine and is
+      recorded here so a future attempt does not re-discover it: 8 `findDOMNode`
+      sites (all pass a ref whose `.current` is **already a DOM node** under RNW
+      0.21 — note the stale comment in `PopupDismissSurface.js` still claiming
+      "React Native Web 0.11 exposes a View component instance"), 9 function
+      components with `defaultProps` needing default parameters (the other 10 are
+      classes, where `defaultProps` still works), and 19 files with `propTypes`,
+      which React 19 ignores silently rather than crashing on.
+    - **Verification**: root suite green at the Stage 5 baseline — 395/395 suites,
+      1981 passed / 25 skipped, 165 snapshots — and the web-bundler prod build
+      compiles with only the 3 known RNGH DrawerLayoutAndroid warnings.
 
 - 2026-08-10 — **STAGE 5 ACCEPTED after staging QA — merged to master.** Branch CI was
   green end to end on the branch-scoped Node 22 images (`build_web_webpack_check` pass;
