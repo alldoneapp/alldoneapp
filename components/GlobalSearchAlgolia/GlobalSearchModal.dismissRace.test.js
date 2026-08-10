@@ -123,6 +123,18 @@ describe('GlobalSearchModal — a press made before it opened must not dismiss i
         expect(store.getState().showGlobalSearchPopup).toBe(false)
     })
 
+    // Measured in real Chromium with real touch input: two taps 120ms apart at
+    // the same point make the second one hit-test onto the backdrop the first one
+    // had just mounted, closing the modal ~135ms after it appeared.
+    it('ignores the repeat tap of an impatient user on a touch device', () => {
+        window.ontouchstart = null
+        const backdrop = render()
+
+        pressWith(backdrop, highResNow() + 10)
+
+        expect(store.getState().showGlobalSearchPopup).toBe(true)
+    })
+
     it('ignores an untimestamped press in the first moments on a touch device', () => {
         window.ontouchstart = null
         const backdrop = render()

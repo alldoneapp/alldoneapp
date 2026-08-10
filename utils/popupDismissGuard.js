@@ -30,18 +30,32 @@ export const shouldBlockPressAfterPopupDismiss = () => {
 
 // The mirror image of the guard above (AT-2236). A full-screen modal opened by a
 // press covers the control that opened it, backdrop included, from its very
-// first frame. react-native-web 0.21 fires `onPress` from the DOM `click`
-// event, so any press the browser had already queued while the main thread was
-// busy — the second tap of an impatient user on a list that is still loading,
-// or a browser-duplicated tap — is delivered AFTER the modal mounted and lands
-// on that backdrop, closing the modal the same instant it appeared.
+// first frame. react-native-web 0.21 fires `onPress` from the DOM `click` event
+// (PressResponder invokes onPress from onClick/keyup only) and the browser
+// hit-tests every press at dispatch time, so a press aimed at the control is
+// delivered to whatever the modal has since put under the finger.
 //
-// Such a press was physically made before the modal existed, so it cannot be a
-// deliberate dismiss. `event.timeStamp` is a DOMHighResTimeStamp taken when the
-// browser CREATED the event (when the user actually pressed), not when it was
-// dispatched, so comparing it against the modal's open time separates the two
-// cases exactly, however long the main thread was blocked.
-const POPUP_OPEN_PRESS_GRACE_PERIOD_MS = 350
+// Measured in real Chromium with real touch input, against a react-native-web
+// button that mounts a full-screen backdrop on press:
+//   * ONE tap never dismisses — the modal opens on that tap's own click and no
+//     further event follows, even with the main thread blocked for 400ms.
+//   * TWO taps 120ms apart do: the second tap hit-tests onto the backdrop that
+//     the first one had just mounted (touchstart/click target=backdrop) and
+//     closes the modal ~135ms after it appeared.
+// That second tap is what a still-loading, unresponsive list provokes, and it is
+// the reported symptom: the popup appears and is gone again.
+//
+// Two rules, because the tap can predate the modal in two different ways:
+//  1. A press the browser had already QUEUED while the main thread was blocked
+//     carries a `timeStamp` from before the modal opened. `event.timeStamp` is a
+//     DOMHighResTimeStamp taken when the browser CREATED the event — when the
+//     user actually pressed — not when it was dispatched, so the comparison is
+//     exact however long the thread was blocked.
+//  2. A repeat tap made after the modal mounted but before the user could
+//     possibly have seen and reacted to it. Perceive-decide-move is ~500ms at
+//     best, and in the measurement above the repeat came 135ms in, so the window
+//     is set above both and well below any deliberate dismiss.
+const POPUP_OPEN_PRESS_GRACE_PERIOD_MS = 750
 // A press can only be queued behind a blocked main thread for so long. Bounding
 // the comparison keeps a browser whose `timeStamp` uses a different time origin
 // from making the backdrop permanently unresponsive: past this, presses are
@@ -67,11 +81,12 @@ export const shouldIgnorePressFromBeforeOpen = (event, openedAt) => {
     const timeStamp = getEventTimeStamp(event)
     if (timeStamp !== null && timeStamp < openedAt && openedAt - timeStamp <= POPUP_OPEN_PRESS_MAX_QUEUE_MS) return true
 
-    // Touch only, and only for the first moments: the press may carry no usable
-    // timestamp (a synthetic press, an older engine), and a tap made in the few
-    // frames between the modal mounting and the user actually seeing it is not a
-    // deliberate dismiss either. A mouse never queues a press behind a blocked
-    // main thread the way a tap does, so desktop behaviour is unchanged.
+    // Rule 2, touch only: a tap this soon after the modal appeared is a repeat of
+    // the tap that opened it, not a dismiss — nobody can read a modal and decide
+    // to close it that fast. This also covers a press carrying no usable
+    // timestamp at all. A mouse gives instant hover/press feedback and is not
+    // repeat-clicked the way an unresponsive touch target is, so desktop
+    // behaviour is deliberately left unchanged.
     return isTouchDevice() && highResNow() - openedAt < POPUP_OPEN_PRESS_GRACE_PERIOD_MS
 }
 
