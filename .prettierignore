@@ -1,0 +1,20 @@
+# Dependency trees and build outputs — never formatted.
+node_modules
+functions/node_modules
+web-bundler/node_modules
+cloudflare/email-worker/node_modules
+web-build
+coverage
+.claude
+
+# Vendored patched packages: their diffs against upstream must stay minimal
+# and re-derivable, so they keep upstream's formatting.
+replacement_node_modules
+
+# Machine-generated — formatting is churn.
+package-lock.json
+functions/package-lock.json
+web-bundler/package-lock.json
+cloudflare/email-worker/package-lock.json
+*.snap
+.firebase
