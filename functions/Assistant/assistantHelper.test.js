@@ -235,6 +235,9 @@ jest.mock('firebase-admin', () => ({
                 get: mockCollectionGet,
                 where: jest.fn(() => ({
                     get: mockCollectionGet,
+                    limit: jest.fn(() => ({
+                        get: mockCollectionGet,
+                    })),
                 })),
                 orderBy: jest.fn(() => ({
                     limit: jest.fn(() => ({
@@ -323,6 +326,7 @@ const {
     formatContextMessageTimestamp,
     normalizeRecentHours,
     normalizeAssistantTaskScope,
+    normalizeHumanReadableTaskId,
     filterTasksByRecentHours,
     resolveAssistantTaskProject,
     mapAssistantTaskForToolResponse,
@@ -3282,8 +3286,10 @@ describe('assistant get tasks tool', () => {
                 userId: 'user-1',
                 status: 'done',
                 date: 'last 7 days',
-                limit: 1000,
-                perProjectLimit: 1000,
+                // The requested 1000 is capped to the context-safe ceiling; a larger listing would be
+                // compacted away before the model reads it.
+                limit: 150,
+                perProjectLimit: 150,
                 taskScope: 'mine',
                 timezoneOffset: 120,
             }),
@@ -3649,6 +3655,27 @@ describe('assistant get project happiness tool', () => {
     })
 })
 
+describe('normalizeHumanReadableTaskId', () => {
+    test('normalizes every spelling a user might type to the stored form', () => {
+        expect(normalizeHumanReadableTaskId('FE-1452')).toBe('FE-1452')
+        expect(normalizeHumanReadableTaskId('FE1452')).toBe('FE-1452')
+        expect(normalizeHumanReadableTaskId('FE 1452')).toBe('FE-1452')
+        expect(normalizeHumanReadableTaskId('fe-1452')).toBe('FE-1452')
+        expect(normalizeHumanReadableTaskId('  fe 1452 ')).toBe('FE-1452')
+    })
+
+    test('rejects values that are not task IDs', () => {
+        expect(normalizeHumanReadableTaskId('')).toBeNull()
+        expect(normalizeHumanReadableTaskId('   ')).toBeNull()
+        expect(normalizeHumanReadableTaskId('1452')).toBeNull()
+        expect(normalizeHumanReadableTaskId('FE')).toBeNull()
+        expect(normalizeHumanReadableTaskId('buy milk')).toBeNull()
+        expect(normalizeHumanReadableTaskId('FE-1452-2')).toBeNull()
+        expect(normalizeHumanReadableTaskId(undefined)).toBeNull()
+        expect(normalizeHumanReadableTaskId(1452)).toBeNull()
+    })
+})
+
 describe('assistant get tasks tool cross-project failures', () => {
     const projects = [
         { id: 'project-1', name: 'Familie' },
@@ -3743,6 +3770,80 @@ describe('assistant get tasks tool cross-project failures', () => {
         ])
     })
 
+    test('resolves an explicit archived projectId without requiring includeArchived', async () => {
+        // Regression: get_user_projects hands the model archived project ids, but get_tasks used to
+        // resolve projectId against a list filtered by this call's own includeArchived flag - which the
+        // schema says only applies to allProjects sweeps - and threw "not found or not accessible".
+        const getTasks = jest.fn().mockResolvedValue({ tasks: [] })
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'project-1', name: 'Familie', projectType: 'regular' },
+                { id: 'project-archived', name: 'Project Bailey', projectType: 'archived' },
+                { id: 'project-guide', name: 'Guide', projectType: 'guide' },
+            ]),
+        }))
+        TaskRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getTasks,
+            getTasksFromMultipleProjects: jest.fn().mockResolvedValue({ tasks: [] }),
+        }))
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { projectId: 'project-archived', status: 'all' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.count).toBe(0)
+        expect(getTasks).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-archived' }))
+    })
+
+    test('caps an oversized limit and discloses the truncation', async () => {
+        mockMultiProjectResult({
+            tasks: Array.from({ length: 400 }, (_, index) => ({ id: `task-${index}`, name: `Task ${index}` })),
+            projectSummary: {
+                'project-1': { projectName: 'Familie', taskCount: 400, success: true },
+            },
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { allProjects: true, status: 'all', limit: 1000 },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.count).toBe(150)
+        expect(result.limitCapped).toEqual(expect.objectContaining({ requestedLimit: 1000, appliedLimit: 150 }))
+        expect(result.limitCapped.note).toMatch(/search tool/)
+    })
+
+    test('omits the limit disclosure when the request already fits', async () => {
+        mockMultiProjectResult({
+            tasks: [{ id: 'task-1', name: 'Buy milk' }],
+            projectSummary: {
+                'project-1': { projectName: 'Familie', taskCount: 1, success: true },
+            },
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { allProjects: true, status: 'all', limit: 50 },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.limitCapped).toBeUndefined()
+    })
+
     test('omits the retrieval warning when every project succeeds', async () => {
         mockMultiProjectResult({
             tasks: [],
@@ -3756,6 +3857,105 @@ describe('assistant get tasks tool cross-project failures', () => {
 
         expect(result.count).toBe(0)
         expect(result.retrieval).toBeUndefined()
+    })
+})
+
+describe('assistant get tasks tool human-readable ID lookup', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        ProjectService.mockClear()
+        TaskRetrievalService.mockClear()
+        mockCollectionGet.mockReset()
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'project-1', name: 'Familie', projectType: 'regular' },
+                { id: 'project-archived', name: 'Project Bailey', projectType: 'archived' },
+            ]),
+        }))
+        mockDocGet.mockResolvedValue({ exists: true, data: () => ({ timezone: 'UTC+02:00' }) })
+    })
+
+    test('finds a task by its hyphenless ID across archived projects', async () => {
+        mockCollectionGet.mockResolvedValue({ docs: [] })
+        mockCollectionGet.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({
+            docs: [
+                {
+                    id: 'task-abc',
+                    data: () => ({
+                        name: 'Ship the migration',
+                        humanReadableId: 'FE-1452',
+                        isPublicFor: [0],
+                        userId: 'user-1',
+                        done: false,
+                    }),
+                },
+            ],
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { humanReadableId: 'FE1452' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.humanReadableId).toBe('FE-1452')
+        expect(result.projectsSearched).toBe(2)
+        expect(result.count).toBe(1)
+        expect(result.tasks[0]).toEqual(
+            expect.objectContaining({ id: 'task-abc', name: 'Ship the migration', humanReadableId: 'FE-1452' })
+        )
+    })
+
+    test('filters out tasks the requesting user cannot see', async () => {
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'task-private',
+                    data: () => ({
+                        name: 'Someone else private task',
+                        humanReadableId: 'FE-1452',
+                        isPublicFor: ['another-user'],
+                        userId: 'another-user',
+                    }),
+                },
+            ],
+        })
+
+        const result = await executeToolNatively(
+            'get_tasks',
+            { humanReadableId: 'FE-1452' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(result.count).toBe(0)
+    })
+
+    test('rejects a query that is not a task ID instead of silently listing tasks', async () => {
+        await expect(
+            executeToolNatively(
+                'get_tasks',
+                { humanReadableId: 'buy milk' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow(/not a valid human-readable task ID/)
+    })
+
+    test('throws when every project lookup fails rather than reporting the ID as unknown', async () => {
+        mockCollectionGet.mockRejectedValue(new Error('permission denied'))
+
+        await expect(
+            executeToolNatively('get_tasks', { humanReadableId: 'FE-1452' }, 'project-1', 'assistant-1', 'user-1', null)
+        ).rejects.toThrow(/lookup failed in all 2 project\(s\)/)
     })
 })
 
