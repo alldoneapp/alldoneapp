@@ -450,10 +450,10 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
             reason: !projectId
                 ? 'missing-project'
                 : !userId
-                ? 'missing-user'
-                : !timestamp
-                ? 'missing-timestamp'
-                : 'disabled',
+                  ? 'missing-user'
+                  : !timestamp
+                    ? 'missing-timestamp'
+                    : 'disabled',
         })
         return null
     }

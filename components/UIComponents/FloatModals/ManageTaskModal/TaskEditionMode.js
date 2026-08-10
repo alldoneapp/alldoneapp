@@ -94,9 +94,9 @@ export default class TaskEditionMode extends Component {
             tempTask.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
                 ? getAssistant(tempTask.userId)
                 : isWorkstream(tempTask.userId)
-                ? getWorkstreamById(projectId, tempTask.userId)
-                : TasksHelper.getUserInProject(projectId, tempTask.userId) ||
-                  TasksHelper.getContactInProject(projectId, tempTask.userId)
+                  ? getWorkstreamById(projectId, tempTask.userId)
+                  : TasksHelper.getUserInProject(projectId, tempTask.userId) ||
+                    TasksHelper.getContactInProject(projectId, tempTask.userId)
 
         this.state = {
             tempTask: Backend.mapTaskData(tempTask.id, tempTask),
@@ -119,9 +119,9 @@ export default class TaskEditionMode extends Component {
         tempTask.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
             ? getAssistant(tempTask.userId)
             : isWorkstream(tempTask.userId)
-            ? getWorkstreamById(this.props.projectId, tempTask.userId)
-            : TasksHelper.getUserInProject(this.props.projectId, tempTask.userId) ||
-              TasksHelper.getContactInProject(this.props.projectId, tempTask.userId)
+              ? getWorkstreamById(this.props.projectId, tempTask.userId)
+              : TasksHelper.getUserInProject(this.props.projectId, tempTask.userId) ||
+                TasksHelper.getContactInProject(this.props.projectId, tempTask.userId)
 
     componentDidUpdate(prevProps, prevState) {
         const taskChanged = this.props.task && !isEqual(this.props.task, prevProps.task)

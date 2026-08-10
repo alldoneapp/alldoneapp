@@ -169,8 +169,8 @@ export const getAssistantLineData = (
         preferAssistantId && defaultAssistantId
             ? defaultAssistantId
             : selectedProject && selectedProject.assistantId
-            ? selectedProject.assistantId
-            : defaultAssistantId
+              ? selectedProject.assistantId
+              : defaultAssistantId
     const assistant = getAssistant(assistantId)
 
     // Determine the actual project where the assistant lives

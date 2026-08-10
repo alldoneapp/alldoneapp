@@ -13,8 +13,8 @@ export default function ToolsAccessProperty({ disabled, projectId, assistant }) 
     const summaryText = !allowedTools.length
         ? translate('No tools enabled')
         : allowedTools.length === TOOL_OPTIONS.length
-        ? translate('All tools enabled')
-        : allowedTools.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
+          ? translate('All tools enabled')
+          : allowedTools.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
 
     return (
         <View style={localStyles.container}>

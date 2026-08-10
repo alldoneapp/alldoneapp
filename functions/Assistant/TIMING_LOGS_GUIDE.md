@@ -6,17 +6,17 @@ I've added comprehensive timing logs throughout the AI assistant flow to identif
 
 ## Log Format
 
--   🎯 Entry/Exit points (function start/complete)
--   🚀 Major operations starting
--   ✅ Major operations completed
--   📊 Intermediate timing measurements
--   ⚡ First chunk/response metrics
--   🔄 Process completion summaries
--   ❌ Error timing
--   🔧 Configuration/setup timing
--   💾 Storage operations
--   🌊 Stream operations
--   📞 API calls
+- 🎯 Entry/Exit points (function start/complete)
+- 🚀 Major operations starting
+- ✅ Major operations completed
+- 📊 Intermediate timing measurements
+- ⚡ First chunk/response metrics
+- 🔄 Process completion summaries
+- ❌ Error timing
+- 🔧 Configuration/setup timing
+- 💾 Storage operations
+- 🌊 Stream operations
+- 📞 API calls
 
 ## Timing Points
 

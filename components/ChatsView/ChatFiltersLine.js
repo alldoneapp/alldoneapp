@@ -10,11 +10,10 @@ import { getUnreadThreadCount } from './Utils/unreadChatFilter'
 export default function ChatFiltersLine({ projectIds, unreadOnly, setUnreadOnly }) {
     const chatsActiveTab = useSelector(state => state.chatsActiveTab)
     const projectChatNotifications = useSelector(state => state.projectChatNotifications, shallowEqual)
-    const unreadCount = useMemo(() => getUnreadThreadCount(projectChatNotifications, projectIds, chatsActiveTab), [
-        projectChatNotifications,
-        projectIds,
-        chatsActiveTab,
-    ])
+    const unreadCount = useMemo(
+        () => getUnreadThreadCount(projectChatNotifications, projectIds, chatsActiveTab),
+        [projectChatNotifications, projectIds, chatsActiveTab]
+    )
 
     useEffect(() => {
         if (unreadCount === 0 && unreadOnly) setUnreadOnly(false)

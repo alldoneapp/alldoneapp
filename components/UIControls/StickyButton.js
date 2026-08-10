@@ -62,10 +62,10 @@ class StickyButton extends Component {
         const text = smallScreen
             ? null
             : days >= 365
-            ? translate('Forever')
-            : days > 0
-            ? translate(`Sticky amount ${days > 1 ? 'days' : 'day'}`, { amount: days })
-            : translate('Make sticky')
+              ? translate('Forever')
+              : days > 0
+                ? translate(`Sticky amount ${days > 1 ? 'days' : 'day'}`, { amount: days })
+                : translate('Make sticky')
         return text
     }
 

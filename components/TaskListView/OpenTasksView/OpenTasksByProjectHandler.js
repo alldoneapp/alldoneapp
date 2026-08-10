@@ -156,10 +156,8 @@ export default function OpenTasksByProjectHandler({
 
     useEffect(() => {
         if (currentUserId) {
-            const {
-                laterTasksExpandedForNavigateFromAllProjects,
-                somedayTasksExpandedForNavigateFromAllProjects,
-            } = store.getState()
+            const { laterTasksExpandedForNavigateFromAllProjects, somedayTasksExpandedForNavigateFromAllProjects } =
+                store.getState()
             clearTasksAndWatchers()
             dispatch([
                 setTaskListWatchersVars(WATCHER_VARS_DEFAULT),

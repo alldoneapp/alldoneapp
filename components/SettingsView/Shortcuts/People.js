@@ -24,9 +24,7 @@ export default function People() {
             </View>
 
             <SectionInfo
-                text={translate(
-                    'The following shortcuts are available only when the new person is on edit mode'
-                )}
+                text={translate('The following shortcuts are available only when the new person is on edit mode')}
             />
 
             <View style={{ flexDirection: isMiddleScreen ? 'column' : 'row' }}>

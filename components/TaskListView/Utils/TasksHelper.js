@@ -700,11 +700,11 @@ class TasksHelper {
                     assistantIndex >= 0
                         ? currentProjectAssistants[assistantIndex]
                         : userIndex >= 0
-                        ? currentProjectUsers[userIndex]
-                        : contactIndex >= 0
-                        ? currentProjectContacts[contactIndex]
-                        : getWorkstreamById(projectId, userId) ||
-                          Backend.mapWorkstreamData(userId, getWorkstreamById(projectId, userId))
+                          ? currentProjectUsers[userIndex]
+                          : contactIndex >= 0
+                            ? currentProjectContacts[contactIndex]
+                            : getWorkstreamById(projectId, userId) ||
+                              Backend.mapWorkstreamData(userId, getWorkstreamById(projectId, userId))
 
                 // Store current workstrem data when it gets fetched from DB
                 if (userId?.startsWith(WORKSTREAM_ID_PREFIX) && userId !== DEFAULT_WORKSTREAM_ID) {
@@ -1161,14 +1161,14 @@ class TasksHelper {
                 filterConstant === URL_GOAL_DETAILS_TASKS_OPEN
                     ? TOGGLE_INDEX_OPEN
                     : filterConstant === URL_GOAL_DETAILS_TASKS_WORKFLOW
-                    ? TOGGLE_INDEX_PENDING
-                    : TOGGLE_INDEX_DONE,
+                      ? TOGGLE_INDEX_PENDING
+                      : TOGGLE_INDEX_DONE,
             name:
                 filterConstant === URL_GOAL_DETAILS_TASKS_OPEN
                     ? 'Open'
                     : filterConstant === URL_GOAL_DETAILS_TASKS_WORKFLOW
-                    ? 'Workflow'
-                    : 'Done',
+                      ? 'Workflow'
+                      : 'Done',
         }
 
         const inSelectedProject = checkIfSelectedProject(projectIndex)
@@ -1354,8 +1354,8 @@ class TasksHelper {
             ? TasksHelper.getUserInProject(projectId, userId)
                 ? 'users'
                 : TasksHelper.getContactInProject(projectId, userId)
-                ? 'contacts'
-                : ''
+                  ? 'contacts'
+                  : ''
             : ''
     }
 
@@ -1513,8 +1513,8 @@ class TasksHelper {
         const projectIndicator = isAllProjects
             ? ALL_PROJECTS_INDEX
             : loggedUserProjects[selectedProjectIndex]
-            ? loggedUserProjects[selectedProjectIndex].id
-            : ALL_PROJECTS_INDEX
+              ? loggedUserProjects[selectedProjectIndex].id
+              : ALL_PROJECTS_INDEX
 
         store.dispatch([setTaskViewToggleIndex(index), setTaskViewToggleSection(optionText)])
 

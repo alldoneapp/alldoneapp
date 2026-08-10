@@ -74,11 +74,10 @@ function ChatsView() {
     const sortedProjectIds = useMemo(() => sortedProjects.map(project => project.id), [sortedProjects])
 
     const selectedProjectId = inSelectedProject ? loggedUserProjects[selectedProjectIndex].id : null
-    const filteredProjectIds = useMemo(() => (inSelectedProject ? [selectedProjectId] : sortedProjectIds), [
-        inSelectedProject,
-        selectedProjectId,
-        sortedProjectIds,
-    ])
+    const filteredProjectIds = useMemo(
+        () => (inSelectedProject ? [selectedProjectId] : sortedProjectIds),
+        [inSelectedProject, selectedProjectId, sortedProjectIds]
+    )
 
     const [areThereChats, setAreThereChats] = useState({})
     const setUnreadOnly = value => dispatch(setChatsUnreadOnly(value))

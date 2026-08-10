@@ -100,8 +100,8 @@ export default function BacklinksTag({
                               outline || smallScreenNavigation || isMobile
                                   ? ''
                                   : backlinksCount <= 1
-                                  ? ` ${translate('Backlink')}`
-                                  : ` ${translate('Backlinks')}`
+                                    ? ` ${translate('Backlink')}`
+                                    : ` ${translate('Backlinks')}`
                           }`}
                 </Text>
             </View>

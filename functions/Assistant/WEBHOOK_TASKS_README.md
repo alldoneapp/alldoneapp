@@ -59,10 +59,10 @@ To configure a webhook task, add the following to your assistant task's `taskMet
 
 ### Field Descriptions
 
--   **`isWebhookTask`** (boolean, required): Set to `true` to enable webhook mode
--   **`webhookUrl`** (string, required): The external service endpoint to call
--   **`webhookAuth`** (string, optional): Authorization header value (e.g., `Bearer token123`)
--   **`webhookParams`** (object, optional): Custom parameters to include in webhook payload
+- **`isWebhookTask`** (boolean, required): Set to `true` to enable webhook mode
+- **`webhookUrl`** (string, required): The external service endpoint to call
+- **`webhookAuth`** (string, optional): Authorization header value (e.g., `Bearer token123`)
+- **`webhookParams`** (object, optional): Custom parameters to include in webhook payload
 
 ## External Service Requirements
 
@@ -157,19 +157,19 @@ Each webhook request creates a document in the `pendingWebhooks` collection:
 
 ### Status Flow
 
--   **`pending`**: Initial state after webhook request is sent
--   **`initiated`**: External service acknowledged the request
--   **`completed`**: Successfully received callback with result
--   **`failed`**: Error occurred (either in request or callback)
--   **`expired`**: No callback received within timeout period (5 minutes)
+- **`pending`**: Initial state after webhook request is sent
+- **`initiated`**: External service acknowledged the request
+- **`completed`**: Successfully received callback with result
+- **`failed`**: Error occurred (either in request or callback)
+- **`expired`**: No callback received within timeout period (5 minutes)
 
 ## Security
 
 ### Current Implementation
 
--   Correlation ID validation prevents unauthorized updates
--   CORS configured for POST requests only
--   5-minute timeout prevents indefinite pending states
+- Correlation ID validation prevents unauthorized updates
+- CORS configured for POST requests only
+- 5-minute timeout prevents indefinite pending states
 
 ### Future Enhancements
 
@@ -199,23 +199,23 @@ To implement:
 
 If no callback is received within 5 minutes:
 
--   Cleanup scheduler marks webhook as `expired`
--   Error comment added: "⏱️ Webhook task timed out: No response received..."
+- Cleanup scheduler marks webhook as `expired`
+- Error comment added: "⏱️ Webhook task timed out: No response received..."
 
 ### External Service Error
 
 If external service returns error in callback:
 
--   Webhook marked as `failed`
--   Error comment added: "❌ Webhook task failed: [error message]"
+- Webhook marked as `failed`
+- Error comment added: "❌ Webhook task failed: [error message]"
 
 ### Network/Connection Error
 
 If initial webhook request fails:
 
--   Webhook marked as `failed` immediately
--   Error comment added with technical details
--   Exception re-thrown for upstream handling
+- Webhook marked as `failed` immediately
+- Error comment added with technical details
+- Exception re-thrown for upstream handling
 
 ## Testing
 
@@ -379,52 +379,52 @@ async function processVideoGeneration(correlationId, callbackUrl, prompt) {
 
 **Check:**
 
--   `taskMetadata.isWebhookTask` is `true`
--   `taskMetadata.webhookUrl` is a valid HTTPS URL
--   Task is actually being executed (check recurring task logs)
+- `taskMetadata.isWebhookTask` is `true`
+- `taskMetadata.webhookUrl` is a valid HTTPS URL
+- Task is actually being executed (check recurring task logs)
 
 ### Issue: Callback not working
 
 **Check:**
 
--   External service is using correct `callbackUrl` from request
--   `correlationId` matches exactly
--   Callback payload includes required fields: `correlationId`, `status`, `resultUrl`
--   Callback URL is accessible from external service (not blocked by firewall)
+- External service is using correct `callbackUrl` from request
+- `correlationId` matches exactly
+- Callback payload includes required fields: `correlationId`, `status`, `resultUrl`
+- Callback URL is accessible from external service (not blocked by firewall)
 
 ### Issue: Webhooks timing out
 
 **Check:**
 
--   External service response time (should be < 5 minutes)
--   External service is actually calling back
--   Network connectivity between external service and Cloud Functions
--   Check Cloud Function logs for errors
+- External service response time (should be < 5 minutes)
+- External service is actually calling back
+- Network connectivity between external service and Cloud Functions
+- Check Cloud Function logs for errors
 
 ### Issue: Results not appearing
 
 **Check:**
 
--   Callback was successful (check `pendingWebhooks` status)
--   Chat object exists for the task
--   User has permission to view the chat
--   Comment was created (check `chatComments` collection)
+- Callback was successful (check `pendingWebhooks` status)
+- Chat object exists for the task
+- User has permission to view the chat
+- Comment was created (check `chatComments` collection)
 
 ## Changelog
 
 ### Version 1.0 (Initial Release)
 
--   Webhook task execution with callback architecture
--   5-minute timeout with automatic cleanup
--   Error handling and status tracking
--   Firestore state management
--   Comprehensive logging
+- Webhook task execution with callback architecture
+- 5-minute timeout with automatic cleanup
+- Error handling and status tracking
+- Firestore state management
+- Comprehensive logging
 
 ## Future Enhancements
 
--   [ ] Webhook signature validation (HMAC-SHA256)
--   [ ] Configurable timeout per task
--   [ ] Retry logic for failed callbacks
--   [ ] Webhook analytics dashboard
--   [ ] Support for multiple callback formats (JSON, XML, form-data)
--   [ ] Webhook testing UI in admin panel
+- [ ] Webhook signature validation (HMAC-SHA256)
+- [ ] Configurable timeout per task
+- [ ] Retry logic for failed callbacks
+- [ ] Webhook analytics dashboard
+- [ ] Support for multiple callback formats (JSON, XML, form-data)
+- [ ] Webhook testing UI in admin panel

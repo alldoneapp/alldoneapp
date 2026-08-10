@@ -49,8 +49,8 @@ jest.mock('../../Utils/HelperFunctions', () => ({
                 value === 'attachment-token'
                     ? { type: 'attachment', text: value }
                     : value.startsWith('https://')
-                    ? { type: 'url', link: value }
-                    : { type: 'text', text: value }
+                      ? { type: 'url', link: value }
+                      : { type: 'text', text: value }
             ),
     TEXT_ELEMENT: 'text',
     HASH_ELEMENT: 'hash',

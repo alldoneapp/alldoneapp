@@ -79,10 +79,10 @@ export default function TaskFiltersLine({ projectId }) {
 
     const priorityData = useMemo(() => collectTaskPriorityCounts(instances), [instances])
     const taskRefs = useMemo(() => collectTaskVmSessionRefs(instances), [instances])
-    const vmStateData = useMemo(() => collectTaskVmStateCounts(instances, taskVmStatesByTask), [
-        instances,
-        taskVmStatesByTask,
-    ])
+    const vmStateData = useMemo(
+        () => collectTaskVmStateCounts(instances, taskVmStatesByTask),
+        [instances, taskVmStatesByTask]
+    )
 
     useEffect(() => {
         const wantedRefs = new Map(taskRefs.map(taskRef => [taskRef.key, taskRef]))

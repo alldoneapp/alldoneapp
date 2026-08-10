@@ -120,8 +120,8 @@ export default function LinkArea({
                                     typeof tool?.name === 'string' && tool.name.trim()
                                         ? tool.name.trim()
                                         : typeof tool?.key === 'string' && tool.key.trim()
-                                        ? tool.key.trim()
-                                        : `Tool ${index + 1}`
+                                          ? tool.key.trim()
+                                          : `Tool ${index + 1}`
                                 const toolDescription =
                                     typeof tool?.description === 'string' ? tool.description.trim() : ''
                                 const parameters = getToolParameters(tool)

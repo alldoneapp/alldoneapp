@@ -83,10 +83,10 @@ const buildLinkBack = (projectId, sourceType, sourceId, objectNoteType) => {
     const tab = inChatTab
         ? 'chat'
         : sourceType === FEED_NOTE_OBJECT_TYPE
-        ? 'editor'
-        : sourceType === FEED_ASSISTANT_OBJECT_TYPE
-        ? 'customizations'
-        : 'properties'
+          ? 'editor'
+          : sourceType === FEED_ASSISTANT_OBJECT_TYPE
+            ? 'customizations'
+            : 'properties'
 
     switch (sourceType) {
         case FEED_TASK_OBJECT_TYPE: {

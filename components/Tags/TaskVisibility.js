@@ -52,8 +52,8 @@ class TaskVisibility extends Component {
                         {smallScreenNavigation || isMobile
                             ? ''
                             : isPrivate
-                            ? translate('Private')
-                            : translate('Project-wide')}
+                              ? translate('Private')
+                              : translate('Project-wide')}
                     </Text>
                 </View>
             </TouchableOpacity>

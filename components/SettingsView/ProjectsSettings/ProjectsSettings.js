@@ -32,8 +32,8 @@ export default function ProjectsSettings({}) {
         projectTypeSectionIndex === 0
             ? PROJECT_TYPE_ACTIVE
             : projectTypeSectionIndex === 1
-            ? PROJECT_TYPE_GUIDE
-            : PROJECT_TYPE_ARCHIVED
+              ? PROJECT_TYPE_GUIDE
+              : PROJECT_TYPE_ARCHIVED
 
     const activeDragMode = useActiveProjectDragMode(type)
 

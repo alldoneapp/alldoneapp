@@ -60,8 +60,7 @@ export default function OnboardingView({ navigation }) {
                     { sender: 'anna', text: "Hi I am Anna. Your AI 'Chief of Staff' to get it all done." },
                     {
                         sender: 'anna',
-                        text:
-                            'You can chat naturally with me on Whatsapp or on our web app just like you would with a human assistant.',
+                        text: 'You can chat naturally with me on Whatsapp or on our web app just like you would with a human assistant.',
                     },
                 ])
                 setTimeout(() => {
@@ -80,13 +79,11 @@ export default function OnboardingView({ navigation }) {
                     [
                         {
                             sender: 'anna',
-                            text:
-                                'I just added "Prepare meeting with Claudia" to your tasks in the project "Work". Here is a link to it.',
+                            text: 'I just added "Prepare meeting with Claudia" to your tasks in the project "Work". Here is a link to it.',
                         },
                         {
                             sender: 'anna',
-                            text:
-                                'Btw: You can always just open the web app and do things there traditionally as well.',
+                            text: 'Btw: You can always just open the web app and do things there traditionally as well.',
                         },
                     ],
                     ['Oh cool - show me please']
@@ -108,8 +105,7 @@ export default function OnboardingView({ navigation }) {
                     [
                         {
                             sender: 'anna',
-                            text:
-                                'In your meeting notes from the 10th of March with Frank you discussed how to write a good screenplay. Here are the full notes (link).',
+                            text: 'In your meeting notes from the 10th of March with Frank you discussed how to write a good screenplay. Here are the full notes (link).',
                         },
                         {
                             sender: 'anna',
@@ -123,8 +119,7 @@ export default function OnboardingView({ navigation }) {
                     [
                         {
                             sender: 'anna',
-                            text:
-                                'Since I am a Chief of Staff I can also manage your "Staff" for you. Both AI and humans.',
+                            text: 'Since I am a Chief of Staff I can also manage your "Staff" for you. Both AI and humans.',
                         },
                         {
                             sender: 'anna',
@@ -138,13 +133,11 @@ export default function OnboardingView({ navigation }) {
                     [
                         {
                             sender: 'anna',
-                            text:
-                                'Yes definitely! You can set alerts for a certain time or I can just check-in with you every morning for example.',
+                            text: 'Yes definitely! You can set alerts for a certain time or I can just check-in with you every morning for example.',
                         },
                         {
                             sender: 'anna',
-                            text:
-                                "Now let's start the free trial. Looking foward to working with you to get it all done!",
+                            text: "Now let's start the free trial. Looking foward to working with you to get it all done!",
                         },
                     ],
                     ['Start free trial, then monthly', 'Start free trial, then yearly (save 45%!)']

@@ -786,8 +786,7 @@ class AlldoneSimpleMCPServer {
                 deletedRefreshTokensCount: refreshTokensQuery.size,
                 deletedSessionsCount: mcpSessionsQuery.size,
                 totalDeleted: totalDeleted,
-                note:
-                    'You will need to re-authenticate using the OAuth /authorize endpoint to continue using MCP tools',
+                note: 'You will need to re-authenticate using the OAuth /authorize endpoint to continue using MCP tools',
             }
         } catch (error) {
             console.error('Error deleting authentication data:', error)
@@ -2765,15 +2764,8 @@ class AlldoneSimpleMCPServer {
                         console.log('⚠️ Failed to parse Basic auth header:', e.message)
                     }
 
-                    const {
-                        code,
-                        client_id,
-                        client_secret,
-                        redirect_uri,
-                        grant_type,
-                        code_verifier,
-                        refresh_token,
-                    } = req.body
+                    const { code, client_id, client_secret, redirect_uri, grant_type, code_verifier, refresh_token } =
+                        req.body
 
                     if (
                         grant_type !== 'authorization_code' &&

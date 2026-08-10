@@ -6,15 +6,15 @@
 
 You were right - we created optimized versions but weren't using them! Now we've:
 
--   Updated `functions/index.js` to import from `assistantNormalTalk_optimized.js` instead of the original
--   Added comprehensive timing logs to BOTH the original and optimized versions
+- Updated `functions/index.js` to import from `assistantNormalTalk_optimized.js` instead of the original
+- Added comprehensive timing logs to BOTH the original and optimized versions
 
 ### 2. **Key Optimizations in the Optimized Version**
 
 #### Parallel Operations 🚀
 
--   **Before**: Sequential fetching of user, assistant, messages, and common data
--   **After**: Parallel fetching reduces waiting time significantly
+- **Before**: Sequential fetching of user, assistant, messages, and common data
+- **After**: Parallel fetching reduces waiting time significantly
 
 ```javascript
 // OLD: Sequential (can take 500ms+)
@@ -36,14 +36,14 @@ const [messages, commonData] = await Promise.all([
 
 #### Connection Pooling & Caching 💾
 
--   OpenAI client instances are cached and reused
--   Environment variables are cached for 5 minutes
--   Tiktoken encoder is cached at module level
+- OpenAI client instances are cached and reused
+- Environment variables are cached for 5 minutes
+- Tiktoken encoder is cached at module level
 
 #### Reduced Database Queries 📊
 
--   Messages fetched reduced from 50 to 10
--   Context limited to 5 most recent messages
+- Messages fetched reduced from 50 to 10
+- Context limited to 5 most recent messages
 
 ## 📊 Expected Performance Improvements
 
@@ -84,17 +84,17 @@ firebase functions:log --only askToBotSecondGen
 
 ### Good Signs 👍
 
--   Total duration under 5 seconds
--   Parallel operations completing in <200ms
--   "CACHED" labels in config/client loading
--   First chunk received within 500ms
+- Total duration under 5 seconds
+- Parallel operations completing in <200ms
+- "CACHED" labels in config/client loading
+- First chunk received within 500ms
 
 ### Problem Areas 🚩
 
--   Module require > 100ms (cold start)
--   Any database operation > 300ms
--   OpenAI API call > 1500ms
--   Large gaps between chunks
+- Module require > 100ms (cold start)
+- Any database operation > 300ms
+- OpenAI API call > 1500ms
+- Large gaps between chunks
 
 ## 🎯 Next Steps
 
@@ -110,9 +110,9 @@ firebase functions:log --only askToBotSecondGen
 
 Set up these alerts in Firebase:
 
--   Function execution time > 5s
--   Cold start frequency > 20%
--   Memory usage > 80%
--   Error rate > 1%
+- Function execution time > 5s
+- Cold start frequency > 20%
+- Memory usage > 80%
+- Error rate > 1%
 
 The optimized version should dramatically reduce response times. The timing logs will tell us exactly where any remaining bottlenecks are!

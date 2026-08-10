@@ -35,7 +35,8 @@ import { FIXED_MODAL_TOP_OFFSET } from './fixedModalPosition'
 
 class HelperFunctions {
     static isValidEmail = email => {
-        const re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
+        const re =
+            /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
         return re.test(String(email).toLowerCase())
     }
 
@@ -457,8 +458,8 @@ const getPopoverWidthv2 = (isMiddleScreen, smallScreenNavigation, windowWidth) =
     return smallScreenNavigation
         ? windowWidth - 50
         : isMiddleScreen
-        ? POPOVER_TABLET_WIDTH_V2
-        : POPOVER_DESKTOP_WIDTH_V2
+          ? POPOVER_TABLET_WIDTH_V2
+          : POPOVER_DESKTOP_WIDTH_V2
 }
 
 export const applyPopoverWidthV2 = (isMiddleScreen, smallScreenNavigation, windowWidth) => {
@@ -589,8 +590,8 @@ export const getCustomStyle = (inTaskDV, user, inFeedComment) => {
     return inTaskDV
         ? [{ height: 32, paddingRight: 12, paddingLeft: 7 }, user && { paddingLeft: 4 }]
         : inFeedComment
-        ? { minHeight: 20, height: 20, paddingRight: 6 }
-        : { height: 24, paddingRight: 8 }
+          ? { minHeight: 20, height: 20, paddingRight: 6 }
+          : { height: 24, paddingRight: 8 }
 }
 
 export default HelperFunctions

@@ -44,8 +44,8 @@ export default function MentionTag({
         const finalStyle = inTaskDV
             ? localStyles.bigMentionImage
             : useCommentTagStyle
-            ? localStyles.smallMentionImage
-            : localStyles.mentionImage
+              ? localStyles.smallMentionImage
+              : localStyles.mentionImage
 
         return [finalStyle, avatarSize && { width: avatarSize, height: avatarSize, borderRadius: 100 }]
     }
@@ -54,10 +54,10 @@ export default function MentionTag({
         return avatarSize
             ? { width: avatarSize, height: avatarSize }
             : inTaskDV
-            ? { width: 24, height: 24 }
-            : useCommentTagStyle
-            ? { width: 16, height: 16 }
-            : { width: 20, height: 20 }
+              ? { width: 24, height: 24 }
+              : useCommentTagStyle
+                ? { width: 16, height: 16 }
+                : { width: 20, height: 20 }
     }
 
     return (

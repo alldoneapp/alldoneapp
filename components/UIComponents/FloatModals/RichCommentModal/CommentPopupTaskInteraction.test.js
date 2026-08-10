@@ -86,8 +86,8 @@ jest.mock('../../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 }))
 jest.mock('../../../TaskListView/TaskItem/TaskPresentation/TaskPresentation', () => {
     const React = require('react')
-    const CheckBoxWrapper = require('../../../TaskListView/TaskItem/TaskPresentation/CheckBoxContainer/CheckBoxWrapper')
-        .default
+    const CheckBoxWrapper =
+        require('../../../TaskListView/TaskItem/TaskPresentation/CheckBoxContainer/CheckBoxWrapper').default
     return props =>
         React.createElement(CheckBoxWrapper, {
             task: props.task,

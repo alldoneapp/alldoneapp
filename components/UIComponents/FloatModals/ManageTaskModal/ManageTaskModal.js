@@ -107,18 +107,8 @@ class ManageTaskModal extends Component {
 
     render() {
         const { subtasks, taskBeenEdited } = this.state
-        const {
-            projectId,
-            editing,
-            closeModal,
-            editorRef,
-            noteId,
-            task,
-            tagId,
-            unwatchTask,
-            windowSize,
-            objectUrl,
-        } = this.props
+        const { projectId, editing, closeModal, editorRef, noteId, task, tagId, unwatchTask, windowSize, objectUrl } =
+            this.props
 
         const isAssistant = task && task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 

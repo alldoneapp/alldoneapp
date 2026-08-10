@@ -31,8 +31,8 @@ export default function HashtagFiltersView({ handleSpaces }) {
                     (smallScreenNavigation
                         ? localStyles.containerMobile
                         : isMiddleScreen
-                        ? localStyles.containerTablet
-                        : localStyles.containerDesktop),
+                          ? localStyles.containerTablet
+                          : localStyles.containerDesktop),
             ]}
         >
             {filtersArray.map(hashtag => (

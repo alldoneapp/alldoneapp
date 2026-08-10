@@ -237,15 +237,8 @@ export default class NavigationBar extends Component {
     }
 
     render() {
-        const {
-            tabs,
-            isSecondary,
-            showFollowedNotifications,
-            feedAmount,
-            showSearchBadges,
-            invitationsAmount,
-            style,
-        } = this.props
+        const { tabs, isSecondary, showFollowedNotifications, feedAmount, showSearchBadges, invitationsAmount, style } =
+            this.props
 
         const { height, forceTabletMargins, expanded, selectedNavItem, smallScreenNavigation } = this.state
         if (!smallScreenNavigation || isSecondary) {

@@ -43,7 +43,8 @@ const parseRichText = text => {
     const hashTagRegEx = /^#[\S]+/i
     const mentionRegEx = /^@[\S]+/i
     const emailRegEx = /[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+/i
-    const urlRegEx = /https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}/i
+    const urlRegEx =
+        /https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}/i
     const MENTION_SPACE_CODE_REGEX = /M2mVOSjAVPPKweL/g
     const KARMA_TRIGGER = 'pMP4SB2IsTQr8LN'
 

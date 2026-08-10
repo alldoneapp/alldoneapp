@@ -38,12 +38,7 @@ export default function AssistantSkillsModal({ skills, enabledSkillIds, onApply,
     }
 
     if (overlaySkill) {
-        return (
-            <TaskPriorityLearningOverlayModal
-                skill={overlaySkill}
-                closeModal={() => setOverlaySkill(null)}
-            />
-        )
+        return <TaskPriorityLearningOverlayModal skill={overlaySkill} closeModal={() => setOverlaySkill(null)} />
     }
 
     return (
@@ -64,7 +59,10 @@ export default function AssistantSkillsModal({ skills, enabledSkillIds, onApply,
                         const canEditOverlay = isTaskPrioritizationSkill(skill)
                         return (
                             <View key={skill.uid} style={localStyles.option}>
-                                <TouchableOpacity style={localStyles.optionToggle} onPress={() => toggleSkill(skill.uid)}>
+                                <TouchableOpacity
+                                    style={localStyles.optionToggle}
+                                    onPress={() => toggleSkill(skill.uid)}
+                                >
                                     <CheckBox checked={checked} />
                                     <View style={localStyles.optionText}>
                                         <View style={localStyles.optionLabelRow}>

@@ -121,9 +121,10 @@ function reasonMentionsProject(normalizedReason, projectName, { allowTokenSuffix
 
     while ((match = projectReferencePattern.exec(normalizedReason)) !== null) {
         const prefix = normalizedReason.slice(0, match.index).trimEnd()
-        const isNegatedReference = /(?:^|\s)(?:not|nicht|rather than|instead of|statt|anstatt)(?:\s+(?:in|the|a|an|das|die|der|den|dem|ein|eine|einem|einer)){0,2}$/.test(
-            prefix
-        )
+        const isNegatedReference =
+            /(?:^|\s)(?:not|nicht|rather than|instead of|statt|anstatt)(?:\s+(?:in|the|a|an|das|die|der|den|dem|ein|eine|einem|einer)){0,2}$/.test(
+                prefix
+            )
 
         if (!isNegatedReference) return true
     }

@@ -8,12 +8,12 @@ export function getLinkedEmailFromMessage(message = {}) {
         typeof gmailData?.connectionId === 'string' && gmailData.connectionId.trim()
             ? gmailData.connectionId.trim()
             : typeof gmailData?.connectionProjectId === 'string' && gmailData.connectionProjectId.trim()
-            ? gmailData.connectionProjectId.trim()
-            : typeof gmailData?.projectId === 'string'
-            ? gmailData.projectId.trim()
-            : gmailEmail
-            ? buildConnectionId(CONNECTION_SERVICE_EMAIL, PROVIDER_GOOGLE, gmailEmail)
-            : ''
+              ? gmailData.connectionProjectId.trim()
+              : typeof gmailData?.projectId === 'string'
+                ? gmailData.projectId.trim()
+                : gmailEmail
+                  ? buildConnectionId(CONNECTION_SERVICE_EMAIL, PROVIDER_GOOGLE, gmailEmail)
+                  : ''
 
     if (!messageId || !connectionProjectId) return null
 

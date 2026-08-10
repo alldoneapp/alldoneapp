@@ -313,8 +313,8 @@ const getFooterText = fromData => {
                   showBank && showBankAddress
                       ? `${fromBank}, ${fromBankAddress}`
                       : showBank
-                      ? fromBank
-                      : fromBankAddress
+                        ? fromBank
+                        : fromBankAddress
               } // `
             : ''
 

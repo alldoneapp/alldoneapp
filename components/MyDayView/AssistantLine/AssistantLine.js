@@ -44,11 +44,11 @@ export default function AssistantLine({
             : assistantIdOverride || defaultAssistant?.uid
     const effectiveUseAssistantProjectContext =
         showSwitchAssistant && canSwitchAssistant
-            ? assistantSwitchOptions.useAssistantProjectContext ?? useAssistantProjectContext
+            ? (assistantSwitchOptions.useAssistantProjectContext ?? useAssistantProjectContext)
             : useAssistantProjectContext
     const effectiveUseGlobalLatestComment =
         showSwitchAssistant && canSwitchAssistant
-            ? assistantSwitchOptions.useGlobalLatestComment ?? useGlobalLatestComment
+            ? (assistantSwitchOptions.useGlobalLatestComment ?? useGlobalLatestComment)
             : useGlobalLatestComment
 
     const { assistant: selectedLineAssistant } = getAssistantLineData(

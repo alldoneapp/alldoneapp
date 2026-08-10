@@ -54,16 +54,8 @@ class ChangeTextFieldModal extends Component {
 
     render() {
         const { currentValue } = this.state
-        const {
-            header,
-            subheader,
-            label,
-            placeholder,
-            validateFunction,
-            windowSize,
-            multiline,
-            numberOfLines,
-        } = this.props
+        const { header, subheader, label, placeholder, validateFunction, windowSize, multiline, numberOfLines } =
+            this.props
 
         return (
             <View

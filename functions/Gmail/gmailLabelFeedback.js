@@ -292,7 +292,12 @@ async function submitEmailLabelFeedback({
         resolveEffectiveGmailLabelingConfig,
         applyGmailThreadLabelCorrection,
     } = require('./serverSideGmailLabelingSync')
-    const { key: feedbackProjectId, config, ref: configRef, auditEntry } = await resolveFeedbackLabelingContext({
+    const {
+        key: feedbackProjectId,
+        config,
+        ref: configRef,
+        auditEntry,
+    } = await resolveFeedbackLabelingContext({
         userId,
         userData,
         projectId,

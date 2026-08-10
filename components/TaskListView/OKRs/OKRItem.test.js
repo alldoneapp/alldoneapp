@@ -13,7 +13,12 @@ jest.mock('react-redux', () => ({
     useSelector: jest.fn(selector => selector(mockState)),
 }))
 
-jest.mock('react-tiny-popover', () => ({ children }) => children)
+jest.mock(
+    'react-tiny-popover',
+    () =>
+        ({ children }) =>
+            children
+)
 
 jest.mock('../../../i18n/TranslationService', () => ({
     translate: jest.fn(textKey => textKey),

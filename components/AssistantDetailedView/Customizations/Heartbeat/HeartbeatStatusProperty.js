@@ -35,12 +35,12 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
         lastResult === 'executed'
             ? translate('Executed')
             : lastResult === 'failed'
-            ? translate('Failed')
-            : lastResult === 'silent_ok'
-            ? translate('Silent OK')
-            : lastResult === 'not_executed'
-            ? translate('Not executed')
-            : translate('Never')
+              ? translate('Failed')
+              : lastResult === 'silent_ok'
+                ? translate('Silent OK')
+                : lastResult === 'not_executed'
+                  ? translate('Not executed')
+                  : translate('Never')
     const lastFailureValue = lastFailureAt
         ? `${formatTimestamp(lastFailureAt)}\n${lastFailureMessage || ''}`
         : translate('Never')

@@ -24,13 +24,8 @@ export default function AssigneeButton({ projectId, task, disabled, showPopover 
     const disableAssigneePicker = disabled || task.done
 
     useEffect(() => {
-        const {
-            projectUsers,
-            projectContacts,
-            projectWorkstreams,
-            projectAssistants,
-            globalAssistants,
-        } = store.getState()
+        const { projectUsers, projectContacts, projectWorkstreams, projectAssistants, globalAssistants } =
+            store.getState()
 
         const user =
             find(projectUsers[projectId], ['uid', userId]) ||

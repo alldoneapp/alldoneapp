@@ -267,10 +267,9 @@ async function loadVmApiKey(userId, provider) {
     const snap = await ref.get()
     const providerData = snap.exists ? (snap.data() || {})[provider] || {} : {}
     if (!providerData.apiKey) return null
-    ref.set(
-        { [provider]: { ...providerData, lastUsedAt: Date.now() }, updatedAt: Date.now() },
-        { merge: true }
-    ).catch(() => {})
+    ref.set({ [provider]: { ...providerData, lastUsedAt: Date.now() }, updatedAt: Date.now() }, { merge: true }).catch(
+        () => {}
+    )
     return providerData.apiKey
 }
 

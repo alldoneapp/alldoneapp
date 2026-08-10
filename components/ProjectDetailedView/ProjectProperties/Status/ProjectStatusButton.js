@@ -19,17 +19,17 @@ export default function ProjectStatusButton({ projectId, disabled, openModal }) 
         projectStatus === PROJECT_TYPE_ARCHIVED
             ? 'archive'
             : projectStatus === PROJECT_TYPE_TEMPLATE || projectStatus === PROJECT_TYPE_GUIDE
-            ? 'map'
-            : 'circle'
+              ? 'map'
+              : 'circle'
 
     const text =
         projectStatus === PROJECT_TYPE_ARCHIVED
             ? 'Archive'
             : projectStatus === PROJECT_TYPE_TEMPLATE
-            ? 'Template'
-            : projectStatus === PROJECT_TYPE_GUIDE
-            ? 'Community'
-            : 'Normal'
+              ? 'Template'
+              : projectStatus === PROJECT_TYPE_GUIDE
+                ? 'Community'
+                : 'Normal'
 
     return <Button icon={icon} title={translate(text)} type={'ghost'} onPress={openModal} disabled={disabled} />
 }

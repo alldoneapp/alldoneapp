@@ -53,5 +53,5 @@ service cloud.firestore {
 
 If using Firebase emulators for local development, the rules are in:
 
--   `firestore.rules` (if it exists in project root)
--   Or can be configured via `firebase.json`
+- `firestore.rules` (if it exists in project root)
+- Or can be configured via `firebase.json`

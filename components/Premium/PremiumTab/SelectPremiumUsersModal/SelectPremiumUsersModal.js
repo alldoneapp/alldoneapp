@@ -82,9 +82,8 @@ export default function SelectPremiumUsersModal({
     }
 
     const goToNextStep = () => {
-        const { isInactiveSubscription, isActiveSubscription, isCanceledSubscription } = getSubscriptionStatus(
-            subscription
-        )
+        const { isInactiveSubscription, isActiveSubscription, isCanceledSubscription } =
+            getSubscriptionStatus(subscription)
         if (
             (tmpSelectedUsersIds.length > 0 && (isInactiveSubscription || isCanceledSubscription)) ||
             isActiveSubscription

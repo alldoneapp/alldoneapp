@@ -309,9 +309,8 @@ class GoalRetrievalService {
 
         return goals
             .map(goal => {
-                const matchingMilestones = (Array.isArray(goal.parentDoneMilestoneIds)
-                    ? goal.parentDoneMilestoneIds
-                    : []
+                const matchingMilestones = (
+                    Array.isArray(goal.parentDoneMilestoneIds) ? goal.parentDoneMilestoneIds : []
                 )
                     .map(milestoneId => doneMilestonesById.get(milestoneId))
                     .filter(Boolean)

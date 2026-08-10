@@ -53,10 +53,10 @@ export default function CommentsList({
                                 marginBottom: showVmInteraction
                                     ? 0
                                     : index === 0 && comments.length > 1
-                                    ? 16
-                                    : index > 0 && comments.length > 2
-                                    ? 8
-                                    : 0,
+                                      ? 16
+                                      : index > 0 && comments.length > 2
+                                        ? 8
+                                        : 0,
                             }}
                         />
                         {showVmInteraction && (

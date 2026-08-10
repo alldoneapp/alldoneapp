@@ -13,7 +13,12 @@ jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
     return React.forwardRef((props, ref) => <TextInput ref={ref} testID="comment-input" {...props} />)
 })
 jest.mock('../../../UIControls/Button', () => 'Button')
-jest.mock('react-hot-keys', () => ({ children }) => children)
+jest.mock(
+    'react-hot-keys',
+    () =>
+        ({ children }) =>
+            children
+)
 jest.mock('../../../styles/global', () => ({
     __esModule: true,
     default: { body1: {} },

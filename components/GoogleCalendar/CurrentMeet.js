@@ -70,9 +70,12 @@ export default function CurrentMeet({ meeting, projectId }) {
         Backend.deleteEvent(projectId, meeting.link.split('/')[3])
     }
 
-    setTimeout(() => {
-        removeEvent()
-    }, 10 * 60 * 1000)
+    setTimeout(
+        () => {
+            removeEvent()
+        },
+        10 * 60 * 1000
+    )
 
     const shortTopic = topic => {
         return `${topic.slice(0, 12)} ${topic.length > 12 ? '...' : ''}`

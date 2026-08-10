@@ -41,14 +41,14 @@ export default function TaskCommentsTag({
                       backgroundColor === colors.Grey300
                           ? colors.UtilityBlue200
                           : backgroundColor === colors.UtilityGreen112
-                          ? colors.UtilityGreen150
-                          : backgroundColor === colors.UtilityOrange112
-                          ? colors.UtilityOrange150
-                          : backgroundColor,
+                            ? colors.UtilityGreen150
+                            : backgroundColor === colors.UtilityOrange112
+                              ? colors.UtilityOrange150
+                              : backgroundColor,
               }
             : fontColor === colors.Text03
-            ? colors.UtilityBlue200
-            : fontColor
+              ? colors.UtilityBlue200
+              : fontColor
     }
 
     return (

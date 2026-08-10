@@ -544,8 +544,8 @@ class TaskUpdateService {
                         ? 'failed'
                         : 'written'
                     : updateFields.comment
-                    ? 'not_written'
-                    : 'not_required',
+                      ? 'not_written'
+                      : 'not_required',
             })
         } catch (error) {
             console.warn('TaskUpdateService: failed to record task priority decision', {

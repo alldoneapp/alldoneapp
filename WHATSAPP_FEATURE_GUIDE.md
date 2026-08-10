@@ -16,43 +16,43 @@ This feature allows users to receive WhatsApp notifications when their assistant
 
 ### Task Types Supported
 
--   ✅ **Recurring Tasks**: Get notified every time a recurring task runs
--   ✅ **One-time Tasks**: Get notified when immediate tasks complete
--   ✅ **All Assistant Types**: Works with any assistant configuration
+- ✅ **Recurring Tasks**: Get notified every time a recurring task runs
+- ✅ **One-time Tasks**: Get notified when immediate tasks complete
+- ✅ **All Assistant Types**: Works with any assistant configuration
 
 ## User Interface Changes
 
 ### Task Modal
 
--   New checkbox: "WhatsApp notification"
--   Located above the "Recurring" section
--   Only visible when creating/editing assistant tasks
--   Saves preference with the task configuration
+- New checkbox: "WhatsApp notification"
+- Located above the "Recurring" section
+- Only visible when creating/editing assistant tasks
+- Saves preference with the task configuration
 
 ### Prerequisites for Users
 
--   Must have phone number set in profile settings
--   Phone number must be WhatsApp-enabled
--   Must opt-in to receive WhatsApp messages (Twilio sandbox requirement)
+- Must have phone number set in profile settings
+- Phone number must be WhatsApp-enabled
+- Must opt-in to receive WhatsApp messages (Twilio sandbox requirement)
 
 ## Technical Implementation
 
 ### Frontend Changes
 
--   `TaskModal.js`: Added WhatsApp checkbox UI
--   `PreConfigTaskModal.js`: Added sendWhatsApp state management
--   Translation files: Added "WhatsApp notification" in EN/DE/ES
+- `TaskModal.js`: Added WhatsApp checkbox UI
+- `PreConfigTaskModal.js`: Added sendWhatsApp state management
+- Translation files: Added "WhatsApp notification" in EN/DE/ES
 
 ### Backend Changes
 
--   `TwilioWhatsAppService.js`: New service for WhatsApp messaging
--   `assistantRecurringTasks.js`: Integration for recurring tasks
--   `assistantPreConfigTaskTopic.js`: Integration for one-time tasks
+- `TwilioWhatsAppService.js`: New service for WhatsApp messaging
+- `assistantRecurringTasks.js`: Integration for recurring tasks
+- `assistantPreConfigTaskTopic.js`: Integration for one-time tasks
 
 ### Data Storage
 
--   Assistant tasks now include `sendWhatsApp: boolean` field
--   Stored in Firestore `assistantTasks/{projectId}/{assistantId}/{taskId}`
+- Assistant tasks now include `sendWhatsApp: boolean` field
+- Stored in Firestore `assistantTasks/{projectId}/{assistantId}/{taskId}`
 
 ## Configuration Requirements
 
@@ -96,9 +96,9 @@ Powered by Alldone Assistant 🚀
 
 ### Graceful Degradation
 
--   WhatsApp failures don't break task execution
--   Errors are logged but tasks continue normally
--   Users see completed tasks in app even if WhatsApp fails
+- WhatsApp failures don't break task execution
+- Errors are logged but tasks continue normally
+- Users see completed tasks in app even if WhatsApp fails
 
 ### Common Issues
 
@@ -111,15 +111,15 @@ Powered by Alldone Assistant 🚀
 
 ### Phone Number Handling
 
--   Phone numbers retrieved from user profiles
--   Partial numbers logged for debugging (first 5 digits + \*\*\*)
--   No phone numbers stored in task data
+- Phone numbers retrieved from user profiles
+- Partial numbers logged for debugging (first 5 digits + \*\*\*)
+- No phone numbers stored in task data
 
 ### Message Content
 
--   AI results truncated to 300 characters for WhatsApp
--   Full results available in app via provided link
--   No sensitive data exposed in messages
+- AI results truncated to 300 characters for WhatsApp
+- Full results available in app via provided link
+- No sensitive data exposed in messages
 
 ## Limitations
 
@@ -132,11 +132,11 @@ Powered by Alldone Assistant 🚀
 
 ### Future Enhancements
 
--   Multiple contact methods (SMS, email)
--   Localized message templates
--   Custom message templates per task
--   Group notifications for shared tasks
--   Message delivery status tracking
+- Multiple contact methods (SMS, email)
+- Localized message templates
+- Custom message templates per task
+- Group notifications for shared tasks
+- Message delivery status tracking
 
 ## Monitoring & Analytics
 
@@ -144,44 +144,44 @@ Powered by Alldone Assistant 🚀
 
 All WhatsApp operations are logged with:
 
--   Success/failure status
--   Twilio message SIDs
--   Error details and codes
--   Task and user context (privacy-safe)
+- Success/failure status
+- Twilio message SIDs
+- Error details and codes
+- Task and user context (privacy-safe)
 
 ### Metrics to Track
 
--   WhatsApp notification success rate
--   User adoption of feature
--   Most common error types
--   Message delivery times
+- WhatsApp notification success rate
+- User adoption of feature
+- Most common error types
+- Message delivery times
 
 ## Cost Considerations
 
 ### Twilio Pricing
 
--   ~\$0.005 per outbound WhatsApp message
--   Costs scale with user adoption and task frequency
--   Monitor Twilio usage dashboard
--   Consider rate limiting for high-volume users
+- ~\$0.005 per outbound WhatsApp message
+- Costs scale with user adoption and task frequency
+- Monitor Twilio usage dashboard
+- Consider rate limiting for high-volume users
 
 ### Optimization
 
--   Messages only sent when explicitly enabled
--   Graceful degradation reduces unnecessary API calls
--   Efficient error handling prevents retry loops
+- Messages only sent when explicitly enabled
+- Graceful degradation reduces unnecessary API calls
+- Efficient error handling prevents retry loops
 
 ## Support & Troubleshooting
 
 ### User Support
 
--   Direct users to verify phone number in profile
--   Help with Twilio sandbox opt-in process
--   Provide WhatsApp message examples
+- Direct users to verify phone number in profile
+- Help with Twilio sandbox opt-in process
+- Provide WhatsApp message examples
 
 ### Developer Support
 
--   Check `WHATSAPP_ENVIRONMENT_SETUP.md` for configuration
--   Use test script for integration verification
--   Monitor Firebase Function logs for errors
--   Check Twilio console for delivery status
+- Check `WHATSAPP_ENVIRONMENT_SETUP.md` for configuration
+- Use test script for integration verification
+- Monitor Firebase Function logs for errors
+- Check Twilio console for delivery status

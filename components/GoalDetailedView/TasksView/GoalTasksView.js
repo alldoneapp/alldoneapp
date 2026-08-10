@@ -39,8 +39,8 @@ export default function GoalTasksView({ goal, projectId }) {
             taskViewToggleIndex === TOGGLE_INDEX_OPEN
                 ? URL_GOAL_DETAILS_TASKS_OPEN
                 : taskViewToggleIndex === TOGGLE_INDEX_PENDING
-                ? URL_GOAL_DETAILS_TASKS_WORKFLOW
-                : URL_GOAL_DETAILS_TASKS_DONE
+                  ? URL_GOAL_DETAILS_TASKS_WORKFLOW
+                  : URL_GOAL_DETAILS_TASKS_DONE
 
         URLsGoals.push(constant, data, projectId, goal.id)
     }

@@ -86,8 +86,8 @@ function DueDateModal({
     const title = visibleCalendar
         ? translate('Pick date')
         : inParentGoal
-        ? translate('Goal tasks reminder')
-        : translate('Select reminder')
+          ? translate('Goal tasks reminder')
+          : translate('Select reminder')
     const description = inParentGoal
         ? translate('Select a date to postpone this goal and its tasks')
         : `${translate('Select the date to postpone the')} ${translate(updateParentGoalReminderDate ? 'goal' : 'task')}`

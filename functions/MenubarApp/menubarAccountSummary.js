@@ -113,36 +113,30 @@ async function getProjectAccountSummary(db, projectId, userId, endOfDay) {
     const allowUserIds = [FEED_PUBLIC_FOR_ALL, userId]
     const tasksRef = db.collection(`items/${projectId}/tasks`)
 
-    const [
-        normalSnapshot,
-        observedSnapshot,
-        workstreamsSnapshot,
-        messagesSnapshot,
-        followedFeedsDoc,
-        allFeedsDoc,
-    ] = await Promise.all([
-        tasksRef
-            .where('done', '==', false)
-            .where('dueDate', '<=', endOfDay)
-            .where('parentId', '==', null)
-            .where('isPublicFor', 'array-contains-any', allowUserIds)
-            .select('currentReviewerId', 'userId')
-            .get(),
-        tasksRef
-            .where('done', '==', false)
-            .where('parentId', '==', null)
-            .where('observersIds', 'array-contains-any', [userId])
-            .select('observersIds', 'dueDateByObserversIds', 'isPublicFor')
-            .get(),
-        db
-            .collection(`projectsWorkstreams/${projectId}/workstreams`)
-            .where('userIds', 'array-contains', userId)
-            .select()
-            .get(),
-        db.collection(`chatNotifications/${projectId}/${userId}`).get(),
-        db.doc(`feedsCount/${projectId}/${userId}/followed`).get(),
-        db.doc(`feedsCount/${projectId}/${userId}/all`).get(),
-    ])
+    const [normalSnapshot, observedSnapshot, workstreamsSnapshot, messagesSnapshot, followedFeedsDoc, allFeedsDoc] =
+        await Promise.all([
+            tasksRef
+                .where('done', '==', false)
+                .where('dueDate', '<=', endOfDay)
+                .where('parentId', '==', null)
+                .where('isPublicFor', 'array-contains-any', allowUserIds)
+                .select('currentReviewerId', 'userId')
+                .get(),
+            tasksRef
+                .where('done', '==', false)
+                .where('parentId', '==', null)
+                .where('observersIds', 'array-contains-any', [userId])
+                .select('observersIds', 'dueDateByObserversIds', 'isPublicFor')
+                .get(),
+            db
+                .collection(`projectsWorkstreams/${projectId}/workstreams`)
+                .where('userIds', 'array-contains', userId)
+                .select()
+                .get(),
+            db.collection(`chatNotifications/${projectId}/${userId}`).get(),
+            db.doc(`feedsCount/${projectId}/${userId}/followed`).get(),
+            db.doc(`feedsCount/${projectId}/${userId}/all`).get(),
+        ])
 
     const messages = summarizeChatNotifications(messagesSnapshot.docs, projectId)
 

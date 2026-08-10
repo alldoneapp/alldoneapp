@@ -393,8 +393,8 @@ async function resolveEffectiveGmailLabelingConfig(config = {}, userData = {}) {
         typeof config.projectId === 'string' && config.projectId.trim()
             ? config.projectId.trim()
             : typeof userData.defaultProjectId === 'string'
-            ? userData.defaultProjectId.trim()
-            : ''
+              ? userData.defaultProjectId.trim()
+              : ''
     const defaultConfig = await buildDefaultActiveProjectsGmailLabelingConfig(userData, defaultProjectId)
     if (config.enabled && defaultConfig.labelDefinitions.length === 0) {
         throw new Error('Default Gmail labeling requires at least one active project.')

@@ -86,8 +86,8 @@ function AddTask({
                                     ? isSubtask
                                         ? translate('Add new subtask')
                                         : currentUser.uid === loggedUser.uid
-                                        ? translate('Type to add new task')
-                                        : translate('Type to suggest a new task')
+                                          ? translate('Type to add new task')
+                                          : translate('Type to suggest a new task')
                                     : ''}
                             </SocialText>
                             {!isSubtask && !hideParentGoalButton && (

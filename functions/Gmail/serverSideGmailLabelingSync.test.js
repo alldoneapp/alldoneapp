@@ -919,8 +919,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         { name: 'From', value: 'Me <me@example.com>' },
                         {
                             name: 'To',
-                            value:
-                                'Me <me@example.com>, Alice <alice@example.com>, Bob <bob@example.com>, Alice <alice@example.com>',
+                            value: 'Me <me@example.com>, Alice <alice@example.com>, Bob <bob@example.com>, Alice <alice@example.com>',
                         },
                         { name: 'Cc', value: 'Carol <carol@example.com>' },
                         { name: 'Bcc', value: 'Dave <dave@example.com>' },

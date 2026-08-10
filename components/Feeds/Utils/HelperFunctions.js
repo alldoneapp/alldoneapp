@@ -354,9 +354,8 @@ export const updateNewAttachmentsData = async (projectId, text) => {
                     .then(r => r.blob())
                     .then(blobFile => new File([blobFile], attachmentText))
                 const attachmentUri = await Backend.storeAttachment(projectId, file, false)
-                words[
-                    i
-                ] = `${ATTACHMENT_TRIGGER}${attachmentUri}${ATTACHMENT_TRIGGER}${attachmentText}${ATTACHMENT_TRIGGER}${false}`
+                words[i] =
+                    `${ATTACHMENT_TRIGGER}${attachmentUri}${ATTACHMENT_TRIGGER}${attachmentText}${ATTACHMENT_TRIGGER}${false}`
             }
         } else if (REGEX_IMAGE.test(word)) {
             const { imageText, uri, isNew } = getImageData(word)
@@ -373,9 +372,8 @@ export const updateNewAttachmentsData = async (projectId, text) => {
                     imageUri = await Backend.storeAttachment(projectId, file, false)
                 } catch (error) {}
 
-                words[
-                    i
-                ] = `${IMAGE_TRIGGER}${imageUri}${IMAGE_TRIGGER}${imageResizedUri}${IMAGE_TRIGGER}${imageText}${IMAGE_TRIGGER}${OLD_ATTACHMENT}`
+                words[i] =
+                    `${IMAGE_TRIGGER}${imageUri}${IMAGE_TRIGGER}${imageResizedUri}${IMAGE_TRIGGER}${imageText}${IMAGE_TRIGGER}${OLD_ATTACHMENT}`
             }
         } else if (REGEX_VIDEO.test(word)) {
             const { videoText, uri, isNew } = getVideoData(word)
@@ -387,8 +385,8 @@ export const updateNewAttachmentsData = async (projectId, text) => {
                 const videoUri = /(Apple)/i.test(navigator.vendor)
                     ? await Backend.storeAttachment(projectId, file, false)
                     : searchRecordings(videoText)
-                    ? await Backend.storeConvertedVideos(projectId, file)
-                    : await Backend.storeAttachment(projectId, file, false)
+                      ? await Backend.storeConvertedVideos(projectId, file)
+                      : await Backend.storeAttachment(projectId, file, false)
                 store.dispatch(stopLoadingData())
                 words[i] = `${VIDEO_TRIGGER}${videoUri}${VIDEO_TRIGGER}${videoText}${VIDEO_TRIGGER}${false}`
             }
@@ -447,8 +445,8 @@ export const updateNewAttachmentsDataInNotes = async (editor, id, text, uri, sou
             const videoUri = /(Apple)/i.test(navigator.vendor)
                 ? await Backend.storeAttachment(projectId, file, true)
                 : searchRecordings(text)
-                ? await Backend.storeConvertedVideos(projectId, file)
-                : await Backend.storeAttachment(projectId, file, true)
+                  ? await Backend.storeConvertedVideos(projectId, file)
+                  : await Backend.storeAttachment(projectId, file, true)
             updatedInsert = {
                 videoFormat: { ...videoFormat, uri: videoUri, isLoading: LOADED_MODE },
             }
@@ -529,8 +527,8 @@ export const getCommentTagParsed = (comment, commentsAmount, textLimitMultiplier
     const textLimit = smallScreenNavigation
         ? LAST_COMMENT_CHARACTER_LIMIT_IN_SMALL_SCREEN
         : isMiddleScreen
-        ? LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN
-        : LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN
+          ? LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN
+          : LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN
     const cleanedComment = shrinkTagText(comment, Math.round(textLimit * textLimitMultiplier))
     return `${cleanedComment}${commentsAmount > 1 ? ` +${commentsAmount - 1}` : ''}`
 }
@@ -579,8 +577,8 @@ export const getObjectData = (data = OBJECT_DATA, commentedFeed) => {
         return data === OBJECT_DATA
             ? { type: 'contacts', id: contactId }
             : data === OBJECT_DATA_TYPE
-            ? 'contacts'
-            : contactId
+              ? 'contacts'
+              : contactId
     else if (noteId)
         return data === OBJECT_DATA ? { type: 'notes', id: noteId } : data === OBJECT_DATA_TYPE ? 'notes' : noteId
     else if (goalId)
@@ -593,8 +591,8 @@ export const getObjectData = (data = OBJECT_DATA, commentedFeed) => {
         return data === OBJECT_DATA
             ? { type: 'assistants', id: assistantId }
             : data === OBJECT_DATA_TYPE
-            ? 'assistants'
-            : assistantId
+              ? 'assistants'
+              : assistantId
 }
 
 const getNoteFeedSourceLink = async (projectId, noteId, source) => {

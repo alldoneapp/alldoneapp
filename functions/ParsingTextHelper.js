@@ -11,7 +11,8 @@ const REGEX_ATTACHMENT = /^EbDsQTD14ahtSR5[\S]+EbDsQTD14ahtSR5[\S]+EbDsQTD14ahtS
 const REGEX_GENERIC = /^(&[\S]+)$/i
 const REGEX_HASHTAG = /(^|\s)(#[\S]+)$/i
 const REGEX_MENTION = /^(@[\S]+)$/i
-const REGEX_URL = /^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^http:\/\/localhost:[0-9]+\/[^\s]{2,}$/i
+const REGEX_URL =
+    /^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%][a-zA-Z0-9-\u00a1-\uffff?@:%]+[a-zA-Z0-9\u00a1-\uffff?@:%]\.[^\s]{2,}|^https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^www\.[a-zA-Z0-9\u00a1-\uffff?@:%]+\.[^\s]{2,}|^http:\/\/localhost:[0-9]+\/[^\s]{2,}$/i
 
 const MENTION_SPACE_CODE_REGEX = /M2mVOSjAVPPKweL/gi
 
@@ -201,8 +202,8 @@ const mapContactData = (contactId, algoliaObjectId, contact, projectId) => {
     const extendedDescription = contact.extendedDescription
         ? contact.extendedDescription
         : contact.description
-        ? contact.description
-        : ''
+          ? contact.description
+          : ''
     return {
         objectID: algoliaObjectId,
         projectId: projectId,
@@ -245,8 +246,8 @@ const mapUserData = (userId, user) => {
     const extendedDescription = user.extendedDescription
         ? user.extendedDescription
         : user.description
-        ? user.description
-        : ''
+          ? user.description
+          : ''
     return {
         cleanDescription: '',
         uid: userId,

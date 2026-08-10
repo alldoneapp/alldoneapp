@@ -56,8 +56,8 @@ function buildClassifierMessage(message = {}) {
         gmailLabelIds: Array.isArray(message.gmailLabelIds)
             ? message.gmailLabelIds
             : Array.isArray(message.labelIds)
-            ? message.labelIds
-            : [],
+              ? message.labelIds
+              : [],
         listUnsubscribe: message.listUnsubscribe || '',
     }
 }

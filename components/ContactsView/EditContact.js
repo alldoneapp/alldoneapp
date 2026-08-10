@@ -643,8 +643,8 @@ export default class EditContact extends Component {
                                 smallScreen
                                     ? null
                                     : contactChanged
-                                    ? translate(isEmail ? 'Invite' : isNew ? 'Add Person' : 'Save')
-                                    : 'Ok'
+                                      ? translate(isEmail ? 'Invite' : isNew ? 'Add Person' : 'Save')
+                                      : 'Ok'
                             }
                             type={'primary'}
                             icon={smallScreen ? (contactChanged ? (isNew ? 'plus' : 'save') : 'x') : null}

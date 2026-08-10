@@ -61,10 +61,10 @@ export default function UserSelection({ setUser, setText }) {
             userState === INITIAL_STATE
                 ? 'Please search for a user to display his/her data'
                 : userState === SEARCHING_STATE
-                ? 'Searching user'
-                : userState === EMPTY_STATE
-                ? 'Sorry, there are no users with that email'
-                : ''
+                  ? 'Searching user'
+                  : userState === EMPTY_STATE
+                    ? 'Sorry, there are no users with that email'
+                    : ''
         )
     }, [userState])
 

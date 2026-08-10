@@ -273,8 +273,8 @@ function buildConversationSafeDraftToolArgs(toolArgs, pendingAttachmentPayload) 
             typeof safeAttachment.base64 === 'string'
                 ? safeAttachment.base64
                 : typeof safeAttachment.fileBase64 === 'string'
-                ? safeAttachment.fileBase64
-                : ''
+                  ? safeAttachment.fileBase64
+                  : ''
         const shouldRedact =
             rawBase64 &&
             (rawBase64 === pendingFileBase64 ||
@@ -370,8 +370,8 @@ function shouldFillDraftAttachmentBase64(attachment, pendingAttachmentPayload) {
         typeof attachment.base64 === 'string'
             ? attachment.base64
             : typeof attachment.fileBase64 === 'string'
-            ? attachment.fileBase64
-            : ''
+              ? attachment.fileBase64
+              : ''
 
     return (
         !rawBase64.trim() ||

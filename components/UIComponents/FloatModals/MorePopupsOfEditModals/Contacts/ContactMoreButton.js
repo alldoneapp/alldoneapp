@@ -55,8 +55,8 @@ export default function ContactMoreButton({
             Array.isArray(contact.emails) && contact.emails.length > 0
                 ? contact.emails
                 : contact.email
-                ? [contact.email]
-                : []
+                  ? [contact.email]
+                  : []
         return emails.join('\n')
     }
 

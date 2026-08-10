@@ -6,19 +6,19 @@ producing the same `web-build/` output contract Firebase Hosting deploys.
 
 ## Layout
 
--   This directory is its own npm package (lockfile v3, Node 22). It carries **only build
-    tooling** — the app's runtime dependencies still come from the repo root's
-    `node_modules` (installed with the pinned Node 14 / npm 6 until migration Stage 1+).
--   `webpack.config.js` — the pipeline. Entry is the same `expo/AppEntry.js` boot chain
-    the old pipeline used; output filenames, `fonts/`, `static/media/`, `web/` static
-    copies, and the PWA assets match the old `expo build:web` output.
--   `index.html` — the HTML template: `web/index.html` with the tokens/PWA tags the expo
-    pipeline used to inject at build time already applied.
--   `static/` — assets the expo pipeline used to **generate** (PWA manifest, favicons,
-    apple-touch-startup images), snapshotted as source. They win over `web/` copies on
-    filename conflicts.
--   `babel.config.js` — used **only** by this pipeline (babel-loader points at it
-    explicitly). The root `babel.config.js` stays for the legacy pipeline + Jest.
+- This directory is its own npm package (lockfile v3, Node 22). It carries **only build
+  tooling** — the app's runtime dependencies still come from the repo root's
+  `node_modules` (installed with the pinned Node 14 / npm 6 until migration Stage 1+).
+- `webpack.config.js` — the pipeline. Entry is the same `expo/AppEntry.js` boot chain
+  the old pipeline used; output filenames, `fonts/`, `static/media/`, `web/` static
+  copies, and the PWA assets match the old `expo build:web` output.
+- `index.html` — the HTML template: `web/index.html` with the tokens/PWA tags the expo
+  pipeline used to inject at build time already applied.
+- `static/` — assets the expo pipeline used to **generate** (PWA manifest, favicons,
+  apple-touch-startup images), snapshotted as source. They win over `web/` copies on
+  filename conflicts.
+- `babel.config.js` — used **only** by this pipeline (babel-loader points at it
+  explicitly). The root `babel.config.js` stays for the legacy pipeline + Jest.
 
 ## Usage
 
@@ -50,10 +50,10 @@ The `replacement_node_modules/` Quill/y-quill patches must be applied to the roo
 
 ## CI
 
--   `web_bundler_cache` builds the `build_web_bundler` image (`ci/Dockerfile_web_bundler`):
-    Node 22 + this package's `npm ci`, with `/app/node_modules` copied from the legacy
-    base image.
--   `build_web_webpack_check` shadow-builds every web-relevant change with this pipeline
-    (`allow_failure: true`). The expo pipeline remains the deployed artifact until a
-    staging deploy of this output passes the parity checklist; then the deploy jobs'
-    `needs` switch over and the expo pipeline can be deleted.
+- `web_bundler_cache` builds the `build_web_bundler` image (`ci/Dockerfile_web_bundler`):
+  Node 22 + this package's `npm ci`, with `/app/node_modules` copied from the legacy
+  base image.
+- `build_web_webpack_check` shadow-builds every web-relevant change with this pipeline
+  (`allow_failure: true`). The expo pipeline remains the deployed artifact until a
+  staging deploy of this output passes the parity checklist; then the deploy jobs'
+  `needs` switch over and the expo pipeline can be deleted.

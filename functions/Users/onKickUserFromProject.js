@@ -68,12 +68,8 @@ const processGoals = async (projectId, userId, admin, superAdmin) => {
     promises.push(goalsRef.where('creatorId', '!=', userId).where('assigneesIds', 'array-contains-any', [userId]).get())
     promises.push(goalsRef.where('creatorId', '!=', userId).where('isPublicFor', 'array-contains-any', [userId]).get())
     promises.push(goalsRef.where('creatorId', '!=', userId).where('lastEditorId', '==', userId).get())
-    const [
-        goalDocsToDelete,
-        goalDocsToUpdateAssignee,
-        goalDocsToUpdatePrivacy,
-        goalDocsToUpdateEdition,
-    ] = await Promise.all(promises)
+    const [goalDocsToDelete, goalDocsToUpdateAssignee, goalDocsToUpdatePrivacy, goalDocsToUpdateEdition] =
+        await Promise.all(promises)
 
     promises = []
     goalDocsToDelete.forEach(doc => {

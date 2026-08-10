@@ -516,8 +516,8 @@ class FocusTaskService {
                         method: topProjectId
                             ? 'top_sorted'
                             : userData.defaultProjectId
-                            ? 'default_project'
-                            : 'first_user_project',
+                              ? 'default_project'
+                              : 'first_user_project',
                         totalProjects: userProjectIds.length,
                     })
                 } catch (projectSortError) {
@@ -1146,10 +1146,10 @@ class FocusTaskService {
                     environment: this.options.isCloudFunction
                         ? 'cloud-function'
                         : this.options.isReactNative
-                        ? 'react-native'
-                        : this.options.isWeb
-                        ? 'web'
-                        : 'unknown',
+                          ? 'react-native'
+                          : this.options.isWeb
+                            ? 'web'
+                            : 'unknown',
                 },
             }
         } catch (error) {

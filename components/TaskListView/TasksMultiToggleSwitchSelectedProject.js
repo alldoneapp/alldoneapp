@@ -49,51 +49,51 @@ export default function TasksMultiToggleSwitchSelectedProject() {
                                   earlierDoneTasksAmount > 0
                                       ? earlierDoneTasksAmount
                                       : doneTasksAmount
-                                      ? doneTasksAmount
-                                      : 0,
+                                        ? doneTasksAmount
+                                        : 0,
                           },
                       ]
                     : haveWorkflow
-                    ? [
-                          {
-                              icon: 'square',
-                              text: 'Open',
-                              badge: openTasksAmount,
-                          },
-                          {
-                              icon: 'workflow',
-                              text: 'Workflow',
-                              badge: workflowTasksAmount,
-                          },
-                          {
-                              icon: 'square-checked-gray',
-                              text: 'Done',
-                              badge:
-                                  earlierDoneTasksAmount > 0
-                                      ? earlierDoneTasksAmount
-                                      : doneTasksAmount
-                                      ? doneTasksAmount
-                                      : 0,
-                          },
-                      ]
-                    : [
-                          {
-                              icon: 'square',
-                              text: 'Open',
-                              badge: openTasksAmount,
-                          },
-                          null,
-                          {
-                              icon: 'square-checked-gray',
-                              text: 'Done',
-                              badge:
-                                  earlierDoneTasksAmount > 0
-                                      ? earlierDoneTasksAmount
-                                      : doneTasksAmount
-                                      ? doneTasksAmount
-                                      : 0,
-                          },
-                      ]
+                      ? [
+                            {
+                                icon: 'square',
+                                text: 'Open',
+                                badge: openTasksAmount,
+                            },
+                            {
+                                icon: 'workflow',
+                                text: 'Workflow',
+                                badge: workflowTasksAmount,
+                            },
+                            {
+                                icon: 'square-checked-gray',
+                                text: 'Done',
+                                badge:
+                                    earlierDoneTasksAmount > 0
+                                        ? earlierDoneTasksAmount
+                                        : doneTasksAmount
+                                          ? doneTasksAmount
+                                          : 0,
+                            },
+                        ]
+                      : [
+                            {
+                                icon: 'square',
+                                text: 'Open',
+                                badge: openTasksAmount,
+                            },
+                            null,
+                            {
+                                icon: 'square-checked-gray',
+                                text: 'Done',
+                                badge:
+                                    earlierDoneTasksAmount > 0
+                                        ? earlierDoneTasksAmount
+                                        : doneTasksAmount
+                                          ? doneTasksAmount
+                                          : 0,
+                            },
+                        ]
             }
             currentIndex={currentSectionIndex}
             onChangeOption={onChangeToggleOption}

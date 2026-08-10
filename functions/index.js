@@ -553,16 +553,8 @@ exports.createCompanySubscriptionSecondGen = onCall(
         const { auth, data } = request
         if (auth) {
             const { createCompanySubscription } = require('./Payment/SubscriptionsActions')
-            const {
-                customerId,
-                userId,
-                userName,
-                userEmail,
-                selectedUserIds,
-                companyData,
-                paymentMethod,
-                urlOrigin,
-            } = data
+            const { customerId, userId, userName, userEmail, selectedUserIds, companyData, paymentMethod, urlOrigin } =
+                data
 
             return await createCompanySubscription(
                 customerId,

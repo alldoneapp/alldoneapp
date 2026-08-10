@@ -308,8 +308,8 @@ function increaseFeedCount(
             feed.isPublicFor && !feed.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
                 ? feed.isPublicFor
                 : projectUsersIdsForSpecialFeeds.length > 0
-                ? projectUsersIdsForSpecialFeeds
-                : project.userIds
+                  ? projectUsersIdsForSpecialFeeds
+                  : project.userIds
 
         // Guard against pseudo/public marker values appearing in project user IDs.
         // Notification counters are per real user; pseudo IDs can create oversized feedsCount docs.

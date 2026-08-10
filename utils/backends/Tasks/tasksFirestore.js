@@ -1056,14 +1056,12 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
 
     const observersWereUpdated = !isEqual(task.observersIds, oldTask.observersIds)
     if (observersWereUpdated) {
-        const {
-            dueDateByObserversIds,
-            estimationsByObserverIds,
-        } = TasksHelper.mergeDueDateAndEstimationsByObserversIds(
-            oldTask.dueDateByObserversIds,
-            taskToStore.observersIds,
-            oldTask.estimationsByObserverIds
-        )
+        const { dueDateByObserversIds, estimationsByObserverIds } =
+            TasksHelper.mergeDueDateAndEstimationsByObserversIds(
+                oldTask.dueDateByObserversIds,
+                taskToStore.observersIds,
+                oldTask.estimationsByObserverIds
+            )
 
         taskToStore.dueDateByObserversIds = dueDateByObserversIds
         taskToStore.estimationsByObserverIds = estimationsByObserverIds
@@ -1628,8 +1626,8 @@ export async function updateFocusedTask(
             const optimisticProjectId = taskToSetFocusOn
                 ? projectId
                 : assignee.inFocusTaskProjectId
-                ? assignee.inFocusTaskProjectId
-                : projectId
+                  ? assignee.inFocusTaskProjectId
+                  : projectId
             store.dispatch(
                 setOptimisticFocusTask(optimisticTaskId, optimisticProjectId, taskToSetFocusOn?.parentGoalId, userId)
             )
@@ -2308,13 +2306,13 @@ export async function setTaskParentGoal(projectId, taskId, task, goal, externalB
     const resolvedGoalSuggestion = options.goalSuggestion
         ? options.goalSuggestion
         : task.goalSuggestion?.status === 'pending' || task.goalSuggestion?.status === 'classifying'
-        ? {
-              ...task.goalSuggestion,
-              status: 'superseded',
-              resolvedAt: Date.now(),
-              resolvedBy: store.getState().loggedUser.uid,
-          }
-        : task.goalSuggestion
+          ? {
+                ...task.goalSuggestion,
+                status: 'superseded',
+                resolvedAt: Date.now(),
+                resolvedBy: store.getState().loggedUser.uid,
+            }
+          : task.goalSuggestion
 
     // Determine the sortIndex based on whether it's a calendar task
     let sortIndex
@@ -3576,12 +3574,8 @@ export const getDateToMoveTaskInAutoPostpone = (timesPostponed, isObservedTask) 
 }
 
 const getGoalsOrderingDataForProject = async (projectId, assigneeId) => {
-    const {
-        openMilestonesByProjectInTasks,
-        doneMilestonesByProjectInTasks,
-        goalsByProjectInTasks,
-        loggedUser,
-    } = store.getState()
+    const { openMilestonesByProjectInTasks, doneMilestonesByProjectInTasks, goalsByProjectInTasks, loggedUser } =
+        store.getState()
 
     const openMilestones = openMilestonesByProjectInTasks?.[projectId]
     const doneMilestones = doneMilestonesByProjectInTasks?.[projectId]
@@ -3872,12 +3866,8 @@ export async function autoPostponeTask(projectId, task, isObservedTask, targetUs
 function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = completedTask.userId) {
     // `focusUserId` is the user whose focus task is being replaced (see setOptimisticNextFocusTask);
     // it is only the owner by coincidence in the common single-assignee case.
-    const {
-        openTasksMap,
-        goalsByProjectInTasks,
-        openMilestonesByProjectInTasks,
-        doneMilestonesByProjectInTasks,
-    } = store.getState()
+    const { openTasksMap, goalsByProjectInTasks, openMilestonesByProjectInTasks, doneMilestonesByProjectInTasks } =
+        store.getState()
     const projectTasks = openTasksMap[projectId] || {}
     const goalsById = goalsByProjectInTasks[projectId] || null
     const openMilestones = openMilestonesByProjectInTasks[projectId] || []

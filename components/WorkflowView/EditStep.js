@@ -241,17 +241,8 @@ class EditStep extends Component {
     }
 
     render() {
-        const {
-            user,
-            step,
-            stepNumber,
-            projectIndex,
-            onCancelAction,
-            formType,
-            style,
-            lockedReviewer,
-            lockedStep,
-        } = this.props
+        const { user, step, stepNumber, projectIndex, onCancelAction, formType, style, lockedReviewer, lockedStep } =
+            this.props
         const { mounted, description, smallScreen, isMiddleScreen, workflowStep } = this.state
         const buttonItemStyle = { marginRight: smallScreen ? 8 : 4 }
         const disabled1 = formType === 'new' && description.length === 0
@@ -362,8 +353,8 @@ class EditStep extends Component {
                                           formType === 'new'
                                               ? `Add Step`
                                               : description.length === 0
-                                              ? 'Delete step'
-                                              : 'Save step'
+                                                ? 'Delete step'
+                                                : 'Save step'
                                       )
                             }
                             type={formType === 'edit' && description === '' ? 'danger' : 'primary'}
@@ -372,8 +363,8 @@ class EditStep extends Component {
                                     ? formType === 'edit' && description === ''
                                         ? 'trash-2'
                                         : formType === 'new'
-                                        ? 'plus'
-                                        : 'save'
+                                          ? 'plus'
+                                          : 'save'
                                     : null
                             }
                             onPress={this.modifyWorkflowStep}

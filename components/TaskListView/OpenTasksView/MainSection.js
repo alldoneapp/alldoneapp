@@ -422,8 +422,8 @@ export default function MainSection({
                         showTheFullList
                             ? taskList.length
                             : globalAmountToRender > taskList.length
-                            ? taskList.length
-                            : globalAmountToRender
+                              ? taskList.length
+                              : globalAmountToRender
                     )
 
                     // Don't render the section if no tasks are visible unless it's the only section
@@ -514,8 +514,8 @@ export default function MainSection({
                         showTheFullList
                             ? taskList.length
                             : globalAmountToRender > taskList.length
-                            ? taskList.length
-                            : globalAmountToRender
+                              ? taskList.length
+                              : globalAmountToRender
                     )
 
                     if (sectionBudget.shouldSkip(goalId, amountToRenderForGoal, !showTheFullList)) return null // Adjusted condition for amountToRender

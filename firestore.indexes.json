@@ -1405,6 +1405,21 @@
             ]
         },
         {
+            "__comment__": "VM jobs - expire stale agent questions (expireVmInteractions)",
+            "collectionGroup": "pendingWebhooks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "status",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "interactionExpiresAt",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
             "__comment__": "VM jobs - per-user concurrency cap (execute_task_in_vm)",
             "collectionGroup": "pendingWebhooks",
             "queryScope": "COLLECTION",

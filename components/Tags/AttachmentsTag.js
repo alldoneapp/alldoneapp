@@ -52,10 +52,10 @@ const AttachmentsTag = memo(props => {
                         {smallScreenNavigation || isMobile
                             ? ''
                             : count > 1
-                            ? 'Attachments'
-                            : count === 0
-                            ? 'Loading...'
-                            : 'Attachment'}
+                              ? 'Attachments'
+                              : count === 0
+                                ? 'Loading...'
+                                : 'Attachment'}
                     </Text>
                 </View>
             </TouchableOpacity>

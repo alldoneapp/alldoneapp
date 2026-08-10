@@ -29,7 +29,7 @@ const EstimationTypeProperty = ({ project, disabled }) => {
                         title={translate(project.estimationType === ESTIMATION_TYPE_POINTS ? 'Points' : 'Time')}
                         icon={
                             <Icon
-                                name={project.estimationType === ESTIMATION_TYPE_POINTS ? 'story-point' : 'clock' }
+                                name={project.estimationType === ESTIMATION_TYPE_POINTS ? 'story-point' : 'clock'}
                                 size={24}
                                 color={colors.Text03}
                             />

@@ -327,8 +327,8 @@ export default function EditGoal({
                             smallScreenNavigation
                                 ? { marginLeft: showContractExoandIndicator ? 32 : -8 }
                                 : showContractExoandIndicator
-                                ? { marginLeft: 32 }
-                                : null
+                                  ? { marginLeft: 32 }
+                                  : null
                         }
                         updateProgress={updateProgress}
                         disabled={isLocked || loggedUser.isAnonymous || !loggedUserCanUpdateObject}

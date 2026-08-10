@@ -1821,19 +1821,15 @@ async function getReachableDelegationTargets({
     }
 
     const defaultProjectId = userData.defaultProjectId || null
-    const [
-        callerAssistantDoc,
-        callerGlobalAssistantDoc,
-        defaultProjectDoc,
-        defaultProjectAssistantDoc,
-    ] = await db.getAll(
-        db.doc(`assistants/${projectId}/items/${assistantId}`),
-        db.doc(`assistants/${GLOBAL_PROJECT_ID}/items/${assistantId}`),
-        defaultProjectId ? db.doc(`projects/${defaultProjectId}`) : db.doc(`projects/__missing__`),
-        defaultProjectId
-            ? db.doc(`assistants/${defaultProjectId}/items/${assistantId}`)
-            : db.doc(`assistants/__missing__/items/__missing__`)
-    )
+    const [callerAssistantDoc, callerGlobalAssistantDoc, defaultProjectDoc, defaultProjectAssistantDoc] =
+        await db.getAll(
+            db.doc(`assistants/${projectId}/items/${assistantId}`),
+            db.doc(`assistants/${GLOBAL_PROJECT_ID}/items/${assistantId}`),
+            defaultProjectId ? db.doc(`projects/${defaultProjectId}`) : db.doc(`projects/__missing__`),
+            defaultProjectId
+                ? db.doc(`assistants/${defaultProjectId}/items/${assistantId}`)
+                : db.doc(`assistants/__missing__/items/__missing__`)
+        )
 
     let isPrivilegedDefaultProjectAssistant = false
 
@@ -1850,8 +1846,8 @@ async function getReachableDelegationTargets({
     const callerAssistantData = callerExistsInCurrentProject
         ? callerAssistantDoc.data() || {}
         : callerExistsInGlobal
-        ? callerGlobalAssistantDoc.data() || {}
-        : null
+          ? callerGlobalAssistantDoc.data() || {}
+          : null
     const callerExistsInProjectContext = callerExistsInCurrentProject || callerExistsInGlobal
     if (!callerExistsInProjectContext && !isPrivilegedDefaultProjectAssistant) {
         console.log('🔁 DELEGATION: caller assistant not eligible for delegation scope', {
@@ -5009,13 +5005,9 @@ async function postUserRequestComment({ projectId, objectType, objectId, creator
         { merge: true }
     )
 
-    await updateLastCommentDataOfChatParentObject(
-        projectId,
-        objectId,
-        objectType,
-        cleanText,
-        STAYWARD_COMMENT
-    ).catch(() => {})
+    await updateLastCommentDataOfChatParentObject(projectId, objectId, objectType, cleanText, STAYWARD_COMMENT).catch(
+        () => {}
+    )
 
     return commentId
 }
@@ -5204,8 +5196,8 @@ async function executeToolNatively(
                 sourceHint: gmailLabelMatchedProjectId
                     ? 'gmailLabelMatchedProject'
                     : toolArgs.sourceHint === 'whatsappContextProject'
-                    ? 'whatsappContextProject'
-                    : '',
+                      ? 'whatsappContextProject'
+                      : '',
                 assistantProjectRoutingReason: assistantProvidedProjectReasoning,
                 assistantProjectRoutingConfidence: projectRoutingConfidence,
             })
@@ -8051,8 +8043,7 @@ async function executeToolNatively(
                 success: true,
                 name: skill.name,
                 instructions,
-                note:
-                    'Follow these skill instructions while completing the current request. They complement (do not replace) your assistant instructions.',
+                note: 'Follow these skill instructions while completing the current request. They complement (do not replace) your assistant instructions.',
             }
         }
 
@@ -8517,8 +8508,7 @@ async function executeToolNatively(
             if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
                 return {
                     success: false,
-                    error:
-                        'Coordinates are out of range. Latitude must be between -90 and 90 and longitude between -180 and 180.',
+                    error: 'Coordinates are out of range. Latitude must be between -90 and 90 and longitude between -180 and 180.',
                 }
             }
 
@@ -11409,14 +11399,14 @@ async function getUserDescriptionContextMessage(projectId, userId) {
         typeof user.extendedDescription === 'string' && user.extendedDescription.trim()
             ? user.extendedDescription
             : typeof user.description === 'string'
-            ? user.description
-            : ''
+              ? user.description
+              : ''
     const projectDescription =
         typeof projectUserData.extendedDescription === 'string' && projectUserData.extendedDescription.trim()
             ? projectUserData.extendedDescription
             : typeof projectUserData.description === 'string'
-            ? projectUserData.description
-            : ''
+              ? projectUserData.description
+              : ''
 
     const lines = [
         'Global user description from settings:',
@@ -13170,9 +13160,8 @@ async function getOptimizedContextMessages(
     // keeping interactive and delegated executions grounded in one canonical task context.
     parallelPromises.push(getCurrentObjectContextData(projectId, objectType, objectId))
 
-    const [commentDocs, chatData, notesContext, currentNoteContext, currentObjectContextData] = await Promise.all(
-        parallelPromises
-    )
+    const [commentDocs, chatData, notesContext, currentNoteContext, currentObjectContextData] =
+        await Promise.all(parallelPromises)
 
     // Collect messages from conversation history
     const messages = []

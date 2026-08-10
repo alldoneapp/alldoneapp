@@ -172,18 +172,18 @@ Authorization Header (Optional)
 
 The UI validates:
 
--   ✅ Task name is not empty
--   ✅ Webhook URL is valid HTTPS URL
--   ✅ Webhook URL starts with `https://`
--   ✅ No spaces in URL
+- ✅ Task name is not empty
+- ✅ Webhook URL is valid HTTPS URL
+- ✅ Webhook URL starts with `https://`
+- ✅ No spaces in URL
 
 Save button is disabled until all requirements are met.
 
 ## 📚 Related Documentation
 
--   **Backend Implementation**: `WEBHOOK_IMPLEMENTATION_SUMMARY.md`
--   **Detailed Guide**: `functions/Assistant/WEBHOOK_TASKS_README.md`
--   **Test Utility**: `functions/Tests/testWebhookCallback.js`
+- **Backend Implementation**: `WEBHOOK_IMPLEMENTATION_SUMMARY.md`
+- **Detailed Guide**: `functions/Assistant/WEBHOOK_TASKS_README.md`
+- **Test Utility**: `functions/Tests/testWebhookCallback.js`
 
 ## 🚀 Next Steps
 

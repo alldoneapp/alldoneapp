@@ -325,11 +325,12 @@ async function handleOAuthCallback(code, state) {
 }
 
 async function getAccessToken(userId, projectId, service) {
-    const { ref, doc: tokenDoc, connectionId, service: resolvedService } = await resolveTokenDoc(
-        userId,
-        projectId,
-        service
-    )
+    const {
+        ref,
+        doc: tokenDoc,
+        connectionId,
+        service: resolvedService,
+    } = await resolveTokenDoc(userId, projectId, service)
     service = resolvedService || service
     if (!tokenDoc.exists) throw new Error(`User not authenticated with Microsoft for ${service}`)
 

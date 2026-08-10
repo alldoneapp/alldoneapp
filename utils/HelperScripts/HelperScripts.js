@@ -2994,8 +2994,8 @@ async function convertInBacklogAndInBacklogByObserversIdsToMaxSafeIntegerTasks()
                 newDueDateByObserversIds[id] = inBacklogByObserversIds[id]
                     ? Number.MAX_SAFE_INTEGER
                     : dueDateByObserversIds[id]
-                    ? dueDateByObserversIds[id]
-                    : Number.MAX_SAFE_INTEGER
+                      ? dueDateByObserversIds[id]
+                      : Number.MAX_SAFE_INTEGER
             })
             const updateData = {
                 dueDate: inBacklog ? Number.MAX_SAFE_INTEGER : dueDate,
@@ -3359,8 +3359,8 @@ async function updateUserStatisticData(appAdmin) {
                     user.statisticsData.filter === 'Last week'
                         ? 'Last 7 days'
                         : user.statisticsData.filter === 'Last 2 weeks'
-                        ? 'Last 14 days'
-                        : user.statisticsData.filter
+                          ? 'Last 14 days'
+                          : user.statisticsData.filter
 
                 await appAdmin.firestore().doc(`users/${user.uid}`).update({
                     'statisticsData.filter': filter,

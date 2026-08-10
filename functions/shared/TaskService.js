@@ -318,8 +318,8 @@ class TaskService {
                             typeof numericKeyValue === 'number'
                                 ? numericKeyValue
                                 : typeof openKeyValue === 'number'
-                                ? openKeyValue
-                                : 0
+                                  ? openKeyValue
+                                  : 0
                         if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
                         if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
                         return { ...task, estimations }
@@ -466,8 +466,8 @@ class TaskService {
                             typeof numericKeyValue === 'number'
                                 ? numericKeyValue
                                 : typeof openKeyValue === 'number'
-                                ? openKeyValue
-                                : 0
+                                  ? openKeyValue
+                                  : 0
                         if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
                         if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
                         return { ...task, estimations }
@@ -965,8 +965,8 @@ class TaskService {
                                     typeof numericKeyValue === 'number'
                                         ? numericKeyValue
                                         : typeof openKeyValue === 'number'
-                                        ? openKeyValue
-                                        : 0
+                                          ? openKeyValue
+                                          : 0
                                 if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
                                 if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
                                 normalizedUpdate.estimations = estimations
@@ -1112,8 +1112,8 @@ class TaskService {
                                     typeof numericKeyValue === 'number'
                                         ? numericKeyValue
                                         : typeof openKeyValue === 'number'
-                                        ? openKeyValue
-                                        : 0
+                                          ? openKeyValue
+                                          : 0
                                 if (estimations['Open'] === undefined) estimations['Open'] = baseOpenValue
                                 if (estimations['-1'] === undefined) estimations['-1'] = baseOpenValue
                                 normalizedUpdate.estimations = estimations
@@ -1386,10 +1386,10 @@ class TaskService {
                     environment: this.options.isCloudFunction
                         ? 'cloud-function'
                         : this.options.isReactNative
-                        ? 'react-native'
-                        : this.options.isWeb
-                        ? 'web'
-                        : 'unknown',
+                          ? 'react-native'
+                          : this.options.isWeb
+                            ? 'web'
+                            : 'unknown',
                 },
             }
         } catch (error) {

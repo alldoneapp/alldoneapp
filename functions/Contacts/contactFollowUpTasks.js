@@ -224,13 +224,8 @@ async function syncContactFollowUpTask(projectId, contact) {
         const tasks = await getManagedFollowUpTasks(projectId, contact.uid)
         const openTasks = tasks.filter(isOpenTask)
         const timezoneOffset = await getUserTimezoneOffset(contact.recorderUserId)
-        const {
-            currentTask,
-            futureTask,
-            duplicateCurrentTasks,
-            duplicateFutureTasks,
-            endOfTodayTimestamp,
-        } = getManagedTaskBuckets(openTasks, timezoneOffset)
+        const { currentTask, futureTask, duplicateCurrentTasks, duplicateFutureTasks, endOfTodayTimestamp } =
+            getManagedTaskBuckets(openTasks, timezoneOffset)
         const duplicateOpenTasks = [...duplicateCurrentTasks, ...duplicateFutureTasks]
 
         console.log('[ContactFollowUp][Sync:state]', {

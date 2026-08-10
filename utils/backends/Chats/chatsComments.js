@@ -328,10 +328,11 @@ const updateLastAssistantCommentData = async (
             ...(assistantId
                 ? {
                       [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: updateData,
-                      [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                          ...updateData,
-                          projectId,
-                      },
+                      [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]:
+                          {
+                              ...updateData,
+                              projectId,
+                          },
                   }
                 : {}),
         })
@@ -662,8 +663,8 @@ export async function createObjectMessage(
             explicitAssistantEnabled !== null
                 ? explicitAssistantEnabled
                 : object
-                ? object.isAssistantEnabled === true
-                : assistantEnabled
+                  ? object.isAssistantEnabled === true
+                  : assistantEnabled
 
         // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
         console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {

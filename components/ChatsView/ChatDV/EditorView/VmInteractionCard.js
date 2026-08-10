@@ -72,8 +72,8 @@ export default function VmInteractionCard({ projectId, objectType, objectId, com
                 {interaction.kind === 'plan_review'
                     ? 'PLAN READY'
                     : interaction.kind === 'tool_approval'
-                    ? 'APPROVAL REQUIRED'
-                    : 'QUESTION'}
+                      ? 'APPROVAL REQUIRED'
+                      : 'QUESTION'}
             </Text>
 
             {interaction.kind === 'plan_review' && (

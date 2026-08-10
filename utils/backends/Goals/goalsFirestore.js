@@ -918,12 +918,8 @@ export async function updateGoalDateRange(
         return
     }
 
-    const {
-        toBacklog,
-        fromBacklog,
-        moveFullGoalWhenUpdateCompletionDate,
-        moveFullGoalWhenUpdateStartingDate,
-    } = getGoalDirectionWhenChangesDate(newDate, goal, rangeEdgePropertyName)
+    const { toBacklog, fromBacklog, moveFullGoalWhenUpdateCompletionDate, moveFullGoalWhenUpdateStartingDate } =
+        getGoalDirectionWhenChangesDate(newDate, goal, rangeEdgePropertyName)
 
     if (toBacklog || fromBacklog || moveFullGoalWhenUpdateCompletionDate || moveFullGoalWhenUpdateStartingDate) {
         await updateGoalDates(
@@ -1933,8 +1929,8 @@ const generateAssigneesReminderDate = async (
         newAssigneesReminderDate[assigneeId] = assigneesReminderDate[assigneeId]
             ? assigneesReminderDate[assigneeId]
             : previousMilestone
-            ? moment(previousMilestone.date).add(1, 'days').valueOf()
-            : Date.now()
+              ? moment(previousMilestone.date).add(1, 'days').valueOf()
+              : Date.now()
     })
 
     return newAssigneesReminderDate

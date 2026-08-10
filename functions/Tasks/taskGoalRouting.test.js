@@ -137,8 +137,8 @@ const createDb = ({
                 path === 'goals/project1/items'
                     ? Object.entries(state.goals)
                     : path === 'goalsMilestones/project1/milestonesItems'
-                    ? Object.entries(state.milestones)
-                    : []
+                      ? Object.entries(state.milestones)
+                      : []
             let results = entries.filter(([, value]) =>
                 filters.every(filter => filter.operator === '==' && value[filter.field] === filter.value)
             )

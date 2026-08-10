@@ -62,9 +62,10 @@ async function createRecapTopic({ projectId, ownerId, project, user, okrs }) {
     const resolvedAssistantId = assistant.uid || assistantId || ''
     const now = Date.now()
     const isPublicFor = [ownerId]
-    const title = `OKR Recap <> ${getFirstName(user.displayName || 'User')} ${new Date(
-        periodEnd
-    ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    const title = `OKR Recap <> ${getFirstName(user.displayName || 'User')} ${new Date(periodEnd).toLocaleDateString(
+        'en-US',
+        { month: 'short', day: 'numeric', year: 'numeric' }
+    )}`
 
     if (!existingChat.exists) {
         await chatRef.set({

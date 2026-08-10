@@ -111,10 +111,10 @@ async function readAttachments(message, parsedEmail = null) {
             content instanceof Uint8Array
                 ? content
                 : content instanceof ArrayBuffer
-                ? new Uint8Array(content)
-                : typeof Buffer !== 'undefined' && Buffer.isBuffer(content)
-                ? new Uint8Array(content)
-                : new Uint8Array()
+                  ? new Uint8Array(content)
+                  : typeof Buffer !== 'undefined' && Buffer.isBuffer(content)
+                    ? new Uint8Array(content)
+                    : new Uint8Array()
 
         attachments.push({
             fileName,

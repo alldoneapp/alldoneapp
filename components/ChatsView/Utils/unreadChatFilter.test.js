@@ -66,13 +66,13 @@ describe('unread chat filtering', () => {
 
     it('keeps only unread regular and sticky chats and removes empty date groups', () => {
         const chatsByDate = {
-            '20260720': [{ id: 'followed' }, { id: 'read' }],
-            '20260719': [{ id: 'unfollowed' }],
+            20260720: [{ id: 'followed' }, { id: 'read' }],
+            20260719: [{ id: 'unfollowed' }],
         }
         const stickyChats = [{ id: 'read' }, { id: 'unfollowed' }]
 
         expect(filterChatsByUnread(chatsByDate, notifications, FOLLOWED_TAB)).toEqual({
-            '20260720': [{ id: 'followed' }],
+            20260720: [{ id: 'followed' }],
         })
         expect(filterStickyChatsByUnread(stickyChats, notifications, ALL_TAB)).toEqual([{ id: 'unfollowed' }])
     })

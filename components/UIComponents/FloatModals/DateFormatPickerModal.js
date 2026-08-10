@@ -127,8 +127,8 @@ export const getTimeFormat = (showSeconds = false) => {
             ? TIME_FORMAT_EUROPE_S
             : TIME_FORMAT_EUROPE
         : showSeconds
-        ? TIME_FORMAT_AMERICA_S
-        : TIME_FORMAT_AMERICA
+          ? TIME_FORMAT_AMERICA_S
+          : TIME_FORMAT_AMERICA
 }
 
 const localStyles = StyleSheet.create({

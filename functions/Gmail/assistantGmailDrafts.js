@@ -397,8 +397,7 @@ async function resolveReplyTarget({ userId, query, messageId, threadId }) {
 
     if (!normalizedQuery) {
         return {
-            error:
-                'A Gmail reply target is required. Provide a query, Gmail messageId, or Gmail threadId before creating a reply draft.',
+            error: 'A Gmail reply target is required. Provide a query, Gmail messageId, or Gmail threadId before creating a reply draft.',
         }
     }
 

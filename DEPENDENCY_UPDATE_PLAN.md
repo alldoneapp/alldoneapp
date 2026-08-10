@@ -16,14 +16,14 @@ The repo is effectively three codebases with very different update economics:
 
 Where the risk actually is:
 
--   **Functions (server-side, highest exposure)**: criticals in `handlebars` (in-range fix),
-    `fast-xml-parser`, `basic-ftp`, `form-data`/`request`/`tar` (all via the runtime
-    `firebase-tools` dependency), `protobufjs` (via the stale direct
-    `@google-cloud/firestore@^4.2.0`); highs in `twilio`'s old `axios`/`jsonwebtoken` and `ws`.
--   **Root app**: most findings are build tooling (Expo/webpack/Babel CLIs). Real runtime
-    exposure in the shipped web bundle: `dompurify` (critical, via the Quill/delta HTML chain),
-    `firebase@8.10.1` client SDK, crypto polyfills (`elliptic`, `browserify-sign`).
--   **Email worker**: all findings in `wrangler`/`miniflare` dev tree.
+- **Functions (server-side, highest exposure)**: criticals in `handlebars` (in-range fix),
+  `fast-xml-parser`, `basic-ftp`, `form-data`/`request`/`tar` (all via the runtime
+  `firebase-tools` dependency), `protobufjs` (via the stale direct
+  `@google-cloud/firestore@^4.2.0`); highs in `twilio`'s old `axios`/`jsonwebtoken` and `ws`.
+- **Root app**: most findings are build tooling (Expo/webpack/Babel CLIs). Real runtime
+  exposure in the shipped web bundle: `dompurify` (critical, via the Quill/delta HTML chain),
+  `firebase@8.10.1` client SDK, crypto polyfills (`elliptic`, `browserify-sign`).
+- **Email worker**: all findings in `wrangler`/`miniflare` dev tree.
 
 ## Phase 0 — safe, immediate (DONE 2026-08-04)
 
@@ -80,18 +80,18 @@ All root installs MUST run under the pinned Node 14.21.3 / npm 6.14.18 — the l
 and a modern npm would rewrite it to v3. Re-apply the `replacement_node_modules` Quill/y-quill
 patches after any install.
 
--   **Remove dead/duplicate deps** (verify usage first): both
-    `@react-native-community/async-storage` and `@react-native-async-storage/async-storage`
-    are present; frontend `firebase-admin`/`firebase-functions` look vestigial (Jest maps
-    those imports to `functions/node_modules`); the npm `http2` package is a deprecated no-op.
--   **In-range bumps npm 6 will accept**: `react-native-calendars`, `tinycolor2` 1.6,
-    `chartjs-*` patches, `y-websocket` 1.5.4, `moment` 2.30.1, `husky` 4.3.8,
-    `webpack-bundle-analyzer`, `css-loader` 5.2.7.
--   **Leave alone without a dedicated project**: the Quill/Yjs family (`quill` 1.3.7,
-    `y-quill` 0.1.4, `yjs` 13.4.7 — patched and version-synced with functions; even the
-    semver-minor yjs 13.6 bump interacts with the applyDelta workarounds),
-    `react-tiny-popover` (dismiss-race workarounds are built against v4 behavior), and
-    everything React/Expo/RN-versioned.
+- **Remove dead/duplicate deps** (verify usage first): both
+  `@react-native-community/async-storage` and `@react-native-async-storage/async-storage`
+  are present; frontend `firebase-admin`/`firebase-functions` look vestigial (Jest maps
+  those imports to `functions/node_modules`); the npm `http2` package is a deprecated no-op.
+- **In-range bumps npm 6 will accept**: `react-native-calendars`, `tinycolor2` 1.6,
+  `chartjs-*` patches, `y-websocket` 1.5.4, `moment` 2.30.1, `husky` 4.3.8,
+  `webpack-bundle-analyzer`, `css-loader` 5.2.7.
+- **Leave alone without a dedicated project**: the Quill/Yjs family (`quill` 1.3.7,
+  `y-quill` 0.1.4, `yjs` 13.4.7 — patched and version-synced with functions; even the
+  semver-minor yjs 13.6 bump interacts with the applyDelta workarounds),
+  `react-tiny-popover` (dismiss-race workarounds are built against v4 behavior), and
+  everything React/Expo/RN-versioned.
 
 ## Phase 3 — strategic frontend migration
 
@@ -103,141 +103,141 @@ Firebase 12 → Quill 2/Yjs stack), NOT a 21-SDK Expo upgrade treadmill. Rough t
 
 ## Status log
 
--   2026-08-05 (Phase 3 / migration Stage 3 step 1): **firebase client 8.10.1 → 12.17.1 via
-    `firebase/compat` — accepted on staging** — kills the client-side `@firebase/firestore`
-    highs and the auth/persistence CVEs (npm audit now reports zero firebase findings).
-    23 import sites
-    rewritten, FCM service worker moved to the 12.17.1 compat CDN builds +
-    `onBackgroundMessage`, three dead `messaging.onTokenRefresh` blocks removed (API gone
-    in v9+), 47 vestigial `jest.mock('firebase', …)` lines deleted (v12's root package is
-    exports-only, invisible to jest 25). Full detail + staging QA checklist in
-    `FRONTEND_MIGRATION_PLAN.md`. **Merged to master and verified in production the same
-    day** (my.alldone.app serving 12.17.1, clean boot, GSI loading, service worker on the
-    compat CDN builds).
+- 2026-08-05 (Phase 3 / migration Stage 3 step 1): **firebase client 8.10.1 → 12.17.1 via
+  `firebase/compat` — accepted on staging** — kills the client-side `@firebase/firestore`
+  highs and the auth/persistence CVEs (npm audit now reports zero firebase findings).
+  23 import sites
+  rewritten, FCM service worker moved to the 12.17.1 compat CDN builds +
+  `onBackgroundMessage`, three dead `messaging.onTokenRefresh` blocks removed (API gone
+  in v9+), 47 vestigial `jest.mock('firebase', …)` lines deleted (v12's root package is
+  exports-only, invisible to jest 25). Full detail + staging QA checklist in
+  `FRONTEND_MIGRATION_PLAN.md`. **Merged to master and verified in production the same
+  day** (my.alldone.app serving 12.17.1, clean boot, GSI loading, service worker on the
+  compat CDN builds).
 
--   2026-08-06 (Phase 3 / migration Stage 3): **COMPLETE.** Web push verified working in
-    production, which was the last item outside automated reach. The client-side
-    `@firebase/firestore` highs and the auth/persistence CVEs that motivated this stage are
-    gone, with npm audit reporting zero firebase findings.
+- 2026-08-06 (Phase 3 / migration Stage 3): **COMPLETE.** Web push verified working in
+  production, which was the last item outside automated reach. The client-side
+  `@firebase/firestore` highs and the auth/persistence CVEs that motivated this stage are
+  gone, with npm audit reporting zero firebase findings.
 
--   2026-08-06 (Phase 3 / migration Stage 3 step 2): **measured and DEFERRED.** Converting
-    compat → modular saves a measured 56.5 KB gzip (266.2 → 209.7 KB for this app's SDK
-    surface), which is 2.5% of the 2.25 MB bundle, in exchange for ~3,200 call-site edits
-    across every data path — and the saving only materializes at 100% conversion, since
-    tree-shaking cannot drop compat while any import remains. The security goal that drove
-    Phase 3's Firebase work is already fully met by step 1 (zero firebase audit findings).
-    Reasoning and the `getFirestore(app)` two-client landmine are recorded in
-    `FRONTEND_MIGRATION_PLAN.md`.
+- 2026-08-06 (Phase 3 / migration Stage 3 step 2): **measured and DEFERRED.** Converting
+  compat → modular saves a measured 56.5 KB gzip (266.2 → 209.7 KB for this app's SDK
+  surface), which is 2.5% of the 2.25 MB bundle, in exchange for ~3,200 call-site edits
+  across every data path — and the saving only materializes at 100% conversion, since
+  tree-shaking cannot drop compat while any import remains. The security goal that drove
+  Phase 3's Firebase work is already fully met by step 1 (zero firebase audit findings).
+  Reasoning and the `getFirestore(app)` two-client landmine are recorded in
+  `FRONTEND_MIGRATION_PLAN.md`.
 
--   2026-08-04 (Phase 1.4 correction): **firebase-admin runs at ^13.10, not 14.** The first
-    production deploy of the Phase 1 batch failed at firebase-tools' source analysis:
-    `admin.credential.cert` is undefined in v14 because v14's top-level export is only the
-    `app` module — the whole legacy namespace API the codebase uses everywhere
-    (`admin.firestore()`, `admin.auth()`, `admin.messaging()`, …) was removed, which the
-    test suite cannot see (it mocks `firebase-admin`). v13 keeps the namespace API, still
-    supports Node 22 + firebase-functions 7, and carries the same security posture
-    (`@google-cloud/firestore` aligned back to ^7.11, protobufjs 7 tree, audit still
-    0 critical / 0 high). Verified by loading `index.js` under plain Node 22 (225 functions
-    defined) — the same thing the deploy analyzer does. The FieldValue/Timestamp codemod
-    stays (modular statics work in v13 too and are the v14-ready direction). **Admin 14 =
-    full modular migration, tracked as its own future project.**
+- 2026-08-04 (Phase 1.4 correction): **firebase-admin runs at ^13.10, not 14.** The first
+  production deploy of the Phase 1 batch failed at firebase-tools' source analysis:
+  `admin.credential.cert` is undefined in v14 because v14's top-level export is only the
+  `app` module — the whole legacy namespace API the codebase uses everywhere
+  (`admin.firestore()`, `admin.auth()`, `admin.messaging()`, …) was removed, which the
+  test suite cannot see (it mocks `firebase-admin`). v13 keeps the namespace API, still
+  supports Node 22 + firebase-functions 7, and carries the same security posture
+  (`@google-cloud/firestore` aligned back to ^7.11, protobufjs 7 tree, audit still
+  0 critical / 0 high). Verified by loading `index.js` under plain Node 22 (225 functions
+  defined) — the same thing the deploy analyzer does. The FieldValue/Timestamp codemod
+  stays (modular statics work in v13 too and are the v14-ready direction). **Admin 14 =
+  full modular migration, tracked as its own future project.**
 
--   2026-08-04 (Phase 3 / migration Stage 1): vestigial native/dead deps removed — 22
-    direct deps dropped (native firebase, reanimated, screens, unimodules, expo-updates/
-    application/device, sentry-expo → @sentry/react@7, the shimmed expo-_ five), the 8
-    expo-_ import sites now use `utils/WebShims/`. Tree 3003 → 2844 packages; audit
-    1517 → 1485 same-day (−17 high, −2 critical — the rest is the retained expo build
-    chain + React-era pins). Full Jest suite + both build pipelines verified. Details in
-    `FRONTEND_MIGRATION_PLAN.md`.
--   2026-08-04 (Phase 3 / migration Stage 0): standalone webpack 5 pipeline on Node 22
-    built and locally verified (`web-bundler/` + CI shadow job `build_web_webpack_check`);
-    expo pipeline still deploys until staging parity is confirmed. Details in
-    `FRONTEND_MIGRATION_PLAN.md` status log.
+- 2026-08-04 (Phase 3 / migration Stage 1): vestigial native/dead deps removed — 22
+  direct deps dropped (native firebase, reanimated, screens, unimodules, expo-updates/
+  application/device, sentry-expo → @sentry/react@7, the shimmed expo-_ five), the 8
+  expo-_ import sites now use `utils/WebShims/`. Tree 3003 → 2844 packages; audit
+  1517 → 1485 same-day (−17 high, −2 critical — the rest is the retained expo build
+  chain + React-era pins). Full Jest suite + both build pipelines verified. Details in
+  `FRONTEND_MIGRATION_PLAN.md`.
+- 2026-08-04 (Phase 3 / migration Stage 0): standalone webpack 5 pipeline on Node 22
+  built and locally verified (`web-bundler/` + CI shadow job `build_web_webpack_check`);
+  expo pipeline still deploys until staging parity is confirmed. Details in
+  `FRONTEND_MIGRATION_PLAN.md` status log.
 
--   2026-08-04 (Phase 2): root-app hygiene executed under the pinned Node 14 / npm 6
-    (lockfile stayed v1; `replacement_node_modules` Quill/y-quill patches re-applied and
-    diff-verified after installs).
+- 2026-08-04 (Phase 2): root-app hygiene executed under the pinned Node 14 / npm 6
+  (lockfile stayed v1; `replacement_node_modules` Quill/y-quill patches re-applied and
+  diff-verified after installs).
 
-    -   **Removed** (all verified unused): duplicate `@react-native-community/async-storage`
-        (+ its stale manual mock), frontend `firebase-admin` + `firebase-functions` (only the
-        jest moduleNameMapper references functions' own copies), npm `http2` shim.
-    -   **Bumped in-range**: `react-native-calendars` 1.1314 (visual-check the calendar UI),
-        `tinycolor2` 1.6, `chartjs-adapter-moment` 1.0.1, `chartjs-plugin-datalabels` 2.2.0,
-        `husky` 4.3.8, `webpack-bundle-analyzer` 4.10.2, `css-loader` 5.2.7,
-        `moment` pin 2.29.4 → 2.30.1.
-    -   **`y-websocket` bump REVERTED — do not retry before Phase 3 Stage 0**: 1.5.4 (and
-        even a fresh install of 1.3.17) nests a modern `lib0` whose optional chaining the
-        Expo 36 webpack 4 / acorn parser cannot handle — `build_web_production` fails with
-        `Module parse failed` in `y-websocket/node_modules/lib0` while jest stays green
-        (Babel transforms what webpack does not). Now pinned exact `1.3.17` with the nested
-        `lib0@0.2.42` block restored into the v1 lockfile from the last-good tree. Any
-        package whose transitive deps re-resolve can hit this class of failure: **verify
-        root-app bumps with a local `npm run build-web`, not just jest.**
-    -   **Test layout**: root `npm test` (Node 14) now excludes `functions/` (aligning local
-        runs with CI's web job) and three web-located bridge suites that require functions
-        code — those moved into `ci/jest.functions.config.js` (`BRIDGE_SUITES`) and pass
-        under Node 22. This also un-breaks CI's `test:web:changed` for branches that touch
-        files related to those suites.
-    -   **Deploy note**: the Phase 1 functions changes were NOT deployed by the green
-        pipeline after the babel-range fix — `deploy:cloud:functions:production` only runs
-        on `functions/**` diffs, and the fix commit had none (documented in
-        `functions/index.js` header). The Phase 2 commit includes a `functions/**` change,
-        so its pipeline runs the functions + Cloud Run deploys carrying all of Phase 1.
+    - **Removed** (all verified unused): duplicate `@react-native-community/async-storage`
+      (+ its stale manual mock), frontend `firebase-admin` + `firebase-functions` (only the
+      jest moduleNameMapper references functions' own copies), npm `http2` shim.
+    - **Bumped in-range**: `react-native-calendars` 1.1314 (visual-check the calendar UI),
+      `tinycolor2` 1.6, `chartjs-adapter-moment` 1.0.1, `chartjs-plugin-datalabels` 2.2.0,
+      `husky` 4.3.8, `webpack-bundle-analyzer` 4.10.2, `css-loader` 5.2.7,
+      `moment` pin 2.29.4 → 2.30.1.
+    - **`y-websocket` bump REVERTED — do not retry before Phase 3 Stage 0**: 1.5.4 (and
+      even a fresh install of 1.3.17) nests a modern `lib0` whose optional chaining the
+      Expo 36 webpack 4 / acorn parser cannot handle — `build_web_production` fails with
+      `Module parse failed` in `y-websocket/node_modules/lib0` while jest stays green
+      (Babel transforms what webpack does not). Now pinned exact `1.3.17` with the nested
+      `lib0@0.2.42` block restored into the v1 lockfile from the last-good tree. Any
+      package whose transitive deps re-resolve can hit this class of failure: **verify
+      root-app bumps with a local `npm run build-web`, not just jest.**
+    - **Test layout**: root `npm test` (Node 14) now excludes `functions/` (aligning local
+      runs with CI's web job) and three web-located bridge suites that require functions
+      code — those moved into `ci/jest.functions.config.js` (`BRIDGE_SUITES`) and pass
+      under Node 22. This also un-breaks CI's `test:web:changed` for branches that touch
+      files related to those suites.
+    - **Deploy note**: the Phase 1 functions changes were NOT deployed by the green
+      pipeline after the babel-range fix — `deploy:cloud:functions:production` only runs
+      on `functions/**` diffs, and the fix commit had none (documented in
+      `functions/index.js` header). The Phase 2 commit includes a `functions/**` change,
+      so its pipeline runs the functions + Cloud Run deploys carrying all of Phase 1.
 
--   2026-08-04 (Phase 1 remainder, one combined change): items 1a–6 all executed.
+- 2026-08-04 (Phase 1 remainder, one combined change): items 1a–6 all executed.
 
-    -   **firebase-admin 12 → 14 + firebase-functions 5 → 7 + @google-cloud/firestore 4 → 8**
-        (interlocked: admin 14 makes the Firestore client a peer dep at ^8.6). Kills the
-        `protobufjs` critical. admin 14 removed the legacy namespace statics — a codemod
-        rewrote 366 `admin.firestore.{FieldValue,Timestamp,FieldPath}` usages across ~80
-        files to modular `require('firebase-admin/firestore')` imports. Unused
-        `firebase-functions-test` devDep dropped.
-    -   **Functions tests moved to Node 22** via `ci/jest.functions.config.js` (skips Babel
-        for functions/node_modules; `node:crypto` shim in `ci/nodeShims/`). The web-pinned
-        Babel 7.12 cannot parse the new SDKs' syntax, and a global @babel/core bump breaks
-        the Expo presets (verified A/B) — so web tooling stays untouched. CLAUDE.md updated.
-    -   **html-pdf → puppeteer-core + @sparticuz/chromium** (invoice PDFs; kills the
-        `request`/`form-data` criticals). `sendMonthlyInvoice*` memory 256MB → 1GiB for
-        Chromium. Verify the first staging/production invoice renders correctly.
-    -   **twilio 3 → 6** (surface used — `messages.create`, `validateRequest`,
-        `twiml.VoiceResponse` — unchanged; load-smoke-tested).
-    -   **@mollie/api-client 3 → 4**: snake_case binder aliases removed upstream;
-        `customers_mandates`/`customers_subscriptions` renamed to
-        `customerMandates`/`customerSubscriptions` in `Payment/Mollie.js`.
-    -   **stripe 14 → 22**: runtime surface unchanged, BUT the newer pinned API version
-        moves `current_period_end` from Subscription to SubscriptionItem — all read sites
-        now fall back to `items.data[0].current_period_end`. Webhook event shapes are pinned
-        account-side and unaffected. Retest checkout + premium status on staging.
-    -   **@deepgram/sdk 4 → 5**: `createClient` → `new DeepgramClient({apiKey})`,
-        `listen.prerecorded.transcribeFile` → `listen.v1.media.transcribeFile` (throws
-        instead of `{result, error}`); options and response shape unchanged.
-    -   **@tavily/core 0.0.2 → 0.7, googleapis 174, uuid 11** (surfaces verified);
-        **fs-extra removed** (unused).
-    -   **Audit after all of Phase 1: 0 critical, 0 high, 7 moderate** (was 66 total /
-        8 critical at baseline).
-    -   **Deploy checks for the next staging deploy**: (1) the pinned `firebase-tools@13.29.3`
-        must discover the firebase-functions 7 manifest — `index.js` loads cleanly under v7
-        locally, but confirm every function actually redeploys (source-hash + CreateFunction
-        error check per CLAUDE.md); if discovery fails, fall back to `firebase-functions@^6`
-        (the security fixes are not in that package). (2) First invoice PDF (Chromium render),
-        (3) a WhatsApp send (twilio 6), (4) a Mollie subscription update (v4 binders),
-        (5) premium status check (stripe 22 period-end fallback), (6) a meeting
-        transcription (deepgram v5).
+    - **firebase-admin 12 → 14 + firebase-functions 5 → 7 + @google-cloud/firestore 4 → 8**
+      (interlocked: admin 14 makes the Firestore client a peer dep at ^8.6). Kills the
+      `protobufjs` critical. admin 14 removed the legacy namespace statics — a codemod
+      rewrote 366 `admin.firestore.{FieldValue,Timestamp,FieldPath}` usages across ~80
+      files to modular `require('firebase-admin/firestore')` imports. Unused
+      `firebase-functions-test` devDep dropped.
+    - **Functions tests moved to Node 22** via `ci/jest.functions.config.js` (skips Babel
+      for functions/node_modules; `node:crypto` shim in `ci/nodeShims/`). The web-pinned
+      Babel 7.12 cannot parse the new SDKs' syntax, and a global @babel/core bump breaks
+      the Expo presets (verified A/B) — so web tooling stays untouched. CLAUDE.md updated.
+    - **html-pdf → puppeteer-core + @sparticuz/chromium** (invoice PDFs; kills the
+      `request`/`form-data` criticals). `sendMonthlyInvoice*` memory 256MB → 1GiB for
+      Chromium. Verify the first staging/production invoice renders correctly.
+    - **twilio 3 → 6** (surface used — `messages.create`, `validateRequest`,
+      `twiml.VoiceResponse` — unchanged; load-smoke-tested).
+    - **@mollie/api-client 3 → 4**: snake_case binder aliases removed upstream;
+      `customers_mandates`/`customers_subscriptions` renamed to
+      `customerMandates`/`customerSubscriptions` in `Payment/Mollie.js`.
+    - **stripe 14 → 22**: runtime surface unchanged, BUT the newer pinned API version
+      moves `current_period_end` from Subscription to SubscriptionItem — all read sites
+      now fall back to `items.data[0].current_period_end`. Webhook event shapes are pinned
+      account-side and unaffected. Retest checkout + premium status on staging.
+    - **@deepgram/sdk 4 → 5**: `createClient` → `new DeepgramClient({apiKey})`,
+      `listen.prerecorded.transcribeFile` → `listen.v1.media.transcribeFile` (throws
+      instead of `{result, error}`); options and response shape unchanged.
+    - **@tavily/core 0.0.2 → 0.7, googleapis 174, uuid 11** (surfaces verified);
+      **fs-extra removed** (unused).
+    - **Audit after all of Phase 1: 0 critical, 0 high, 7 moderate** (was 66 total /
+      8 critical at baseline).
+    - **Deploy checks for the next staging deploy**: (1) the pinned `firebase-tools@13.29.3`
+      must discover the firebase-functions 7 manifest — `index.js` loads cleanly under v7
+      locally, but confirm every function actually redeploys (source-hash + CreateFunction
+      error check per CLAUDE.md); if discovery fails, fall back to `firebase-functions@^6`
+      (the security fixes are not in that package). (2) First invoice PDF (Chromium render),
+      (3) a WhatsApp send (twilio 6), (4) a Mollie subscription update (v4 binders),
+      (5) premium status check (stripe 22 period-end fallback), (6) a meeting
+      transcription (deepgram v5).
 
--   2026-08-04: Plan created. Phase 0 executed:
-    -   Email worker: `wrangler` 4.75.0 → 4.118.0, `postal-mime` 2.7.4 → 2.7.5, tests pass.
-        6 → 3 vulns; the remaining 3 are `undici` inside `miniflare` (dev-only tooling —
-        npm's proposed "fix" is a wrangler _downgrade_ to 4.35, rejected).
-    -   Functions: `npm update` + `npm audit fix` (no `--force`). 66 → 27 vulns
-        (criticals 8 → 4, highs 29 → 12). All 4 remaining criticals are killed by
-        Phase 1 items 1–2 (runtime `firebase-tools`, stale `@google-cloud/firestore`).
-        `e2b` 1.x and `zod` 3.x pins held. Functions tests: 159/160 suites pass; the one
-        failing suite (`calendarProjectRoutingConfig.test.js`, 2 tests) is pre-existing on
-        master (model default changed to `MODEL_GPT5_6_LUNA` in `ff45a4d08`, unrelated to
-        deps — flagged as a separate task).
-    -   Phase 3 migration plan drafted → `FRONTEND_MIGRATION_PLAN.md`.
--   2026-08-04 (later): Phase 1.1 executed — runtime `firebase-tools` removed from
-    `functions/` (see item 1 above for the full call-site inventory). Vulns 27 → 23;
-    remaining criticals: `protobufjs` (→ item 2) and `request`/`form-data` via the
-    deprecated `html-pdf` (→ new item 1a). Functions tests: 160/161 suites pass, only the
-    pre-existing `calendarProjectRoutingConfig` failure remains.
+- 2026-08-04: Plan created. Phase 0 executed:
+    - Email worker: `wrangler` 4.75.0 → 4.118.0, `postal-mime` 2.7.4 → 2.7.5, tests pass.
+      6 → 3 vulns; the remaining 3 are `undici` inside `miniflare` (dev-only tooling —
+      npm's proposed "fix" is a wrangler _downgrade_ to 4.35, rejected).
+    - Functions: `npm update` + `npm audit fix` (no `--force`). 66 → 27 vulns
+      (criticals 8 → 4, highs 29 → 12). All 4 remaining criticals are killed by
+      Phase 1 items 1–2 (runtime `firebase-tools`, stale `@google-cloud/firestore`).
+      `e2b` 1.x and `zod` 3.x pins held. Functions tests: 159/160 suites pass; the one
+      failing suite (`calendarProjectRoutingConfig.test.js`, 2 tests) is pre-existing on
+      master (model default changed to `MODEL_GPT5_6_LUNA` in `ff45a4d08`, unrelated to
+      deps — flagged as a separate task).
+    - Phase 3 migration plan drafted → `FRONTEND_MIGRATION_PLAN.md`.
+- 2026-08-04 (later): Phase 1.1 executed — runtime `firebase-tools` removed from
+  `functions/` (see item 1 above for the full call-site inventory). Vulns 27 → 23;
+  remaining criticals: `protobufjs` (→ item 2) and `request`/`form-data` via the
+  deprecated `html-pdf` (→ new item 1a). Functions tests: 160/161 suites pass, only the
+  pre-existing `calendarProjectRoutingConfig` failure remains.

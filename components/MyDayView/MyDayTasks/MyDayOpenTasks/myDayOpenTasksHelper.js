@@ -84,12 +84,8 @@ export const processTaskEstimationWhenTimePass = async () => {
         const { userLastState, activeTask } = await getLastStateOfUserAndActiveTask(loggedUser.uid, transaction)
 
         if (userLastState) {
-            const {
-                activeTaskId,
-                activeTaskProjectId,
-                activeTaskStartingDate,
-                activeTaskInitialEndingDate,
-            } = userLastState
+            const { activeTaskId, activeTaskProjectId, activeTaskStartingDate, activeTaskInitialEndingDate } =
+                userLastState
 
             const currentTime = moment().valueOf()
             const endOfWorkTime = moment().endOf('day').valueOf()
@@ -338,12 +334,8 @@ const extractAllTasksAndSubtasks = (user, projectIds, workstreams, todayTasks, a
 }
 
 const extractDataFromTasksObject = (user, loggedUserProjectsMap, allTasks, subtasksMap) => {
-    const {
-        selectedTasks,
-        otherTasks,
-        selectedTasksForSortingMode,
-        otherTasksForSortingMode,
-    } = selectTasksAndAddTimeIntervale(allTasks, user, loggedUserProjectsMap)
+    const { selectedTasks, otherTasks, selectedTasksForSortingMode, otherTasksForSortingMode } =
+        selectTasksAndAddTimeIntervale(allTasks, user, loggedUserProjectsMap)
 
     const { subtasksMapByProject, subtasksMapById } = generateSubtasksMapAndEstimationData(
         [...selectedTasks, ...otherTasks],
@@ -365,10 +357,8 @@ export const selectTasksAndAddTimeIntervale = (tasks, user, loggedUserProjectsMa
 
     const { selectedTasks, otherTasks } = sortTaskByTime(sortedTasks, user, loggedUserProjectsMap)
 
-    const {
-        selectedTasks: selectedTasksForSortingMode,
-        otherTasks: otherTasksForSortingMode,
-    } = sortTaskByTimeForSortingMode(sortedTasks, user, loggedUserProjectsMap)
+    const { selectedTasks: selectedTasksForSortingMode, otherTasks: otherTasksForSortingMode } =
+        sortTaskByTimeForSortingMode(sortedTasks, user, loggedUserProjectsMap)
 
     return { selectedTasks, otherTasks, selectedTasksForSortingMode, otherTasksForSortingMode }
 }
@@ -521,15 +511,16 @@ export const updateDataLoadedState = (myDayAllTodayTasks, user, loggedUserProjec
 export const processMyDayData = (user, projectsMap, todayTasks, administratorUserId, projectUsers) => {
     const { projectIds, guideProjectIds, archivedProjectIds, templateProjectIds, workstreams } = user
 
-    const sortedLoggedUserProjectIds = ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
-        projectIds,
-        guideProjectIds,
-        archivedProjectIds,
-        templateProjectIds,
-        projectsMap,
-        user.uid,
-        user.inFocusTaskProjectId
-    )
+    const sortedLoggedUserProjectIds =
+        ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
+            projectIds,
+            guideProjectIds,
+            archivedProjectIds,
+            templateProjectIds,
+            projectsMap,
+            user.uid,
+            user.inFocusTaskProjectId
+        )
 
     const { allTasks, subtasksMap } = extractAllTasksAndSubtasks(
         user,

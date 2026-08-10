@@ -2495,11 +2495,11 @@ describe('resolveCreateTaskTargetProject', () => {
                                   }),
                               }
                             : collectionName === 'projects' && docId === 'p-default'
-                            ? {
-                                  exists: true,
-                                  data: () => ({ name: 'Inbox' }),
-                              }
-                            : { exists: false, data: () => ({}) }
+                              ? {
+                                    exists: true,
+                                    data: () => ({ name: 'Inbox' }),
+                                }
+                              : { exists: false, data: () => ({}) }
                     ),
                 })),
             })),
@@ -2665,11 +2665,11 @@ describe('resolveCreateTaskTargetProject', () => {
                                   }),
                               }
                             : collectionName === 'projects' && docId === 'p-private'
-                            ? {
-                                  exists: true,
-                                  data: () => ({ name: 'Privat' }),
-                              }
-                            : { exists: false, data: () => ({}) }
+                              ? {
+                                    exists: true,
+                                    data: () => ({ name: 'Privat' }),
+                                }
+                              : { exists: false, data: () => ({}) }
                     ),
                 })),
             })),

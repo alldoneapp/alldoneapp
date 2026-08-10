@@ -148,9 +148,9 @@ describe('describeToolActivity', () => {
         })
 
         test('stays anonymous when the display name was never registered', () => {
-            expect(
-                describeToolActivity({ toolName: 'talk_to_assistant_unknown_target_abc123', toolArgs: {} })
-            ).toEqual({ actionKey: 'assistant_activity_ask_assistant_plain', subject: null })
+            expect(describeToolActivity({ toolName: 'talk_to_assistant_unknown_target_abc123', toolArgs: {} })).toEqual(
+                { actionKey: 'assistant_activity_ask_assistant_plain', subject: null }
+            )
         })
 
         test('never exposes the delegated message itself', () => {

@@ -38,8 +38,8 @@ export default function EstimationButton({
     const currentEstimation = isPending
         ? estimations[OPEN_STEP]
         : isObservedTask && !isToReviewTask
-        ? estimationsByObserverIds[currentUserId]
-        : estimations[currentStepId] || ESTIMATION_0_MIN
+          ? estimationsByObserverIds[currentUserId]
+          : estimations[currentStepId] || ESTIMATION_0_MIN
 
     const hidePopover = () => {
         setTimeout(async () => {

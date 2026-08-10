@@ -96,15 +96,15 @@ export default function PaymentPreviewModal({ paymentMethod, closeModal, selecte
         isActiveSubscription || isEditingUsersPendingSubscription
             ? 'Check info before update users'
             : isCanceledSubscription || isActivationPendingSubscription
-            ? 'Check info before activating the subscription'
-            : 'Check info before payment'
+              ? 'Check info before activating the subscription'
+              : 'Check info before payment'
 
     const description =
         isActiveSubscription || isEditingUsersPendingSubscription
             ? 'Check info before edit payment users description'
             : isCanceledSubscription || isActivationPendingSubscription
-            ? 'Check info before activating the subscription description'
-            : 'Check info before payment description'
+              ? 'Check info before activating the subscription description'
+              : 'Check info before payment description'
 
     return (
         <View

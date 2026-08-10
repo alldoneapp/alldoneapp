@@ -65,8 +65,8 @@ export default function PropertiesView({ projectId, note, project }) {
                 mobile
                     ? localStyles.containerMobile
                     : isMiddleScreen
-                    ? localStyles.containerTablet
-                    : localStyles.container
+                      ? localStyles.containerTablet
+                      : localStyles.container
             }
         >
             <PropertiesHeader />

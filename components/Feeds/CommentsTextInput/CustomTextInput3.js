@@ -192,8 +192,8 @@ function CustomTextInput3(
         projectId === GLOBAL_PROJECT_ID
             ? ALL_PROJECTS_INDEX
             : projectIndex
-            ? projectIndex
-            : projectId && ProjectHelper.getProjectIndexById(projectId)
+              ? projectIndex
+              : projectId && ProjectHelper.getProjectIndexById(projectId)
     const innerProjectId = projectId ? projectId : projectIndex ? loggedUserProjects[projectIndex].id : undefined
 
     const textRef = useRef('')

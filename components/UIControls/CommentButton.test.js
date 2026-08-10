@@ -52,7 +52,12 @@ jest.mock('react-tiny-popover', () => {
         </React.Fragment>
     )
 })
-jest.mock('react-hot-keys', () => ({ children }) => children)
+jest.mock(
+    'react-hot-keys',
+    () =>
+        ({ children }) =>
+            children
+)
 jest.mock('./GhostButton', () => 'GhostButton')
 jest.mock('../UIComponents/FloatModals/RichCommentModal/RichCommentModal', () => 'RichCommentModal')
 jest.mock('../../utils/HelperFunctions', () => ({
