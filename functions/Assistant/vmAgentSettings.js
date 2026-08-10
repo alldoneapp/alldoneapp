@@ -6,8 +6,7 @@ const {
     isValidApprovalPolicyLevel,
 } = require('./vmAgentApprovalPolicy')
 
-const { isValidFamilyId, isValidModelSelection, OPENROUTER_PROVIDER } = require('./vmAgentModelCatalog')
-const { isOpenRouterSelection } = require('./vmModelRouting')
+const { isValidFamilyId } = require('./vmAgentModelCatalog')
 
 const VALID_VM_AGENTS = ['claude', 'codex']
 const VALID_VM_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh']
@@ -33,21 +32,13 @@ function isValidVmApprovalPolicy(policy) {
  * in Settings does not discard the other agent's choice:
  *   users/{uid}.defaultVmAgentModel = { claude: 'sonnet', codex: 'terra' }
  * A family id is stored, never a concrete version — see vmAgentModelCatalog.js for why.
- *
- * Since AT-2230 the codex slot may instead hold an OpenRouter model selection
- * ('openrouter:deepseek/deepseek-chat'). It shares this slot rather than getting its own field
- * because it answers the same question — "which model does Codex run?" — and two fields would
- * allow a state where both are set and neither obviously wins.
  */
 function readStoredModelFamilies(data) {
     const stored = data && typeof data.defaultVmAgentModel === 'object' ? data.defaultVmAgentModel : null
     const families = {}
     for (const agent of VALID_VM_AGENTS) {
         const value = stored ? stored[agent] : null
-        // An OpenRouter selection is only meaningful for Codex; Claude cannot run one, so a value
-        // that somehow landed in the claude slot is read as "no preference" rather than honoured.
-        const valid = agent === 'codex' ? isValidModelSelection(value) : isValidFamilyId(value)
-        families[agent] = valid ? value : null
+        families[agent] = isValidFamilyId(value) ? value : null
     }
     return families
 }
@@ -124,14 +115,6 @@ async function getVmAgentSettings({ userId }) {
         modelCatalogs = {
             claude: { ...FALLBACK_CATALOGS.claude, fetchedAt: 0, source: 'fallback' },
             codex: { ...FALLBACK_CATALOGS.codex, fetchedAt: 0, source: 'fallback' },
-            [OPENROUTER_PROVIDER]: {
-                ...FALLBACK_CATALOGS[OPENROUTER_PROVIDER],
-                fetchedAt: 0,
-                source: 'fallback',
-                // Unknown at this point (the throw came from the catalog module itself). Treat the
-                // source as unavailable so the UI does not offer a model the run may not reach.
-                available: false,
-            },
         }
     }
 
@@ -240,31 +223,20 @@ async function setDefaultVmAgentModel({ userId, agent, family }) {
     if (!isValidVmAgent(agent)) {
         throw new HttpsError('invalid-argument', 'agent must be "claude" or "codex".')
     }
-    if (family !== null && !isValidModelSelection(family)) {
+    if (family !== null && !isValidFamilyId(family)) {
         throw new HttpsError('invalid-argument', 'family must be null or a valid model family id.')
-    }
-
-    // OpenRouter is a source for the Codex harness only — Claude Code cannot be pointed at it.
-    // Reject the pairing here rather than storing a preference that would be dropped at run time.
-    const openRouterSelected = isOpenRouterSelection(family)
-    if (openRouterSelected && agent !== 'codex') {
-        throw new HttpsError('invalid-argument', 'OpenRouter models are only available for the Codex agent.')
     }
 
     if (family !== null) {
         const { getModelCatalog } = require('./vmAgentModelCatalog')
-        const catalogProvider = openRouterSelected ? OPENROUTER_PROVIDER : agent
         let catalog = null
         try {
-            catalog = await getModelCatalog(catalogProvider)
+            catalog = await getModelCatalog(agent)
         } catch (error) {
             console.warn('🖥️ VM MODELS: Could not verify family on save', { agent, family, error: error.message })
         }
         if (catalog && catalog.source !== 'fallback' && !catalog.families.some(entry => entry.id === family)) {
             throw new HttpsError('invalid-argument', `"${family}" is not an available ${agent} model family.`)
-        }
-        if (openRouterSelected && catalog && catalog.available === false) {
-            throw new HttpsError('failed-precondition', 'OpenRouter is not configured for this environment.')
         }
     }
 
