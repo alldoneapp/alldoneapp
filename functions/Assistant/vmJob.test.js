@@ -212,7 +212,9 @@ describe('startVmJob', () => {
     })
 
     test('uses the requesting user default when the launch omits an agent', async () => {
-        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
+        // startVmJob reads the user doc twice per launch (approval policy, then agent
+        // settings) — the stored preferences must answer every read, not just the first.
+        mockGetDoc('users/user-1').get.mockResolvedValue({
             exists: true,
             data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'xhigh' }),
         })
@@ -237,7 +239,7 @@ describe('startVmJob', () => {
     })
 
     test('lets an explicit agent override the requesting user default', async () => {
-        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
+        mockGetDoc('users/user-1').get.mockResolvedValue({
             exists: true,
             data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'xhigh' }),
         })
@@ -285,7 +287,7 @@ describe('startVmJob', () => {
     })
 
     test.each(['claude', 'codex'])('applies the user default effort to %s', async selectedAgent => {
-        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
+        mockGetDoc('users/user-1').get.mockResolvedValue({
             exists: true,
             data: () => ({ defaultVmAgentReasoningEffort: 'high' }),
         })
@@ -307,7 +309,7 @@ describe('startVmJob', () => {
     })
 
     test('lets an explicit effort override the user default', async () => {
-        mockGetDoc('users/user-1').get.mockResolvedValueOnce({
+        mockGetDoc('users/user-1').get.mockResolvedValue({
             exists: true,
             data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'xhigh' }),
         })
