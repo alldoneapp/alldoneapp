@@ -1,6 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Dimensions } from 'react-native'
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -53,7 +53,6 @@ import {
     VIDEO_TRIGGER,
 } from '../Utils/HelperFunctions'
 import './styles.css'
-import './quill2Setup'
 import {
     formatUrl,
     getUrlObject,
@@ -160,7 +159,31 @@ function CustomTextInput3(
     const [editorElement, setEditorElement] = useState(null)
     const [containerElement, setContainerElement] = useState(null)
     const [selectionBounds, setSelectionBounds] = useState({ top: 0, left: 0 })
-    const [html, setHtml] = useState('')
+    const [html, setHtmlState] = useState('')
+    /**
+     * `html` is what ReactQuill is given as its controlled `value`, and
+     * react-quill overwrites the editor whenever that value disagrees with the
+     * editor's own contents (`shouldComponentUpdate` -> `setEditorContents`).
+     *
+     * React state alone is too slow for that contract: this component also
+     * writes into the editor imperatively (`setContents(initialDeltaOps)` at
+     * mount, `updateContents` in processInitialText/clearAndSetContent), and a
+     * re-render triggered from anywhere else - a redux dispatch, or the
+     * synchronous relayout CustomScrollView performs after measuring - can be
+     * flushed BEFORE the queued `setHtml` is applied. react-quill then sees the
+     * stale value, decides the editor is out of sync and wipes it. That is
+     * AT-2178: the create-task popup was pre-filled correctly and then emptied
+     * again a tick later.
+     *
+     * The ref is updated synchronously, so every render - including one that
+     * interleaves with a pending state update - passes the value the editor
+     * actually holds. The state is kept because other effects depend on it.
+     */
+    const htmlRef = useRef('')
+    const setHtml = value => {
+        htmlRef.current = value
+        setHtmlState(value)
+    }
     const [mentionModalHeight, setMentionModalHeight] = useState(0)
     const [flag, setFlag] = useState(false)
 
@@ -657,7 +680,7 @@ function CustomTextInput3(
                 delta.insert(initialTextExtended)
             } else {
                 if (isCalendarTask) {
-                    delta = reactQuillRef.current.getEditor().clipboard.convert({ html: initialTextExtended })
+                    delta = reactQuillRef.current.getEditor().clipboard.convert(initialTextExtended)
                 } else {
                     delta = processPastedFn(
                         initialTextExtended,
@@ -888,7 +911,7 @@ function CustomTextInput3(
                 formats.push('commentTagFormat')
             }
             if (isCalendarTask) {
-                formats.push('bold', 'italic', 'underline', 'list', 'attachment')
+                formats.push('bold', 'italic', 'underline', 'bullet', 'list', 'attachment')
             }
             return formats
         }
@@ -957,8 +980,8 @@ function CustomTextInput3(
     useEffect(() => {
         if (quillRef.current) {
             showMentionPopupRef.current
-                ? delete quillRef.current.keyboard.bindings['Tab']
-                : (quillRef.current.keyboard.bindings['Tab'] = quillKeyboardBindingsTabRef.current)
+                ? delete quillRef.current.keyboard.bindings[9]
+                : (quillRef.current.keyboard.bindings[9] = quillKeyboardBindingsTabRef.current)
         }
     }, [showMentionPopupRef.current])
 
@@ -1074,10 +1097,10 @@ function CustomTextInput3(
 
         quillRef.current = reactQuillRef.current.getEditor()
         if (autoFocus) quillRef.current.focus()
-        quillKeyboardBindingsTabRef.current = quillRef.current.keyboard.bindings['Tab']
+        quillKeyboardBindingsTabRef.current = quillRef.current.keyboard.bindings[9]
 
         if (disabledTabKey) {
-            delete quillRef.current.keyboard.bindings['Tab']
+            delete quillRef.current.keyboard.bindings[9]
         }
 
         if (setEditor) {
@@ -1239,7 +1262,6 @@ function CustomTextInput3(
                     quillTextInputRefs[editorId] = el
                 }}
                 modules={{
-                    editorMeta: true,
                     toolbar: false,
                     autoformat: true,
                     history: {
@@ -1248,7 +1270,7 @@ function CustomTextInput3(
                         beforeUndoRedo,
                     },
                 }}
-                value={html}
+                value={htmlRef.current}
                 onChange={updateText}
                 placeholder={createPlaceholder(
                     placeholder,

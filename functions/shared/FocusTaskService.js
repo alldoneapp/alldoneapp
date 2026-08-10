@@ -20,6 +20,7 @@ const {
 } = require('../Utils/HelperFunctionsCloud')
 const { mapGoalData, mapMilestoneData } = require('../Utils/MapDataFuncions')
 const { ProjectService } = require('./ProjectService')
+const { isTaskOnUserPlate } = require('./focusTaskEligibility')
 
 const ALL_USERS = 'ALL_USERS'
 const NOT_PARENT_GOAL_INDEX = '0'
@@ -397,9 +398,18 @@ class FocusTaskService {
 
             const taskData = taskDoc.data()
 
-            // Check if task is still open and assigned to user
-            if (taskData.done || taskData.inDone || taskData.userId !== userId) {
-                // Focus task is completed or no longer assigned to user
+            // Check if task is still open and actionable by the user.
+            // AT-2193: `userId !== userId` alone is not enough — a task the user still OWNS can
+            // have been handed on to the next workflow step's reviewer, at which point it is no
+            // longer theirs to work on and must stop being their focus task. This is also what
+            // self-heals focus state that was set before the rule existed.
+            if (
+                taskData.done ||
+                taskData.inDone ||
+                taskData.userId !== userId ||
+                !isTaskOnUserPlate(taskData, userId)
+            ) {
+                // Focus task is completed, unassigned, or parked in another reviewer's step
                 await this.options.database.doc(`users/${userId}`).update({
                     inFocusTaskId: '',
                     inFocusTaskProjectId: '',
@@ -558,6 +568,11 @@ class FocusTaskService {
                         if (excludeTaskId && task.id === excludeTaskId) {
                             continue
                         }
+                        // AT-2193: never focus a task that has already moved on to another
+                        // reviewer's workflow step, even when the user still owns it.
+                        if (!isTaskOnUserPlate(task, userId)) {
+                            continue
+                        }
                         if (task.calendarData && task.calendarData.start) {
                             const taskStartTimeString = task.calendarData.start.dateTime || task.calendarData.start.date
                             // Apply timezone to task start time for accurate comparison
@@ -609,7 +624,10 @@ class FocusTaskService {
                         task =>
                             task.dueDate <= endOfToday &&
                             !task.calendarData &&
-                            (!excludeTaskId || task.id !== excludeTaskId)
+                            (!excludeTaskId || task.id !== excludeTaskId) &&
+                            // AT-2193: the query above matches on ownership, which still includes
+                            // tasks this user has already handed on to the next workflow step.
+                            isTaskOnUserPlate(task, userId)
                     )
 
                 const previousTaskWasGeneral =
@@ -726,7 +744,9 @@ class FocusTaskService {
                                     task =>
                                         task.dueDate <= endOfToday &&
                                         !task.calendarData &&
-                                        (!excludeTaskId || task.id !== excludeTaskId)
+                                        (!excludeTaskId || task.id !== excludeTaskId) &&
+                                        // AT-2193: same rule as the current project.
+                                        isTaskOnUserPlate(task, userId)
                                 )
 
                             if (tasksFromOtherProject.length > 0) {

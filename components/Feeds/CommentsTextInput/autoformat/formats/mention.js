@@ -1,5 +1,5 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 
@@ -48,8 +48,8 @@ export default class Mention extends Embed {
         return mentionData
     }
 
-    constructor(scroll, domNode) {
-        super(scroll, domNode)
+    constructor(domNode) {
+        super(domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = Mention.data
     }

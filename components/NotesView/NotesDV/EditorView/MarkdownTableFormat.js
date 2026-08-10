@@ -1,4 +1,4 @@
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 import v4 from 'uuid/v4'
 
 const Embed = ReactQuill.Quill.import('blots/embed')

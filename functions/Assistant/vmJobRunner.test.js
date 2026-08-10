@@ -1671,7 +1671,11 @@ describe('VM runner artifact presentation', () => {
 })
 
 describe('VM completion chat metadata', () => {
-    const createFirestoreMock = ({ commentData = {}, chatData = {} } = {}) => {
+    const createFirestoreMock = ({
+        commentData = {},
+        chatData = {},
+        taskData = { commentsData: { amount: 1 } },
+    } = {}) => {
         const refs = new Map()
         const doc = jest.fn(path => {
             if (!refs.has(path)) {
@@ -1688,7 +1692,7 @@ describe('VM completion chat metadata', () => {
                     return { exists: true, data: () => ({ title: 'Important task', members: ['user-2'], ...chatData }) }
                 }
                 if (ref.path === 'items/project-1/tasks/task-1') {
-                    return { exists: true, data: () => ({ commentsData: { amount: 1 } }) }
+                    return { exists: true, data: () => taskData }
                 }
                 if (ref.path === 'projects/project-1') {
                     return { exists: true, data: () => ({ name: 'Product' }) }
@@ -2003,6 +2007,156 @@ describe('VM completion chat metadata', () => {
         )
     })
 
+    // AT-2196: a run that ends without doing the work must land back on a human. The workflow step
+    // is deliberately untouched — only the reviewer moves, exactly like an agent question.
+    describe('failure hands the task to the requesting user (AT-2196)', () => {
+        const workflowTask = {
+            commentsData: { amount: 1 },
+            currentReviewerId: 'assistant-1',
+            stepHistory: [-1, 'ai-step'],
+            userIds: ['user-1', 'assistant-1'],
+        }
+        const pendingWebhook = {
+            correlationId: 'correlation-1',
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            assistantId: 'assistant-1',
+            userId: 'user-1',
+            userIdsToNotify: ['user-1'],
+            isPublicFor: [0],
+            statusCommentId: 'comment-1',
+        }
+        const taskUpdate = (transaction, refs) =>
+            transaction.update.mock.calls.find(call => call[0] === refs.get('items/project-1/tasks/task-1'))?.[1]
+
+        test('assigns the failed task to the user while preserving its workflow step', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, '❌ The VM task could not be completed: boom', {
+                assistantRunStatus: 'failed',
+                failureReason: 'runtime_timeout',
+            })
+
+            const update = taskUpdate(transaction, refs)
+            expect(update).toMatchObject({
+                currentReviewerId: 'user-1',
+                vmInteractionWorkflowStep: expect.objectContaining({
+                    reason: 'failure',
+                    failureReason: 'runtime_timeout',
+                    reviewerId: 'user-1',
+                    previousReviewerId: 'assistant-1',
+                    workflowStepId: 'ai-step',
+                }),
+            })
+            // The step itself never moves: no stepHistory rewrite, no done/completed flags.
+            expect(update).toEqual(expect.not.objectContaining({ stepHistory: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ done: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ inDone: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ completed: expect.anything() }))
+        })
+
+        test('also assigns a cancelled run back to the user', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, 'Stopped.', { assistantRunStatus: 'cancelled' })
+
+            expect(taskUpdate(transaction, refs)).toMatchObject({
+                currentReviewerId: 'user-1',
+                vmInteractionWorkflowStep: expect.objectContaining({ reason: 'failure', failureReason: 'cancelled' }),
+            })
+        })
+
+        test('leaves the reviewer alone when the run succeeds', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, 'All done.', { isFinal: true, output: 'All done.' })
+
+            const update = taskUpdate(transaction, refs)
+            expect(update).toMatchObject({ isAssistantEnabled: true })
+            expect(update).toEqual(expect.not.objectContaining({ currentReviewerId: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ vmInteractionWorkflowStep: expect.anything() }))
+        })
+
+        test('leaves the reviewer alone while a run is still in progress', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(pendingWebhook, '⏳ Working…', { assistantRunStatus: 'running' })
+
+            expect(taskUpdate(transaction, refs)).toBeUndefined()
+        })
+
+        test('does not touch the reviewer of a non-task thread', async () => {
+            const { transaction, refs } = createFirestoreMock({ taskData: workflowTask })
+
+            await __private__.writeStatusComment(
+                { ...pendingWebhook, objectType: 'topics' },
+                '❌ The VM task could not be completed: boom',
+                { assistantRunStatus: 'failed' }
+            )
+
+            expect(
+                transaction.update.mock.calls.every(call => !call[1] || call[1].currentReviewerId === undefined)
+            ).toBe(true)
+            expect(refs.has('items/project-1/tasks/task-1')).toBe(false)
+        })
+
+        test('leaves a task alone when a human took it over while the VM was running', async () => {
+            const { transaction, refs } = createFirestoreMock({
+                taskData: { ...workflowTask, currentReviewerId: 'bob' },
+            })
+
+            await __private__.writeStatusComment(pendingWebhook, '❌ The VM task could not be completed: boom', {
+                assistantRunStatus: 'failed',
+            })
+
+            const update = taskUpdate(transaction, refs)
+            expect(update).toEqual(expect.not.objectContaining({ currentReviewerId: expect.anything() }))
+        })
+
+        test('still hands the task over when the comment metadata was already applied', async () => {
+            // A run can post its final answer and then throw while billing. It settles as failed, and
+            // that failure has to reach a human even though the one-shot metadata guard has fired.
+            const { transaction, refs } = createFirestoreMock({
+                taskData: workflowTask,
+                commentData: { vmCompletionMetadataAppliedAt: 123 },
+            })
+
+            await __private__.writeStatusComment(pendingWebhook, '❌ The VM task could not be completed: boom', {
+                assistantRunStatus: 'failed',
+            })
+
+            expect(taskUpdate(transaction, refs)).toEqual({
+                currentReviewerId: 'user-1',
+                vmInteractionWorkflowStep: expect.objectContaining({ reason: 'failure' }),
+            })
+        })
+
+        test('does not steal a task another VM job is holding', async () => {
+            const { transaction, refs } = createFirestoreMock({
+                taskData: {
+                    ...workflowTask,
+                    currentReviewerId: 'user-2',
+                    vmInteractionWorkflowStep: {
+                        correlationId: 'other-run',
+                        requestId: 'request-9',
+                        reviewerId: 'user-2',
+                        previousReviewerId: 'assistant-1',
+                        reason: 'interaction',
+                    },
+                },
+            })
+
+            await __private__.writeStatusComment(pendingWebhook, '❌ The VM task could not be completed: boom', {
+                assistantRunStatus: 'failed',
+            })
+
+            const update = taskUpdate(transaction, refs)
+            expect(update).toEqual(expect.not.objectContaining({ currentReviewerId: expect.anything() }))
+            expect(update).toEqual(expect.not.objectContaining({ vmInteractionWorkflowStep: expect.anything() }))
+        })
+    })
+
     test('does not change assistant activation for a successful topic VM run', async () => {
         const { transaction, refs } = createFirestoreMock()
 
@@ -2071,9 +2225,21 @@ describe('VM completion chat metadata', () => {
         expect(transaction.update).not.toHaveBeenCalled()
     })
 
-    test('keeps task-list and chat previews in sync with live VM progress without incrementing counts', async () => {
-        const { refs, transaction } = createFirestoreMock()
-        const progressText = '⏳ Reading the task-list listeners'
+    // The live thinking/working log is rewritten into the same comment many times per run. None of
+    // those rewrites may create an unread marker: the red badge has to mean "there is something to
+    // read", not "the VM is still typing". Settled runs — including the unsuccessful ones — and
+    // questions the VM asks (written by vmInteraction, not here) are the only red-worthy events.
+    const chatNotificationWrites = transaction =>
+        transaction.set.mock.calls
+            .map(([ref]) => (ref && ref.path) || '')
+            .filter(path => path.startsWith('chatNotifications/'))
+
+    test.each([
+        ['a live progress update', {}],
+        ['a run waiting for the user to answer', { assistantRunStatus: 'awaiting_user' }],
+        ['a run whose cancellation was requested', { assistantRunStatus: 'cancel_requested' }],
+    ])('writes no unread notification for %s', async (_label, options) => {
+        const { transaction } = createFirestoreMock()
 
         await __private__.writeStatusComment(
             {
@@ -2083,31 +2249,47 @@ describe('VM completion chat metadata', () => {
                 objectId: 'task-1',
                 assistantId: 'assistant-1',
                 userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
                 statusCommentId: 'comment-1',
             },
-            progressText
+            '🖥️ Working with Claude in a VM…\n\n💻 npm test',
+            options
         )
 
-        expect(refs.get('chatObjects/project-1/chats/task-1').update).toHaveBeenCalledWith(
-            expect.objectContaining({
-                lastEditorId: 'assistant-1',
-                'commentsData.lastCommentOwnerId': 'assistant-1',
-                'commentsData.lastComment': progressText,
-                'commentsData.lastCommentType': 2,
-            })
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update).toHaveBeenCalledWith({
-            'commentsData.lastComment': expect.stringContaining('Reading the task-list'),
-            'commentsData.lastCommentType': 2,
-        })
-        expect(refs.get('chatObjects/project-1/chats/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
-        expect(refs.get('items/project-1/tasks/task-1').update.mock.calls[0][0]).not.toHaveProperty(
-            'commentsData.amount'
-        )
+        expect(chatNotificationWrites(transaction)).toEqual([])
         expect(transaction.set).not.toHaveBeenCalled()
-        expect(transaction.update).not.toHaveBeenCalled()
+    })
+
+    test.each([
+        ['the final result', { isFinal: true, output: 'Finished VM result' }],
+        ['a failed run', { assistantRunStatus: 'failed' }],
+        ['a cancelled run', { assistantRunStatus: 'cancelled' }],
+    ])('writes the unread notification for %s', async (_label, options) => {
+        const { transaction } = createFirestoreMock()
+
+        await __private__.writeStatusComment(
+            {
+                correlationId: 'correlation-1',
+                projectId: 'project-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+                userId: 'user-1',
+                userIdsToNotify: ['user-1'],
+                isPublicFor: [0],
+                statusCommentId: 'comment-1',
+            },
+            'Settled VM run',
+            options
+        )
+
+        expect(chatNotificationWrites(transaction)).toEqual(['chatNotifications/project-1/user-1/comment-1'])
+        expect(transaction.set).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'chatNotifications/project-1/user-1/comment-1' }),
+            // followed: true is what makes the badge red rather than grey.
+            expect.objectContaining({ followed: true, creatorType: 'assistant' })
+        )
     })
 
     test('does not treat the assistant as a user when it appears in the follower list', async () => {

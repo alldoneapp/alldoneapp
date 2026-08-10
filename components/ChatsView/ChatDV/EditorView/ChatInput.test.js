@@ -36,7 +36,7 @@ jest.mock('firebase/compat/app', () => ({
     default: {},
 }))
 
-jest.mock('react-quill-new', () => ({
+jest.mock('react-quill', () => ({
     Quill: {
         import: () =>
             function Delta() {

@@ -23,6 +23,9 @@ import { useDispatch, useSelector } from 'react-redux'
 import store from '../../redux/store'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
 
+export const DEFAULT_MAX_NOTES_TO_RENDER = 10
+export const FILTERED_MAX_NOTES_TO_RENDER = 50
+
 function NotesView() {
     const dispatch = useDispatch()
     const [tNotesAmount, setTNotesAmount] = useState(null)
@@ -38,9 +41,15 @@ function NotesView() {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedTab = useSelector(state => state.selectedSidebarTab)
     const currentUser = useSelector(state => state.currentUser)
+    const noteOwnerFilters = useSelector(state => state.noteOwnerFilters)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
+
+    // The owner filter runs client-side over the notes already loaded, so widen the fetch
+    // window while one is active. Without this, filtering a 10-note window by owner can show
+    // an almost-empty list even when that owner has plenty of notes further back (AT-2194).
+    const maxNotesToRender = noteOwnerFilters.length > 0 ? FILTERED_MAX_NOTES_TO_RENDER : DEFAULT_MAX_NOTES_TO_RENDER
 
     const projects = loggedUserProjects.filter(
         project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
@@ -123,7 +132,7 @@ function NotesView() {
                     <NotesByProject
                         project={loggedUserProjects[selectedProjectIndex]}
                         filterBy={notesActiveTab}
-                        maxNotesToRender={10}
+                        maxNotesToRender={maxNotesToRender}
                         key={loggedUserProjects[selectedProjectIndex].id}
                     />
                 ) : notesAmounts.length === 0 || tNotesAmount == null || tNotesAmount > 0 ? (

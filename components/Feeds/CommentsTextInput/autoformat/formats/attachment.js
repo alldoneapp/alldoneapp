@@ -1,5 +1,5 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 import ReactDOM from 'react-dom'
 import v4 from 'uuid/v4'
 import { Provider } from 'react-redux'
@@ -58,8 +58,8 @@ export default class Attachment extends Embed {
         return commentData
     }
 
-    constructor(scroll, domNode) {
-        super(scroll, domNode)
+    constructor(domNode) {
+        super(domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = Attachment.data
     }

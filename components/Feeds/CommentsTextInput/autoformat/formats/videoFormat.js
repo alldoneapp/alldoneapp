@@ -1,5 +1,5 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill-new'
+import ReactQuill from 'react-quill'
 import ReactDOM from 'react-dom'
 import v4 from 'uuid/v4'
 
@@ -53,8 +53,8 @@ export default class VideoFormat extends Embed {
         return commentData
     }
 
-    constructor(scroll, domNode) {
-        super(scroll, domNode)
+    constructor(domNode) {
+        super(domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = VideoFormat.data
     }
