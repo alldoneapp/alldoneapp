@@ -915,7 +915,7 @@ exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render c
           </div>
         </div>
         <div
-          className="css-view-g5y9jx r-position-u8s1d r-right-1sd1n6o r-top-xj4fhj r-zIndex-184en5c"
+          className="css-view-g5y9jx r-position-u8s1d r-right-1sd1n6o r-top-xj4fhj"
           dir={null}
         >
           <div
@@ -1873,7 +1873,7 @@ exports[`FollowUpDueDate component FollowUpDueDate snapshot test should render c
           </div>
         </div>
         <div
-          className="css-view-g5y9jx r-position-u8s1d r-right-1sd1n6o r-top-xj4fhj r-zIndex-184en5c"
+          className="css-view-g5y9jx r-position-u8s1d r-right-1sd1n6o r-top-xj4fhj"
           dir={null}
         >
           <div

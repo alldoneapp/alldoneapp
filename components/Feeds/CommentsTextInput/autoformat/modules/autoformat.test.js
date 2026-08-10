@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-jest.mock('react-quill', () => ({
+jest.mock('react-quill-new', () => ({
     Quill: {
         import: path => {
             if (path === 'core/module') return class MockModule {}
@@ -21,7 +21,7 @@ jest.mock('react-quill', () => ({
                     }
                 }
             }
-            if (path === 'parchment') return { Attributor: { Style: class {} }, Scope: { INLINE: 'INLINE' } }
+            if (path === 'parchment') return { StyleAttributor: class {}, Scope: { INLINE: 'INLINE' } }
             return class {}
         },
         events: {},

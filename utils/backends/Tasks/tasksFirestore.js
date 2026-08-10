@@ -150,18 +150,6 @@ import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/workflowStepHelper'
 import { TASK_EXECUTION_MODE_DIRECT } from '../../taskExecutionMode'
 import { getAssistantSuggestedTaskRejection } from '../../suggestedTaskFlow'
-import { shouldReleaseFocusOnWorkflowMove } from './workflowFocusHandoff'
-import {
-    buildFocusCandidateExclusions,
-    finishFocusHandoff,
-    isFocusHandoffSuperseded,
-    isFocusTaskReleased,
-    isTaskHoldingFocus,
-    readOptimisticFocus,
-    startFocusHandoff,
-    supersedeFocusHandoffs,
-} from './focusHandoffRace'
-import { isTaskOnUserPlate } from './focusTaskEligibility'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -1116,12 +1104,13 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
     }
 
     const endOfToday = moment().endOf('day').valueOf()
-    // AT-2191: same optimistic-aware check as setTaskDueDate — a due-date change made from the
-    // detailed view while an earlier focus swap is still unconfirmed must swap focus too.
-    let focusHandoffId = null
-    if (endOfToday < task.dueDate && isFocusTaskForUser(projectId, task.id, task.userId)) {
-        focusHandoffId = startFocusHandoff(task.id)
-        setOptimisticNextFocusTask(projectId, oldTask, task.userId)
+    let shouldFindNewFocusTask = false
+    if (endOfToday < task.dueDate) {
+        const assignee = TasksHelper.getUserInProject(projectId, task.userId)
+        shouldFindNewFocusTask = !!assignee && assignee.inFocusTaskId === task.id
+        if (shouldFindNewFocusTask) {
+            setOptimisticNextFocusTask(projectId, oldTask)
+        }
     }
 
     updateSubtasksState(projectId, task.subtaskIds, subtasksUpdateData, batch)
@@ -1148,8 +1137,8 @@ export async function updateTask(projectId, task, oldTask, oldAssignee, comment,
         await reconcileExistingDayRateTimeLog(projectId, task.userId, task.completed)
     }
 
-    if (focusHandoffId !== null) {
-        await runFocusHandoff(focusHandoffId, projectId, task.userId, oldTask.parentGoalId, taskId)
+    if (shouldFindNewFocusTask) {
+        await findAndSetNewFocusedTask(projectId, task.userId, oldTask.parentGoalId, taskId)
     }
 
     updateTaskFeedsChain(
@@ -1619,11 +1608,6 @@ export async function updateFocusedTask(
         const shouldSetOptimisticFocus = !externalBatch
 
         if (shouldSetOptimisticFocus) {
-            // AT-2191: the user picked a focus task by hand, which outranks any postpone whose
-            // backend search is still running. Without this, that search could land afterwards and
-            // silently replace the task they just chose.
-            supersedeFocusHandoffs()
-
             const optimisticTaskId = taskToSetFocusOn ? taskToSetFocusOn.id : null
             const optimisticProjectId = taskToSetFocusOn
                 ? projectId
@@ -1631,7 +1615,7 @@ export async function updateFocusedTask(
                 ? assignee.inFocusTaskProjectId
                 : projectId
             store.dispatch(
-                setOptimisticFocusTask(optimisticTaskId, optimisticProjectId, taskToSetFocusOn?.parentGoalId, userId)
+                setOptimisticFocusTask(optimisticTaskId, optimisticProjectId, taskToSetFocusOn?.parentGoalId)
             )
         }
 
@@ -2387,20 +2371,6 @@ export function dismissTaskGoalSuggestion(projectId, task) {
     })
 }
 
-/**
- * AT-2160: read a task doc from Firestore's local cache, falling back to the server when it is not
- * cached. Used on paths where the read is only needed to build an undo record and must not delay
- * the write that the user is waiting to see.
- */
-export async function getTaskSnapshotCacheFirst(projectId, taskId) {
-    const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
-    try {
-        return await ref.get({ source: 'cache' })
-    } catch (error) {
-        return ref.get()
-    }
-}
-
 export async function setTaskDueDate(
     projectId,
     taskId,
@@ -2459,14 +2429,8 @@ export async function setTaskDueDate(
 
         const operations = [buildTaskUpdateOperation(projectId, taskId, before, after)]
         if (task.subtaskIds?.length > 0) {
-            // AT-2160: these reads only exist to record undo's "before" values, but they used to be
-            // plain server gets sitting in front of every write below — so postponing a task that
-            // has subtasks moved nothing on screen until a full round trip came back, while the
-            // same task without subtasks moved in the same frame. Subtasks of a task you are
-            // looking at are already in the local cache (the task-list listener keeps them there),
-            // so read from it and only fall back to the server on a genuine miss.
             const subtaskSnapshots = await Promise.all(
-                task.subtaskIds.map(subtaskId => getTaskSnapshotCacheFirst(projectId, subtaskId))
+                task.subtaskIds.map(subtaskId => getDb().doc(`items/${projectId}/tasks/${subtaskId}`).get())
             )
             subtaskSnapshots.forEach(snapshot => {
                 if (!snapshot.exists) return
@@ -2525,23 +2489,27 @@ export async function setTaskDueDate(
     }
 
     const endOfToday = moment().endOf('day').valueOf()
-    let focusHandoffId = null // AT-2191: set once this postpone owns a focus handoff
+    let shouldFindNewFocusTask = false // Flag to check if we need to find a new focus task
     if (endOfToday < dueDate) {
-        // AT-2191: matches the optimistic focus too, so postponing the task a previous postpone just
-        // handed focus to still swaps — the confirmed inFocusTaskId lags a full round trip behind.
-        if (isFocusTaskForUser(projectId, task.id, task.userId)) {
-            focusHandoffId = startFocusHandoff(task.id)
+        const assignee = TasksHelper.getUserInProject(projectId, task.userId)
+        // Check if the postponed task was the focus task
+        if (assignee && assignee.inFocusTaskId === task.id) {
             setOptimisticNextFocusTask(projectId, task)
             // Instead of just removing focus, we'll find a new one after committing the postpone changes
             // We remove the direct call to updateFocusedTask here
+            // REMOVE LOGGING HERE
+            // console.log(
+            //     `[setTaskDueDate] Task ${taskId} being postponed was the focus task. Setting shouldFindNewFocusTask=true.`
+            // )
+            shouldFindNewFocusTask = true
         }
     }
 
     if (!externalBatch) await batch.commit()
 
     // If the postponed task was the focus task, find and set a new one now
-    if (focusHandoffId !== null) {
-        await runFocusHandoff(focusHandoffId, projectId, task.userId, task.parentGoalId, taskId)
+    if (shouldFindNewFocusTask) {
+        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, taskId)
     }
 
     setTaskDueDateFeedsChain(projectId, taskId, dueDate, task, isObservedTask, didResetPriority)
@@ -2655,18 +2623,19 @@ export async function setTaskToBacklog(projectId, taskId, task, isObservedTask, 
         updateSubtasksState(projectId, task.subtaskIds, subtasksUpdate, batch)
     }
 
-    // AT-2191: same optimistic-aware check as setTaskDueDate — sending the currently focused task to
-    // Someday must swap focus even while an earlier swap is still unconfirmed.
-    let focusHandoffId = null
-    if (!isObservedTask && isFocusTaskForUser(projectId, task.id, task.userId)) {
-        focusHandoffId = startFocusHandoff(task.id)
-        setOptimisticNextFocusTask(projectId, task)
+    let shouldFindNewFocusTask = false
+    if (!isObservedTask) {
+        const assignee = TasksHelper.getUserInProject(projectId, task.userId)
+        shouldFindNewFocusTask = !!assignee && assignee.inFocusTaskId === task.id
+        if (shouldFindNewFocusTask) {
+            setOptimisticNextFocusTask(projectId, task)
+        }
     }
 
     if (!externalBatch) await batch.commit()
 
-    if (focusHandoffId !== null) {
-        await runFocusHandoff(focusHandoffId, projectId, task.userId, task.parentGoalId, taskId)
+    if (shouldFindNewFocusTask) {
+        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, taskId)
     }
 
     setTaskToBacklogFeedsChain(projectId, taskId, task, isObservedTask, !isObservedTask)
@@ -2906,17 +2875,20 @@ export async function moveTasksFromMiddleOfWorkflow(
         batch,
     })
 
-    // AT-2193: every step change hands the task on, so it stops being the focus task — and it now
-    // picks the next one like a postpone instead of leaving the user with no focus at all.
-    const focusHandoff = beginWorkflowFocusHandoff(projectId, task, updateData.currentReviewerId)
-
     await batch.commit()
 
     if (stepToMoveId === DONE_STEP && !isDayRateTimeLogTask(task)) {
         await reconcileExistingDayRateTimeLog(projectId, userId, updateData.completed)
     }
 
-    await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
+    const assignee = TasksHelper.getUserInProject(projectId, task.userId)
+    if (assignee && assignee.inFocusTaskId === task.id) {
+        if (stepToMoveId === DONE_STEP) {
+            await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, task.id)
+        } else {
+            await updateFocusedTask(task.userId, projectId, null, null, null)
+        }
+    }
 
     moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
 }
@@ -3102,9 +3074,44 @@ export async function moveTasksFromOpen(
         batch,
     })
 
-    // AT-2193: the task is leaving this user's plate, so it stops being their focus task exactly as
-    // a postpone would. Captured before the commit so the optimistic swap lands without UI jumping.
-    const focusHandoff = beginWorkflowFocusHandoff(projectId, task, updateData.currentReviewerId)
+    const assignee = TasksHelper.getUserInProject(projectId, task.userId)
+
+    // Debug logging for focus task selection
+    console.log(`[moveTasksFromOpen] Focus task debug:`, {
+        taskId: task.id,
+        originalTaskUserId: task.userId,
+        newUserId,
+        stepToMoveId,
+        assignee: assignee
+            ? {
+                  uid: assignee.uid,
+                  inFocusTaskId: assignee.inFocusTaskId,
+              }
+            : null,
+        taskUserIds: task.userIds,
+        isWorkflow: task.userIds.length > 1,
+        focusTaskMatches: assignee?.inFocusTaskId === task.id,
+    })
+
+    // If this is the focus task being completed, optimistically set the next focus task
+    // before the batch commit to prevent UI jumping
+    if (assignee && assignee.inFocusTaskId === task.id) {
+        const optimisticNext = getOptimisticNextFocusTask(projectId, task)
+        console.log(`[moveTasksFromOpen] Optimistic focus task selection:`, {
+            completedTaskId: task.id,
+            completedTaskName: task.name,
+            completedTaskGoalId: task.parentGoalId,
+            optimisticNextId: optimisticNext?.id || null,
+            optimisticNextName: optimisticNext?.name || null,
+            optimisticNextGoalId: optimisticNext?.parentGoalId || null,
+            isWorkflow: optimisticNext?.userIds?.length > 1,
+        })
+        if (optimisticNext) {
+            store.dispatch(setOptimisticFocusTask(optimisticNext.id, projectId, optimisticNext.parentGoalId))
+        } else {
+            store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId))
+        }
+    }
 
     await batch.commit()
     moveToTomorrowGoalReminderDateIfThereAreNotMoreTasks(projectId, task)
@@ -3115,7 +3122,14 @@ export async function moveTasksFromOpen(
 
     await updateLinkedContactsEditionData(projectId, task, completionDate)
 
-    await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
+    if (assignee && assignee.inFocusTaskId === task.id) {
+        // When a user completes their part of a task (either to DONE_STEP or workflow step),
+        // they should get a new focus task since they're done with the current one
+        console.log(`[moveTasksFromOpen] User completed their part of task - calling findAndSetNewFocusedTask`)
+        await findAndSetNewFocusedTask(projectId, task.userId, task.parentGoalId, task.id)
+    } else {
+        console.log(`[moveTasksFromOpen] NOT calling focus task functions - conditions not met`)
+    }
 
     moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, estimations, undoAction?.actionId)
 }
@@ -3222,18 +3236,11 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
         batch,
     })
 
-    // AT-2193: reopening a task into a step it did not previously sit on is a step change too, so
-    // the same handoff applies. Reopening straight to Open hands it back to the owner, who is then
-    // the incoming reviewer and therefore keeps it.
-    const focusHandoff = beginWorkflowFocusHandoff(projectId, task, updateData.currentReviewerId)
-
     await batch.commit()
 
     if (ownerIsTeamMeber && !isDayRateTimeLogTask(task)) {
         await reconcileExistingDayRateTimeLog(projectId, userId, task.completed)
     }
-
-    await finishWorkflowFocusHandoff(projectId, task, focusHandoff)
 
     moveTasksinWorkflowFeedsChain(projectId, task, stepToMoveId, workflow, task.estimations, undoAction?.actionId)
 }
@@ -3392,11 +3399,9 @@ export async function setTaskStatus(
         focusTaskMatches: assignee?.inFocusTaskId === taskId,
     })
 
-    // AT-2191: completing the focus task opens a handoff like a postpone does, so a postpone racing
-    // with it cannot resurrect the completed task as the new focus.
-    if (isDone && isFocusTaskForUser(projectId, taskId, taskOwnerUid)) {
+    if (assignee && assignee.inFocusTaskId === taskId && isDone) {
         console.log(`[setTaskStatus] Calling findAndSetNewFocusedTask for workflow task`)
-        await runFocusHandoff(startFocusHandoff(taskId), projectId, taskOwnerUid, task.parentGoalId, taskId)
+        await findAndSetNewFocusedTask(projectId, taskOwnerUid, task.parentGoalId, taskId)
     } else if (isDone) {
         console.log(`[setTaskStatus] NOT calling findAndSetNewFocusedTask - conditions not met`)
     }
@@ -3869,9 +3874,7 @@ export async function autoPostponeTask(projectId, task, isObservedTask, targetUs
  * Synchronously picks the next focus task from the Redux store using the same
  * display order as the UI (goals ordered by milestone + general tasks last).
  */
-function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = completedTask.userId) {
-    // `focusUserId` is the user whose focus task is being replaced (see setOptimisticNextFocusTask);
-    // it is only the owner by coincidence in the common single-assignee case.
+function getOptimisticNextFocusTask(projectId, completedTask) {
     const {
         openTasksMap,
         goalsByProjectInTasks,
@@ -3893,21 +3896,9 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
         milestonesCount: openMilestones.length,
     })
 
-    // Get all candidate tasks due today; selection logic below still prefers non-workflow first.
-    // AT-2191: isFocusTaskReleased skips tasks postponed earlier in the same burst — Redux still
-    // shows them as due today until the Firestore listener catches up, so without it a rapid third
-    // postpone can hand focus back to the task postponed first.
-    // AT-2193: a task parked in another reviewer's workflow step is not this user's to work on, so
-    // it can never be their focus task — the fallback below used to hand exactly those back.
+    // Get all candidate tasks due today; selection logic below still prefers non-workflow first
     const candidateTasks = Object.values(projectTasks).filter(
-        t =>
-            t.id !== completedTask.id &&
-            !isFocusTaskReleased(t.id) &&
-            !t.done &&
-            !t.isSubtask &&
-            !t.calendarData &&
-            t.dueDate <= endOfToday &&
-            isTaskOnUserPlate(t, focusUserId)
+        t => t.id !== completedTask.id && !t.done && !t.isSubtask && !t.calendarData && t.dueDate <= endOfToday
     )
 
     console.log(`[getOptimisticNextFocusTask] Candidates after filtering:`, {
@@ -3981,136 +3972,23 @@ function getOptimisticNextFocusTask(projectId, completedTask, focusUserId = comp
     return result
 }
 
-/**
- * `focusUserId` is who the replacement is being chosen FOR. It is only the task's owner by
- * coincidence in the common single-assignee case: a reviewer handing a task on loses their OWN
- * focus, not the owner's. AT-2193 makes that distinction matter, because the candidate list is now
- * filtered by whether each task is still on that user's plate.
- */
-function setOptimisticNextFocusTask(projectId, task, focusUserId = task.userId) {
-    const optimisticNext = getOptimisticNextFocusTask(projectId, task, focusUserId)
+function setOptimisticNextFocusTask(projectId, task) {
+    const optimisticNext = getOptimisticNextFocusTask(projectId, task)
     if (optimisticNext) {
-        store.dispatch(setOptimisticFocusTask(optimisticNext.id, projectId, optimisticNext.parentGoalId, focusUserId))
+        store.dispatch(setOptimisticFocusTask(optimisticNext.id, projectId, optimisticNext.parentGoalId))
     } else {
-        store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId || NOT_PARENT_GOAL_INDEX, focusUserId))
+        store.dispatch(setOptimisticFocusTask(null, projectId, task.parentGoalId || NOT_PARENT_GOAL_INDEX))
     }
-}
-
-/**
- * AT-2191 — whether `taskId` is the focus task the user can currently see, which is the optimistic
- * pick whenever a swap is still in flight and the confirmed `users/{uid}.inFocusTaskId` otherwise.
- *
- * Reading only the confirmed value is what broke repeated postponing: it stays pointed at the FIRST
- * postponed task for a whole round trip, so the second postpone of a burst decided the task it was
- * postponing had never been in focus and skipped the swap.
- */
-function isFocusTaskForUser(projectId, taskId, focusUserId) {
-    const assignee = TasksHelper.getUserInProject(projectId, focusUserId)
-    return isTaskHoldingFocus({
-        taskId,
-        projectId,
-        focusUserId,
-        confirmedFocusTaskId: assignee ? assignee.inFocusTaskId : null,
-        optimisticFocus: readOptimisticFocus(store.getState()),
-    })
-}
-
-/**
- * AT-2191 — runs the backend focus search for a handoff and settles it afterwards, so a burst of
- * postponements leaves exactly one winner. `startFocusHandoff` must already have been called (and
- * its id passed here) before the postpone was committed.
- */
-async function runFocusHandoff(focusHandoffId, projectId, userId, previousTaskParentGoalId, excludeTaskId) {
-    try {
-        await findAndSetNewFocusedTask(projectId, userId, previousTaskParentGoalId, excludeTaskId, focusHandoffId)
-    } finally {
-        finishFocusHandoff(focusHandoffId)
-    }
-}
-
-/**
- * AT-2193 — call BEFORE committing a workflow move. Decides whether the logged-in user loses their
- * focus task because of it and, if so, swaps the optimistic focus straight away so the task list
- * does not jump. Returns the user id to hand off after the commit, or null.
- *
- * Only the logged-in user is considered: firestore.rules forbids a client from writing another
- * user's doc, so a reviewer moving somebody else's focused task cannot clear the owner's focus from
- * here. The onUpdateTask trigger (functions/Tasks/workflowFocusHandoff.js) covers everyone else.
- */
-function beginWorkflowFocusHandoff(projectId, task, incomingReviewerId) {
-    const { loggedUser } = store.getState()
-    const focusUserId = loggedUser ? loggedUser.uid : null
-    const memberRecord = focusUserId ? TasksHelper.getUserInProject(projectId, focusUserId) : null
-
-    // AT-2191: the optimistic pick is a third mirror of "what the user currently sees as focused",
-    // and it is the only accurate one while an earlier swap is unconfirmed.
-    const optimisticFocus = readOptimisticFocus(store.getState())
-    const optimisticFocusTaskId =
-        optimisticFocus.active &&
-        (!optimisticFocus.projectId || optimisticFocus.projectId === projectId) &&
-        (!optimisticFocus.userId || optimisticFocus.userId === focusUserId)
-            ? optimisticFocus.taskId
-            : null
-
-    const shouldRelease = shouldReleaseFocusOnWorkflowMove({
-        taskId: task.id,
-        focusUserId,
-        observedFocusTaskIds: [
-            loggedUser ? loggedUser.inFocusTaskId : null,
-            memberRecord?.inFocusTaskId,
-            optimisticFocusTaskId,
-        ],
-        incomingReviewerId,
-    })
-
-    if (!shouldRelease) return null
-
-    const handoffId = startFocusHandoff(task.id)
-    // The replacement is chosen for the user who is LOSING focus, who is not necessarily the task's
-    // owner — a reviewer handing the task on loses their own focus, not the owner's.
-    setOptimisticNextFocusTask(projectId, task, focusUserId)
-    return { focusUserId, handoffId }
-}
-
-/**
- * Postpone semantics (see setTaskDueDate): pick the user's next focus task instead of leaving them
- * with none. findAndSetNewFocusedTask clears the focus itself when it finds no replacement.
- */
-async function finishWorkflowFocusHandoff(projectId, task, focusHandoff) {
-    if (!focusHandoff || !focusHandoff.focusUserId) return
-    await runFocusHandoff(focusHandoff.handoffId, projectId, focusHandoff.focusUserId, task.parentGoalId, task.id)
 }
 
 async function findAndSetNewFocusedTask(
     currentProjectId,
     userId,
     previousTaskParentGoalId = null,
-    excludeTaskId = null,
-    focusHandoffId = null
+    excludeTaskId = null
 ) {
-    // AT-2191: every task released by the current burst, not just the one that triggered this
-    // search. A Firestore query can still be served the pre-postpone state of the others.
-    const excludedTaskIds = buildFocusCandidateExclusions(excludeTaskId)
-
-    /**
-     * AT-2191: a newer postpone has taken over. Bail out BEFORE writing — setNewFocusedTaskBatch
-     * re-dates whatever it picks to `now`, so a late search would un-postpone a task the user has
-     * already pushed away and steal the optimistic focus from the postpone that superseded it.
-     */
-    const isSuperseded = () => {
-        if (!isFocusHandoffSuperseded(focusHandoffId)) return false
-        console.log(`[findAndSetNewFocusedTask] Superseded by a newer focus handoff, skipping write`, {
-            focusHandoffId,
-            currentProjectId,
-            excludeTaskId,
-        })
-        return true
-    }
-
     console.log(
-        `[findAndSetNewFocusedTask] Starting search for userId: ${userId}, projectId: ${currentProjectId}, previousTaskParentGoalId: ${previousTaskParentGoalId}, excludeTaskId: ${excludeTaskId}, excludedTaskIds: ${[
-            ...excludedTaskIds,
-        ].join(',')}`
+        `[findAndSetNewFocusedTask] Starting search for userId: ${userId}, projectId: ${currentProjectId}, previousTaskParentGoalId: ${previousTaskParentGoalId}, excludeTaskId: ${excludeTaskId}`
     )
 
     const currentTime = moment()
@@ -4145,9 +4023,6 @@ async function findAndSetNewFocusedTask(
         if (!snapshot.empty) {
             for (const doc of snapshot.docs) {
                 const task = { id: doc.id, ...doc.data() }
-                if (excludedTaskIds.has(task.id)) continue // AT-2191: never re-pick a just-released task
-                // AT-2193: skip tasks already handed on to another reviewer's workflow step.
-                if (!isTaskOnUserPlate(task, userId)) continue
                 // Verify it IS a calendar task and its explicit start time is within the window
                 if (task.calendarData && task.calendarData.start) {
                     const taskStartTimeString = task.calendarData.start.dateTime || task.calendarData.start.date
@@ -4166,20 +4041,14 @@ async function findAndSetNewFocusedTask(
         }
     }
 
-    if (isSuperseded()) return false
-
     if (earliestUpcomingCalendarTask) {
         console.log(`[findAndSetNewFocusedTask] Found upcoming calendar task:`, {
             projectId: earliestUpcomingCalendarTaskProject,
             taskId: earliestUpcomingCalendarTask.id,
             taskName: earliestUpcomingCalendarTask.name,
         })
-        return await setNewFocusedTaskBatch(
-            earliestUpcomingCalendarTaskProject,
-            userId,
-            earliestUpcomingCalendarTask,
-            focusHandoffId
-        )
+        await setNewFocusedTaskBatch(earliestUpcomingCalendarTaskProject, userId, earliestUpcomingCalendarTask)
+        return true
     }
 
     // --- If no upcoming calendar task, proceed with display-order prioritization ---
@@ -4203,21 +4072,12 @@ async function findAndSetNewFocusedTask(
             const allTasksBeforeFilter = openTasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
             const allFetchedTasksInCurrentProject = allTasksBeforeFilter.filter(
                 task =>
-                    task.dueDate <= endOfToday &&
-                    !task.calendarData &&
-                    !excludedTaskIds.has(task.id) &&
-                    // AT-2193: the query matches on ownership, which still includes tasks this user
-                    // has already handed on to the next workflow step's reviewer.
-                    isTaskOnUserPlate(task, userId)
+                    task.dueDate <= endOfToday && !task.calendarData && (!excludeTaskId || task.id !== excludeTaskId)
             )
 
             // Log filtering results for current project
             const filteredOutTasks = allTasksBeforeFilter.filter(
-                task =>
-                    task.dueDate > endOfToday ||
-                    task.calendarData ||
-                    excludedTaskIds.has(task.id) ||
-                    !isTaskOnUserPlate(task, userId)
+                task => task.dueDate > endOfToday || task.calendarData || (excludeTaskId && task.id === excludeTaskId)
             )
 
             console.log(`[findAndSetNewFocusedTask] Current project ${currentProjectId} task analysis:`, {
@@ -4238,8 +4098,7 @@ async function findAndSetNewFocusedTask(
                                   }
                               })(),
                               isCalendarTask: !!t.calendarData,
-                              isExcludedTask: excludedTaskIds.has(t.id),
-                              parkedInOtherReviewersStep: !isTaskOnUserPlate(t, userId),
+                              isExcludedTask: excludeTaskId && t.id === excludeTaskId,
                           }))
                         : `${filteredOutTasks.length} tasks filtered (too many to log)`,
             })
@@ -4309,8 +4168,6 @@ async function findAndSetNewFocusedTask(
         console.error(`[findAndSetNewFocusedTask] Error querying current project ${currentProjectId}:`, error)
     }
 
-    if (isSuperseded()) return false
-
     if (newFocusedTask) {
         console.log(`[findAndSetNewFocusedTask] Found new focus task in current project:`, {
             taskId: newFocusedTask.id,
@@ -4318,7 +4175,8 @@ async function findAndSetNewFocusedTask(
             isWorkflowTask: newFocusedTask.userIds?.length > 1,
             parentGoalId: newFocusedTask.parentGoalId,
         })
-        return await setNewFocusedTaskBatch(currentProjectId, userId, newFocusedTask, focusHandoffId)
+        await setNewFocusedTaskBatch(currentProjectId, userId, newFocusedTask)
+        return true
     }
 
     // --- Phase 4: If no tasks found in current project with prioritization, look in other projects (original logic) ---
@@ -4377,18 +4235,13 @@ async function findAndSetNewFocusedTask(
                     task =>
                         task.dueDate <= endOfToday &&
                         !task.calendarData &&
-                        !excludedTaskIds.has(task.id) &&
-                        // AT-2193: same rule as the current project.
-                        isTaskOnUserPlate(task, userId)
+                        (!excludeTaskId || task.id !== excludeTaskId)
                 )
 
                 // Log why tasks were filtered out
                 const filteredOutTasks = allTasksFromProject.filter(
                     task =>
-                        task.dueDate > endOfToday ||
-                        task.calendarData ||
-                        excludedTaskIds.has(task.id) ||
-                        !isTaskOnUserPlate(task, userId)
+                        task.dueDate > endOfToday || task.calendarData || (excludeTaskId && task.id === excludeTaskId)
                 )
 
                 console.log(`[findAndSetNewFocusedTask] Project ${pid} task analysis:`, {
@@ -4407,7 +4260,7 @@ async function findAndSetNewFocusedTask(
                             }
                         })(),
                         isCalendarTask: !!t.calendarData,
-                        isExcludedTask: excludedTaskIds.has(t.id),
+                        isExcludedTask: excludeTaskId && t.id === excludeTaskId,
                     })),
                 })
 
@@ -4419,14 +4272,14 @@ async function findAndSetNewFocusedTask(
                     })
 
                     if (newFocusedTaskFromOtherProject) {
-                        if (isSuperseded()) return false
                         console.log(`[findAndSetNewFocusedTask] Found new focus task in other project:`, {
                             projectId: pid,
                             taskId: newFocusedTaskFromOtherProject.id,
                             taskName: newFocusedTaskFromOtherProject.name,
                             isWorkflowTask: newFocusedTaskFromOtherProject.userIds.length > 1,
                         })
-                        return await setNewFocusedTaskBatch(pid, userId, newFocusedTaskFromOtherProject, focusHandoffId)
+                        await setNewFocusedTaskBatch(pid, userId, newFocusedTaskFromOtherProject)
+                        return true
                     }
                 }
             } else {
@@ -4438,8 +4291,6 @@ async function findAndSetNewFocusedTask(
     }
 
     // If no tasks found in any project, clear the focus
-    if (isSuperseded()) return false
-
     const batch = new BatchWrapper(getDb())
 
     // If a task was previously in focus, its sortIndex needs to be reset appropriately
@@ -4479,35 +4330,11 @@ async function findAndSetNewFocusedTask(
         excludeTaskId,
         previousTaskParentGoalId,
     })
-
-    // AT-2191: the optimistic pick predicted a replacement that the backend then failed to find, so
-    // it now points at a task that is not focused and never will be. Neither this branch nor
-    // clearConfirmedOptimisticFocus (which only fires when confirmed and optimistic AGREE, or when
-    // both are empty) used to retire it, leaving optimisticFocusActive stuck on a stale task.
-    // Fall back to "no focus" rather than clearing outright, so the list does not flash the task
-    // that was just postponed while the users/{uid} snapshot is still in flight.
-    if (store.getState().optimisticFocusActive && !isSuperseded()) {
-        store.dispatch(
-            setOptimisticFocusTask(null, currentProjectId, previousTaskParentGoalId || NOT_PARENT_GOAL_INDEX, userId)
-        )
-    }
-
     return false
 }
 
 // Helper function to set a new focused task with all necessary updates
-async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = null) {
-    // AT-2191: a newer postpone already owns the focus. Writing here would re-date this task to
-    // `now` (the setTaskDueDate call below runs with fromSetTaskFocus=true), un-postponing a task
-    // the user just pushed away, so bail out before anything is queued.
-    if (isFocusHandoffSuperseded(focusHandoffId)) {
-        console.log(`[setNewFocusedTaskBatch] Superseded by a newer focus handoff, skipping`, {
-            taskId: task.id,
-            focusHandoffId,
-        })
-        return false
-    }
-
+async function setNewFocusedTaskBatch(projectId, userId, task) {
     const batch = new BatchWrapper(getDb())
 
     console.log(`[setNewFocusedTaskBatch] Setting new focus task:`, {
@@ -4520,7 +4347,7 @@ async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = 
 
     // Optimistically mark this task as the focus task BEFORE committing to Firestore
     // This prevents UI "jumping" by immediately showing the task at the top
-    store.dispatch(setOptimisticFocusTask(task.id, projectId, task.parentGoalId, userId))
+    store.dispatch(setOptimisticFocusTask(task.id, projectId, task.parentGoalId))
 
     // Generate the focus sortIndex
     const focusSortIndex = generateSortIndexForTaskInFocusInTime()
@@ -4537,33 +4364,16 @@ async function setNewFocusedTaskBatch(projectId, userId, task, focusHandoffId = 
         inFocusTaskProjectId: projectId,
     })
 
-    // AT-2191: re-checked because assembling the batch above awaits. A postpone that arrived in the
-    // meantime has already dispatched its own optimistic pick, and this write would overwrite it.
-    if (isFocusHandoffSuperseded(focusHandoffId)) {
-        console.log(`[setNewFocusedTaskBatch] Superseded while preparing the batch, discarding it`, {
-            taskId: task.id,
-            focusHandoffId,
-        })
-        return false
-    }
-
     // Commit all changes in one batch
     await batch.commit()
 
+    console.log(`[setNewFocusedTaskBatch] Firestore confirmed, clearing optimistic state`)
     // Clear the optimistic state now that Firestore has confirmed
     // (The Firestore listener will have updated the actual sortIndex by now)
-    // AT-2191: unless a newer postpone has taken over in the meantime — the optimistic state is
-    // then its pick, not ours, and clearing it would drop the user back onto a postponed task.
-    if (isFocusHandoffSuperseded(focusHandoffId)) {
-        console.log(`[setNewFocusedTaskBatch] Committed but superseded, leaving the optimistic state alone`)
-    } else {
-        console.log(`[setNewFocusedTaskBatch] Firestore confirmed, clearing optimistic state`)
-        store.dispatch(clearOptimisticFocusTask())
-    }
+    store.dispatch(clearOptimisticFocusTask())
 
     // Create feed after successful update
     createTaskFocusChangedFeed(projectId, task.id, true, null, TasksHelper.getUserInProject(projectId, userId))
-    return true
 }
 
 export async function setTaskAIModel(projectId, taskId, aiModel, task) {

@@ -93,7 +93,6 @@ import {
 } from '../../components/Feeds/Utils/FeedsConstants'
 import { getFeedObjectTypes, STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
 import { selectNewFeeds } from './Feeds/newFeedsHelper'
-import { getFeedsQueryLimit, MAX_NUMBER_OF_FEEDS_TO_SHOW } from './Feeds/feedQueryLimits'
 import {
     setAllFeeds,
     setFollowedFeeds,
@@ -5762,17 +5761,12 @@ export async function unsubStoreFeedsTab(projectId) {
     feedsReduxStoreUnsub.all[projectId] ? feedsReduxStoreUnsub.all[projectId]() : null
 }
 
-/**
- * @param visibleAmount how many feeds this project's list can currently display. Forwarded so the
- *                      query is capped at what is rendered instead of always pulling 200 documents
- *                      per project per tab (AT-2192).
- */
-export function watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount) {
+export function watchNewFeedsAllTabsRedux(projectId, userId) {
     const followedPath = `/feedsStore/${projectId}/${userId}/feeds/followed`
-    watchNewFeedsTabRedux(projectId, 'followed', followedPath, storeFollowedFeeds, visibleAmount)
+    watchNewFeedsTabRedux(projectId, 'followed', followedPath, storeFollowedFeeds)
 
     const allPath = `/feedsStore/${projectId}/all`
-    watchNewFeedsTabRedux(projectId, 'all', allPath, storeAllFeeds, visibleAmount)
+    watchNewFeedsTabRedux(projectId, 'all', allPath, storeAllFeeds)
 }
 
 function storeFollowedFeeds(projectId, feeds) {
@@ -5783,19 +5777,16 @@ function storeAllFeeds(projectId, feeds) {
     store.dispatch([setAllFeeds(projectId, feeds), stopLoadingData()])
 }
 
-function watchNewFeedsTabRedux(projectId, tab, path, callback, visibleAmount) {
+function watchNewFeedsTabRedux(projectId, tab, path, callback) {
     store.dispatch(startLoadingData())
+    const MAX_NUMBER_OF_FEEDS_TO_SHOW = 99
+    const MAX_NUMBER_OF_FEEDS_TO_REVIEW = 200
     const { loggedUser, currentUser } = store.getState()
     const loggedUserId = loggedUser.uid
     const currentUserId = currentUser.uid
-    // The `where` below already guarantees every document is public-for-all or public for the
-    // logged user, so the `currentUserId` check inside the snapshot handler can only ever drop a
-    // document while another user's feed is being viewed. In every other case the snapshot reaches
-    // the list untouched and the query can be capped at exactly what the list can display.
-    const needsClientSideFilter = currentUserId !== loggedUserId
     feedsReduxStoreUnsub[tab][projectId] = db
         .collection(path)
-        .limit(getFeedsQueryLimit(visibleAmount, needsClientSideFilter))
+        .limit(MAX_NUMBER_OF_FEEDS_TO_REVIEW)
         .where('isPublicFor', 'array-contains-any', [FEED_PUBLIC_FOR_ALL, loggedUserId])
         .orderBy('lastChangeDate', 'desc')
         .onSnapshot(feedsData => {
@@ -5884,6 +5875,7 @@ export async function getLastObjectFeed(projectId, objectTypes, feedObjectId, nL
 }
 
 export function watchDetailedViewFeeds(projectId, objectTypes, feedObjectId, callback, relatedFeedSources = []) {
+    const MAX_NUMBER_OF_FEEDS_TO_SHOW = 99
     const { loggedUser } = store.getState()
     const loggedUserId = loggedUser.uid
     const feedSources = [{ objectTypes, feedObjectId }, ...relatedFeedSources].filter(
@@ -6494,12 +6486,6 @@ export async function setDefaultVmAgent(agent) {
 export async function setDefaultVmAgentReasoningEffort(effort) {
     const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgentReasoningEffort')
     const result = await fn({ effort })
-    return result.data
-}
-
-export async function setDefaultVmApprovalPolicy(policy) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmApprovalPolicy')
-    const result = await fn({ policy })
     return result.data
 }
 

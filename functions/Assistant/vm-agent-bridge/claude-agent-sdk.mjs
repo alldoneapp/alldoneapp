@@ -1,24 +1,8 @@
 import fs from 'node:fs'
-import path from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import approvalPolicy from './approval-policy.cjs'
 
 const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
-
-// Resolve the checked-out branch so the policy can tell `git push origin HEAD` on a feature
-// branch (the flow the platform prompt mandates) apart from the same command run while sitting
-// on the base branch. Read fresh on every approval: the agent creates its branch mid-run.
-// GIT_DIR is relocated for the Codex sandbox, so honour it when present.
-function resolveCurrentBranch() {
-    try {
-        const gitDir = process.env.GIT_DIR || path.join(input.cwd || '/home/user/repo', '.git')
-        const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim()
-        const match = head.match(/^ref:\s*refs\/heads\/(.+)$/)
-        return match ? match[1].trim() : ''
-    } catch (error) {
-        return ''
-    }
-}
 const emit = value => process.stdout.write(`${JSON.stringify(value)}\n`)
 let sessionId = input.providerState?.sessionId || null
 let interaction = null
@@ -26,8 +10,6 @@ let output = ''
 let assistantText = ''
 let usage = null
 let approvedToolConsumed = false
-// "Allow for this run" grants, carried across turns by the host on the pendingWebhooks doc.
-const sessionAllowlist = Array.isArray(input.approvalAllowlist) ? [...input.approvalAllowlist] : []
 
 const options = {
     cwd: input.cwd,
@@ -65,19 +47,13 @@ const options = {
         if (
             input.approvedTool?.toolName === toolName &&
             !approvedToolConsumed &&
-            (input.approvedTool?.action === 'approve' || input.approvedTool?.action === 'approve_for_run')
+            input.approvedTool?.action === 'approve'
         ) {
             approvedToolConsumed = true
             return { behavior: 'allow', updatedInput: toolInput }
         }
 
-        const review = approvalPolicy.assessClaudeToolApproval(toolName, toolInput, {
-            cwd: input.cwd,
-            level: input.approvalPolicy,
-            baseBranch: input.baseBranch || '',
-            currentBranch: resolveCurrentBranch(),
-            sessionAllowlist: sessionAllowlist,
-        })
+        const review = approvalPolicy.assessClaudeToolApproval(toolName, toolInput, input.cwd)
         if (review.autoApprove) {
             return { behavior: 'allow', updatedInput: toolInput }
         }
@@ -92,9 +68,6 @@ const options = {
                 }`,
                 command: toolInput?.command || '',
                 cwd: toolInput?.cwd || input.cwd,
-                // Empty for operations that must always pause, which suppresses the host's
-                // "Allow for this run" button.
-                signature: review.signature || '',
             },
         }
         return {

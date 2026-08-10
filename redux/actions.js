@@ -1831,19 +1831,6 @@ export const setTaskVmStateFilters = vmStates => {
     return action
 }
 
-export const clearNoteOwnerFilters = () => {
-    const action = { type: 'Clear note owner filters' }
-    return action
-}
-
-export const setNoteOwnerFilters = ownerIds => {
-    const action = {
-        type: 'Set note owner filters',
-        ownerIds,
-    }
-    return action
-}
-
 export const updateTaskVmState = (taskKey, vmState) => {
     const action = {
         type: 'Update task VM state',
@@ -2884,17 +2871,13 @@ export const setTaskInFocus = taskInFocus => {
  * @param {string|null} taskId - Task ID to show as focused, or null to clear
  * @param {string|null} projectId - Project ID of the task
  * @param {string|null} goalId - Goal ID to keep pinned at top during transition
- * @param {string|null} userId - Focus holder. AT-2191 uses it to tell whether a task being
- *   postponed is the one currently shown as focused, without mistaking another user's swap for
- *   this user's. Optional: callers that omit it are simply not user-scoped.
  */
-export const setOptimisticFocusTask = (taskId, projectId, goalId, userId) => {
+export const setOptimisticFocusTask = (taskId, projectId, goalId) => {
     const action = {
         type: 'Set optimistic focus task',
         optimisticFocusTaskId: taskId,
         optimisticFocusTaskProjectId: projectId,
         optimisticFocusGoalId: goalId || null,
-        optimisticFocusUserId: userId || null,
         optimisticFocusActive: true,
     }
     return action
@@ -2906,38 +2889,6 @@ export const setOptimisticFocusTask = (taskId, projectId, goalId, userId) => {
 export const clearOptimisticFocusTask = () => {
     const action = {
         type: 'Clear optimistic focus task',
-    }
-    return action
-}
-
-/**
- * AT-2160: mark a goal as being postponed so the task list can drop it from today's buckets
- * immediately, while the authoritative postpone (undo record + task cascade) still runs on the
- * server. Keyed per project + goal so two goals can be postponed in a row.
- * @param {string} projectId
- * @param {string} goalId
- * @param {number} date - target reminder date, kept for diagnostics/tests
- * @param {number} startedAt - epoch ms the postpone was requested; drives the safety TTL
- */
-export const setOptimisticGoalPostpone = (projectId, goalId, date, startedAt) => {
-    const action = {
-        type: 'Set optimistic goal postpone',
-        projectId,
-        goalId,
-        date,
-        startedAt,
-    }
-    return action
-}
-
-/**
- * Drop the optimistic postpone for a goal (server rejected it, or the entry aged out).
- */
-export const clearOptimisticGoalPostpone = (projectId, goalId) => {
-    const action = {
-        type: 'Clear optimistic goal postpone',
-        projectId,
-        goalId,
     }
     return action
 }

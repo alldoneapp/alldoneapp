@@ -1,6 +1,6 @@
 import { QuillDeltaToHtmlConverter } from 'quill-delta-to-html'
 import v4 from 'uuid/v4'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import Quill from 'quill'
 
 import {
@@ -814,7 +814,7 @@ export const insertPerplexityContent = (editor, content) => {
     })
 
     // Convert the processed HTML to Delta format
-    const tempDelta = editor.clipboard.convert(content)
+    const tempDelta = editor.clipboard.convert({ html: content })
 
     // Special handling for code blocks to ensure proper formatting
     tempDelta.ops.forEach(op => {
