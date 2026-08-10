@@ -2537,13 +2537,12 @@ const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
     let contextTokens = 0
     let gapTokens = ENCODE_MESSAGE_GAP // Gap for AI response
 
-    contextMessages.forEach(msg => {
+    contextMessages.forEach((msg, index) => {
         const msgText = getMessageTextForTokenCounting(msg[1])
         const msgTokens = encoding.encode(msgText).length
         contextTokens += msgTokens
         gapTokens += ENCODE_MESSAGE_GAP
-        // Per-message token counts are not logged: this loop runs once per context message on every
-        // prompt build, and the aggregate is already reported in the model-result log below.
+        console.log(`🧮 TOKEN CALCULATION: Context message ${index} (${msg[0]}): ${msgTokens} tokens`)
     })
 
     const totalTokens = aiTokens + contextTokens + gapTokens

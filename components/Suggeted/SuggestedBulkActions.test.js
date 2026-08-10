@@ -128,6 +128,33 @@ describe('SuggestedBulkActions wording', () => {
         expect(buttonWithTitle(tree, 'Reject all')).toHaveLength(0)
     })
 
+    // AT-2210: the icon has to say the same thing as the label. On mobile the button is icon-only,
+    // so the workflow glyph was the only thing shown for an action that rejects.
+    test('shows a reject icon, not the workflow icon, for an assistant section', () => {
+        const tree = render([assistantTask('task-1'), assistantTask('task-2')])
+
+        expect(buttonWithTitle(tree, 'Reject all')[0].props.icon).toBe('x')
+    })
+
+    test('keeps the workflow icon where the action really is a workflow move', () => {
+        const tree = render([humanTask('task-1'), humanTask('task-2')])
+
+        expect(buttonWithTitle(tree, 'Next step for all')[0].props.icon).toBe('next-workflow')
+    })
+
+    test('keeps the reject icon on the icon-only mobile button', () => {
+        mockState.smallScreenNavigation = true
+
+        const tree = render([assistantTask('task-1')])
+        const rejectButton = tree.root.findAll(
+            node => node.type === 'Button' && node.props.accessibilityLabel === 'Reject all'
+        )
+
+        expect(rejectButton).toHaveLength(1)
+        expect(rejectButton[0].props.title).toBeNull()
+        expect(rejectButton[0].props.icon).toBe('x')
+    })
+
     test('keeps the "all" wording for a section of one, per suggester kind', () => {
         const assistantSection = render([assistantTask('task-1')])
         expect(buttonWithTitle(assistantSection, 'Reject all')).toHaveLength(1)
