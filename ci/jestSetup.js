@@ -6,6 +6,17 @@ jest.mock('../utils/WebShims/Localization', () => ({
     locale: 'en-US',
 }))
 
+// yjs 13.6 pulls lib0/webcrypto, which reads the global `crypto` at import time.
+// Node 14 has no global webcrypto (and this jsdom has no getRandomValues), so
+// provide the minimal surface lib0 binds: getRandomValues + a subtle stub.
+if (typeof global.crypto === 'undefined') {
+    const nodeCrypto = require('crypto')
+    global.crypto = {
+        subtle: {},
+        getRandomValues: buffer => nodeCrypto.randomFillSync(buffer),
+    }
+}
+
 // The react-tiny-popover build in replacement_node_modules - which CI copies
 // over node_modules before running, per the note in CLAUDE.md - constructs a
 // ResizeObserver in its constructor. jsdom implements no such API, so any suite

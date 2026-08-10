@@ -23,15 +23,7 @@ import { getChatItemBackgroundColor } from './chatItemBackground'
 
 export default function ChatItem({ chat, project, openEditModal, inCommentPopup, onPress }) {
     const loggedUser = useSelector(state => state.loggedUser)
-    // Select the *boolean*, not the counter. `state.isLoadingData` is a reference count that the
-    // chats screen moves once per project listener: "All Projects" mounts one ChatsByProject per
-    // project, each starting two counted listeners, so the counter takes ~2xN steps up and ~2xN
-    // steps back down (156 for a 78-project account). Those dispatches come from Firestore snapshot
-    // callbacks, so React cannot batch them, and selecting the raw number re-rendered every mounted
-    // ChatItem on each step even though the only thing rendered from it is `!isLoadingData`
-    // (see the ChatIndicator background below). The reducer clamps the counter at 0, so
-    // `!isLoadingData` and `!(isLoadingData > 0)` are equivalent. See AT-2200.
-    const isLoadingData = useSelector(state => state.isLoadingData > 0)
+    const isLoadingData = useSelector(state => state.isLoadingData)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const chatNotifications = useSelector(state => state.projectChatNotifications[project.id][chat.id])
 

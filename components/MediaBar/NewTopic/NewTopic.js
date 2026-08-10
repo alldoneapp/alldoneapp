@@ -18,7 +18,6 @@ import { setAssistantEnabled, startLoadingData, stopLoadingData } from '../../..
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
 import { createChat } from '../../../utils/backends/Chats/chatsComments'
 import { createObjectMessage } from '../../../utils/backends/Chats/chatsComments'
-import useSingleFlightSubmit from '../../../hooks/useSingleFlightSubmit'
 import { getDefaultAssistantInProjectById } from '../../AdminPanel/Assistants/assistantsHelper'
 
 export default function NewTopic({ projectId, propFiles, close }) {
@@ -108,47 +107,43 @@ export default function NewTopic({ projectId, propFiles, close }) {
         setBotIsActive(state => !state)
     }
 
-    // Enter reaches this modal through its own document listener, Quill's
-    // newline callback and the send button at once, and each run mints a new
-    // chat id, so submissions are guarded while one is in flight.
     const handleSubmit = () => {
-        // Bail out before the guard, so a submission blocked by an open editor
-        // or modal does not consume the single allowed submission.
-        if (isQuillTagEditorOpen || openModals[MENTION_MODAL_ID]) return
-        return submitTopic()
-    }
-
-    const submitTopic = useSingleFlightSubmit(() => {
-        dispatch(startLoadingData())
-        const chatId = getId()
-        const assistantId = getDefaultAssistantInProjectById(projectId)
-        const creation = createChat(
-            chatId,
-            projectId,
-            uid,
-            '',
-            'topics',
-            'New Topic',
-            isPublicForRef.current,
-            '#FFFFFF',
-            null,
-            null,
-            '',
-            assistantId,
-            STAYWARD_COMMENT,
-            uid
-        ).then(async () => {
-            updateNewAttachmentsData(projectId, textRef.current).then(commentWithAttachments => {
-                createObjectMessage(projectId, chatId, commentWithAttachments, 'topics', null, null, null).then(() => {
-                    dispatch(stopLoadingData())
-                    window.open(`${window.location.origin}/projects/${projectId}/chats/${chatId}/chat`, '_blank')
+        if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
+            dispatch(startLoadingData())
+            const chatId = getId()
+            const assistantId = getDefaultAssistantInProjectById(projectId)
+            createChat(
+                chatId,
+                projectId,
+                uid,
+                '',
+                'topics',
+                'New Topic',
+                isPublicForRef.current,
+                '#FFFFFF',
+                null,
+                null,
+                '',
+                assistantId,
+                STAYWARD_COMMENT,
+                uid
+            ).then(async () => {
+                updateNewAttachmentsData(projectId, textRef.current).then(commentWithAttachments => {
+                    createObjectMessage(projectId, chatId, commentWithAttachments, 'topics', null, null, null).then(
+                        () => {
+                            dispatch(stopLoadingData())
+                            window.open(
+                                `${window.location.origin}/projects/${projectId}/chats/${chatId}/chat`,
+                                '_blank'
+                            )
+                        }
+                    )
                 })
             })
-        })
 
-        closeModal()
-        return creation
-    })
+            closeModal()
+        }
+    }
 
     useEffect(() => {
         dispatch(setAssistantEnabled(false))

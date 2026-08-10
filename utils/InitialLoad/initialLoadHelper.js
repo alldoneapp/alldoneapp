@@ -1,5 +1,3 @@
-import { difference } from 'lodash'
-
 import store from '../../redux/store'
 import { getGlobalAssistants, getProjectAssistants, watchAssistants } from '../backends/Assistants/assistantsFirestore'
 import { getProjectContacts, watchProjectContacts } from '../backends/Contacts/contactsFirestore'
@@ -118,8 +116,7 @@ export function watchProjectChatNotifications(projectId) {
 
 export function watchProjectsChatNotifications() {
     const { loggedUser } = store.getState()
-    const projectIds = Array.isArray(loggedUser?.projectIds) ? loggedUser.projectIds : []
-    projectIds.forEach(projectId => {
+    loggedUser.projectIds.forEach(projectId => {
         watchProjectChatNotifications(projectId)
     })
 }
@@ -156,33 +153,21 @@ export function watchLoggedUserData(loggedUser) {
         clearConfirmedOptimisticFocus(user)
     }
 
-    const notifyFinishedProjectCopy = user => {
-        // `difference` was used here without being imported, so this threw a ReferenceError for
-        // every user with a project duplication in flight - before `storeLoggedUser` below ran.
-        // Keep it isolated: a problem in this optional popup must never stop the user update.
-        try {
-            const copyProjectIds = Array.isArray(user.copyProjectIds) ? user.copyProjectIds : []
-            if (copyProjectIds.length === 0) return
-
-            const { loggedUser } = store.getState()
-            const newProjectId = difference(user.projectIds || [], loggedUser?.projectIds || [])[0]
-            if (newProjectId && copyProjectIds.includes(newProjectId)) {
-                // If there is a new project in the User data, then occurs a duplication in the background
-                getProjectData(newProjectId).then(project => {
-                    if (project) {
-                        removeCopyProjectIdFromUser(loggedUser.uid, newProjectId)
-                        store.dispatch(setShowEndCopyProjectPopup(true, project.name, project.color))
-                    }
-                })
-            }
-        } catch (error) {
-            console.warn('Failed to check for a finished project copy:', error)
-        }
-    }
-
     const setLoggedUser = user => {
         if (user) {
-            notifyFinishedProjectCopy(user)
+            if (user.copyProjectIds.length > 0) {
+                const { loggedUser } = store.getState()
+                const newProjectId = difference(user.projectIds, loggedUser.projectIds)[0]
+                if (newProjectId && user.copyProjectIds.includes(newProjectId)) {
+                    // If there is a new project in the User data, then occurs a duplication in the background
+                    getProjectData(newProjectId).then(project => {
+                        if (project) {
+                            removeCopyProjectIdFromUser(loggedUser.uid, newProjectId)
+                            store.dispatch(setShowEndCopyProjectPopup(true, project.name, project.color))
+                        }
+                    })
+                }
+            }
             store.dispatch(storeLoggedUser(user))
             clearConfirmedOptimisticFocus(user)
         }
@@ -256,8 +241,7 @@ export const unwatchProjectData = projectId => {
 }
 
 export const unwatchProjectsData = projectIds => {
-    const ids = Array.isArray(projectIds) ? projectIds : []
-    ids.forEach(projectId => {
+    projectIds.forEach(projectId => {
         unwatchProjectData(projectId)
     })
 }
@@ -291,9 +275,7 @@ export function convertAnonymousProjectsIntoSharedProjects(
     } = store.getState()
 
     let nextIndex = projects.length
-    const anonymousProjects = Array.isArray(anonymousLoggedUserProjects) ? anonymousLoggedUserProjects : []
-    anonymousProjects.forEach(project => {
-        if (!project || !project.id) return
+    anonymousLoggedUserProjects.forEach(project => {
         const sharedProject = { ...project, index: nextIndex }
         if (!projectsMap[sharedProject.id]) {
             projects.push(sharedProject)

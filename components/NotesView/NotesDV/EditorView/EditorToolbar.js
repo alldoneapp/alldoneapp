@@ -2,17 +2,16 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import EditorToolbarButton from './EditorToolbarButton'
 import firebase from 'firebase/compat/app'
-import { Quill } from 'react-quill'
+import Quill from 'quill'
 import moment from 'moment'
 import v4 from 'uuid/v4'
 import { getDateFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import styles, { colors } from '../../../styles/global'
 import QuillCursors from 'quill-cursors'
-// import { ImageDrop } from 'quill-image-drop-module'
 import DragAndDropModule from 'quill-drag-and-drop-module'
+import '../../../Feeds/CommentsTextInput/quill2Setup'
 import EditorsGroup from './EditorsGroup/EditorsGroup'
 import { useSelector } from 'react-redux'
-// import 'quill-paste-smart'
 import Hashtag from '../../../Feeds/CommentsTextInput/autoformat/formats/hashtag'
 import CommentTagFormat from '../../../Feeds/CommentsTextInput/autoformat/formats/commentTagFormat'
 import Attachment from '../../../Feeds/CommentsTextInput/autoformat/formats/attachment'
@@ -730,6 +729,7 @@ const generateLinkToChat = (objectType, objectId, projectId) => {
 let openSideChatFromToolbar = null
 
 export const modules = {
+    editorMeta: true,
     toolbar: {
         container: '#toolbar',
 
@@ -958,7 +958,6 @@ export const formats = [
     'blockquote',
     'background',
     'list',
-    'bullet',
     'indent',
     'link',
     'image',

@@ -11,7 +11,6 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { objectIsLockedForUser } from '../../Guides/guidesHelper'
 import LockedGoalModal from '../../UIComponents/FloatModals/LockedGoalModal/LockedGoalModal'
 import GoalIndicator from '../GoalIndicator'
-import useOptimisticGoalPostponeHidden from '../../GoalsView/useOptimisticGoalPostponeHidden'
 
 export default function EmptyGoal({ goal, projectId, isActiveOrganizeMode, instanceKey, dateIndex, containerStyle }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -24,8 +23,6 @@ export default function EmptyGoal({ goal, projectId, isActiveOrganizeMode, insta
     const [editing, setEditing] = useState(false)
     const [showingTasks, setShowingTasks] = useState(true)
     const dismissibleRef = useRef(null)
-    // AT-2160: keep this above the early return — hooks must run on every render.
-    const hiddenByOptimisticPostpone = useOptimisticGoalPostponeHidden(projectId, goal?.id)
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
 
@@ -62,9 +59,6 @@ export default function EmptyGoal({ goal, projectId, isActiveOrganizeMode, insta
     const toggleTasksList = () => {
         setShowingTasks(state => !state)
     }
-
-    // AT-2160: the goal is on its way out of today — drop it now instead of after the round trip.
-    if (hiddenByOptimisticPostpone) return null
 
     return (
         <View

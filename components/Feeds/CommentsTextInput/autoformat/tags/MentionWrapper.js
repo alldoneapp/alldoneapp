@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import Popover from 'react-tiny-popover'
 import { useDispatch, useSelector } from 'react-redux'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 
 import TagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/TagsInteractionPopup'
 import MentionTag from './MentionTag'
