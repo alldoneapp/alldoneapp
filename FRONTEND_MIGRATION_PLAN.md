@@ -222,12 +222,24 @@ Isolated last because it touches production collaborative documents:
       failures are **pre-existing master drift**, proven by commit order (AT-2199
       approval-policy landed 2026-08-07 14:34, after its tests' last update at 09:43;
       functions suites are a local-only check so it went unnoticed) plus the known
-      calendar routing suite; spun off as its own task. Web-bundler prod build
-      compiles with only the 3 known RNGH warnings, before and after the format
-      sweep.
-    - **Remaining for stage acceptance**: branch CI green end to end (the branch
-      builds its own `:$CI_COMMIT_REF_SLUG` images — the first pipeline is the slow
-      one), then the usual staging deploy + logged-in boot check before merge.
+      calendar routing suite; **fixed separately on master** (commit 9eab908f0,
+      test-only: the AT-2199 approval-policy fields in `getVmAgentSettings`'s
+      shape, `startVmJob`'s now-two user-doc reads consuming one-shot stubs, and
+      the `DEFAULT_GMAIL_LABELING_MODEL` move to GPT-5.6 Luna that ff45a4d08 left
+      behind — now asserted against the imported constant so the next model move
+      cannot go stale). Web-bundler prod build compiles with only the 3 known RNGH
+      warnings, before and after the format sweep.
+    - **Branch CI green end to end and deployed to staging** — pipeline
+      2746508082 on commit f0b051fc9: branch-scoped `:$CI_COMMIT_REF_SLUG` images
+      rebuilt (`modules_cache` + `web_bundler_cache`), `build_web_webpack_check`
+      pass, `test:web:changed` honest selection 168 of 391 changed files → 265
+      suites / 1317 tests pass (6 suites, 25 tests skipped), and
+      `deploy:web-staging-live` succeeded — the Stage 5 artifact is live on
+      `alldonestaging.web.app`.
+    - **Remaining for stage acceptance**: the user's logged-in boot check on
+      staging (zero console errors on load, per the Stage 0/3 lesson — this stage
+      changes no app source beyond the format sweep, so the check is a boot/parity
+      one rather than a feature QA pass), then merge.
 
 - 2026-08-10 — **STAGE 4 ACCEPTED AND MERGED TO MASTER** after the user's staging QA.
   Three staging findings, all quill 1→2 rendering-contract changes and each now pinned
