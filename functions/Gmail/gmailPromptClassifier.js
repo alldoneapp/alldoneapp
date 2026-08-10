@@ -4,7 +4,6 @@ const {
     buildOpenAiPromptCacheKey,
     getCachedEnvFunctions,
     getOpenAiCacheUsage,
-    getOpenAIClient,
     logOpenAiCacheUsage,
     normalizeModelKey,
 } = require('../Assistant/assistantHelper')
@@ -15,6 +14,8 @@ const {
     slugifyLabelKey,
 } = require('./gmailLabelingConfig')
 const { reasoningReferencesDifferentOption } = require('../shared/reasoningConsistency')
+const { getOpenRouterAssistantModelId } = require('../Assistant/assistantModelRouting')
+const { resolveClassifierClient } = require('../Assistant/classifierModelClient')
 const {
     GMAIL_ACTIONABILITY_GUIDANCE,
     GMAIL_CLASSIFIER_SYSTEM_PROMPT,
@@ -45,6 +46,11 @@ const GPT5_REASONING_MODEL_KEYS = new Set([
 ])
 function mapAssistantModelToOpenAIModel(modelKey) {
     const normalizedKey = normalizeModelKey(modelKey || DEFAULT_GMAIL_LABELING_MODEL)
+    // Models served through OpenRouter resolve from the shared routing table. Checked first so the
+    // `gpt-5.2` fallback at the bottom — which exists for genuinely unknown keys — can never quietly
+    // swallow a known non-OpenAI model and bill the user for a model they did not select.
+    const openRouterModelId = getOpenRouterAssistantModelId(normalizedKey)
+    if (openRouterModelId) return openRouterModelId
     if (normalizedKey === 'MODEL_GPT3_5') return 'gpt-3.5-turbo'
     if (normalizedKey === 'MODEL_GPT4') return 'gpt-4'
     if (normalizedKey === 'MODEL_GPT4O') return 'gpt-4o'
@@ -228,9 +234,15 @@ async function runClassifierCompletion(
         cacheKey,
         cacheRoute,
         enableCacheWrite = true,
+        isOpenRouter = false,
     }
 ) {
-    const supportsExplicitCaching = selectedModel.startsWith('gpt-5.6')
+    // Prompt caching here is an OpenAI extension end to end: `prompt_cache_key`,
+    // `prompt_cache_options` and the per-part `prompt_cache_breakpoint` are all OpenAI-proprietary.
+    // OpenRouter's Chat Completions surface does not define them, so they are omitted rather than
+    // sent and hoped-for — an ignored field is luck, a 400 on an unknown field is an outage.
+    // DeepSeek caches automatically on its own side, so nothing is actually lost.
+    const supportsExplicitCaching = !isOpenRouter && selectedModel.startsWith('gpt-5.6')
     const usesExplicitCacheBreakpoint = supportsExplicitCaching && enableCacheWrite
     const requestParams = {
         model: selectedModel,
@@ -250,7 +262,10 @@ async function runClassifierCompletion(
             },
             { role: 'user', content: dynamicUserContent },
         ],
-        prompt_cache_key: cacheKey,
+    }
+
+    if (!isOpenRouter) {
+        requestParams.prompt_cache_key = cacheKey
     }
 
     if (supportsExplicitCaching) {
@@ -308,7 +323,16 @@ function buildAuditLabelDefinitions(labelDefinitions, firstResult, crossReferenc
 
 async function verifyClassificationConsistency(
     openai,
-    { selectedModel, isReasoningModel, config, message, labelDefinitions, confidenceThreshold, firstResult }
+    {
+        selectedModel,
+        isReasoningModel,
+        isOpenRouter = false,
+        config,
+        message,
+        labelDefinitions,
+        confidenceThreshold,
+        firstResult,
+    }
 ) {
     const staticUserContent =
         `Prompt:\n${config.prompt}\n\n` +
@@ -351,6 +375,7 @@ async function verifyClassificationConsistency(
         // Audits are sparse and their user-specific prefixes are almost never reused.
         // Explicit mode without a breakpoint avoids a charged one-off cache write.
         enableCacheWrite: false,
+        isOpenRouter,
     })
 
     const verified = coerceClassifierResult({ ...parsed }, labelDefinitions, confidenceThreshold)
@@ -360,6 +385,7 @@ async function verifyClassificationConsistency(
 async function classifyGmailMessage({ config, message }) {
     const envFunctions = getCachedEnvFunctions()
     const openAiKey = envFunctions?.OPEN_AI_KEY
+    const openRouterKey = envFunctions?.OPENROUTER_API_KEY
     const labelDefinitions = Array.isArray(config?.labelDefinitions) ? config.labelDefinitions : []
     const confidenceThreshold = normalizeConfidenceThreshold(config?.confidenceThreshold)
 
@@ -373,7 +399,14 @@ async function classifyGmailMessage({ config, message }) {
         }
     }
 
-    const openai = getOpenAIClient(openAiKey)
+    // The two passes resolve their client independently, because they can legitimately sit on
+    // different providers: the first pass is user-selectable (and may be DeepSeek via OpenRouter)
+    // while the auditor defaults to a strong OpenAI model. A single shared client would send one of
+    // them to the wrong upstream.
+    const { client: openai, isOpenRouter } = resolveClassifierClient(config?.model, {
+        openAiKey,
+        openRouterKey,
+    })
     const selectedModel = mapAssistantModelToOpenAIModel(config?.model)
     const isReasoningModel = isGpt5ReasoningModel(config?.model)
 
@@ -384,6 +417,10 @@ async function classifyGmailMessage({ config, message }) {
     const auditModelKey = config?.consistencyModel || DEFAULT_GMAIL_CONSISTENCY_MODEL
     const auditModel = mapAssistantModelToOpenAIModel(auditModelKey)
     const auditIsReasoningModel = isGpt5ReasoningModel(auditModelKey)
+    const { client: auditOpenai, isOpenRouter: auditIsOpenRouter } = resolveClassifierClient(auditModelKey, {
+        openAiKey,
+        openRouterKey,
+    })
     const {
         classifierLabelDefinitions,
         classifierMessage,
@@ -409,6 +446,7 @@ async function classifyGmailMessage({ config, message }) {
             firstStaticUserContent
         ),
         cacheRoute: 'gmail-classifier-first-pass',
+        isOpenRouter,
     })
 
     const firstResult = coerceClassifierResult({ ...parsed, usage: firstUsage }, labelDefinitions, confidenceThreshold)
@@ -465,9 +503,10 @@ async function classifyGmailMessage({ config, message }) {
             verified,
             usage: verifyUsage,
             parsed: verifyParsed,
-        } = await verifyClassificationConsistency(openai, {
+        } = await verifyClassificationConsistency(auditOpenai, {
             selectedModel: auditModel,
             isReasoningModel: auditIsReasoningModel,
+            isOpenRouter: auditIsOpenRouter,
             config,
             message: classifierMessage,
             labelDefinitions: auditLabelDefinitions,

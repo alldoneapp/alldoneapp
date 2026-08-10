@@ -194,6 +194,55 @@ Uses Firebase Functions v2 syntax:
 
 Always consider i18n. Translations in `i18n/translations/` (en.json, de.json, es.json). Use TranslationService for new strings.
 
+### In-app assistant models (chat, heartbeat, labeling)
+
+`functions/Assistant/selectableAssistantModels.js` is the **one** product menu of assistant models,
+and adding an entry there surfaces it in every picker at once: assistant model, heartbeat model,
+per-task override, Gmail labeling and calendar routing. Everything else is a per-capability
+allowlist keyed on the product key (`MODEL_GPT5_6_SOL`, `MODEL_DEEPSEEK_V4_FLASH`), never on the
+upstream id. Adding a model means touching `assistantHelper.js`'s `getModel`, `getTokensPerGold`,
+`getMaxTokensForModel` and each `modelSupports*` gate, plus the label chains in `ModelWrapper.js` /
+`assistantUpdates.js` / `UpdateFromTemplate.js` and the `i18n` label. **A model missing from
+`getTokensPerGold` is billed nothing at all** — it returns `undefined` and
+`calculateGoldCostFromTokens` turns that into `0`, silently.
+
+**This is a separate system from the VM agent catalog** (`vmAgentModelCatalog.js` /
+`vmModelRouting.js`). The VM harness encodes its provider into the model string
+(`openrouter:vendor/model`) because the user picks from a live catalog of hundreds. The in-app
+assistant does the opposite — a short curated list whose keys are already persisted on assistant
+docs, Gmail configs and calendar configs — so the key stays opaque and the upstream id lives in a
+table (`assistantModelRouting.js`). That is what lets the pinned DeepSeek release be bumped on one
+line without a data migration.
+
+**DeepSeek V4 Flash via OpenRouter (AT-2238)** is the first non-OpenAI, non-Perplexity assistant
+model, pinned to `deepseek/deepseek-v4-flash-0731` rather than the floating
+`~deepseek/deepseek-v4-flash-latest` alias, which would swap the model under live assistants and
+labeling configs with no review. The load-bearing constraint is the **wire protocol**: chat and
+heartbeats run on OpenAI's **Responses** API (`openai.responses.create`), and OpenRouter serves only
+the OpenAI-_compatible_ **Chat Completions** surface — the same split `vmJobRunner` already handles
+for Codex with `wire_api = "chat"`. So OpenRouter chat takes a second transport,
+`openRouterChatClient.js`, which terminates at the _same_ stream contract
+(`{content, additional_kwargs}` plus a trailing `tool_calls` event) so the tool loop, Gold metering
+and progress status are untouched. Three consequences worth knowing: hosted **tool-search is
+Responses-only**, so OpenRouter runs always send full function schemas (Flash's 1M window absorbs
+it); `prompt_cache_key` / `prompt_cache_options` / `prompt_cache_breakpoint` are **OpenAI
+extensions** and are omitted rather than sent hopefully; and Flash is **text-only**
+(`input_modalities: ['text']`), so image parts are replaced with a readable placeholder instead of
+failing the whole request. Labeling was the cheap half — the Gmail and calendar classifiers already
+call `chat.completions.create`, so only the client swaps (`classifierModelClient.js`). Both
+classifiers resolve their **two passes independently**, because a DeepSeek first pass with the
+default OpenAI auditor is the normal configuration. Chat Gold rate is **2000 tokens/Gold** (Sol 100,
+Terra 200, Luna 500) — a deliberate fraction of the ~80x upstream cost advantage, matching how
+Luna's 25x is priced at 5x. Requires `OPENROUTER_API_KEY`, which **had never been whitelisted in
+`envFunctionsHelper.js`** — that file builds explicit key objects rather than spreading the env
+blob, so the key was `undefined` at runtime even when present in `GOOGLE_FUNCTIONS_ENV_DEV/_PROD`;
+adding a secret to the blob is not enough, it must be listed there too.
+
+Calendar routing additionally gained the model picker and the server-side allowlist it never had.
+It previously accepted **any** string and defaulted client-side to `MODEL_GPT5_4_NANO`, a key
+outside the selectable set that the classifier's mapper did not know — so it fell through to
+`gpt-5.2`, and calendar labeling ran on a model that was neither stored nor chosen.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:

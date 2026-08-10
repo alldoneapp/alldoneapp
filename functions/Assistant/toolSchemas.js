@@ -3,6 +3,29 @@
  * These schemas define the structure and parameters for each tool
  */
 
+const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
+
+/**
+ * Model enums are derived from the shared selector rather than hand-listed, so a model added to the
+ * product menu is immediately settable through the assistant's own settings tools. The hand-listed
+ * version had drifted: `update_assistant_settings` never learned about Terra or Luna, so the
+ * assistant refused to set a model the user could pick by hand two clicks away.
+ */
+const SELECTABLE_ASSISTANT_MODEL_KEYS = SELECTABLE_ASSISTANT_MODELS.map(option => option.model)
+
+/** Legacy keys kept settable so assistants already configured on them can retain their model. */
+const LEGACY_ASSISTANT_SETTINGS_MODEL_KEYS = [
+    'MODEL_GPT5_5',
+    'MODEL_GPT5_1',
+    'MODEL_GPT5_2',
+    'MODEL_GPT5_4_MINI',
+    'MODEL_GPT5_4_NANO',
+    'MODEL_SONAR',
+    'MODEL_SONAR_PRO',
+    'MODEL_SONAR_REASONING',
+    'MODEL_SONAR_REASONING_PRO',
+]
+
 const toolSchemas = {
     create_task: {
         type: 'function',
@@ -1009,7 +1032,7 @@ const toolSchemas = {
                 properties: {
                     model: {
                         type: 'string',
-                        enum: ['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'],
+                        enum: SELECTABLE_ASSISTANT_MODEL_KEYS,
                         description:
                             'Optional: model used for heartbeat executions. Sol is the most capable, Terra balances capability and cost, and Luna is optimized for efficient high-volume work.',
                     },
@@ -1186,18 +1209,7 @@ const toolSchemas = {
                     },
                     model: {
                         type: 'string',
-                        enum: [
-                            'MODEL_GPT5_6_SOL',
-                            'MODEL_GPT5_5',
-                            'MODEL_GPT5_1',
-                            'MODEL_GPT5_2',
-                            'MODEL_GPT5_4_MINI',
-                            'MODEL_GPT5_4_NANO',
-                            'MODEL_SONAR',
-                            'MODEL_SONAR_PRO',
-                            'MODEL_SONAR_REASONING',
-                            'MODEL_SONAR_REASONING_PRO',
-                        ],
+                        enum: [...SELECTABLE_ASSISTANT_MODEL_KEYS, ...LEGACY_ASSISTANT_SETTINGS_MODEL_KEYS],
                         description: 'Optional: assistant LLM model key.',
                     },
                     temperature: {
