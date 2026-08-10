@@ -57,22 +57,34 @@ describe('decoratePicker on the quill 2 header picker', () => {
         expect(items[1].getAttribute('data-label')).toBe('Small heading')
     })
 
-    it('mirrors the initially selected item icon into the label and strips data-label', () => {
+    it('restores the empty data-value quill 1 kept on items (the app CSS keys off it)', () => {
+        const picker = new Picker(buildHeaderSelect())
+        decoratePicker(picker)
+        const items = picker.container.querySelectorAll('.ql-picker-item')
+        // quill 2 skips falsy values, but the "Normal text" item must carry
+        // data-value="" for the app's [data-value=''] layout/hiding rules.
+        expect(items[0].getAttribute('data-value')).toBe('')
+        expect(items[1].getAttribute('data-value')).toBe('3')
+    })
+
+    it('mirrors the initially selected item icon into the label, stamps data-value and strips data-label', () => {
         const picker = new Picker(buildHeaderSelect())
         decoratePicker(picker)
         // quill 2 copied data-label onto the label during construction (before the
         // decoration ran) and selectItem early-returns for the unchanged selection —
         // the decoration must fix the label anyway.
         expect(picker.label.hasAttribute('data-label')).toBe(false)
+        expect(picker.label.getAttribute('data-value')).toBe('')
         expect(picker.label.querySelector('.ql-header-item-icon svg').getAttribute('data-icon')).toBe('normal')
     })
 
-    it('keeps the label in sync (icon only, no data-label) when the selection changes', () => {
+    it('keeps the label in sync (icon, data-value, no data-label) when the selection changes', () => {
         const picker = new Picker(buildHeaderSelect())
         decoratePicker(picker)
         const items = picker.container.querySelectorAll('.ql-picker-item')
         picker.selectItem(items[2], true)
         expect(picker.label.hasAttribute('data-label')).toBe(false)
+        expect(picker.label.getAttribute('data-value')).toBe('1')
         expect(picker.label.querySelector('.ql-header-item-icon svg').getAttribute('data-icon')).toBe('1')
         expect(picker.label.textContent).not.toContain('Heading')
     })

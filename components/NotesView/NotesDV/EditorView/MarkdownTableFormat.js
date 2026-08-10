@@ -1,7 +1,13 @@
 import ReactQuill from 'react-quill-new'
 import v4 from 'uuid/v4'
 
-const Embed = ReactQuill.Quill.import('blots/embed')
+// A table is block content, so the blot must be a BlockEmbed. The quill-1 era
+// version was an inline Embed (span) styled display:block — under quill 2 the
+// inline Embed's cursor-guard text nodes sit inside the contenteditable=false
+// span, which breaks caret placement on the lines around the table (clicking
+// above a pasted table could not put the cursor there). As a BlockEmbed the
+// table owns its line and quill handles caret navigation around it natively.
+const BlockEmbed = ReactQuill.Quill.import('blots/block/embed')
 
 const DEFAULT_TABLE_DATA = { rows: [], alignments: [] }
 
@@ -129,7 +135,7 @@ const createCell = (tagName, text, alignment) => {
     return cell
 }
 
-export default class MarkdownTableFormat extends Embed {
+export default class MarkdownTableFormat extends BlockEmbed {
     static create(tableData = DEFAULT_TABLE_DATA) {
         const node = super.create()
         const id = tableData.id || v4()
@@ -171,4 +177,4 @@ export default class MarkdownTableFormat extends Embed {
 
 MarkdownTableFormat.blotName = 'markdownTable'
 MarkdownTableFormat.className = 'ql-markdownTable'
-MarkdownTableFormat.tagName = 'span'
+MarkdownTableFormat.tagName = 'div'

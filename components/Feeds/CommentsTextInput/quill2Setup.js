@@ -80,8 +80,17 @@ export const decoratePicker = picker => {
     const { select } = picker
     const items = picker.container.querySelectorAll('.ql-picker-item')
     Array.from(select.options).forEach((option, index) => {
-        if (option.hasAttribute('data-html') && items[index]) {
-            items[index].innerHTML = option.getAttribute('data-html')
+        const item = items[index]
+        if (!item) return
+        if (option.hasAttribute('data-html')) {
+            item.innerHTML = option.getAttribute('data-html')
+        }
+        // Quill 1 stamped data-value onto items whenever the option carried a value
+        // attribute — including value="" — while quill 2 skips falsy values. The app
+        // CSS keys the header picker's layout and its text-hiding rules off
+        // [data-value=''], so restore the quill-1 behavior.
+        if (option.hasAttribute('value') && !item.hasAttribute('data-value')) {
+            item.setAttribute('data-value', option.getAttribute('value'))
         }
     })
     if (select.hasAttribute('data-html')) {
@@ -98,6 +107,11 @@ export const decoratePicker = picker => {
         const syncLabel = () => {
             picker.label.removeAttribute('data-label')
             const selectedItem = picker.container.querySelector('.ql-picker-item.ql-selected')
+            // The label must ALWAYS carry data-value (empty for "Normal text") — the
+            // app CSS hides the fallback ::before text via [data-value='']::before
+            // { display: none }, which quill 1 satisfied by keeping the empty
+            // attribute and quill 2 breaks by removing it.
+            picker.label.setAttribute('data-value', (selectedItem && selectedItem.getAttribute('data-value')) || '')
             const selectedIcon = selectedItem && selectedItem.querySelector('.ql-header-item-icon')
             picker.label.innerHTML = ''
             if (selectedIcon) {

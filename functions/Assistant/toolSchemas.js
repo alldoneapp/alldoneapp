@@ -158,6 +158,11 @@ const toolSchemas = {
                         description:
                             'Task ownership scope. Defaults to "mine", returning only tasks whose owner/assignee is the requesting user. Use "visible" only for explicit project/team/shared-task requests; visible tasks can belong to other users, so use ownerUserId/isOwnedByRequestingUser when wording results.',
                     },
+                    humanReadableId: {
+                        type: 'string',
+                        description:
+                            'Optional: look up one specific task by its human-readable task ID, e.g. "FE-1452". Accepts the hyphenless ("FE1452") or spaced ("FE 1452") form too. When set, all other filters (status, date, scope) are ignored and only the matching task is returned, searched across every project the user can access unless projectId/projectName narrows it. Prefer the search tool for fuzzy or partial ID queries.',
+                    },
                     status: {
                         type: 'string',
                         enum: ['open', 'done', 'all'],
@@ -1242,7 +1247,7 @@ const toolSchemas = {
         function: {
             name: 'search',
             description:
-                'Text search across tasks, notes, goals, contacts, chats, and assistants. Use this to find items by keywords in their name/content. Requires a meaningful search query (not just a date). For listing tasks by date or status without text search, use get_tasks instead. For listing chats by timeframe or project without a keyword query, use get_chats.',
+                'Text search across tasks, notes, goals, contacts, chats, and assistants. Use this to find items by keywords in their name/content, AND to look up a task by its human-readable task ID. Every task has an ID shaped like "FE-1452" (two-letter project prefix + number); the index also matches the ID written without the hyphen ("FE1452") or with a space ("FE 1452"), so pass whatever form the user typed straight through as the query. This is the correct and fastest way to answer "what is task FE-1452?" - never enumerate tasks with get_tasks to hunt for an ID. Requires a meaningful search query (not just a date). For listing tasks by date or status without text search, use get_tasks instead. For listing chats by timeframe or project without a keyword query, use get_chats.',
             parameters: {
                 type: 'object',
                 properties: {
