@@ -197,17 +197,17 @@ const toolSchemas = {
                     includeArchived: {
                         type: 'boolean',
                         description:
-                            'If true, includes tasks from archived projects (only applies when allProjects is true)',
+                            'If true, includes tasks from archived projects when sweeping with allProjects. An explicit projectId/projectName always resolves against archived projects too, so you do not need this flag to target one archived project by id or name.',
                     },
                     includeCommunity: {
                         type: 'boolean',
                         description:
-                            'If true, includes tasks from community/template projects (only applies when allProjects is true)',
+                            'If true, includes tasks from community/template projects when sweeping with allProjects. An explicit projectId/projectName always resolves against community/template projects too.',
                     },
                     limit: {
                         type: 'number',
                         description:
-                            'Optional: maximum number of tasks to return. Default is 100, maximum is 1000. Use higher limits when user asks for "all" tasks.',
+                            'Optional: maximum number of tasks to return. Default is 100. Requests above 150 are capped, because a larger result does not fit the conversation context and would be truncated to a useless fragment. Do not raise the limit to hunt for one specific task - use the search tool (or humanReadableId) instead.',
                     },
                 },
                 required: [],

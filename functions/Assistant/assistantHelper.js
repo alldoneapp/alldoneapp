@@ -153,6 +153,9 @@ const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per tok
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+/
+// Largest get_tasks listing that still reaches the model intact. Above this, enforceToolResultContextCeiling
+// compacts the tasks array to a handful of items, so a bigger "limit" returns less usable information, not more.
+const GET_TASKS_MAX_CONTEXT_SAFE_LIMIT = 150
 const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
 const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
 const ALLOWED_DELEGATION_TARGET_KEYS_FIELD = 'allowedDelegationTargetKeys'
@@ -344,6 +347,20 @@ function normalizeRecentHours(value) {
 
 function normalizeAssistantTaskScope(value) {
     return value === 'visible' ? 'visible' : 'mine'
+}
+
+// Human-readable task IDs are stored as `<PREFIX>-<counter>` (see functions/shared/taskIdGenerator.js),
+// but users type them however they like: "FE-1452", "FE1452", "fe 1452". Normalize to the stored form so
+// an exact Firestore equality lookup works regardless of spelling.
+function normalizeHumanReadableTaskId(value) {
+    if (typeof value !== 'string') return null
+
+    // Validate the shape before rewriting it. Stripping separators first would quietly turn a malformed
+    // "FE-1452-2" into the valid-but-different id "FE-14522" and look up the wrong task.
+    const match = value.trim().match(/^([A-Za-z]+)[\s_-]?(\d+)$/)
+    if (!match) return null
+
+    return `${match[1].toUpperCase()}-${match[2]}`
 }
 
 function filterTasksByRecentHours(tasks, recentHours, now = Date.now()) {
@@ -5571,10 +5588,116 @@ async function executeToolNatively(
             const includeArchived = toolArgs.includeArchived || false
             const includeCommunity = toolArgs.includeCommunity || false
 
-            const projectsData = await projectService.getUserProjects(creatorId, {
-                includeArchived,
-                includeCommunity,
+            // Resolve an explicit projectId/projectName against EVERY project the user can reach,
+            // archived and community included. Those flags govern which projects a broad sweep visits,
+            // not which projects are addressable by id or name - and get_user_projects hands the model
+            // archived project ids, which then failed here with a misleading
+            // "Target project not found or not accessible".
+            const addressableProjects = await projectService.getUserProjects(creatorId, {
+                includeArchived: true,
+                includeCommunity: true,
             })
+            const projectsData = addressableProjects.filter(project => {
+                if (project.projectType === 'archived') return includeArchived
+                if (project.projectType === 'template' || project.projectType === 'guide') return includeCommunity
+                return true
+            })
+
+            const humanReadableIdQuery = normalizeHumanReadableTaskId(toolArgs.humanReadableId)
+            if (
+                typeof toolArgs.humanReadableId === 'string' &&
+                toolArgs.humanReadableId.trim() &&
+                !humanReadableIdQuery
+            ) {
+                throw new Error(
+                    `"${toolArgs.humanReadableId}" is not a valid human-readable task ID (expected a form like "FE-1452"). Use the search tool for free-text queries.`
+                )
+            }
+
+            if (humanReadableIdQuery) {
+                // Exact lookup by task ID. Deliberately a single-field equality query with no orderBy and
+                // no extra where clauses, so it rides Firestore's automatic single-field index; adding
+                // filters here would demand a new composite index for every project.
+                const lookupProjects =
+                    toolArgs.projectId || toolArgs.projectName
+                        ? [
+                              resolveAssistantTaskProject(
+                                  addressableProjects,
+                                  projectId,
+                                  toolArgs.projectId,
+                                  toolArgs.projectName
+                              ),
+                          ]
+                        : addressableProjects
+
+                const db = admin.firestore()
+                const lookupResults = await Promise.all(
+                    lookupProjects.map(async project => {
+                        try {
+                            const snapshot = await db
+                                .collection(`items/${project.id}/tasks`)
+                                .where('humanReadableId', '==', humanReadableIdQuery)
+                                .limit(5)
+                                .get()
+                            return {
+                                success: true,
+                                tasks: snapshot.docs.map(doc => ({
+                                    ...doc.data(),
+                                    id: doc.id,
+                                    projectId: project.id,
+                                    projectName: project.name,
+                                })),
+                            }
+                        } catch (error) {
+                            console.warn(`Task ID lookup failed for project ${project.id}:`, error.message)
+                            return { success: false, tasks: [], projectId: project.id, error: error.message }
+                        }
+                    })
+                )
+
+                const failedLookups = lookupResults.filter(result => !result.success)
+                if (failedLookups.length === lookupResults.length && lookupResults.length > 0) {
+                    throw new Error(
+                        `Task ID lookup failed in all ${failedLookups.length} project(s), so nothing could be read. ` +
+                            `This is an error, not a missing task. First error: ${failedLookups[0].error}`
+                    )
+                }
+
+                const visibilityPermissions = [FEED_PUBLIC_FOR_ALL, creatorId]
+                const matchedTasks = lookupResults
+                    .flatMap(result => result.tasks)
+                    .filter(
+                        task =>
+                            Array.isArray(task.isPublicFor) &&
+                            task.isPublicFor.some(permission => visibilityPermissions.includes(permission))
+                    )
+
+                console.log('📋 GET_TASKS TOOL: Human-readable ID lookup', {
+                    humanReadableId: humanReadableIdQuery,
+                    projectsSearched: lookupProjects.length,
+                    projectsFailed: failedLookups.length,
+                    tasksFound: matchedTasks.length,
+                })
+
+                return {
+                    tasks: matchedTasks.map(task => mapAssistantTaskForToolResponse(task, creatorId)),
+                    count: matchedTasks.length,
+                    humanReadableId: humanReadableIdQuery,
+                    projectsSearched: lookupProjects.length,
+                    ...(failedLookups.length > 0
+                        ? {
+                              retrieval: {
+                                  resultsAreIncomplete: true,
+                                  projectsQueried: lookupResults.length,
+                                  projectsFailed: failedLookups.length,
+                                  note:
+                                      'Some projects could not be searched, so a missing task here is not proof it does not exist. ' +
+                                      'Say so instead of reporting the ID as unknown.',
+                              },
+                          }
+                        : {}),
+                }
+            }
 
             // Initialize TaskRetrievalService with database
             const retrievalService = new TaskRetrievalService({
@@ -5584,9 +5707,10 @@ async function executeToolNatively(
             })
             await retrievalService.initialize()
 
-            // If allProjects is true, get tasks from all projects
-            // Limit: default 1000, max 1000
-            const taskLimit = Math.min(toolArgs.limit || 1000, 1000)
+            // Cap the listing at what actually survives the conversation context ceiling. A larger result
+            // is compacted to ~20 array items before the model ever sees it (see enforceToolResultContextCeiling),
+            // which silently turns "here are your 1000 tasks" into an unrepresentative fragment.
+            const taskLimit = Math.min(toolArgs.limit || 100, GET_TASKS_MAX_CONTEXT_SAFE_LIMIT)
             const effectiveDate = recentHours !== null ? null : toolArgs.date || null
             const taskScope = normalizeAssistantTaskScope(toolArgs.scope)
             let tasks = []
@@ -5645,7 +5769,7 @@ async function executeToolNatively(
                 }
             } else {
                 const targetProject = resolveAssistantTaskProject(
-                    projectsData,
+                    addressableProjects,
                     projectId,
                     toolArgs.projectId,
                     toolArgs.projectName
@@ -5672,9 +5796,14 @@ async function executeToolNatively(
 
             tasks = tasks.slice(0, taskLimit)
 
+            const requestedLimit = Number(toolArgs.limit) || null
+            const limitWasCapped = requestedLimit !== null && requestedLimit > GET_TASKS_MAX_CONTEXT_SAFE_LIMIT
+
             console.log('📋 GET_TASKS TOOL: Results', {
                 tasksReturned: tasks.length,
                 limit: taskLimit,
+                requestedLimit,
+                limitWasCapped,
                 recentHours: recentHours || null,
                 scope: taskScope,
                 projectsFailed: retrievalIssues ? retrievalIssues.projectsFailed : 0,
@@ -5687,6 +5816,19 @@ async function executeToolNatively(
                 recentHours: recentHours || null,
                 scope: taskScope,
                 ...(retrievalIssues ? { retrieval: retrievalIssues } : {}),
+                ...(limitWasCapped
+                    ? {
+                          limitCapped: {
+                              requestedLimit,
+                              appliedLimit: taskLimit,
+                              note:
+                                  `Only ${taskLimit} tasks were returned because a larger listing does not fit the conversation ` +
+                                  `context and would be truncated before you read it. This is a partial listing - do not conclude ` +
+                                  `anything from a task being absent. To find one specific task use the search tool, or get_tasks ` +
+                                  `with humanReadableId for an exact task ID; to narrow a listing use date, status, or project filters.`,
+                          },
+                      }
+                    : {}),
                 scopeDescription:
                     taskScope === 'mine'
                         ? 'Only tasks owned by the requesting user are returned. Shared project visibility does not make another user task personal.'
@@ -11569,6 +11711,12 @@ async function addBaseInstructions(
                     : ''),
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes('search')) {
+        messages.push([
+            'system',
+            'Tasks have human-readable IDs shaped like "FE-1452": a short project prefix, a hyphen, and a number. When the user mentions such a token - including without the hyphen ("FE1452") or with a space ("FE 1452") - treat it as a task ID and resolve it with the search tool, passing the token exactly as the user wrote it. The search index matches all of those spellings. Never answer an ID question by listing tasks with get_tasks and scanning them: large task listings are truncated before you see them, so the task you are looking for will usually be missing and you would wrongly conclude it does not exist.',
+        ])
+    }
     if (Array.isArray(allowedTools) && allowedTools.includes('search_gmail')) {
         messages.push([
             'system',
@@ -13316,6 +13464,7 @@ module.exports = {
     formatContextMessageTimestamp,
     normalizeRecentHours,
     normalizeAssistantTaskScope,
+    normalizeHumanReadableTaskId,
     resolveAssistantTaskProject,
     filterTasksByRecentHours,
     mapAssistantTaskForToolResponse,
