@@ -1,4 +1,9 @@
-import { installPopupOutsideDismissGuard, protectModalDismissFromClickThrough } from './popupDismissGuard'
+import {
+    highResNow,
+    installPopupOutsideDismissGuard,
+    protectModalDismissFromClickThrough,
+    shouldIgnorePressFromBeforeOpen,
+} from './popupDismissGuard'
 
 describe('popup outside-dismiss guard', () => {
     let popup
@@ -109,5 +114,58 @@ describe('popup outside-dismiss guard', () => {
 
         underlyingButton.click()
         expect(underlyingAction).toHaveBeenCalledTimes(1)
+    })
+})
+
+// AT-2236: a full-screen modal opened by a press covers the control that opened
+// it. A press the browser had queued while the main thread was blocked arrives
+// after the modal mounted and would dismiss it instantly, even though the user
+// made it before the modal existed.
+describe('press-made-before-open guard', () => {
+    afterEach(() => {
+        delete window.ontouchstart
+    })
+
+    it('ignores a press whose timestamp predates the open', () => {
+        const openedAt = highResNow()
+        expect(shouldIgnorePressFromBeforeOpen({ timeStamp: openedAt - 1 }, openedAt)).toBe(true)
+    })
+
+    it('lets a press made after the open through', () => {
+        const openedAt = highResNow() - 5000
+        expect(shouldIgnorePressFromBeforeOpen({ timeStamp: highResNow() }, openedAt)).toBe(false)
+    })
+
+    it('reads the timestamp off the native event when the wrapper has none', () => {
+        const openedAt = highResNow()
+        expect(shouldIgnorePressFromBeforeOpen({ nativeEvent: { timeStamp: openedAt - 1 } }, openedAt)).toBe(true)
+    })
+
+    it('ignores epoch-millisecond timestamps instead of comparing them', () => {
+        // Legacy engines report Date.now() here; it must not be read as a
+        // time-origin value (it would look like a press from the far future).
+        const openedAt = highResNow() - 5000
+        expect(shouldIgnorePressFromBeforeOpen({ timeStamp: Date.now() }, openedAt)).toBe(false)
+    })
+
+    it('falls back to a short window on touch devices when there is no timestamp', () => {
+        window.ontouchstart = null
+        expect(shouldIgnorePressFromBeforeOpen({}, highResNow())).toBe(true)
+        expect(shouldIgnorePressFromBeforeOpen({}, highResNow() - 5000)).toBe(false)
+    })
+
+    it('never blocks an untimestamped press on a desktop pointer', () => {
+        expect(shouldIgnorePressFromBeforeOpen({}, highResNow())).toBe(false)
+    })
+
+    it('honours a press that looks queued for longer than any real jank', () => {
+        // A `timeStamp` from a different time origin must not make the backdrop
+        // permanently unresponsive.
+        const openedAt = highResNow()
+        expect(shouldIgnorePressFromBeforeOpen({ timeStamp: openedAt - 60000 }, openedAt)).toBe(false)
+    })
+
+    it('does nothing when the caller has no open time yet', () => {
+        expect(shouldIgnorePressFromBeforeOpen({ timeStamp: 1 }, undefined)).toBe(false)
     })
 })

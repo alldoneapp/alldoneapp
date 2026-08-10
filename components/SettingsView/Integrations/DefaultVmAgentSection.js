@@ -13,38 +13,13 @@ import {
 } from '../../../utils/backends/firestore'
 
 const NO_MODEL_DEFAULT_KEY = 'none'
-const OPENROUTER_PREFIX = 'openrouter:'
-const OPENAI_SOURCE = 'openai'
-const OPENROUTER_SOURCE = 'openrouter'
-
-// Codex speaks an OpenAI-compatible protocol, so it can also run tool-calling OpenRouter models
-// (DeepSeek and friends). The source is encoded into the stored value with an `openrouter:` prefix
-// — see functions/Assistant/vmModelRouting.js — so this screen never needs a second saved field.
-function isOpenRouterSelection(value) {
-    return typeof value === 'string' && value.startsWith(OPENROUTER_PREFIX)
-}
 
 // The picker offers families ("Opus", "Sol"), never concrete versions — the family is resolved
 // to its newest release when the VM task actually starts. See functions/Assistant/vmAgentModelCatalog.js.
-// For OpenRouter it offers concrete models, because an OpenRouter id is already a vendor-maintained
-// pointer at the current release of that line.
-function familiesForAgent(modelCatalogs, agent, source = OPENAI_SOURCE) {
-    const key = agent === 'codex' && source === OPENROUTER_SOURCE ? OPENROUTER_SOURCE : agent
-    const catalog = modelCatalogs && key ? modelCatalogs[key] : null
+function familiesForAgent(modelCatalogs, agent) {
+    const catalog = modelCatalogs && agent ? modelCatalogs[agent] : null
     return catalog && Array.isArray(catalog.families) ? catalog.families : []
 }
-
-// The toggle is only meaningful for Codex, and only when the environment can actually reach
-// OpenRouter — offering a model whose run would fail closed is worse than not offering it.
-function isOpenRouterAvailable(modelCatalogs) {
-    const catalog = modelCatalogs ? modelCatalogs[OPENROUTER_SOURCE] : null
-    return !!catalog && catalog.available !== false && Array.isArray(catalog.families) && catalog.families.length > 0
-}
-
-const MODEL_SOURCES = [
-    { id: OPENAI_SOURCE, label: 'OpenAI' },
-    { id: OPENROUTER_SOURCE, label: 'OpenRouter' },
-]
 
 const AGENTS = [
     { id: 'claude', label: 'Claude' },
@@ -78,10 +53,6 @@ export default function DefaultVmAgentSection() {
     const [selectedFamilies, setSelectedFamilies] = useState({ claude: null, codex: null })
     const [modelCatalogs, setModelCatalogs] = useState(null)
     const [savingFamily, setSavingFamily] = useState('')
-    // Which source the Codex model list is showing. Initialised from the saved choice so a user
-    // who picked DeepSeek returns to the OpenRouter list rather than to an OpenAI list that makes
-    // their selection look lost.
-    const [modelSource, setModelSource] = useState(OPENAI_SOURCE)
 
     useEffect(() => {
         let mounted = true
@@ -95,12 +66,10 @@ export default function DefaultVmAgentSection() {
                             : settings.defaultReasoningEffort || 'medium'
                     )
                     setSelectedPolicy(settings.effectiveDefaultApprovalPolicy || 'balanced')
-                    const savedCodex = (settings.defaultModelFamilies && settings.defaultModelFamilies.codex) || null
                     setSelectedFamilies({
                         claude: (settings.defaultModelFamilies && settings.defaultModelFamilies.claude) || null,
-                        codex: savedCodex,
+                        codex: (settings.defaultModelFamilies && settings.defaultModelFamilies.codex) || null,
                     })
-                    setModelSource(isOpenRouterSelection(savedCodex) ? OPENROUTER_SOURCE : OPENAI_SOURCE)
                     setModelCatalogs(settings.modelCatalogs || null)
                     setLoaded(true)
                 }
@@ -188,20 +157,6 @@ export default function DefaultVmAgentSection() {
     const agentControlsDisabled = !!savingAgent || !!savingEffort || !!savingPolicy || !!savingFamily || !loaded
     const isPending = !loaded && !error
     const insideLoadingRegion = useIsInsideIntegrationsLoadingRegion()
-    const showModelSources = selectedAgent === 'codex' && isOpenRouterAvailable(modelCatalogs)
-    const activeModelSource = showModelSources ? modelSource : OPENAI_SOURCE
-    const modelOptions = familiesForAgent(modelCatalogs, selectedAgent, activeModelSource)
-    const activeCatalog =
-        modelCatalogs && selectedAgent
-            ? modelCatalogs[activeModelSource === OPENROUTER_SOURCE ? OPENROUTER_SOURCE : selectedAgent]
-            : null
-
-    // Switching the source only changes what the list shows; it never saves. The saved value is
-    // whatever model the user last picked, and it stays selected while they browse the other list.
-    const selectSource = source => {
-        if (agentControlsDisabled || source === modelSource) return
-        setModelSource(source)
-    }
 
     return (
         <IntegrationsPendingContent loadingKey="vmAgentDefaults" pending={isPending} style={localStyles.section}>
@@ -239,39 +194,14 @@ export default function DefaultVmAgentSection() {
                     'Optionally pick the model family used by the selected agent. The latest version of that family is used automatically, so you never have to update a version number. Each agent keeps its own choice.'
                 )}
             </Text>
-            {showModelSources && (
-                <View style={[localStyles.options, localStyles.sourceOptions]}>
-                    {MODEL_SOURCES.map(source => {
-                        const selected = activeModelSource === source.id
-                        return (
-                            <TouchableOpacity
-                                key={source.id}
-                                style={[
-                                    localStyles.option,
-                                    localStyles.sourceOption,
-                                    selected && localStyles.selectedOption,
-                                ]}
-                                onPress={() => selectSource(source.id)}
-                                disabled={agentControlsDisabled}
-                                accessibilityRole="radio"
-                                accessibilityState={{ selected, disabled: agentControlsDisabled }}
-                            >
-                                <Text style={[styles.subtitle2, selected && localStyles.selectedLabel]}>
-                                    {source.label}
-                                </Text>
-                            </TouchableOpacity>
-                        )
-                    })}
-                </View>
-            )}
             <View style={[localStyles.options, localStyles.effortOptions]}>
                 {[{ id: null, key: NO_MODEL_DEFAULT_KEY, label: translate('No default') }]
                     .concat(
-                        modelOptions.map(family => ({
+                        familiesForAgent(modelCatalogs, selectedAgent).map(family => ({
                             id: family.id,
                             key: family.id,
-                            // Provider-supplied names ("Opus", "Sol", "DeepSeek V3.2") are proper
-                            // nouns, not translatable UI strings — render them as discovered.
+                            // Provider-supplied family names ("Opus", "Sol") are proper nouns, not
+                            // translatable UI strings — render them as discovered.
                             label: family.label,
                         }))
                     )
@@ -305,21 +235,9 @@ export default function DefaultVmAgentSection() {
                         )
                     })}
             </View>
-            {loaded && activeCatalog?.source === 'fallback' && (
+            {loaded && modelCatalogs && selectedAgent && modelCatalogs[selectedAgent]?.source === 'fallback' && (
                 <Text style={localStyles.hint}>
                     {translate('Could not reach the model provider, so a built-in list of families is shown.')}
-                </Text>
-            )}
-            {loaded && activeModelSource === OPENROUTER_SOURCE && (
-                <Text style={localStyles.hint}>
-                    {translate(
-                        'OpenRouter models run through the Codex harness and always use Alldone API billing, even when you have connected a personal subscription or API key.'
-                    )}
-                </Text>
-            )}
-            {loaded && activeModelSource === OPENROUTER_SOURCE && activeCatalog?.truncated && (
-                <Text style={localStyles.hint}>
-                    {translate('Showing the most relevant compatible models. More are available on request.')}
                 </Text>
             )}
             <Text style={[styles.title6, localStyles.effortTitle]}>{translate('Default VM effort')}</Text>
@@ -417,13 +335,6 @@ const localStyles = StyleSheet.create({
     },
     effortOptions: {
         flexWrap: 'wrap',
-    },
-    sourceOptions: {
-        marginBottom: 8,
-    },
-    sourceOption: {
-        minWidth: 96,
-        minHeight: 36,
     },
     option: {
         minWidth: 112,

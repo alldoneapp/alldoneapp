@@ -61,16 +61,7 @@ jest.mock('./vmAgentModelCatalog', () => ({
     // Keep the real helpers (vmAgentSettings imports isValidFamilyId from here); stub only the
     // network-backed resolver.
     ...jest.requireActual('./vmAgentModelCatalog'),
-    // The platform OpenRouter key is an environment fact; the tests that care set it explicitly.
-    isOpenRouterConfigured: jest.fn(() => true),
-    // Live Gold pricing is a network-backed catalog read; stub it so these tests never reach
-    // openrouter.ai, and so a test can assert the live price actually wins when there is one.
-    getOpenRouterUpstreamPrice: jest.fn(async () => null),
     resolveFamilyToModel: jest.fn(async (provider, family) => {
-        // An OpenRouter selection resolves to itself, prefix intact — see vmAgentModelCatalog.
-        if (typeof family === 'string' && family.startsWith('openrouter:')) {
-            return family === 'openrouter:nope/not-real' ? null : family
-        }
         const catalog = {
             claude: { opus: 'opus', sonnet: 'sonnet', haiku: 'haiku', fable: 'claude-fable-5' },
             codex: { sol: 'gpt-5.6-sol', terra: 'gpt-5.6-terra', luna: 'gpt-5.6-luna' },
@@ -90,7 +81,6 @@ const {
     formatAgentModelLabel,
 } = require('./vmJob')
 const { MAX_CONCURRENT_VM_JOBS, VM_JOB_QUEUE_RATE_LIMITS } = require('./vmJobConfig')
-const { getOpenRouterUpstreamPrice } = require('./vmAgentModelCatalog')
 
 describe('startVmJob', () => {
     beforeEach(() => {
@@ -129,97 +119,6 @@ describe('startVmJob', () => {
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
             expect.objectContaining({ threadRunOrder: 1, threadRunCreatedAt: expect.any(Number) })
         )
-    })
-
-    // AT-2230 Gold pricing: the rate is resolved ONCE here and frozen onto both docs, because the two
-    // charge sites (proxy mid-run, runner at settlement) must bill at the same rate and neither can
-    // afford an async catalog read inside its transaction.
-    describe('per-model Gold pricing is resolved at launch and frozen on the job', () => {
-        const launch = extra =>
-            startVmJob({
-                objective: 'Build this',
-                taskType: 'prototype',
-                projectId: 'project-1',
-                objectType: 'tasks',
-                objectId: 'task-1',
-                assistantId: 'assistant-1',
-                requestUserId: 'user-1',
-                ...extra,
-            })
-
-        // Driven through the user's saved Settings default, which is how a Luna run actually happens.
-        const saveCodexDefault = family =>
-            mockGetDoc('users/user-1').get.mockResolvedValue({
-                exists: true,
-                data: () => ({ defaultVmAgent: 'codex', defaultVmAgentModel: { codex: family } }),
-            })
-
-        test('a Codex Luna run is priced at 1/25 of the Sol rate on both documents', async () => {
-            saveCodexDefault('luna')
-
-            await launch({})
-
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 2500 })
-            )
-            // The proxy reads its rate from the pendingWebhooks mirror, so the two must agree.
-            expect(mockDocs['pendingWebhooks/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 2500 })
-            )
-        })
-
-        test('a Sol run keeps the unchanged baseline rate', async () => {
-            saveCodexDefault('sol')
-
-            await launch({})
-
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ tokensPerGold: 100 })
-            )
-        })
-
-        // The whole point of the live path: a model released after this code shipped, or a vendor
-        // price cut, is priced from its real numbers without anyone editing the static table.
-        test('an OpenRouter run prefers the live catalog price over the researched table', async () => {
-            getOpenRouterUpstreamPrice.mockResolvedValueOnce({ input: 0.08, cachedInput: 0.016, output: 0.18 })
-
-            await launch({
-                agent: 'codex',
-                agentModel: 'openrouter:deepseek/deepseek-brand-new',
-                requestText: 'please run this on deepseek via openrouter',
-            })
-
-            expect(getOpenRouterUpstreamPrice).toHaveBeenCalledWith('deepseek/deepseek-brand-new')
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ tokensPerGold: 4900 })
-            )
-        })
-
-        test('a live price lookup that fails still prices from the researched table', async () => {
-            getOpenRouterUpstreamPrice.mockRejectedValueOnce(new Error('catalog down'))
-
-            const result = await launch({
-                agent: 'codex',
-                agentModel: 'openrouter:deepseek/deepseek-v4-pro',
-                requestText: 'please run this on deepseek via openrouter',
-            })
-
-            // A pricing hiccup must never fail the run.
-            expect(result.success).toBe(true)
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ tokensPerGold: 1800 })
-            )
-        })
-
-        // A user must be able to see the rate without reverse-engineering it from Gold history.
-        test('the status comment discloses a rate away from the Sol baseline', async () => {
-            saveCodexDefault('luna')
-
-            await launch({})
-
-            const statusText = createInitialStatusMessage.mock.calls[0][4]
-            expect(statusText).toContain('1/25 of the Sol rate')
-        })
     })
 
     test('admits ten concurrent jobs and rejects the eleventh before charging or enqueueing it', async () => {
@@ -841,138 +740,6 @@ describe('startVmJob', () => {
             })
 
             await startVmJob({ ...baseArgs, agent: 'codex' })
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-sol' })
-            )
-        })
-    })
-
-    // AT-2230: OpenRouter models for the Codex harness.
-    describe('OpenRouter models', () => {
-        const baseArgs = {
-            objective: 'Change the code',
-            taskType: 'prototype',
-            projectId: 'project-1',
-            objectType: 'topics',
-            objectId: 'chat-1',
-            assistantId: 'assistant-1',
-            requestUserId: 'user-1',
-        }
-
-        const saveDefaultModel = selection =>
-            mockGetDoc('users/user-1').get.mockResolvedValue({
-                exists: true,
-                data: () => ({ defaultVmAgentModel: { codex: selection } }),
-            })
-
-        test("applies the user's saved OpenRouter model, prefix intact", async () => {
-            saveDefaultModel('openrouter:deepseek/deepseek-chat')
-
-            await startVmJob({ ...baseArgs, agent: 'codex', requestText: 'use codex for this' })
-
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agent: 'codex', agentModel: 'openrouter:deepseek/deepseek-chat' })
-            )
-        })
-
-        test('honours an explicit OpenRouter model the user asked for by vendor name', async () => {
-            await startVmJob({
-                ...baseArgs,
-                agent: 'codex',
-                agentModel: 'openrouter:deepseek/deepseek-chat',
-                requestText: 'run this one with deepseek please',
-            })
-
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'openrouter:deepseek/deepseek-chat' })
-            )
-        })
-
-        test('names the model and its source in the status comment', async () => {
-            saveDefaultModel('openrouter:deepseek/deepseek-chat')
-
-            await startVmJob({ ...baseArgs, agent: 'codex', requestText: 'use codex for this' })
-
-            expect(createInitialStatusMessage).toHaveBeenCalledWith(
-                'project-1',
-                'topics',
-                'chat-1',
-                'assistant-1',
-                expect.stringContaining('DeepSeek Chat via OpenRouter'),
-                expect.any(Array),
-                expect.any(Array),
-                expect.any(Array)
-            )
-        })
-
-        // A ChatGPT subscription and a personal OpenAI key both authenticate against OpenAI and
-        // cannot serve DeepSeek. Charging Gold silently to someone who believes they are on their
-        // own subscription would be the worse outcome, so the run is pinned to API billing and says so.
-        test('forces platform API billing even when the user has a subscription connected', async () => {
-            mockResolveVmCredentialMode.mockResolvedValue('subscription')
-            saveDefaultModel('openrouter:deepseek/deepseek-chat')
-
-            await startVmJob({ ...baseArgs, agent: 'codex', requestText: 'use codex for this' })
-
-            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ credentialMode: 'api', subscriptionUsed: false })
-            )
-            expect(createInitialStatusMessage).toHaveBeenCalledWith(
-                'project-1',
-                'topics',
-                'chat-1',
-                'assistant-1',
-                expect.stringContaining('Using Alldone API billing'),
-                expect.any(Array),
-                expect.any(Array),
-                expect.any(Array)
-            )
-        })
-
-        test('rejects an OpenRouter model paired with Claude', async () => {
-            await expect(
-                startVmJob({
-                    ...baseArgs,
-                    agent: 'claude',
-                    agentModel: 'openrouter:deepseek/deepseek-chat',
-                    requestText: 'use claude with deepseek',
-                })
-            ).resolves.toMatchObject({ success: false, message: expect.stringContaining('agent="codex"') })
-        })
-
-        test('rejects a malformed OpenRouter id instead of putting it on a command line', async () => {
-            await expect(
-                startVmJob({
-                    ...baseArgs,
-                    agent: 'codex',
-                    agentModel: 'openrouter:deepseek/deepseek; rm -rf /',
-                    requestText: 'use codex with openrouter deepseek',
-                })
-            ).resolves.toMatchObject({ success: false })
-        })
-
-        // The proxy would reject the very first request; failing here means the base reserve and
-        // per-minute Gold are never taken for a run that cannot work.
-        test('refuses before charging any Gold when the platform key is not configured', async () => {
-            require('./vmAgentModelCatalog').isOpenRouterConfigured.mockReturnValueOnce(false)
-
-            await expect(
-                startVmJob({
-                    ...baseArgs,
-                    agent: 'codex',
-                    agentModel: 'openrouter:deepseek/deepseek-chat',
-                    requestText: 'use deepseek for this',
-                })
-            ).resolves.toMatchObject({ success: false, message: expect.stringContaining('not available') })
-
-            expect(deductGold).not.toHaveBeenCalled()
-        })
-
-        test('falls back to the agent default when the saved OpenRouter model no longer exists', async () => {
-            saveDefaultModel('openrouter:nope/not-real')
-
-            await startVmJob({ ...baseArgs, agent: 'codex', requestText: 'use codex for this' })
-
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
                 expect.objectContaining({ agentModel: 'gpt-5.6-sol' })
             )

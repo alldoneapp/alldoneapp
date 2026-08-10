@@ -28,6 +28,53 @@ export const shouldBlockPressAfterPopupDismiss = () => {
     return isTouchDevice() && Date.now() - lastPopupDismissTime < POPUP_DISMISS_GRACE_PERIOD_MS
 }
 
+// The mirror image of the guard above (AT-2236). A full-screen modal opened by a
+// press covers the control that opened it, backdrop included, from its very
+// first frame. react-native-web 0.21 fires `onPress` from the DOM `click`
+// event, so any press the browser had already queued while the main thread was
+// busy — the second tap of an impatient user on a list that is still loading,
+// or a browser-duplicated tap — is delivered AFTER the modal mounted and lands
+// on that backdrop, closing the modal the same instant it appeared.
+//
+// Such a press was physically made before the modal existed, so it cannot be a
+// deliberate dismiss. `event.timeStamp` is a DOMHighResTimeStamp taken when the
+// browser CREATED the event (when the user actually pressed), not when it was
+// dispatched, so comparing it against the modal's open time separates the two
+// cases exactly, however long the main thread was blocked.
+const POPUP_OPEN_PRESS_GRACE_PERIOD_MS = 350
+// A press can only be queued behind a blocked main thread for so long. Bounding
+// the comparison keeps a browser whose `timeStamp` uses a different time origin
+// from making the backdrop permanently unresponsive: past this, presses are
+// always honoured.
+const POPUP_OPEN_PRESS_MAX_QUEUE_MS = 5000
+
+export const highResNow = () => {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
+}
+
+const getEventTimeStamp = event => {
+    const timeStamp = event?.timeStamp ?? event?.nativeEvent?.timeStamp
+    if (typeof timeStamp !== 'number' || !isFinite(timeStamp) || timeStamp <= 0) return null
+    // Legacy engines report epoch milliseconds here instead of a time-origin
+    // relative value; those are orders of magnitude larger than performance.now()
+    // and must not be compared against it.
+    return timeStamp > highResNow() + 1 ? null : timeStamp
+}
+
+export const shouldIgnorePressFromBeforeOpen = (event, openedAt) => {
+    if (typeof openedAt !== 'number') return false
+
+    const timeStamp = getEventTimeStamp(event)
+    if (timeStamp !== null && timeStamp < openedAt && openedAt - timeStamp <= POPUP_OPEN_PRESS_MAX_QUEUE_MS) return true
+
+    // Touch only, and only for the first moments: the press may carry no usable
+    // timestamp (a synthetic press, an older engine), and a tap made in the few
+    // frames between the modal mounting and the user actually seeing it is not a
+    // deliberate dismiss either. A mouse never queues a press behind a blocked
+    // main thread the way a tap does, so desktop behaviour is unchanged.
+    return isTouchDevice() && highResNow() - openedAt < POPUP_OPEN_PRESS_GRACE_PERIOD_MS
+}
+
 const clearClickThroughGuard = () => {
     if (removeClickThroughGuard) {
         removeClickThroughGuard()

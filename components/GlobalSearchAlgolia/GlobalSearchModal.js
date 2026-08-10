@@ -57,6 +57,7 @@ import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsS
 import { getDvMainTabLink } from '../../utils/LinkingHelper'
 import { DEFAULT_WORKSTREAM_ID } from '../Workstreams/WorkstreamHelper'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
+import { highResNow, shouldIgnorePressFromBeforeOpen } from '../../utils/popupDismissGuard'
 
 const getProjectAccessIds = (loggedUser, projectId) => {
     if (loggedUser.isAnonymous) return [FEED_PUBLIC_FOR_ALL]
@@ -136,6 +137,9 @@ export default function GlobalSearchModal() {
     const activeItemRef = useRef(null)
     const scrollRef = useRef(null)
     const resultsContainerRef = useRef(null)
+    // When this modal became visible, so a press the user made BEFORE it existed
+    // cannot dismiss it (AT-2236) — see onBackdropPress below.
+    const openedAtRef = useRef(highResNow())
 
     const inSelectedProject = selectedProject.id !== ALL_PROJECTS_OPTION
 
@@ -277,6 +281,9 @@ export default function GlobalSearchModal() {
     }, [activeItemData])
 
     useEffect(() => {
+        // The commit is closer to what the user can actually see than the first
+        // render, and it is the earliest moment the backdrop can be pressed.
+        openedAtRef.current = highResNow()
         dispatch([blockBackgroundTabShortcut(), setBlockShortcuts(true)])
         storeModal(GLOBAL_SEARCH_MODAL_ID)
 
@@ -497,6 +504,21 @@ export default function GlobalSearchModal() {
             setSearchText(''),
             resetNotesAmounts(),
         ])
+    }
+
+    // The backdrop covers the whole viewport — including the Search control that
+    // opened this modal — from the first frame. A press the browser had already
+    // queued while the main thread was busy (a still-loading notes list, a second
+    // impatient tap) is delivered here right after the modal mounts and would
+    // close it instantly. Such a press predates the modal and is never a dismiss.
+    // Only the backdrop is guarded: the X button and Escape always close
+    // immediately, so there is never a moment with no way out.
+    const onBackdropPress = event => {
+        if (shouldIgnorePressFromBeforeOpen(event, openedAtRef.current)) {
+            event?.preventDefault?.()
+            return
+        }
+        hidePopup(event)
     }
 
     const onSearchInAlgolia = async (client, indexPrefix, setResults, setResultsAmount, tab, searchInstanceId) => {
@@ -743,7 +765,7 @@ export default function GlobalSearchModal() {
 
     return (
         <View style={localStyles.container} ref={modalRef}>
-            <TouchableOpacity style={localStyles.backdrop} onPress={hidePopup} />
+            <TouchableOpacity style={localStyles.backdrop} onPress={onBackdropPress} />
 
             {showSelectProjectModal ? (
                 <SelectProjectModalInSearch
