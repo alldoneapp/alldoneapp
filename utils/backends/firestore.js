@@ -6499,18 +6499,6 @@ export async function setDefaultVmApprovalPolicy(policy) {
     return result.data
 }
 
-export async function setDefaultVmAgentModel(agent, family) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('setDefaultVmAgentModel')
-    const result = await fn({ agent, family })
-    return result.data
-}
-
-export async function getVmAgentModelOptions(forceRefresh = false) {
-    const fn = firebase.app().functions('europe-west1').httpsCallable('getVmAgentModelOptions')
-    const result = await fn({ forceRefresh })
-    return result.data
-}
-
 export async function getVmSubscriptionStatus() {
     const fn = firebase.app().functions('europe-west1').httpsCallable('getVmSubscriptionStatus')
     const result = await fn({})

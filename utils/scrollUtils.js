@@ -30,3 +30,74 @@ export const resetDetailedViewScroll = scrollRef => {
     scrollDocumentToTop()
     scrollRefToTop(scrollRef)
 }
+
+const isScrollableElement = element => {
+    if (typeof window === 'undefined' || !element || !element.ownerDocument) return false
+    const overflowY = window.getComputedStyle(element).overflowY
+    return (overflowY === 'auto' || overflowY === 'scroll') && element.scrollHeight - element.clientHeight > 1
+}
+
+/**
+ * Nearest ancestor that actually scrolls, or null. Deliberately stops at
+ * `document.body`: the app shell binds itself to the viewport (AT-2177), so a
+ * pane that wants revealing always has an inner scroller, and moving the
+ * document instead would drag the top bar and the sidebar off screen.
+ */
+export const findScrollParent = element => {
+    if (typeof document === 'undefined' || !element) return null
+    for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+        if (isScrollableElement(node)) return node
+    }
+    return null
+}
+
+/**
+ * Scroll `element`'s nearest scroll container by the SMALLEST amount that makes
+ * the element fully visible — and not at all when it already is.
+ *
+ * This is the deliberate counterpart to the scroll suppression in
+ * `quill2Setup.js` (AT-2220). An inline task editor is several times taller than
+ * the row it replaces (a ~34px title line becomes a ~59px input plus a 55px
+ * action bar), so a row opened near the bottom edge pushes its own input and
+ * buttons past the fold. Quill's caret-level scroll-into-view does not help
+ * there: the caret is at the TOP of the new editor and is already visible, so
+ * nothing moves and the user is left typing into a field hanging off the screen.
+ *
+ * Only ever moves toward the element, never past it, and never at all when the
+ * element already fits — so it cannot produce the over-scroll it exists to
+ * avoid. Applied by assignment rather than `scrollTo`, so `scroll-behavior:
+ * smooth` cannot turn a 40px correction into a visible glide.
+ *
+ * @returns the number of pixels actually scrolled (0 when nothing was needed).
+ */
+export const revealElementInScrollParent = (element, padding = 0) => {
+    if (typeof window === 'undefined' || !element || typeof element.getBoundingClientRect !== 'function') return 0
+
+    const scroller = findScrollParent(element)
+    if (!scroller) return 0
+
+    const elementRect = element.getBoundingClientRect()
+    const scrollerRect = scroller.getBoundingClientRect()
+    if (!elementRect.height && !elementRect.width) return 0
+
+    const visibleTop = scrollerRect.top + padding
+    const visibleBottom = scrollerRect.top + scroller.clientHeight - padding
+
+    let delta = 0
+    if (elementRect.bottom > visibleBottom) {
+        // Never push the top out of view in order to reveal the bottom: an
+        // element taller than the visible area is aligned to the top instead.
+        delta = Math.min(elementRect.bottom - visibleBottom, Math.max(0, elementRect.top - visibleTop))
+    } else if (elementRect.top < visibleTop) {
+        delta = elementRect.top - visibleTop
+    }
+    if (!delta) return 0
+
+    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+    const target = Math.max(0, Math.min(scroller.scrollTop + delta, maxScrollTop))
+    const applied = target - scroller.scrollTop
+    if (!applied) return 0
+
+    scroller.scrollTop = target
+    return applied
+}

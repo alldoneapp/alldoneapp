@@ -1073,43 +1073,6 @@ exports.setDefaultVmApprovalPolicy = onCall(
     }
 )
 
-// AT-2221: per-agent default model family. `family: null` clears the default.
-exports.setDefaultVmAgentModel = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { setDefaultVmAgentModel } = require('./Assistant/vmAgentSettings')
-        return await setDefaultVmAgentModel({
-            userId: auth.uid,
-            agent: data && data.agent,
-            family: data && data.family !== undefined ? data.family : null,
-        })
-    }
-)
-
-// Live model families for the Settings picker. Separate from getVmAgentSettings so the UI can
-// refresh the list (forceRefresh) without re-reading the user's saved preferences.
-exports.getVmAgentModelOptions = onCall(
-    {
-        timeoutSeconds: 60,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        const { data, auth } = request
-        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
-        const { getAllModelCatalogs } = require('./Assistant/vmAgentModelCatalog')
-        return await getAllModelCatalogs({ forceRefresh: !!(data && data.forceRefresh) })
-    }
-)
-
 exports.connectVmSubscription = onCall(
     {
         timeoutSeconds: 30,

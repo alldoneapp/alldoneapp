@@ -2299,18 +2299,6 @@ async function collectAssistantTextWithToolCalls({
 }) {
     let responseText = ''
     let currentConversation = conversationHistory
-    // Recent user-authored turns, so a per-run VM override the user asked for earlier in this
-    // exchange is still corroborated. See vmRunOverrideGuard (AT-2224).
-    if (toolRuntimeContext && !toolRuntimeContext.userRequestText && conversationHistory) {
-        try {
-            const { collectUserRequestText } = require('./vmRunOverrideGuard')
-            toolRuntimeContext.userRequestText = collectUserRequestText(conversationHistory)
-        } catch (error) {
-            console.warn('Could not collect user request text for VM override corroboration', {
-                error: error.message,
-            })
-        }
-    }
     let currentToolCalls = null
     let toolCallRound = 0
     let executedToolCallsCount = 0
@@ -9621,17 +9609,6 @@ async function executeToolNatively(
                     return ''
                 })
 
-                // The user's own words for this request. `agent`/`agentModel`/`agentReasoningEffort`/
-                // `approvalPolicy` outrank the saved Settings → Integrations defaults, so startVmJob
-                // only honors them when this text asks for them (AT-2224). Model-authored fields
-                // (objective, deliverable) are deliberately excluded — they cannot vouch for
-                // themselves.
-                const { collectUserRequestText } = require('./vmRunOverrideGuard')
-                const requestText = collectUserRequestText(
-                    toolRuntimeContext?.userRequestText,
-                    userContext?.message || userContext?.content
-                )
-
                 const { startVmJob } = require('./vmJob')
                 return await startVmJob({
                     objective: toolArgs.objective,
@@ -9649,7 +9626,6 @@ async function executeToolNatively(
                     objectId: effectiveObjectId,
                     assistantId,
                     requestUserId,
-                    requestText,
                     triggerChannel: toolRuntimeContext?.sourceChannel === 'whatsapp' ? 'whatsapp' : '',
                     whatsappTo:
                         toolRuntimeContext?.sourceChannel === 'whatsapp'
@@ -9862,20 +9838,6 @@ async function storeChunks(
             projectId,
             assistantId,
             requestUserId,
-        }
-
-        // Recent user-authored turns, so a per-run VM override the user asked for a message or two
-        // ago ("do the next one with codex" → "go ahead") is still corroborated. Assistant turns are
-        // filtered out inside collectUserRequestText. See vmRunOverrideGuard (AT-2224).
-        if (!runtimeContextForTools.userRequestText && conversationHistory) {
-            try {
-                const { collectUserRequestText } = require('./vmRunOverrideGuard')
-                runtimeContextForTools.userRequestText = collectUserRequestText(conversationHistory)
-            } catch (error) {
-                console.warn('Could not collect user request text for VM override corroboration', {
-                    error: error.message,
-                })
-            }
         }
 
         // Batch update mechanism to reduce Firestore writes

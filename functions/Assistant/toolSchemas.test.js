@@ -387,13 +387,8 @@ describe('VM assistant tool schema', () => {
             'Always use "prototype" for coding tasks'
         )
         const properties = toolSchemas.execute_task_in_vm.function.parameters.properties
-        expect(properties.agent.description).toContain("user's own default VM agent")
-        // AT-2224: the schema must not steer the model toward an agent by the kind of work, and must
-        // say plainly that the argument is only for an agent the user actually named.
-        expect(properties.agent.description).toContain('ONLY set this when the user explicitly named an agent')
-        expect(properties.agent.description).toContain('Never infer it from the kind of work')
-        expect(properties.agent.description).not.toMatch(/consider "codex"/i)
-        expect(properties.agent.description).not.toMatch(/for heavy coding/i)
+        expect(properties.agent.description).toContain("user's default VM agent")
+        expect(properties.agent.description).toContain('explicit choice overrides')
         expect(properties.agentModel.type).toBe('string')
         expect(properties.agentModel.description).toContain('moving "opus" alias')
         expect(properties.agentModel.description).toContain('runtime-resolved concrete Claude model')
@@ -401,9 +396,6 @@ describe('VM assistant tool schema', () => {
         expect(properties.agentReasoningEffort.description).toContain("user's default VM effort")
         expect(properties.agent.description).toContain('falling back to "codex"')
         expect(properties.agentReasoningEffort.description).toContain('falling back to "medium"')
-        expect(properties.agentReasoningEffort.description).toContain('ONLY set this when the user explicitly asked')
-        expect(properties.agentModel.description).toContain('ONLY set this when the user explicitly named a model')
-        expect(properties.approvalPolicy.description).toContain('ONLY set this when the user explicitly asked')
         expect(properties.executionMode.enum).toEqual(['automatic', 'plan_first', 'interactive'])
         expect(properties.executionMode.description).toContain('existing non-interactive runner')
         expect(properties.executionMode.description).toContain('never silently downgrade')
