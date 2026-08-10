@@ -31,7 +31,12 @@ export default function SuggestedBulkActions({ projectId, tasks, containerStyle 
 
     // A section only ever groups one suggester, so the whole section shares the single-task
     // wording: an assistant suggestion is "rejected", a human one moves to the next step.
-    const rejectTitleKey = suggestedTasks.every(isAssistantSuggestedTask) ? 'Reject all' : 'Next step for all'
+    const isRejection = suggestedTasks.every(isAssistantSuggestedTask)
+    const rejectTitleKey = isRejection ? 'Reject all' : 'Next step for all'
+    // ...and the icon follows that wording, the same way the single-task button does. A rejection
+    // is not a workflow move, so the workflow glyph misread as "workflow" — especially on mobile,
+    // where the button is icon-only and the label can't disambiguate it (AT-2210).
+    const rejectIcon = isRejection ? 'x' : 'next-workflow'
 
     const onAcceptAll = () => {
         if (processing) return
@@ -52,7 +57,7 @@ export default function SuggestedBulkActions({ projectId, tasks, containerStyle 
                     projectId,
                     tasks: suggestedTasks,
                     workflow,
-                    headerText: rejectTitleKey === 'Reject all' ? 'Reject all suggested tasks' : 'Next step for all',
+                    headerText: isRejection ? 'Reject all suggested tasks' : 'Next step for all',
                     // The button keeps its "all" label at any count, but the confirmation is a
                     // sentence: "1 suggested tasks will be rejected" reads broken in all three
                     // languages, so a section of one gets its own singular phrasing.
@@ -70,7 +75,7 @@ export default function SuggestedBulkActions({ projectId, tasks, containerStyle 
         <View style={[localStyles.container, containerStyle]}>
             <Button
                 type={'ghost'}
-                icon={'next-workflow'}
+                icon={rejectIcon}
                 title={smallScreenNavigation ? null : translate(rejectTitleKey)}
                 titleStyle={{ color: colors.Text03 }}
                 iconColor={colors.Text03}

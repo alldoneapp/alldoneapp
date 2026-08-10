@@ -19,7 +19,10 @@ export default function SuggestedActions({
             <View style={localStyles.buttonsContainer}>
                 <Button
                     disabled={disabled}
-                    icon="next-workflow"
+                    // The icon has to follow the label: rejecting an assistant suggestion is not a
+                    // workflow step, so it gets the plain "x" that pairs with the accept action
+                    // (AT-2210). Handing a human suggestion on really is a workflow move.
+                    icon={isAssistantSuggestion ? 'x' : 'next-workflow'}
                     title={translate(isAssistantSuggestion ? 'Reject' : 'Go to next step')}
                     type="secondary"
                     buttonStyle={{ marginRight: 8 }}
