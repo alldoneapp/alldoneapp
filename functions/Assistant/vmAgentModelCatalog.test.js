@@ -12,6 +12,9 @@ const {
     getModelCatalog,
     resolveFamilyToModel,
     isValidFamilyId,
+    normalizeOpenRouterPricing,
+    buildOpenRouterPricing,
+    getOpenRouterUpstreamPrice,
     CATALOG_TTL_MS,
 } = require('./vmAgentModelCatalog')
 
@@ -326,5 +329,154 @@ describe('isValidFamilyId', () => {
         expect(isValidFamilyId('')).toBe(false)
         expect(isValidFamilyId(null)).toBe(false)
         expect(isValidFamilyId('a'.repeat(40))).toBe(false)
+    })
+})
+
+// AT-2230 Gold pricing: the catalog is the *live* price source that makes per-model Gold rates
+// self-updating, so these guard the shape `vmTokenPricing` consumes.
+describe('OpenRouter upstream pricing', () => {
+    const openRouterEntry = (id, pricing) => ({
+        id,
+        name: id,
+        supported_parameters: ['tools'],
+        architecture: { output_modalities: ['text'] },
+        pricing,
+    })
+
+    it('converts per-token strings into USD per 1M tokens', () => {
+        const price = normalizeOpenRouterPricing({
+            prompt: '0.000000435',
+            completion: '0.00000087',
+            input_cache_read: '0.000000003625',
+        })
+
+        expect(price.input).toBeCloseTo(0.435, 6)
+        expect(price.output).toBeCloseTo(0.87, 6)
+        expect(price.cachedInput).toBeCloseTo(0.003625, 8)
+    })
+
+    // Load-bearing distinction, not tidiness: ~85% of a VM run's metered tokens are cache reads, so
+    // "no cache price published" must reach the pricing module as null (bill them at full input
+    // price) rather than as 0 (bill them free), which would make the model look like the cheapest in
+    // the table by an order of magnitude.
+    it('reports a missing cache-read price as null, never as zero', () => {
+        const price = normalizeOpenRouterPricing({ prompt: '0.0000007', completion: '0.0000025' })
+
+        expect(price.cachedInput).toBeNull()
+        expect(
+            normalizeOpenRouterPricing({ prompt: '0.1', completion: '0.2', input_cache_read: '' }).cachedInput
+        ).toBeNull()
+    })
+
+    it('rejects a price it cannot use instead of guessing at one', () => {
+        for (const pricing of [
+            null,
+            undefined,
+            {},
+            { prompt: 'abc', completion: '1' },
+            { prompt: '-1', completion: '1' },
+        ]) {
+            expect(normalizeOpenRouterPricing(pricing)).toBeNull()
+        }
+        // A genuinely free model reports "0", which is a real price and must survive.
+        expect(normalizeOpenRouterPricing({ prompt: '0', completion: '0' })).toEqual({
+            input: 0,
+            output: 0,
+            cachedInput: null,
+        })
+    })
+
+    // The picker is capped at OPENROUTER_MAX_MODELS, but an assistant-supplied agentModel can name any
+    // valid id — so pricing must cover every compatible model, not just the listed slice.
+    it('prices every compatible model, not only the ones the picker shows', () => {
+        const entries = [
+            openRouterEntry('deepseek/deepseek-v4-pro', { prompt: '0.000000435', completion: '0.00000087' }),
+            openRouterEntry('qwen/qwen3-coder', { prompt: '0.0000003', completion: '0.000001' }),
+            // Excluded from the picker AND from pricing: it cannot drive Codex at all.
+            { id: 'someone/no-tools', supported_parameters: [], pricing: { prompt: '0.1', completion: '0.2' } },
+            openRouterEntry('openai/gpt-5.6-sol', { prompt: '0.000005', completion: '0.00003' }),
+        ]
+
+        const pricing = buildOpenRouterPricing(entries)
+        const ids = pricing.map(entry => entry.id)
+
+        expect(ids).toContain('deepseek/deepseek-v4-pro')
+        expect(ids).toContain('qwen/qwen3-coder')
+        expect(ids).not.toContain('someone/no-tools')
+        // openai/* is offered natively, so it is not an OpenRouter option and needs no price here.
+        expect(ids).not.toContain('openai/gpt-5.6-sol')
+    })
+
+    it('resolves a live price for a model by id, case-insensitively', async () => {
+        stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'openrouter:deepseek/deepseek-v4-pro', modelId: 'deepseek/deepseek-v4-pro' }],
+                fetchedAt: 1000,
+                pricing: [{ id: 'deepseek/deepseek-v4-pro', input: 0.435, output: 0.87, cachedInput: 0.003625 }],
+            },
+        })
+
+        const price = await getOpenRouterUpstreamPrice('DeepSeek/DeepSeek-V4-Pro', { now: 1500 })
+
+        expect(price).toEqual({ input: 0.435, output: 0.87, cachedInput: 0.003625 })
+    })
+
+    // A stale cache written before the pricing list existed must still price what it can list, rather
+    // than dropping every run back to the Sol base rate.
+    it('falls back to the price carried on a picker entry', async () => {
+        stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [
+                    {
+                        id: 'openrouter:qwen/qwen3-coder',
+                        modelId: 'qwen/qwen3-coder',
+                        upstreamPrice: { input: 0.3, output: 1, cachedInput: 0.1 },
+                    },
+                ],
+                fetchedAt: 1000,
+            },
+        })
+
+        const price = await getOpenRouterUpstreamPrice('qwen/qwen3-coder', { now: 1500 })
+
+        expect(price).toEqual({ input: 0.3, output: 1, cachedInput: 0.1 })
+    })
+
+    // Degrading the price *source* must never fail the run; vmTokenPricing then uses its researched
+    // static table and finally the Sol base rate.
+    it('returns null rather than throwing when the price cannot be found', async () => {
+        stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'openrouter:qwen/qwen3-coder', modelId: 'qwen/qwen3-coder' }],
+                fetchedAt: 1000,
+                pricing: [],
+            },
+        })
+        expect(await getOpenRouterUpstreamPrice('brandnew/model', { now: 1500 })).toBeNull()
+
+        for (const bad of ['', '   ', null, undefined, 42]) {
+            expect(await getOpenRouterUpstreamPrice(bad)).toBeNull()
+        }
+    })
+
+    // The catalog is returned verbatim to the client by getVmAgentModelOptions/getVmAgentSettings, so
+    // hundreds of price entries the UI never reads must not ride along on every Settings load.
+    it('keeps the pricing list server-side unless a caller asks for it', async () => {
+        const data = {
+            families: [{ id: 'openrouter:deepseek/deepseek-v4-pro', modelId: 'deepseek/deepseek-v4-pro' }],
+            fetchedAt: 1000,
+            pricing: [{ id: 'deepseek/deepseek-v4-pro', input: 0.435, output: 0.87, cachedInput: null }],
+        }
+        stubCatalogDoc({ exists: true, data })
+
+        const clientFacing = await getModelCatalog('openrouter', { now: 1500 })
+        expect(clientFacing.pricing).toBeUndefined()
+
+        stubCatalogDoc({ exists: true, data })
+        const serverSide = await getModelCatalog('openrouter', { now: 1500, includePricing: true })
+        expect(serverSide.pricing).toHaveLength(1)
     })
 })
