@@ -109,3 +109,44 @@ by the real layout engine.
 The controls are located by **accessibility label**, not by a `testID` the fix happens to add,
 so the harness can be run against the pre-fix code — where it fails on the reported symptom
 (buttons 48px off axis, field never widens, height collapsing back on re-wrap).
+
+### `at2220/` — clicking a task line must not make the list jump
+
+> "When I click into a 'new task line' or click into an existing task the app should not
+> 'jump around' in scrolling .. currently the input fields almost go out of the screen
+> (too much below)"
+
+A scroll position cannot be tested in this repo's Jest setup for two reasons at once: jsdom
+has no layout (`scrollHeight`, `clientHeight` and every rect are 0) and Quill cannot even be
+constructed there. `run.js` therefore renders the real `CustomScrollView` the task list uses
+(exactly as `MainViewsContainer` mounts it) with a real `NewTaskSection` and a real
+`TaskItem` inside it, clicks the line with the real mouse, and asserts on real `scrollTop`.
+
+Two independent causes are pinned:
+
+- **Quill 2's ancestor walk.** `focus()` → `scrollSelectionIntoView()` scrolls _every_
+  scrollable ancestor up to `document.body`; Quill 1 restored its own container instead and
+  touched nothing else. The app focuses the editor on mount and again on every popup
+  dismiss, mention insert and assignee pick.
+- **The row quadruples in height** when it becomes an editor (~34px title → ~59px input +
+  55px action bar), so a line opened near the bottom edge pushes its own input and buttons
+  past the fold — and Quill's caret-level scroll does not help, because the caret is at the
+  _top_ of the new editor and is already visible.
+
+Asserted for the new-task line and an existing task, on desktop / narrow desktop / mobile,
+with the line mid-viewport and at the bottom edge: an already-visible line must not move the
+list at all; the whole editor must end up fully visible wherever it was opened; the reveal
+must never overshoot; the document must never scroll; the position must settle once and stay;
+and re-focusing an open editor must not pull the list back after the user scrolled away.
+
+Three details are load-bearing:
+
+- **Fonts must be installed.** Without them headless Chromium shapes no glyphs, every text
+  box collapses to zero height, and the editor reports a 0×0 caret — the layout the whole
+  test measures simply does not exist, and every case passes vacuously.
+- **The user must be a project member** (`loggedUser.projectIds`), or `SharedHelper.isMember`
+  makes every editor read-only (`ql-disabled`) and it never takes focus.
+- The editor is measured by **painted boxes**, not by the line's wrapper: the wrapper reports
+  16px more because the editor card carries a bottom margin, which is empty spacing the user
+  does not need to see. The measurement is derived from the DOM rather than a `testID` the
+  fix adds, so the same run works against the pre-fix code — where all 12 cases fail.
