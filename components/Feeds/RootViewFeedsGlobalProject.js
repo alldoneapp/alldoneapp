@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import HeaderGlobalProject from './HeaderGlobalProject'
@@ -21,6 +21,8 @@ export default function RootViewFeedsGlobalProject() {
     const dispatch = useDispatch()
     const followedAmount = useSelector(state => state.followedFeedsAmount)
     const allAmount = useSelector(state => state.allFeedsAmount)
+    const followedFeedsData = useSelector(state => state.followedFeedsData)
+    const allFeedsData = useSelector(state => state.allFeedsData)
     const feedActiveTab = useSelector(state => state.feedActiveTab)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -65,15 +67,9 @@ export default function RootViewFeedsGlobalProject() {
         calculateTotalNewFeedAmount()
     }, [amountNewFeedsProjects, sortedProjects])
 
-    // Functional update: every mounted project reports its amount independently and the previous
-    // version captured a stale `amountNewFeedsProjects`, so concurrent reports overwrote each other.
-    // Bailing out when the value is unchanged also stops the render-phase call in GlobalProject from
-    // re-rendering the whole page once per project while it loads.
-    const updateProjectNewFeedAmount = useCallback((projectId, newAmount) => {
-        setAmountNewFeedsProjects(currentAmounts =>
-            currentAmounts[projectId] === newAmount ? currentAmounts : { ...currentAmounts, [projectId]: newAmount }
-        )
-    }, [])
+    const updateProjectNewFeedAmount = (projectId, newAmount) => {
+        setAmountNewFeedsProjects({ ...amountNewFeedsProjects, [projectId]: newAmount })
+    }
 
     useEffect(() => {
         onChangeActiveFeedTab()
@@ -114,6 +110,10 @@ export default function RootViewFeedsGlobalProject() {
         }
     }, [loadedNewFeeds, feedActiveTab, selectedProjectIndex])
 
+    const getFeedsData = () => {
+        return feedActiveTab === FOLLOWED_TAB ? followedFeedsData : allFeedsData
+    }
+
     return (
         <View
             style={[
@@ -143,6 +143,8 @@ export default function RootViewFeedsGlobalProject() {
                             feedActiveTab={feedActiveTab}
                             updateProjectNewFeedAmount={updateProjectNewFeedAmount}
                             amountNewFeeds={amountNewFeedsProjects[project.id]}
+                            feedsData={getFeedsData()}
+                            followedFeedsData={followedFeedsData}
                             globalActiveMode={globalActiveMode}
                             feedsUserId={loggedUser.uid}
                             projectId={projectId}
@@ -154,6 +156,8 @@ export default function RootViewFeedsGlobalProject() {
                     project={loggedUserProjects[selectedProjectIndex]}
                     feedActiveTab={feedActiveTab}
                     updateProjectNewFeedAmount={updateProjectNewFeedAmount}
+                    feedsData={getFeedsData()}
+                    followedFeedsData={followedFeedsData}
                     amountNewFeeds={amountNewFeedsProjects[loggedUserProjects[selectedProjectIndex].id]}
                     globalActiveMode={HISTORICAL_MODE}
                     feedsUserId={loggedUser.uid}

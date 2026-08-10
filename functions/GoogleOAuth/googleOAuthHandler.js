@@ -14,11 +14,9 @@ const {
     hasExistingDefaultConnection: hasExistingResolvedDefaultConnection,
     listCalendarConnections,
     listEmailConnections,
-    materializeConnectionsMap,
     resolveCalendarConnection,
     resolveEmailConnection,
 } = require('../Integrations/providerConnections')
-const { isExpiredAccessTokenError, runWithGoogleAuthRetry } = require('./googleAuthRetry')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 
 // Google OAuth uses service ids 'gmail'/'calendar'; the connection model uses
@@ -245,41 +243,19 @@ async function handleOAuthCallback(code, state) {
     const connectionId = buildConnectionId(connectionService, EMAIL_PROVIDER_GOOGLE, userInfo.email)
     const tokenDocId = `googleAuth_${connectionId}`
 
-    const tokenDocRef = admin.firestore().collection('users').doc(userId).collection('private').doc(tokenDocId)
-
-    // We ask for `prompt: 'consent'`, so Google normally returns a refresh token. If it ever
-    // does not, keep the one we already hold: Firestore runs with ignoreUndefinedProperties,
-    // so writing `refresh_token: undefined` would silently strip the field and leave a
-    // connection that can never refresh again.
-    let refreshToken = tokens.refresh_token
-    if (!refreshToken) {
-        const existingTokenDoc = await tokenDocRef.get().catch(() => null)
-        refreshToken = existingTokenDoc?.exists ? existingTokenDoc.data()?.refreshToken : undefined
-        console.warn(
-            `[oauth] ⚠️ Google returned no refresh token for ${userInfo.email}; ${
-                refreshToken ? 'keeping the stored one' : 'no stored token to keep'
-            }.`
-        )
-    }
-
     const tokenData = {
-        refreshToken,
+        refreshToken: tokens.refresh_token,
         accessToken: tokens.access_token,
-        // Never store a null expiry: an unknown expiry used to read as "never expires" and
-        // permanently suppressed refresh (AT-2195). Fall back to Google's 1h lifetime.
-        tokenExpiry: Timestamp.fromMillis(tokens.expiry_date ? tokens.expiry_date : Date.now() + 60 * 60 * 1000),
+        tokenExpiry: tokens.expiry_date ? Timestamp.fromMillis(tokens.expiry_date) : null,
         scopes: tokens.scope ? tokens.scope.split(' ') : [],
         email: userInfo.email,
         createdAt: Timestamp.now(),
         lastUsed: Timestamp.now(),
         service: service,
         connectionId,
-        // A fresh consent clears any previous reconnect-required state.
-        authInvalid: false,
-        authInvalidAt: FieldValue.delete(),
     }
 
-    await tokenDocRef.set(tokenData, { merge: true })
+    await admin.firestore().collection('users').doc(userId).collection('private').doc(tokenDocId).set(tokenData)
 
     const userRef = admin.firestore().collection('users').doc(userId)
     const userDoc = await userRef.get()
@@ -353,139 +329,15 @@ async function handleOAuthCallback(code, state) {
     }
 }
 
-// An access token is refreshed this long before its real expiry, so a token cannot die
-// underneath an in-flight API call. Mirrors google-auth-library's own eager-refresh
-// threshold (and the Microsoft handler's buffer).
-const TOKEN_EXPIRY_SKEW_MS = 5 * 60 * 1000
-
-// Raised when the *refresh token* itself is dead (revoked, expired, consent withdrawn) —
-// i.e. nothing server-side can recover the connection and the user must re-consent.
-// `code` matches the typed error the email-line callables surface, so the client can render
-// its reconnect state instead of a generic failure.
-class GoogleAuthRevokedError extends Error {
-    constructor(message = 'Google OAuth token is invalid or revoked. Please reconnect.') {
-        super(message)
-        this.name = 'GoogleAuthRevokedError'
-        this.code = 'EMAIL_AUTH_EXPIRED'
-        // Marks the error as "retrying cannot help" — the one-shot API retry checks this
-        // so a dead connection can never spin.
-        this.reconnectRequired = true
-    }
-}
-
-// Only a genuine `invalid_grant` means the user's refresh token is dead. Every other
-// refresh failure (invalid_client from a misconfigured secret, a 5xx, a network blip) is
-// OUR problem, and must NOT wipe the user's credentials — otherwise one bad deploy would
-// disconnect every account in the system.
-function isInvalidGrantError(error) {
-    const payload = error?.response?.data || {}
-    if (payload.error === 'invalid_grant') return true
-    const description = `${error?.message || ''} ${payload.error || ''} ${payload.error_description || ''}`
-    const normalized = description.toLowerCase()
-    return normalized.includes('invalid_grant') || normalized.includes('token has been expired or revoked')
-}
-
-// Firestore stores tokenExpiry as a Timestamp, but legacy documents were written with
-// plain numbers/Dates. Normalize, and return null when there is no usable value.
-function getStoredTokenExpiryMillis(tokenData) {
-    const expiry = tokenData?.tokenExpiry
-    if (!expiry) return null
-    if (typeof expiry.toMillis === 'function') return expiry.toMillis()
-    if (expiry instanceof Date) return expiry.getTime()
-    if (typeof expiry === 'number' && Number.isFinite(expiry)) return expiry
-    return null
-}
-
-// AT-2195 root cause. We used to hand the stored credentials to google-auth-library and
-// let `oauth2Client.getAccessToken()` decide whether to refresh. That method refreshes only
-// when `expiry_date` is set AND past:
-//
-//     isTokenExpiring() { return expiryDate ? expiryDate <= now + threshold : false }
-//
-// so a token document with no `tokenExpiry` (legacy `googleAuth` / `googleAuth_{projectId}`
-// docs, or one whose last refresh response carried no expiry) reads as "never expires". The
-// long-dead access token was handed to Gmail, Gmail answered 401, and the email line reported
-// EMAIL_AUTH_EXPIRED forever — no refresh was ever attempted, so no `invalid_grant` ever
-// surfaced to flag the connection either. We therefore decide expiry ourselves and treat an
-// unknown expiry as expired: a needless refresh is cheap, a stale token is a dead feature.
-function shouldRefreshStoredToken(tokenData, { forceRefresh = false } = {}) {
-    if (forceRefresh) return true
-    if (!tokenData?.accessToken) return true
-    const expiryMillis = getStoredTokenExpiryMillis(tokenData)
-    if (expiryMillis === null) return true
-    return expiryMillis <= Date.now() + TOKEN_EXPIRY_SKEW_MS
-}
-
-// Flags a connection whose refresh token is dead. The token document is KEPT (it still
-// carries the account email, scopes and connection id that the reconnect UI reads) but every
-// secret is removed, so nothing usable is retained. `authInvalid` is what turns later calls
-// into a typed reconnect error instead of the generic "User not authenticated with Google"
-// that `isAuthError()` never matched.
-//
-// The legacy `apisConnected` flags are deliberately left alone: for users who predate the
-// connection maps they are the ONLY record that the account exists, and clearing them would
-// make the connection vanish from the UI entirely instead of showing "Reconnect".
-async function markGoogleAuthInvalid(userId, { docRef, connectionId, service, userData }) {
-    if (docRef) {
-        await docRef
-            .update({
-                accessToken: FieldValue.delete(),
-                refreshToken: FieldValue.delete(),
-                tokenExpiry: FieldValue.delete(),
-                authInvalid: true,
-                authInvalidAt: Timestamp.now(),
-            })
-            .catch(error => {
-                console.error('[oauth] Failed to flag invalid token document:', error?.message || error)
-            })
-    }
-
-    if (!connectionId) return
-
-    const connectionService = googleServiceToConnectionService(service)
-    const mapField = getConnectionsMapField(connectionService)
-    const resolvedUserData = userData || (await loadUserDataForConnections(userId).catch(() => ({})))
-    const storedMap = resolvedUserData?.[mapField]
-    const hasStoredMap = storedMap && typeof storedMap === 'object' && Object.keys(storedMap).length > 0
-
-    let updateData = null
-    if (hasStoredMap) {
-        updateData = { [`${mapField}.${connectionId}.authInvalid`]: true }
-    } else {
-        // Pre-migration user: writing a single nested field would create a one-entry map
-        // that shadows every connection which only exists in apisConnected (see
-        // materializeConnectionsMap). Write the whole materialized map instead.
-        const materialized = materializeConnectionsMap(connectionService, resolvedUserData || {})
-        if (materialized[connectionId]) {
-            materialized[connectionId].authInvalid = true
-            updateData = { [mapField]: materialized }
-        }
-    }
-
-    if (!updateData) return
-    await admin
-        .firestore()
-        .collection('users')
-        .doc(userId)
-        .update(updateData)
-        .catch(error => {
-            console.error('[oauth] Failed to flag invalid connection:', error?.message || error)
-        })
-}
-
-// A token document survives revocation now (it still carries the account email and scopes
-// the reconnect UI needs), so `exists` alone no longer means "usable". Anything flagged
-// authInvalid needs a fresh consent before it can be used again.
-function isUsableTokenDoc(tokenDoc) {
-    if (!tokenDoc || !tokenDoc.exists) return false
-    return (tokenDoc.data() || {}).authInvalid !== true
-}
-
 /**
- * Resolve the stored Google token document for a user + connection/project.
- * Returns the document reference and data plus the resolved connection/project/service.
+ * Get a fresh access token for the user
+ * Automatically refreshes if expired
+ * @param {string} userId
+ * @param {string} connectionIdOrProjectId - account-level connection id (preferred) or
+ *   a legacy projectId
+ * @param {string} service - 'calendar' or 'gmail' (legacy projectId form only)
  */
-async function resolveGoogleTokenDoc(userId, connectionIdOrProjectId, service) {
+async function getAccessToken(userId, connectionIdOrProjectId, service) {
     let tokenDoc = null
     let docRef = null
     let connectionId = null
@@ -557,131 +409,84 @@ async function resolveGoogleTokenDoc(userId, connectionIdOrProjectId, service) {
         throw new Error(`User not authenticated with Google for ${service || 'any service'}`)
     }
 
-    return { docRef, tokenData: tokenDoc.data() || {}, connectionId, projectId, service }
-}
-
-/**
- * Returns a live access token for a resolved token document, refreshing it whenever the
- * stored one is missing, unknown-expiry, within the skew window, or when the caller forces
- * it (the one-shot recovery after a 401).
- */
-async function ensureFreshAccessToken(userId, resolved, options = {}) {
-    const { docRef, tokenData, connectionId, projectId, service } = resolved
-
-    if (tokenData.authInvalid === true) {
-        // Already known dead — fail fast and typed, never re-attempt the refresh.
-        throw new GoogleAuthRevokedError()
-    }
-
-    if (!shouldRefreshStoredToken(tokenData, options)) {
-        await docRef.update({ lastUsed: Timestamp.now() }).catch(() => null)
-        return { token: tokenData.accessToken, tokenData }
-    }
-
-    if (!tokenData.refreshToken) {
-        console.warn(
-            `[oauth] ⚠️ No refresh token stored for user ${userId} (project: ${projectId}, service: ${service}, connection: ${connectionId}). Reconnect required.`
-        )
-        await markGoogleAuthInvalid(userId, { docRef, connectionId, service })
-        throw new GoogleAuthRevokedError('Google OAuth refresh token is missing. Please reconnect.')
-    }
-
+    const tokenData = tokenDoc.data()
     const oauth2Client = getOAuth2Client()
-    // Deliberately set ONLY the refresh token: with no access_token present,
-    // getAccessToken() always performs a real refresh instead of second-guessing expiry.
-    oauth2Client.setCredentials({ refresh_token: tokenData.refreshToken })
 
-    let credentials
+    // Set credentials
+    oauth2Client.setCredentials({
+        refresh_token: tokenData.refreshToken,
+        access_token: tokenData.accessToken,
+        expiry_date: tokenData.tokenExpiry ? tokenData.tokenExpiry.toMillis() : null,
+    })
+
+    // Get access token (will auto-refresh if expired)
+    let token
     try {
-        await oauth2Client.getAccessToken()
-        credentials = oauth2Client.credentials || {}
+        const response = await oauth2Client.getAccessToken()
+        token = response.token
     } catch (error) {
-        if (isInvalidGrantError(error)) {
+        // Handle invalid_grant (refresh token revoked or expired)
+        if (error.response && error.response.data && error.response.data.error === 'invalid_grant') {
             console.warn(
-                `[oauth] ⚠️ Invalid grant for user ${userId} (project: ${projectId}, service: ${service}, connection: ${connectionId}). Flagging connection for reconnect.`
+                `[oauth] ⚠️ Invalid grant for user ${userId} (project: ${projectId}, service: ${service}, connection: ${connectionId}). Removing invalid token.`
             )
-            await markGoogleAuthInvalid(userId, { docRef, connectionId, service })
-            throw new GoogleAuthRevokedError()
+
+            // Delete the invalid token to prevent infinite loops
+            await docRef.delete()
+
+            // Also update the user's apisConnected flag to false
+            const userRef = admin.firestore().collection('users').doc(userId)
+            const updateData = {}
+            if (connectionId) {
+                // Flag the account-level connection so the UI can offer a reconnect.
+                const mapField = getConnectionsMapField(googleServiceToConnectionService(service))
+                updateData[`${mapField}.${connectionId}.authInvalid`] = true
+            }
+            if (projectId && service === 'calendar') {
+                updateData[`apisConnected.${projectId}.calendar`] = false
+                updateData[`apisConnected.${projectId}.calendarDefault`] = false
+                updateData[`apisConnected.${projectId}.calendarProvider`] = FieldValue.delete()
+            } else if (projectId && service === 'gmail') {
+                updateData[`apisConnected.${projectId}.gmail`] = false
+                updateData[`apisConnected.${projectId}.gmailDefault`] = false
+                updateData[`apisConnected.${projectId}.email`] = false
+                updateData[`apisConnected.${projectId}.emailDefault`] = false
+                updateData[`apisConnected.${projectId}.emailProvider`] = FieldValue.delete()
+                updateData[`apisConnected.${projectId}.emailAddress`] = FieldValue.delete()
+            } else if (projectId) {
+                // Legacy fallback
+                updateData[`apisConnected.${projectId}.calendar`] = false
+                updateData[`apisConnected.${projectId}.calendarDefault`] = false
+                updateData[`apisConnected.${projectId}.gmail`] = false
+                updateData[`apisConnected.${projectId}.gmailDefault`] = false
+            }
+
+            if (Object.keys(updateData).length > 0) {
+                await userRef.update(updateData)
+            }
+
+            throw new Error('Google OAuth token is invalid or revoked. Please reconnect.')
         }
-        // Transient/config failure: keep the credentials intact and let the caller fail.
         throw error
     }
 
-    if (!credentials.access_token) {
-        throw new Error('Google token refresh returned no access token')
-    }
-
+    // Update last used timestamp and potentially new access token
     const updateData = {
-        accessToken: credentials.access_token,
         lastUsed: Timestamp.now(),
     }
-    // Always persist an expiry. Storing none is what left the token permanently stale in the
-    // first place, so fall back to Google's documented one-hour lifetime.
-    updateData.tokenExpiry = Timestamp.fromMillis(
-        credentials.expiry_date ? credentials.expiry_date : Date.now() + 60 * 60 * 1000
-    )
-    // Google can rotate the refresh token; dropping a rotated one would silently break the
-    // next refresh.
-    if (credentials.refresh_token && credentials.refresh_token !== tokenData.refreshToken) {
-        updateData.refreshToken = credentials.refresh_token
-    }
-    if (tokenData.authInvalid) {
-        updateData.authInvalid = false
-        updateData.authInvalidAt = FieldValue.delete()
+
+    // If token was refreshed, update it
+    const credentials = oauth2Client.credentials
+    if (credentials.access_token !== tokenData.accessToken) {
+        updateData.accessToken = credentials.access_token
+        if (credentials.expiry_date) {
+            updateData.tokenExpiry = Timestamp.fromMillis(credentials.expiry_date)
+        }
     }
 
     await docRef.update(updateData)
 
-    return { token: credentials.access_token, tokenData: { ...tokenData, ...updateData } }
-}
-
-/**
- * Get a fresh access token for the user
- * Automatically refreshes if expired
- * @param {string} userId
- * @param {string} connectionIdOrProjectId - account-level connection id (preferred) or
- *   a legacy projectId
- * @param {string} service - 'calendar' or 'gmail' (legacy projectId form only)
- * @param {object} [options] - { forceRefresh: true } to bypass the stored token entirely
- */
-async function getAccessToken(userId, connectionIdOrProjectId, service, options = {}) {
-    const resolved = await resolveGoogleTokenDoc(userId, connectionIdOrProjectId, service)
-    const { token } = await ensureFreshAccessToken(userId, resolved, options)
     return token
-}
-
-/**
- * An OAuth2 client wired for a user's connection, ready to hand to `google.gmail()` /
- * `google.calendar()`.
- *
- * Unlike the old `setCredentials({ access_token })` pattern this keeps the refresh token and
- * expiry on the client, so google-auth-library can also refresh mid-request on its own — and
- * the `tokens` event persists whatever it produces, so the refresh is not lost.
- */
-async function getAuthorizedOAuth2Client(userId, connectionIdOrProjectId, service, options = {}) {
-    const resolved = await resolveGoogleTokenDoc(userId, connectionIdOrProjectId, service)
-    const { token, tokenData } = await ensureFreshAccessToken(userId, resolved, options)
-
-    const oauth2Client = getOAuth2Client()
-    const credentials = { access_token: token }
-    if (tokenData.refreshToken) credentials.refresh_token = tokenData.refreshToken
-    const expiryMillis = getStoredTokenExpiryMillis(tokenData)
-    if (expiryMillis !== null) credentials.expiry_date = expiryMillis
-    oauth2Client.setCredentials(credentials)
-
-    oauth2Client.on('tokens', refreshed => {
-        if (!refreshed?.access_token) return
-        const update = { accessToken: refreshed.access_token, lastUsed: Timestamp.now() }
-        update.tokenExpiry = Timestamp.fromMillis(
-            refreshed.expiry_date ? refreshed.expiry_date : Date.now() + 60 * 60 * 1000
-        )
-        if (refreshed.refresh_token) update.refreshToken = refreshed.refresh_token
-        // Fire-and-forget: the API call already holds the token it needs, this only keeps
-        // the stored copy current for the next invocation.
-        resolved.docRef.update(update).catch(() => null)
-    })
-
-    return oauth2Client
 }
 
 // Revoke an account-level connection: revoke with Google, delete its token doc(s),
@@ -913,7 +718,7 @@ async function hasValidCredentials(userId, projectId, service) {
             .collection('private')
             .doc(connectionTokenDocId)
             .get()
-        if (isUsableTokenDoc(tokenDoc)) return true
+        if (tokenDoc.exists) return true
     }
     if (isConnectionId(projectId)) {
         // Pre-migration connection-id callers fall through to the legacy docs of the
@@ -938,7 +743,7 @@ async function hasValidCredentials(userId, projectId, service) {
             .get()
     }
 
-    if (isUsableTokenDoc(tokenDoc)) return true
+    if (tokenDoc && tokenDoc.exists) return true
 
     // 2. Check legacy project
     if (projectId) {
@@ -951,12 +756,12 @@ async function hasValidCredentials(userId, projectId, service) {
             .get()
     }
 
-    if (isUsableTokenDoc(tokenDoc)) return true
+    if (tokenDoc && tokenDoc.exists) return true
 
     // 3. Check global
     tokenDoc = await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').get()
 
-    if (isUsableTokenDoc(tokenDoc)) return true
+    if (tokenDoc && tokenDoc.exists) return true
 
     return false
 }
@@ -1010,14 +815,12 @@ async function getCredentialStatus(userId, projectId, service) {
         tokenDoc = await admin.firestore().collection('users').doc(userId).collection('private').doc('googleAuth').get()
     }
 
-    if (!isUsableTokenDoc(tokenDoc)) {
+    if (!tokenDoc || !tokenDoc.exists) {
         return {
             hasCredentials: false,
-            // Surface the account that needs reconnecting when we still know it.
-            email: (tokenDoc && tokenDoc.exists && (tokenDoc.data() || {}).email) || null,
+            email: null,
             scopes: [],
             hasModifyScope: false,
-            authInvalid: !!(tokenDoc && tokenDoc.exists && (tokenDoc.data() || {}).authInvalid === true),
         }
     }
 
@@ -1036,9 +839,6 @@ module.exports = {
     initiateOAuth,
     handleOAuthCallback,
     getAccessToken,
-    getAuthorizedOAuth2Client,
-    runWithGoogleAuthRetry,
-    GoogleAuthRevokedError,
     revokeAccess,
     hasValidCredentials,
     getCredentialStatus,
@@ -1046,13 +846,6 @@ module.exports = {
     isConnectionId,
     __private__: {
         hasExistingDefaultConnection,
-        ensureFreshAccessToken,
-        isExpiredAccessTokenError,
-        isInvalidGrantError,
-        markGoogleAuthInvalid,
-        shouldRefreshStoredToken,
-        getStoredTokenExpiryMillis,
-        TOKEN_EXPIRY_SKEW_MS,
     },
 }
 function hasExistingDefaultConnection(apisConnected = {}, defaultFieldOrResolver) {

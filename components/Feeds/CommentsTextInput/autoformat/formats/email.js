@@ -1,5 +1,5 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 
@@ -46,8 +46,8 @@ export default class Email extends Embed {
         return emailData
     }
 
-    constructor(domNode) {
-        super(domNode)
+    constructor(scroll, domNode) {
+        super(scroll, domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = Email.data
     }

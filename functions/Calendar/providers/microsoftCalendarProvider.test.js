@@ -14,10 +14,7 @@ jest.mock('../../MicrosoftGraph/graphClient', () => {
 
 const admin = require('firebase-admin')
 const { getMicrosoftGraphClient } = require('../../MicrosoftGraph/graphClient')
-const {
-    createMicrosoftCalendarEventForAssistantRequest,
-    getMicrosoftCalendarBusyIntervalsForAssistantRequest,
-} = require('./microsoftCalendarProvider')
+const { getMicrosoftCalendarBusyIntervalsForAssistantRequest } = require('./microsoftCalendarProvider')
 
 describe('microsoftCalendarProvider availability', () => {
     beforeEach(() => {
@@ -169,113 +166,5 @@ describe('microsoftCalendarProvider availability', () => {
             searchedCalendarCount: 0,
             failedCalendarCount: 1,
         })
-    })
-})
-
-// AT-2198: Google Meet cannot be provisioned on a Microsoft calendar, so a
-// Teams online meeting is the equivalent guarantee.
-describe('microsoftCalendarProvider automatic Teams conferencing', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        admin.firestore.mockReturnValue({
-            collection: jest.fn(name => {
-                if (name !== 'users') throw new Error(`Unexpected collection: ${name}`)
-                return {
-                    doc: jest.fn(() => ({
-                        get: jest.fn().mockResolvedValue({
-                            exists: true,
-                            data: () => ({
-                                projectIds: ['project-1'],
-                                apisConnected: {
-                                    'project-1': {
-                                        calendar: true,
-                                        calendarProvider: 'microsoft',
-                                        calendarEmail: 'owner@example.com',
-                                    },
-                                },
-                            }),
-                        }),
-                    })),
-                }
-            }),
-        })
-    })
-
-    const TIMED_EVENT = {
-        userId: 'user-1',
-        summary: 'Meeting with Karsten',
-        start: '2026-03-11T09:00:00+01:00',
-        end: '2026-03-11T10:00:00+01:00',
-        timeZone: 'Europe/Berlin',
-    }
-
-    const TEAMS_JOIN_URL = 'https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0'
-
-    function parseBody(request, callIndex = 0) {
-        return JSON.parse(request.mock.calls[callIndex][1].body)
-    }
-
-    test('asks Graph for a Teams meeting and returns the join URL', async () => {
-        const request = jest.fn().mockResolvedValue({
-            id: 'evt-teams',
-            subject: 'Meeting with Karsten',
-            start: { dateTime: '2026-03-11T09:00:00', timeZone: 'Europe/Berlin' },
-            end: { dateTime: '2026-03-11T10:00:00', timeZone: 'Europe/Berlin' },
-            onlineMeeting: { joinUrl: TEAMS_JOIN_URL },
-        })
-        getMicrosoftGraphClient.mockResolvedValue({ request })
-
-        const result = await createMicrosoftCalendarEventForAssistantRequest(TIMED_EVENT)
-
-        expect(result.success).toBe(true)
-        expect(result.joinUrl).toBe(TEAMS_JOIN_URL)
-        expect(result.joinProvider).toBe('teams')
-        expect(parseBody(request)).toMatchObject({
-            isOnlineMeeting: true,
-            onlineMeetingProvider: 'teamsForBusiness',
-        })
-    })
-
-    test('falls back to a plain event when the tenant refuses online meetings', async () => {
-        const request = jest
-            .fn()
-            .mockRejectedValueOnce(new Error('Online meeting is not enabled for this tenant'))
-            .mockResolvedValueOnce({
-                id: 'evt-plain',
-                subject: 'Meeting with Karsten',
-                start: { dateTime: '2026-03-11T09:00:00', timeZone: 'Europe/Berlin' },
-                end: { dateTime: '2026-03-11T10:00:00', timeZone: 'Europe/Berlin' },
-            })
-        getMicrosoftGraphClient.mockResolvedValue({ request })
-
-        const result = await createMicrosoftCalendarEventForAssistantRequest(TIMED_EVENT)
-
-        expect(result.success).toBe(true)
-        expect(result.joinUrl).toBe('')
-        expect(result.event.eventId).toBe('evt-plain')
-        expect(request).toHaveBeenCalledTimes(2)
-        expect(parseBody(request, 1).isOnlineMeeting).toBeUndefined()
-    })
-
-    test('propagates an unrelated failure instead of retrying', async () => {
-        const request = jest.fn().mockRejectedValue(new Error('socket hang up'))
-        getMicrosoftGraphClient.mockResolvedValue({ request })
-
-        await expect(createMicrosoftCalendarEventForAssistantRequest(TIMED_EVENT)).rejects.toThrow('socket hang up')
-        expect(request).toHaveBeenCalledTimes(1)
-    })
-
-    test('does not add conferencing to all-day events', async () => {
-        const request = jest.fn().mockResolvedValue({ id: 'evt-allday', subject: 'Vacation' })
-        getMicrosoftGraphClient.mockResolvedValue({ request })
-
-        await createMicrosoftCalendarEventForAssistantRequest({
-            userId: 'user-1',
-            summary: 'Vacation',
-            start: { date: '2026-03-12' },
-            end: { date: '2026-03-13' },
-        })
-
-        expect(parseBody(request).isOnlineMeeting).toBeUndefined()
     })
 })

@@ -33,7 +33,6 @@ export default function FeedsGlobalList({
     followedFeedsData,
     allFeeds,
     followedFeeds,
-    onRequestAllFeeds,
 }) {
     const newLocalFeedData = useSelector(state => state.newLocalFeedData)
 
@@ -47,13 +46,10 @@ export default function FeedsGlobalList({
     const [feedsByDate, setFeedsByDate] = useState({})
     const [feedsOrderedArray, setFeedsOrderedArray] = useState([])
     const [activeMode, setActiveMode] = useState(LOADING_MODE)
-    const [expandRequested, setExpandRequested] = useState(false)
 
     const contractFeedList = () => {
         setMaxAmountOfFeedToDisplay(getLimitFeedAmountToDisplay())
         setShowShowLessButton(false)
-        // Stop topping the list back up, otherwise the next snapshot would re-expand it on its own.
-        setExpandRequested(false)
 
         const lastFeeds = displayedFeedsOrdered.slice(getLimitFeedAmountToDisplay())
         lastFeeds.forEach(feed => {
@@ -77,11 +73,6 @@ export default function FeedsGlobalList({
         }
         setMaxAmountOfFeedToDisplay(MAX_FEEDS_AMOUNT_TO_DISPLAY)
         setShowShowMoreButton(false)
-        // The listener is capped at what this list displays, so the feeds beyond the first page have
-        // to be requested before they can be rendered. Whatever is already loaded is processed right
-        // away; the effect below tops the list up when the wider snapshot arrives.
-        setExpandRequested(true)
-        if (onRequestAllFeeds) onRequestAllFeeds()
 
         const feedsToProcess = feedActiveTab === FOLLOWED_TAB ? followedFeeds : allFeeds
 
@@ -135,7 +126,6 @@ export default function FeedsGlobalList({
         setShowShowLessButton(false)
         setFeedsOrderedArray([])
         setNewFeedsIds([])
-        setExpandRequested(false)
         setInternalFeedActiveTab(feedActiveTab)
 
         processInitialFeedsInTab()
@@ -267,16 +257,6 @@ export default function FeedsGlobalList({
             processInitialFeedsInTab()
         }
     }, [allFeeds, followedFeeds, counterNewFeedsData])
-
-    // Top the expanded list up once the widened listener delivers the feeds that were beyond the
-    // first page. Only runs after "show more" was pressed, and only while the incoming snapshot
-    // holds more feeds than are already on screen, so it cannot loop.
-    useEffect(() => {
-        if (!expandRequested || activeMode === LOADING_MODE) return
-        const feedsToProcess = feedActiveTab === FOLLOWED_TAB ? followedFeeds : allFeeds
-        if (!feedsToProcess || feedsToProcess.length <= displayedFeedsOrdered.length) return
-        expandFeedList()
-    }, [allFeeds, followedFeeds])
 
     return (
         <View>

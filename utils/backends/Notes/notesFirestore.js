@@ -38,7 +38,6 @@ import { getLinkedTasksIdsFromText } from '../../../components/Feeds/CommentsTex
 import { processMovedNoteTasks } from '../../../components/NotesView/NotesDV/EditorView/notesHelper'
 import { CURRENT_DAY_VERSION_ID } from '../../../components/UIComponents/FloatModals/RevisionHistoryModal/RevisionHistoryModal'
 import { updateGoalNote } from '../Goals/goalsFirestore'
-import { resolveMovedNoteOwnerId } from '../../../components/NotesView/NoteFilters/noteOwnerFilterHelper'
 import { setUserNote } from '../Users/usersFirestore'
 import { updateContactNote } from '../Contacts/contactsFirestore'
 import { updateSkillNote } from '../Skills/skillsFirestore'
@@ -390,14 +389,8 @@ export async function setNoteProject(currentProject, newProject, note, oldAssign
         defaultStorageRef.child(`noteDailyVersionsData/${currentProject.id}/${noteId}`).delete()
     }
 
-    const newProjectUserIds = (newProjectUsers || []).map(user => user.uid)
-    const creatorId = newProjectUserIds.includes(note.creatorId) ? note.creatorId : loggedUser.uid
-    // An assistant can own a note since AT-2194, and an assistant is not a project *user*, so
-    // a plain member check silently handed the note back to the acting human on every move.
-    // Keep the owner whenever it still resolves in the target project (member, assistant,
-    // global assistant, contact or workstream); only fall back when it would become an
-    // unresolvable "Unknown" owner over there.
-    const userId = resolveMovedNoteOwnerId(newProject.id, note.userId, loggedUser.uid)
+    const creatorId = newProjectUsers.map(user => user.uid).includes(note.creatorId) ? note.creatorId : loggedUser.uid
+    const userId = newProjectUsers.map(user => user.uid).includes(note.userId) ? note.userId : loggedUser.uid
 
     const noteMeta = {
         ...note,

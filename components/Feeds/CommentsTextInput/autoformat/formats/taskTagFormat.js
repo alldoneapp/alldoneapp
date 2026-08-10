@@ -1,5 +1,5 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import ReactDOM from 'react-dom'
 import { Provider } from 'react-redux'
 
@@ -49,8 +49,8 @@ export default class TaskTagFormat extends Embed {
         return taskData
     }
 
-    constructor(domNode) {
-        super(domNode)
+    constructor(scroll, domNode) {
+        super(scroll, domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = TaskTagFormat.data
     }

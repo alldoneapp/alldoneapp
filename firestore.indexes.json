@@ -3504,6 +3504,46 @@
                     "arrayConfig": "CONTAINS"
                 },
                 {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
+                    "fieldPath": "isSubtask",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "sortIndex",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "tasks",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isPublicFor",
+                    "arrayConfig": "CONTAINS"
+                },
+                {
                     "fieldPath": "parentDone",
                     "order": "ASCENDING"
                 },

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import DueDate from './DueDate'
@@ -16,11 +16,21 @@ export default function ButtonsArea({
     showParentGoal,
     showMoreOptions,
     showRecurring,
+    enterKeyAction,
     done,
 }) {
-    // Enter is handled once, by TaskEditForm's document listener. This area used
-    // to register a second identical listener, so a single Return ran the whole
-    // creation twice.
+    const onKeyDown = event => {
+        const { key } = event
+        if (key === 'Enter') enterKeyAction(event)
+    }
+
+    useEffect(() => {
+        document.addEventListener('keydown', onKeyDown)
+        return () => {
+            document.removeEventListener('keydown', onKeyDown)
+        }
+    })
+
     const { name, isPrivate, parentGoalId } = task
     const disabled = name.trim() === ''
 
@@ -34,7 +44,7 @@ export default function ButtonsArea({
                 <MoreOptions showMoreOptions={showMoreOptions} disabled={disabled} />
             </View>
             <View style={localStyles.buttonsRight}>
-                <DoneButton done={done} disabled={disabled} />
+                <DoneButton enterKeyAction={enterKeyAction} done={done} disabled={disabled} />
             </View>
         </View>
     )

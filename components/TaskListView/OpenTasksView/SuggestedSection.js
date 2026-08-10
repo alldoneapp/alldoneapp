@@ -11,8 +11,7 @@ import { translate } from '../../../i18n/TranslationService'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 import { getAssistantFromState } from '../../AdminPanel/Assistants/assistantsHelper'
-import { collectSuggestedTasks, resolveSuggestedByIdentity } from '../../../utils/suggestedTaskFlow'
-import SuggestedBulkActions from '../../Suggeted/SuggestedBulkActions'
+import { resolveSuggestedByIdentity } from '../../../utils/suggestedTaskFlow'
 
 export default function SuggestedSection({
     projectId,
@@ -80,10 +79,6 @@ export default function SuggestedSection({
                         </Text>
                     </View>
                 </View>
-                <SuggestedBulkActions
-                    projectId={projectId}
-                    tasks={collectSuggestedTasks(taskByGoalsList, suggestedUserId)}
-                />
             </View>
 
             {sortedSuggestedTasks.map((goalTasksData, index) => {

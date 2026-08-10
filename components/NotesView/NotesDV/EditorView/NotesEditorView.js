@@ -5,7 +5,7 @@ import firebase from 'firebase/compat/app'
 import moment from 'moment'
 import v4 from 'uuid/v4'
 import Hotkeys from 'react-hot-keys'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import { QuillBinding } from 'y-quill'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
@@ -70,7 +70,6 @@ import {
 import { MANAGE_TASK_MODAL_ID, removeModal, storeModal } from '../../../ModalsManager/modalsManager'
 import { DV_TAB_NOTE_EDITOR } from '../../../../utils/TabNavigationConstants'
 import {
-    captureSelectionFromEditor,
     getSelection,
     handleTextChangeForMentions,
     loadMentionsData,
@@ -624,7 +623,7 @@ const NotesEditorView = ({
 
                 // Fall back to HTML processing if available
                 if (htmlData) {
-                    const pastedDelta = exportRef.getEditor().clipboard.convert(htmlData)
+                    const pastedDelta = exportRef.getEditor().clipboard.convert({ html: htmlData })
                     const finalDelta = { ops: [] }
 
                     for (let i = 0; i < pastedDelta.ops.length; i++) {
@@ -749,10 +748,6 @@ const NotesEditorView = ({
                 ydoc.current = collaboration.document
                 provider.current = collaboration.provider
                 const type = ydoc.current.getText('quill')
-                /*provider.current = new WebrtcProvider(note.id, ydoc.current, {
-                        peerOpts: { config },
-                        signaling: signalingServers,
-                    })*/
                 provider.current.on('synced', synced => {
                     setSynced(synced)
                 })
@@ -919,25 +914,10 @@ const NotesEditorView = ({
         }
     }
 
-    // react-quill throws when the editor has not been instantiated yet, so every
-    // caller that only needs a best-effort read goes through this.
-    const getNoteEditor = () => {
-        try {
-            return reactQuillRef ? reactQuillRef.getEditor() : null
-        } catch (error) {
-            return null
-        }
-    }
-
     const renderTask = () => {
         if (blockShortcuts) {
             return
         }
-        // Snapshot what is selected right now, before the modal mounts and takes
-        // focus. The create-task popup pre-fills itself from this selection and
-        // the created task tag replaces it in the note, so it has to be read at
-        // press time rather than trusted to still be cached later.
-        captureSelectionFromEditor(getNoteEditor())
         storeModal(MANAGE_TASK_MODAL_ID)
     }
 
