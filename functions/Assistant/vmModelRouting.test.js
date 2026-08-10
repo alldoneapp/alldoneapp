@@ -7,6 +7,9 @@ const {
     resolveModelRoute,
     isOpenRouterRun,
     formatOpenRouterModelLabel,
+    resolveCredentialProvider,
+    resolveJobCredentialProvider,
+    providerSupportsSubscription,
 } = require('./vmModelRouting')
 
 describe('OpenRouter model selection encoding (AT-2230)', () => {
@@ -102,5 +105,57 @@ describe('OpenRouter model selection encoding (AT-2230)', () => {
         test('surfaces the variant', () => {
             expect(formatOpenRouterModelLabel('deepseek/deepseek-r1:free')).toBe('DeepSeek R1 (free)')
         })
+    })
+})
+
+describe('credential provider resolution (AT-2230 BYOK)', () => {
+    // The whole point: an OpenRouter run drives the Codex harness but authenticates elsewhere.
+    // Keying credentials on the agent would spend the user's OpenAI key against OpenRouter.
+    test('an OpenRouter model resolves its own slot, not the codex one', () => {
+        expect(resolveCredentialProvider('codex', 'openrouter:deepseek/deepseek-chat')).toBe('openrouter')
+        expect(resolveCredentialProvider('codex', 'gpt-5.6-sol')).toBe('codex')
+        expect(resolveCredentialProvider('claude', 'opus')).toBe('claude')
+    })
+
+    test('an OpenRouter model paired with Claude is not an OpenRouter credential route', () => {
+        // resolveModelRoute already refuses that combination, so the credential must follow it.
+        expect(resolveCredentialProvider('claude', 'openrouter:deepseek/deepseek-chat')).toBe('claude')
+    })
+
+    test('a malformed OpenRouter selection falls back to the OpenAI slot, matching the model route', () => {
+        expect(resolveCredentialProvider('codex', 'openrouter:bogus id')).toBe('codex')
+    })
+
+    describe('resolveJobCredentialProvider', () => {
+        test('prefers the value persisted on the job', () => {
+            expect(
+                resolveJobCredentialProvider({
+                    agent: 'codex',
+                    agentModel: 'gpt-5.6-sol',
+                    credentialProvider: 'openrouter',
+                })
+            ).toBe('openrouter')
+        })
+
+        // Backward compatibility: every job doc written before this field existed.
+        test('derives from agent + model when the field is absent', () => {
+            expect(
+                resolveJobCredentialProvider({ agent: 'codex', agentModel: 'openrouter:deepseek/deepseek-chat' })
+            ).toBe('openrouter')
+            expect(resolveJobCredentialProvider({ agent: 'codex', agentModel: 'gpt-5.6-sol' })).toBe('codex')
+            expect(resolveJobCredentialProvider({})).toBe('claude')
+        })
+
+        test('ignores a persisted value that is not a known provider', () => {
+            expect(
+                resolveJobCredentialProvider({ agent: 'codex', agentModel: 'gpt-5.6-sol', credentialProvider: 'evil' })
+            ).toBe('codex')
+        })
+    })
+
+    test('only OpenAI and Anthropic have a connectable subscription', () => {
+        expect(providerSupportsSubscription('claude')).toBe(true)
+        expect(providerSupportsSubscription('codex')).toBe(true)
+        expect(providerSupportsSubscription('openrouter')).toBe(false)
     })
 })

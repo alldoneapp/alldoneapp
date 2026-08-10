@@ -171,3 +171,91 @@ describe('AgentSubscriptionsSection provider BYOK states', () => {
         expect(onChanged).toHaveBeenCalled()
     })
 })
+
+// AT-2230 BYOK. OpenRouter is a credential provider without a subscription: the card must offer
+// exactly two routes and never imply a plan the user cannot connect.
+describe('AgentSubscriptionsSection OpenRouter card', () => {
+    const onChanged = jest.fn(async () => {})
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    const renderCard = (connection = { activeMode: 'api', apiKey: { connected: false } }) =>
+        renderer.create(<ProviderAuthCard provider="openrouter" connection={connection} onChanged={onChanged} />)
+
+    test('offers only "Personal API key" and "Alldone Gold" — no subscription route', () => {
+        const tree = renderCard()
+        const titles = tree.root.findAllByType('MockButton').map(node => node.props.title)
+
+        expect(titles).toContain('Personal API key')
+        expect(titles).toContain('Alldone Gold')
+        expect(titles).not.toContain('Subscription')
+        expect(titles).not.toContain('Connect subscription')
+        expect(JSON.stringify(tree.toJSON())).not.toContain('Subscription authentication')
+    })
+
+    // The card was previously unreachable, so this pins the whole add path, not just the button.
+    test('validates and saves a pasted OpenRouter key against the openrouter provider slot', async () => {
+        const tree = renderCard()
+        const input = tree.root
+            .findAllByType(TextInput)
+            .find(node => node.props.placeholder === 'Paste your OpenRouter API key (sk-or-…)')
+        expect(input.props.secureTextEntry).toBe(true)
+
+        await act(async () => {
+            input.props.onChangeText('sk-or-v1-0123456789abcdef0123456789abcdef')
+        })
+        await act(async () => {
+            await tree.root
+                .findAllByType('MockButton')
+                .find(node => node.props.title === 'Validate and save key')
+                .props.onPress()
+        })
+
+        // 'openrouter', NOT 'codex': the harness is Codex but the key is OpenRouter's.
+        expect(saveVmApiKey).toHaveBeenCalledWith({
+            provider: 'openrouter',
+            apiKey: 'sk-or-v1-0123456789abcdef0123456789abcdef',
+        })
+        expect(input.props.value).toBe('')
+    })
+
+    test('switches an OpenRouter run between the personal key and Alldone Gold, and removes the key', async () => {
+        const tree = renderCard({ activeMode: 'byok', apiKey: { connected: true, validationStatus: 'valid' } })
+        const button = title => tree.root.findAllByType('MockButton').find(node => node.props.title === title)
+
+        await act(async () => {
+            await button('Alldone Gold').props.onPress()
+        })
+        expect(setVmCredentialMode).toHaveBeenCalledWith({ provider: 'openrouter', mode: 'api' })
+
+        await act(async () => {
+            await button('Remove key').props.onPress()
+        })
+        expect(removeVmApiKey).toHaveBeenCalledWith({ provider: 'openrouter' })
+    })
+
+    test('never renders a saved OpenRouter key, and surfaces a rejected one', () => {
+        const rawKey = 'sk-or-v1-secret-that-must-not-render'
+        const tree = renderCard({
+            activeMode: 'byok',
+            apiKey: { connected: true, validationStatus: 'invalid', rawKey },
+        })
+        const output = JSON.stringify(tree.toJSON())
+
+        expect(output).not.toContain(rawKey)
+        expect(output).toContain('Saved key was rejected — replace or remove it')
+        expect(output).toContain('Using your personal API key')
+    })
+
+    test('a connected subscription on another provider cannot mark OpenRouter as subscription-billed', () => {
+        // `connected: true` is what the backend reports for the codex/claude cards. Even if it
+        // leaked into this card's props, OpenRouter has no subscription route to fall into.
+        const tree = renderCard({ connected: true, activeMode: 'api', apiKey: { connected: false } })
+        const output = JSON.stringify(tree.toJSON())
+
+        expect(output).toContain('Using Alldone API billing')
+        expect(output).not.toContain('Using your subscription')
+    })
+})

@@ -2019,7 +2019,7 @@
     "This project has no default assistant yet, and no global default is set. Add an assistant before letting it work on your tasks.": "Dieses Projekt hat noch keinen Standard-Assistenten und es ist kein globaler Standard festgelegt. Füge einen Assistenten hinzu, bevor er an deinen Aufgaben arbeiten kann.",
     "AI agent subscriptions": "KI-Agent-Abonnements",
     "AI agent authentication": "KI-Agent-Authentifizierung",
-    "Choose how Claude and Codex VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.": "Wähle, wie sich Claude- und Codex-VM-Aufträge authentifizieren: mit deinem eigenen API-Key, deinem Abonnement oder über Alldones API-Abrechnung mit Gold.",
+    "Choose how Claude, Codex, and OpenRouter VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.": "Wähle, wie sich Claude-, Codex- und OpenRouter-VM-Aufträge authentifizieren: mit deinem eigenen API-Key, deinem Abonnement oder über Alldones API-Abrechnung mit Gold.",
     "Could not update the provider connection.": "Die Provider-Verbindung konnte nicht aktualisiert werden.",
     "Paste an API key before saving.": "Füge vor dem Speichern einen API-Key ein.",
     "API key validated and saved. BYOK is now active for this provider.": "API-Key validiert und gespeichert. BYOK ist für diesen Provider jetzt aktiv.",
@@ -2087,7 +2087,7 @@
     "Optionally pick the model family used by the selected agent. The latest version of that family is used automatically, so you never have to update a version number. Each agent keeps its own choice.": "Wähle optional die Modellfamilie für den ausgewählten Agenten. Die neueste Version dieser Familie wird automatisch verwendet, sodass du nie eine Versionsnummer aktualisieren musst. Jeder Agent behält seine eigene Auswahl.",
     "Could not save the default VM model.": "Das Standard-VM-Modell konnte nicht gespeichert werden.",
     "Could not reach the model provider, so a built-in list of families is shown.": "Der Modellanbieter war nicht erreichbar, daher wird eine integrierte Liste von Familien angezeigt.",
-    "OpenRouter models run through the Codex harness and always use Alldone API billing, even when you have connected a personal subscription or API key.": "OpenRouter-Modelle laufen über die Codex-Umgebung und werden immer über die Alldone-API abgerechnet, auch wenn du ein persönliches Abo oder einen eigenen API-Schlüssel verbunden hast.",
+    "OpenRouter models run through the Codex harness but authenticate separately: they use the OpenRouter route in AI agent authentication below — your own OpenRouter API key, or Alldone Gold. Your Claude or ChatGPT subscription and your OpenAI key do not apply to them.": "OpenRouter-Modelle laufen über die Codex-Umgebung, authentifizieren sich aber separat: Sie nutzen die OpenRouter-Route unter „KI-Agent-Authentifizierung“ weiter unten – deinen eigenen OpenRouter-API-Key oder Alldone Gold. Dein Claude- oder ChatGPT-Abo und dein OpenAI-Key gelten dafür nicht.",
     "Showing the most relevant compatible models. More are available on request.": "Es werden die relevantesten kompatiblen Modelle angezeigt. Weitere sind auf Anfrage verfügbar.",
     "Paused": "Pausiert",
     "VM environment": "VM-Umgebung",
@@ -2167,5 +2167,8 @@
     "Balanced": "Ausgewogen",
     "Permissive": "Freizügig",
     "Controls which operations an interactive VM task can run without asking you first. Balanced auto-approves read-only internet access and pushing a feature branch or opening a merge request, and still asks before merging, pushing to the base branch, deployments and anything touching secrets.": "Legt fest, welche Operationen eine interaktive VM-Aufgabe ohne Rückfrage ausführen darf. Ausgewogen genehmigt lesenden Internetzugriff sowie das Pushen eines Feature-Branches und das Öffnen eines Merge Requests automatisch und fragt weiterhin nach, bevor gemergt, auf den Basis-Branch gepusht, deployt oder auf vertrauliche Zugangsdaten zugegriffen wird.",
-    "Could not save the default VM approval policy.": "Die VM-Freigaberichtlinie konnte nicht gespeichert werden."
+    "Could not save the default VM approval policy.": "Die VM-Freigaberichtlinie konnte nicht gespeichert werden.",
+    "Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.": "Wähle eine Route für diesen Provider. Mit deinem eigenen API-Key rechnet OpenRouter die Modellnutzung direkt mit dir ab und es fällt kein Token-Gold an; Alldone Gold nutzt Alldones OpenRouter-Key und berechnet Gold pro Modell-Token. Die Grundgebühr von 20 Gold und 10 Gold pro angefangener VM-Minute gelten für beide Routen.",
+    "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Wird verwendet, wenn du ein DeepSeek- oder anderes OpenRouter-Modell für die Codex-Umgebung auswählst. Dein Key wird vor dem Speichern gegen OpenRouter validiert.",
+    "Paste your OpenRouter API key (sk-or-…)": "Füge deinen OpenRouter-API-Key ein (sk-or-…)"
 }

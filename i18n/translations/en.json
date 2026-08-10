@@ -2488,7 +2488,7 @@
     "Reset learned rules": "Reset learned rules",
     "AI agent subscriptions": "AI agent subscriptions",
     "AI agent authentication": "AI agent authentication",
-    "Choose how Claude and Codex VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.": "Choose how Claude and Codex VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.",
+    "Choose how Claude, Codex, and OpenRouter VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.": "Choose how Claude, Codex, and OpenRouter VM jobs authenticate: your own API key, your subscription, or Alldone API billing via Gold.",
     "Could not update the provider connection.": "Could not update the provider connection.",
     "Paste an API key before saving.": "Paste an API key before saving.",
     "API key validated and saved. BYOK is now active for this provider.": "API key validated and saved. BYOK is now active for this provider.",
@@ -2556,7 +2556,7 @@
     "Optionally pick the model family used by the selected agent. The latest version of that family is used automatically, so you never have to update a version number. Each agent keeps its own choice.": "Optionally pick the model family used by the selected agent. The latest version of that family is used automatically, so you never have to update a version number. Each agent keeps its own choice.",
     "Could not save the default VM model.": "Could not save the default VM model.",
     "Could not reach the model provider, so a built-in list of families is shown.": "Could not reach the model provider, so a built-in list of families is shown.",
-    "OpenRouter models run through the Codex harness and always use Alldone API billing, even when you have connected a personal subscription or API key.": "OpenRouter models run through the Codex harness and always use Alldone API billing, even when you have connected a personal subscription or API key.",
+    "OpenRouter models run through the Codex harness but authenticate separately: they use the OpenRouter route in AI agent authentication below — your own OpenRouter API key, or Alldone Gold. Your Claude or ChatGPT subscription and your OpenAI key do not apply to them.": "OpenRouter models run through the Codex harness but authenticate separately: they use the OpenRouter route in AI agent authentication below — your own OpenRouter API key, or Alldone Gold. Your Claude or ChatGPT subscription and your OpenAI key do not apply to them.",
     "Showing the most relevant compatible models. More are available on request.": "Showing the most relevant compatible models. More are available on request.",
     "Paused": "Paused",
     "VM environment": "VM environment",
@@ -2635,5 +2635,8 @@
     "Balanced": "Balanced",
     "Permissive": "Permissive",
     "Controls which operations an interactive VM task can run without asking you first. Balanced auto-approves read-only internet access and pushing a feature branch or opening a merge request, and still asks before merging, pushing to the base branch, deployments and anything touching secrets.": "Controls which operations an interactive VM task can run without asking you first. Balanced auto-approves read-only internet access and pushing a feature branch or opening a merge request, and still asks before merging, pushing to the base branch, deployments and anything touching secrets.",
-    "Could not save the default VM approval policy.": "Could not save the default VM approval policy."
+    "Could not save the default VM approval policy.": "Could not save the default VM approval policy.",
+    "Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.": "Choose one route for this provider. Your own API key bills model usage directly to your OpenRouter account and costs no token Gold; Alldone Gold uses Alldone’s OpenRouter key and charges Gold per model token. The 20 Gold base charge and 10 Gold per started VM minute apply to both routes.",
+    "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.": "Used when you pick a DeepSeek or other OpenRouter model for the Codex harness. Your key is validated against OpenRouter before it is saved.",
+    "Paste your OpenRouter API key (sk-or-…)": "Paste your OpenRouter API key (sk-or-…)"
 }
