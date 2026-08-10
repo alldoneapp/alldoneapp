@@ -39,6 +39,20 @@ const MOCK_CATALOGS = {
         fetchedAt: 1,
         source: 'live',
     },
+    openrouter: {
+        families: [
+            {
+                id: 'openrouter:deepseek/deepseek-chat',
+                label: 'DeepSeek Chat',
+                vendor: 'deepseek',
+                modelId: 'deepseek/deepseek-chat',
+                resolvedModel: 'openrouter:deepseek/deepseek-chat',
+            },
+        ],
+        fetchedAt: 1,
+        source: 'live',
+        available: true,
+    },
 }
 
 jest.mock('./vmAgentModelCatalog', () => {
@@ -275,6 +289,80 @@ describe('VM agent settings', () => {
             await expect(setDefaultVmAgentModel({ agent: 'claude', family: 'opus' })).rejects.toMatchObject({
                 code: 'unauthenticated',
             })
+        })
+    })
+
+    // AT-2230: OpenRouter models share the Codex slot, encoded with an `openrouter:` prefix.
+    describe('OpenRouter model selections', () => {
+        test('saves an OpenRouter selection for Codex against the OpenRouter catalog', async () => {
+            await expect(
+                setDefaultVmAgentModel({
+                    userId: 'user-1',
+                    agent: 'codex',
+                    family: 'openrouter:deepseek/deepseek-chat',
+                })
+            ).resolves.toEqual(expect.objectContaining({ success: true, family: 'openrouter:deepseek/deepseek-chat' }))
+            // Validated against the OpenRouter catalog, not the codex one.
+            expect(getModelCatalog).toHaveBeenLastCalledWith('openrouter')
+            expect(mockUpdate).toHaveBeenLastCalledWith(
+                expect.objectContaining({ 'defaultVmAgentModel.codex': 'openrouter:deepseek/deepseek-chat' })
+            )
+        })
+
+        test('refuses to pair an OpenRouter model with Claude', async () => {
+            await expect(
+                setDefaultVmAgentModel({
+                    userId: 'user-1',
+                    agent: 'claude',
+                    family: 'openrouter:deepseek/deepseek-chat',
+                })
+            ).rejects.toMatchObject({ code: 'invalid-argument' })
+            expect(mockUpdate).not.toHaveBeenCalled()
+        })
+
+        test('refuses a model OpenRouter does not offer', async () => {
+            await expect(
+                setDefaultVmAgentModel({ userId: 'user-1', agent: 'codex', family: 'openrouter:nope/not-real' })
+            ).rejects.toMatchObject({ code: 'invalid-argument' })
+            expect(mockUpdate).not.toHaveBeenCalled()
+        })
+
+        test('refuses to save when OpenRouter is not configured for the environment', async () => {
+            getModelCatalog.mockResolvedValueOnce({
+                families: [{ id: 'openrouter:deepseek/deepseek-chat' }],
+                source: 'live',
+                fetchedAt: 1,
+                available: false,
+            })
+
+            await expect(
+                setDefaultVmAgentModel({
+                    userId: 'user-1',
+                    agent: 'codex',
+                    family: 'openrouter:deepseek/deepseek-chat',
+                })
+            ).rejects.toMatchObject({ code: 'failed-precondition' })
+            expect(mockUpdate).not.toHaveBeenCalled()
+        })
+
+        test('reads a saved OpenRouter selection back for Codex', async () => {
+            mockGet.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgentModel: { codex: 'openrouter:deepseek/deepseek-chat' } }),
+            })
+            await expect(resolveVmAgentModelFamily('user-1', 'codex')).resolves.toBe(
+                'openrouter:deepseek/deepseek-chat'
+            )
+        })
+
+        // Claude cannot run one, so a value that somehow landed there is read as "no preference"
+        // rather than being handed to a run that would reject it.
+        test('ignores an OpenRouter selection stored in the Claude slot', async () => {
+            mockGet.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgentModel: { claude: 'openrouter:deepseek/deepseek-chat' } }),
+            })
+            await expect(resolveVmAgentModelFamily('user-1', 'claude')).resolves.toBeNull()
         })
     })
 })
