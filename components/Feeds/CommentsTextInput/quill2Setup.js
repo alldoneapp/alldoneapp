@@ -148,6 +148,66 @@ class CustomSnowTheme extends SnowTheme {
     }
 }
 
+// Quill 2's `focus()` and `setSelection()` end in `scrollSelectionIntoView()`,
+// which walks EVERY scrollable ancestor of the editor up to `document.body` and
+// scrolls each one so the caret rect is inside it — finishing with a
+// `window.scrollBy` for the document itself. Quill 1 did the opposite: it saved
+// its own `scrollingContainer.scrollTop` around `selection.focus()`, put it back
+// afterwards, and only ever scrolled that one container. The app relied on that:
+// an inline task editor is mounted with `autoFocus`, so since the Quill 2
+// migration simply opening a task line can scroll the task list, a detailed view
+// or the page underneath it — the "jumping around" in AT-2220. It fires up to
+// three times per open (mount focus, `setSelection` after the initial text, and
+// the parent's own `focus()`), and again on every mention insert and popup
+// dismiss.
+//
+// Restore the Quill 1 contract without reimplementing any of Quill's geometry:
+// remember where every scroll container ABOVE the editor's own scroll boundary
+// was, let Quill do exactly what it does today, then put those containers back.
+// Everything at or inside the boundary — the `.ql-editor`'s own scrollbar, the
+// editor's own scroll view — still follows the caret unchanged.
+//
+// The boundary is opt-in per editor (`quill.scrollBoundaryElement`, set by
+// CustomTextInput3). An editor that does not set one — the notes document
+// editor, whose page scroller SHOULD follow the caret — keeps Quill's stock
+// behaviour, so this cannot regress it.
+export const confineScrollRectIntoView = original => {
+    function scrollRectIntoViewWithinBoundary(rect) {
+        const boundary = this.scrollBoundaryElement
+        if (!boundary || typeof document === 'undefined' || !boundary.parentElement) {
+            return original.call(this, rect)
+        }
+
+        const frozen = []
+        for (let node = boundary.parentElement; node; node = node.parentElement) {
+            frozen.push({ node, top: node.scrollTop, left: node.scrollLeft })
+        }
+        const view = typeof window !== 'undefined' ? window : null
+        const pageX = view ? view.scrollX : 0
+        const pageY = view ? view.scrollY : 0
+
+        try {
+            return original.call(this, rect)
+        } finally {
+            // Plain assignment, never scrollTo(): `html { scroll-behavior: smooth }`
+            // would otherwise animate the restore and show the very jump we are
+            // suppressing. Assignment on these containers is instant — they do not
+            // set scroll-behavior themselves.
+            frozen.forEach(({ node, top, left }) => {
+                if (node.scrollTop !== top) node.scrollTop = top
+                if (node.scrollLeft !== left) node.scrollLeft = left
+            })
+            if (view && (view.scrollX !== pageX || view.scrollY !== pageY)) {
+                view.scrollTo({ left: pageX, top: pageY, behavior: 'instant' })
+            }
+        }
+    }
+    scrollRectIntoViewWithinBoundary.confinesScrollToEditor = true
+    return scrollRectIntoViewWithinBoundary
+}
+
+Quill.prototype.scrollRectIntoView = confineScrollRectIntoView(Quill.prototype.scrollRectIntoView)
+
 Quill.register('modules/editorMeta', EditorMeta, true)
 Quill.register('modules/clipboard', GatedClipboard, true)
 Quill.register('modules/history', HookedHistory, true)
