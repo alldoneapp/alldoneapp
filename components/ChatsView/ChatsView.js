@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { checkIfSelectedAllProjects, checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { useDispatch, useSelector } from 'react-redux'
@@ -34,31 +34,17 @@ function ChatsView() {
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
-    // Memoized so the derived arrays keep their identity across renders: `sortedProjectIds` is a
-    // dependency of ChatFiltersLine's own useMemo, and a fresh array on every render made that
-    // recompute the unread counts over every project each time (AT-2162).
-    const sortedProjects = useMemo(() => {
-        const projects = loggedUserProjects.filter(
-            project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
-        )
+    const projects = loggedUserProjects.filter(
+        project => !templateProjectIds.includes(project.id) && !archivedProjectIds.includes(project.id)
+    )
 
-        const normalProjects = projects.filter(project => !project.parentTemplateId)
-        const guides = projects.filter(project => !!project.parentTemplateId)
+    const normalProjects = projects.filter(project => !project.parentTemplateId)
+    const guides = projects.filter(project => !!project.parentTemplateId)
 
-        return [
-            ...sortBy(normalProjects, [item => -item.lastChatActionDate]),
-            ...sortBy(guides, [item => -item.lastChatActionDate]),
-        ]
-    }, [loggedUserProjects, templateProjectIds, archivedProjectIds])
-
-    const sortedProjectIds = useMemo(() => sortedProjects.map(project => project.id), [sortedProjects])
-
-    const selectedProjectId = inSelectedProject ? loggedUserProjects[selectedProjectIndex].id : null
-    const filteredProjectIds = useMemo(() => (inSelectedProject ? [selectedProjectId] : sortedProjectIds), [
-        inSelectedProject,
-        selectedProjectId,
-        sortedProjectIds,
-    ])
+    const sortedProjects = [
+        ...sortBy(normalProjects, [item => -item.lastChatActionDate]),
+        ...sortBy(guides, [item => -item.lastChatActionDate]),
+    ]
 
     const [areThereChats, setAreThereChats] = useState({})
     const setUnreadOnly = value => dispatch(setChatsUnreadOnly(value))
@@ -100,13 +86,21 @@ function ChatsView() {
             {inAllProjects && (
                 <AllProjectsLine
                     showActions={false}
-                    customRight={<MarkAsRead projectIds={sortedProjectIds} userId={loggedUserId} />}
+                    customRight={
+                        <MarkAsRead projectIds={sortedProjects.map(project => project.id)} userId={loggedUserId} />
+                    }
                 />
             )}
 
             <HashtagFiltersView />
 
-            <ChatFiltersLine projectIds={filteredProjectIds} unreadOnly={unreadOnly} setUnreadOnly={setUnreadOnly} />
+            <ChatFiltersLine
+                projectIds={
+                    inSelectedProject ? [loggedUserProjects[selectedProjectIndex].id] : sortedProjects.map(p => p.id)
+                }
+                unreadOnly={unreadOnly}
+                setUnreadOnly={setUnreadOnly}
+            />
 
             {inSelectedProject ? (
                 <ChatsByProject

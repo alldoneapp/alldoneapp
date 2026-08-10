@@ -35,11 +35,9 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const dispatch = useDispatch()
     const [expanded, setExpanded] = useState(false)
     const [totalChats, setTotalChats] = useState(undefined)
-    // The smallest page this list ever shows. `toRender` must never fall below it: Firestore
-    // rejects `limit(n)` for n <= 0 with "limit() requires a positive number", which used to break
-    // the whole chat list when the collapse button was pressed with nothing to collapse (AT-2162).
-    const initialToRender = isInAllProjects && loggedUser.numberChatsAllTeams ? loggedUser.numberChatsAllTeams : 10
-    const [toRender, setToRender] = useState(initialToRender)
+    const [toRender, setToRender] = useState(
+        isInAllProjects && loggedUser.numberChatsAllTeams ? loggedUser.numberChatsAllTeams : 10
+    )
     const [atEnd, setAtEnd] = useState(false)
     const projectNotifications = useSelector(state => state.projectChatNotifications[project.id])
     const loadedChats = useGetChats(project.id, toRender, chatsActiveTab)
@@ -47,6 +45,15 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     const unreadChats = useGetUnreadChats(project.id, projectNotifications, chatsActiveTab, unreadOnly, toRender)
     const chats = unreadOnly ? unreadChats.chats : loadedChats
     const stickyChats = unreadOnly ? unreadChats.stickyChats : loadedStickyChats
+
+    console.log(
+        '📊 ChatsByProject: Loading state for project:',
+        project.id,
+        'regularChats:',
+        Object.keys(chats).length,
+        'stickyChats:',
+        Object.keys(stickyChats).length
+    )
 
     const today = moment().format('YYYYMMDD')
     const { [today]: todayChats, ...rest } = chats
@@ -56,20 +63,18 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
 
     useEffect(() => {
         const watcherKey = v4()
-        // `toRender` is forwarded so the amount query can be capped at `toRender + 1` documents
-        // instead of downloading the project's whole chats collection just to count it (AT-2162).
-        watchChatsAmount(project.id, watcherKey, setTotalChats, chatsActiveTab, toRender)
+        watchChatsAmount(project.id, watcherKey, setTotalChats, chatsActiveTab)
         return () => {
             unwatchChatsAmount(watcherKey)
         }
-    }, [project.id, chatsActiveTab, toRender])
+    }, [project.id, chatsActiveTab])
 
     useEffect(() => {
         setChatXProject(current => ({ ...current, [project.id]: isThereChats }))
     }, [isThereChats])
 
     const contractChat = () => {
-        setToRender(current => Math.max(initialToRender, current - 10))
+        setToRender(toRender - 10)
     }
 
     const expandChat = () => {
@@ -159,20 +164,16 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                     />
                 )}
 
-                {(unreadOnly || toRender <= totalVisibleChats) &&
-                    expanded &&
-                    toRender > initialToRender &&
-                    isThereChats && (
-                        <ShowMoreButton
-                            expanded={true}
-                            contract={contractChat}
-                            style={localStyles.showMore}
-                            check={'toRender'}
-                        />
-                    )}
+                {(unreadOnly || toRender <= totalVisibleChats) && expanded && toRender !== 10 && isThereChats && (
+                    <ShowMoreButton
+                        expanded={true}
+                        contract={contractChat}
+                        style={localStyles.showMore}
+                        check={'toRender'}
+                    />
+                )}
 
-                {/* Only offer to collapse when the list actually grew past its first page. */}
-                {!unreadOnly && atEnd && isThereChats && toRender > initialToRender && (
+                {!unreadOnly && atEnd && isThereChats && (
                     <ShowMoreButton
                         expanded={true}
                         contract={contractChat}
@@ -216,9 +217,4 @@ const localStyles = StyleSheet.create({
     },
 })
 
-// The "All Projects" chats screen mounts one ChatsByProject per project (78 for a large account).
-// Without memoization every re-render of ChatsView re-rendered all of those subtrees, even though
-// each one already subscribes to the state it needs. All props are referentially stable: `project`
-// objects keep their identity through the parent's filter/sortBy, and `setChatXProject` is a
-// useState setter.
-export default React.memo(ChatsByProject)
+export default ChatsByProject
