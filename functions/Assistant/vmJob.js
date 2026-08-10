@@ -12,18 +12,7 @@ const {
     resolveVmApprovalPolicy,
 } = require('./vmAgentSettings')
 const { resolveVmRunOverrides } = require('./vmRunOverrideGuard')
-const { resolveFamilyToModel, isOpenRouterConfigured } = require('./vmAgentModelCatalog')
-const {
-    isOpenRouterSelection,
-    parseOpenRouterSelection,
-    formatOpenRouterModelLabel,
-    OPENROUTER_LABEL,
-} = require('./vmModelRouting')
-const {
-    BASE_VM_TOKENS_PER_GOLD: VM_TOKENS_PER_GOLD,
-    resolveTokensPerGold,
-    formatTokenDiscountNote,
-} = require('./vmTokenPricing')
+const { resolveFamilyToModel } = require('./vmAgentModelCatalog')
 const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
 const { buildVmChatPath } = require('./vmHostTaskHelper')
 const { applyVmFailureWorkflowHold } = require('./vmWorkflowHold')
@@ -33,14 +22,13 @@ const { Timestamp } = require('firebase-admin/firestore')
 
 // Hybrid Gold pricing for a VM run:
 //   total = VM_JOB_BASE_GOLD + ceil(runtimeMinutes) * VM_GOLD_PER_MINUTE
-//                            + round(totalTokens / resolveTokensPerGold(agentModel))
+//                            + round(totalTokens / VM_TOKENS_PER_GOLD)
 // The base reserve is charged up-front (refunded if the run fails); the per-minute
 // (E2B compute) + per-token (LLM usage) top-up is charged by the worker on completion
-// from the agent's actual reported usage. The per-token rate matches in-app assistant
-// usage for every model except the discounted ones (DeepSeek via OpenRouter, at 1/5 the
-// Gold cost) — vmTokenPricing.js owns that decision for every charge site.
+// from the agent's actual reported usage. Per-token rate matches in-app assistant usage.
 const VM_JOB_BASE_GOLD = 20
 const VM_GOLD_PER_MINUTE = 10
+const VM_TOKENS_PER_GOLD = 100
 
 // Gold transaction sources (labels live in GoldTransactionsModal.getTransactionLabel).
 const VM_JOB_GOLD_SOURCE = 'vm_execution'
@@ -90,12 +78,6 @@ function formatAgentModelLabel(model) {
 
     const capitalize = value => value.charAt(0).toUpperCase() + value.slice(1)
 
-    // 'openrouter:deepseek/deepseek-chat' → 'DeepSeek Chat via OpenRouter'. Naming the source
-    // matters here in a way it does not for the native providers: the same run costs different
-    // money and hits a different upstream depending on it.
-    const openRouterModel = parseOpenRouterSelection(model)
-    if (openRouterModel) return `${formatOpenRouterModelLabel(openRouterModel)} via ${OPENROUTER_LABEL}`
-
     // A bare family name is one of Claude Code's moving aliases — the concrete version is only
     // known once the CLI reports it, which vmJobRunner captures into `resolvedAgentModel`.
     if (/^[a-z]+$/.test(model)) return `${capitalize(model)} latest; resolving version…`
@@ -126,11 +108,7 @@ function formatAgentRunSuffix(model, effort) {
     return parts.length ? ` (${parts.join(' · ')})` : ''
 }
 
-// `agentModel` is optional and only affects the platform-billing line: a discounted model (DeepSeek
-// via OpenRouter) says so, because otherwise the only way to notice the cheaper rate is to compare
-// Gold history entries after the fact. Subscription/BYOK runs charge no token Gold at all, so the
-// note would be meaningless there and is omitted.
-function formatVmBillingStatus(agentLabel, credentialMode, agentModel = '') {
+function formatVmBillingStatus(agentLabel, credentialMode) {
     const mode = typeof credentialMode === 'boolean' ? (credentialMode ? 'subscription' : 'api') : credentialMode
     if (mode === 'subscription') {
         return `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
@@ -138,7 +116,7 @@ function formatVmBillingStatus(agentLabel, credentialMode, agentModel = '') {
     if (mode === 'byok') {
         return `🔐 Using your personal ${agentLabel} API key. Provider token costs are billed directly to you; Alldone charges no token Gold.`
     }
-    return `🔑 Using Alldone API billing. VM tokens will cost Gold.${formatTokenDiscountNote(agentModel)}`
+    return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
 }
 
 function isClaudeModelId(model) {
@@ -154,18 +132,6 @@ function normalizeAgentModel(agent, agentModel) {
     const trimmed = typeof agentModel === 'string' ? agentModel.trim() : ''
     const fallback = agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL
     if (!trimmed) return { value: fallback }
-
-    // OpenRouter selections (AT-2230) carry a `/` and possibly a `:` and therefore fail the
-    // OpenAI/Anthropic id pattern by design — they get their own, equally strict validation.
-    if (isOpenRouterSelection(trimmed)) {
-        if (agent !== 'codex') {
-            return { error: 'OpenRouter models can only be used with agent="codex".' }
-        }
-        return parseOpenRouterSelection(trimmed)
-            ? { value: trimmed }
-            : { error: 'agentModel is not a valid OpenRouter model id (expected "openrouter:vendor/model").' }
-    }
-
     if (!MODEL_SAFE_PATTERN.test(trimmed)) {
         return { error: 'agentModel contains invalid characters.' }
     }
@@ -432,17 +398,6 @@ async function startVmJob({
         return { success: false, message: effortResult.error }
     }
 
-    // Fail before any Gold is charged. Without the platform key the proxy rejects the very first
-    // request, which would otherwise surface as a mid-run 503 after the base reserve and per-minute
-    // Gold had already been taken — and the Settings toggle is hidden in that case anyway, so this
-    // is only reachable via an explicit tool argument or a preference saved before the key was pulled.
-    if (isOpenRouterSelection(modelResult.value) && !isOpenRouterConfigured()) {
-        return {
-            success: false,
-            message: 'OpenRouter models are not available in this environment. Choose an OpenAI model instead.',
-        }
-    }
-
     // Enforce the per-user concurrency cap — but only for a job that will actually start a sandbox
     // now. A same-thread follow-up (this thread's VM is still busy) is queued, not run, so it does
     // not consume a concurrency slot and must not be rejected by the cross-thread cap. Best-effort
@@ -461,16 +416,7 @@ async function startVmJob({
 
     // Resolve the user's explicit provider route. Legacy users keep the old behavior:
     // connected subscription first, otherwise Alldone API billing.
-    //
-    // An OpenRouter model is the one case where the user's saved credential route cannot apply: a
-    // ChatGPT subscription and a personal OpenAI key both authenticate against OpenAI, and neither
-    // can serve DeepSeek. Such a run goes through the platform OpenRouter key on normal Gold token
-    // billing, and the status text says so — silently charging Gold to someone who believes they
-    // are on their own subscription would be the worse failure.
-    const openRouterRun = isOpenRouterSelection(modelResult.value)
-    const credentialMode = openRouterRun
-        ? 'api'
-        : await require('./vmApiKeyAuth').resolveVmCredentialMode(requestUserId, selectedAgent)
+    const credentialMode = await require('./vmApiKeyAuth').resolveVmCredentialMode(requestUserId, selectedAgent)
     const subscriptionUsed = credentialMode === 'subscription'
     const personalApiKeyUsed = credentialMode === 'byok'
     const tokenBillingExempt = subscriptionUsed || personalApiKeyUsed
@@ -542,17 +488,12 @@ async function startVmJob({
                   effortResult.value
               )} will start on this as soon as the running task finishes.\n\n${formatVmBillingStatus(
                   selectedAgentLabel,
-                  credentialMode,
-                  modelResult.value
+                  credentialMode
               )}`
             : `🖥️ Spinning up ${selectedAgentLabel}${formatAgentRunSuffix(
                   modelResult.value,
                   effortResult.value
-              )} in a VM to work on this…\n\n${formatVmBillingStatus(
-                  selectedAgentLabel,
-                  credentialMode,
-                  modelResult.value
-              )}`
+              )} in a VM to work on this…\n\n${formatVmBillingStatus(selectedAgentLabel, credentialMode)}`
         statusCommentId = await createInitialStatusMessage(
             projectId,
             objectType,
@@ -600,12 +541,6 @@ async function startVmJob({
         isPublicFor,
         statusCommentId,
         goldCharged: VM_JOB_BASE_GOLD,
-        // The resolved model selection, mirrored here (it also lives on the vmJobs doc) purely so
-        // the LLM proxy can price its incremental token charges. The proxy already reads this doc
-        // inside the charging transaction, so this costs no extra read — and reading the rate from
-        // persisted job state rather than from the sandbox's request body means a compromised agent
-        // cannot talk its own tokens down to the discounted rate. See vmTokenPricing.js.
-        agentModel: modelResult.value,
         credentialMode,
         subscriptionUsed,
         personalApiKeyUsed,

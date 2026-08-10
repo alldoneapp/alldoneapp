@@ -2255,10 +2255,7 @@ const toolSchemas = {
                             'model per agent (Claude Code: moving "opus" alias; Codex: latest GPT model). ' +
                             'Use Claude model ids or aliases (e.g. "opus", "sonnet", "haiku", "fable", "claude-opus-4-8") only when agent="claude"; ' +
                             'the runtime-resolved concrete Claude model is shown in the VM status. ' +
-                            'Use OpenAI model ids (e.g. "gpt-5.6-sol", "gpt-5.5", "gpt-5.4") only when agent="codex". ' +
-                            'When agent="codex" the model may alternatively come from OpenRouter, written as ' +
-                            '"openrouter:<vendor>/<model>" (e.g. "openrouter:deepseek/deepseek-chat"); only use this form when ' +
-                            'the user named an OpenRouter model. OpenRouter runs always use Alldone API billing.',
+                            'Use OpenAI model ids (e.g. "gpt-5.6-sol", "gpt-5.5", "gpt-5.4") only when agent="codex".',
                     },
                     agentReasoningEffort: {
                         type: 'string',
