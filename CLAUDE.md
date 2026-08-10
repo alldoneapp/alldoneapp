@@ -84,9 +84,18 @@ Two v9+ API removals the app already worked around, worth knowing before touchin
 **`replacement_node_modules/` full inventory** (the blanket `cp -R -f replacement_node_modules/* node_modules/` applies ALL of these after every install — when upgrading any of these packages, the patch must be re-derived or retired first, never blindly re-copied over the new version):
 
 - Retired in migration Stage 4 (2026-08-10): `quill` (dist patch → `quill2Setup.js` app code, see above), `y-quill` (the yjs#474 workaround — fixed upstream in yjs 13.6, pinned by `components/NotesView/NotesDV/EditorView/yQuillBinding.test.js` and `__tests__/Yjs/yjs1347Compat.test.js`), and `y-webrtc` (the whole package was removed — notes collaboration has used `y-websocket` for years; the WebRTC path was dead code).
-- `@hello-pangea/dnd` — adds `index` to the drag `combine` payload (pointer path);
-  `DragHelper.onDragEnd` needs the combine target's index to sort a task dropped onto
-  another task. Carried over from the retired react-beautiful-dnd patch (esm + cjs dist).
+- `@hello-pangea/dnd` (v18.0.1) — adds `index` to the drag `combine` payload (pointer
+  path); `DragHelper.onDragEnd` needs the combine target's index to sort a task dropped
+  onto another task (consumed at `components/DragSystem/DragHelper.js:645`). Carried over
+  from the retired react-beautiful-dnd patch; patches `dist/dnd.esm.js` + `dist/dnd.cjs.js`,
+  which are still `module`/`main` in v18, so those two files cover both webpack and jest.
+  **Re-derived against pristine v18 in Stage 6 and now a 4-line diff against upstream** —
+  keep it that way. The previous v16 copy had been prettier-formatted, which made it diff
+  at 14,089 lines and rendered the actual change invisible; `.prettierignore` excludes
+  `replacement_node_modules` precisely so these files keep upstream's formatting. When
+  bumping this package, diff the vendored file against the new pristine dist and re-apply
+  the one `index:` line — do not let the blanket `cp` carry the old bundle over a new
+  install (it produced a silent v18-metadata/v16-code hybrid exactly once already).
 - `react-native-gesture-handler` — four-file compatibility patch for
   react-native-web ≥0.19: `GestureComponents.web.js` guards the removed
   `DrawerLayoutAndroid` (unguarded `.positions` crashed module eval);
@@ -115,6 +124,18 @@ Two v9+ API removals the app already worked around, worth knowing before touchin
 ### State Management
 
 Redux store in `redux/store.js` (~116k lines) with actions in `redux/actions.js` (~63k lines). Uses `@manaflair/redux-batch` for batched updates.
+
+Since migration Stage 6: **redux 5 + react-redux 9**. The app is hooks-only — there are
+no `connect()` call sites, just `useSelector`/`useDispatch`/`shallowEqual`/`useStore` —
+so react-redux's class-era API surface is irrelevant here. `@manaflair/redux-batch` is
+unmaintained and declares `peer: {redux: "*"}`; it was verified working against redux 5
+(array and nested-array dispatch still coalesce to one subscriber notification), but it
+is the thing to check first on any future redux bump, since nothing upstream will.
+**The app stays on React 18.3.1 deliberately** — see `FRONTEND_MIGRATION_PLAN.md`
+Stage 6 for why React 19 was measured and declined (13 live quill blots would have to
+move from synchronous `ReactDOM.render` to asynchronous `createRoot`). Do not introduce
+new `ReactDOM.render`, `unmountComponentAtNode`, or `findDOMNode` call sites regardless;
+they are all React 19 removals and every one added now is future migration cost.
 
 ### Firebase Functions
 
