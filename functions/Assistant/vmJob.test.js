@@ -4,6 +4,8 @@ const mockQueueEnqueue = jest.fn(async () => ({
     operationName: 'projects/test-project/locations/europe-west1/operations/operation-1',
 }))
 const mockResolveVmCredentialMode = jest.fn(async () => 'api')
+// A stored personal key, looked up by credential provider slot (AT-2230 BYOK).
+const mockLoadVmApiKey = jest.fn(async () => 'sk-or-v1-0123456789abcdef0123456789abcdef')
 const mockCollectionQuery = {
     where: jest.fn(() => mockCollectionQuery),
     get: jest.fn(async () => ({ size: 0 })),
@@ -53,6 +55,7 @@ jest.mock('../Gold/goldHelper', () => ({
 
 jest.mock('./vmApiKeyAuth', () => ({
     resolveVmCredentialMode: mockResolveVmCredentialMode,
+    loadVmApiKey: mockLoadVmApiKey,
 }))
 
 // Deterministic model catalog — discovery itself is covered by vmAgentModelCatalog.test.js.
@@ -102,6 +105,7 @@ describe('startVmJob', () => {
             operationName: 'projects/test-project/locations/europe-west1/operations/operation-1',
         })
         mockResolveVmCredentialMode.mockResolvedValue('api')
+        mockLoadVmApiKey.mockResolvedValue('sk-or-v1-0123456789abcdef0123456789abcdef')
         jest.spyOn(crypto, 'randomUUID').mockReturnValue('correlation-1')
     })
 
@@ -906,16 +910,24 @@ describe('startVmJob', () => {
         })
 
         // A ChatGPT subscription and a personal OpenAI key both authenticate against OpenAI and
-        // cannot serve DeepSeek. Charging Gold silently to someone who believes they are on their
-        // own subscription would be the worse outcome, so the run is pinned to API billing and says so.
-        test('forces platform API billing even when the user has a subscription connected', async () => {
-            mockResolveVmCredentialMode.mockResolvedValue('subscription')
+        // cannot serve DeepSeek, so an OpenRouter run must NOT inherit the user's codex route.
+        // It resolves its own 'openrouter' credential slot, which has no subscription option — so a
+        // connected ChatGPT subscription leaves the run on Alldone Gold, and says so.
+        test('resolves the openrouter credential slot, not the codex one, so a ChatGPT subscription does not apply', async () => {
+            mockResolveVmCredentialMode.mockImplementation(async (_userId, provider) =>
+                provider === 'codex' ? 'subscription' : 'api'
+            )
             saveDefaultModel('openrouter:deepseek/deepseek-chat')
 
             await startVmJob({ ...baseArgs, agent: 'codex', requestText: 'use codex for this' })
 
+            expect(mockResolveVmCredentialMode).toHaveBeenCalledWith('user-1', 'openrouter')
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ credentialMode: 'api', subscriptionUsed: false })
+                expect.objectContaining({
+                    credentialMode: 'api',
+                    credentialProvider: 'openrouter',
+                    subscriptionUsed: false,
+                })
             )
             expect(createInitialStatusMessage).toHaveBeenCalledWith(
                 'project-1',
@@ -966,6 +978,106 @@ describe('startVmJob', () => {
             ).resolves.toMatchObject({ success: false, message: expect.stringContaining('not available') })
 
             expect(deductGold).not.toHaveBeenCalled()
+        })
+
+        // AT-2230 BYOK. The user's own OpenRouter key replaces the platform one; the run is exempt
+        // from token Gold exactly as a Claude/Codex BYOK run is, and the infra charges still apply.
+        test('routes an OpenRouter run through the user\u2019s own key and exempts it from token Gold', async () => {
+            mockResolveVmCredentialMode.mockImplementation(async (_userId, provider) =>
+                provider === 'openrouter' ? 'byok' : 'api'
+            )
+            saveDefaultModel('openrouter:deepseek/deepseek-chat')
+
+            await startVmJob({ ...baseArgs, agent: 'codex', requestText: 'use codex for this' })
+
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    credentialMode: 'byok',
+                    credentialProvider: 'openrouter',
+                    personalApiKeyUsed: true,
+                    subscriptionUsed: false,
+                    tokenBillingExempt: true,
+                })
+            )
+            // The base reserve still applies — BYOK covers model tokens, not the sandbox.
+            expect(deductGold).toHaveBeenCalledWith('user-1', 20, expect.any(Object))
+        })
+
+        // Naming the harness ("your personal Codex API key") would send the user to the wrong
+        // Settings card when the key stops working.
+        test('names OpenRouter, not Codex, in the BYOK billing status', async () => {
+            mockResolveVmCredentialMode.mockImplementation(async (_userId, provider) =>
+                provider === 'openrouter' ? 'byok' : 'api'
+            )
+            saveDefaultModel('openrouter:deepseek/deepseek-chat')
+
+            await startVmJob({ ...baseArgs, agent: 'codex', requestText: 'use codex for this' })
+
+            expect(createInitialStatusMessage).toHaveBeenCalledWith(
+                'project-1',
+                'topics',
+                'chat-1',
+                'assistant-1',
+                expect.stringContaining('your personal OpenRouter API key'),
+                expect.any(Array),
+                expect.any(Array),
+                expect.any(Array)
+            )
+        })
+
+        // The platform key is only needed for the Alldone Gold route. A BYOK user must not be
+        // blocked by an environment fact that does not apply to their run.
+        test('a BYOK user can run OpenRouter even when the platform key is not configured', async () => {
+            require('./vmAgentModelCatalog').isOpenRouterConfigured.mockReturnValue(false)
+            mockResolveVmCredentialMode.mockImplementation(async (_userId, provider) =>
+                provider === 'openrouter' ? 'byok' : 'api'
+            )
+
+            const result = await startVmJob({
+                ...baseArgs,
+                agent: 'codex',
+                agentModel: 'openrouter:deepseek/deepseek-chat',
+                requestText: 'use deepseek for this',
+            })
+
+            expect(result).toMatchObject({ success: true })
+            require('./vmAgentModelCatalog').isOpenRouterConfigured.mockReturnValue(true)
+        })
+
+        test('refuses before charging any Gold when BYOK is selected but no key is stored', async () => {
+            mockResolveVmCredentialMode.mockImplementation(async (_userId, provider) =>
+                provider === 'openrouter' ? 'byok' : 'api'
+            )
+            mockLoadVmApiKey.mockResolvedValueOnce(null)
+
+            await expect(
+                startVmJob({
+                    ...baseArgs,
+                    agent: 'codex',
+                    agentModel: 'openrouter:deepseek/deepseek-chat',
+                    requestText: 'use deepseek for this',
+                })
+            ).resolves.toMatchObject({
+                success: false,
+                message: expect.stringContaining('Settings'),
+            })
+
+            expect(deductGold).not.toHaveBeenCalled()
+        })
+
+        // The error must name the fix, because "not available" alone reads as a broken feature.
+        test('the Alldone Gold failure points at both remedies', async () => {
+            require('./vmAgentModelCatalog').isOpenRouterConfigured.mockReturnValueOnce(false)
+
+            const result = await startVmJob({
+                ...baseArgs,
+                agent: 'codex',
+                agentModel: 'openrouter:deepseek/deepseek-chat',
+                requestText: 'use deepseek for this',
+            })
+
+            expect(result.message).toContain('OpenRouter API key')
+            expect(result.message).toContain('Settings')
         })
 
         test('falls back to the agent default when the saved OpenRouter model no longer exists', async () => {

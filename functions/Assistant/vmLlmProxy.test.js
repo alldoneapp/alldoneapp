@@ -149,6 +149,70 @@ describe('vmLlmProxy token usage parsing', () => {
     })
 })
 
+// AT-2230 BYOK: the minted token must be scoped to the run's key slot, because the OpenAI and
+// OpenRouter routes share `agent: 'codex'` and are otherwise indistinguishable to the proxy.
+describe('vmLlmProxy credential scoping in minted tokens', () => {
+    const vmJob = { correlationId: 'cid-1', requestUserId: 'u1' }
+
+    test('carries the credential provider so a codex token cannot be spent on OpenRouter', () => {
+        const credentials = buildVmAgentCredentials({
+            vmJob: { ...vmJob, agent: 'codex', agentModel: 'openrouter:deepseek/deepseek-chat' },
+            agent: 'codex',
+            credentialMode: 'byok',
+            credentialProvider: 'openrouter',
+            ttlMs: 60_000,
+            env: ENV,
+        })
+
+        const verdict = verifyProxyToken(credentials.apiKey, { expectedAgent: 'codex', env: ENV, nowMs: NOW })
+        expect(verdict.valid).toBe(true)
+        expect(verdict.payload.cp).toBe('openrouter')
+        expect(verdict.payload.cm).toBe('byok')
+        expect(credentials.credentialProvider).toBe('openrouter')
+    })
+
+    test('derives the provider from the job when the caller does not pass one', () => {
+        const credentials = buildVmAgentCredentials({
+            vmJob: { ...vmJob, agent: 'codex', agentModel: 'gpt-5.6-sol' },
+            agent: 'codex',
+            credentialMode: 'byok',
+            realApiKey: 'sk-openai-key',
+            ttlMs: 60_000,
+            env: ENV,
+        })
+
+        expect(verifyProxyToken(credentials.apiKey, { expectedAgent: 'codex', env: ENV, nowMs: NOW }).payload.cp).toBe(
+            'codex'
+        )
+    })
+
+    // BYOK means there is no platform key to require — the personal one is loaded per request.
+    test('a BYOK run needs no platform key, an Alldone Gold run still does', () => {
+        expect(() =>
+            buildVmAgentCredentials({
+                vmJob: { ...vmJob, agent: 'codex', agentModel: 'openrouter:deepseek/deepseek-chat' },
+                agent: 'codex',
+                credentialMode: 'byok',
+                credentialProvider: 'openrouter',
+                ttlMs: 60_000,
+                env: ENV,
+            })
+        ).not.toThrow()
+
+        expect(() =>
+            buildVmAgentCredentials({
+                vmJob: { ...vmJob, agent: 'codex', agentModel: 'openrouter:deepseek/deepseek-chat' },
+                agent: 'codex',
+                credentialMode: 'api',
+                credentialProvider: 'openrouter',
+                realApiKey: '',
+                ttlMs: 60_000,
+                env: ENV,
+            })
+        ).toThrow('API key is not configured')
+    })
+})
+
 describe('vmLlmProxy job authorization', () => {
     function buildDb(pendingData, userGold = 10) {
         return {
@@ -192,6 +256,94 @@ describe('vmLlmProxy job authorization', () => {
                 db: wrongModeDb,
             })
         ).resolves.toMatchObject({ allowed: false, message: expect.stringContaining('route') })
+    })
+
+    // AT-2230 BYOK. The token's `cp` is signed, but the JOB doc is the authority on who pays —
+    // this is the check that keeps proxy billing and runner settlement provably about the same run.
+    test('rejects a request whose credential provider does not match the job', async () => {
+        const openRouterJob = () =>
+            attachGets(
+                buildDb({
+                    userId: 'owner',
+                    credentialMode: 'byok',
+                    credentialProvider: 'openrouter',
+                    agent: 'codex',
+                    agentModel: 'openrouter:deepseek/deepseek-chat',
+                    status: 'initiated',
+                })
+            )
+
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: 'codex',
+                db: openRouterJob(),
+            })
+        ).resolves.toMatchObject({ allowed: false, message: expect.stringContaining('route') })
+
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: 'openrouter',
+                db: openRouterJob(),
+            })
+        ).resolves.toMatchObject({ allowed: true })
+    })
+
+    // Every job doc written before `credentialProvider` existed. It must keep working, and it must
+    // still be checked — derived from agent + agentModel, which those docs already carry.
+    test('derives the provider for a legacy job doc that has no credentialProvider field', async () => {
+        const legacyCodexJob = () =>
+            attachGets(
+                buildDb({
+                    userId: 'owner',
+                    credentialMode: 'byok',
+                    agent: 'codex',
+                    agentModel: 'gpt-5.6-sol',
+                    status: 'initiated',
+                })
+            )
+
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: 'codex',
+                db: legacyCodexJob(),
+            })
+        ).resolves.toMatchObject({ allowed: true })
+
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: 'openrouter',
+                db: legacyCodexJob(),
+            })
+        ).resolves.toMatchObject({ allowed: false })
+    })
+
+    // A legacy token carries no `cp` at all; the caller passes '' and the provider check is skipped,
+    // leaving exactly the pre-AT-2230 behaviour rather than failing every in-flight run on deploy.
+    test('skips the provider check when the token carries no credential provider', async () => {
+        const db = attachGets(
+            buildDb({ userId: 'owner', credentialMode: 'byok', credentialProvider: 'openrouter', status: 'initiated' })
+        )
+        await expect(
+            checkProxyJobCanContinue({
+                correlationId: 'cid-1',
+                userId: 'owner',
+                credentialMode: 'byok',
+                credentialProvider: '',
+                db,
+            })
+        ).resolves.toMatchObject({ allowed: true })
     })
 
     test('allows the owning user to use the selected BYOK route while the job is active', async () => {
@@ -532,9 +684,17 @@ describe('vmLlmProxy OpenRouter route', () => {
 
     // BYOK stores a key per *agent*; an OpenAI key cannot authenticate against OpenRouter, so this
     // route is always platform-billed (startVmJob pins credentialMode to 'api' to match).
-    test('does not support BYOK', () => {
-        expect(resolveProvider('/openrouter/v1/chat/completions').config.supportsByok).toBe(false)
-        expect(resolveProvider('/openai/v1/responses').config.supportsByok).toBeUndefined()
+    // AT-2230 BYOK: BYOK is keyed on the credential provider, NOT the agent. The OpenAI and
+    // OpenRouter routes share `expectedAgent: 'codex'`, so the agent cannot distinguish them and a
+    // Codex-BYOK job would otherwise reach for the OpenAI key on the OpenRouter route.
+    test('declares its own BYOK key slot, distinct from the shared codex agent', () => {
+        const openRouter = resolveProvider('/openrouter/v1/chat/completions').config
+        const openai = resolveProvider('/openai/v1/responses').config
+        expect(openRouter.expectedAgent).toBe('codex')
+        expect(openai.expectedAgent).toBe('codex')
+        expect(openRouter.byokProvider).toBe('openrouter')
+        expect(openai.byokProvider).toBe('codex')
+        expect(resolveProvider('/anthropic/v1/messages').config.byokProvider).toBe('claude')
     })
 
     test('captures usage from a streamed Chat Completions final chunk', () => {
