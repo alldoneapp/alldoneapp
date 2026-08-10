@@ -148,9 +148,17 @@ describe('press-made-before-open guard', () => {
         expect(shouldIgnorePressFromBeforeOpen({ timeStamp: Date.now() }, openedAt)).toBe(false)
     })
 
-    it('falls back to a short window on touch devices when there is no timestamp', () => {
+    it('ignores a repeat tap made before the user could have seen the modal', () => {
         window.ontouchstart = null
+        // Measured in real Chromium: the second of two taps 120ms apart lands on
+        // the backdrop the first one mounted, ~135ms after it appeared.
+        expect(shouldIgnorePressFromBeforeOpen({ timeStamp: highResNow() }, highResNow() - 135)).toBe(true)
         expect(shouldIgnorePressFromBeforeOpen({}, highResNow())).toBe(true)
+    })
+
+    it('honours a deliberate dismiss tap once the modal has been on screen', () => {
+        window.ontouchstart = null
+        expect(shouldIgnorePressFromBeforeOpen({ timeStamp: highResNow() }, highResNow() - 5000)).toBe(false)
         expect(shouldIgnorePressFromBeforeOpen({}, highResNow() - 5000)).toBe(false)
     })
 
