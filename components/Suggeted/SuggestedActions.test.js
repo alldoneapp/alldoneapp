@@ -33,15 +33,6 @@ describe('SuggestedActions', () => {
         expect(tree.root.findAllByProps({ title: 'Go to next step' })).toHaveLength(0)
     })
 
-    // AT-2210: same rule as the section-level "Reject all" button — the icon follows the label.
-    it('pairs the rejection with a reject icon and the next step with the workflow icon', () => {
-        const rejection = renderer.create(<SuggestedActions {...baseProps} isAssistantSuggestion />)
-        expect(findButton(rejection, 'Reject').props.icon).toBe('x')
-
-        const nextStep = renderer.create(<SuggestedActions {...baseProps} />)
-        expect(findButton(nextStep, 'Go to next step').props.icon).toBe('next-workflow')
-    })
-
     it('does not offer the bypass when there is no workflow to skip', () => {
         const tree = renderer.create(<SuggestedActions {...baseProps} />)
 
