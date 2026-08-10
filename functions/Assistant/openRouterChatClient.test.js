@@ -232,4 +232,20 @@ describe('convertChatCompletionsStream', () => {
 
         expect(events).toEqual([{ content: 'done', additional_kwargs: {} }])
     })
+
+    test('surfaces a max-token finish as a control chunk so the UI is not silently truncated', async () => {
+        const events = await collect(
+            convertChatCompletionsStream(
+                asStream([
+                    textDelta('Unfortunately the answer stops right'),
+                    { choices: [{ delta: {}, finish_reason: 'length' }] },
+                ])
+            )
+        )
+
+        expect(events).toEqual([
+            { content: 'Unfortunately the answer stops right', additional_kwargs: {} },
+            { content: '', finishReason: 'length', additional_kwargs: {} },
+        ])
+    })
 })

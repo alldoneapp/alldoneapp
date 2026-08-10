@@ -648,7 +648,7 @@ describe('buildVmAgentCredentials', () => {
 // OpenRouter upstream for the Codex harness (AT-2230)
 // ---------------------------------------------------------------------------
 
-const { ensureStreamUsageRequested, shouldRequestStreamUsage } = require('./vmLlmProxy')
+const { ensureStreamUsageRequested } = require('./vmLlmProxy')
 
 describe('vmLlmProxy OpenRouter route', () => {
     test('maps /openrouter to the OpenRouter upstream and keeps the forwarded path', () => {
@@ -750,23 +750,5 @@ describe('ensureStreamUsageRequested', () => {
         const body = Buffer.from('not json at all')
         expect(ensureStreamUsageRequested(body)).toBe(body)
         expect(ensureStreamUsageRequested(undefined)).toBeUndefined()
-    })
-})
-
-describe('shouldRequestStreamUsage', () => {
-    const config = { requestsStreamUsage: true }
-
-    // Current Codex CLIs speak the Responses API on the OpenRouter route (the CLI removed
-    // wire_api "chat" in Feb 2026). `stream_options` is a Chat Completions field, and a
-    // Responses stream reports usage on `response.completed` unasked — so the rewrite must
-    // apply only to chat-completions bodies, never to `/v1/responses` requests.
-    test('applies only to chat-completions paths on a route that opted in', () => {
-        expect(shouldRequestStreamUsage(config, '/v1/chat/completions')).toBe(true)
-        expect(shouldRequestStreamUsage(config, '/v1/responses')).toBe(false)
-        expect(shouldRequestStreamUsage(config, '/v1/responses/resp_123')).toBe(false)
-    })
-
-    test('never applies on a route that did not opt in', () => {
-        expect(shouldRequestStreamUsage({}, '/v1/chat/completions')).toBe(false)
     })
 })

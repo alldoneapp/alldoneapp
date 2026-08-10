@@ -90,10 +90,6 @@ const PROVIDERS = {
         },
         // Chat Completions only reports usage on a streamed response when the caller asks for it.
         // Without this, a streaming Codex run bills zero Gold — see ensureStreamUsageRequested.
-        // Applied only to `/chat/completions` bodies: current Codex CLIs speak the Responses API
-        // on this route (OpenRouter's `/v1/responses` is GA), and a Responses request reports
-        // usage on `response.completed` without being asked — injecting `stream_options` there
-        // would add a foreign field to a different API's schema.
         requestsStreamUsage: true,
     },
 }
@@ -331,7 +327,7 @@ async function handleProxyRequest(req, res) {
         const method = (req.method || 'GET').toUpperCase()
         const hasBody = method !== 'GET' && method !== 'HEAD'
         const rawBody = hasBody ? req.rawBody || undefined : undefined
-        const body = shouldRequestStreamUsage(config, forwardPath) ? ensureStreamUsageRequested(rawBody) : rawBody
+        const body = config.requestsStreamUsage ? ensureStreamUsageRequested(rawBody) : rawBody
         // The rewrite changes the byte length, but `content-length` is already stripped above so
         // fetch recomputes it. Only the content type needs asserting, for a caller that omitted it.
         if (body !== rawBody && body) headers['content-type'] = headers['content-type'] || 'application/json'
@@ -386,14 +382,6 @@ async function handleProxyRequest(req, res) {
  * Fails open: anything unparseable is forwarded byte-for-byte. Losing metering on one odd request
  * is strictly better than breaking it.
  */
-// `stream_options` belongs to the Chat Completions schema only. Current Codex CLIs speak the
-// Responses API on the OpenRouter route (wire_api "chat" was removed from the CLI in Feb 2026),
-// and a Responses stream reports usage on `response.completed` without being asked — so the
-// rewrite is gated on the forwarded path, not just the route's config flag.
-function shouldRequestStreamUsage(config, forwardPath) {
-    return !!config.requestsStreamUsage && typeof forwardPath === 'string' && forwardPath.endsWith('/chat/completions')
-}
-
 function ensureStreamUsageRequested(rawBody) {
     if (!rawBody) return rawBody
     try {
@@ -785,7 +773,6 @@ module.exports = {
     finalizeCapturedUsage,
     chargeProxyTokenGold,
     ensureStreamUsageRequested,
-    shouldRequestStreamUsage,
     mintProxyToken,
     verifyProxyToken,
     isProxyEnabled,

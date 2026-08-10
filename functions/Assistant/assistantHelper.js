@@ -10110,6 +10110,7 @@ async function storeChunks(
         let firstChunkTime = null
         let lastChunkTime = Date.now()
         let chunksSinceLastUpdate = 0
+        let streamFinishReason = null
         console.log('🚀 [TIMING] Starting stream processing...')
 
         // Track time-to-first-token from function start (use global if available)
@@ -10156,6 +10157,16 @@ async function storeChunks(
             }
 
             lastChunkTime = chunkTime
+
+            // A zero-content control chunk carrying the upstream finish reason. The OpenRouter
+            // transport emits one with finishReason "length" when the provider stopped the run at
+            // its max-token ceiling instead of the model finishing naturally. Surface it so the
+            // finalization below can mark the comment incomplete instead of silently "completed"
+            // with a mid-word answer (AT-2241).
+            if (chunk.finishReason) {
+                streamFinishReason = chunk.finishReason
+                continue
+            }
 
             // If a tool was already executed, skip all remaining chunks from the stream
             if (toolAlreadyExecuted) {
@@ -10813,20 +10824,36 @@ async function storeChunks(
         // Flush any pending updates before final operations
         await flushPendingUpdate()
         if (committed) {
-            await commentRefRawUpdate({
+            const truncationMarked =
+                streamFinishReason === 'length' && !silentModeEnabled && commentText.trim().length > 0
+            const finalUpdate = {
                 isLoading: false,
                 isThinking: false,
-                assistantRun: assistantRun
-                    ? {
-                          ...assistantRun,
-                          status: 'completed',
-                          completedAt: Date.now(),
-                      }
-                    : null,
-            })
+            }
+            if (truncationMarked) {
+                // The provider hit its max-token ceiling mid-answer. Persist a visible marker
+                // instead of a silently cut-off "complete" message, and record the true status
+                // so the watchdog/UI can distinguish an aborted run from a finished one.
+                commentText = `${commentText.trim()}\n\n⚠️ The response was cut off because it hit the model's length limit. Please ask again.`
+                finalUpdate.commentText = commentText
+            }
+            if (assistantRun) {
+                finalUpdate.assistantRun = {
+                    ...assistantRun,
+                    status: truncationMarked ? 'incomplete' : 'completed',
+                    completedAt: Date.now(),
+                }
+            }
+            await commentRefRawUpdate(finalUpdate)
         }
 
         if (ENABLE_DETAILED_LOGGING) {
+            if (streamFinishReason) {
+                console.log('Stream finished with provider finish reason', {
+                    finishReason: streamFinishReason,
+                    commentLength: commentText.length,
+                })
+            }
             console.log('Finished processing stream chunks:', {
                 totalChunks: chunkCount,
                 finalCommentLength: commentText.length,
@@ -11751,6 +11778,10 @@ async function addBaseInstructions(
     messages.push([
         'system',
         "Respond directly to the user's latest message without preamble and do not repeat the timestamp and names of the previous messages which are only given for your context.",
+    ])
+    messages.push([
+        'system',
+        'Square-bracket lines such as [Sent at ...] are context metadata added by the platform for your orientation. They are never part of the conversation and must never be copied into your reply.',
     ])
     // messages.push(['system', `Speak in ${parseTextForUseLiKePrompt(language || 'English')}`])
     messages.push(['system', `Speak in the same language the user speaks`])
@@ -13313,14 +13344,13 @@ async function getOptimizedContextMessages(
                         commentText,
                         messageData?.assistantRun?.createdEntities || []
                     )
-                    messages.push([
-                        role,
-                        addTimestampToContextContent(
-                            parseTextForUseLiKePrompt(assistantCommentText),
-                            messageTimestamp,
-                            userTimezoneOffset
-                        ),
-                    ])
+                    // Assistant turns are the assistant's own prior output. They need the
+                    // note/VM links the user-facing renderer adds, but no "[Sent at ...]"
+                    // framing: the timestamp tag belongs to *user* turns, and models —
+                    // especially the cheap flash tier — copy the bracket tag verbatim into
+                    // their replies. That is exactly the "[Sent at ...]" spam this chat
+                    // showed (AT-2241).
+                    messages.push([role, parseTextForUseLiKePrompt(assistantCommentText)])
                 }
             }
             amountOfCommentsInContext++
