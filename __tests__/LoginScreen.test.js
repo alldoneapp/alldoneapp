@@ -14,7 +14,7 @@ import renderer from 'react-test-renderer'
 // still evaluating, and the automocked binding is not populated yet through
 // the import cycle, so it has to be supplied explicitly.
 jest.mock('../utils/backends/firestore', () => ({
-    ...jest.genMockFromModule('../utils/backends/firestore'),
+    ...jest.createMockFromModule('../utils/backends/firestore'),
     getNotesCollaborationServerData: () => ({ NOTES_COLLABORATION_SERVER: 'ws://localhost:1234' }),
 }))
 

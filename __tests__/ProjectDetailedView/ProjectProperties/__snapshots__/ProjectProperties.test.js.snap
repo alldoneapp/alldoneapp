@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ProjectProperties component ProjectProperties snapshot test should render correctly 1`] = `
 <div
@@ -13,7 +13,7 @@ exports[`ProjectProperties component ProjectProperties snapshot test should rend
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(4,20,47,1.00)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "20px",
@@ -36,7 +36,7 @@ exports[`ProjectProperties component ProjectProperties snapshot test should rend
         className="css-view-g5y9jx"
         dir={null}
         style={
-          Object {
+          {
             "marginRight": "8px",
             "marginTop": "2px",
           }
@@ -46,7 +46,7 @@ exports[`ProjectProperties component ProjectProperties snapshot test should rend
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(138,148,166,1.00)",
               "fontFamily": "alldone",
               "fontSize": "18px",
@@ -61,7 +61,7 @@ exports[`ProjectProperties component ProjectProperties snapshot test should rend
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "16px",
@@ -78,8 +78,8 @@ exports[`ProjectProperties component ProjectProperties snapshot test should rend
     disabled={true}
     helperText="Project description helper text"
     object={
-      Object {
-        "guideProjectIds": Array [],
+      {
+        "guideProjectIds": [],
         "id": "seeded-project-0",
         "name": "My Project",
       }
@@ -95,7 +95,7 @@ exports[`ProjectProperties component ProjectProperties snapshot test should rend
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "alignSelf": "flex-end",
         }
       }
@@ -107,7 +107,7 @@ exports[`ProjectProperties component ProjectProperties snapshot test should rend
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginTop": "16px",
             "transitionDuration": "0s",
           }
@@ -122,7 +122,7 @@ exports[`ProjectProperties component ProjectProperties snapshot test should rend
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(138,148,166,1.00)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",
@@ -137,7 +137,7 @@ exports[`ProjectProperties component ProjectProperties snapshot test should rend
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "12px",
             }
           }

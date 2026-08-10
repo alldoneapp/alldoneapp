@@ -49,7 +49,7 @@ describe('EditContact component', () => {
 
         instance.onSubmit()
 
-        expect(dismissibleRef.toggleModal).toBeCalledTimes(1)
+        expect(dismissibleRef.toggleModal).toHaveBeenCalledTimes(1)
     })
 
     it('should dismiss the editor on submit when the name of the contact is empty', () => {
@@ -58,7 +58,7 @@ describe('EditContact component', () => {
 
         instance.onSubmit()
 
-        expect(dismissibleRef.toggleModal).toBeCalledTimes(1)
+        expect(dismissibleRef.toggleModal).toHaveBeenCalledTimes(1)
     })
 
     it.each([

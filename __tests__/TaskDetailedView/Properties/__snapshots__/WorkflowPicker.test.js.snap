@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`WorkflowPicker component WorkflowPicker snapshot test should render correctly 1`] = `
 <div
@@ -8,7 +8,7 @@ exports[`WorkflowPicker component WorkflowPicker snapshot test should render cor
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -27,7 +27,7 @@ exports[`WorkflowPicker component WorkflowPicker snapshot test should render cor
     className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
     dir="auto"
     style={
-      Object {
+      {
         "marginLeft": "12px",
       }
     }

@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`SocialText component SocialText snapshot test should render correctly 1`] = `
 <div
   className="css-text-146c3p1"
   dir="auto"
   style={
-    Object {
+    {
       "flexDirection": "row",
       "verticalAlign": "middle",
     }

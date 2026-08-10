@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Icon component Icon snapshot test should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`Icon component Icon snapshot test should render correctly 1`] = `
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "fontFamily": "alldone",
         "opacity": 1,
       }
@@ -27,7 +27,7 @@ exports[`Icon component Icon with opacity animation snapshot test should render 
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "fontFamily": "alldone",
         "opacity": 1,
       }

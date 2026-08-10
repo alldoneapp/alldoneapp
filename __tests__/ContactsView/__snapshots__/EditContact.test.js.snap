@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`EditContact component should render correctly when is a new contact 1`] = `
 <div
@@ -21,7 +21,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(0,127,255,1.00)",
               "fontFamily": "alldone",
               "fontSize": "24px",
@@ -36,8 +36,8 @@ exports[`EditContact component should render correctly when is a new contact 1`]
     <CustomTextInput3
       autoFocus={true}
       containerStyle={
-        Array [
-          Object {
+        [
+          {
             "borderTopLeftRadius": 4,
             "borderTopRightRadius": 4,
             "color": "#04142F",
@@ -79,7 +79,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         className="css-view-g5y9jx"
         dir={null}
         style={
-          Object {
+          {
             "marginRight": "32px",
           }
         }
@@ -92,7 +92,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
           onContextMenu={[Function]}
           onKeyDown={[Function]}
           style={
-            Object {
+            {
               "marginLeft": "2px",
               "marginRight": "2px",
               "transitionDuration": "0s",
@@ -108,7 +108,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
               className="css-text-146c3p1"
               dir="auto"
               style={
-                Object {
+                {
                   "color": "rgba(138,148,166,1.00)",
                   "fontFamily": "alldone",
                   "fontSize": "24px",
@@ -123,7 +123,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
             dir="auto"
             style={
-              Object {
+              {
                 "marginLeft": "12px",
               }
             }
@@ -140,7 +140,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginLeft": "2px",
             "marginRight": "2px",
             "transitionDuration": "0s",
@@ -156,7 +156,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(138,148,166,1.00)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",
@@ -171,7 +171,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "12px",
             }
           }
@@ -187,7 +187,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginLeft": "2px",
             "marginRight": "2px",
             "transitionDuration": "0s",
@@ -203,7 +203,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(138,148,166,1.00)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",
@@ -218,7 +218,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "12px",
             }
           }
@@ -234,7 +234,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginLeft": "2px",
             "marginRight": "2px",
             "transitionDuration": "0s",
@@ -250,7 +250,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(138,148,166,1.00)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",
@@ -265,7 +265,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "12px",
             }
           }
@@ -281,7 +281,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginLeft": "2px",
             "marginRight": "2px",
             "transitionDuration": "0s",
@@ -297,7 +297,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(138,148,166,1.00)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",
@@ -312,7 +312,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "12px",
             }
           }
@@ -332,7 +332,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
           onContextMenu={[Function]}
           onKeyDown={[Function]}
           style={
-            Object {
+            {
               "marginLeft": "2px",
               "marginRight": "2px",
               "transitionDuration": "0s",
@@ -348,7 +348,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
               className="css-text-146c3p1"
               dir="auto"
               style={
-                Object {
+                {
                   "color": "rgba(138,148,166,1.00)",
                   "fontFamily": "alldone",
                   "fontSize": "24px",
@@ -373,7 +373,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginLeft": "4px",
             "marginRight": "4px",
             "transitionDuration": "0s",
@@ -385,7 +385,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "0px",
             }
           }
@@ -400,7 +400,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -410,7 +410,7 @@ exports[`EditContact component should render correctly when is a new contact 1`]
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "0px",
             }
           }
@@ -436,7 +436,7 @@ exports[`EditContact component should render correctly when is not a new contact
       className="css-view-g5y9jx r-margin-crgep1 r-padding-t60dpp r-position-u8s1d"
       dir={null}
       style={
-        Object {
+        {
           "left": "15px",
           "top": "7px",
         }
@@ -449,7 +449,7 @@ exports[`EditContact component should render correctly when is not a new contact
         <svg
           height={48}
           style={
-            Object {
+            {
               "overflowX": "visible",
               "overflowY": "visible",
             }
@@ -546,7 +546,7 @@ exports[`EditContact component should render correctly when is not a new contact
               d="M317.469 37.885c-17.27 0-32.538 2.566-46.52 15.896-8.9 8.485-13.283 20.62-13.838 33.368-.49 11.266 1.726 21.229 3.36 31.774h.007c-2.47.93-4.057 3.436-4.322 6.104-.548 5.529.868 12.494 2.08 17.385 1.644 6.63 5.33 15.219 11.21 18.435 3.504 15.13 8.366 24.986 16.51 35.427 7.844 10.057 20.703 17.471 31.513 17.471 10.81 0 23.668-7.414 31.513-17.471 8.144-10.44 13.005-20.297 16.51-35.427 5.879-3.216 9.566-11.804 11.21-18.435 1.212-4.891 2.627-11.856 2.08-17.385-.265-2.668-1.853-5.173-4.322-6.104h.006c1.634-10.545 3.85-20.508 3.36-31.774-.554-12.748-4.938-24.883-13.837-33.368-13.982-13.33-29.25-15.896-46.52-15.896z"
               fill="url(#ci_p_undefined_undefinedprefix__e)"
               style={
-                Object {
+                {
                   "fontVariationSettings": "normal",
                 }
               }
@@ -558,8 +558,8 @@ exports[`EditContact component should render correctly when is not a new contact
     <CustomTextInput3
       autoFocus={true}
       containerStyle={
-        Array [
-          Object {
+        [
+          {
             "borderTopLeftRadius": 4,
             "borderTopRightRadius": 4,
             "color": "#04142F",
@@ -601,7 +601,7 @@ exports[`EditContact component should render correctly when is not a new contact
         className="css-view-g5y9jx"
         dir={null}
         style={
-          Object {
+          {
             "marginRight": "32px",
           }
         }
@@ -613,7 +613,7 @@ exports[`EditContact component should render correctly when is not a new contact
           onContextMenu={[Function]}
           onKeyDown={[Function]}
           style={
-            Object {
+            {
               "marginLeft": "2px",
               "marginRight": "2px",
               "transitionDuration": "0s",
@@ -629,7 +629,7 @@ exports[`EditContact component should render correctly when is not a new contact
               className="css-text-146c3p1"
               dir="auto"
               style={
-                Object {
+                {
                   "color": "rgba(138,148,166,1.00)",
                   "fontFamily": "alldone",
                   "fontSize": "24px",
@@ -644,7 +644,7 @@ exports[`EditContact component should render correctly when is not a new contact
             className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
             dir="auto"
             style={
-              Object {
+              {
                 "marginLeft": "12px",
               }
             }
@@ -660,7 +660,7 @@ exports[`EditContact component should render correctly when is not a new contact
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginLeft": "2px",
             "marginRight": "2px",
             "transitionDuration": "0s",
@@ -676,7 +676,7 @@ exports[`EditContact component should render correctly when is not a new contact
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(138,148,166,1.00)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",
@@ -691,7 +691,7 @@ exports[`EditContact component should render correctly when is not a new contact
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "12px",
             }
           }
@@ -706,7 +706,7 @@ exports[`EditContact component should render correctly when is not a new contact
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginLeft": "2px",
             "marginRight": "2px",
             "transitionDuration": "0s",
@@ -722,7 +722,7 @@ exports[`EditContact component should render correctly when is not a new contact
             className="css-view-g5y9jx r-flexBasis-1mlwlqe r-overflow-1udh08x r-zIndex-417010"
             dir={null}
             style={
-              Object {
+              {
                 "height": "24px",
                 "width": "24px",
               }
@@ -739,7 +739,7 @@ exports[`EditContact component should render correctly when is not a new contact
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "12px",
             }
           }
@@ -758,7 +758,7 @@ exports[`EditContact component should render correctly when is not a new contact
           onContextMenu={[Function]}
           onKeyDown={[Function]}
           style={
-            Object {
+            {
               "marginLeft": "2px",
               "marginRight": "2px",
               "transitionDuration": "0s",
@@ -774,7 +774,7 @@ exports[`EditContact component should render correctly when is not a new contact
               className="css-text-146c3p1"
               dir="auto"
               style={
-                Object {
+                {
                   "color": "rgba(138,148,166,1.00)",
                   "fontFamily": "alldone",
                   "fontSize": "24px",
@@ -789,7 +789,7 @@ exports[`EditContact component should render correctly when is not a new contact
             className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
             dir="auto"
             style={
-              Object {
+              {
                 "marginLeft": "12px",
               }
             }
@@ -805,7 +805,7 @@ exports[`EditContact component should render correctly when is not a new contact
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginLeft": "2px",
             "marginRight": "2px",
             "transitionDuration": "0s",
@@ -821,7 +821,7 @@ exports[`EditContact component should render correctly when is not a new contact
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(138,148,166,1.00)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",
@@ -836,7 +836,7 @@ exports[`EditContact component should render correctly when is not a new contact
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "12px",
             }
           }
@@ -855,7 +855,7 @@ exports[`EditContact component should render correctly when is not a new contact
           onContextMenu={[Function]}
           onKeyDown={[Function]}
           style={
-            Object {
+            {
               "marginLeft": "2px",
               "marginRight": "2px",
               "transitionDuration": "0s",
@@ -871,7 +871,7 @@ exports[`EditContact component should render correctly when is not a new contact
               className="css-text-146c3p1"
               dir="auto"
               style={
-                Object {
+                {
                   "color": "rgba(138,148,166,1.00)",
                   "fontFamily": "alldone",
                   "fontSize": "24px",
@@ -896,7 +896,7 @@ exports[`EditContact component should render correctly when is not a new contact
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginLeft": "4px",
             "marginRight": "4px",
             "transitionDuration": "0s",
@@ -908,7 +908,7 @@ exports[`EditContact component should render correctly when is not a new contact
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "0px",
             }
           }
@@ -923,7 +923,7 @@ exports[`EditContact component should render correctly when is not a new contact
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -933,7 +933,7 @@ exports[`EditContact component should render correctly when is not a new contact
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "0px",
             }
           }

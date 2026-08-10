@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Detailed Project Indicator component Detailed Project Indicator snapshot test should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`Detailed Project Indicator component Detailed Project Indicator snapsho
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(138,148,166,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "16px",
@@ -24,7 +24,7 @@ exports[`Detailed Project Indicator component Detailed Project Indicator snapsho
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "marginLeft": "12px",
       }
     }
@@ -37,7 +37,7 @@ exports[`Detailed Project Indicator component Detailed Project Indicator snapsho
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
             "fontSize": "24px",

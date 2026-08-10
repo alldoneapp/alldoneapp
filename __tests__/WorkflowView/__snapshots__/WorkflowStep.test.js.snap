@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`WorkflowStep component WorkflowStep snapshot test should render correctly 1`] = `
 <div
@@ -13,7 +13,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(255,255,255,1.00)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "16px",
@@ -33,7 +33,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(4,20,47,1.00)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "16px",
@@ -48,7 +48,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
       className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(138,148,166,1.00)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "12px",
@@ -68,7 +68,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(78,93,120,1.00)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "14px",
@@ -83,7 +83,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "marginLeft": "12px",
         }
       }
@@ -96,7 +96,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "alignItems": "center",
               "display": "flex",
             }
@@ -106,7 +106,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
             className="css-view-g5y9jx r-display-xoduu5"
             dir={null}
             style={
-              Object {
+              {
                 "alignItems": "center",
                 "backgroundColor": "rgba(231,236,239,1.00)",
                 "borderBottomLeftRadius": "12px",
@@ -124,7 +124,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
               className="css-view-g5y9jx r-flexBasis-1mlwlqe r-overflow-1udh08x r-zIndex-417010 r-display-xoduu5"
               dir={null}
               style={
-                Object {
+                {
                   "borderBottomLeftRadius": "100px",
                   "borderBottomRightRadius": "100px",
                   "borderTopLeftRadius": "100px",
@@ -144,7 +144,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
               className="css-view-g5y9jx r-display-xoduu5"
               dir={null}
               style={
-                Object {
+                {
                   "paddingLeft": "4px",
                 }
               }
@@ -153,7 +153,7 @@ exports[`WorkflowStep component WorkflowStep snapshot test should render correct
                 className="css-textHasAncestor-1jxf684"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "color": "rgba(138,148,166,1.00)",
                     "fontFamily": "Roboto-Medium",
                     "fontSize": "14px",

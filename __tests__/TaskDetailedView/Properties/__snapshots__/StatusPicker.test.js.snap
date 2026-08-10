@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`StatusPicker component StatusPicker snapshot test should render correctly 1`] = `
 <div
   className="css-view-g5y9jx r-boxShadow-v80qx2 r-flexDirection-eqz5dr"
   dir={null}
   style={
-    Object {
+    {
       "maxHeight": "736px",
       "maxWidth": "432px",
       "minWidth": "432px",
@@ -17,7 +17,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "flex": 1,
       }
     }
@@ -51,7 +51,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
                 className="css-text-146c3p1"
                 dir="auto"
                 style={
-                  Object {
+                  {
                     "color": "rgba(255,255,255,1.00)",
                     "fontFamily": "Roboto-Medium",
                     "fontSize": "18px",
@@ -65,7 +65,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
                 className="css-text-146c3p1"
                 dir="auto"
                 style={
-                  Object {
+                  {
                     "color": "rgba(138,148,166,1.00)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
@@ -90,7 +90,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
               onContextMenu={[Function]}
               onKeyDown={[Function]}
               style={
-                Object {
+                {
                   "transitionDuration": "0s",
                 }
               }
@@ -104,7 +104,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
                   className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-z2wwpe r-borderWidth-d045u9 r-height-z80fyv r-justifyContent-1777fci r-width-19wmn03"
                   dir={null}
                   style={
-                    Object {
+                    {
                       "borderBottomColor": "rgba(255,255,255,1.00)",
                       "borderLeftColor": "rgba(255,255,255,1.00)",
                       "borderRightColor": "rgba(255,255,255,1.00)",
@@ -116,7 +116,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
                   className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a"
                   dir="auto"
                   style={
-                    Object {
+                    {
                       "color": "rgba(255,255,255,1.00)",
                       "fontFamily": "Roboto-Medium",
                       "fontSize": "16px",
@@ -137,7 +137,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
               onContextMenu={[Function]}
               onKeyDown={[Function]}
               style={
-                Object {
+                {
                   "transitionDuration": "0s",
                 }
               }
@@ -159,7 +159,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "alldone",
                           "fontSize": "24px",
@@ -175,7 +175,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
                   className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a"
                   dir="auto"
                   style={
-                    Object {
+                    {
                       "color": "rgba(255,255,255,1.00)",
                       "fontFamily": "Roboto-Medium",
                       "fontSize": "16px",
@@ -199,7 +199,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -210,7 +210,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
                 className="css-view-g5y9jx r-alignItems-1awozwy r-justifyContent-1777fci"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -223,7 +223,7 @@ exports[`StatusPicker component StatusPicker snapshot test should render correct
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(138,148,166,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",

@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ProjectItem component should render correctly 1`] = `
 <div
@@ -14,7 +14,7 @@ exports[`ProjectItem component should render correctly 1`] = `
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -26,7 +26,7 @@ exports[`ProjectItem component should render correctly 1`] = `
       onMouseEnter={[Function]}
       onMouseLeave={[Function]}
       style={
-        Object {
+        {
           "backgroundColor": "rgba(245,245,245,1.00)",
         }
       }
@@ -39,7 +39,7 @@ exports[`ProjectItem component should render correctly 1`] = `
           className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-18c69zk r-height-18yzcnr r-justifyContent-1777fci r-marginRight-zso239 r-width-yc9v9c"
           dir={null}
           style={
-            Object {
+            {
               "backgroundColor": "rgba(71,163,255,1.00)",
               "opacity": 0.4,
             }
@@ -65,7 +65,7 @@ exports[`ProjectItem component should render correctly when it is the selected p
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -77,7 +77,7 @@ exports[`ProjectItem component should render correctly when it is the selected p
       onMouseEnter={[Function]}
       onMouseLeave={[Function]}
       style={
-        Object {
+        {
           "backgroundColor": "rgba(214,235,255,1.00)",
         }
       }
@@ -90,7 +90,7 @@ exports[`ProjectItem component should render correctly when it is the selected p
           className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-18c69zk r-height-18yzcnr r-justifyContent-1777fci r-marginRight-zso239 r-width-yc9v9c"
           dir={null}
           style={
-            Object {
+            {
               "backgroundColor": "rgba(71,163,255,1.00)",
               "opacity": 1,
             }
@@ -101,12 +101,12 @@ exports[`ProjectItem component should render correctly when it is the selected p
   </div>
   <ProjectSectionList
     projectData={
-      Object {
+      {
         "color": "#39CCCC",
         "id": "-LcRVRo6mhbC0oXCcZ2F",
         "index": 0,
         "name": "Another one",
-        "userIds": Array [
+        "userIds": [
           "UUKU61Jc7ET8zE5ncN8F61HE19y1",
         ],
       }

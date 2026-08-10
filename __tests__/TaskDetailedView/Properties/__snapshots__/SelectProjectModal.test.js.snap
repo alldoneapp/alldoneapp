@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`SelectProjectModal component SelectProjectModal snapshot test should render correctly 1`] = `
 <div
   className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-paddingBlock-11f147o"
   dir={null}
   style={
-    Object {
+    {
       "maxHeight": "537.5999999999999px",
       "maxWidth": "432px",
       "minWidth": "432px",
@@ -25,7 +25,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(255,255,255,1.00)",
             "fontFamily": "Roboto-Medium",
             "fontSize": "18px",
@@ -39,7 +39,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "14px",
@@ -60,7 +60,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
         dir={null}
         role="button"
         style={
-          Object {
+          {
             "overflowX": "hidden",
             "overflowY": "hidden",
           }
@@ -71,7 +71,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
           className="css-view-g5y9jx r-height-1472mwg r-width-lrsllp"
           dir={null}
           style={
-            Object {
+            {
               "opacity": 1,
             }
           }
@@ -84,7 +84,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
               className="css-text-146c3p1"
               dir="auto"
               style={
-                Object {
+                {
                   "color": "rgba(138,148,166,1.00)",
                   "fontFamily": "alldone",
                   "fontSize": "24px",
@@ -102,7 +102,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "marginTop": "20px",
         }
       }
@@ -122,7 +122,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -155,7 +155,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -188,7 +188,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "flex": 1,
         }
       }
@@ -218,7 +218,7 @@ exports[`SelectProjectModal component SelectProjectModal snapshot test should re
                 className="css-text-146c3p1"
                 dir="auto"
                 style={
-                  Object {
+                  {
                     "color": "rgba(183,189,200,1.00)",
                     "fontFamily": "alldone",
                     "fontSize": "32px",

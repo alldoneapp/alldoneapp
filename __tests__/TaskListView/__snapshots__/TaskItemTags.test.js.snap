@@ -1,7 +1,7 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`TaskItemTags component TaskItemTags snapshot test should render correctly 1`] = `
-Array [
+[
   <div
     aria-disabled={true}
     className="css-view-g5y9jx r-transitionProperty-1i6wzkk r-userSelect-lrvibr r-pointerEvents-12vffkv"
@@ -10,7 +10,7 @@ Array [
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -20,7 +20,7 @@ Array [
       className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1v0ekwd r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
       dir={null}
       style={
-        Object {
+        {
           "marginLeft": "8px",
         }
       }
@@ -33,7 +33,7 @@ Array [
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(138,148,166,1.00)",
               "fontFamily": "alldone",
               "fontSize": "16px",
@@ -60,7 +60,7 @@ Array [
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -70,7 +70,7 @@ Array [
       className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1v0ekwd r-borderRadius-1q9bdsx r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
       dir={null}
       style={
-        Object {
+        {
           "marginLeft": "8px",
         }
       }
@@ -83,7 +83,7 @@ Array [
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(138,148,166,1.00)",
               "fontFamily": "alldone",
               "fontSize": "16px",

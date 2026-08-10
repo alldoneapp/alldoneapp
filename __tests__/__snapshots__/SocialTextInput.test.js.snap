@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`SocialTextInput component SocialTextInput snapshot test should render correctly 1`] = `
 <div
   className="css-view-g5y9jx"
   dir={null}
   style={
-    Object {
+    {
       "flexDirection": "row",
     }
   }
@@ -14,7 +14,7 @@ exports[`SocialTextInput component SocialTextInput snapshot test should render c
     className="css-view-g5y9jx r-borderColor-plf49q r-borderRadius-z2wwpe r-borderWidth-d045u9 r-minHeight-ero68b r-paddingInline-3pj75a"
     dir={null}
     style={
-      Object {
+      {
         "flex": 1,
       }
     }
@@ -22,20 +22,20 @@ exports[`SocialTextInput component SocialTextInput snapshot test should render c
     <CustomTextInput3
       autoFocus={true}
       containerStyle={
-        Array [
-          Object {
+        [
+          {
             "height": 24,
             "paddingLeft": 0,
             "paddingRight": 0,
           },
-          Object {
+          {
             "minWidth": 0,
           },
         ]
       }
       forceTriggerEnterActionForBreakLines={[Function]}
       horizontalScroll={true}
-      initialMentions={Array []}
+      initialMentions={[]}
       initialTextExtended=" "
       onChangeText={[Function]}
       placeholder="Write the name of the task"

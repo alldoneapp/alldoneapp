@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Indicator component Indicator snapshot test should render correctly 1`] = `
 <div
@@ -19,7 +19,7 @@ exports[`Indicator component Indicator snapshot test should render correctly 1`]
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "marginLeft": "14px",
         }
       }
@@ -32,7 +32,7 @@ exports[`Indicator component Indicator snapshot test should render correctly 1`]
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(138,148,166,1.00)",
               "fontFamily": "alldone",
               "fontSize": "20px",

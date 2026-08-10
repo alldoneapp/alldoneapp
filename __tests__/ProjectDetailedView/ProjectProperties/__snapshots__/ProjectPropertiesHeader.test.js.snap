@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ProjectPropertiesHeader component ProjectPropertiesHeader snapshot test should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`ProjectPropertiesHeader component ProjectPropertiesHeader snapshot test
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(4,20,47,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "20px",

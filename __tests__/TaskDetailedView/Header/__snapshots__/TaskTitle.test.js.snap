@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`TaskTitle component TaskTitle snapshot test should render correctly 1`] = `
 <div
   className="css-view-g5y9jx r-flex-13awgt0 r-minHeight-adacv r-overflow-1udh08x"
   dir={null}
   style={
-    Object {
+    {
       "maxHeight": "70px",
     }
   }
@@ -18,7 +18,7 @@ exports[`TaskTitle component TaskTitle snapshot test should render correctly 1`]
     className="css-view-g5y9jx r-alignContent-e8mqni r-alignItems-1habvwh r-backgroundColor-14lw9ot r-flexDirection-18u37iz r-justifyContent-1h0z5md r-minHeight-15ysp7h r-overflow-1udh08x"
     dir={null}
     style={
-      Object {
+      {
         "top": "0px",
       }
     }
@@ -27,7 +27,7 @@ exports[`TaskTitle component TaskTitle snapshot test should render correctly 1`]
       className="css-view-g5y9jx r-pointerEvents-105ug2t"
       dir={null}
       style={
-        Object {
+        {
           "flex": 1,
           "marginRight": "16px",
         }

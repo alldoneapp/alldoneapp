@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Detailed Project Title component Detailed Project Title snapshot test should render correctly 1`] = `
 <div
   className="css-view-g5y9jx"
   dir={null}
   style={
-    Object {
+    {
       "flex": 1,
       "height": "64px",
     }
@@ -23,7 +23,7 @@ exports[`Detailed Project Title component Detailed Project Title snapshot test s
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(4,20,47,1.00)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "24px",

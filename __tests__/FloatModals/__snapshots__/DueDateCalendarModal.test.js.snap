@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Should render correctly 1`] = `
 <div
@@ -9,10 +9,10 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
     current="2019-04-22"
     dayComponent={[Function]}
     markedDates={
-      Object {
-        "2019-04-22": Object {
-          "customStyles": Object {
-            "container": Object {
+      {
+        "2019-04-22": {
+          "customStyles": {
+            "container": {
               "backgroundColor": "#091540",
               "borderColor": "#0C66FF",
               "borderRadius": 4,
@@ -21,7 +21,7 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
               "padding": 4,
               "width": 32,
             },
-            "text": Object {
+            "text": {
               "marginTop": 0,
             },
           },
@@ -34,7 +34,7 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
     minDate="2019-04-22"
     renderArrow={[Function]}
     style={
-      Object {
+      {
         "marginLeft": 16,
         "marginRight": 16,
         "paddingLeft": 0,
@@ -42,7 +42,7 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
       }
     }
     theme={
-      Object {
+      {
         "arrowColor": "orange",
         "backgroundColor": "#091540",
         "calendarBackground": "#091540",
@@ -54,8 +54,8 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
         "selectedDayBackgroundColor": "#00adf5",
         "selectedDayTextColor": "#ffffff",
         "selectedDotColor": "#ffffff",
-        "stylesheet.calendar.header": Object {
-          "header": Object {
+        "stylesheet.calendar.header": {
+          "header": {
             "alignItems": "center",
             "flexDirection": "row",
             "justifyContent": "space-between",
@@ -63,7 +63,7 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
             "paddingHorizontal": 0,
             "paddingVertical": 0,
           },
-          "week": Object {
+          "week": {
             "borderBottomColor": "rgba(255,255,255,0.2)",
             "borderBottomWidth": 1,
             "flexDirection": "row",
@@ -75,8 +75,8 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
             "paddingTop": 12,
           },
         },
-        "stylesheet.calendar.main": Object {
-          "week": Object {
+        "stylesheet.calendar.main": {
+          "week": {
             "flexDirection": "row",
             "justifyContent": "space-around",
             "marginBottom": 7,

@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`WorkflowView component WorkflowView snapshot test should render correctly 1`] = `
 <div
@@ -13,7 +13,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(4,20,47,1.00)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "20px",
@@ -27,7 +27,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "height": "28px",
           "justifyContent": "flex-end",
           "marginLeft": "16px",
@@ -38,7 +38,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(78,93,120,1.00)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "12px",
@@ -59,7 +59,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "alignSelf": "center",
         }
       }
@@ -68,7 +68,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
             "fontSize": "16px",
@@ -83,7 +83,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "marginLeft": "8px",
         }
       }
@@ -92,7 +92,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "12px",
@@ -117,7 +117,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(198,205,210,1.00)",
             "fontFamily": "alldone",
             "fontSize": "24px",
@@ -132,7 +132,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "marginLeft": "8px",
         }
       }
@@ -141,7 +141,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "Roboto-Medium",
             "fontSize": "14px",
@@ -169,7 +169,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
       onContextMenu={[Function]}
       onKeyDown={[Function]}
       style={
-        Object {
+        {
           "transitionDuration": "0s",
         }
       }
@@ -183,7 +183,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(0,127,255,1.00)",
               "fontFamily": "alldone",
               "fontSize": "24px",
@@ -198,7 +198,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         className="css-view-g5y9jx"
         dir={null}
         style={
-          Object {
+          {
             "marginLeft": "12px",
           }
         }
@@ -207,7 +207,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(138,148,166,1.00)",
               "fontFamily": "Roboto-Regular",
               "fontSize": "16px",
@@ -225,7 +225,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
     className="css-view-g5y9jx r-alignItems-1awozwy r-borderColor-1sx5dzk r-borderRadius-z2wwpe r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1mwlp6a r-paddingLeft-1hfyk0a"
     dir={null}
     style={
-      Object {
+      {
         "marginTop": "16px",
       }
     }
@@ -238,7 +238,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(198,205,210,1.00)",
             "fontFamily": "alldone",
             "fontSize": "24px",
@@ -253,7 +253,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "marginLeft": "8px",
         }
       }
@@ -262,7 +262,7 @@ exports[`WorkflowView component WorkflowView snapshot test should render correct
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "Roboto-Medium",
             "fontSize": "14px",

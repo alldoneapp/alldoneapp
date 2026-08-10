@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Show More Button component Task Estimation Button snapshot test should render correctly 1`] = `
 <div
@@ -12,7 +12,7 @@ exports[`Show More Button component Task Estimation Button snapshot test should 
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -26,7 +26,7 @@ exports[`Show More Button component Task Estimation Button snapshot test should 
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(183,189,200,1.00)",
             "fontFamily": "alldone",
             "fontSize": "24px",

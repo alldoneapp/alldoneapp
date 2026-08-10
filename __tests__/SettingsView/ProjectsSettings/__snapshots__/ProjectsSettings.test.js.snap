@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ProjectsSettings component ProjectsSettings snapshot test should render correctly 1`] = `
 <div
@@ -17,7 +17,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(4,20,47,1.00)",
             "fontFamily": "Roboto-Medium",
             "fontSize": "20px",
@@ -35,7 +35,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(78,93,120,1.00)",
               "fontFamily": "Roboto-Regular",
               "fontSize": "12px",
@@ -62,7 +62,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -76,7 +76,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
                 className="css-text-146c3p1"
                 dir="auto"
                 style={
-                  Object {
+                  {
                     "color": "rgba(138,148,166,1.00)",
                     "fontFamily": "alldone",
                     "fontSize": "24px",
@@ -107,7 +107,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
             className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
             dir={null}
             style={
-              Object {
+              {
                 "transform": "translateX(0px)",
                 "width": "0px",
               }
@@ -124,7 +124,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
               onContextMenu={[Function]}
               onKeyDown={[Function]}
               style={
-                Object {
+                {
                   "transitionDuration": "0s",
                 }
               }
@@ -149,7 +149,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
               onContextMenu={[Function]}
               onKeyDown={[Function]}
               style={
-                Object {
+                {
                   "transitionDuration": "0s",
                 }
               }
@@ -174,7 +174,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
               onContextMenu={[Function]}
               onKeyDown={[Function]}
               style={
-                Object {
+                {
                   "transitionDuration": "0s",
                 }
               }
@@ -201,7 +201,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "alignItems": "center",
         "flex": 1,
         "marginTop": "32px",
@@ -227,7 +227,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
         alt="Ups, looks like there is nothing to show over here"
         src="test-asset"
         style={
-          Object {
+          {
             "flex": 1,
             "maxWidth": 411,
             "width": "100%",
@@ -239,7 +239,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "marginLeft": "104px",
           "marginRight": "104px",
           "marginTop": "32px",
@@ -251,7 +251,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(78,93,120,1.00)",
             "fontFamily": "Roboto-Medium",
             "fontSize": "24px",
@@ -266,7 +266,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(78,93,120,1.00)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "16px",
@@ -284,7 +284,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "flexDirection": "row",
           "justifyContent": "center",
           "marginTop": "16px",
@@ -300,7 +300,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -314,7 +314,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(255,255,255,1.00)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",
@@ -329,7 +329,7 @@ exports[`ProjectsSettings component ProjectsSettings snapshot test should render
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "12px",
             }
           }

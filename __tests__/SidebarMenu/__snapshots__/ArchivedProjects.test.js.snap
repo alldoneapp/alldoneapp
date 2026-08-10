@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ArchivedProjects component ArchivedProjects snapshot test should render correctly 1`] = `
 <div
   className="css-view-g5y9jx"
   dir={null}
   style={
-    Object {
+    {
       "marginTop": "32px",
     }
   }
@@ -23,7 +23,7 @@ exports[`ArchivedProjects component ArchivedProjects snapshot test should render
       onMouseEnter={[Function]}
       onMouseLeave={[Function]}
       style={
-        Object {
+        {
           "transitionDuration": "0s",
         }
       }
@@ -41,7 +41,7 @@ exports[`ArchivedProjects component ArchivedProjects snapshot test should render
             className="css-view-g5y9jx"
             dir={null}
             style={
-              Object {
+              {
                 "marginRight": "10px",
                 "opacity": 0.64,
               }
@@ -51,7 +51,7 @@ exports[`ArchivedProjects component ArchivedProjects snapshot test should render
               className="css-text-146c3p1"
               dir="auto"
               style={
-                Object {
+                {
                   "color": "rgba(183,189,200,1.00)",
                   "fontFamily": "alldone",
                   "fontSize": "22px",

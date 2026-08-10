@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`MentionsModal component should render correctly 1`] = `
 <div
   className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-paddingBottom-1l7z4oj r-paddingInline-is05cd r-paddingTop-tskmnb"
   dir={null}
   style={
-    Object {
+    {
       "maxHeight": "548px",
       "maxWidth": "432px",
       "minWidth": "432px",
@@ -28,7 +28,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -61,7 +61,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -94,7 +94,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -127,7 +127,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -160,7 +160,7 @@ exports[`MentionsModal component should render correctly 1`] = `
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -187,7 +187,7 @@ exports[`MentionsModal component should render correctly 1`] = `
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "flex": 1,
       }
     }
@@ -213,7 +213,7 @@ exports[`MentionsModal component should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-gjgjzp r-justifyContent-1777fci"
             dir={null}
             style={
-              Object {
+              {
                 "backgroundColor": "rgba(9,21,64,1.00)",
                 "height": "48px",
                 "maxHeight": "48px",
@@ -228,7 +228,7 @@ exports[`MentionsModal component should render correctly 1`] = `
               className="css-view-g5y9jx"
               dir={null}
               style={
-                Object {
+                {
                   "transform": "rotate(0deg)",
                 }
               }
@@ -241,7 +241,7 @@ exports[`MentionsModal component should render correctly 1`] = `
                   className="css-text-146c3p1"
                   dir="auto"
                   style={
-                    Object {
+                    {
                       "color": "rgba(0,127,255,1.00)",
                       "fontFamily": "alldone",
                       "fontSize": "48px",

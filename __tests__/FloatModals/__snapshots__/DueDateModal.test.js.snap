@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`DueDateModal component DueDateModal snapshot test Should render correctly 1`] = `
 <div
   className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-overflow-bztko3 r-paddingTop-95jzfe"
   dir={null}
   style={
-    Object {
+    {
       "maxHeight": "736px",
       "maxWidth": "432px",
       "minWidth": "432px",
@@ -17,7 +17,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "flex": 1,
       }
     }
@@ -60,7 +60,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
             className="css-view-g5y9jx r-position-u8s1d r-right-1sd1n6o r-zIndex-184en5c"
             dir={null}
             style={
-              Object {
+              {
                 "top": "-4px",
               }
             }
@@ -72,7 +72,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
               onContextMenu={[Function]}
               onKeyDown={[Function]}
               style={
-                Object {
+                {
                   "transitionDuration": "0s",
                 }
               }
@@ -86,7 +86,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   className="css-text-146c3p1"
                   dir="auto"
                   style={
-                    Object {
+                    {
                       "color": "rgba(138,148,166,1.00)",
                       "fontFamily": "alldone",
                       "fontSize": "24px",
@@ -123,7 +123,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -141,7 +141,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-text-146c3p1"
                         dir="auto"
                         style={
-                          Object {
+                          {
                             "color": "rgba(255,255,255,1.00)",
                             "fontFamily": "Roboto-Medium",
                             "fontSize": "16px",
@@ -173,7 +173,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-text-146c3p1"
                           dir="auto"
                           style={
-                            Object {
+                            {
                               "color": "rgba(255,255,255,1.00)",
                               "fontFamily": "alldone",
                               "fontSize": "24px",
@@ -188,7 +188,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
                         dir={null}
                         style={
-                          Object {
+                          {
                             "marginLeft": "4px",
                           }
                         }
@@ -197,7 +197,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
                           dir={null}
                           style={
-                            Object {
+                            {
                               "marginLeft": "4px",
                             }
                           }
@@ -225,7 +225,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -243,7 +243,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-text-146c3p1"
                         dir="auto"
                         style={
-                          Object {
+                          {
                             "color": "rgba(255,255,255,1.00)",
                             "fontFamily": "Roboto-Medium",
                             "fontSize": "16px",
@@ -271,7 +271,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
                         dir={null}
                         style={
-                          Object {
+                          {
                             "marginLeft": "4px",
                           }
                         }
@@ -280,7 +280,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
                           dir={null}
                           style={
-                            Object {
+                            {
                               "marginLeft": "4px",
                             }
                           }
@@ -308,7 +308,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -326,7 +326,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-text-146c3p1"
                         dir="auto"
                         style={
-                          Object {
+                          {
                             "color": "rgba(255,255,255,1.00)",
                             "fontFamily": "Roboto-Medium",
                             "fontSize": "16px",
@@ -354,7 +354,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
                         dir={null}
                         style={
-                          Object {
+                          {
                             "marginLeft": "4px",
                           }
                         }
@@ -363,7 +363,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
                           dir={null}
                           style={
-                            Object {
+                            {
                               "marginLeft": "4px",
                             }
                           }
@@ -391,7 +391,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -409,7 +409,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-text-146c3p1"
                         dir="auto"
                         style={
-                          Object {
+                          {
                             "color": "rgba(255,255,255,1.00)",
                             "fontFamily": "Roboto-Medium",
                             "fontSize": "16px",
@@ -437,7 +437,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
                         dir={null}
                         style={
-                          Object {
+                          {
                             "marginLeft": "4px",
                           }
                         }
@@ -446,7 +446,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
                           dir={null}
                           style={
-                            Object {
+                            {
                               "marginLeft": "4px",
                             }
                           }
@@ -483,7 +483,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -501,7 +501,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-text-146c3p1"
                         dir="auto"
                         style={
-                          Object {
+                          {
                             "color": "rgba(255,255,255,1.00)",
                             "fontFamily": "Roboto-Medium",
                             "fontSize": "16px",
@@ -529,7 +529,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
                         dir={null}
                         style={
-                          Object {
+                          {
                             "marginLeft": "4px",
                           }
                         }
@@ -538,7 +538,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
                           dir={null}
                           style={
-                            Object {
+                            {
                               "marginLeft": "4px",
                             }
                           }
@@ -566,7 +566,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -584,7 +584,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-text-146c3p1"
                         dir="auto"
                         style={
-                          Object {
+                          {
                             "color": "rgba(255,255,255,1.00)",
                             "fontFamily": "Roboto-Medium",
                             "fontSize": "16px",
@@ -612,7 +612,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
                         dir={null}
                         style={
-                          Object {
+                          {
                             "marginLeft": "4px",
                           }
                         }
@@ -621,7 +621,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
                           dir={null}
                           style={
-                            Object {
+                            {
                               "marginLeft": "4px",
                             }
                           }
@@ -649,7 +649,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -667,7 +667,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-text-146c3p1"
                         dir="auto"
                         style={
-                          Object {
+                          {
                             "color": "rgba(255,255,255,1.00)",
                             "fontFamily": "Roboto-Medium",
                             "fontSize": "16px",
@@ -695,7 +695,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
                         dir={null}
                         style={
-                          Object {
+                          {
                             "marginLeft": "4px",
                           }
                         }
@@ -704,7 +704,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
                           dir={null}
                           style={
-                            Object {
+                            {
                               "marginLeft": "4px",
                             }
                           }
@@ -732,7 +732,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -750,7 +750,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-text-146c3p1"
                         dir="auto"
                         style={
-                          Object {
+                          {
                             "color": "rgba(255,255,255,1.00)",
                             "fontFamily": "Roboto-Medium",
                             "fontSize": "16px",
@@ -778,7 +778,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
                         dir={null}
                         style={
-                          Object {
+                          {
                             "marginLeft": "4px",
                           }
                         }
@@ -787,7 +787,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                           className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
                           dir={null}
                           style={
-                            Object {
+                            {
                               "marginLeft": "4px",
                             }
                           }
@@ -820,7 +820,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                 onContextMenu={[Function]}
                 onKeyDown={[Function]}
                 style={
-                  Object {
+                  {
                     "transitionDuration": "0s",
                   }
                 }
@@ -838,7 +838,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -894,7 +894,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                 onContextMenu={[Function]}
                 onKeyDown={[Function]}
                 style={
-                  Object {
+                  {
                     "transitionDuration": "0s",
                   }
                 }
@@ -912,7 +912,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -940,7 +940,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                       className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-justifyContent-1777fci"
                       dir={null}
                       style={
-                        Object {
+                        {
                           "marginLeft": "4px",
                         }
                       }
@@ -949,7 +949,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                         className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-18u37iz r-justifyContent-1777fci r-minHeight-sgkdzr r-minWidth-285fr0 r-paddingBlock-1559e4e r-paddingInline-n7gxbd r-borderColor-t1myqv r-borderWidth-rs99b7"
                         dir={null}
                         style={
-                          Object {
+                          {
                             "marginLeft": "4px",
                           }
                         }
@@ -973,7 +973,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
               onContextMenu={[Function]}
               onKeyDown={[Function]}
               style={
-                Object {
+                {
                   "transitionDuration": "0s",
                 }
               }
@@ -991,7 +991,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(255,255,255,1.00)",
                         "fontFamily": "Roboto-Medium",
                         "fontSize": "16px",
@@ -1007,7 +1007,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   className="css-view-g5y9jx r-justifyContent-17s6mgv"
                   dir={null}
                   style={
-                    Object {
+                    {
                       "marginTop": "-4px",
                     }
                   }
@@ -1016,7 +1016,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(138,148,166,1.00)",
                         "fontFamily": "Roboto-Regular",
                         "fontSize": "16px",
@@ -1052,7 +1052,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
               onContextMenu={[Function]}
               onKeyDown={[Function]}
               style={
-                Object {
+                {
                   "transitionDuration": "0s",
                 }
               }
@@ -1070,7 +1070,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(255,255,255,1.00)",
                         "fontFamily": "Roboto-Medium",
                         "fontSize": "16px",
@@ -1094,7 +1094,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                   className="css-view-g5y9jx r-justifyContent-17s6mgv"
                   dir={null}
                   style={
-                    Object {
+                    {
                       "marginTop": "-4px",
                     }
                   }
@@ -1103,7 +1103,7 @@ exports[`DueDateModal component DueDateModal snapshot test Should render correct
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(138,148,166,1.00)",
                         "fontFamily": "Roboto-Regular",
                         "fontSize": "16px",

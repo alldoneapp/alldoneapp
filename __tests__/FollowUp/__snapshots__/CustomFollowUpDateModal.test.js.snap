@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test should render correctly 1`] = `
 <div
   className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-flexDirection-eqz5dr r-paddingTop-95jzfe"
   dir={null}
   style={
-    Object {
+    {
       "maxWidth": "432px",
       "minWidth": "432px",
       "width": "432px",
@@ -24,7 +24,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(255,255,255,1.00)",
             "fontFamily": "Roboto-Medium",
             "fontSize": "18px",
@@ -38,7 +38,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "14px",
@@ -63,7 +63,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
       onDayPress={[Function]}
       renderArrow={[Function]}
       theme={
-        Object {
+        {
           "arrowColor": "orange",
           "backgroundColor": "#091540",
           "calendarBackground": "#091540",
@@ -75,8 +75,8 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
           "selectedDayBackgroundColor": "#00adf5",
           "selectedDayTextColor": "#ffffff",
           "selectedDotColor": "#ffffff",
-          "stylesheet.calendar.header": Object {
-            "header": Object {
+          "stylesheet.calendar.header": {
+            "header": {
               "alignItems": "center",
               "flexDirection": "row",
               "justifyContent": "space-between",
@@ -84,7 +84,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
               "paddingHorizontal": 0,
               "paddingVertical": 0,
             },
-            "week": Object {
+            "week": {
               "borderBottomColor": "rgba(255,255,255,0.2)",
               "borderBottomWidth": 1,
               "flexDirection": "row",
@@ -96,8 +96,8 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
               "paddingTop": 12,
             },
           },
-          "stylesheet.calendar.main": Object {
-            "week": Object {
+          "stylesheet.calendar.main": {
+            "week": {
               "flexDirection": "row",
               "justifyContent": "space-around",
               "marginBottom": 7,
@@ -126,7 +126,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
     dir={null}
     role="button"
     style={
-      Object {
+      {
         "overflowX": "hidden",
         "overflowY": "hidden",
       }
@@ -137,7 +137,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
       className="css-view-g5y9jx r-borderTopColor-12rkw8h r-borderTopWidth-5kkj8d r-flexDirection-18u37iz r-paddingBlock-w7s2jr r-paddingLeft-1qhn6m8"
       dir={null}
       style={
-        Object {
+        {
           "opacity": 1,
         }
       }
@@ -150,7 +150,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(138,148,166,1.00)",
               "fontFamily": "alldone",
               "fontSize": "24px",
@@ -165,7 +165,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
         className="css-text-146c3p1 r-color-jwli3a r-fontWeight-majxgm r-marginLeft-1jkjb"
         dir="auto"
         style={
-          Object {
+          {
             "fontFamily": "Roboto-Medium",
             "fontSize": "16px",
             "letterSpacing": "0.16px",
@@ -209,7 +209,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
       onContextMenu={[Function]}
       onKeyDown={[Function]}
       style={
-        Object {
+        {
           "transitionDuration": "0s",
         }
       }
@@ -223,7 +223,7 @@ exports[`CustomFollowUpDateModal component CustomFollowUpDateModal snapshot test
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(138,148,166,1.00)",
               "fontFamily": "alldone",
               "fontSize": "24px",

@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`SelectUserModal component SelectUserModal snapshot test should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`SelectUserModal component SelectUserModal snapshot test should render c
     className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-flexDirection-eqz5dr"
     dir={null}
     style={
-      Object {
+      {
         "maxHeight": "736px",
         "maxWidth": "432px",
         "minWidth": "432px",
@@ -21,7 +21,7 @@ exports[`SelectUserModal component SelectUserModal snapshot test should render c
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "flex": 1,
         }
       }
@@ -51,7 +51,7 @@ exports[`SelectUserModal component SelectUserModal snapshot test should render c
                 className="css-text-146c3p1"
                 dir="auto"
                 style={
-                  Object {
+                  {
                     "color": "rgba(255,255,255,1.00)",
                     "fontFamily": "Roboto-Medium",
                     "fontSize": "18px",
@@ -65,7 +65,7 @@ exports[`SelectUserModal component SelectUserModal snapshot test should render c
                 className="css-text-146c3p1"
                 dir="auto"
                 style={
-                  Object {
+                  {
                     "color": "rgba(138,148,166,1.00)",
                     "fontFamily": "Roboto-Regular",
                     "fontSize": "14px",
@@ -86,7 +86,7 @@ exports[`SelectUserModal component SelectUserModal snapshot test should render c
                 dir={null}
                 role="button"
                 style={
-                  Object {
+                  {
                     "overflowX": "hidden",
                     "overflowY": "hidden",
                   }
@@ -97,7 +97,7 @@ exports[`SelectUserModal component SelectUserModal snapshot test should render c
                   className="css-view-g5y9jx r-alignItems-1awozwy r-height-1472mwg r-justifyContent-1777fci r-width-lrsllp"
                   dir={null}
                   style={
-                    Object {
+                    {
                       "opacity": 1,
                     }
                   }
@@ -110,7 +110,7 @@ exports[`SelectUserModal component SelectUserModal snapshot test should render c
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(138,148,166,1.00)",
                           "fontFamily": "alldone",
                           "fontSize": "24px",
