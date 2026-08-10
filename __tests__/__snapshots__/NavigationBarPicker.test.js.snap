@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`NavigationBarPicker component NavigationBarPicker snapshot test should render correctly 1`] = `
 <div
@@ -8,7 +8,7 @@ exports[`NavigationBarPicker component NavigationBarPicker snapshot test should 
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -18,7 +18,7 @@ exports[`NavigationBarPicker component NavigationBarPicker snapshot test should 
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(255,255,255,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "14px",
@@ -36,7 +36,7 @@ exports[`NavigationBarPicker component NavigationBarPicker snapshot test should 
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(255,255,255,1.00)",
           "fontFamily": "alldone",
           "fontSize": "24px",
@@ -58,7 +58,7 @@ exports[`NavigationBarPicker component NavigationBarPicker snapshot test should 
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -68,7 +68,7 @@ exports[`NavigationBarPicker component NavigationBarPicker snapshot test should 
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(255,255,255,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "14px",
@@ -86,7 +86,7 @@ exports[`NavigationBarPicker component NavigationBarPicker snapshot test should 
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(255,255,255,1.00)",
           "fontFamily": "alldone",
           "fontSize": "24px",

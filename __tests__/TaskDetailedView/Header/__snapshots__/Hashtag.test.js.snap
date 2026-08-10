@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Hashtag component Hashtag snapshot test should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`Hashtag component Hashtag snapshot test should render correctly 1`] = `
     className="css-text-146c3p1 r-backgroundColor-2lf47b r-borderRadius-1867qdf r-color-ujv0fi r-paddingBlock-1559e4e r-paddingInline-is05cd"
     dir="auto"
     style={
-      Object {
+      {
         "fontFamily": "Roboto-Medium",
         "fontSize": "20px",
         "lineHeight": "28px",

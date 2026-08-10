@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`LoadingScreen component LoadingScreen snapshot test should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`LoadingScreen component LoadingScreen snapshot test should render corre
     className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-gjgjzp r-justifyContent-1777fci"
     dir={null}
     style={
-      Object {
+      {
         "backgroundColor": "rgba(231,236,239,1.00)",
         "height": "200px",
         "maxHeight": "200px",
@@ -24,7 +24,7 @@ exports[`LoadingScreen component LoadingScreen snapshot test should render corre
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "transform": "rotate(0deg)",
         }
       }
@@ -37,7 +37,7 @@ exports[`LoadingScreen component LoadingScreen snapshot test should render corre
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(0,127,255,1.00)",
               "fontFamily": "alldone",
               "fontSize": "150px",
@@ -54,7 +54,7 @@ exports[`LoadingScreen component LoadingScreen snapshot test should render corre
     className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1ra0lkn r-textAlign-q4m81j"
     dir="auto"
     style={
-      Object {
+      {
         "marginBottom": "30px",
         "paddingTop": "40px",
       }

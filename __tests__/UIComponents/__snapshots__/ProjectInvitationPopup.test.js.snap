@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test Should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
     className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-1loqnew r-padding-nsbfu8"
     dir={null}
     style={
-      Object {
+      {
         "marginLeft": "300px",
         "maxWidth": "432px",
         "minWidth": "432px",
@@ -32,7 +32,7 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
           onContextMenu={[Function]}
           onKeyDown={[Function]}
           style={
-            Object {
+            {
               "transitionDuration": "0s",
             }
           }
@@ -46,7 +46,7 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
               className="css-text-146c3p1"
               dir="auto"
               style={
-                Object {
+                {
                   "color": "rgba(138,148,166,1.00)",
                   "fontFamily": "alldone",
                   "fontSize": "24px",
@@ -80,7 +80,7 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
         className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-18c69zk r-justifyContent-1777fci"
         dir={null}
         style={
-          Object {
+          {
             "height": "16px",
             "marginBottom": "4px",
             "marginLeft": "4px",
@@ -94,7 +94,7 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
         className="css-text-146c3p1 r-color-jwli3a r-marginLeft-1jkjb"
         dir="auto"
         style={
-          Object {
+          {
             "fontFamily": "Roboto-Regular",
             "fontSize": "16px",
             "letterSpacing": "0.32px",
@@ -120,7 +120,7 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginRight": "16px",
             "transitionDuration": "0s",
           }
@@ -131,7 +131,7 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "0px",
             }
           }
@@ -146,7 +146,7 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -156,7 +156,7 @@ exports[`ProjectInvitationPopup component ProjectInvitationPopup snapshot test S
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "0px",
             }
           }

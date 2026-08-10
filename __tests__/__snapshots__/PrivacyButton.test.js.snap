@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`PrivacyButton component PrivacyButton empty snapshot test should render correctly 1`] = `
 <button
@@ -6,7 +6,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
   dir={null}
   role="button"
   style={
-    Object {
+    {
       "overflowX": "hidden",
       "overflowY": "hidden",
     }
@@ -17,7 +17,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
     className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-99ywz4 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
     dir={null}
     style={
-      Object {
+      {
         "opacity": 1,
       }
     }
@@ -34,7 +34,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(250,251,251,1.00)",
               "fontFamily": "alldone",
               "fontSize": "20px",
@@ -54,7 +54,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
   dir={null}
   role="button"
   style={
-    Object {
+    {
       "overflowX": "hidden",
       "overflowY": "hidden",
     }
@@ -65,7 +65,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
     className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-99ywz4 r-borderRadius-z2wwpe r-flexDirection-18u37iz"
     dir={null}
     style={
-      Object {
+      {
         "opacity": 1,
       }
     }
@@ -82,7 +82,7 @@ exports[`PrivacyButton component PrivacyButton empty snapshot test should render
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(250,251,251,1.00)",
               "fontFamily": "alldone",
               "fontSize": "20px",

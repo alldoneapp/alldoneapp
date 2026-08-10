@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`DateItem component DateItem snapshot test should render correctly 1`] = `
 <div
@@ -8,7 +8,7 @@ exports[`DateItem component DateItem snapshot test should render correctly 1`] =
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -18,7 +18,7 @@ exports[`DateItem component DateItem snapshot test should render correctly 1`] =
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(255,255,255,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "16px",
@@ -32,7 +32,7 @@ exports[`DateItem component DateItem snapshot test should render correctly 1`] =
       className="css-textHasAncestor-1jxf684"
       dir={null}
       style={
-        Object {
+        {
           "color": "rgba(255,255,255,1.00)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "16px",
@@ -49,7 +49,7 @@ exports[`DateItem component DateItem snapshot test should render correctly 1`] =
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "marginLeft": "auto",
       }
     }
@@ -82,7 +82,7 @@ exports[`DateItem component DateItem snapshot test should render correctly 2`] =
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -92,7 +92,7 @@ exports[`DateItem component DateItem snapshot test should render correctly 2`] =
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(255,255,255,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "16px",
@@ -107,7 +107,7 @@ exports[`DateItem component DateItem snapshot test should render correctly 2`] =
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "marginLeft": "auto",
       }
     }

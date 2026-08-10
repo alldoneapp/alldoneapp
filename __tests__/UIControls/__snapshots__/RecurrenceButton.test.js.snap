@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Task Recurrence Button component Function hidePopover snapshot test should execute and render correctly 1`] = `
 <div
@@ -8,7 +8,7 @@ exports[`Task Recurrence Button component Function hidePopover snapshot test sho
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -22,7 +22,7 @@ exports[`Task Recurrence Button component Function hidePopover snapshot test sho
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(138,148,166,1.00)",
           "fontFamily": "alldone",
           "fontSize": "24px",
@@ -37,7 +37,7 @@ exports[`Task Recurrence Button component Function hidePopover snapshot test sho
     className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
     dir="auto"
     style={
-      Object {
+      {
         "marginLeft": "12px",
       }
     }
@@ -55,7 +55,7 @@ exports[`Task Recurrence Button component Function updateState snapshot test sho
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -69,7 +69,7 @@ exports[`Task Recurrence Button component Function updateState snapshot test sho
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(138,148,166,1.00)",
           "fontFamily": "alldone",
           "fontSize": "24px",
@@ -84,7 +84,7 @@ exports[`Task Recurrence Button component Function updateState snapshot test sho
     className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
     dir="auto"
     style={
-      Object {
+      {
         "marginLeft": "12px",
       }
     }
@@ -102,7 +102,7 @@ exports[`Task Recurrence Button component Function updateState snapshot test sho
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -116,7 +116,7 @@ exports[`Task Recurrence Button component Function updateState snapshot test sho
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(138,148,166,1.00)",
           "fontFamily": "alldone",
           "fontSize": "24px",
@@ -131,7 +131,7 @@ exports[`Task Recurrence Button component Function updateState snapshot test sho
     className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
     dir="auto"
     style={
-      Object {
+      {
         "marginLeft": "12px",
       }
     }
@@ -149,7 +149,7 @@ exports[`Task Recurrence Button component Task Estimation Button snapshot test s
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -163,7 +163,7 @@ exports[`Task Recurrence Button component Task Estimation Button snapshot test s
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(138,148,166,1.00)",
           "fontFamily": "alldone",
           "fontSize": "24px",
@@ -178,7 +178,7 @@ exports[`Task Recurrence Button component Task Estimation Button snapshot test s
     className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
     dir="auto"
     style={
-      Object {
+      {
         "marginLeft": "12px",
       }
     }

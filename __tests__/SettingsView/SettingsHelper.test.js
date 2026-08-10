@@ -31,14 +31,14 @@ describe('SettingsHelper class', () => {
         URLsSettings.replace = jest.fn()
 
         SettingsHelper.processURLSettingsTab(navigation, url)
-        expect(navigation.navigate).toBeCalledTimes(1)
-        expect(navigation.navigate).toBeCalledWith('SettingsView')
-        expect(URLsSettings.replace).toBeCalledWith(param)
+        expect(navigation.navigate).toHaveBeenCalledTimes(1)
+        expect(navigation.navigate).toHaveBeenCalledWith('SettingsView')
+        expect(URLsSettings.replace).toHaveBeenCalledWith(param)
     })
 
     it('should execute processURLFeeds correctly', () => {
         SettingsHelper.processURLFeeds(navigation)
-        expect(navigation.navigate).toBeCalledTimes(1)
-        expect(navigation.navigate).toBeCalledWith('Root')
+        expect(navigation.navigate).toHaveBeenCalledTimes(1)
+        expect(navigation.navigate).toHaveBeenCalledWith('Root')
     })
 })

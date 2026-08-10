@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Member tag component Member snapshot test should render correctly 1`] = `
 <div
@@ -8,7 +8,7 @@ exports[`Member tag component Member snapshot test should render correctly 1`] =
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -26,7 +26,7 @@ exports[`Member tag component Member snapshot test should render correctly 1`] =
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(168,167,0,1.00)",
             "fontFamily": "alldone",
             "fontSize": "16px",

@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ProjectModalItem component renders differently once it is the active row 1`] = `
 <div
@@ -12,7 +12,7 @@ exports[`ProjectModalItem component renders differently once it is the active ro
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -30,7 +30,7 @@ exports[`ProjectModalItem component renders differently once it is the active ro
           className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-18c69zk r-justifyContent-1777fci"
           dir={null}
           style={
-            Object {
+            {
               "backgroundColor": "rgba(255,0,0,1.00)",
               "height": "16px",
               "marginRight": "12px",
@@ -42,7 +42,7 @@ exports[`ProjectModalItem component renders differently once it is the active ro
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-color-1q5n9ts"
           dir="auto"
           style={
-            Object {
+            {
               "fontFamily": "Roboto-Medium",
               "fontSize": "16px",
               "letterSpacing": "0.16px",
@@ -70,7 +70,7 @@ exports[`ProjectModalItem component should render correctly 1`] = `
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -88,7 +88,7 @@ exports[`ProjectModalItem component should render correctly 1`] = `
           className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-18c69zk r-justifyContent-1777fci"
           dir={null}
           style={
-            Object {
+            {
               "backgroundColor": "rgba(255,0,0,1.00)",
               "height": "16px",
               "marginRight": "12px",
@@ -100,7 +100,7 @@ exports[`ProjectModalItem component should render correctly 1`] = `
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-color-jwli3a"
           dir="auto"
           style={
-            Object {
+            {
               "fontFamily": "Roboto-Medium",
               "fontSize": "16px",
               "letterSpacing": "0.16px",

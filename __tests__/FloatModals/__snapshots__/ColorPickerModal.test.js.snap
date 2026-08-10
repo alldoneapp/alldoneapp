@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ColorPickerModal component Should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "marginBottom": "20px",
       }
     }
@@ -18,7 +18,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(255,255,255,1.00)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "18px",
@@ -32,7 +32,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(138,148,166,1.00)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "14px",
@@ -61,7 +61,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -72,7 +72,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -93,7 +93,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(71,222,255,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -118,7 +118,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -129,7 +129,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -150,7 +150,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(124,112,255,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -175,7 +175,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -186,7 +186,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -207,7 +207,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(255,146,92,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -232,7 +232,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -243,7 +243,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -264,7 +264,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(10,255,190,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -289,7 +289,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -300,7 +300,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -321,7 +321,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(240,226,25,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -342,7 +342,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
       className="css-view-g5y9jx r-flexDirection-18u37iz r-justifyContent-1wtj0ep"
       dir={null}
       style={
-        Object {
+        {
           "marginBottom": "12px",
           "marginTop": "19px",
         }
@@ -357,7 +357,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -368,7 +368,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -389,7 +389,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(0,244,119,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -414,7 +414,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -425,7 +425,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -446,7 +446,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(255,112,179,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -471,7 +471,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -482,7 +482,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -503,7 +503,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(255,82,116,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -528,7 +528,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -539,7 +539,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -560,7 +560,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(191,255,10,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -585,7 +585,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
           dir={null}
           role="button"
           style={
-            Object {
+            {
               "overflowX": "hidden",
               "overflowY": "hidden",
             }
@@ -596,7 +596,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-view-g5y9jx r-alignItems-1awozwy r-height-mabqd8 r-justifyContent-1777fci r-width-1yvhtrz"
             dir={null}
             style={
-              Object {
+              {
                 "opacity": 1,
               }
             }
@@ -617,7 +617,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
                     className="css-text-146c3p1"
                     dir="auto"
                     style={
-                      Object {
+                      {
                         "color": "rgba(203,112,255,1.00)",
                         "fontFamily": "alldone",
                         "fontSize": "24px",
@@ -644,7 +644,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
       dir={null}
       role="button"
       style={
-        Object {
+        {
           "overflowX": "hidden",
           "overflowY": "hidden",
         }
@@ -655,7 +655,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
         className="css-view-g5y9jx r-alignItems-1awozwy r-justifyContent-1777fci"
         dir={null}
         style={
-          Object {
+          {
             "opacity": 1,
           }
         }
@@ -668,7 +668,7 @@ exports[`ColorPickerModal component Should render correctly 1`] = `
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(138,148,166,1.00)",
                 "fontFamily": "alldone",
                 "fontSize": "24px",

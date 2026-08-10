@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`MultiToggleSwitch component MultiToggleSwitch empty snapshot test Should render correctly 1`] = `
 <div
@@ -13,7 +13,7 @@ exports[`MultiToggleSwitch component MultiToggleSwitch empty snapshot test Shoul
       className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
       dir={null}
       style={
-        Object {
+        {
           "transform": "translateX(0px)",
           "width": "0px",
         }
@@ -30,7 +30,7 @@ exports[`MultiToggleSwitch component MultiToggleSwitch empty snapshot test Shoul
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -55,7 +55,7 @@ exports[`MultiToggleSwitch component MultiToggleSwitch empty snapshot test Shoul
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -80,7 +80,7 @@ exports[`MultiToggleSwitch component MultiToggleSwitch empty snapshot test Shoul
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }

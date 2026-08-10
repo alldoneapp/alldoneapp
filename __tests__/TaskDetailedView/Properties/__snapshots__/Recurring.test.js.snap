@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Recurring component Recurring snapshot test should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "marginRight": "8px",
       }
     }
@@ -22,7 +22,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
             "fontSize": "24px",
@@ -38,7 +38,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(138,148,166,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "14px",
@@ -53,7 +53,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "marginLeft": "auto",
       }
     }
@@ -65,7 +65,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
       onContextMenu={[Function]}
       onKeyDown={[Function]}
       style={
-        Object {
+        {
           "transitionDuration": "0s",
         }
       }
@@ -79,7 +79,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(138,148,166,1.00)",
               "fontFamily": "alldone",
               "fontSize": "24px",
@@ -94,7 +94,7 @@ exports[`Recurring component Recurring snapshot test should render correctly 1`]
         className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-hiecfz"
         dir="auto"
         style={
-          Object {
+          {
             "marginLeft": "12px",
           }
         }

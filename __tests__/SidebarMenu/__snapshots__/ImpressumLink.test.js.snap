@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ImpressumLink component ImpressumLink snapshot test should render correctly 1`] = `
 <div
@@ -12,7 +12,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -26,7 +26,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
         className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "opacity": 0.4,
           }
@@ -40,7 +40,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     className="css-view-g5y9jx r-borderRadius-1tw7wh r-height-hdaws3 r-marginInline-8dgmk1 r-width-10g5efv"
     dir={null}
     style={
-      Object {
+      {
         "backgroundColor": "rgba(138,148,166,1.00)",
         "opacity": 0.4,
       }
@@ -53,7 +53,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -67,7 +67,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
         className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "opacity": 0.4,
           }
@@ -81,7 +81,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     className="css-view-g5y9jx r-borderRadius-1tw7wh r-height-hdaws3 r-marginInline-8dgmk1 r-width-10g5efv"
     dir={null}
     style={
-      Object {
+      {
         "backgroundColor": "rgba(138,148,166,1.00)",
         "opacity": 0.4,
       }
@@ -94,7 +94,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -108,7 +108,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
         className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "opacity": 0.4,
           }
@@ -122,7 +122,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     className="css-view-g5y9jx r-borderRadius-1tw7wh r-height-hdaws3 r-marginInline-8dgmk1 r-width-10g5efv"
     dir={null}
     style={
-      Object {
+      {
         "backgroundColor": "rgba(138,148,166,1.00)",
         "opacity": 0.4,
       }
@@ -135,7 +135,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -149,7 +149,7 @@ exports[`ImpressumLink component ImpressumLink snapshot test should render corre
         className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-flexWrap-tzz3ar r-fontFamily-k9x4vz r-fontSize-1b43r93 r-letterSpacing-1wudzfh r-lineHeight-hbpseb"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "opacity": 0.4,
           }

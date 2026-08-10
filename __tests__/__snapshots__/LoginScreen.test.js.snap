@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`LoginScreen component LoginScreen snapshot test should load user projects 1`] = `
 <View
@@ -317,7 +317,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
     className="css-view-g5y9jx r-flexBasis-1mlwlqe r-overflow-1udh08x r-bottom-1p0dtai r-left-1d2f490 r-position-u8s1d r-right-zchlnj r-top-ipm5af"
     dir={null}
     style={
-      Object {
+      {
         "zIndex": -1,
       }
     }
@@ -348,7 +348,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
         <a
           href="/"
           style={
-            Object {
+            {
               "textDecoration": "none",
               "top": 64,
             }
@@ -358,7 +358,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
             className="css-view-g5y9jx"
             dir={null}
             style={
-              Object {
+              {
                 "flex": 1,
                 "flexDirection": "row",
               }
@@ -372,7 +372,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
                 className="css-text-146c3p1"
                 dir="auto"
                 style={
-                  Object {
+                  {
                     "color": "rgba(0,127,255,1.00)",
                     "fontFamily": "alldone",
                     "fontSize": "24px",
@@ -391,7 +391,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
                 className="css-text-146c3p1"
                 dir="auto"
                 style={
-                  Object {
+                  {
                     "color": "rgba(0,127,255,1.00)",
                     "fontFamily": "alldone",
                     "fontSize": "24px",
@@ -421,7 +421,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
           <a
             href="https://alldone.app/privacy"
             style={
-              Object {
+              {
                 "color": "#007FFF",
                 "textDecoration": "none",
               }
@@ -436,7 +436,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
           <a
             href="https://alldone.app/terms"
             style={
-              Object {
+              {
                 "color": "#007FFF",
                 "textDecoration": "none",
               }
@@ -454,7 +454,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
           onContextMenu={[Function]}
           onKeyDown={[Function]}
           style={
-            Object {
+            {
               "transitionDuration": "0s",
             }
           }
@@ -464,7 +464,7 @@ exports[`LoginScreen component LoginScreen snapshot test should render when ther
             className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-ubezar r-letterSpacing-1wudzfh r-lineHeight-135wba7 r-maxWidth-ybg54k r-paddingBottom-1l7z4oj r-paddingInline-3pj75a r-paddingTop-fd4yh7 r-textAlign-q4m81j"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(0,127,255,1.00)",
               }
             }

@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`AddButton component AddButton empty snapshot test should render correctly 1`] = `
 <button
@@ -6,7 +6,7 @@ exports[`AddButton component AddButton empty snapshot test should render correct
   dir={null}
   role="button"
   style={
-    Object {
+    {
       "overflowX": "hidden",
       "overflowY": "hidden",
     }
@@ -17,7 +17,7 @@ exports[`AddButton component AddButton empty snapshot test should render correct
     className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-z2wwpe r-height-eu3ka r-justifyContent-1777fci r-paddingInline-is05cd"
     dir={null}
     style={
-      Object {
+      {
         "opacity": 1,
       }
     }
@@ -30,7 +30,7 @@ exports[`AddButton component AddButton empty snapshot test should render correct
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(255,255,255,1.00)",
             "fontFamily": "alldone",
             "fontSize": "24px",
@@ -51,7 +51,7 @@ exports[`AddButton component AddButton empty snapshot test should render correct
   dir={null}
   role="button"
   style={
-    Object {
+    {
       "overflowX": "hidden",
       "overflowY": "hidden",
     }
@@ -62,7 +62,7 @@ exports[`AddButton component AddButton empty snapshot test should render correct
     className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-z2wwpe r-height-eu3ka r-justifyContent-1777fci r-paddingInline-is05cd"
     dir={null}
     style={
-      Object {
+      {
         "opacity": 1,
       }
     }
@@ -75,7 +75,7 @@ exports[`AddButton component AddButton empty snapshot test should render correct
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(255,255,255,1.00)",
             "fontFamily": "alldone",
             "fontSize": "24px",

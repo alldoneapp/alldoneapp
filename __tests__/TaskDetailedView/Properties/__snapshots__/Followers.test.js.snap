@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Followers component Followers snapshot test should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`Followers component Followers snapshot test should render correctly 1`]
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "marginRight": "11px",
       }
     }
@@ -22,7 +22,7 @@ exports[`Followers component Followers snapshot test should render correctly 1`]
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(138,148,166,1.00)",
             "fontFamily": "alldone",
             "fontSize": "24px",
@@ -38,7 +38,7 @@ exports[`Followers component Followers snapshot test should render correctly 1`]
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(138,148,166,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "14px",
@@ -53,7 +53,7 @@ exports[`Followers component Followers snapshot test should render correctly 1`]
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "marginLeft": "auto",
       }
     }
@@ -65,7 +65,7 @@ exports[`Followers component Followers snapshot test should render correctly 1`]
       onContextMenu={[Function]}
       onKeyDown={[Function]}
       style={
-        Object {
+        {
           "transitionDuration": "0s",
         }
       }

@@ -73,6 +73,6 @@ describe('WorkflowEstimation component', () => {
         // When
         tree.unmount()
         // Then
-        expect(Backend.offOnUserWorkflowChange).toBeCalledTimes(1)
+        expect(Backend.offOnUserWorkflowChange).toHaveBeenCalledTimes(1)
     })
 })

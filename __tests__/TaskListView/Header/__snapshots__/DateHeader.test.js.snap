@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`DateHeader component DateHeader with text snapshot test should render correctly 1`] = `
 <div
@@ -13,7 +13,7 @@ exports[`DateHeader component DateHeader with text snapshot test should render c
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "flex": 1,
           "flexDirection": "row",
           "justifyContent": "flex-start",
@@ -24,7 +24,7 @@ exports[`DateHeader component DateHeader with text snapshot test should render c
         className="css-text-146c3p1 r-color-1gpwqf8 r-paddingLeft-f727ji r-zIndex-184en5c"
         dir="auto"
         style={
-          Object {
+          {
             "fontFamily": "Roboto-Regular",
             "fontSize": "11px",
             "letterSpacing": "1.5px",

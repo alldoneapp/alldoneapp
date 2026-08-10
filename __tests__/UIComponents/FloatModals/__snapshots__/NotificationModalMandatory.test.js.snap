@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`NotificationModalMandatory component NotificationModalMandatory snapshot test should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`NotificationModalMandatory component NotificationModalMandatory snapsho
     className="css-text-146c3p1 r-color-jwli3a r-fontWeight-majxgm"
     dir="auto"
     style={
-      Object {
+      {
         "fontFamily": "Roboto-Medium",
         "fontSize": "18px",
         "lineHeight": "26px",
@@ -22,7 +22,7 @@ exports[`NotificationModalMandatory component NotificationModalMandatory snapsho
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(138,148,166,1.00)",
         "fontFamily": "Roboto-Regular",
         "fontSize": "14px",
@@ -41,7 +41,7 @@ exports[`NotificationModalMandatory component NotificationModalMandatory snapsho
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "transitionDuration": "0s",
       }
     }
@@ -51,7 +51,7 @@ exports[`NotificationModalMandatory component NotificationModalMandatory snapsho
       className="css-view-g5y9jx"
       dir={null}
       style={
-        Object {
+        {
           "alignItems": "center",
           "flexDirection": "row",
         }
@@ -65,7 +65,7 @@ exports[`NotificationModalMandatory component NotificationModalMandatory snapsho
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(255,255,255,1.00)",
               "fontFamily": "alldone",
               "fontSize": "24px",

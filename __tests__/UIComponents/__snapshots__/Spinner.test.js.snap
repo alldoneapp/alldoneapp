@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Spinner component Spinner snapshot test should render correctly as default 1`] = `
 <div
   className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-gjgjzp r-justifyContent-1777fci"
   dir={null}
   style={
-    Object {
+    {
       "backgroundColor": "rgba(231,236,239,1.00)",
       "height": "24px",
       "maxHeight": "24px",
@@ -20,7 +20,7 @@ exports[`Spinner component Spinner snapshot test should render correctly as defa
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "transform": "rotate(0deg)",
       }
     }
@@ -33,7 +33,7 @@ exports[`Spinner component Spinner snapshot test should render correctly as defa
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(0,127,255,1.00)",
             "fontFamily": "alldone",
             "fontSize": "16px",
@@ -53,7 +53,7 @@ exports[`Spinner component Spinner snapshot test should render correctly passing
   className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-gjgjzp r-justifyContent-1777fci"
   dir={null}
   style={
-    Object {
+    {
       "backgroundColor": "rgba(255,0,0,1.00)",
       "height": "24px",
       "maxHeight": "24px",
@@ -68,7 +68,7 @@ exports[`Spinner component Spinner snapshot test should render correctly passing
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "transform": "rotate(0deg)",
       }
     }
@@ -81,7 +81,7 @@ exports[`Spinner component Spinner snapshot test should render correctly passing
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(0,0,255,1.00)",
             "fontFamily": "alldone",
             "fontSize": "16px",
@@ -101,7 +101,7 @@ exports[`Spinner component Spinner snapshot test should render correctly passing
   className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-gjgjzp r-justifyContent-1777fci"
   dir={null}
   style={
-    Object {
+    {
       "backgroundColor": "rgba(231,236,239,1.00)",
       "height": "100px",
       "maxHeight": "100px",
@@ -116,7 +116,7 @@ exports[`Spinner component Spinner snapshot test should render correctly passing
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "transform": "rotate(0deg)",
       }
     }
@@ -129,7 +129,7 @@ exports[`Spinner component Spinner snapshot test should render correctly passing
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(0,127,255,1.00)",
             "fontFamily": "alldone",
             "fontSize": "70px",

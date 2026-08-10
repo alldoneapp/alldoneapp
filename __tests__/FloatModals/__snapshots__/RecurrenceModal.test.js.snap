@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`RecurrenceModal component Should render correctly 1`] = `
 <div
   className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2 r-overflow-bztko3 r-paddingBottom-xd6kpl r-paddingTop-95jzfe"
   dir={null}
   style={
-    Object {
+    {
       "maxHeight": "736px",
       "maxWidth": "432px",
       "minWidth": "432px",
@@ -17,7 +17,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "flex": 1,
       }
     }
@@ -43,7 +43,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(255,255,255,1.00)",
                 "fontFamily": "Roboto-Medium",
                 "fontSize": "18px",
@@ -57,7 +57,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(138,148,166,1.00)",
                 "fontFamily": "Roboto-Regular",
                 "fontSize": "14px",
@@ -82,7 +82,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -93,7 +93,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -110,7 +110,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -165,7 +165,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -176,7 +176,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -193,7 +193,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -239,7 +239,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -250,7 +250,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -267,7 +267,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -313,7 +313,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -324,7 +324,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -341,7 +341,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -387,7 +387,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -398,7 +398,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -415,7 +415,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -461,7 +461,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -472,7 +472,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -489,7 +489,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -535,7 +535,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -546,7 +546,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -563,7 +563,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -609,7 +609,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -620,7 +620,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -637,7 +637,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -683,7 +683,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -694,7 +694,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -711,7 +711,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -757,7 +757,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               dir={null}
               role="button"
               style={
-                Object {
+                {
                   "overflowX": "hidden",
                   "overflowY": "hidden",
                 }
@@ -768,7 +768,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                 className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-eu3ka r-overflow-bztko3"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "opacity": 1,
                   }
                 }
@@ -785,7 +785,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                       className="css-text-146c3p1"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(255,255,255,1.00)",
                           "fontFamily": "Roboto-Medium",
                           "fontSize": "16px",
@@ -832,7 +832,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
             dir={null}
             role="button"
             style={
-              Object {
+              {
                 "overflowX": "hidden",
                 "overflowY": "hidden",
               }
@@ -843,7 +843,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
               className="css-view-g5y9jx r-alignItems-1awozwy r-justifyContent-1777fci"
               dir={null}
               style={
-                Object {
+                {
                   "opacity": 1,
                 }
               }
@@ -856,7 +856,7 @@ exports[`RecurrenceModal component Should render correctly 1`] = `
                   className="css-text-146c3p1"
                   dir="auto"
                   style={
-                    Object {
+                    {
                       "color": "rgba(138,148,166,1.00)",
                       "fontFamily": "alldone",
                       "fontSize": "24px",

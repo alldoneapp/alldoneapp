@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ColorButton component ColorButton empty snapshot test should render correctly 1`] = `
 <div
@@ -8,7 +8,7 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "backgroundColor": "rgba(250,251,251,1.00)",
       "borderBottomColor": "rgba(198,205,210,1.00)",
       "borderLeftColor": "rgba(198,205,210,1.00)",
@@ -23,7 +23,7 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
     className="css-view-g5y9jx r-borderRadius-18c69zk r-height-10ptun7 r-width-1janqcz"
     dir={null}
     style={
-      Object {
+      {
         "backgroundColor": "rgba(71,222,255,1.00)",
       }
     }
@@ -32,7 +32,7 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
     className="css-text-146c3p1 r-alignItems-1awozwy r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1f529hi r-marginLeft-19u6a5r"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(138,148,166,1.00)",
       }
     }
@@ -50,7 +50,7 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "backgroundColor": "rgba(250,251,251,1.00)",
       "borderBottomColor": "rgba(198,205,210,1.00)",
       "borderLeftColor": "rgba(198,205,210,1.00)",
@@ -65,7 +65,7 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
     className="css-view-g5y9jx r-borderRadius-18c69zk r-height-10ptun7 r-width-1janqcz"
     dir={null}
     style={
-      Object {
+      {
         "backgroundColor": "rgba(71,222,255,1.00)",
       }
     }
@@ -74,7 +74,7 @@ exports[`ColorButton component ColorButton empty snapshot test should render cor
     className="css-text-146c3p1 r-alignItems-1awozwy r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1f529hi r-marginLeft-19u6a5r"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(138,148,166,1.00)",
       }
     }

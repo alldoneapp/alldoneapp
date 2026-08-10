@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ProjectHeader component ProjectHeader snapshot test should render correctly 1`] = `
 <div
@@ -17,7 +17,7 @@ exports[`ProjectHeader component ProjectHeader snapshot test should render corre
         className="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-18u37iz r-flexShrink-1wbh5a2 r-minWidth-bcqeeo"
         dir={null}
         style={
-          Object {
+          {
             "maxWidth": "auto",
           }
         }
@@ -29,7 +29,7 @@ exports[`ProjectHeader component ProjectHeader snapshot test should render corre
           onContextMenu={[Function]}
           onKeyDown={[Function]}
           style={
-            Object {
+            {
               "transitionDuration": "0s",
             }
           }
@@ -52,7 +52,7 @@ exports[`ProjectHeader component ProjectHeader snapshot test should render corre
               className="css-text-146c3p1"
               dir="auto"
               style={
-                Object {
+                {
                   "color": "rgba(255,255,255,1.00)",
                   "fontFamily": "alldone",
                   "fontSize": "19px",

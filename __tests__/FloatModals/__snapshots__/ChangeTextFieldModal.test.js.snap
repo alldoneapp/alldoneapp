@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Should render correctly 1`] = `
 <div
   className="css-view-g5y9jx r-backgroundColor-nqymb2 r-borderRadius-z2wwpe r-boxShadow-v80qx2"
   dir={null}
   style={
-    Object {
+    {
       "maxHeight": "736px",
       "maxWidth": "432px",
       "minWidth": "432px",
@@ -17,7 +17,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
     className="css-view-g5y9jx r-paddingBottom-1l7z4oj r-paddingLeft-1qhn6m8 r-paddingRight-i023vh r-paddingTop-95jzfe"
     dir={null}
     style={
-      Object {
+      {
         "flex": 1,
       }
     }
@@ -39,7 +39,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
           className="css-view-g5y9jx"
           dir={null}
           style={
-            Object {
+            {
               "marginBottom": "20px",
             }
           }
@@ -48,7 +48,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
             className="css-text-146c3p1"
             dir="auto"
             style={
-              Object {
+              {
                 "color": "rgba(255,255,255,1.00)",
                 "fontFamily": "Roboto-Medium",
                 "fontSize": "18px",
@@ -84,7 +84,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
             rows={1}
             spellCheck={true}
             style={
-              Object {
+              {
                 "--placeholderTextColor": "#8A94A6",
               }
             }
@@ -103,7 +103,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -113,7 +113,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
               className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
               dir="auto"
               style={
-                Object {
+                {
                   "marginLeft": "0px",
                 }
               }
@@ -131,7 +131,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
             dir={null}
             role="button"
             style={
-              Object {
+              {
                 "overflowX": "hidden",
                 "overflowY": "hidden",
               }
@@ -142,7 +142,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
               className="css-view-g5y9jx r-alignItems-1awozwy r-justifyContent-1777fci"
               dir={null}
               style={
-                Object {
+                {
                   "opacity": 1,
                 }
               }
@@ -155,7 +155,7 @@ exports[`ChangeTextFieldModal component ChangeTextFieldModal snapshot test Shoul
                   className="css-text-146c3p1"
                   dir="auto"
                   style={
-                    Object {
+                    {
                       "color": "rgba(138,148,166,1.00)",
                       "fontFamily": "alldone",
                       "fontSize": "24px",

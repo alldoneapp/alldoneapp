@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`FollowingSwitch component should render correctly 1`] = `
 <div
@@ -13,7 +13,7 @@ exports[`FollowingSwitch component should render correctly 1`] = `
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(78,93,120,1.00)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "16px",
@@ -30,7 +30,7 @@ exports[`FollowingSwitch component should render correctly 1`] = `
     dir={null}
     role="button"
     style={
-      Object {
+      {
         "overflowX": "hidden",
         "overflowY": "hidden",
       }
@@ -45,7 +45,7 @@ exports[`FollowingSwitch component should render correctly 1`] = `
         className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-10jnvle r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1472mwg r-paddingRight-rierb r-width-1mhb1uw"
         dir={null}
         style={
-          Object {
+          {
             "backgroundColor": "rgba(231,236,239,1.00)",
             "borderBottomColor": "rgba(231,236,239,1.00)",
             "borderLeftColor": "rgba(231,236,239,1.00)",
@@ -78,7 +78,7 @@ exports[`FollowingSwitch component should render correctly after call onPress wi
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(78,93,120,1.00)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "16px",
@@ -95,7 +95,7 @@ exports[`FollowingSwitch component should render correctly after call onPress wi
     dir={null}
     role="button"
     style={
-      Object {
+      {
         "overflowX": "hidden",
         "overflowY": "hidden",
       }
@@ -110,7 +110,7 @@ exports[`FollowingSwitch component should render correctly after call onPress wi
         className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-10jnvle r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1472mwg r-paddingRight-rierb r-width-1mhb1uw"
         dir={null}
         style={
-          Object {
+          {
             "backgroundColor": "rgba(231,236,239,1.00)",
             "borderBottomColor": "rgba(231,236,239,1.00)",
             "borderLeftColor": "rgba(231,236,239,1.00)",
@@ -143,7 +143,7 @@ exports[`FollowingSwitch component should render correctly after call onPress wi
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(78,93,120,1.00)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "16px",
@@ -160,7 +160,7 @@ exports[`FollowingSwitch component should render correctly after call onPress wi
     dir={null}
     role="button"
     style={
-      Object {
+      {
         "overflowX": "hidden",
         "overflowY": "hidden",
       }
@@ -175,7 +175,7 @@ exports[`FollowingSwitch component should render correctly after call onPress wi
         className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-10jnvle r-borderWidth-rs99b7 r-flexDirection-18u37iz r-height-1472mwg r-paddingRight-rierb r-width-1mhb1uw"
         dir={null}
         style={
-          Object {
+          {
             "backgroundColor": "rgba(231,236,239,1.00)",
             "borderBottomColor": "rgba(231,236,239,1.00)",
             "borderLeftColor": "rgba(231,236,239,1.00)",

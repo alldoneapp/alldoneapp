@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`EditMember component EditMember snapshot test should render correctly 1`] = `
 <div
@@ -21,7 +21,7 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
           className="css-text-146c3p1"
           dir="auto"
           style={
-            Object {
+            {
               "color": "rgba(0,127,255,1.00)",
               "fontFamily": "alldone",
               "fontSize": "24px",
@@ -36,8 +36,8 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
     <CustomTextInput3
       autoFocus={true}
       containerStyle={
-        Array [
-          Object {
+        [
+          {
             "borderTopLeftRadius": 4,
             "borderTopRightRadius": 4,
             "color": "#04142F",
@@ -74,7 +74,7 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
         className="css-view-g5y9jx"
         dir={null}
         style={
-          Object {
+          {
             "marginRight": "32px",
           }
         }
@@ -91,7 +91,7 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "marginRight": "4px",
             "transitionDuration": "0s",
           }
@@ -102,7 +102,7 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-qmo3aw"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "0px",
             }
           }
@@ -118,7 +118,7 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
         onContextMenu={[Function]}
         onKeyDown={[Function]}
         style={
-          Object {
+          {
             "transitionDuration": "0s",
           }
         }
@@ -128,7 +128,7 @@ exports[`EditMember component EditMember snapshot test should render correctly 1
           className="css-text-146c3p1 r-maxWidth-dnmrzs r-overflow-1udh08x r-textOverflow-1udbk01 r-whiteSpace-3s2u2q r-wordWrap-1iln25a r-alignSelf-1kihuf0 r-flexWrap-tzz3ar r-fontFamily-1k9400p r-fontSize-1b43r93 r-letterSpacing-1smd7e2 r-lineHeight-1cwl3u0 r-margin-crgep1 r-paddingBlock-1mkv55d r-paddingInline-1e084wi r-color-jwli3a"
           dir="auto"
           style={
-            Object {
+            {
               "marginLeft": "0px",
             }
           }

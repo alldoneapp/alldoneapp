@@ -46,7 +46,7 @@ describe('ActionButton component', () => {
         // When
         fireEvent.press(touchableOpacity)
         // Then
-        expect(mockFn).toBeCalledTimes(1)
+        expect(mockFn).toHaveBeenCalledTimes(1)
     })
 
     it('should not invoke onPress', () => {
@@ -57,7 +57,7 @@ describe('ActionButton component', () => {
         // When
         fireEvent.press(touchableOpacity)
         // Then
-        expect(mockFn).toBeCalledTimes(0)
+        expect(mockFn).toHaveBeenCalledTimes(0)
     })
 
     it('should hide the Popover', () => {

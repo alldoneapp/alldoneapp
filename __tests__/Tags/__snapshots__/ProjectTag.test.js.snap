@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`Project tag component Project tag snapshot test should render correctly 1`] = `
 <div
@@ -8,7 +8,7 @@ exports[`Project tag component Project tag snapshot test should render correctly
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -18,7 +18,7 @@ exports[`Project tag component Project tag snapshot test should render correctly
     className="css-view-g5y9jx r-alignItems-1awozwy r-backgroundColor-1v0ekwd r-borderRadius-18c69zk r-flexDirection-18u37iz r-height-1472mwg r-justifyContent-1777fci"
     dir={null}
     style={
-      Object {
+      {
         "marginLeft": "16px",
         "marginRight": "16px",
       }
@@ -28,7 +28,7 @@ exports[`Project tag component Project tag snapshot test should render correctly
       className="css-view-g5y9jx r-alignItems-1awozwy r-borderRadius-18c69zk r-justifyContent-1777fci"
       dir={null}
       style={
-        Object {
+        {
           "backgroundColor": "rgba(255,240,0,1.00)",
           "height": "12px",
           "marginLeft": "6px",
@@ -41,7 +41,7 @@ exports[`Project tag component Project tag snapshot test should render correctly
       className="css-text-146c3p1 r-color-hiecfz r-marginBlock-s49dbf r-marginLeft-9cviqr r-marginRight-zso239"
       dir="auto"
       style={
-        Object {
+        {
           "fontFamily": "Roboto-Medium",
           "fontSize": "14px",
           "letterSpacing": "0.16px",

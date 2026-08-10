@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`WorkflowHeader component should render correctly when there are no steps 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`WorkflowHeader component should render correctly when there are no step
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(4,20,47,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "20px",
@@ -23,7 +23,7 @@ exports[`WorkflowHeader component should render correctly when there are no step
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "height": "28px",
         "justifyContent": "flex-end",
         "marginLeft": "16px",
@@ -34,7 +34,7 @@ exports[`WorkflowHeader component should render correctly when there are no step
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(78,93,120,1.00)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "12px",
@@ -58,7 +58,7 @@ exports[`WorkflowHeader component should render correctly when there are two ste
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(4,20,47,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "20px",
@@ -72,7 +72,7 @@ exports[`WorkflowHeader component should render correctly when there are two ste
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "height": "28px",
         "justifyContent": "flex-end",
         "marginLeft": "16px",
@@ -83,7 +83,7 @@ exports[`WorkflowHeader component should render correctly when there are two ste
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(78,93,120,1.00)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "12px",
@@ -107,7 +107,7 @@ exports[`WorkflowHeader component should render correctly when there is one step
     className="css-text-146c3p1"
     dir="auto"
     style={
-      Object {
+      {
         "color": "rgba(4,20,47,1.00)",
         "fontFamily": "Roboto-Medium",
         "fontSize": "20px",
@@ -121,7 +121,7 @@ exports[`WorkflowHeader component should render correctly when there is one step
     className="css-view-g5y9jx"
     dir={null}
     style={
-      Object {
+      {
         "height": "28px",
         "justifyContent": "flex-end",
         "marginLeft": "16px",
@@ -132,7 +132,7 @@ exports[`WorkflowHeader component should render correctly when there is one step
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(78,93,120,1.00)",
           "fontFamily": "Roboto-Regular",
           "fontSize": "12px",

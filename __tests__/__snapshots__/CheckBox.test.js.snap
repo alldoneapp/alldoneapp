@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`CheckBox component CheckBox checked snapshot test should render correctly 1`] = `
 <div
@@ -13,7 +13,7 @@ exports[`CheckBox component CheckBox checked snapshot test should render correct
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(255,255,255,1.00)",
           "fontFamily": "alldone",
           "fontSize": "16px",
@@ -47,7 +47,7 @@ exports[`CheckBox component CheckBox subtask checked snapshot test should render
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(255,255,255,1.00)",
           "fontFamily": "alldone",
           "fontSize": "16px",

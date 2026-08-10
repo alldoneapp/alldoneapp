@@ -26,7 +26,7 @@ describe('ContactsHelper class', () => {
         const navigation = { navigate: () => {} }
         URLsPeople.replace = jest.fn()
         ContactsHelper.processURLAllProjectsPeople(navigation)
-        expect(URLsPeople.replace).toBeCalledWith(URL_ALL_PROJECTS_PEOPLE_FOLLOWED)
+        expect(URLsPeople.replace).toHaveBeenCalledWith(URL_ALL_PROJECTS_PEOPLE_FOLLOWED)
     })
 
     it('should execute processURLProjectPeople correctly', () => {
@@ -43,7 +43,7 @@ describe('ContactsHelper class', () => {
         const navigation = { navigate: () => {} }
         URLsPeople.replace = jest.fn()
         ContactsHelper.processURLPeopleDetails(navigation, 0, 0, 0)
-        expect(URLsPeople.replace).toBeCalledTimes(0)
+        expect(URLsPeople.replace).toHaveBeenCalledTimes(0)
     })
 })
 

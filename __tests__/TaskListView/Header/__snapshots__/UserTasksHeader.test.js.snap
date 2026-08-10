@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`UserTasksHeader component UserTasksHeader empty snapshot test should render correctly for basic header 1`] = `
 <div
@@ -28,7 +28,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -48,7 +48,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -68,7 +68,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -88,7 +88,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -108,7 +108,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -135,7 +135,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             className="css-view-g5y9jx"
             dir={null}
             style={
-              Object {
+              {
                 "alignSelf": "center",
               }
             }
@@ -148,7 +148,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                 className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "transform": "translateX(0px)",
                     "width": "0px",
                   }
@@ -165,7 +165,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -185,7 +185,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                       className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1b43r93 r-height-18yzcnr r-letterSpacing-3da313 r-lineHeight-hbpseb r-maxHeight-rcggws r-minHeight-12sks89"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(0,127,255,1.00)",
                           "paddingRight": "12px",
                         }
@@ -202,7 +202,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -222,7 +222,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                       className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1b43r93 r-height-18yzcnr r-letterSpacing-3da313 r-lineHeight-hbpseb r-maxHeight-rcggws r-minHeight-12sks89"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(138,148,166,1.00)",
                           "paddingRight": "12px",
                         }
@@ -270,7 +270,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -290,7 +290,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -310,7 +310,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -330,7 +330,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -350,7 +350,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -377,7 +377,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
             className="css-view-g5y9jx"
             dir={null}
             style={
-              Object {
+              {
                 "alignSelf": "center",
               }
             }
@@ -390,7 +390,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                 className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
                 dir={null}
                 style={
-                  Object {
+                  {
                     "transform": "translateX(0px)",
                     "width": "0px",
                   }
@@ -407,7 +407,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -427,7 +427,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                       className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1b43r93 r-height-18yzcnr r-letterSpacing-3da313 r-lineHeight-hbpseb r-maxHeight-rcggws r-minHeight-12sks89"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(0,127,255,1.00)",
                           "paddingRight": "12px",
                         }
@@ -444,7 +444,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                   onContextMenu={[Function]}
                   onKeyDown={[Function]}
                   style={
-                    Object {
+                    {
                       "transitionDuration": "0s",
                     }
                   }
@@ -464,7 +464,7 @@ exports[`UserTasksHeader component UserTasksHeader empty snapshot test should re
                       className="css-text-146c3p1 r-fontFamily-k9x4vz r-fontSize-1b43r93 r-height-18yzcnr r-letterSpacing-3da313 r-lineHeight-hbpseb r-maxHeight-rcggws r-minHeight-12sks89"
                       dir="auto"
                       style={
-                        Object {
+                        {
                           "color": "rgba(138,148,166,1.00)",
                           "paddingRight": "12px",
                         }

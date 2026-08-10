@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ProjectsSettingsHeader component ProjectsSettingsHeader snapshot test should render correctly 1`] = `
 <div
@@ -13,7 +13,7 @@ exports[`ProjectsSettingsHeader component ProjectsSettingsHeader snapshot test s
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(4,20,47,1.00)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "20px",
@@ -31,7 +31,7 @@ exports[`ProjectsSettingsHeader component ProjectsSettingsHeader snapshot test s
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(78,93,120,1.00)",
             "fontFamily": "Roboto-Regular",
             "fontSize": "12px",
@@ -60,7 +60,7 @@ exports[`ProjectsSettingsHeader component ProjectsSettingsHeader snapshot test s
           className="css-view-g5y9jx r-backgroundColor-1o3jrms r-borderRadius-1q9bdsx r-boxShadow-2on7lt r-height-18yzcnr r-position-u8s1d"
           dir={null}
           style={
-            Object {
+            {
               "transform": "translateX(0px)",
               "width": "0px",
             }
@@ -77,7 +77,7 @@ exports[`ProjectsSettingsHeader component ProjectsSettingsHeader snapshot test s
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -102,7 +102,7 @@ exports[`ProjectsSettingsHeader component ProjectsSettingsHeader snapshot test s
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }
@@ -127,7 +127,7 @@ exports[`ProjectsSettingsHeader component ProjectsSettingsHeader snapshot test s
             onContextMenu={[Function]}
             onKeyDown={[Function]}
             style={
-              Object {
+              {
                 "transitionDuration": "0s",
               }
             }

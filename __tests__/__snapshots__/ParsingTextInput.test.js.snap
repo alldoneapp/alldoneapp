@@ -1,11 +1,11 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`ParsingTextInput component ParsingTextInput snapshot test should render correctly 1`] = `
 <div
   className="css-view-g5y9jx"
   dir={null}
   style={
-    Object {
+    {
       "flexDirection": "row",
     }
   }
@@ -17,7 +17,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
     onContextMenu={[Function]}
     onKeyDown={[Function]}
     style={
-      Object {
+      {
         "flex": 1,
         "transitionDuration": "0s",
       }
@@ -33,7 +33,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
       onTouchStart={[Function]}
       onWheel={[Function]}
       style={
-        Object {
+        {
           "flex": 1,
         }
       }
@@ -62,7 +62,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
             rows={1}
             spellCheck={true}
             style={
-              Object {
+              {
                 "caretColor": "#0C66FF",
                 "outlineWidth": "0px",
                 "width": "0px",
@@ -79,7 +79,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
               className="css-textHasAncestor-1jxf684"
               dir={null}
               style={
-                Object {
+                {
                   "color": "rgba(4,20,47,1.00)",
                   "fontFamily": "Roboto-Regular",
                   "fontSize": "16px",
@@ -100,7 +100,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
               className="css-textHasAncestor-1jxf684"
               dir={null}
               style={
-                Object {
+                {
                   "color": "rgba(7,168,115,1.00)",
                   "fontFamily": "Roboto-Regular",
                   "fontSize": "16px",
@@ -121,7 +121,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
               className="css-textHasAncestor-1jxf684"
               dir={null}
               style={
-                Object {
+                {
                   "color": "rgba(112,46,230,1.00)",
                   "fontFamily": "Roboto-Regular",
                   "fontSize": "16px",
@@ -142,7 +142,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
               className="css-textHasAncestor-1jxf684"
               dir={null}
               style={
-                Object {
+                {
                   "color": "rgba(245,142,10,1.00)",
                   "fontFamily": "Roboto-Regular",
                   "fontSize": "16px",
@@ -163,7 +163,7 @@ exports[`ParsingTextInput component ParsingTextInput snapshot test should render
               className="css-textHasAncestor-1jxf684"
               dir={null}
               style={
-                Object {
+                {
                   "color": "rgba(90,172,255,1.00)",
                   "fontFamily": "Roboto-Regular",
                   "fontSize": "16px",

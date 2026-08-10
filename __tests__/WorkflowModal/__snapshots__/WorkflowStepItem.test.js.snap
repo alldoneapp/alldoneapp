@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`WorkflowStepItem should render correctly 1`] = `
 <div
@@ -9,7 +9,7 @@ exports[`WorkflowStepItem should render correctly 1`] = `
   onContextMenu={[Function]}
   onKeyDown={[Function]}
   style={
-    Object {
+    {
       "transitionDuration": "0s",
     }
   }
@@ -27,7 +27,7 @@ exports[`WorkflowStepItem should render correctly 1`] = `
         className="css-text-146c3p1"
         dir="auto"
         style={
-          Object {
+          {
             "color": "rgba(0,127,255,1.00)",
             "fontFamily": "alldone",
             "fontSize": "23px",
@@ -42,7 +42,7 @@ exports[`WorkflowStepItem should render correctly 1`] = `
       className="css-text-146c3p1"
       dir="auto"
       style={
-        Object {
+        {
           "color": "rgba(0,127,255,1.00)",
           "fontFamily": "Roboto-Medium",
           "fontSize": "16px",
@@ -61,7 +61,7 @@ exports[`WorkflowStepItem should render correctly 1`] = `
       className="css-text-146c3p1 r-color-hiecfz r-fontWeight-majxgm r-marginRight-1d4mawv"
       dir="auto"
       style={
-        Object {
+        {
           "fontFamily": "Roboto-Medium",
           "fontSize": "12px",
           "letterSpacing": "0.48px",
@@ -75,7 +75,7 @@ exports[`WorkflowStepItem should render correctly 1`] = `
       className="css-view-g5y9jx r-flexBasis-1mlwlqe r-overflow-1udh08x r-zIndex-417010 r-borderRadius-18c69zk r-height-1472mwg r-width-lrsllp"
       dir={null}
       style={
-        Object {
+        {
           "borderBottomColor": "rgba(0,127,255,1.00)",
           "borderBottomWidth": "2px",
           "borderLeftColor": "rgba(0,127,255,1.00)",

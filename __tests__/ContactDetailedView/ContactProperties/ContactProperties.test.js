@@ -68,7 +68,7 @@ describe('ContactProperties component', () => {
         var mockFn = jest.fn()
         tree.getInstance().state.unsubscribe = mockFn
         tree.unmount()
-        expect(mockFn).toBeCalledTimes(1)
+        expect(mockFn).toHaveBeenCalledTimes(1)
     })
 
     it('should showModal correctly', () => {
