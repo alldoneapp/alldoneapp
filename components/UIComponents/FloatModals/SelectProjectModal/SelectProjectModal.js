@@ -43,7 +43,6 @@ import { DEFAULT_WORKSTREAM_ID } from '../../../Workstreams/WorkstreamHelper'
 import { translate } from '../../../../i18n/TranslationService'
 import { setTaskAssignee, setTaskProject } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { setNoteProject } from '../../../../utils/backends/Notes/notesFirestore'
-import { findNoteOwnerInProject, resolveMovedNoteOwnerId } from '../../../NotesView/NoteFilters/noteOwnerFilterHelper'
 import { moveChatOnMoveObjectFromProject } from '../../../../utils/backends/Chats/chatsFirestore'
 import { moveInnerFeedsOnMoveObjectFromProject } from '../../../../utils/backends/firestore'
 import { updateGoalProject } from '../../../../utils/backends/Goals/goalsFirestore'
@@ -202,21 +201,11 @@ export default function SelectProjectModal({
                 setActiveOptionIndex(activeOptionIndex)
             } else if (type === 'note') {
                 const note = data
-                // A note can be owned by an assistant since AT-2194, and an assistant is not a
-                // project *user*. The old `getUserInProject` member check therefore resolved to
-                // undefined for every assistant-owned note and reassigned it to the acting human
-                // — and it did so by mutating `note.userId` BEFORE `setNoteProject` ran, which
-                // bypassed `resolveMovedNoteOwnerId` (notesFirestore.js) entirely, defeating the
-                // guard that exists precisely to keep an assistant owner across a move.
-                //
-                // Mirror the task branch above, which already uses the cross-project-aware
-                // `TasksHelper.getTaskOwner`: resolve the owner with the notes resolver and let
-                // the backend stay the single authority on whether it survives the move.
-                const noteOwner = findNoteOwnerInProject(project.id, note.userId)
-                const movedOwnerId = resolveMovedNoteOwnerId(newProject.id, note.userId, loggedUser.uid)
+                const noteOwner = TasksHelper.getUserInProject(project.id, note.userId)
 
                 dispatch(startLoadingData())
-                if (movedOwnerId !== note.userId) {
+                if (!newProject.userIds.includes(noteOwner?.uid)) {
+                    note.userId = loggedUser.uid
                     setNoteProject(project, newProject, note, noteOwner, loggedUser).then(() => {
                         dispatch(stopLoadingData())
                     })

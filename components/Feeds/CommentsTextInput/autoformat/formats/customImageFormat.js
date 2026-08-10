@@ -1,5 +1,5 @@
 import React, { createRef } from 'react'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import ReactDOM from 'react-dom'
 import v4 from 'uuid/v4'
 
@@ -63,8 +63,8 @@ export default class CustomImageFormat extends Embed {
         return commentData
     }
 
-    constructor(domNode) {
-        super(domNode)
+    constructor(scroll, domNode) {
+        super(scroll, domNode)
         this.id = domNode.getAttribute('data-id')
         this.data = CustomImageFormat.data
     }

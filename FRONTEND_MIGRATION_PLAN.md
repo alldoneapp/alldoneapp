@@ -174,6 +174,73 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
+-   2026-08-10 — **Stage 4 core landed on `frontend-migration-stage-4`** (quill 1.3.7 →
+    2.0.3, react-quill 2.0.0-beta.2 → react-quill-new 3.8.3, quill-cursors 3.0.1 → 5.0.0,
+    y-quill 0.1.4-patched → 1.0.0 stock, yjs 13.4.7 → 13.6.32 root + `functions/` in
+    lockstep). Staging QA is the remaining exit gate.
+
+    -   **All three collab patches in `replacement_node_modules` retired.** The quill dist
+        patch (141 semantic lines, extracted by prettier-normalizing both bundles) became
+        app code in `components/Feeds/CommentsTextInput/quill2Setup.js`: an `editorMeta`
+        module replaces the patched constructor (placeholder-metadata decode, per-editor
+        classes, `enablePasteListener`), a Clipboard subclass gates quill 2's new
+        copy/cut/paste root captures (quill 1 never captured copy/cut — leaving cut
+        ungated would double-delete, since the app's own `onCopy` cut path also deletes
+        the selection), a History subclass restores the `beforeUndoRedo` hook, and a Snow
+        theme subclass re-implements `data-html` toolbar/picker injection, the
+        header-picker selected-icon label, the chevron, and removes quill's cmd+K link
+        binding. Deliberately NOT re-derived: the link-tooltip preview for `url` embeds
+        and its parchment `descendant({blotName:'url'})` support hunk (UrlWrapper's own
+        interaction popup covers it; nothing else calls `descendant` with an object).
+    -   **The y-quill patch (yjs#474 applyDelta-null workaround + insert-bleed
+        prevention) is obsolete upstream** — verified empirically before adopting: yjs
+        13.6.32 removes formatting via null attributes and no longer inherits attributes
+        on applyDelta inserts. Both behaviors, plus background-"None", persist-then-reload
+        bleed, remote-insert negation, and two-client convergence, are pinned by
+        `yQuillBinding.test.js` (runs the real y-quill 1.0 binding against a minimal
+        quill stand-in). `y-webrtc` and `y-indexeddb` were deleted outright — notes
+        collab has used y-websocket for years; the WebRTC path (and the patch's
+        room-guard removal + app-code import) was dead. `quill-paste-smart` and
+        `quill-image-drop-module` were also removed (imports were already commented
+        out), which takes `dompurify` out of the tree entirely.
+    -   **13.4.7-document compatibility is pinned by fixtures**: real
+        `encodeStateAsUpdate` blobs generated with yjs 13.4.7 (rich text, all nine custom
+        embeds, format boundaries — two of them carrying 13.4's authentic
+        inheritance-bug artifacts, like production docs do) are embedded in
+        `__tests__/Yjs/yjs1347Compat.test.js` and must decode to the exact 13.4.7 delta,
+        survive edit → persist → reload delta-identically and byte-stably, and keep
+        honoring `TemplatesHelper`'s mutate-`toDelta()`-embeds-by-reference contract.
+        Cross-version merge (13.6-written update into a live 13.4 client) was verified in
+        the migration scratchpad — wire format v1 is unchanged.
+    -   **Quill 2 API port** across the ~30 editor files: all 11 custom embed blots to
+        the parchment-3 `constructor(scroll, domNode)` signature; keyboard bindings from
+        keyCodes to key strings (`bindings[9]`/`[13]` → `'Tab'`/`'Enter'` — v2 keys the
+        map by `event.key`, so the numeric idiom silently no-ops); `clipboard.convert( string)` → `convert({ html })` (4 sites); `Attributor.Style` →
+        `StyleAttributor` (kept style-based on purpose — an attribute attributor would
+        wake the dormant autoformat-helper flow); `options.formats` null guard;
+        `getBounds` null guards; `UrlInline` deleted (dead code whose `allowedChildren`
+        held a React Native component). `react-quill-new` is a props-compatible drop-in
+        (verified: same `value`/`onChange`/`getEditor`/`ReactQuill.Quill` surface, and
+        its `setEditorContents` already uses the v2 convert form); its runtime has no
+        named `Quill` export, so registry-only files import `quill` directly. Root pin
+        is exact `quill@2.0.3` so react-quill-new's `~2.0.3` dedupes to ONE registry.
+    -   **Jest**: the root suite transforms all of node_modules (the long-standing
+        malformed `transformIgnorePatterns` regex), which is what lets jest 25 on Node 14
+        digest the ESM-only quill 2 / react-quill-new / parchment 3 / lib0 chain; the one
+        real gap was `global.crypto` for lib0's webcrypto module (Node 14 has none) —
+        polyfilled in `ci/jestSetup.js` with a `randomFillSync`-backed shim. Functions
+        suite (Node 22): 1661/1663 green with yjs 13.6.32 — the 2 failures are a
+        pre-existing master issue in `calendarProjectRoutingConfig.test.js` (stale
+        GPT-model default assertions, spun off as its own task).
+    -   **Remaining for stage acceptance**: full root jest + web-bundler prod build green
+        (running), local boot check, branch CI (rebuilds branch-scoped images — lockfile
+        changed), `deploy:web-staging-live`, then the user's logged-in collab QA: two
+        browsers on one note (concurrent typing, cursors), format removal + background
+        "None" + reload (no bleed), paste (markdown/html/plain) in notes vs chat inputs,
+        mentions modal Enter/Tab handling, drag-drop file onto note, undo/redo incl.
+        hashtag colors, header picker + mobile popups rendering, markdown tables, and
+        old real production notes opening byte-identical before/after an edit session.
+
 -   2026-08-05 — **Stage 3 step 1 executed and ACCEPTED ON STAGING: firebase 8.10.1 →
     12.17.1 via `firebase/compat`** (step 2 — file-by-file modular conversion behind
     BackendBridge — deliberately waits, per the stage discipline). Branch

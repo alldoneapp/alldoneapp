@@ -34,7 +34,7 @@ import {
     WORKFLOW_MODAL_ID,
 } from '../../../../ModalsManager/modalsManager'
 import { REGEX_URL } from '../../../Utils/HelperFunctions'
-import ReactQuill from 'react-quill'
+import ReactQuill from 'react-quill-new'
 import EditObjectsInLinks from '../../../../EditObjectsInLinks/EditObjectsInLinks'
 
 const Delta = ReactQuill.Quill.import('delta')

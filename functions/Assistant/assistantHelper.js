@@ -80,9 +80,8 @@ const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver'
 const {
     buildVmJobTaskName,
     buildVmJobTaskDescription,
-    collectStartedVmJobs,
+    normalizeStartedVmJob,
     ensureVmHostThreadLinksInResponse,
-    startsVmJobInCurrentThread,
 } = require('./vmHostTaskHelper')
 const {
     addTimestampToContextContent,
@@ -2364,7 +2363,10 @@ async function collectAssistantTextWithToolCalls({
                 const createdNote = normalizeCreatedNote(toolResult)
                 if (createdNote) createdNoteResults.push(createdNote)
             }
-            collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
+            if (toolName === 'execute_task_in_vm') {
+                const startedVmJob = normalizeStartedVmJob(toolResult)
+                if (startedVmJob) startedVmJobResults.push(startedVmJob)
+            }
             const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
             pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
             toolExecutions.push({
@@ -5486,23 +5488,11 @@ async function executeToolNatively(
 
             try {
                 // Create note using unified service
-                // AT-2194: the assistant owns the notes it creates. `userId` here is the
-                // acting user (kept as creator/follower and in isVisibleInFollowedFor, so the
-                // note still shows up in that user's default "Followed" notes tab); `ownerId`
-                // is what the notes list avatar and the owner filter read.
-                //
-                // `assistantId` is the assistant that actually ran this tool, so it owns the
-                // note even when it is a default-project assistant working in another project:
-                // clients resolve assistant owners across the user's projects, not only inside
-                // the rendered one (see `findNoteOwnerInProject`).
-                const noteOwnerId = assistantId || creatorId
                 const result = await cachedNoteService.createAndPersistNote(
                     {
                         title: toolArgs.title,
                         content: toolArgs.content,
                         userId: creatorId,
-                        ownerId: noteOwnerId,
-                        creatorId: creatorId,
                         projectId: projectId,
                         isPrivate: false,
                         feedUser,
@@ -5600,6 +5590,7 @@ async function executeToolNatively(
             const effectiveDate = recentHours !== null ? null : toolArgs.date || null
             const taskScope = normalizeAssistantTaskScope(toolArgs.scope)
             let tasks = []
+            let retrievalIssues = null
             if (toolArgs.allProjects) {
                 const projectIds = projectsData.map(p => p.id)
                 const result = await retrievalService.getTasksFromMultipleProjects(
@@ -5621,6 +5612,37 @@ async function executeToolNatively(
                     }, {})
                 )
                 tasks = result.tasks || []
+
+                // A per-project query can fail (missing index, permissions, transient error) while the
+                // aggregate still resolves "successfully" with an empty task list. Never let that reach
+                // the model as a plain empty result - it is indistinguishable from "this user has no tasks".
+                const projectOutcomes = Object.entries(result.projectSummary || {})
+                const failedProjects = projectOutcomes.filter(([, summary]) => summary && summary.success === false)
+
+                if (projectOutcomes.length > 0 && failedProjects.length === projectOutcomes.length) {
+                    const [, firstFailure] = failedProjects[0]
+                    throw new Error(
+                        `Task retrieval failed for all ${failedProjects.length} project(s), so no task data could be read. ` +
+                            `This is an error, not an empty task list - do not tell the user they have no tasks. ` +
+                            `First error: ${firstFailure.error || 'unknown error'}`
+                    )
+                }
+
+                if (failedProjects.length > 0) {
+                    retrievalIssues = {
+                        resultsAreIncomplete: true,
+                        projectsQueried: projectOutcomes.length,
+                        projectsFailed: failedProjects.length,
+                        note:
+                            'Some projects could not be queried. The returned tasks are incomplete - say so explicitly ' +
+                            'instead of implying the failed projects contain no tasks.',
+                        failedProjects: failedProjects.slice(0, 10).map(([failedProjectId, summary]) => ({
+                            projectId: failedProjectId,
+                            projectName: summary.projectName || failedProjectId,
+                            error: summary.error || 'unknown error',
+                        })),
+                    }
+                }
             } else {
                 const targetProject = resolveAssistantTaskProject(
                     projectsData,
@@ -5655,6 +5677,8 @@ async function executeToolNatively(
                 limit: taskLimit,
                 recentHours: recentHours || null,
                 scope: taskScope,
+                projectsFailed: retrievalIssues ? retrievalIssues.projectsFailed : 0,
+                firstProjectError: retrievalIssues ? retrievalIssues.failedProjects[0].error : null,
             })
 
             return {
@@ -5662,6 +5686,7 @@ async function executeToolNatively(
                 count: tasks.length,
                 recentHours: recentHours || null,
                 scope: taskScope,
+                ...(retrievalIssues ? { retrieval: retrievalIssues } : {}),
                 scopeDescription:
                     taskScope === 'mine'
                         ? 'Only tasks owned by the requesting user are returned. Shared project visibility does not make another user task personal.'
@@ -5671,6 +5696,7 @@ async function executeToolNatively(
                     currentToolStatusMustComeFromTopLevelResult: true,
                     sharedVisibleTasksAreNotPersonal: taskScope === 'visible',
                     historicalFields: ['tasks[].comments', 'tasks[].commentsData'],
+                    emptyResultIsOnlyAuthoritativeWithoutRetrievalIssues: true,
                 },
             }
         }
@@ -9147,8 +9173,6 @@ async function executeToolNatively(
                     success: result.success,
                     calendarId: result.calendarId || toolArgs.calendarId || null,
                     eventId: result.event?.eventId || null,
-                    joinProvider: result.joinProvider || null,
-                    hasJoinUrl: !!result.joinUrl,
                 })
 
                 return result
@@ -9437,7 +9461,6 @@ async function executeToolNatively(
                     agentModel: toolArgs.agentModel,
                     agentReasoningEffort: toolArgs.agentReasoningEffort,
                     executionMode: toolArgs.executionMode,
-                    approvalPolicy: toolArgs.approvalPolicy,
                     contextObjectIds: toolArgs.context_object_ids,
                     deliverable: toolArgs.deliverable,
                     threadContext,
@@ -10077,7 +10100,14 @@ async function storeChunks(
                                 }
                             }
                         }
-                        collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
+                        if (toolName === 'execute_task_in_vm') {
+                            const startedVmJob = normalizeStartedVmJob(toolResult)
+                            if (
+                                startedVmJob &&
+                                !startedVmJobResults.some(job => job.objectId === startedVmJob.objectId)
+                            )
+                                startedVmJobResults.push(startedVmJob)
+                        }
                         const toolResultString = JSON.stringify(toolResult, null, 2)
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
@@ -10552,42 +10582,26 @@ async function storeChunks(
         }
         promises.push(updateLastAssistantCommentData(projectId, objectType, objectId, currentFollowerIds, assistantId))
 
-        // A reply that only hands the work to a VM job running in this same thread must not raise
-        // an unread marker. The VM posts its own live status comment here, rewrites it while it
-        // thinks, and notifies when there is actually something to see: the final result, a
-        // failure/cancellation, or a question it needs answered. Notifying for the hand-off too
-        // would show a red badge whose content is a spinner. The comment, the chat preview and the
-        // last-assistant-comment data below are still written, so the thread reads normally.
-        const isVmHandoffReply = startsVmJobInCurrentThread(startedVmJobResults, { projectId, objectId })
-        if (isVmHandoffReply) {
-            console.log('🖥️ VM JOB: Skipping notifications for the in-thread VM hand-off reply', {
+        if (ENABLE_DETAILED_LOGGING) {
+            console.log('Generating notifications...')
+        }
+        promises.push(
+            generateNotifications(
                 projectId,
                 objectType,
                 objectId,
+                userIdsToNotify,
+                objectName,
+                assistantName,
+                projectname,
+                chatLink,
                 commentId,
-            })
-        } else {
-            if (ENABLE_DETAILED_LOGGING) {
-                console.log('Generating notifications...')
-            }
-            promises.push(
-                generateNotifications(
-                    projectId,
-                    objectType,
-                    objectId,
-                    userIdsToNotify,
-                    objectName,
-                    assistantName,
-                    projectname,
-                    chatLink,
-                    commentId,
-                    lastComment,
-                    currentFollowerIds,
-                    assistantId,
-                    requestUserId
-                )
+                lastComment,
+                currentFollowerIds,
+                assistantId,
+                requestUserId
             )
-        }
+        )
 
         if (ENABLE_DETAILED_LOGGING) {
             console.log('Updating chat object...')
