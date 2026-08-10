@@ -32,8 +32,10 @@ import {
     updateStickyChatData,
 } from '../../utils/backends/Chats/chatsFirestore'
 import { createChat } from '../../utils/backends/Chats/chatsComments'
+import useSingleFlightSubmit from '../../hooks/useSingleFlightSubmit'
 
 const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
+    const submitOnce = useSingleFlightSubmit(submission => submission())
     let inputRef = useRef()
     const dispatch = useDispatch()
     const openModals = useSelector(state => state.openModals)
@@ -72,28 +74,33 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
         if (chatChanged) {
             if (formType === 'new') {
                 if (e) e.preventDefault()
-                updateNewAttachmentsData(projectId, inputText).then(title => {
-                    const chatId = getId()
-                    createChat(
-                        chatId,
-                        projectId,
-                        loggedUser.uid,
-                        '',
-                        'topics',
-                        title,
-                        isPublicFor,
-                        hasStar,
-                        stickyData,
-                        null,
-                        '',
-                        '',
-                        STAYWARD_COMMENT,
-                        loggedUser.uid
-                    ).then(async () => {
-                        const url = `/projects/${projectId}/chats/${chatId}/chat`
-                        URLTrigger.processUrl(NavigationService, url)
+                // Enter reaches this editor through the window listener, Quill's
+                // newline callback and the done button at once, and each run
+                // mints a new chat id, so creation is guarded.
+                submitOnce(() =>
+                    updateNewAttachmentsData(projectId, inputText).then(title => {
+                        const chatId = getId()
+                        createChat(
+                            chatId,
+                            projectId,
+                            loggedUser.uid,
+                            '',
+                            'topics',
+                            title,
+                            isPublicFor,
+                            hasStar,
+                            stickyData,
+                            null,
+                            '',
+                            '',
+                            STAYWARD_COMMENT,
+                            loggedUser.uid
+                        ).then(async () => {
+                            const url = `/projects/${projectId}/chats/${chatId}/chat`
+                            URLTrigger.processUrl(NavigationService, url)
+                        })
                     })
-                })
+                )
                 inputRef.current.clear()
                 onCancelAction()
             } else if (!!inputText.trim()) {

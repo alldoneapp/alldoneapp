@@ -176,6 +176,17 @@ export default function VmInteractionCard({ projectId, objectType, objectId, com
                     />
                     <View style={styles.actions}>
                         <ActionButton label="Allow once" onPress={() => submit('approve')} disabled={submitting} />
+                        {/* Offered only when the policy supplied a signature for this operation
+                            shape. Operations that must always pause (e.g. piping a downloaded
+                            script into a shell) report no signature, so the button is hidden. */}
+                        {!!interaction.signature && (
+                            <ActionButton
+                                label="Allow for this run"
+                                onPress={() => submit('approve_for_run')}
+                                disabled={submitting}
+                                secondary={true}
+                            />
+                        )}
                         <ActionButton
                             label="Deny"
                             onPress={() => submit('deny')}

@@ -80,8 +80,9 @@ const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver'
 const {
     buildVmJobTaskName,
     buildVmJobTaskDescription,
-    normalizeStartedVmJob,
+    collectStartedVmJobs,
     ensureVmHostThreadLinksInResponse,
+    startsVmJobInCurrentThread,
 } = require('./vmHostTaskHelper')
 const {
     addTimestampToContextContent,
@@ -96,7 +97,12 @@ const { addAssistantTaskComment } = require('../shared/assistantTaskCommentHelpe
 const { buildNoteUrl, ensureCreatedNoteLinksInResponse, normalizeCreatedNote } = require('./noteLinkHelper')
 const { getPreConfigTaskModelOverride } = require('./preConfigTaskModel')
 const { resolvePreConfigTaskReasoningEffort } = require('./preConfigTaskReasoningEffort')
-const { buildInitialAssistantRunStatusMessage, buildToolProgressStatusMessage } = require('./assistantProgressStatus')
+const {
+    buildInitialAssistantRunStatusMessage,
+    buildToolProgressStatusMessage,
+    buildToolActivityDescriptor,
+    rememberDelegationDisplayName,
+} = require('./assistantProgressStatus')
 const {
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
@@ -1880,13 +1886,19 @@ async function getReachableDelegationTargets({
                 .filter(doc => doc.id !== assistantId)
                 .map(doc => {
                     const targetAssistant = doc.data() || {}
+                    const delegationToolName = buildTalkToAssistantToolName(
+                        targetProjectId,
+                        doc.id,
+                        targetAssistant.displayName || doc.id,
+                        projectName
+                    )
+                    // The tool name slugs the display name together with the project name
+                    // and a hash, so it cannot be parsed back. Remember it here so the
+                    // progress UI can say "Asking Alldone CTO for help" rather than the
+                    // anonymous fallback.
+                    rememberDelegationDisplayName(delegationToolName, targetAssistant.displayName)
                     return {
-                        toolName: buildTalkToAssistantToolName(
-                            targetProjectId,
-                            doc.id,
-                            targetAssistant.displayName || doc.id,
-                            projectName
-                        ),
+                        toolName: delegationToolName,
                         projectId: targetProjectId,
                         projectName,
                         assistantId: doc.id,
@@ -2380,10 +2392,7 @@ async function collectAssistantTextWithToolCalls({
                 const createdNote = normalizeCreatedNote(toolResult)
                 if (createdNote) createdNoteResults.push(createdNote)
             }
-            if (toolName === 'execute_task_in_vm') {
-                const startedVmJob = normalizeStartedVmJob(toolResult)
-                if (startedVmJob) startedVmJobResults.push(startedVmJob)
-            }
+            collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
             const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
             pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
             toolExecutions.push({
@@ -2556,12 +2565,13 @@ const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
     let contextTokens = 0
     let gapTokens = ENCODE_MESSAGE_GAP // Gap for AI response
 
-    contextMessages.forEach((msg, index) => {
+    contextMessages.forEach(msg => {
         const msgText = getMessageTextForTokenCounting(msg[1])
         const msgTokens = encoding.encode(msgText).length
         contextTokens += msgTokens
         gapTokens += ENCODE_MESSAGE_GAP
-        console.log(`🧮 TOKEN CALCULATION: Context message ${index} (${msg[0]}): ${msgTokens} tokens`)
+        // Per-message token counts are not logged: this loop runs once per context message on every
+        // prompt build, and the aggregate is already reported in the model-result log below.
     })
 
     const totalTokens = aiTokens + contextTokens + gapTokens
@@ -5505,11 +5515,23 @@ async function executeToolNatively(
 
             try {
                 // Create note using unified service
+                // AT-2194: the assistant owns the notes it creates. `userId` here is the
+                // acting user (kept as creator/follower and in isVisibleInFollowedFor, so the
+                // note still shows up in that user's default "Followed" notes tab); `ownerId`
+                // is what the notes list avatar and the owner filter read.
+                //
+                // `assistantId` is the assistant that actually ran this tool, so it owns the
+                // note even when it is a default-project assistant working in another project:
+                // clients resolve assistant owners across the user's projects, not only inside
+                // the rendered one (see `findNoteOwnerInProject`).
+                const noteOwnerId = assistantId || creatorId
                 const result = await cachedNoteService.createAndPersistNote(
                     {
                         title: toolArgs.title,
                         content: toolArgs.content,
                         userId: creatorId,
+                        ownerId: noteOwnerId,
+                        creatorId: creatorId,
                         projectId: projectId,
                         isPrivate: false,
                         feedUser,
@@ -9315,6 +9337,8 @@ async function executeToolNatively(
                     success: result.success,
                     calendarId: result.calendarId || toolArgs.calendarId || null,
                     eventId: result.event?.eventId || null,
+                    joinProvider: result.joinProvider || null,
+                    hasJoinUrl: !!result.joinUrl,
                 })
 
                 return result
@@ -9603,6 +9627,7 @@ async function executeToolNatively(
                     agentModel: toolArgs.agentModel,
                     agentReasoningEffort: toolArgs.agentReasoningEffort,
                     executionMode: toolArgs.executionMode,
+                    approvalPolicy: toolArgs.approvalPolicy,
                     contextObjectIds: toolArgs.context_object_ids,
                     deliverable: toolArgs.deliverable,
                     threadContext,
@@ -10142,12 +10167,18 @@ async function storeChunks(
                     // Show loading indicator
                     await flushPendingUpdate() // Flush any pending updates first
                     const toolExecutionStartedAt = Date.now()
+                    // What the user sees while this runs: an i18n key plus an already
+                    // sanitized subject (whitelisted per tool). Both null when the tool
+                    // exposes nothing safe, which makes the client keep its generic story.
+                    const toolActivityDescriptor = buildToolActivityDescriptor({ toolName, toolArgs })
                     if (assistantRun) {
                         assistantRun.activity = {
                             phase: 'tool',
                             toolName,
                             startedAt: toolExecutionStartedAt,
                             iteration: toolCallIteration,
+                            actionKey: toolActivityDescriptor.actionKey || null,
+                            subject: toolActivityDescriptor.subject || null,
                         }
                     }
                     let toolStatusMessage = buildToolProgressStatusMessage({
@@ -10182,7 +10213,9 @@ async function storeChunks(
                         })
                         if (nextStatusMessage === toolStatusMessage || stopToolProgressUpdates) return
 
-                        commentText = commentText.replace(toolStatusMessage, nextStatusMessage)
+                        // Function replacement: the status text now embeds a user-supplied
+                        // subject, and `$&` / `$$` in a string replacement are special.
+                        commentText = commentText.replace(toolStatusMessage, () => nextStatusMessage)
                         toolStatusMessage = nextStatusMessage
                         if (stopToolProgressUpdates) return
 
@@ -10242,14 +10275,7 @@ async function storeChunks(
                                 }
                             }
                         }
-                        if (toolName === 'execute_task_in_vm') {
-                            const startedVmJob = normalizeStartedVmJob(toolResult)
-                            if (
-                                startedVmJob &&
-                                !startedVmJobResults.some(job => job.objectId === startedVmJob.objectId)
-                            )
-                                startedVmJobResults.push(startedVmJob)
-                        }
+                        collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
                         const toolResultString = JSON.stringify(toolResult, null, 2)
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
@@ -10724,26 +10750,42 @@ async function storeChunks(
         }
         promises.push(updateLastAssistantCommentData(projectId, objectType, objectId, currentFollowerIds, assistantId))
 
-        if (ENABLE_DETAILED_LOGGING) {
-            console.log('Generating notifications...')
-        }
-        promises.push(
-            generateNotifications(
+        // A reply that only hands the work to a VM job running in this same thread must not raise
+        // an unread marker. The VM posts its own live status comment here, rewrites it while it
+        // thinks, and notifies when there is actually something to see: the final result, a
+        // failure/cancellation, or a question it needs answered. Notifying for the hand-off too
+        // would show a red badge whose content is a spinner. The comment, the chat preview and the
+        // last-assistant-comment data below are still written, so the thread reads normally.
+        const isVmHandoffReply = startsVmJobInCurrentThread(startedVmJobResults, { projectId, objectId })
+        if (isVmHandoffReply) {
+            console.log('🖥️ VM JOB: Skipping notifications for the in-thread VM hand-off reply', {
                 projectId,
                 objectType,
                 objectId,
-                userIdsToNotify,
-                objectName,
-                assistantName,
-                projectname,
-                chatLink,
                 commentId,
-                lastComment,
-                currentFollowerIds,
-                assistantId,
-                requestUserId
+            })
+        } else {
+            if (ENABLE_DETAILED_LOGGING) {
+                console.log('Generating notifications...')
+            }
+            promises.push(
+                generateNotifications(
+                    projectId,
+                    objectType,
+                    objectId,
+                    userIdsToNotify,
+                    objectName,
+                    assistantName,
+                    projectname,
+                    chatLink,
+                    commentId,
+                    lastComment,
+                    currentFollowerIds,
+                    assistantId,
+                    requestUserId
+                )
             )
-        )
+        }
 
         if (ENABLE_DETAILED_LOGGING) {
             console.log('Updating chat object...')

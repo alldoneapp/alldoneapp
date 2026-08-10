@@ -1959,7 +1959,7 @@ const toolSchemas = {
         function: {
             name: 'create_calendar_event',
             description:
-                'Create a Google Calendar event in a connected account. Use ISO 8601 times only. For timed events provide start/end as ISO strings or {dateTime,timeZone}; for all-day events provide {date}.',
+                'Create a Google Calendar event in a connected account. Use ISO 8601 times only. For timed events provide start/end as ISO strings or {dateTime,timeZone}; for all-day events provide {date}. Timed events automatically get a video conferencing link (Google Meet, or Microsoft Teams on Outlook calendars) — never put a placeholder meeting link in the description or location, and read the returned joinUrl to tell the user where to join.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -2270,6 +2270,18 @@ const toolSchemas = {
                             '"plan_first" explores read-only, asks clarifying questions when needed, and waits for explicit approval of a plan before executing. ' +
                             '"interactive" automatically reviews routine tool approvals and pauses only for clarifying questions or risky/sensitive operations. ' +
                             'Use plan_first or interactive only when the user explicitly requests that behavior; never silently downgrade either mode to automatic.',
+                    },
+                    approvalPolicy: {
+                        type: 'string',
+                        enum: ['strict', 'balanced', 'permissive'],
+                        description:
+                            'Optional. Only affects interactive runs, which pause to ask the user before risky operations. ' +
+                            '"strict" pauses for every publish, deployment and outbound HTTP write. ' +
+                            '"balanced" additionally auto-approves the operations Alldone itself instructs the agent to perform ' +
+                            '(pushing a feature branch, opening a merge/pull request) and read-only API calls. ' +
+                            '"permissive" also auto-approves merging a merge/pull request and arbitrary outbound HTTP. ' +
+                            'When omitted, the requesting user\'s saved default is used (falling back to "balanced"). ' +
+                            'Set this only when the user explicitly asks for a different approval strictness for this run.',
                     },
                     context_object_ids: {
                         type: 'array',

@@ -1144,6 +1144,104 @@ describe('assistant attachment handoff helpers', () => {
         }
     })
 
+    test('makes the assistant the owner of a note it creates, keeping the human as creator', async () => {
+        // The assistant has to exist in the note's own project (or in the global pool) before
+        // it may own the note — see the cross-project guard below.
+        mockDocGet.mockResolvedValue({ exists: true, id: 'assistant-1', data: () => ({ displayName: 'Anna' }) })
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-1',
+            message: 'Note created',
+            note: { id: 'note-1', projectId: 'project-1', extendedTitle: 'Launch plan' },
+        })
+
+        await executeToolNatively(
+            'create_note',
+            { title: 'Launch plan', content: '# Plan' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+            expect.objectContaining({
+                // owner shown in the notes list / used by the owner filter
+                ownerId: 'assistant-1',
+                // the human who asked keeps authorship AND stays the acting user, so the
+                // note remains visible in their "Followed" notes tab
+                creatorId: 'user-1',
+                userId: 'user-1',
+            }),
+            expect.objectContaining({ userId: 'user-1', projectId: 'project-1' })
+        )
+    })
+
+    test('owns the note with the running assistant even when it belongs to another project', async () => {
+        // AT-2194: an assistant from the user's default project legitimately works in another
+        // project, and it owns what it creates there. The client resolves assistant owners
+        // across the user's projects (`findNoteOwnerInProject`), so this is renderable — an
+        // earlier attempt to gate ownership on an in-project assistant document silently
+        // handed these notes back to the human and undid the feature.
+        mockDocGet.mockResolvedValue({ exists: false })
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-4',
+            message: 'Note created',
+            note: { id: 'note-4', projectId: 'project-1', extendedTitle: 'Cross project note' },
+        })
+
+        await executeToolNatively(
+            'create_note',
+            { title: 'Cross project note' },
+            'project-1',
+            'assistant-of-other-project',
+            'user-1',
+            null
+        )
+
+        expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+            expect.objectContaining({
+                ownerId: 'assistant-of-other-project',
+                creatorId: 'user-1',
+                userId: 'user-1',
+            }),
+            expect.anything()
+        )
+    })
+
+    test('leaves a note created without an assistant owned by the requesting user', async () => {
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-2',
+            message: 'Note created',
+            note: { id: 'note-2', projectId: 'project-1', extendedTitle: 'Manual note' },
+        })
+
+        await executeToolNatively('create_note', { title: 'Manual note' }, 'project-1', null, 'user-1', null)
+
+        expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+            expect.objectContaining({ ownerId: 'user-1', creatorId: 'user-1', userId: 'user-1' }),
+            expect.anything()
+        )
+    })
+
+    test('falls back to the assistant for both owner and creator when there is no requesting user', async () => {
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-3',
+            message: 'Note created',
+            note: { id: 'note-3', projectId: 'project-1', extendedTitle: 'Autonomous note' },
+        })
+
+        await executeToolNatively('create_note', { title: 'Autonomous note' }, 'project-1', 'assistant-1', null, null)
+
+        expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+            expect.objectContaining({ ownerId: 'assistant-1', creatorId: 'assistant-1', userId: 'assistant-1' }),
+            expect.anything()
+        )
+    })
+
     test('adds a comment to a newly created topic chat', async () => {
         ProjectService.mockImplementationOnce(() => ({
             initialize: jest.fn().mockResolvedValue(undefined),
