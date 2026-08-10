@@ -174,6 +174,61 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
+- 2026-08-10 — **Stage 5 executed on `frontend-migration-stage-5`** — the toolchain
+  finish line. The Node 14 / npm 6 era is over: the whole repo now installs, tests, and
+  builds under **Node 22 / npm 10** (`.nvmrc` = 22, `engines.node >=22`,
+  `ci/Dockerfile_base` on node:22-alpine without the expo-cli install). CI remains the
+  exit gate (branch-scoped images will rebuild — this is a dependency-changing branch by
+  construction).
+
+    - **Lockfile v3 with zero resolution changes**: `npm install --package-lock-only`
+      under npm 10 converted the v1 lockfile with all 1534 resolved versions identical
+      (one representation-only change: hammerjs, a git dep, same commit). A committed
+      `.npmrc` pins `legacy-peer-deps` — the RN-era peer graph predates npm 7
+      enforcement. `npm ci` + `replacement_node_modules` reproduces a tree the
+      web-bundler prod build compiles from with only the 3 known RNGH warnings.
+    - **Jest 25 → 30 forced the end of two long-standing hacks.** (1) The malformed
+      transform-everything `transformIgnorePatterns`: jest 30 loads its own runner
+      through the transforming runtime, and Babel 7.12 cannot parse its private class
+      methods — transforms are now an explicit allowlist (quill/yjs ESM chain +
+      react-native*/expo* RN dialect). (2) The babel-preset-expo + metro preset chain
+      (the reason for the @babel/core 7.12 pin): root `babel.config.js` is now an
+      explicit web config on @babel/core 7.29 mirroring web-bundler's shipped
+      semantics. Two latent behaviors surfaced en route: metro's transform-symbol-member
+      silently skipped the CommonJS transform in files importing a binding named
+      `Symbol` (lodash-es), and per-file inlined babel helpers broke the shared
+      `import * as X` namespace cache that mock-mutating suites rely on —
+      transform-runtime with an explicit `version` restores sharing.
+    - **jest 30 fallout, each pinned in config/setup**: jsdom env pinned explicitly
+      (jest 25's default — the functions config inherits it); setImmediate polyfilled
+      (jsdom 26 dropped it); exports maps resolved with **node** conditions in the
+      functions config (browser condition resolved jwks-rsa's `jose` to its ESM
+      browser build and silently null'ed workflowFocusHandoff's timezone offset);
+      removed alias matchers codemodded; cloudflare/ excluded (jest 30 matches .mjs);
+      the node:crypto shim deleted (jest 30 understands `node:`).
+    - **Snapshots re-baselined with a proof of format-only change**: every one of the
+      992 changed lines across 102 .snap files normalizes to the jest-29
+      `Object {`→`{` / `Array [`→`[` printing change — zero render differences.
+    - **Prettier 2 → 3 + pretty-quick 4 + husky 9** (hooks moved to
+      `.husky/pre-commit`; the package.json husky key is ignored by v9), then the
+      repo-wide format commit (251 files). `.prettierignore` deliberately shields
+      email/invoice HTML templates (client whitespace sensitivity, zero coverage),
+      build-injected index.html files, quill-derived editor CSS, and the syntactically
+      invalid svgr artifact `assets/svg/LandingPage/exp/index.js`. TypeScript 3.9 →
+      5.9 (nothing invokes tsc; babel compiles the three .ts files).
+    - **Verification state**: root suite 395/395 suites green (1981 passed / 25
+      skipped, 165 snapshots) — note the suite count grew from Stage 4's 347 because
+      master gained co-located feature tests; functions suite 171/174 — the 3
+      failures are **pre-existing master drift**, proven by commit order (AT-2199
+      approval-policy landed 2026-08-07 14:34, after its tests' last update at 09:43;
+      functions suites are a local-only check so it went unnoticed) plus the known
+      calendar routing suite; spun off as its own task. Web-bundler prod build
+      compiles with only the 3 known RNGH warnings, before and after the format
+      sweep.
+    - **Remaining for stage acceptance**: branch CI green end to end (the branch
+      builds its own `:$CI_COMMIT_REF_SLUG` images — the first pipeline is the slow
+      one), then the usual staging deploy + logged-in boot check before merge.
+
 - 2026-08-10 — **STAGE 4 ACCEPTED AND MERGED TO MASTER** after the user's staging QA.
   Three staging findings, all quill 1→2 rendering-contract changes and each now pinned
   by a regression test: (1) the header picker rendered raw label text — quill 2 stamps
