@@ -264,9 +264,10 @@ async function getConversationHistory(
         if (!data.commentText) return
 
         if (data.fromAssistant) {
-            // Assistant turns are the assistant's own prior output; the "[Sent at ...]"
-            // framing belongs to user turns only, otherwise the model mimics the tag (AT-2241).
-            messages.push(['assistant', data.commentText])
+            messages.push([
+                'assistant',
+                addTimestampToContextContent(data.commentText, messageTimestamp, userTimezoneOffset),
+            ])
             return
         }
 

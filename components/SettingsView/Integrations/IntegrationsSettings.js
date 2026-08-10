@@ -120,10 +120,22 @@ function ConnectionCard({ service, connection, projects }) {
     }
 
     const closeSettings = () => {
+        // Closing is not idempotent: the Gmail labeling header close button
+        // defers its close (see components/FollowUp/CloseButton.js), so the
+        // same click can reach this handler again after the popover already
+        // unmounted. A second hide under a re-opened popup would release
+        // somebody else's lock; only honour the first (AT-2243).
         if (!settingsOpenRef.current) return
+        // A popup that was already closed must never be able to hide the
+        // global float-popup lock twice: a mouse-down on the (still visible)
+        // header close button fires its close, then the button's own click
+        // re-opens the settings and re-acquires the lock. With the ref
+        // cleared before the dispatch, the re-open is what comes last and the
+        // lock stays balanced.
+        const wasOpen = settingsOpenRef.current
         settingsOpenRef.current = false
         setSettingsOpen(false)
-        dispatch(hideFloatPopup())
+        if (wasOpen) dispatch(hideFloatPopup())
     }
 
     useEffect(() => {
