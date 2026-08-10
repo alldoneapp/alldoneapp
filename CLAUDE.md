@@ -401,6 +401,28 @@ browser before trusting a bigger change.
   staging project.
 - **Build process**: `ci/replace-envs.sh` injects environment variables during build
 - **Firebase projects**: `alldonestaging` (staging) and `alldonealeph` (production)
+- **`resource_group` serializes deploys but does NOT order them — production deploy jobs
+  run `ci/assertNewestCommit.sh` first.** `workflow.auto_cancel.on_new_commit: interruptible`
+  deliberately never cancels a deploy (`interruptible: false`), so a superseded pipeline keeps
+  a live deploy job queued; `resource_group` then only guarantees it runs _alone_, not _first_.
+  An older pipeline that runs last wins, and every deploy here is last-writer-wins over the
+  whole environment. This is not theoretical: `firebase deploy --only functions --force` treats
+  the deployed source as the desired state and **prunes functions absent from it**, so on
+  2026-08-10 a stale master pipeline deleted two just-shipped callables
+  (`getVmAgentModelOptions`, `setDefaultVmAgentModel`) and reverted `getVmAgentSettings` to
+  pre-feature code seventeen minutes after a newer pipeline created them — with every Cloud
+  audit entry reading `ok`, because nothing failed from Firebase's point of view. The guard
+  compares `CI_COMMIT_SHA` against the live branch tip **at deploy time** (not pipeline start —
+  a newer commit routinely lands while an earlier stage is still building) and exits `75` when
+  superseded. Each guarded job declares `allow_failure: exit_codes: 75`, so a correctly-skipped
+  deploy is visible in the pipeline graph without turning the pipeline red — it deliberately
+  does not exit 0, because a deploy job reporting success without deploying is the same trap as
+  the old `xargs -r` no-op in `test:web:changed`. It fails **closed** (exit 1) when the tip
+  cannot be read: a skipped deploy is fixed by retrying the job, an out-of-order one silently
+  reverts production. `ALLOW_STALE_DEPLOY=1` forces a deliberate rollback through.
+  `__tests__/CiDeployGuard.test.js` fails the build if a job that deploys on the default branch
+  lacks the guard, the allowed exit code, `interruptible: false` or a `resource_group`, so a new
+  production deploy job cannot quietly opt out.
 - **CI images bake `node_modules`, so a branch that changes dependencies needs its own
   image.** `build_base` (node:12, `npm ci` on the v1 lockfile) and `build_web_bundler`
   (node:22 tooling + the app tree copied from the base image) are built by the

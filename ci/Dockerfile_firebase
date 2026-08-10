@@ -2,5 +2,9 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# git is required by ci/assertNewestCommit.sh, which reads the live branch tip via
+# `git ls-remote origin` before any production deploy.
+RUN apk --no-cache add git
+
 RUN npm install -g firebase-tools@13.29.3 --unsafe-perm
 

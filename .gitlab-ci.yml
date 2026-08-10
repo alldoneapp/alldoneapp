@@ -468,17 +468,31 @@ deploy:web-staging-live:
 deploy:web:
     image: $CI_REGISTRY_IMAGE/build_firebase:latest
     stage: deploy_web
+    # Serialize production hosting deploys, matching the functions and runner jobs. Two
+    # pushes in quick succession otherwise upload two bundles to the same site at once, and
+    # the newest-commit guard below can only order deploys it can see one at a time.
+    resource_group: web-production-deploy
     needs:
         - 'build_web_production'
         # Blocking on purpose: a test job outside `needs` only turns red next to
         # a deploy that has already shipped.
         - 'test:web:full'
     script:
+        # build_firebase:latest only gains git once firebase_cmd_cache rebuilds it, and that
+        # happens in this same pipeline — a runner holding a cached :latest would otherwise
+        # hit a guard that cannot probe and correctly fails closed, blocking a legitimate
+        # deploy. This no-ops on every image that already has git.
+        - command -v git >/dev/null 2>&1 || apk add --no-cache git
+        # A stale pipeline would replace the live bundle with an older build. See
+        # ci/assertNewestCommit.sh; exit 75 means "superseded", declared allowed below.
+        - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:web
         - firebase use $GOOGLE_FIREBASE_WEB_PROJECT_ID_PROD --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only hosting --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
     environment:
         name: production
     interruptible: false
+    allow_failure:
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
           changes: *web-relevant-paths
@@ -578,9 +592,17 @@ deploy:cloud:functions:production:
         - chmod +x service_accounts/setup_functions.sh
         - npm run setup_functions
     script:
+        # THE job this guard was written for. `--force` makes the deployed source the
+        # desired state, so a stale pipeline DELETES functions a newer commit added and
+        # reverts the rest, reporting success throughout (AT-2221, 2026-08-10). Checked
+        # here rather than in before_script so the window between the check and the deploy
+        # is as small as possible. Exit 75 means "superseded", declared allowed below.
+        - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:functions:production
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
         - rm -rf tmp_project_name
+    allow_failure:
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
           changes:
@@ -643,8 +665,17 @@ deploy:cloud:runner:production:
             const GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET = "'"$GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET_PROD"'"\
             const MCP_BASE_URL = "'"$MCP_BASE_URL_PROD"'"' functions/MCP/config/environments.js
     script:
+        # The guard fails closed, so make sure its primary probe can actually run: this
+        # image is upstream (not built here), and a variant without git would otherwise
+        # block a legitimate deploy. No-ops whenever git is already present.
+        - command -v git >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq git)
+        # Builds the vm-job-runner image from functions/ source, so a stale pipeline ships
+        # an older vmJobRunner.js to every VM job. Exit 75 means "superseded".
+        - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:runner:production
         - cd functions/Assistant/cloud-run-job
         - CI_MODE=1 bash deploy.sh alldonealeph firebase-adminsdk-mpg7p@alldonealeph.iam.gserviceaccount.com
+    allow_failure:
+        exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
           changes:
