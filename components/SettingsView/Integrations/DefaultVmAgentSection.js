@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 
 import styles, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
+import { IntegrationsPendingContent, useIsInsideIntegrationsLoadingRegion } from './IntegrationsLoadingRegion'
 import {
     getVmAgentSettings,
     setDefaultVmAgent,
@@ -154,9 +155,11 @@ export default function DefaultVmAgentSection() {
     }
 
     const agentControlsDisabled = !!savingAgent || !!savingEffort || !!savingPolicy || !!savingFamily || !loaded
+    const isPending = !loaded && !error
+    const insideLoadingRegion = useIsInsideIntegrationsLoadingRegion()
 
     return (
-        <View style={localStyles.section}>
+        <IntegrationsPendingContent loadingKey="vmAgentDefaults" pending={isPending} style={localStyles.section}>
             <Text style={[styles.title6, localStyles.sectionTitle]}>{translate('Default VM agent')}</Text>
             <Text style={[styles.body2, localStyles.sectionDescription]}>
                 {translate(
@@ -302,9 +305,10 @@ export default function DefaultVmAgentSection() {
                     )
                 })}
             </View>
-            {!loaded && !error && <ActivityIndicator size="small" color={colors.Primary100} />}
+            {/* Inside Settings > Integrations the region owns the single, bigger spinner. */}
+            {isPending && !insideLoadingRegion && <ActivityIndicator size="small" color={colors.Primary100} />}
             {!!error && <Text style={localStyles.error}>{error}</Text>}
-        </View>
+        </IntegrationsPendingContent>
     )
 }
 
