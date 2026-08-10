@@ -27,7 +27,6 @@ const {
     VM_JOB_GOLD_SOURCE,
     VM_JOB_GOLD_REFUND_SOURCE,
     VM_GOLD_PER_MINUTE,
-    VM_TOKENS_PER_GOLD,
     getAgentLabel,
     formatAgentRunSuffix,
     formatVmBillingStatus,
@@ -37,6 +36,7 @@ const {
     DEFAULT_CODEX_REASONING_EFFORT,
 } = require('./vmJob')
 const { resolveModelRoute, isOpenRouterRun } = require('./vmModelRouting')
+const { resolveTokensPerGold, calculateTokenGold } = require('./vmTokenPricing')
 const {
     MAX_VM_RUNTIME_MS,
     VM_JOB_FINALIZATION_HEADROOM_MS,
@@ -2249,22 +2249,39 @@ function calculateAccruedRuntimeGold(runtimeMs) {
     return elapsedMinutes * VM_GOLD_PER_MINUTE
 }
 
+/**
+ * Final Gold settlement for a finished run.
+ *
+ * `agentModel` is the run's persisted model selection and only affects the *token* charge: it
+ * selects the tokens-per-Gold rate (standard, or 1/5 the Gold cost for DeepSeek via OpenRouter).
+ * Runtime minutes are unaffected — they pay for the E2B sandbox, which costs the same whichever
+ * model the agent talks to.
+ *
+ * The token line is a settlement, not a fresh charge: the proxy has already billed
+ * `proxyTokenGoldCharged` incrementally while the run streamed. Both sides resolve the rate from
+ * the same `agentModel`, which is the whole point of routing it through vmTokenPricing — if the two
+ * disagreed, a higher rate here would silently overcharge and a lower one would clamp to zero and
+ * hide the discrepancy entirely.
+ */
 function calculateCompletionGoldCharges({
     runtimeMs,
     usage,
     runtimeGoldCharged = 0,
     proxyTokenGoldCharged = 0,
     subscriptionUsed = false,
+    agentModel = '',
 }) {
     const minutes = Math.max(1, Math.ceil(Math.max(0, Number(runtimeMs) || 0) / 60000))
     const totalTokens = usage && usage.totalTokens ? usage.totalTokens : 0
     const runtimeGoldTotal = minutes * VM_GOLD_PER_MINUTE
     const runtimeGoldRemaining = Math.max(0, runtimeGoldTotal - (Number(runtimeGoldCharged) || 0))
-    const tokenGoldTotal = subscriptionUsed ? 0 : Math.round(totalTokens / VM_TOKENS_PER_GOLD)
+    const tokensPerGold = resolveTokensPerGold(agentModel)
+    const tokenGoldTotal = subscriptionUsed ? 0 : calculateTokenGold(totalTokens, tokensPerGold)
     const tokenGold = Math.max(0, tokenGoldTotal - (Number(proxyTokenGoldCharged) || 0))
     return {
         minutes,
         totalTokens,
+        tokensPerGold,
         runtimeGoldTotal,
         runtimeGoldRemaining,
         runtimeGoldCharged: Number(runtimeGoldCharged) || 0,
@@ -4227,13 +4244,14 @@ async function runVmJobByCorrelationId(correlationId) {
         const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
         const runtimeMs = activeRuntimeMs || (Number(latestPendingData.vmActiveRuntimeMs) || 0) + attemptRuntimeMs
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
-        const { minutes, totalTokens, runtimeGoldRemaining, tokenGold, tokenGoldTotal, topup } =
+        const { minutes, totalTokens, tokensPerGold, runtimeGoldRemaining, tokenGold, tokenGoldTotal, topup } =
             calculateCompletionGoldCharges({
                 runtimeMs,
                 usage,
                 runtimeGoldCharged,
                 proxyTokenGoldCharged,
                 subscriptionUsed: tokenBillingExempt,
+                agentModel: vmJob.agentModel,
             })
         await chargeVmTopup(pendingWebhook, vmJob, {
             topup,
@@ -4279,6 +4297,7 @@ async function runVmJobByCorrelationId(correlationId) {
             tokenBillingExempt,
             tokenGoldTotal,
             tokenGold,
+            tokensPerGold,
             topup,
             costUsd: usage?.costUsd ?? null,
         })

@@ -23,13 +23,13 @@
 const crypto = require('crypto')
 const { TextDecoder } = require('util')
 const { getEnvFunctions } = require('../envFunctionsHelper')
+const { resolveTokensPerGold, calculateTokenGold } = require('./vmTokenPricing')
 const admin = require('firebase-admin')
 
 const REGION = 'europe-west1'
 const FUNCTION_NAME = 'vmLlmProxy'
 const TOKEN_PREFIX = 'vmpx_'
 const VM_JOB_GOLD_SOURCE = 'vm_execution'
-const VM_TOKENS_PER_GOLD = 100
 const VM_PROXY_INSUFFICIENT_GOLD_REASON = 'insufficient_gold'
 
 // Upstream providers, keyed by the path prefix the sandbox agent hits.
@@ -523,6 +523,16 @@ async function pipeAndCaptureUsage(body, res, provider) {
     return finalizeCapturedUsage(provider, state)
 }
 
+/**
+ * Charge the Gold owed for the tokens seen so far on this run.
+ *
+ * Charging is *cumulative*, not per-request: the run's running token total is stored on the job doc
+ * and the charge is `round(total / tokensPerGold) - alreadyCharged`. That is what lets a discounted
+ * rate work at all — at 500 tokens/Gold a single small request rounds to zero Gold, but the tokens
+ * are still banked in the total and get billed as soon as the total crosses the next threshold.
+ * Nothing is dropped, and `vmJobRunner` settles whatever remains at completion using the *same*
+ * rate, resolved from the same persisted `agentModel`.
+ */
 async function chargeProxyTokenGold({
     correlationId,
     userId,
@@ -548,7 +558,11 @@ async function chargeProxyTokenGold({
         const previousTokens = Number(pendingData.proxyTokenUsage?.totalTokens) || 0
         const previousGoldCharged = Number(pendingData.proxyTokenGoldCharged) || 0
         const nextTokens = previousTokens + totalTokens
-        const goldDue = Math.max(0, Math.round(nextTokens / VM_TOKENS_PER_GOLD) - previousGoldCharged)
+        // Priced from the job's persisted model selection — the same input vmJobRunner uses at
+        // settlement, so the two charge sites cannot bill at different rates. A job doc written
+        // before this field existed resolves to the standard rate, i.e. unchanged behaviour.
+        const tokensPerGold = resolveTokensPerGold(pendingData.agentModel)
+        const goldDue = Math.max(0, calculateTokenGold(nextTokens, tokensPerGold) - previousGoldCharged)
         const usageUpdate = {
             inputTokens: (Number(pendingData.proxyTokenUsage?.inputTokens) || 0) + (Number(usage.inputTokens) || 0),
             outputTokens: (Number(pendingData.proxyTokenUsage?.outputTokens) || 0) + (Number(usage.outputTokens) || 0),

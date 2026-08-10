@@ -257,4 +257,50 @@ describe('OpenRouter model overrides', () => {
         expect(resolved.agent).toBeUndefined()
         expect(resolved.agentModel).toBeUndefined()
     })
+
+    // The agentModel reaching this guard is MODEL-authored and not yet validated (normalizeAgentModel
+    // runs later, in startVmJob), and its tokens are compiled into a RegExp. Regex metacharacters
+    // must therefore never survive tokenisation.
+    describe('unvalidated model text is never compiled into a RegExp', () => {
+        test('a malformed id with regex metacharacters does not throw', () => {
+            for (const agentModel of [
+                'openrouter:foo/(((',
+                'openrouter:foo/[a-z',
+                'openrouter:foo/*bar',
+                'openrouter:foo/bar)+',
+                'openrouter:foo/\\',
+                'openrouter:foo/?bar',
+            ]) {
+                expect(() => resolveVmRunOverrides({ requestText: 'do the thing', agentModel })).not.toThrow()
+            }
+        })
+
+        // `(a+)+b` against a long subject is the classic catastrophic-backtracking shape. With the
+        // token filter it is never compiled at all, so this returns effectively instantly; without
+        // it, the call hangs.
+        test('a catastrophic-backtracking token cannot stall the guard', () => {
+            const evidence = `${'a'.repeat(20_000)} please run this`
+            const started = process.hrtime.bigint()
+
+            const resolved = resolveVmRunOverrides({
+                requestText: evidence,
+                agentModel: 'openrouter:evil/(a+)+b',
+            })
+
+            const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6
+            expect(elapsedMs).toBeLessThan(1000)
+            expect(resolved.agentModel).toBeUndefined()
+        })
+
+        // The filter must not cost legitimate corroboration: a real vendor/model token still matches.
+        test('a well-formed id is still corroborated normally', () => {
+            expect(
+                resolveVmRunOverrides({
+                    requestText: 'run this on deepseek please',
+                    agent: 'codex',
+                    agentModel: 'openrouter:deepseek/deepseek-v3.2',
+                }).agentModel
+            ).toBe('openrouter:deepseek/deepseek-v3.2')
+        })
+    })
 })

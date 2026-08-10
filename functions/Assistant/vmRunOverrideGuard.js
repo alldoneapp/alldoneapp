@@ -167,11 +167,23 @@ const OPENROUTER_GENERIC_TOKENS = new Set([
     'ai',
 ])
 
+// The `agentModel` reaching this guard is MODEL-authored and has not been validated yet
+// (normalizeAgentModel runs later, in startVmJob), so a token from it must never be interpolated
+// into a RegExp unchecked. `openrouter:foo/(((` would throw a SyntaxError that surfaces as a generic
+// "failed to start VM job", and a token like `(a+)+b` would backtrack catastrophically against up
+// to 20k characters of evidence text. The alphanumeric filter makes every surviving token inert as
+// a pattern; a token that fails it simply cannot corroborate anything, which costs the user at most
+// an explicit override they expressed in an unmatchable way — never their saved default.
+const SAFE_EVIDENCE_TOKEN_PATTERN = /^[a-z][a-z0-9]*$/
+
 function openRouterEvidenceTokens(modelId) {
     return modelId
         .split(/[/:\-_.]/)
         .map(token => token.trim().toLowerCase())
-        .filter(token => token.length >= 3 && !/^\d/.test(token) && !OPENROUTER_GENERIC_TOKENS.has(token))
+        .filter(
+            token =>
+                token.length >= 3 && SAFE_EVIDENCE_TOKEN_PATTERN.test(token) && !OPENROUTER_GENERIC_TOKENS.has(token)
+        )
 }
 
 function isModelRequested(evidence, agentModel) {

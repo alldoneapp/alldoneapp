@@ -1236,6 +1236,77 @@ describe('VM runner runtime Gold monitor', () => {
         )
     })
 
+    // AT-2230 pricing: the settlement half of the DeepSeek discount. Runtime Gold pays for the E2B
+    // sandbox and must NOT move — only the token line is discounted.
+    test('DeepSeek settles token Gold at a fifth of the Luna price, with runtime Gold unchanged', () => {
+        const args = { runtimeMs: 61000, usage: { totalTokens: 250_000 } }
+        const luna = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-5.6-luna' })
+        const deepSeek = __private__.calculateCompletionGoldCharges({
+            ...args,
+            agentModel: 'openrouter:deepseek/deepseek-v3.2',
+        })
+
+        expect(luna.tokenGoldTotal).toBe(2500)
+        expect(deepSeek.tokenGoldTotal).toBe(500)
+        expect(deepSeek.tokenGoldTotal).toBe(luna.tokenGoldTotal / 5)
+        expect(deepSeek.tokensPerGold).toBe(500)
+
+        // Same sandbox, same compute cost.
+        expect(deepSeek.runtimeGoldTotal).toBe(luna.runtimeGoldTotal)
+        expect(deepSeek.minutes).toBe(luna.minutes)
+        expect(deepSeek.topup).toBe(luna.topup - 2000)
+    })
+
+    // The two charge sites must resolve the SAME rate from the same model. If settlement used the
+    // standard rate while the proxy had charged the discounted one, this subtraction would quietly
+    // bill the difference a second time.
+    test('settlement nets off proxy charges made at the same discounted rate', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 250_000 },
+            agentModel: 'openrouter:deepseek/deepseek-v3.2',
+            proxyTokenGoldCharged: 500,
+        })
+
+        expect(charges.tokenGoldTotal).toBe(500)
+        expect(charges.tokenGold).toBe(0) // fully paid live; nothing owed at the end
+        expect(charges.topup).toBe(charges.runtimeGoldRemaining)
+    })
+
+    test('a non-DeepSeek OpenRouter model is settled at the standard rate', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 250_000 },
+            agentModel: 'openrouter:qwen/qwen3-coder',
+        })
+
+        expect(charges.tokensPerGold).toBe(100)
+        expect(charges.tokenGoldTotal).toBe(2500)
+    })
+
+    // Existing jobs carry no agentModel on their doc; they must settle exactly as before.
+    test('a job with no recorded model settles at the standard rate', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 250_000 },
+        })
+
+        expect(charges.tokensPerGold).toBe(100)
+        expect(charges.tokenGoldTotal).toBe(2500)
+    })
+
+    test('a DeepSeek subscription-exempt run still charges no token Gold', () => {
+        const charges = __private__.calculateCompletionGoldCharges({
+            runtimeMs: 61000,
+            usage: { totalTokens: 250_000 },
+            agentModel: 'openrouter:deepseek/deepseek-v3.2',
+            subscriptionUsed: true,
+        })
+
+        expect(charges.tokenGoldTotal).toBe(0)
+        expect(charges.tokenGold).toBe(0)
+    })
+
     test('subscription completion charges VM runtime but no token Gold', () => {
         const charges = __private__.calculateCompletionGoldCharges({
             runtimeMs: 61000,
