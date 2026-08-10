@@ -2248,9 +2248,11 @@ const toolSchemas = {
                     agentModel: {
                         type: 'string',
                         description:
-                            'Optional. The specific model to use inside the VM agent. ' +
-                            'ONLY set this when the user explicitly named a model for this run; otherwise omit it and the best available ' +
-                            'model per agent is used (Claude Code: moving "opus" alias; Codex: latest GPT model). ' +
+                            'Optional. The specific model to use inside the VM agent. An explicit choice overrides the ' +
+                            "requesting user's default model family (Settings → Integrations). " +
+                            'ONLY set this when the user explicitly named a model for this run; never infer it from the kind of ' +
+                            'work. When omitted, the saved default model family is used, falling back to the best available ' +
+                            'model per agent (Claude Code: moving "opus" alias; Codex: latest GPT model). ' +
                             'Use Claude model ids or aliases (e.g. "opus", "sonnet", "haiku", "fable", "claude-opus-4-8") only when agent="claude"; ' +
                             'the runtime-resolved concrete Claude model is shown in the VM status. ' +
                             'Use OpenAI model ids (e.g. "gpt-5.6-sol", "gpt-5.5", "gpt-5.4") only when agent="codex".',
