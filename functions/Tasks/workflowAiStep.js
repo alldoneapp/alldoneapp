@@ -107,11 +107,48 @@ const loadRunWorkflow = async run => {
 const buildRunId = (projectId, taskId, stepId, enteredAt) => `${projectId}__${taskId}__${stepId}__${enteredAt}`
 
 /**
+ * The fields that park a run on work that is already running on the task, instead of executing the
+ * step's configured prompt. Shared so the two moments that can park a run — the task trigger below
+ * and the dispatcher — cannot drift apart.
+ */
+const buildAwaitingExecutionFields = ({ assistantRunIds = [], vmCorrelationIds = [], skipReason = null, now }) => ({
+    status: RUN_STATUS_AWAITING_VM,
+    awaitingAssistantRunIds: assistantRunIds,
+    awaitingCorrelationIds: vmCorrelationIds,
+    // Re-query the task while parked. This bridges the pre-VM window: the assistant run is
+    // visible first, then the VM record takes over without an empty poll advancing the step.
+    awaitingAnyTaskExecution: true,
+    awaitingAnyTaskVm: true,
+    ...(skipReason ? { awaitingSkipReason: skipReason } : {}),
+    awaitingSince: now,
+    awaitingUntil: now + AWAITING_VM_TIMEOUT_MS,
+})
+
+/**
+ * Whether AI work is running on this task right now, and what to wait for.
+ *
+ * Only genuinely live work counts: a settled chat run or a terminal VM job never suppresses a step.
+ * Workflow runs themselves are invisible here — they write no message lock — so a step can never
+ * park on itself or on the AI step that just handed the task over.
+ */
+const findLiveTaskAiWork = async (projectId, taskId, now = Date.now()) => {
+    const [assistantRunIds, vmCorrelationIds] = await Promise.all([
+        findActiveAssistantRuns(projectId, taskId, now),
+        findUnsettledVmJobs(projectId, taskId),
+    ])
+
+    return { assistantRunIds, vmCorrelationIds, isLive: assistantRunIds.length > 0 || vmCorrelationIds.length > 0 }
+}
+
+/**
  * Called for every task update. Enqueues one AI run when a task lands on a step whose reviewer is an
  * assistant.
  *
  * Firestore triggers are at-least-once and an assistant run costs Gold, so the run doc id is
  * deterministic and written with `create()` — a redelivery collides and is dropped.
+ *
+ * A run that lands on a task the assistant is already working on is created parked rather than
+ * pending, so the step's configured prompt is never posted on top of that work.
  */
 const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, newTask = {}) => {
     // Subtasks mirror their parent's stepHistory and currentReviewerId (see updateSubtasksState in
@@ -152,6 +189,16 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
             ? persistedOverride
             : null
 
+    // Whether the assistant is already working this task has to be decided HERE, in the task
+    // trigger, because this is the only moment that is synchronous with the task landing on the
+    // step. The dispatcher is a one-minute poller, and a normal assistant answer routinely finishes
+    // well inside that gap: by the time the poller looked, nothing was live any more and the step
+    // posted its configured prompt anyway — right after the answer the user had just read. A VM job
+    // masked this, because it stays live for hours and is therefore still visible at the next tick.
+    // The dispatcher keeps its own checks for work that starts during the gap and is still running.
+    const now = Date.now()
+    const liveWork = await findLiveTaskAiWork(projectId, taskId, now)
+
     try {
         await admin
             .firestore()
@@ -171,10 +218,26 @@ const enqueueWorkflowAiRunIfNeeded = async (projectId, taskId, oldTask = {}, new
                           triggerMessageId: promptOverride.triggerMessageId || null,
                       }
                     : {}),
-                status: RUN_STATUS_PENDING,
-                createdAt: Date.now(),
+                ...(liveWork.isLive
+                    ? buildAwaitingExecutionFields({
+                          assistantRunIds: liveWork.assistantRunIds,
+                          vmCorrelationIds: liveWork.vmCorrelationIds,
+                          skipReason: 'task_ai_run_already_active',
+                          now,
+                      })
+                    : { status: RUN_STATUS_PENDING }),
+                createdAt: now,
             })
-        await setTaskWorkflowAiStatus(projectId, taskId, runId, stepId, RUN_STATUS_PENDING)
+        const status = liveWork.isLive ? RUN_STATUS_AWAITING_VM : RUN_STATUS_PENDING
+        await setTaskWorkflowAiStatus(projectId, taskId, runId, stepId, status)
+        if (liveWork.isLive) {
+            console.log('[workflowAiStep] Task already has live AI work, holding the step prompt', {
+                runId,
+                taskId,
+                assistantRunIds: liveWork.assistantRunIds,
+                vmCorrelationIds: liveWork.vmCorrelationIds,
+            })
+        }
         return runId
     } catch (error) {
         // ALREADY_EXISTS means this update was redelivered; anything else is worth surfacing but must
@@ -570,21 +633,9 @@ const parkWorkflowAiRunForExecution = async (
     skipReason = null
 ) => {
     const now = Date.now()
-    await runRef.set(
-        {
-            status: RUN_STATUS_AWAITING_VM,
-            awaitingAssistantRunIds: assistantRunIds,
-            awaitingCorrelationIds: vmCorrelationIds,
-            // Re-query the task while parked. This bridges the pre-VM window: the assistant run is
-            // visible first, then the VM record takes over without an empty poll advancing the step.
-            awaitingAnyTaskExecution: true,
-            awaitingAnyTaskVm: true,
-            ...(skipReason ? { awaitingSkipReason: skipReason } : {}),
-            awaitingSince: now,
-            awaitingUntil: now + AWAITING_VM_TIMEOUT_MS,
-        },
-        { merge: true }
-    )
+    await runRef.set(buildAwaitingExecutionFields({ assistantRunIds, vmCorrelationIds, skipReason, now }), {
+        merge: true,
+    })
     const persistedRun = (await runRef.get()).data() || {}
     await setTaskWorkflowAiStatus(persistedRun.projectId, taskId, runId, persistedRun.stepId, RUN_STATUS_AWAITING_VM)
     console.log('[workflowAiStep] Holding the step until task assistant work finishes', {
@@ -716,11 +767,8 @@ const finalizeWorkflowAiRun = async (runId, run, workflow, failureReason, skipRe
  * VM jobs (which can outlive the prompt that launched them) and interactive locks written by an
  * older function instance during a rolling deployment.
  */
-const hasActiveAiTaskJob = async (projectId, taskId, now = Date.now()) => {
-    const assistantRunIds = await findActiveAssistantRuns(projectId, taskId, now)
-    if (assistantRunIds.length > 0) return true
-    return (await findUnsettledVmJobs(projectId, taskId)).length > 0
-}
+const hasActiveAiTaskJob = async (projectId, taskId, now = Date.now()) =>
+    (await findLiveTaskAiWork(projectId, taskId, now)).isLive
 
 /**
  * Non-terminal chat assistant executions associated with this task.
