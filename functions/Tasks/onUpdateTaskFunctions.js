@@ -15,7 +15,6 @@ const { BACKLOG_DATE_NUMERIC } = require('../Utils/HelperFunctionsCloud')
 const { earnGold } = require('../Gold/goldHelper')
 const { captureTaskPriorityTaskUpdateFeedback } = require('../Assistant/taskPriorityLearning')
 const { enqueueWorkflowAiRunIfNeeded } = require('./workflowAiStep')
-const { releaseFocusTaskOnWorkflowStepChange } = require('./workflowFocusHandoff')
 const { reconcileTaskMergeStatusAfterWorkflowChange } = require('../Repositories/taskMergeStatusReconciliation')
 const { FieldValue } = require('firebase-admin/firestore')
 
@@ -94,10 +93,13 @@ const buildTaskProgressReward = (taskId, oldTask = {}, newTask = {}) => {
     const completedNow = !oldTask.done && newTask.done
 
     if (!movedForwardInWorkflow && !completedNow) {
-        // Deliberately not logged: this is the ordinary outcome for every task edit that is not a
-        // workflow advance or a completion, so it fired on almost every onUpdateTask invocation and
-        // was one of the largest single contributors to production log volume. The branches below
-        // still log, because those describe a reward that was expected but could not be paid.
+        console.log('[gold][fallback] Skipping task reward because task did not advance or complete now', {
+            taskId,
+            oldDone: !!oldTask.done,
+            newDone: !!newTask.done,
+            oldUserIdsLength: oldUserIds.length,
+            newUserIdsLength: newUserIds.length,
+        })
         return null
     }
 
@@ -337,6 +339,12 @@ const onUpdateTask = async (taskId, projectId, change) => {
     const oldTask = change.before.data()
     const newTask = change.after.data()
 
+    console.log(`🚨🚨🚨 CLOUD FUNCTION TRIGGERED: onUpdateTask for task ${taskId} 🚨🚨🚨`)
+    console.log(`[HumanReadableID] onUpdateTask triggered for task ${taskId}`)
+    console.log(`[HumanReadableID] Old humanReadableId: ${oldTask.humanReadableId}`)
+    console.log(`[HumanReadableID] New humanReadableId: ${newTask.humanReadableId}`)
+    console.log(`[HumanReadableID] LastEditionDate changed: ${oldTask.lastEditionDate !== newTask.lastEditionDate}`)
+
     promises.push(proccessGoalDynamicProgress(projectId, oldTask, newTask))
     promises.push(proccessAlgoliaRecord(taskId, projectId, oldTask, newTask))
     if (oldTask.parentGoalId !== newTask.parentGoalId) {
@@ -365,14 +373,6 @@ const onUpdateTask = async (taskId, projectId, change) => {
     if (newTask.userId !== oldTask.userId || (newTask.isSubtask && !oldTask.isSubtask)) {
         promises.push(clearUserTaskInFocusIfMatch(oldTask.userId, taskId))
     }
-    // AT-2193: a task that moved to another workflow step is no longer what its previous holders
-    // should be working on. Same handoff as a postpone, and the only place that can reach a focus
-    // holder who is not the user that performed the move (firestore.rules blocks cross-user writes).
-    promises.push(
-        releaseFocusTaskOnWorkflowStepChange(projectId, taskId, oldTask, newTask).catch(error =>
-            console.error('[workflowFocusHandoff] Focus handoff failed', { taskId, error: error.message })
-        )
-    )
     promises.push(syncLinkedNoteTitle(projectId, oldTask, newTask))
     promises.push(awardGoldForTaskProgress(projectId, taskId, oldTask, newTask))
     promises.push(captureTaskPriorityFeedbackSafely(projectId, taskId, oldTask, newTask))

@@ -31,10 +31,13 @@ export default function FollowSwitchableTag({
                 Animated.timing(backgroundLeftPosition, {
                     toValue: nextPosition,
                     duration: 300,
+                    // left/width are layout props, so the native driver cannot drive them.
+                    useNativeDriver: false,
                 }),
                 Animated.timing(backgroundWidthAnim, {
                     toValue: nextWidth,
                     duration: 200,
+                    useNativeDriver: false,
                 }),
             ],
             { stopTogether: false }

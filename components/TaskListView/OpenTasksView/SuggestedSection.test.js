@@ -29,7 +29,6 @@ jest.mock('./ParentGoalSection', () => 'ParentGoalSection')
 jest.mock('./TasksList', () => 'TasksList')
 jest.mock('./GeneralTasksHeader', () => 'GeneralTasksHeader')
 jest.mock('./SwipeableGeneralTasksHeader', () => 'SwipeableGeneralTasksHeader')
-jest.mock('../../Suggeted/SuggestedBulkActions', () => 'SuggestedBulkActions')
 
 const assistantTask = {
     id: 'task-1',
@@ -102,76 +101,5 @@ describe('SuggestedSection suggestion identity', () => {
 
         expect(JSON.stringify(tree.toJSON())).toContain('Karsten')
         expect(tree.root.findByType(Image).props.source).toEqual({ uri: 'karsten.jpg' })
-    })
-})
-
-describe('SuggestedSection bulk actions', () => {
-    beforeEach(() => {
-        mockState = {
-            subtaskByTaskStore: { instance: {} },
-            openMilestonesByProjectInTasks: { 'project-1': [] },
-            doneMilestonesByProjectInTasks: { 'project-1': [] },
-            goalsByProjectInTasks: { 'project-1': {} },
-            currentUser: { uid: 'user-1' },
-            assistantsById: {},
-        }
-        TasksHelper.getUserInProject.mockReturnValue(null)
-        TasksHelper.getContactInProject.mockReturnValue(null)
-    })
-
-    const renderSectionWithGroups = taskByGoalsList => {
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <SuggestedSection
-                    projectId="project-1"
-                    taskByGoalsList={taskByGoalsList}
-                    dateIndex={0}
-                    suggestedUserId="assistant-1"
-                    isActiveOrganizeMode={false}
-                    nestedTaskListIndex={0}
-                    instanceKey="instance"
-                />
-            )
-        })
-        return tree
-    }
-
-    test('hands the whole section to the bulk actions, flattened across goals', () => {
-        const tree = renderSectionWithGroups([
-            [
-                'no-goal',
-                [
-                    { ...assistantTask, id: 'task-1' },
-                    { ...assistantTask, id: 'task-2' },
-                ],
-            ],
-        ])
-
-        const bulkActions = tree.root.findByType('SuggestedBulkActions')
-        expect(bulkActions.props.projectId).toBe('project-1')
-        expect(bulkActions.props.tasks.map(task => task.id)).toEqual(['task-1', 'task-2'])
-    })
-
-    test('still mounts the bulk actions for a section holding a single suggestion', () => {
-        const tree = renderSectionWithGroups([['no-goal', [{ ...assistantTask, id: 'task-1' }]]])
-
-        const bulkActions = tree.root.findByType('SuggestedBulkActions')
-        expect(bulkActions.props.projectId).toBe('project-1')
-        expect(bulkActions.props.tasks.map(task => task.id)).toEqual(['task-1'])
-    })
-
-    test('never passes a task suggested by somebody else into the bulk actions', () => {
-        const tree = renderSectionWithGroups([
-            [
-                'no-goal',
-                [
-                    { ...assistantTask, id: 'task-1' },
-                    { id: 'task-2', suggestedBy: 'user-9', creatorId: 'user-9' },
-                ],
-            ],
-        ])
-
-        expect(tree.root.findByType('SuggestedBulkActions').props.tasks.map(task => task.id)).toEqual(['task-1'])
     })
 })

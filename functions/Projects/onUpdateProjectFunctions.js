@@ -104,6 +104,7 @@ const updateProjectAssistantToTemplateGuides = async (guideIds, assistantId, isG
 
 const onUpdateProject = async (projectId, oldProject, newProject) => {
     const startTime = Date.now()
+    console.log(`[onUpdateProject] Function triggered for projectId: ${projectId}`)
 
     // Track which fields changed (ALL fields to diagnose phantom updates)
     const allChangedFields = []
@@ -149,14 +150,13 @@ const onUpdateProject = async (projectId, oldProject, newProject) => {
     if (allChangedFields.length > 0) {
         console.log(`[onUpdateProject] ALL changed fields: ${allChangedFields.join(', ')}`)
     }
-    // Early return if no relevant fields changed. This is the common case for a project write, so
-    // neither the return nor the (empty) field list is logged; the "ALL changed fields" line above
-    // still fires when something really changed, which is what diagnoses phantom updates.
+    console.log(`[onUpdateProject] Relevant changed fields:`, JSON.stringify(changedFields))
+
+    // Early return if no relevant fields changed
     if (changedFields.length === 0) {
+        console.log(`[onUpdateProject] No relevant fields changed, skipping execution for projectId: ${projectId}`)
         return
     }
-
-    console.log(`[onUpdateProject] Relevant changed fields:`, JSON.stringify(changedFields))
 
     const promises = []
     const executionReasons = []

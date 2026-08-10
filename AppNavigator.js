@@ -201,7 +201,10 @@ export class AppContainer extends React.Component {
     componentDidMount() {
         this.unsubscribe = NavigationService.subscribe(navState => this.setState(navState))
         document.addEventListener('mousedown', this.handleDomPointerDown, true)
-        document.addEventListener('touchstart', this.handleDomPointerDown, true)
+        // touchstart is scroll-blocking: register it passive (the handler only
+        // reads coordinates and never calls preventDefault) so Chrome does not
+        // have to wait on it before scrolling.
+        document.addEventListener('touchstart', this.handleDomPointerDown, { capture: true, passive: true })
     }
 
     componentDidUpdate(prevProps, prevState) {
@@ -217,7 +220,7 @@ export class AppContainer extends React.Component {
     componentWillUnmount() {
         this.unsubscribe && this.unsubscribe()
         document.removeEventListener('mousedown', this.handleDomPointerDown, true)
-        document.removeEventListener('touchstart', this.handleDomPointerDown, true)
+        document.removeEventListener('touchstart', this.handleDomPointerDown, { capture: true })
     }
 
     // Feeds every press on the page into the dismissible-modal system with the

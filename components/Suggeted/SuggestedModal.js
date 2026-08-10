@@ -4,6 +4,7 @@ import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import store from '../../redux/store'
 import EstimationModal from '../UIComponents/FloatModals/EstimationModal/EstimationModal'
+import Button from '../UIControls/Button'
 import Shortcut, { SHORTCUT_LIGHT } from '../UIControls/Shortcut'
 import Hotkeys from 'react-hot-keys'
 import RichCommentModal from '../UIComponents/FloatModals/RichCommentModal/RichCommentModal'
@@ -30,12 +31,6 @@ import {
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
 import { getSuggestedById, isAssistantSuggestedTask, resolveSuggestedByIdentity } from '../../utils/suggestedTaskFlow'
-import SuggestedActions from './SuggestedActions'
-import {
-    canBypassSuggestedTaskWorkflow,
-    getSuggestedTaskBypassLabel,
-    moveSuggestedTaskToDoneBypassingWorkflow,
-} from './suggestedTaskBypass'
 export default class SuggestedModal extends Component {
     constructor(props) {
         super(props)
@@ -61,8 +56,6 @@ export default class SuggestedModal extends Component {
             smallScreenNavigation: storeState.smallScreenNavigation,
             unsubscribe: store.subscribe(this.updateState),
             loggedUser: storeState.loggedUser,
-            currentUser: storeState.currentUser,
-            processingAction: false,
         }
     }
 
@@ -82,7 +75,6 @@ export default class SuggestedModal extends Component {
 
         this.setState({
             smallScreenNavigation: storeState.smallScreenNavigation,
-            currentUser: storeState.currentUser,
         })
     }
 
@@ -169,27 +161,6 @@ export default class SuggestedModal extends Component {
         })
     }
 
-    // Skips every workflow step of the accepting user and completes the suggested task right away.
-    onBypassWorkflowPress = () => {
-        const { comment, estimation, processingAction } = this.state
-        const { projectId, task, hidePopover, checkBoxId } = this.props
-
-        if (processingAction) return
-        this.setState({ processingAction: true })
-
-        hidePopover()
-        updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
-            const estimations = { ...task.estimations, [OPEN_STEP]: estimation }
-            moveSuggestedTaskToDoneBypassingWorkflow({
-                projectId,
-                task,
-                estimations,
-                comment: commentWithAttachments,
-                checkBoxId,
-            })
-        })
-    }
-
     onEnter = e => {
         const { inComments, inWorkflowSelection, inAssignee, inEstimation } = this.state
         if (e.key === 'Enter' && !inComments && !inWorkflowSelection && !inAssignee && !inEstimation) {
@@ -273,7 +244,6 @@ export default class SuggestedModal extends Component {
             estimation,
             smallScreenNavigation: mobile,
             tmpTask,
-            currentUser,
         } = this.state
 
         const suggestedById = getSuggestedById(task)
@@ -449,15 +419,17 @@ export default class SuggestedModal extends Component {
                         </Hotkeys>
                     </View>
 
-                    <SuggestedActions
-                        isAssistantSuggestion={isAssistantSuggestedTask(task)}
-                        disabled={task.userId !== tmpTask.userId}
-                        showBypassWorkflow={canBypassSuggestedTaskWorkflow(currentUser, projectId, task)}
-                        bypassWorkflowLabel={getSuggestedTaskBypassLabel(currentUser, projectId)}
-                        onNextStepPress={() => this.onDonePress(false)}
-                        onAcceptPress={() => this.onDonePress(true)}
-                        onBypassWorkflowPress={this.onBypassWorkflowPress}
-                    />
+                    <View style={localStyles.doneButtonContainer}>
+                        <Button
+                            disabled={task.userId !== tmpTask.userId}
+                            icon="next-workflow"
+                            title={translate(isAssistantSuggestedTask(task) ? 'Reject' : 'Go to next step')}
+                            type="secondary"
+                            buttonStyle={{ marginRight: 8 }}
+                            onPress={() => this.onDonePress(false)}
+                        />
+                        <Button title={translate('Accept')} type={'primary'} onPress={() => this.onDonePress(true)} />
+                    </View>
                 </View>
             </View>
         )
@@ -505,6 +477,13 @@ const localStyles = StyleSheet.create({
     uploadText: {
         color: 'white',
         marginLeft: 8,
+    },
+    doneButtonContainer: {
+        height: 72,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: 16,
     },
     estimation: {
         height: 40,

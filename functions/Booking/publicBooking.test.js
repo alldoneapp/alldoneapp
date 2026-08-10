@@ -10,11 +10,6 @@ jest.mock('../GoogleCalendar/assistantCalendarTools', () => ({
     createCalendarEventForAssistantRequest: jest.fn(),
 }))
 
-jest.mock('./bookingEmails', () => ({
-    sendBookingNotificationToHost: jest.fn().mockResolvedValue(undefined),
-    sendBookingConfirmationToVisitor: jest.fn().mockResolvedValue(undefined),
-}))
-
 jest.mock('./bookingSettings', () => ({
     findPublicBookingSlots: jest.fn(),
     getConnectedCalendarCount: jest.fn(),
@@ -32,7 +27,6 @@ jest.mock('./bookingSettings', () => ({
 const admin = require('firebase-admin')
 const { createCalendarEventForAssistantRequest } = require('../GoogleCalendar/assistantCalendarTools')
 const bookingSettings = require('./bookingSettings')
-const bookingEmails = require('./bookingEmails')
 const { bookingApiHandler } = require('./publicBooking')
 
 function createResponse() {
@@ -93,8 +87,6 @@ describe('public booking API', () => {
             provider: 'google',
             calendarId: 'primary',
             event: { eventId: 'event-1', htmlLink: 'https://calendar.example/event-1' },
-            joinUrl: 'https://meet.google.com/abc-defg-hij',
-            joinProvider: 'google_meet',
         })
         admin.firestore.mockReturnValue({
             collection: jest.fn(() => ({
@@ -205,89 +197,5 @@ describe('public booking API', () => {
             expect.objectContaining({ status: 'confirmed', visitorEmail: 'visitor@example.com' })
         )
         expect(res.body.bookingId).toBe('booking-1')
-    })
-
-    // AT-2198: a booked meeting must carry a join link everywhere the booking is
-    // represented — the stored record, both emails, and the API response.
-    describe('meeting join link', () => {
-        function bookRequest() {
-            return createRequest({
-                method: 'POST',
-                path: '/book',
-                body: {
-                    slug: 'karsten-wysk',
-                    start: '2026-06-18T09:00:00+02:00',
-                    end: '2026-06-18T09:30:00+02:00',
-                    timeZone: 'Europe/Berlin',
-                    visitorName: 'Visitor',
-                    visitorEmail: 'visitor@example.com',
-                },
-            })
-        }
-
-        test('persists the join link on the booking record', async () => {
-            const set = jest.fn().mockResolvedValue(undefined)
-            admin.firestore.mockReturnValue({
-                collection: jest.fn(() => ({ doc: jest.fn(() => ({ id: 'booking-1', set })) })),
-            })
-
-            await bookingApiHandler(bookRequest(), createResponse())
-
-            expect(set).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    event: expect.objectContaining({
-                        joinUrl: 'https://meet.google.com/abc-defg-hij',
-                        joinProvider: 'google_meet',
-                    }),
-                })
-            )
-        })
-
-        test('sends the join link to both the host and the visitor', async () => {
-            const res = createResponse()
-
-            await bookingApiHandler(bookRequest(), res)
-
-            expect(bookingEmails.sendBookingNotificationToHost).toHaveBeenCalledWith(
-                expect.objectContaining({ joinUrl: 'https://meet.google.com/abc-defg-hij' })
-            )
-            expect(bookingEmails.sendBookingConfirmationToVisitor).toHaveBeenCalledWith(
-                expect.objectContaining({ joinUrl: 'https://meet.google.com/abc-defg-hij' })
-            )
-            expect(res.body.joinUrl).toBe('https://meet.google.com/abc-defg-hij')
-        })
-
-        // Conferencing is best-effort: a provider that refuses to create a
-        // conference must not turn into a failed booking.
-        test('still confirms the booking when no join link could be created', async () => {
-            createCalendarEventForAssistantRequest.mockResolvedValue({
-                success: true,
-                provider: 'google',
-                calendarId: 'primary',
-                event: { eventId: 'event-1', htmlLink: 'https://calendar.example/event-1' },
-                joinUrl: '',
-                joinProvider: '',
-            })
-            const set = jest.fn().mockResolvedValue(undefined)
-            admin.firestore.mockReturnValue({
-                collection: jest.fn(() => ({ doc: jest.fn(() => ({ id: 'booking-1', set })) })),
-            })
-            const res = createResponse()
-
-            await bookingApiHandler(bookRequest(), res)
-
-            expect(res.statusCode).toBe(200)
-            expect(res.body.success).toBe(true)
-            expect(res.body.joinUrl).toBe('')
-            expect(set).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    status: 'confirmed',
-                    event: expect.objectContaining({ joinUrl: '' }),
-                })
-            )
-            expect(bookingEmails.sendBookingConfirmationToVisitor).toHaveBeenCalledWith(
-                expect.objectContaining({ joinUrl: '' })
-            )
-        })
     })
 })

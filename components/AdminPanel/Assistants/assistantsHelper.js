@@ -131,9 +131,20 @@ const getNormalAssistantInProject = (projectId, assistantId) => {
     return null
 }
 
-// Re-exported from a dependency-free module so store-only helpers (and their unit tests) can
-// resolve an assistant without pulling in this file's transitive firestore/dotenv imports.
-export { getAssistantFromState } from './assistantStateLookup'
+export const getAssistantFromState = (state, assistantId) => {
+    if (!assistantId) return null
+
+    const globalAssistant = (state?.globalAssistants || []).find(assistant => assistant.uid === assistantId)
+    if (globalAssistant) return globalAssistant
+
+    const projectAssistants = state?.projectAssistants || {}
+    for (const assistants of Object.values(projectAssistants)) {
+        const assistant = (assistants || []).find(item => item.uid === assistantId)
+        if (assistant) return assistant
+    }
+
+    return null
+}
 
 export const getAssistant = assistantId => {
     const globalAssistant = getGlobalAssistant(assistantId)

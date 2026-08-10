@@ -18,7 +18,6 @@ import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../../utils/Lin
 import { MENTION_SPACE_CODE } from '../../../Feeds/Utils/HelperFunctions'
 import { copyContactToProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 import { isGlobalAssistant, GLOBAL_PROJECT_ID } from '../../../AdminPanel/Assistants/assistantsHelper'
-import { captureNoteSelectionSnapshot, clearNoteSelectionSnapshot, normalizeSelection } from './noteSelection'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -41,24 +40,6 @@ let quillKeyboardBindingsTab = null
 let mentionLastHalfText = ''
 
 export const getSelection = () => {
-    return activeSelection
-}
-
-/**
- * Snapshots the editor's current selection at the moment a toolbar action is
- * pressed.
- *
- * Two things are written: the shared cache (what everything else reads), and a
- * single-use press-time snapshot that the create-task popup consumes. The
- * snapshot is what makes "select text, press Task" reliable - by the time the
- * popup is constructed the note editor may no longer be able to report the
- * range at all, and Quill's `savedRange` cannot be trusted to stand in for it
- * because it defaults to `{index: 0, length: 0}` rather than to "unknown".
- *
- * Returns the resolved selection.
- */
-export const captureSelectionFromEditor = editor => {
-    activeSelection = captureNoteSelectionSnapshot(editor, activeSelection)
     return activeSelection
 }
 
@@ -90,7 +71,6 @@ export const resetMentionsData = () => {
     updateBindingKeys()
     selectionBounds = { top: 0, left: 0 }
     activeSelection = { index: 0, length: 0 }
-    clearNoteSelectionSnapshot()
     editorElement = null
     mentionPosition = 0
     noteId = ''
@@ -242,22 +222,13 @@ const checkMentionModalState = () => {
 }
 
 export const onChangeSelection = selection => {
-    const normalizedSelection = normalizeSelection(selection)
-    if (!normalizedSelection) return
-
-    // Track the selection even before `loadMentionsData` has resolved the
-    // editor's DOM node. `editorElement` only gates the mention popup's
-    // positioning; gating the cache on it too meant that a note whose element
-    // lookup had not landed yet kept reporting {index: 0, length: 0} to every
-    // toolbar action - the create-task popup included.
-    activeSelection = normalizedSelection
-
-    if (!editorElement) return
-
-    if (!showMentionPopup) {
-        getMentionModalLocation(activeSelection.index)
+    if (selection && editorElement) {
+        activeSelection = { ...selection }
+        if (!showMentionPopup) {
+            getMentionModalLocation(activeSelection.index)
+        }
+        checkMentionModalState()
     }
-    checkMentionModalState()
 }
 
 export const insertNormalMention = () => {

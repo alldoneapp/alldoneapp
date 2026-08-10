@@ -1,9 +1,7 @@
 import {
     ASSISTANT_INPUT_MAX_HEIGHT,
     getAssistantInputLayout,
-    ASSISTANT_CONTROLS_STACKED_HEIGHT,
-    getAssistantControlsStacked,
-    getAssistantInputDisplayHeight,
+    getStableControlsWidth,
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from './assistantInputLayout'
 
@@ -68,46 +66,30 @@ describe('assistant input layout', () => {
     })
 })
 
-describe('assistant controls stacking', () => {
-    it('stacks the voice and send buttons as soon as the field grows past one line', () => {
-        expect(getAssistantControlsStacked({ inputHeight: 62, hasText: true, wasStacked: false })).toBe(true)
+describe('stable send-controls width', () => {
+    it('captures the collapsed (row) width so the input width can stay fixed', () => {
+        expect(getStableControlsWidth(120.4, false, null)).toBe(121)
     })
 
-    it('keeps the row layout while the field is a single line', () => {
-        expect(getAssistantControlsStacked({ inputHeight: 40, hasText: true, wasStacked: false })).toBe(false)
+    it('never adopts a narrower measurement taken while the cluster is stacked/expanded', () => {
+        // The row layout measured 120; once the input expands the cluster becomes
+        // a column and reports ~72. Trusting that would widen the flex:1 input and
+        // restart the wrap/height oscillation, so the pinned width must not move.
+        expect(getStableControlsWidth(72, true, 120)).toBe(120)
     })
 
-    it('holds the stack when the widened input re-wraps back to one line', () => {
-        // Stacking narrows the cluster by ~48px, so the flex:1 input gets wider
-        // and the text can re-wrap to a single line. Un-stacking here would
-        // re-widen the cluster, re-wrap the text and oscillate forever.
-        expect(getAssistantControlsStacked({ inputHeight: 40, hasText: true, wasStacked: true })).toBe(true)
+    it('holds the pinned width against sub-pixel jitter to avoid needless re-renders', () => {
+        expect(getStableControlsWidth(120.2, false, 120)).toBe(120)
     })
 
-    it('returns to the compact row only once the field is empty', () => {
-        expect(getAssistantControlsStacked({ inputHeight: 40, hasText: false, wasStacked: true })).toBe(false)
+    it('re-measures a genuinely different collapsed width (e.g. after a resize)', () => {
+        expect(getStableControlsWidth(96, false, 120)).toBe(96)
     })
 
-    it('ignores invalid measurements without dropping the stack', () => {
-        expect(getAssistantControlsStacked({ inputHeight: NaN, hasText: true, wasStacked: true })).toBe(true)
-        expect(getAssistantControlsStacked({ inputHeight: NaN, hasText: false, wasStacked: true })).toBe(false)
-    })
-})
-
-describe('assistant input display height', () => {
-    it('leaves the collapsed height untouched', () => {
-        expect(getAssistantInputDisplayHeight(40, false)).toBe(40)
-        expect(getAssistantInputDisplayHeight(62, false)).toBe(62)
-    })
-
-    it('grows the field to the stacked cluster height so the buttons never overhang', () => {
-        expect(ASSISTANT_CONTROLS_STACKED_HEIGHT).toBe(88)
-        expect(getAssistantInputDisplayHeight(40, true)).toBe(88)
-        expect(getAssistantInputDisplayHeight(62, true)).toBe(88)
-    })
-
-    it('keeps a taller field as measured and never exceeds the scroll ceiling', () => {
-        expect(getAssistantInputDisplayHeight(106, true)).toBe(106)
-        expect(getAssistantInputDisplayHeight(120, true)).toBe(120)
+    it('ignores zero / invalid measurements and keeps the previous width', () => {
+        expect(getStableControlsWidth(0, false, 120)).toBe(120)
+        expect(getStableControlsWidth(NaN, false, 120)).toBe(120)
+        expect(getStableControlsWidth(-5, false, 120)).toBe(120)
+        expect(getStableControlsWidth(undefined, false, null)).toBe(null)
     })
 })
