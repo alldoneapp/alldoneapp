@@ -1224,6 +1224,143 @@ describe('startVmJob', () => {
         expect(mockCollectionQuery.get).not.toHaveBeenCalled()
     })
 
+    // AT-2240: continuing a thread must keep its agent. Switching agents mid-thread is destructive
+    // (the runner cannot hand a Codex sandbox to Claude — it kills it and starts cold), so a changed
+    // Settings → Integrations default must not silently discard a running session's files and
+    // conversation. The decision logic itself is covered by vmThreadAgentContinuity.test.js.
+    describe('agent continuity across a resumed VM session', () => {
+        const session = data => {
+            mockDocs['vmSessions/project-1__chat-1'] = {
+                get: jest.fn(async () => ({ exists: true, data: () => data })),
+                set: jest.fn(async () => {}),
+                update: jest.fn(async () => {}),
+            }
+        }
+        const savedDefaultAgent = agent =>
+            mockGetDoc('users/user-1').get.mockResolvedValue({
+                exists: true,
+                data: () => ({ defaultVmAgent: agent }),
+            })
+        const run = extra =>
+            startVmJob({
+                objective: 'Carry on with the previous work',
+                taskType: 'prototype',
+                projectId: 'project-1',
+                objectType: 'topics',
+                objectId: 'chat-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+                ...extra,
+            })
+        const statusText = () => createInitialStatusMessage.mock.calls[0][4]
+
+        test('resumes on the session’s agent even though the saved default has since changed', async () => {
+            session({ agent: 'claude', sandboxId: 'sbx-1', status: 'paused' })
+            savedDefaultAgent('codex')
+
+            const result = await run({})
+
+            expect(result.agent).toBe('claude')
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'claude', agentModel: DEFAULT_CLAUDE_MODEL })
+            )
+            // …and the user is told why, so the pin does not read as their setting being ignored.
+            expect(statusText()).toContain('Continuing this thread')
+            expect(statusText()).toContain('stays on Claude')
+            expect(result.message).toContain('rather than your current default (Codex)')
+        })
+
+        test('a queued follow-up inherits the running job’s agent, not the new default', async () => {
+            session({
+                agent: 'codex',
+                status: 'running',
+                activeLeaseOwner: 'someone-else-uuid',
+                activeCorrelationId: 'someone-else',
+                activeLeaseExpiresAt: Date.now() + 60_000,
+            })
+            savedDefaultAgent('claude')
+
+            const result = await run({})
+
+            expect(result.status).toBe('queued')
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'codex' })
+            )
+            expect(statusText()).toContain('stays on Codex')
+        })
+
+        test('an explicitly requested agent still switches the thread', async () => {
+            // The deliberate restart: the user asked for the other agent, so the session is dropped.
+            session({ agent: 'claude', sandboxId: 'sbx-1', status: 'paused' })
+            savedDefaultAgent('claude')
+
+            const result = await run({ agent: 'codex', requestText: 'continue, but use codex this time' })
+
+            expect(result.agent).toBe('codex')
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'codex' })
+            )
+            expect(statusText()).not.toContain('Continuing this thread')
+        })
+
+        test('an uncorroborated agent argument does not switch the thread either (AT-2224 + AT-2240)', async () => {
+            // The assistant filled `agent` in on its own; the guard drops it, and continuity then
+            // keeps the run on the session's agent rather than on the saved default.
+            session({ agent: 'claude', sandboxId: 'sbx-1', status: 'paused' })
+            savedDefaultAgent('codex')
+
+            const result = await run({ agent: 'codex', requestText: 'please continue where you left off' })
+
+            expect(result.agent).toBe('claude')
+        })
+
+        test('a thread whose sandbox is gone starts cold on the current default', async () => {
+            // The session doc outlives its sandbox by up to 7 days. With nothing to resume this is a
+            // new run, and a new run follows current settings — the behaviour to preserve.
+            session({ agent: 'claude', sandboxId: null, status: 'paused', lastRunStatus: 'completed' })
+            savedDefaultAgent('codex')
+
+            const result = await run({})
+
+            expect(result.agent).toBe('codex')
+            expect(statusText()).not.toContain('Continuing this thread')
+        })
+
+        test('a legacy session doc with no recorded agent falls back to the default', async () => {
+            session({ sandboxId: 'sbx-1', status: 'paused' })
+            savedDefaultAgent('codex')
+
+            const result = await run({})
+
+            expect(result.agent).toBe('codex')
+        })
+
+        test('says nothing extra when the pinned agent is also the current default', async () => {
+            session({ agent: 'claude', sandboxId: 'sbx-1', status: 'paused' })
+            savedDefaultAgent('claude')
+
+            const result = await run({})
+
+            expect(result.agent).toBe('claude')
+            expect(statusText()).not.toContain('Continuing this thread')
+            expect(result.message).not.toContain('current default')
+        })
+
+        test('steps aside when the user asked for a model of the other agent', async () => {
+            // "continue, with opus" on a Codex thread: pinning would reject the model outright.
+            session({ agent: 'codex', sandboxId: 'sbx-1', status: 'paused' })
+            savedDefaultAgent('claude')
+
+            const result = await run({ agentModel: 'opus', requestText: 'continue this with opus please' })
+
+            expect(result.success).toBe(true)
+            expect(result.agent).toBe('claude')
+            expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
+                expect.objectContaining({ agent: 'claude', agentModel: 'opus' })
+            )
+        })
+    })
+
     test('launchQueuedVmJob flips a queued job to pending and launches it', async () => {
         mockDocs['users/user-1'] = { get: jest.fn(async () => ({ exists: true, data: () => ({ gold: 500 }) })) }
         mockDocs['pendingWebhooks/queued-1'] = {

@@ -1,34 +1,16 @@
 'use strict'
 
 const admin = require('firebase-admin')
-const {
-    DEFAULT_CONFIDENCE_THRESHOLD,
-    DEFAULT_GMAIL_LABELING_MODEL,
-    GMAIL_LABELING_MODEL_KEYS,
-} = require('../Gmail/gmailLabelingConfig')
+const { DEFAULT_CONFIDENCE_THRESHOLD, DEFAULT_GMAIL_LABELING_MODEL } = require('../Gmail/gmailLabelingConfig')
 const { Timestamp } = require('firebase-admin/firestore')
 
 const CALENDAR_PROJECT_ROUTING_CONFIG_TYPE = 'calendarProjectRoutingConfig'
 const DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT =
     'Choose exactly one active Alldone project for each Google Calendar event when the event clearly belongs to that project. Use the project descriptions as the primary context. Prefer precision over recall: if the event could belong to multiple projects, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider the event title, description, attendees and their email addresses, organizer, creator, location, meeting links, timing, project names, client names, stakeholders, goals, tasks, decisions, updates, and deliverables. Pay particular attention to the attendees\' and organizer\'s email addresses and especially their domains: a shared company or client domain (for example everyone on "@acme.com") is a strong signal that the event belongs to the project tied to that company or client. Match those domains and individual addresses against the project descriptions, client names, and stakeholders to decide the project.'
 
-/**
- * Calendar routing now validates its model against the same allowlist Gmail labeling uses, instead
- * of passing any string straight through.
- *
- * The pass-through was load-bearing by accident and actively harmful. Its only special case
- * (`=== 'MODEL_GPT5_6_LUNA'` → `DEFAULT_GMAIL_LABELING_MODEL`) was dead code, because that default
- * *is* Luna. So an arbitrary stored value reached `mapAssistantModelToOpenAIModel`, missed every
- * branch, and silently became `gpt-5.2` — which is exactly what happened in production: the client
- * helper defaulted this field to `MODEL_GPT5_4_NANO`, a key not in the selectable set, so calendar
- * routing has been running on `gpt-5.2` while reporting nano. Coercing an unknown key to the default
- * makes the stored value and the model actually used agree again, and is what stops a new
- * non-OpenAI key (AT-2238's DeepSeek) from being accepted here and then silently swapped for an
- * OpenAI model at request time.
- */
 function normalizeCalendarProjectRoutingModel(model) {
     const normalizedModel = typeof model === 'string' ? model.trim() : ''
-    if (!normalizedModel || !GMAIL_LABELING_MODEL_KEYS.has(normalizedModel)) return DEFAULT_GMAIL_LABELING_MODEL
+    if (!normalizedModel || normalizedModel === 'MODEL_GPT5_6_LUNA') return DEFAULT_GMAIL_LABELING_MODEL
     return normalizedModel
 }
 

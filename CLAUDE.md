@@ -194,55 +194,6 @@ Uses Firebase Functions v2 syntax:
 
 Always consider i18n. Translations in `i18n/translations/` (en.json, de.json, es.json). Use TranslationService for new strings.
 
-### In-app assistant models (chat, heartbeat, labeling)
-
-`functions/Assistant/selectableAssistantModels.js` is the **one** product menu of assistant models,
-and adding an entry there surfaces it in every picker at once: assistant model, heartbeat model,
-per-task override, Gmail labeling and calendar routing. Everything else is a per-capability
-allowlist keyed on the product key (`MODEL_GPT5_6_SOL`, `MODEL_DEEPSEEK_V4_FLASH`), never on the
-upstream id. Adding a model means touching `assistantHelper.js`'s `getModel`, `getTokensPerGold`,
-`getMaxTokensForModel` and each `modelSupports*` gate, plus the label chains in `ModelWrapper.js` /
-`assistantUpdates.js` / `UpdateFromTemplate.js` and the `i18n` label. **A model missing from
-`getTokensPerGold` is billed nothing at all** — it returns `undefined` and
-`calculateGoldCostFromTokens` turns that into `0`, silently.
-
-**This is a separate system from the VM agent catalog** (`vmAgentModelCatalog.js` /
-`vmModelRouting.js`). The VM harness encodes its provider into the model string
-(`openrouter:vendor/model`) because the user picks from a live catalog of hundreds. The in-app
-assistant does the opposite — a short curated list whose keys are already persisted on assistant
-docs, Gmail configs and calendar configs — so the key stays opaque and the upstream id lives in a
-table (`assistantModelRouting.js`). That is what lets the pinned DeepSeek release be bumped on one
-line without a data migration.
-
-**DeepSeek V4 Flash via OpenRouter (AT-2238)** is the first non-OpenAI, non-Perplexity assistant
-model, pinned to `deepseek/deepseek-v4-flash-0731` rather than the floating
-`~deepseek/deepseek-v4-flash-latest` alias, which would swap the model under live assistants and
-labeling configs with no review. The load-bearing constraint is the **wire protocol**: chat and
-heartbeats run on OpenAI's **Responses** API (`openai.responses.create`), and OpenRouter serves only
-the OpenAI-_compatible_ **Chat Completions** surface — the same split `vmJobRunner` already handles
-for Codex with `wire_api = "chat"`. So OpenRouter chat takes a second transport,
-`openRouterChatClient.js`, which terminates at the _same_ stream contract
-(`{content, additional_kwargs}` plus a trailing `tool_calls` event) so the tool loop, Gold metering
-and progress status are untouched. Three consequences worth knowing: hosted **tool-search is
-Responses-only**, so OpenRouter runs always send full function schemas (Flash's 1M window absorbs
-it); `prompt_cache_key` / `prompt_cache_options` / `prompt_cache_breakpoint` are **OpenAI
-extensions** and are omitted rather than sent hopefully; and Flash is **text-only**
-(`input_modalities: ['text']`), so image parts are replaced with a readable placeholder instead of
-failing the whole request. Labeling was the cheap half — the Gmail and calendar classifiers already
-call `chat.completions.create`, so only the client swaps (`classifierModelClient.js`). Both
-classifiers resolve their **two passes independently**, because a DeepSeek first pass with the
-default OpenAI auditor is the normal configuration. Chat Gold rate is **2000 tokens/Gold** (Sol 100,
-Terra 200, Luna 500) — a deliberate fraction of the ~80x upstream cost advantage, matching how
-Luna's 25x is priced at 5x. Requires `OPENROUTER_API_KEY`, which **had never been whitelisted in
-`envFunctionsHelper.js`** — that file builds explicit key objects rather than spreading the env
-blob, so the key was `undefined` at runtime even when present in `GOOGLE_FUNCTIONS_ENV_DEV/_PROD`;
-adding a secret to the blob is not enough, it must be listed there too.
-
-Calendar routing additionally gained the model picker and the server-side allowlist it never had.
-It previously accepted **any** string and defaulted client-side to `MODEL_GPT5_4_NANO`, a key
-outside the selectable set that the classifier's mapper did not know — so it fell through to
-`gpt-5.2`, and calendar labeling ran on a model that was neither stored nor chosen.
-
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:
@@ -331,6 +282,7 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
 - **Optional personal subscription auth**: Settings → Integrations lets a user connect Claude (`claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN`) or Codex (`codex login` with `cli_auth_credentials_store = "file"`, then paste `~/.codex/auth.json`). Credentials live in `users/{uid}/private/vmAgentSubscriptions`; callable responses expose status only, never the secret. The job records whether subscription or Alldone API billing was selected and says so in both initial and live VM status text. API-billed runs use `vmLlmProxy` so platform API keys never enter the sandbox. Subscription runs bypass the proxy: Claude receives the OAuth token only in the process environment; Codex receives a mode-600 auth cache in `/home/user/.codex/auth.json`. The worker persists a refreshed Codex cache and removes it before pausing the reusable sandbox.
 - **Detached Cloud Run Job + runtime errors**: `startVmJob` always launches one `vm-job-runner` Cloud Run Job execution through the Cloud Run v2 API instead of putting work behind Cloud Tasks' HTTP dispatch ceiling; there is no rollout feature flag. `vmJobConfig.js` sets an exact **five-hour agent runtime** split into **55-minute E2B leases**. At each boundary the runner disconnects the command stream, pauses and resumes the same sandbox, reconnects to the same PID, and reloads durable stdout/stderr from the VM. E2B's independent command-connection timeout is disabled (`timeoutMs: 0`) so it cannot kill the process after one hour; the runner supervisor is the authoritative limit. The Cloud Run task is deployed with a **5h45m timeout** for lease handoffs, artifacts, Gold settlement, result fan-out, refunds and sandbox cleanup. The runner claims a Firestore job lease and writes heartbeats so a duplicate/stale execution does not supervise the same paid run concurrently. It also transactionally leases each per-chat `vmSessions` sandbox before resuming it; overlapping work on the same thread is **queued** rather than run on a throwaway isolated sandbox (see the per-thread job queue section below), and command-channel timeouts or forced `-1` exits discard the unhealthy sandbox instead of preserving orphaned processes. Its typed timer maps timeout-shaped E2B errors to `The VM task exceeded its allowed execution time of 5 hours...` with `failureReason: runtime_timeout`. Build/deploy/IAM instructions are in `functions/Assistant/cloud-run-job/README.md`.
 - **Persistent per-thread session (resume)**: each chat thread keeps one VM session. After a run the worker **pauses** the sandbox (snapshotting filesystem + the agent's session store) and records its id on `vmSessions/{projectId}__{objectId}`; the next `execute_task_in_vm` in that thread **resumes** it (`Sandbox.connect`) and runs the agent with `--continue` (Claude) / `codex exec resume --last` so it keeps prior files + conversation. `e2b@1.x` has no `pause()` — we POST the pause REST endpoint (`api.e2b.dev/sandboxes/{id}/pause`, `X-API-KEY`) directly; resume is `Sandbox.connect`, cleanup is `Sandbox.kill`. After a run the sandbox is **kept running for a ~10-min keep-alive window** (so back-to-back tasks in a thread hit a live VM with no resume latency); the `pauseIdleVmSessions` schedule (every 2 min) pauses sessions idle past that window, and `cleanupIdleVmSessions` deletes them after 7 days. The sandbox self-kill timeout (15 min) sits above the grace window + pauser interval so the pauser always pauses (preserving state) before E2B would kill the idle VM. `collectArtifacts` filters by `modifiedTime` so a resume only re-attaches files written in that run. Caveat: persistence is an E2B beta — validate across multiple resumes ([E2B #884](https://github.com/e2b-dev/E2B/issues/884)).
+- **A continued run keeps the agent its session was started with (AT-2240)**: the agent used to be re-resolved from scratch on every dispatch — corroborated tool override, then `users/{uid}.defaultVmAgent`, then the system default — with nothing consulting what the thread was actually running. Changing the Settings → Integrations default therefore switched a *live conversation* to the other agent, and that switch is **destructive, not cosmetic**: the runner cannot hand a Codex sandbox to Claude (their session stores are not interchangeable), so `runVmJob` kills the sandbox (`discarding incompatible session`), drops the repo checkout and the whole agent conversation, and starts cold — the user asked to continue, read "🖥️ Spinning up Codex…", and lost what the thread was built on. `functions/Assistant/vmThreadAgentContinuity.js` inserts the thread's own agent into the precedence chain, so it is now **corroborated per-run request (AT-2224) > the thread's existing agent > saved default > system default**; `startVmJob` passes the pinned agent where it used to pass only the override. An explicit "use Codex" still switches — that is the deliberate cold restart, and it is the documented way to change a thread's agent. Three deliberate boundaries: (1) **only the agent is pinned** — model family, reasoning effort and the credential route (Gold/BYOK/subscription) are still re-resolved per run, because none of them invalidates a session (the same CLI resumes the same store) and freezing them would mean a thread could never pick up a model upgrade or a re-connected key; (2) **continuation is a state, not a time window** — the pin applies while there is something to continue (a `paused`/`idle_running` sandbox, or a run in flight/queued/blocked-on-interaction whose sandbox this job inherits), and **not** once the sandbox is gone, because the session doc outlives it by up to 7 days and a cold start is by definition a new run; (3) a corroborated **model** request belonging to the other agent ("continue, with opus" on a Codex thread) **steps the pin aside** rather than failing `normalizeAgentModel`. Legacy/partial session docs with no recorded `agent` fall through to the saved default, i.e. the old behaviour. When the pin overrides a changed default the status comment and the tool result both say so — otherwise it reads as the setting being ignored, which is the same complaint in reverse. The module is pure (the caller passes the already-read session doc, via `readVmThreadSession`, which now also feeds the occupancy peek — one read, two decisions).
 - **Per-thread job queue (FIFO, one run at a time)**: a thread runs **one** VM job at a time. When `execute_task_in_vm` is dispatched for a thread whose VM is still actively running, the new job is **queued** (not run on a throwaway isolated sandbox) and runs on the **same** sandbox — resuming prior files + conversation — when the current job finishes (whether it succeeded or failed). Jobs run sequentially in dispatch order; the queue is unbounded (each queued job still reserves the 20-Gold base up-front, refunded on cancel/failure). Core logic is in `functions/Assistant/vmThreadQueue.js`, all keyed on the thread's `vmSessions/{projectId}__{objectId}` doc.
     - **State**: the session doc carries a `queue` array of correlationIds (+ `queueLength` for the sweeper's single-field query). Occupancy uses the **existing** runtime-lease fields (`activeLeaseOwner`/`activeLeaseExpiresAt`/`activeCorrelationId`); at dispatch a job takes a short **dispatch lease** (owner `dispatch:<correlationId>`, `VM_DISPATCH_LEASE_MS` = 5 min) that covers the launch→Cloud-Run-boot window until the runner claims its real runtime lease. **Dispatch/queue writes never touch `status`**, so a paused/idle sandbox stays flagged reusable and the incoming runner still resumes it. `claimVmSessionLease` was extended to take over a job's own dispatch lease (matched by `activeCorrelationId`), while still refusing a lease held by any **other** live job.
     - **Dispatch** (`vmJob.js` `startVmJob` → `admitVmJobToThread`): a read-only `isVmThreadOccupied` peek decides whether to **skip the cross-thread concurrency cap** — a same-thread follow-up is queued, not run, so it must not be rejected by the 10-job cap (the cap still rejects a _new_ job on a _different_ thread). The authoritative launch-vs-queue decision is the admission transaction. A queued job's `pendingWebhooks` doc is written with `status: 'queued'` (excluded from `countActiveVmJobsForUser`, so it never blocks other threads), and its status comment reads "⏳ Queued behind the current VM task…".

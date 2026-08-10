@@ -3,29 +3,6 @@
  * These schemas define the structure and parameters for each tool
  */
 
-const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
-
-/**
- * Model enums are derived from the shared selector rather than hand-listed, so a model added to the
- * product menu is immediately settable through the assistant's own settings tools. The hand-listed
- * version had drifted: `update_assistant_settings` never learned about Terra or Luna, so the
- * assistant refused to set a model the user could pick by hand two clicks away.
- */
-const SELECTABLE_ASSISTANT_MODEL_KEYS = SELECTABLE_ASSISTANT_MODELS.map(option => option.model)
-
-/** Legacy keys kept settable so assistants already configured on them can retain their model. */
-const LEGACY_ASSISTANT_SETTINGS_MODEL_KEYS = [
-    'MODEL_GPT5_5',
-    'MODEL_GPT5_1',
-    'MODEL_GPT5_2',
-    'MODEL_GPT5_4_MINI',
-    'MODEL_GPT5_4_NANO',
-    'MODEL_SONAR',
-    'MODEL_SONAR_PRO',
-    'MODEL_SONAR_REASONING',
-    'MODEL_SONAR_REASONING_PRO',
-]
-
 const toolSchemas = {
     create_task: {
         type: 'function',
@@ -1032,7 +1009,7 @@ const toolSchemas = {
                 properties: {
                     model: {
                         type: 'string',
-                        enum: SELECTABLE_ASSISTANT_MODEL_KEYS,
+                        enum: ['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'],
                         description:
                             'Optional: model used for heartbeat executions. Sol is the most capable, Terra balances capability and cost, and Luna is optimized for efficient high-volume work.',
                     },
@@ -1209,7 +1186,18 @@ const toolSchemas = {
                     },
                     model: {
                         type: 'string',
-                        enum: [...SELECTABLE_ASSISTANT_MODEL_KEYS, ...LEGACY_ASSISTANT_SETTINGS_MODEL_KEYS],
+                        enum: [
+                            'MODEL_GPT5_6_SOL',
+                            'MODEL_GPT5_5',
+                            'MODEL_GPT5_1',
+                            'MODEL_GPT5_2',
+                            'MODEL_GPT5_4_MINI',
+                            'MODEL_GPT5_4_NANO',
+                            'MODEL_SONAR',
+                            'MODEL_SONAR_PRO',
+                            'MODEL_SONAR_REASONING',
+                            'MODEL_SONAR_REASONING_PRO',
+                        ],
                         description: 'Optional: assistant LLM model key.',
                     },
                     temperature: {
@@ -2255,7 +2243,9 @@ const toolSchemas = {
                             'ONLY set this when the user explicitly named an agent for this run (e.g. "use codex", "run it with Claude"). ' +
                             'Never infer it from the kind of work, the task type, or the repository involved. ' +
                             "When omitted, the requesting user's own default VM agent from Settings > Integrations is used, " +
-                            'falling back to "codex" for users without a preference. If in doubt, omit it — omitting it respects the user\'s setting.',
+                            'falling back to "codex" for users without a preference. If in doubt, omit it — omitting it respects the user\'s setting. ' +
+                            "A run that continues an existing VM session keeps that session's agent automatically, so omit this when " +
+                            'continuing: setting a different agent there discards the files and conversation of the run being continued.',
                     },
                     agentModel: {
                         type: 'string',

@@ -264,7 +264,6 @@ const getEnvFunctions = () => {
                 TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
                 APIFY_API_KEY: process.env.APIFY_API_KEY || '',
                 ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
-                OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
                 E2B_API_KEY: process.env.E2B_API_KEY || '',
                 VM_PROXY_SIGNING_SECRET: process.env.VM_PROXY_SIGNING_SECRET || '',
                 VM_LLM_PROXY_BASE_URL: process.env.VM_LLM_PROXY_BASE_URL || '',

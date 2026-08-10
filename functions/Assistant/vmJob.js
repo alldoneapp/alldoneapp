@@ -25,7 +25,14 @@ const {
     resolveTokensPerGold,
     formatTokenDiscountNote,
 } = require('./vmTokenPricing')
-const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
+const {
+    vmThreadSessionRef,
+    admitVmJobToThread,
+    readVmThreadSession,
+    isVmThreadSessionOccupied,
+    advanceVmThreadQueue,
+} = require('./vmThreadQueue')
+const { resolveVmThreadAgentContinuity } = require('./vmThreadAgentContinuity')
 const { buildVmChatPath } = require('./vmHostTaskHelper')
 const { applyVmFailureWorkflowHold } = require('./vmWorkflowHold')
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
@@ -450,13 +457,58 @@ async function startVmJob({
     // Explicit per-run value wins, then the requesting user's saved preference, then the system
     // default. Only consulted by interactive runs; automatic runs never pause for approvals.
     const resolvedApprovalPolicy = await resolveVmApprovalPolicy(requestUserId, overrides.approvalPolicy)
-    const resolvedAgentSettings = await resolveVmAgentSettings(
-        requestUserId,
-        overrides.agent,
-        overrides.agentReasoningEffort
-    )
+
+    // The thread's VM session, read once and used for two decisions below: which agent this run
+    // belongs to (AT-2240) and whether the thread is already busy (queue vs. launch).
+    const threadSessionRef = vmThreadSessionRef(projectId, objectId)
+    const threadSession = await readVmThreadSession(threadSessionRef).catch(() => null)
+
+    // A run that continues this thread's sandbox stays on the agent that sandbox belongs to, even if
+    // the user's Settings → Integrations default has changed since (AT-2240). Switching agents kills
+    // the sandbox and discards the checkout + agent conversation, so following the new default here
+    // would silently destroy exactly what "continue" was asked to preserve. A corroborated per-run
+    // request still outranks it — that is the user deliberately restarting on the other agent.
+    const agentContinuity = resolveVmThreadAgentContinuity({
+        session: threadSession,
+        requestedAgent: overrides.agent,
+        requestedAgentModel: overrides.agentModel,
+    })
+
+    // Deliberately resolved WITHOUT the selected agent, so this one read answers both questions: the
+    // saved default (used when nothing pins or requests an agent) and, for a pinned run, what the
+    // user would otherwise have got — which is the only case worth mentioning to them.
+    const savedAgentSettings = await resolveVmAgentSettings(requestUserId, undefined, overrides.agentReasoningEffort)
+    const resolvedAgentSettings = {
+        // request (AT-2224) > this thread's existing session (AT-2240) > saved default > system default
+        agent: agentContinuity.agent || savedAgentSettings.agent,
+        reasoningEffort: savedAgentSettings.reasoningEffort,
+    }
     const selectedAgent = resolvedAgentSettings.agent
     const selectedAgentLabel = getAgentLabel(selectedAgent)
+    const defaultAgentLabel = getAgentLabel(savedAgentSettings.agent)
+    const agentPinOverrodeDefault = agentContinuity.pinned && savedAgentSettings.agent !== selectedAgent
+    if (agentPinOverrodeDefault) {
+        console.log('🖥️ VM JOB: keeping this thread on the agent its VM session was started with', {
+            requestUserId,
+            projectId,
+            objectId,
+            sessionAgent: selectedAgent,
+            defaultAgent: savedAgentSettings.agent,
+            reason: agentContinuity.reason,
+        })
+    }
+    const continuationNote = agentPinOverrodeDefault
+        ? `\n\n↩️ Continuing this thread's existing VM session, so it stays on ${selectedAgentLabel} ` +
+          `(your default is now ${defaultAgentLabel}). Start a new VM task, or ask for ` +
+          `${defaultAgentLabel} explicitly, to switch — that begins a fresh session.`
+        : ''
+    // Same fact for the calling assistant, so it can explain the choice if the user asks why the
+    // run is not on the agent they just selected in Settings.
+    const continuationToolNote = agentPinOverrodeDefault
+        ? ` This run continues the thread's existing VM session, so it stays on ${selectedAgentLabel} rather than ` +
+          `your current default (${defaultAgentLabel}); switching agents would discard the session's files and ` +
+          `conversation.`
+        : ''
     // `overrides.agentModel`, not the raw argument: an uncorroborated model the assistant invented is
     // dropped by the guard, which lets it resolve from the user's saved model family (AT-2221) instead.
     const modelResult = await resolveAgentModelForRun(requestUserId, selectedAgent, overrides.agentModel)
@@ -514,8 +566,7 @@ async function startVmJob({
     // now. A same-thread follow-up (this thread's VM is still busy) is queued, not run, so it does
     // not consume a concurrency slot and must not be rejected by the cross-thread cap. Best-effort
     // peek; the authoritative launch-vs-queue decision is the admission transaction below.
-    const threadSessionRef = vmThreadSessionRef(projectId, objectId)
-    const threadOccupied = await isVmThreadOccupied(threadSessionRef).catch(() => false)
+    const threadOccupied = isVmThreadSessionOccupied(threadSession)
     if (!threadOccupied) {
         const activeJobs = await countActiveVmJobsForUser(requestUserId)
         if (activeJobs >= MAX_CONCURRENT_VM_JOBS_PER_USER) {
@@ -591,6 +642,8 @@ async function startVmJob({
     // Post the single status comment that the worker will update in place.
     let statusCommentId = null
     try {
+        // `continuationNote` is appended so the user can see *why* this run is not on the agent their
+        // settings now name — otherwise the pin reads as the settings being ignored (AT-2240).
         const initialStatusText = queued
             ? `⏳ Queued behind the current VM task on this thread. ${selectedAgentLabel}${formatAgentRunSuffix(
                   modelResult.value,
@@ -600,7 +653,7 @@ async function startVmJob({
                   credentialMode,
                   modelResult.value,
                   tokensPerGold
-              )}`
+              )}${continuationNote}`
             : `🖥️ Spinning up ${selectedAgentLabel}${formatAgentRunSuffix(
                   modelResult.value,
                   effortResult.value
@@ -609,7 +662,7 @@ async function startVmJob({
                   credentialMode,
                   modelResult.value,
                   tokensPerGold
-              )}`
+              )}${continuationNote}`
         statusCommentId = await createInitialStatusMessage(
             projectId,
             objectType,
@@ -776,7 +829,7 @@ async function startVmJob({
             ...hostThread,
             message:
                 `That VM is still working on the previous task on this thread. I've queued this — it will run on the ` +
-                `same VM as soon as the current one finishes. ${hostThreadHint}`,
+                `same VM as soon as the current one finishes.${continuationToolNote} ${hostThreadHint}`,
         }
     }
 
@@ -825,7 +878,7 @@ async function startVmJob({
                 : executionMode === 'interactive'
                   ? 'It will approve routine in-VM work automatically and pause in the host thread only for questions or risky operations.'
                   : 'It will work autonomously and post the finished result into the host thread when ready.'
-        } ${hostThreadHint}`,
+        }${continuationToolNote} ${hostThreadHint}`,
     }
 }
 
