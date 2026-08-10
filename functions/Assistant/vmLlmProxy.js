@@ -23,13 +23,13 @@
 const crypto = require('crypto')
 const { TextDecoder } = require('util')
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const { resolveTokensPerGold, calculateTokenGold } = require('./vmTokenPricing')
 const admin = require('firebase-admin')
 
 const REGION = 'europe-west1'
 const FUNCTION_NAME = 'vmLlmProxy'
 const TOKEN_PREFIX = 'vmpx_'
 const VM_JOB_GOLD_SOURCE = 'vm_execution'
+const VM_TOKENS_PER_GOLD = 100
 const VM_PROXY_INSUFFICIENT_GOLD_REASON = 'insufficient_gold'
 
 // Upstream providers, keyed by the path prefix the sandbox agent hits.
@@ -57,32 +57,6 @@ const PROVIDERS = {
         applyRealKey: (headers, realKey) => {
             headers['authorization'] = `Bearer ${realKey}`
         },
-    },
-    // OpenRouter models for the Codex harness (AT-2230). Same agent, same token, different
-    // upstream: the per-job token is minted for `codex`, so a leaked token is no more useful here
-    // than on the OpenAI route, and the platform OpenRouter key stays server-side exactly as the
-    // other two do. `supportsByok: false` because BYOK stores per-*agent* keys (an OpenAI key
-    // cannot authenticate against OpenRouter) — an OpenRouter run is always platform-billed, which
-    // startVmJob enforces by pinning credentialMode to 'api'.
-    openrouter: {
-        routePrefix: '/openrouter',
-        upstreamBase: 'https://openrouter.ai/api',
-        expectedAgent: 'codex',
-        realKeyField: 'OPENROUTER_API_KEY',
-        authHeader: 'authorization',
-        supportsByok: false,
-        readToken: req => (req.get('authorization') || '').replace(/^Bearer\s+/i, ''),
-        applyRealKey: (headers, realKey) => {
-            headers['authorization'] = `Bearer ${realKey}`
-        },
-        // OpenRouter attributes traffic to an app via these; harmless and useful for support.
-        extraHeaders: {
-            'http-referer': 'https://alldone.app',
-            'x-title': 'Alldone VM',
-        },
-        // Chat Completions only reports usage on a streamed response when the caller asks for it.
-        // Without this, a streaming Codex run bills zero Gold — see ensureStreamUsageRequested.
-        requestsStreamUsage: true,
     },
 }
 
@@ -255,19 +229,17 @@ async function handleProxyRequest(req, res) {
         }
 
         const credentialMode = verdict.payload.cm === 'byok' ? 'byok' : 'api'
-        // A route that does not support BYOK is always platform-billed; the personal key stored for
-        // this agent belongs to a different provider and would simply be rejected upstream.
-        const usePersonalKey = credentialMode === 'byok' && config.supportsByok !== false
-        const realKey = usePersonalKey
-            ? await require('./vmApiKeyAuth').loadVmApiKey(verdict.payload.uid, config.expectedAgent)
-            : env[config.realKeyField]
+        const realKey =
+            credentialMode === 'byok'
+                ? await require('./vmApiKeyAuth').loadVmApiKey(verdict.payload.uid, config.expectedAgent)
+                : env[config.realKeyField]
         if (!realKey) {
             console.error('🔐 VM PROXY: upstream key missing', {
                 provider: matched.provider,
                 credentialMode,
             })
             res.status(503).send(
-                usePersonalKey
+                credentialMode === 'byok'
                     ? 'Personal API key is missing. Add or replace it in Settings → Integrations.'
                     : 'Upstream key not configured'
             )
@@ -283,7 +255,6 @@ async function handleProxyRequest(req, res) {
             else if (Array.isArray(value)) headers[key] = value.join(', ')
         }
         config.applyRealKey(headers, realKey)
-        for (const [key, value] of Object.entries(config.extraHeaders || {})) headers[key] = value
 
         const queryIndex = (req.originalUrl || '').indexOf('?')
         const queryString = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : ''
@@ -291,15 +262,11 @@ async function handleProxyRequest(req, res) {
 
         const method = (req.method || 'GET').toUpperCase()
         const hasBody = method !== 'GET' && method !== 'HEAD'
-        const rawBody = hasBody ? req.rawBody || undefined : undefined
-        const body = config.requestsStreamUsage ? ensureStreamUsageRequested(rawBody) : rawBody
-        // The rewrite changes the byte length, but `content-length` is already stripped above so
-        // fetch recomputes it. Only the content type needs asserting, for a caller that omitted it.
-        if (body !== rawBody && body) headers['content-type'] = headers['content-type'] || 'application/json'
+        const body = hasBody ? req.rawBody || undefined : undefined
 
         const upstream = await fetch(upstreamUrl, { method, headers, body })
 
-        if (usePersonalKey && (upstream.status === 401 || upstream.status === 403)) {
+        if (credentialMode === 'byok' && (upstream.status === 401 || upstream.status === 403)) {
             require('./vmApiKeyAuth')
                 .markVmApiKeyRejected(verdict.payload.uid, config.expectedAgent)
                 .catch(() => {})
@@ -333,33 +300,6 @@ async function handleProxyRequest(req, res) {
                 res.end()
             } catch (_) {}
         }
-    }
-}
-
-/**
- * Ask the upstream to report token usage on a streamed Chat Completions response.
- *
- * The OpenAI-compatible Chat Completions API omits `usage` from a stream unless the request sets
- * `stream_options.include_usage`. Codex does not set it, so without this rewrite every streamed
- * OpenRouter run would report zero tokens and cost zero Gold — a silent revenue hole rather than a
- * visible failure, which is exactly the kind of bug that survives review.
- *
- * Fails open: anything unparseable is forwarded byte-for-byte. Losing metering on one odd request
- * is strictly better than breaking it.
- */
-function ensureStreamUsageRequested(rawBody) {
-    if (!rawBody) return rawBody
-    try {
-        const text = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody)
-        const payload = JSON.parse(text)
-        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return rawBody
-        if (payload.stream !== true) return rawBody
-        const current =
-            payload.stream_options && typeof payload.stream_options === 'object' ? payload.stream_options : {}
-        if (current.include_usage === true) return rawBody
-        return Buffer.from(JSON.stringify({ ...payload, stream_options: { ...current, include_usage: true } }), 'utf8')
-    } catch (_) {
-        return rawBody
     }
 }
 
@@ -447,9 +387,7 @@ function extractUsageFromJsonPayload(provider, payload) {
         if (payload.type === 'message_delta' && payload.usage) return normalizeUsage(payload.usage)
         return null
     }
-    // OpenRouter speaks the same OpenAI-compatible shapes: `usage` on a Chat Completions chunk
-    // (final chunk when include_usage is on) or on a non-streamed response body.
-    if (provider === 'openai' || provider === 'openrouter') {
+    if (provider === 'openai') {
         if (payload.usage) return normalizeUsage(payload.usage)
         if (payload.response?.usage) return normalizeUsage(payload.response.usage)
         if (payload.type === 'response.completed' && payload.response?.usage)
@@ -523,16 +461,6 @@ async function pipeAndCaptureUsage(body, res, provider) {
     return finalizeCapturedUsage(provider, state)
 }
 
-/**
- * Charge the Gold owed for the tokens seen so far on this run.
- *
- * Charging is *cumulative*, not per-request: the run's running token total is stored on the job doc
- * and the charge is `round(total / tokensPerGold) - alreadyCharged`. That is what lets a discounted
- * rate work at all — at 500 tokens/Gold a single small request rounds to zero Gold, but the tokens
- * are still banked in the total and get billed as soon as the total crosses the next threshold.
- * Nothing is dropped, and `vmJobRunner` settles whatever remains at completion using the *same*
- * rate, resolved from the same persisted `agentModel`.
- */
 async function chargeProxyTokenGold({
     correlationId,
     userId,
@@ -558,11 +486,7 @@ async function chargeProxyTokenGold({
         const previousTokens = Number(pendingData.proxyTokenUsage?.totalTokens) || 0
         const previousGoldCharged = Number(pendingData.proxyTokenGoldCharged) || 0
         const nextTokens = previousTokens + totalTokens
-        // Priced from the job's persisted model selection — the same input vmJobRunner uses at
-        // settlement, so the two charge sites cannot bill at different rates. A job doc written
-        // before this field existed resolves to the standard rate, i.e. unchanged behaviour.
-        const tokensPerGold = resolveTokensPerGold(pendingData.agentModel)
-        const goldDue = Math.max(0, calculateTokenGold(nextTokens, tokensPerGold) - previousGoldCharged)
+        const goldDue = Math.max(0, Math.round(nextTokens / VM_TOKENS_PER_GOLD) - previousGoldCharged)
         const usageUpdate = {
             inputTokens: (Number(pendingData.proxyTokenUsage?.inputTokens) || 0) + (Number(usage.inputTokens) || 0),
             outputTokens: (Number(pendingData.proxyTokenUsage?.outputTokens) || 0) + (Number(usage.outputTokens) || 0),
@@ -708,7 +632,6 @@ module.exports = {
     captureUsageFromTextChunk,
     finalizeCapturedUsage,
     chargeProxyTokenGold,
-    ensureStreamUsageRequested,
     mintProxyToken,
     verifyProxyToken,
     isProxyEnabled,

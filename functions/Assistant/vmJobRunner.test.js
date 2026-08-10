@@ -985,8 +985,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
     test('uses the native ChatGPT login without the API proxy for subscription runs', () => {
         const command = __private__.buildCodexRunCommand(false, 'gpt-5.6-sol', 'medium', undefined, true)
 
-        // Shell-quoted since AT-2230: an OpenRouter id carries `/` and may carry `:`.
-        expect(command).toContain(`--model 'gpt-5.6-sol'`)
+        expect(command).toContain('--model gpt-5.6-sol')
         expect(command).toContain('-c model_reasoning_effort=medium')
         expect(command).toContain(`-c 'features.apps=false'`)
         expect(command).not.toContain('alldone_vm_proxy')
@@ -1234,77 +1233,6 @@ describe('VM runner runtime Gold monitor', () => {
                 topup: 21,
             })
         )
-    })
-
-    // AT-2230 pricing: the settlement half of the DeepSeek discount. Runtime Gold pays for the E2B
-    // sandbox and must NOT move — only the token line is discounted.
-    test('DeepSeek settles token Gold at a fifth of the Luna price, with runtime Gold unchanged', () => {
-        const args = { runtimeMs: 61000, usage: { totalTokens: 250_000 } }
-        const luna = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-5.6-luna' })
-        const deepSeek = __private__.calculateCompletionGoldCharges({
-            ...args,
-            agentModel: 'openrouter:deepseek/deepseek-v3.2',
-        })
-
-        expect(luna.tokenGoldTotal).toBe(2500)
-        expect(deepSeek.tokenGoldTotal).toBe(500)
-        expect(deepSeek.tokenGoldTotal).toBe(luna.tokenGoldTotal / 5)
-        expect(deepSeek.tokensPerGold).toBe(500)
-
-        // Same sandbox, same compute cost.
-        expect(deepSeek.runtimeGoldTotal).toBe(luna.runtimeGoldTotal)
-        expect(deepSeek.minutes).toBe(luna.minutes)
-        expect(deepSeek.topup).toBe(luna.topup - 2000)
-    })
-
-    // The two charge sites must resolve the SAME rate from the same model. If settlement used the
-    // standard rate while the proxy had charged the discounted one, this subtraction would quietly
-    // bill the difference a second time.
-    test('settlement nets off proxy charges made at the same discounted rate', () => {
-        const charges = __private__.calculateCompletionGoldCharges({
-            runtimeMs: 61000,
-            usage: { totalTokens: 250_000 },
-            agentModel: 'openrouter:deepseek/deepseek-v3.2',
-            proxyTokenGoldCharged: 500,
-        })
-
-        expect(charges.tokenGoldTotal).toBe(500)
-        expect(charges.tokenGold).toBe(0) // fully paid live; nothing owed at the end
-        expect(charges.topup).toBe(charges.runtimeGoldRemaining)
-    })
-
-    test('a non-DeepSeek OpenRouter model is settled at the standard rate', () => {
-        const charges = __private__.calculateCompletionGoldCharges({
-            runtimeMs: 61000,
-            usage: { totalTokens: 250_000 },
-            agentModel: 'openrouter:qwen/qwen3-coder',
-        })
-
-        expect(charges.tokensPerGold).toBe(100)
-        expect(charges.tokenGoldTotal).toBe(2500)
-    })
-
-    // Existing jobs carry no agentModel on their doc; they must settle exactly as before.
-    test('a job with no recorded model settles at the standard rate', () => {
-        const charges = __private__.calculateCompletionGoldCharges({
-            runtimeMs: 61000,
-            usage: { totalTokens: 250_000 },
-        })
-
-        expect(charges.tokensPerGold).toBe(100)
-        expect(charges.tokenGoldTotal).toBe(2500)
-    })
-
-    test('a DeepSeek subscription-exempt run still charges no token Gold', () => {
-        const charges = __private__.calculateCompletionGoldCharges({
-            runtimeMs: 61000,
-            usage: { totalTokens: 250_000 },
-            agentModel: 'openrouter:deepseek/deepseek-v3.2',
-            subscriptionUsed: true,
-        })
-
-        expect(charges.tokenGoldTotal).toBe(0)
-        expect(charges.tokenGold).toBe(0)
     })
 
     test('subscription completion charges VM runtime but no token Gold', () => {
@@ -2672,73 +2600,5 @@ describe('VM runner origin-conversation completion note', () => {
 
         expect(mockSendWhatsAppMessageWithConversationLink).toHaveBeenCalledTimes(1)
         expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
-    })
-})
-
-// ---------------------------------------------------------------------------
-// OpenRouter routing for the Codex harness (AT-2230)
-// ---------------------------------------------------------------------------
-
-describe('Codex OpenRouter routing', () => {
-    const PROXY = 'https://proxy.example/vmLlmProxy'
-
-    test('points Codex at the OpenRouter proxy route with the Chat Completions wire API', () => {
-        const overrides = __private__.buildCodexProxyConfigOverrides(PROXY, { openRouter: true })
-
-        expect(overrides).toContain(
-            `model_providers.alldone_vm_proxy.base_url="https://proxy.example/vmLlmProxy/openrouter/v1"`
-        )
-        // OpenRouter exposes the OpenAI-*compatible* Chat Completions surface; asking it for
-        // `responses` 404s on the first request with an error that reads like a proxy bug.
-        expect(overrides).toContain(`model_providers.alldone_vm_proxy.wire_api="chat"`)
-        expect(overrides).toContain('model_providers.alldone_vm_proxy.supports_websockets=false')
-    })
-
-    test('leaves the OpenAI route exactly as it was', () => {
-        const overrides = __private__.buildCodexProxyConfigOverrides(PROXY)
-
-        expect(overrides).toContain(
-            `model_providers.alldone_vm_proxy.base_url="https://proxy.example/vmLlmProxy/openai/v1"`
-        )
-        expect(overrides).toContain(`model_providers.alldone_vm_proxy.wire_api="responses"`)
-    })
-
-    // The `openrouter:` prefix is Alldone's routing marker. Handing it to the CLI would make Codex
-    // ask OpenRouter for a model called "openrouter:deepseek/deepseek-chat", which does not exist.
-    test('strips the routing marker before the model reaches the CLI, and quotes the id', () => {
-        const command = __private__.buildCodexRunCommand(false, 'openrouter:deepseek/deepseek-chat', 'medium', PROXY)
-
-        expect(command).toContain(`--model 'deepseek/deepseek-chat'`)
-        expect(command).not.toContain('openrouter:deepseek')
-        expect(command).toContain('/openrouter/v1')
-        expect(command).toContain(`model_providers.alldone_vm_proxy.wire_api="chat"`)
-    })
-
-    test('an OpenAI model still routes to the OpenAI upstream', () => {
-        const command = __private__.buildCodexRunCommand(false, 'gpt-5.6-sol', 'medium', PROXY)
-
-        expect(command).toContain(`--model 'gpt-5.6-sol'`)
-        expect(command).toContain('/openai/v1')
-        expect(command).not.toContain('/openrouter/v1')
-    })
-
-    test('the sandbox env base URL follows the same route as the provider config', () => {
-        const openRouterEnv = __private__.AGENT_CONFIGS.codex.sandboxEnv({
-            apiKey: 'vmpx_token',
-            baseUrl: PROXY,
-            mode: 'proxy',
-            agentModel: 'openrouter:deepseek/deepseek-chat',
-        })
-        const openAiEnv = __private__.AGENT_CONFIGS.codex.sandboxEnv({
-            apiKey: 'vmpx_token',
-            baseUrl: PROXY,
-            mode: 'proxy',
-            agentModel: 'gpt-5.6-sol',
-        })
-
-        expect(openRouterEnv.OPENAI_BASE_URL).toBe('https://proxy.example/vmLlmProxy/openrouter/v1')
-        expect(openAiEnv.OPENAI_BASE_URL).toBe('https://proxy.example/vmLlmProxy/openai/v1')
-        // The real OpenRouter key never reaches the sandbox — only the per-job proxy token.
-        expect(openRouterEnv.OPENAI_API_KEY).toBe('vmpx_token')
     })
 })

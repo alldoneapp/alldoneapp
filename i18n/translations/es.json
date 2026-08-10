@@ -2504,8 +2504,6 @@
     "Optionally pick the model family used by the selected agent. The latest version of that family is used automatically, so you never have to update a version number. Each agent keeps its own choice.": "Opcionalmente, elige la familia de modelos que usa el agente seleccionado. La última versión de esa familia se usa automáticamente, así que nunca tienes que actualizar un número de versión. Cada agente conserva su propia elección.",
     "Could not save the default VM model.": "No se pudo guardar el modelo de VM predeterminado.",
     "Could not reach the model provider, so a built-in list of families is shown.": "No se pudo contactar con el proveedor de modelos, por lo que se muestra una lista integrada de familias.",
-    "OpenRouter models run through the Codex harness and always use Alldone API billing, even when you have connected a personal subscription or API key.": "Los modelos de OpenRouter se ejecutan en el entorno de Codex y siempre usan la facturación de la API de Alldone, incluso si has conectado una suscripción o clave de API personal.",
-    "Showing the most relevant compatible models. More are available on request.": "Se muestran los modelos compatibles más relevantes. Hay más disponibles a petición.",
     "Paused": "En pausa",
     "VM environment": "Entorno de VM",
     "VM environment building": "Creando entorno…",
