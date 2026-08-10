@@ -174,6 +174,19 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
+-   2026-08-10 — **STAGE 4 ACCEPTED AND MERGED TO MASTER** after the user's staging QA.
+    Three staging findings, all quill 1→2 rendering-contract changes and each now pinned
+    by a regression test: (1) the header picker rendered raw label text — quill 2 stamps
+    `data-label` onto the picker label and drops empty `data-value` attributes, both of
+    which the vendored CSS keys off (`quill2SetupPicker.test.js`); (2) "- " bullet lists
+    displayed as numbered — quill 2 renders every list as `<ol>` with `li[data-list]` +
+    a `.ql-ui` marker element, so the v1 list CSS was ported wholesale in
+    `toolbar-styles.css`; (3) clicking above a pasted markdown table couldn't place the
+    caret — the table blot was an inline Embed (span) whose quill-2 cursor guards sat
+    inside its contenteditable=false node; it is now a BlockEmbed (div), verified
+    against a real quill 2 instance incl. legacy trailing-newline docs
+    (`markdownTableFormat.test.js`).
+
 -   2026-08-10 — **Stage 4 core landed on `frontend-migration-stage-4`** (quill 1.3.7 →
     2.0.3, react-quill 2.0.0-beta.2 → react-quill-new 3.8.3, quill-cursors 3.0.1 → 5.0.0,
     y-quill 0.1.4-patched → 1.0.0 stock, yjs 13.4.7 → 13.6.32 root + `functions/` in
