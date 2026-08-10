@@ -2556,6 +2556,8 @@
     "Optionally pick the model family used by the selected agent. The latest version of that family is used automatically, so you never have to update a version number. Each agent keeps its own choice.": "Optionally pick the model family used by the selected agent. The latest version of that family is used automatically, so you never have to update a version number. Each agent keeps its own choice.",
     "Could not save the default VM model.": "Could not save the default VM model.",
     "Could not reach the model provider, so a built-in list of families is shown.": "Could not reach the model provider, so a built-in list of families is shown.",
+    "OpenRouter models run through the Codex harness and always use Alldone API billing, even when you have connected a personal subscription or API key.": "OpenRouter models run through the Codex harness and always use Alldone API billing, even when you have connected a personal subscription or API key.",
+    "Showing the most relevant compatible models. More are available on request.": "Showing the most relevant compatible models. More are available on request.",
     "Paused": "Paused",
     "VM environment": "VM environment",
     "VM environment building": "Building environment…",

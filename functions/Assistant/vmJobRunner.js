@@ -36,6 +36,7 @@ const {
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
 } = require('./vmJob')
+const { resolveModelRoute, isOpenRouterRun } = require('./vmModelRouting')
 const {
     MAX_VM_RUNTIME_MS,
     VM_JOB_FINALIZATION_HEADROOM_MS,
@@ -1615,7 +1616,11 @@ function shellQuoteArg(value) {
     return `'${String(value).replace(/'/g, `'\\''`)}'`
 }
 
-function buildCodexProxyConfigOverrides(proxyBaseUrl) {
+/**
+ * Build the proxy base URL for one upstream route. Shared by the config overrides and the
+ * sandbox env so the two can never disagree about where Codex is pointed.
+ */
+function buildCodexProxyRouteUrl(proxyBaseUrl, route) {
     let parsed
     try {
         parsed = new URL(proxyBaseUrl)
@@ -1629,18 +1634,33 @@ function buildCodexProxyConfigOverrides(proxyBaseUrl) {
         throw new Error('Codex VM proxy base URL must not contain a query string or fragment.')
     }
 
-    parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}/openai/v1`
-    const openAiProxyBaseUrl = parsed.toString().replace(/\/$/, '')
+    parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}${route}`
+    return parsed.toString().replace(/\/$/, '')
+}
+
+/**
+ * Codex provider config for a run.
+ *
+ * The OpenRouter route (AT-2230) differs in exactly two ways, and both are load-bearing:
+ *  - path: `/openrouter/v1` instead of `/openai/v1`, so the proxy swaps in the OpenRouter key;
+ *  - wire_api: `chat`, because the Responses API is OpenAI's own — OpenRouter exposes the
+ *    OpenAI-*compatible* Chat Completions surface, and asking it for `responses` 404s at the
+ *    first request with an error that reads like a proxy bug.
+ */
+function buildCodexProxyConfigOverrides(proxyBaseUrl, { openRouter = false } = {}) {
+    const routeUrl = buildCodexProxyRouteUrl(proxyBaseUrl, openRouter ? '/openrouter/v1' : '/openai/v1')
 
     // Codex's built-in OpenAI provider may use the Responses WebSocket transport. Our
     // Cloud Function proxy is HTTP-only, so use an explicit custom provider and disable
     // WebSockets instead of relying on the legacy OPENAI_BASE_URL environment override.
     return [
         `model_provider=${JSON.stringify(CODEX_VM_PROXY_PROVIDER)}`,
-        `model_providers.${CODEX_VM_PROXY_PROVIDER}.name=${JSON.stringify('Alldone VM LLM proxy')}`,
-        `model_providers.${CODEX_VM_PROXY_PROVIDER}.base_url=${JSON.stringify(openAiProxyBaseUrl)}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.name=${JSON.stringify(
+            openRouter ? 'Alldone VM LLM proxy (OpenRouter)' : 'Alldone VM LLM proxy'
+        )}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.base_url=${JSON.stringify(routeUrl)}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.env_key=${JSON.stringify('OPENAI_API_KEY')}`,
-        `model_providers.${CODEX_VM_PROXY_PROVIDER}.wire_api=${JSON.stringify('responses')}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.wire_api=${JSON.stringify(openRouter ? 'chat' : 'responses')}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.supports_websockets=false`,
     ]
 }
@@ -1680,14 +1700,17 @@ function buildCodexRunCommand(
     additionalWritableRoots = []
 ) {
     const resumePart = isResume ? 'exec resume --last' : 'exec'
-    const modelFlag = agentModel ? ` --model ${agentModel}` : ''
+    // `route.model` is the bare provider id — the `openrouter:` prefix is Alldone's routing marker
+    // and must never reach the CLI. Quoted because an OpenRouter id contains `/` and may contain `:`.
+    const route = resolveModelRoute('codex', agentModel)
+    const modelFlag = route.model ? ` --model ${shellQuoteArg(route.model)}` : ''
     const effortFlag = agentReasoningEffort ? ` -c model_reasoning_effort=${agentReasoningEffort}` : ''
     const sandboxFlags = buildCodexSandboxConfigOverrides(additionalWritableRoots)
         .map(override => ` -c ${shellQuoteArg(override)}`)
         .join('')
     const providerFlags = subscriptionUsed
         ? ''
-        : buildCodexProxyConfigOverrides(proxyBaseUrl)
+        : buildCodexProxyConfigOverrides(proxyBaseUrl, { openRouter: route.source === 'openrouter' })
               .map(override => ` -c ${shellQuoteArg(override)}`)
               .join('')
     return `codex ${resumePart}${sandboxFlags} --skip-git-repo-check${modelFlag}${effortFlag}${providerFlags} --json "$(cat /home/user/prompt.txt)" </dev/null`
@@ -2018,9 +2041,12 @@ function buildVmAgentBridgeInput({
     const interactionResponse = pendingWebhook?.interactionResponse || null
     const providerState = pendingWebhook?.interactionProviderState || null
     const writableRoots = normalizeAdditionalWritableRoots(additionalWritableRoots)
+    // The bridge drives the provider CLIs directly, so it gets the bare provider model id with the
+    // `openrouter:` routing marker stripped (see resolveModelRoute).
+    const modelRoute = resolveModelRoute(vmJob.agent || DEFAULT_AGENT, runDetails.model)
     const input = {
         cwd: workdir,
-        model: runDetails.model,
+        model: modelRoute.model,
         effort: runDetails.effort,
         phase,
         prompt: buildVmBridgeTurnPrompt(prompt, pendingWebhook, phase),
@@ -2054,7 +2080,9 @@ function buildVmAgentBridgeInput({
         const providerArgs =
             agentCredentials.mode === 'subscription'
                 ? []
-                : buildCodexProxyConfigOverrides(agentCredentials.baseUrl).flatMap(override => ['-c', override])
+                : buildCodexProxyConfigOverrides(agentCredentials.baseUrl, {
+                      openRouter: modelRoute.source === 'openrouter',
+                  }).flatMap(override => ['-c', override])
         input.codexArgs = [...sandboxArgs, ...providerArgs]
     }
     return input
@@ -2132,13 +2160,22 @@ const AGENT_CONFIGS = {
             ),
         // `apiKey` is a short-lived per-job proxy token. The run command selects an explicit
         // HTTP-only custom provider; OPENAI_BASE_URL remains for older Codex CLI compatibility.
-        sandboxEnv: ({ apiKey, baseUrl, mode }) =>
+        // The legacy OPENAI_BASE_URL must follow the same route as the explicit provider config
+        // above, or an older Codex CLI that honours the env var would talk to the wrong upstream
+        // with a token minted for this job and get a confusing 404 instead of a model.
+        sandboxEnv: ({ apiKey, baseUrl, mode, agentModel }) =>
             mode === 'subscription'
                 ? { CODEX_HOME: CODEX_AUTH_DIR, CI: 'true' }
                 : {
                       CODEX_API_KEY: apiKey,
                       OPENAI_API_KEY: apiKey,
-                      ...(baseUrl ? { OPENAI_BASE_URL: `${baseUrl}/openai/v1` } : {}),
+                      ...(baseUrl
+                          ? {
+                                OPENAI_BASE_URL: `${baseUrl}/${
+                                    isOpenRouterRun('codex', agentModel) ? 'openrouter' : 'openai'
+                                }/v1`,
+                            }
+                          : {}),
                       CI: 'true',
                   },
         handleEvent: appendCodexActivity,
@@ -3247,7 +3284,7 @@ async function runAgentInSandbox(
             correlationId: vmJob.correlationId,
             mode: agentCredentials.mode,
         })
-        const agentEnv = config.sandboxEnv(agentCredentials)
+        const agentEnv = config.sandboxEnv({ ...agentCredentials, agentModel: runDetails.model })
         const additionalWritableRoots = buildVmAdditionalWritableRoots(gitContext)
         const runEnvs = buildSandboxCommandEnv(
             agentEnv,
@@ -4381,6 +4418,7 @@ module.exports = {
         buildGcpEnv,
         buildCodexProxyConfigOverrides,
         buildCodexRunCommand,
+        AGENT_CONFIGS,
         buildClaudeRunCommand,
         isInteractiveVmExecutionEnabled,
         resolveVmInteractionPhase,

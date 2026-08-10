@@ -340,3 +340,104 @@ describe('buildVmAgentCredentials', () => {
         ).toThrow('VM_LLM_PROXY_BASE_URL')
     })
 })
+
+// ---------------------------------------------------------------------------
+// OpenRouter upstream for the Codex harness (AT-2230)
+// ---------------------------------------------------------------------------
+
+const { ensureStreamUsageRequested } = require('./vmLlmProxy')
+
+describe('vmLlmProxy OpenRouter route', () => {
+    test('maps /openrouter to the OpenRouter upstream and keeps the forwarded path', () => {
+        const matched = resolveProvider('/openrouter/v1/chat/completions')
+        expect(matched).toMatchObject({
+            provider: 'openrouter',
+            forwardPath: '/v1/chat/completions',
+        })
+        expect(matched.config.upstreamBase).toBe('https://openrouter.ai/api')
+        expect(matched.config.realKeyField).toBe('OPENROUTER_API_KEY')
+    })
+
+    // The token is minted for the codex agent, so an OpenRouter run needs no new token shape — and
+    // a Claude token still cannot be replayed against this route.
+    test('accepts a codex token and rejects a claude one', () => {
+        const codexToken = mintProxyToken(
+            { correlationId: 'cid-1', agent: 'codex', userId: 'u1', expiresAtMs: FUTURE },
+            ENV
+        )
+        const claudeToken = mintProxyToken(
+            { correlationId: 'cid-1', agent: 'claude', userId: 'u1', expiresAtMs: FUTURE },
+            ENV
+        )
+        const { config } = resolveProvider('/openrouter/v1/chat/completions')
+
+        expect(verifyProxyToken(codexToken, { expectedAgent: config.expectedAgent, env: ENV, nowMs: NOW }).valid).toBe(
+            true
+        )
+        expect(verifyProxyToken(claudeToken, { expectedAgent: config.expectedAgent, env: ENV, nowMs: NOW }).valid).toBe(
+            false
+        )
+    })
+
+    // BYOK stores a key per *agent*; an OpenAI key cannot authenticate against OpenRouter, so this
+    // route is always platform-billed (startVmJob pins credentialMode to 'api' to match).
+    test('does not support BYOK', () => {
+        expect(resolveProvider('/openrouter/v1/chat/completions').config.supportsByok).toBe(false)
+        expect(resolveProvider('/openai/v1/responses').config.supportsByok).toBeUndefined()
+    })
+
+    test('captures usage from a streamed Chat Completions final chunk', () => {
+        const state = { buffer: '', usage: undefined, anthropicDeltaUsage: null }
+        captureUsageFromTextChunk(
+            'openrouter',
+            'data: {"choices":[{"delta":{"content":"hi"}}]}\n' +
+                'data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":30,"total_tokens":150}}\n' +
+                'data: [DONE]\n',
+            state
+        )
+        expect(finalizeCapturedUsage('openrouter', state)).toMatchObject({
+            inputTokens: 120,
+            outputTokens: 30,
+            totalTokens: 150,
+        })
+    })
+
+    test('reads usage from a non-streamed response body', () => {
+        expect(
+            extractUsageFromJsonPayload('openrouter', {
+                usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+            })
+        ).toMatchObject({ totalTokens: 15 })
+    })
+})
+
+describe('ensureStreamUsageRequested', () => {
+    // Without include_usage the Chat Completions stream reports no usage at all, so every streamed
+    // OpenRouter run would bill zero Gold — a silent revenue hole rather than a visible failure.
+    test('adds include_usage to a streaming request', () => {
+        const body = Buffer.from(JSON.stringify({ model: 'deepseek/deepseek-chat', stream: true }))
+        const rewritten = JSON.parse(ensureStreamUsageRequested(body).toString('utf8'))
+        expect(rewritten).toMatchObject({
+            model: 'deepseek/deepseek-chat',
+            stream: true,
+            stream_options: { include_usage: true },
+        })
+    })
+
+    test('preserves other stream options the caller already set', () => {
+        const body = Buffer.from(JSON.stringify({ stream: true, stream_options: { something: 1 } }))
+        const rewritten = JSON.parse(ensureStreamUsageRequested(body).toString('utf8'))
+        expect(rewritten.stream_options).toEqual({ something: 1, include_usage: true })
+    })
+
+    test('leaves a non-streaming request untouched', () => {
+        const body = Buffer.from(JSON.stringify({ stream: false }))
+        expect(ensureStreamUsageRequested(body)).toBe(body)
+    })
+
+    test('forwards anything it cannot parse byte-for-byte', () => {
+        const body = Buffer.from('not json at all')
+        expect(ensureStreamUsageRequested(body)).toBe(body)
+        expect(ensureStreamUsageRequested(undefined)).toBeUndefined()
+    })
+})
