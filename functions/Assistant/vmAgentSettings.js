@@ -74,12 +74,8 @@ async function getVmAgentSettings({ userId }) {
         throw new HttpsError('unauthenticated', 'Authentication required.')
     }
 
-    const {
-        defaultAgent,
-        defaultReasoningEffort,
-        hasStoredReasoningEffort,
-        defaultApprovalPolicy,
-    } = await readStoredVmAgentSettings(userId)
+    const { defaultAgent, defaultReasoningEffort, hasStoredReasoningEffort, defaultApprovalPolicy } =
+        await readStoredVmAgentSettings(userId)
     return {
         defaultAgent,
         effectiveDefaultAgent: defaultAgent || SYSTEM_DEFAULT_VM_AGENT,
@@ -203,8 +199,8 @@ async function resolveVmAgentSettings(userId, explicitAgent, explicitReasoningEf
             reasoningEffort: hasExplicitReasoningEffort
                 ? explicitReasoningEffort
                 : storedSettings.hasStoredReasoningEffort
-                ? storedSettings.defaultReasoningEffort
-                : SYSTEM_DEFAULT_VM_REASONING_EFFORT,
+                  ? storedSettings.defaultReasoningEffort
+                  : SYSTEM_DEFAULT_VM_REASONING_EFFORT,
         }
     } catch (error) {
         console.warn('🖥️ VM JOB: Failed reading user VM defaults, using system defaults', {

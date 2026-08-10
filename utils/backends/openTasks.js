@@ -480,8 +480,8 @@ const processTaskChange = (
     const date = taskIsTodayOrOverdue
         ? dayDateFormated
         : taskInBacklog
-        ? BACKLOG_DATE_STRING
-        : moment(taskDueDate).format('YYYYMMDD')
+          ? BACKLOG_DATE_STRING
+          : moment(taskDueDate).format('YYYYMMDD')
     const taskTypeIndex = getTaskTypeIndex(task, areObservedTasks, areStreamAndUserTasks, assistantProfileMode)
     const currentStepId = stepHistory[stepHistory.length - 1]
 
@@ -490,8 +490,8 @@ const processTaskChange = (
             ? estimationsByObserverIds[currentUserId]
             : 0
         : estimations[currentStepId]
-        ? estimations[currentStepId]
-        : 0
+          ? estimations[currentStepId]
+          : 0
 
     let innerGroupKey = ''
     if (taskTypeIndex === WORKFLOW_TASK_INDEX) {
@@ -621,8 +621,8 @@ const processTaskChange = (
         const oldTask = areObservedTasks
             ? tasksMap.observedTasksById[task.id]
             : areStreamAndUserTasks
-            ? tasksMap.streamAndUserTasksById[task.id]
-            : tasksMap.userTasksById[task.id]
+              ? tasksMap.streamAndUserTasksById[task.id]
+              : tasksMap.userTasksById[task.id]
 
         const wasNeedToProcessTheTask = !!oldTask
         if (wasNeedToProcessTheTask) {
@@ -635,8 +635,8 @@ const processTaskChange = (
             const oldDate = oldTaskIsTodayOrOverdue
                 ? dayDateFormated
                 : oldTaskInBacklog
-                ? BACKLOG_DATE_STRING
-                : moment(oldTaskDueDate).format('YYYYMMDD')
+                  ? BACKLOG_DATE_STRING
+                  : moment(oldTaskDueDate).format('YYYYMMDD')
 
             const oldTaskTypeIndex = getTaskTypeIndex(
                 oldTask,
@@ -652,8 +652,8 @@ const processTaskChange = (
                     ? oldTask.estimationsByObserverIds[currentUserId]
                     : 0
                 : oldTask.estimations[oldCurrentStepId]
-                ? oldTask.estimations[oldCurrentStepId]
-                : 0
+                  ? oldTask.estimations[oldCurrentStepId]
+                  : 0
             const oldUserId = oldTask.userId
             if (oldTask.parentGoalId && !Array.isArray(oldTask.parentGoalIsPublicFor)) {
                 console.warn('[OpenTasks] oldTask.parentGoalIsPublicFor missing/invalid', {
@@ -699,8 +699,8 @@ const processTaskChange = (
         const notExistTask = areObservedTasks
             ? !tasksMap.observedTasksById[task.id]
             : areStreamAndUserTasks
-            ? !tasksMap.streamAndUserTasksById[task.id]
-            : !tasksMap.userTasksById[task.id]
+              ? !tasksMap.streamAndUserTasksById[task.id]
+              : !tasksMap.userTasksById[task.id]
         if (notExistTask) addTask()
     } else {
         if (needToProcessTheTask) deleteTask(date, taskTypeIndex, innerGroupKey, taskParentGoalId, estimation, false)
@@ -858,8 +858,8 @@ const processSubtaskChange = (
             areObservedTasks
                 ? (subtasksMap.observedSubtasksById[subtask.id] = subtask)
                 : areStreamAndUserTasks
-                ? (subtasksMap.streamAndUserSubtasksById[subtask.id] = subtask)
-                : (subtasksMap.userSubtasksById[subtask.id] = subtask)
+                  ? (subtasksMap.streamAndUserSubtasksById[subtask.id] = subtask)
+                  : (subtasksMap.userSubtasksById[subtask.id] = subtask)
         }
     }
 
@@ -874,8 +874,8 @@ const processSubtaskChange = (
         areObservedTasks
             ? delete subtasksMap.observedSubtasksById[subtask.id]
             : areStreamAndUserTasks
-            ? delete subtasksMap.streamAndUserSubtasksById[subtask.id]
-            : delete subtasksMap.userSubtasksById[subtask.id]
+              ? delete subtasksMap.streamAndUserSubtasksById[subtask.id]
+              : delete subtasksMap.userSubtasksById[subtask.id]
     }
 
     if (changeType === 'added') {
@@ -884,8 +884,8 @@ const processSubtaskChange = (
         const oldSubtask = areObservedTasks
             ? subtasksMap.observedSubtasksById[subtask.id]
             : areStreamAndUserTasks
-            ? subtasksMap.streamAndUserSubtasksById[subtask.id]
-            : subtasksMap.userSubtasksById[subtask.id]
+              ? subtasksMap.streamAndUserSubtasksById[subtask.id]
+              : subtasksMap.userSubtasksById[subtask.id]
 
         const wasNeedToProcessTheTask = !!oldSubtask
 
@@ -904,8 +904,8 @@ const getSubtaskInMap = (subtasksMap, areObservedTasks, areStreamAndUserTasks, t
     const subtask = areObservedTasks
         ? observedSubtasksById[taskId]
         : areStreamAndUserTasks
-        ? streamAndUserSubtasksById[taskId]
-        : userSubtasksById[taskId]
+          ? streamAndUserSubtasksById[taskId]
+          : userSubtasksById[taskId]
     return subtask
 }
 
@@ -1361,8 +1361,8 @@ const processEmptyGoalChanges = (
         const date = goalIsTodayOrOverdue
             ? dayDateFormated
             : goalInBacklog
-            ? BACKLOG_DATE_STRING
-            : moment(userReminderDate).format('YYYYMMDD')
+              ? BACKLOG_DATE_STRING
+              : moment(userReminderDate).format('YYYYMMDD')
 
         if (!Array.isArray(isPublicFor)) {
             console.warn('[OpenTasks] isPublicFor missing/invalid on goal', {
@@ -1433,8 +1433,8 @@ const processEmptyGoalChanges = (
                 const oldDate = oldGoalIsTodayOrOverdue
                     ? dayDateFormated
                     : oldGoalInBacklog
-                    ? BACKLOG_DATE_STRING
-                    : moment(oldUserReminderDate).format('YYYYMMDD')
+                      ? BACKLOG_DATE_STRING
+                      : moment(oldUserReminderDate).format('YYYYMMDD')
 
                 deleteTask(oldDate)
             }

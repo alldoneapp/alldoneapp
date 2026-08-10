@@ -7,7 +7,7 @@ const ThemeColors = {
             containerSticky: _color => ({
                 backgroundColor: Colors.UtilityYellow100,
             }),
-        }
+        },
     },
 }
 

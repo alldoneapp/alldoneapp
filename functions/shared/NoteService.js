@@ -1026,8 +1026,8 @@ class NoteService {
                 projectId === 'alldonealeph'
                     ? 'notescontentprod'
                     : projectId === 'alldonestaging'
-                    ? 'notescontentstaging'
-                    : 'notescontentdev'
+                      ? 'notescontentstaging'
+                      : 'notescontentdev'
 
             if (bucketName !== expectedBucket) {
                 console.warn(
@@ -2146,10 +2146,10 @@ class NoteService {
                     environment: this.options.isCloudFunction
                         ? 'cloud-function'
                         : this.options.isReactNative
-                        ? 'react-native'
-                        : this.options.isWeb
-                        ? 'web'
-                        : 'unknown',
+                          ? 'react-native'
+                          : this.options.isWeb
+                            ? 'web'
+                            : 'unknown',
                 },
             }
         } catch (error) {

@@ -61,8 +61,8 @@ const BacklinksView = ({ project, linkedParentObject, externalStyle, parentObjec
     const responsiveMarginStyles = mobile
         ? localStyles.containerMobile
         : isMiddleScreen
-        ? localStyles.containerTablet
-        : undefined
+          ? localStyles.containerTablet
+          : undefined
 
     useEffect(() => {
         writeBrowserUrl()

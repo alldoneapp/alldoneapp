@@ -27,8 +27,8 @@ export default function DateTagButton({
     const date = task.done
         ? task.completed
         : isObservedTask
-        ? task.dueDateByObserversIds[currentUser.uid]
-        : task.dueDate
+          ? task.dueDateByObserversIds[currentUser.uid]
+          : task.dueDate
     const icon = task.done ? 'square-checked-gray' : isObservedTask ? 'calendar-observer' : 'calendar'
 
     useEffect(() => {

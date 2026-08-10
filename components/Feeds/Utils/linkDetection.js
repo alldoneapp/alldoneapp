@@ -1,6 +1,8 @@
-export const REGEX_URL = /^((https?|ftp):\/\/[\S]+|(www\.[\S]+)|([\S]+\.[a-zA-Z]{2,}[\S]*))$|^http:\/\/localhost:[0-9]+\/[^\s.]{2,}(?!\.)$/i
+export const REGEX_URL =
+    /^((https?|ftp):\/\/[\S]+|(www\.[\S]+)|([\S]+\.[a-zA-Z]{2,}[\S]*))$|^http:\/\/localhost:[0-9]+\/[^\s.]{2,}(?!\.)$/i
 
-const REGEX_URL_START = /^(?:(?:https?|ftp):\/\/|www\.|(?:[a-z0-9\u00a1-\uffff](?:[a-z0-9\-\u00a1-\uffff]*[a-z0-9\u00a1-\uffff])?\.)+[a-z\u00a1-\uffff]{2,}(?::[0-9]+)?(?:[/?#]|$))/i
+const REGEX_URL_START =
+    /^(?:(?:https?|ftp):\/\/|www\.|(?:[a-z0-9\u00a1-\uffff](?:[a-z0-9\-\u00a1-\uffff]*[a-z0-9\u00a1-\uffff])?\.)+[a-z\u00a1-\uffff]{2,}(?::[0-9]+)?(?:[/?#]|$))/i
 
 const LEADING_BOUNDARIES = new Set(['(', '[', '{', '<', '"', "'", '“', '‘'])
 const TRAILING_BOUNDARIES = new Set(['>', '"', "'", '”', '’'])

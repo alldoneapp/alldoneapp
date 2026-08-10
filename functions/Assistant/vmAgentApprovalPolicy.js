@@ -48,13 +48,16 @@ const SAFE_CLAUDE_TOOLS = new Set([
 ])
 
 const FILE_MUTATION_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
-const SENSITIVE_PATH_PATTERN = /(^|\/)(?:\.env(?:\.|$)|\.ssh(?:\/|$)|\.aws(?:\/|$)|\.config\/gcloud(?:\/|$)|service_accounts?(?:\/|$)|credentials?(?:\.|\/|$)|secrets?(?:\.|\/|$)|auth\.json$)/i
-const SENSITIVE_COMMAND_PATH_PATTERN = /(?:^|[\s'"=])(?:\.env(?:\.[^\s'"]*)?|~?\/\.ssh(?:\/|\s|$)|~?\/\.aws(?:\/|\s|$)|~?\/\.config\/gcloud(?:\/|\s|$)|service_accounts?(?:\/|\s|$)|credentials?(?:\.|\/|\s|$)|secrets?(?:\.|\/|\s|$)|auth\.json\b)/i
+const SENSITIVE_PATH_PATTERN =
+    /(^|\/)(?:\.env(?:\.|$)|\.ssh(?:\/|$)|\.aws(?:\/|$)|\.config\/gcloud(?:\/|$)|service_accounts?(?:\/|$)|credentials?(?:\.|\/|$)|secrets?(?:\.|\/|$)|auth\.json$)/i
+const SENSITIVE_COMMAND_PATH_PATTERN =
+    /(?:^|[\s'"=])(?:\.env(?:\.[^\s'"]*)?|~?\/\.ssh(?:\/|\s|$)|~?\/\.aws(?:\/|\s|$)|~?\/\.config\/gcloud(?:\/|\s|$)|service_accounts?(?:\/|\s|$)|credentials?(?:\.|\/|\s|$)|secrets?(?:\.|\/|\s|$)|auth\.json\b)/i
 
 // Fetch-and-execute in a single pipeline. Previously auto-approved: the old policy only looked
 // for HTTP *mutation* flags, so `curl -fsSL https://x/y.sh | bash` - remote code execution -
 // passed while reading your own Cloud Logging paused. Always escalates, at every level.
-const REMOTE_EXECUTION_PATTERN = /\b(?:curl|wget)\b[^|;&\n]*\|\s*(?:sudo\s+)?(?:bash|sh|zsh|fish|dash|ksh|python[0-9.]*|node|perl|ruby|php)\b/i
+const REMOTE_EXECUTION_PATTERN =
+    /\b(?:curl|wget)\b[^|;&\n]*\|\s*(?:sudo\s+)?(?:bash|sh|zsh|fish|dash|ksh|python[0-9.]*|node|perl|ruby|php)\b/i
 
 // Read-shaped HTTPS endpoints that must be called with POST + a request body. These are the
 // reason the original policy was so noisy: Alldone's own VM prompt instructs the agent to read
@@ -88,12 +91,14 @@ const RISKY_COMMAND_RULES = [
     },
     {
         key: 'deployment',
-        pattern: /\b(?:firebase|vercel|netlify|wrangler)\s+deploy\b|\bgcloud\b[^\n]*\b(?:deploy|delete|create|update|set-iam-policy|add-iam-policy-binding)\b|\bkubectl\s+(?:apply|create|delete|patch|replace|rollout|scale)\b|\bterraform\s+(?:apply|destroy|import)\b/i,
+        pattern:
+            /\b(?:firebase|vercel|netlify|wrangler)\s+deploy\b|\bgcloud\b[^\n]*\b(?:deploy|delete|create|update|set-iam-policy|add-iam-policy-binding)\b|\bkubectl\s+(?:apply|create|delete|patch|replace|rollout|scale)\b|\bterraform\s+(?:apply|destroy|import)\b/i,
         reason: 'deployment or cloud infrastructure mutation',
     },
     {
         key: 'cloud_mutation',
-        pattern: /\baws\b[^\n]*\b(?:create|delete|put|update|terminate|run-instances|s3\s+(?:cp|mv|rm|sync))\b|\baz\b[^\n]*\b(?:create|delete|update|deployment)\b/i,
+        pattern:
+            /\baws\b[^\n]*\b(?:create|delete|put|update|terminate|run-instances|s3\s+(?:cp|mv|rm|sync))\b|\baz\b[^\n]*\b(?:create|delete|update|deployment)\b/i,
         reason: 'cloud infrastructure or storage mutation',
     },
     {

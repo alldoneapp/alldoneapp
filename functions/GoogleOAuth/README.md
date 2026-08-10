@@ -6,47 +6,47 @@ The Google Calendar and Gmail OAuth integration has been upgraded from **client-
 
 ### Before
 
--   OAuth tokens stored in browser memory only
--   Connection lost on page reload
--   Separate authentication required on each device
--   No refresh tokens - required re-authentication frequently
+- OAuth tokens stored in browser memory only
+- Connection lost on page reload
+- Separate authentication required on each device
+- No refresh tokens - required re-authentication frequently
 
 ### After
 
--   OAuth refresh tokens stored securely in Firestore
--   Connection persists across page reloads
--   **Single authentication works on all devices**
--   Automatic token refresh - seamless experience
+- OAuth refresh tokens stored securely in Firestore
+- Connection persists across page reloads
+- **Single authentication works on all devices**
+- Automatic token refresh - seamless experience
 
 ## Files Added
 
 ### Backend (Firebase Functions)
 
--   `functions/GoogleOAuth/googleOAuthHandler.js` - Server-side OAuth logic
--   Added 5 new Cloud Functions in `functions/index.js`:
-    -   `googleOAuthInitiate` - Start OAuth flow
-    -   `googleOAuthCallback` - Handle OAuth redirect
-    -   `googleOAuthGetToken` - Get fresh access tokens
-    -   `googleOAuthRevoke` - Disconnect account
-    -   `googleOAuthCheckCredentials` - Check auth status
+- `functions/GoogleOAuth/googleOAuthHandler.js` - Server-side OAuth logic
+- Added 5 new Cloud Functions in `functions/index.js`:
+    - `googleOAuthInitiate` - Start OAuth flow
+    - `googleOAuthCallback` - Handle OAuth redirect
+    - `googleOAuthGetToken` - Get fresh access tokens
+    - `googleOAuthRevoke` - Disconnect account
+    - `googleOAuthCheckCredentials` - Check auth status
 
 ### Frontend (Client)
 
--   `apis/google/GoogleOAuthServerSide.ts` - Client-side helper functions
--   Updated `components/.../ConnectCalendar/ActionButton.js` - Use server-side flow
--   Updated `components/.../ConnectCalendar/ConnectCalendarProperty.js` - Check server auth
--   Updated `components/.../ConnectGmail/ActionButton.js` - Use server-side flow
--   Updated `components/.../ConnectGmail/ConnectGmailProperty.js` - Check server auth
+- `apis/google/GoogleOAuthServerSide.ts` - Client-side helper functions
+- Updated `components/.../ConnectCalendar/ActionButton.js` - Use server-side flow
+- Updated `components/.../ConnectCalendar/ConnectCalendarProperty.js` - Check server auth
+- Updated `components/.../ConnectGmail/ActionButton.js` - Use server-side flow
+- Updated `components/.../ConnectGmail/ConnectGmailProperty.js` - Check server auth
 
 ### Configuration
 
--   Updated `functions/envFunctionsHelper.js` - Add OAuth client secret
--   Updated `functions/.env` - Add `GOOGLE_OAUTH_CLIENT_SECRET`
+- Updated `functions/envFunctionsHelper.js` - Add OAuth client secret
+- Updated `functions/.env` - Add `GOOGLE_OAUTH_CLIENT_SECRET`
 
 ### Documentation
 
--   `SETUP_GUIDE.md` - Complete setup instructions
--   `FIRESTORE_SECURITY_RULES.md` - Required security rules
+- `SETUP_GUIDE.md` - Complete setup instructions
+- `FIRESTORE_SECURITY_RULES.md` - Required security rules
 
 ## Quick Start
 
@@ -171,36 +171,36 @@ users/{userId} {
 
 **No data loss:**
 
--   Calendar tasks are preserved
--   User preferences maintained
--   Only OAuth tokens need re-authorization
+- Calendar tasks are preserved
+- User preferences maintained
+- Only OAuth tokens need re-authorization
 
 ## Testing Checklist
 
 ### Calendar
 
--   [ ] Connect calendar on desktop
--   [ ] Reload page - verify still connected
--   [ ] Open app on mobile - verify already connected
--   [ ] Sync calendar events - verify working
--   [ ] Disconnect calendar - verify token revoked
--   [ ] Reconnect - verify popup flow works
+- [ ] Connect calendar on desktop
+- [ ] Reload page - verify still connected
+- [ ] Open app on mobile - verify already connected
+- [ ] Sync calendar events - verify working
+- [ ] Disconnect calendar - verify token revoked
+- [ ] Reconnect - verify popup flow works
 
 ### Gmail
 
--   [ ] Connect Gmail on desktop
--   [ ] Reload page - verify still connected
--   [ ] Open app on mobile - verify already connected
--   [ ] Sync Gmail data - verify working
--   [ ] Disconnect Gmail - verify working
--   [ ] Reconnect - verify popup flow works
+- [ ] Connect Gmail on desktop
+- [ ] Reload page - verify still connected
+- [ ] Open app on mobile - verify already connected
+- [ ] Sync Gmail data - verify working
+- [ ] Disconnect Gmail - verify working
+- [ ] Reconnect - verify popup flow works
 
 ### Unified OAuth
 
--   [ ] Connect Calendar - verify Gmail also gets access (single OAuth grants both)
--   [ ] Connect Gmail - verify Calendar also gets access (single OAuth grants both)
--   [ ] Check Firestore for stored tokens at `/users/{uid}/private/googleAuth`
--   [ ] Verify both services work across devices
+- [ ] Connect Calendar - verify Gmail also gets access (single OAuth grants both)
+- [ ] Connect Gmail - verify Calendar also gets access (single OAuth grants both)
+- [ ] Check Firestore for stored tokens at `/users/{uid}/private/googleAuth`
+- [ ] Verify both services work across devices
 
 ## Troubleshooting
 
@@ -208,10 +208,10 @@ See `SETUP_GUIDE.md` for detailed troubleshooting.
 
 **Common issues:**
 
--   OAuth popup blocked → Check browser settings
--   Redirect URI mismatch → Add URIs to Google Cloud Console
--   Permission denied → Deploy Firestore security rules
--   Invalid client secret → Check .env configuration
+- OAuth popup blocked → Check browser settings
+- Redirect URI mismatch → Add URIs to Google Cloud Console
+- Permission denied → Deploy Firestore security rules
+- Invalid client secret → Check .env configuration
 
 ## Next Steps
 

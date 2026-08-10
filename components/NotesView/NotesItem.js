@@ -361,8 +361,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                                         {emptyNote
                                             ? 'This note has no content'
                                             : !note.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-                                            ? 'Private note'
-                                            : note.preview}
+                                              ? 'Private note'
+                                              : note.preview}
                                     </SocialText>
                                 </View>
                             </View>

@@ -92,8 +92,8 @@ export default function ChatInput({
     const persistedAssistantActive = hasExplicitChatAssistantState
         ? chat.isAssistantEnabled === true
         : hasParentAssistantState
-        ? parentObject.isAssistantEnabled === true
-        : false
+          ? parentObject.isAssistantEnabled === true
+          : false
     const isAssistantActive = persistedAssistantActive || assistantEnabled
     const explicitAssistantEnabled =
         hasExplicitChatAssistantState || hasParentAssistantState || assistantEnabled ? isAssistantActive : null

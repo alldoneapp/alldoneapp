@@ -111,8 +111,8 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
                             {smallScreenNavigation || isMobile
                                 ? ''
                                 : object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-                                ? translate('Project-wide')
-                                : translate('Private')}
+                                  ? translate('Project-wide')
+                                  : translate('Private')}
                         </Text>
                         {smallScreenNavigation && !object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) && (
                             <Icon name={'lock'} size={16} color={colors.Text03} style={localStyles.icon} />
@@ -151,8 +151,8 @@ export default function PrivacyTag({ projectId, object, objectType, isMobile, st
                         {smallScreenNavigation || isMobile
                             ? ''
                             : object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-                            ? translate('Project-wide')
-                            : translate('Private')}
+                              ? translate('Project-wide')
+                              : translate('Private')}
                     </Text>
                     {smallScreenNavigation && !object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) && (
                         <Icon name={'lock'} size={16} color={colors.Text03} style={localStyles.icon} />

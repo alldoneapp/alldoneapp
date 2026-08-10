@@ -226,7 +226,7 @@ async function prepareVmFailureHoldForRun(db, pending) {
         return {
             releasedHold: task[VM_WORKFLOW_HOLD_FIELD] || null,
             reviewerAtRunStart:
-                update.currentReviewerId !== undefined ? update.currentReviewerId : task.currentReviewerId ?? null,
+                update.currentReviewerId !== undefined ? update.currentReviewerId : (task.currentReviewerId ?? null),
         }
     })
 }

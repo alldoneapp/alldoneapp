@@ -47,8 +47,8 @@ export default function RootViewFeedsNote({ projectId, note, noteId }) {
                 smallScreenNavigation
                     ? localStyles.containerMobile
                     : isMiddleScreen
-                    ? localStyles.containerTablet
-                    : localStyles.container
+                      ? localStyles.containerTablet
+                      : localStyles.container
             }
         >
             <HeaderNote />

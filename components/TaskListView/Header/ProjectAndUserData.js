@@ -12,12 +12,8 @@ import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewComm
 
 export default function ProjectAndUserData({ projectIndex, projectId, badge, userInHeader, showEmailLabels = false }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const {
-        showFollowedBubble,
-        showUnfollowedBubble,
-        totalFollowed,
-        totalUnfollowed,
-    } = useShowNewCommentsBubbleInBoard(projectId)
+    const { showFollowedBubble, showUnfollowedBubble, totalFollowed, totalUnfollowed } =
+        useShowNewCommentsBubbleInBoard(projectId)
 
     const [titleWidth, setTitleWidth] = useState('auto')
     const subContainer = useRef()

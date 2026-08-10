@@ -557,8 +557,8 @@ async function getNoteService() {
             projectId === 'alldonealeph'
                 ? 'notescontentprod'
                 : projectId === 'alldonestaging'
-                ? 'notescontentstaging'
-                : null
+                  ? 'notescontentstaging'
+                  : null
         cachedNoteService = new NoteService({
             database: db,
             moment,
@@ -2055,10 +2055,10 @@ async function handleMenubarAssistantThread(req, res) {
                 ? actor.feedUser.displayName || 'Anna'
                 : 'Anna'
             : assistantReplyEnabled
-            ? actor.assistantId === assistantId
-                ? actor.feedUser.displayName || 'Assistant'
-                : 'Assistant'
-            : 'Comments'
+              ? actor.assistantId === assistantId
+                  ? actor.feedUser.displayName || 'Assistant'
+                  : 'Assistant'
+              : 'Comments'
         const requestedLimit = Number(req.body?.limit)
         const limit = Number.isFinite(requestedLimit)
             ? Math.max(1, Math.min(Math.floor(requestedLimit), MAX_ASSISTANT_THREAD_PAGE_SIZE))
@@ -2298,8 +2298,8 @@ async function handleMenubarAssistantMessage(req, res) {
                 const token = media.mimeType.startsWith('image/')
                     ? buildImageToken(uploaded.url, uploaded.url, media.fileName)
                     : media.mimeType.startsWith('video/')
-                    ? buildVideoToken(uploaded.url, media.fileName)
-                    : buildAttachmentToken(uploaded.url, media.fileName)
+                      ? buildVideoToken(uploaded.url, media.fileName)
+                      : buildAttachmentToken(uploaded.url, media.fileName)
                 commentText = `${comment}\n\n${token}`
             }
         } catch (uploadError) {

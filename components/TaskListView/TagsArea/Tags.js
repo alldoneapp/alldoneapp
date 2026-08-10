@@ -131,13 +131,8 @@ export default function Tags({
         setTaskDescription(projectId, task.id, description, task, task.description)
     }
 
-    const {
-        ownerEstimation,
-        observerEstimation,
-        currentReviewerEstimation,
-        currentStepId,
-        reviwerPhotoURL,
-    } = getEstimationsTagsInfo()
+    const { ownerEstimation, observerEstimation, currentReviewerEstimation, currentStepId, reviwerPhotoURL } =
+        getEstimationsTagsInfo()
 
     const isOverdue = moment(task.dueDate).isBefore(moment(), 'day')
     const isToday = moment(task.dueDateByObserversIds[currentUserId]).isSame(moment(), 'day')

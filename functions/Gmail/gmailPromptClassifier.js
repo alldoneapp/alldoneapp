@@ -461,7 +461,11 @@ async function classifyGmailMessage({ config, message }) {
             crossReference,
             consistencyTrigger
         )
-        const { verified, usage: verifyUsage, parsed: verifyParsed } = await verifyClassificationConsistency(openai, {
+        const {
+            verified,
+            usage: verifyUsage,
+            parsed: verifyParsed,
+        } = await verifyClassificationConsistency(openai, {
             selectedModel: auditModel,
             isReasoningModel: auditIsReasoningModel,
             config,

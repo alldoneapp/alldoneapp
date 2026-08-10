@@ -225,14 +225,12 @@ export default class SuggestedModal extends Component {
         tmpTask.userId = user.uid
         tmpTask.observersIds = observers.map(user => user.uid).filter(uid => tmpTask.userId !== uid)
 
-        const {
-            dueDateByObserversIds,
-            estimationsByObserverIds,
-        } = TasksHelper.mergeDueDateAndEstimationsByObserversIds(
-            task.dueDateByObserversIds,
-            tmpTask.observersIds,
-            task.estimationsByObserverIds
-        )
+        const { dueDateByObserversIds, estimationsByObserverIds } =
+            TasksHelper.mergeDueDateAndEstimationsByObserversIds(
+                task.dueDateByObserversIds,
+                tmpTask.observersIds,
+                task.estimationsByObserverIds
+            )
         tmpTask.dueDateByObserversIds = dueDateByObserversIds
         tmpTask.estimationsByObserverIds = estimationsByObserverIds
 

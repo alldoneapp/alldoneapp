@@ -500,13 +500,13 @@ async function tryAddUserToProject(uid, projectId, project, removeInvitation) {
                   templateProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
               }
             : isGuide
-            ? {
-                  projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-                  guideProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-              }
-            : {
-                  projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
-              },
+              ? {
+                    projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+                    guideProjectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+                }
+              : {
+                    projectIds: firebase.firestore.FieldValue.arrayUnion(projectId),
+                },
         batch
     )
 
@@ -990,7 +990,8 @@ export async function clearUserOKRHiddenInAllProjectsToday(userId, projectId, ok
     updateUserData(
         userId,
         {
-            [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]: firebase.firestore.FieldValue.delete(),
+            [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]:
+                firebase.firestore.FieldValue.delete(),
         },
         null
     )
@@ -999,9 +1000,8 @@ export async function clearUserOKRHiddenInAllProjectsToday(userId, projectId, ok
 export async function clearUserOKRsHiddenInAllProjectsToday(userId, projectId, okrIds) {
     if (!userId || !projectId || !okrIds?.length) return
     const updates = okrIds.reduce((updates, okrId) => {
-        updates[
-            `okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`
-        ] = firebase.firestore.FieldValue.delete()
+        updates[`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`] =
+            firebase.firestore.FieldValue.delete()
         return updates
     }, {})
     updateUserData(userId, updates, null)

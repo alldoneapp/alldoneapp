@@ -25,7 +25,9 @@ function normalizePriority(priority) {
 }
 
 function trimRuleText(text) {
-    return String(text || '').trim().slice(0, MAX_LEARNED_RULES_LENGTH)
+    return String(text || '')
+        .trim()
+        .slice(0, MAX_LEARNED_RULES_LENGTH)
 }
 
 function normalizeLearningState(data = {}) {
@@ -114,7 +116,11 @@ async function recordAssistantPriorityDecision({
     }
 
     await db.runTransaction(async transaction => {
-        transaction.set(learningRef, { enabled: true, schemaVersion: TASK_PRIORITY_LEARNING_SCHEMA_VERSION }, { merge: true })
+        transaction.set(
+            learningRef,
+            { enabled: true, schemaVersion: TASK_PRIORITY_LEARNING_SCHEMA_VERSION },
+            { merge: true }
+        )
         transaction.set(decisionRef, decision)
         transaction.set(activeDecisionRef, {
             ...decision,
@@ -132,7 +138,9 @@ function buildManualCorrectionRule(event = {}) {
 }
 
 function buildCommentRule(event = {}) {
-    const comment = String(event.commentText || '').trim().replace(/\s+/g, ' ')
+    const comment = String(event.commentText || '')
+        .trim()
+        .replace(/\s+/g, ' ')
     if (!comment) return ''
     return `- Consider this task-priority feedback in similar situations: "${comment.slice(0, 180)}".`
 }
@@ -171,11 +179,7 @@ async function recordLearningEvent({ db = admin.firestore(), userId, event }) {
 
 async function countRecentWeakEvents({ db, userId, type, aiPriority }) {
     const since = Date.now() - WEAK_SIGNAL_WINDOW_MS
-    const snapshot = await getLearningRef(db, userId)
-        .collection('events')
-        .orderBy('createdAt', 'desc')
-        .limit(50)
-        .get()
+    const snapshot = await getLearningRef(db, userId).collection('events').orderBy('createdAt', 'desc').limit(50).get()
     return snapshot.docs.filter(doc => {
         const data = doc.data() || {}
         return data.type === type && data.aiPriority === (aiPriority || '') && Number(data.createdAt) >= since
@@ -215,15 +219,24 @@ async function maybeReviseLearnedRules({ db = admin.firestore(), userId, event, 
 
 async function loadActiveDecisionForActor({ db, actorId, projectId, taskId }) {
     if (!actorId || !projectId || !taskId) return null
-    const activeRef = getLearningRef(db, actorId).collection('activeTaskDecisions').doc(getActiveDecisionId(projectId, taskId))
+    const activeRef = getLearningRef(db, actorId)
+        .collection('activeTaskDecisions')
+        .doc(getActiveDecisionId(projectId, taskId))
     const activeDoc = await activeRef.get()
     if (!activeDoc.exists) return null
     const activeDecision = activeDoc.data() || {}
-    if (!activeDecision.decidedAt || Date.now() - Number(activeDecision.decidedAt) > ACTIVE_DECISION_WINDOW_MS) return null
+    if (!activeDecision.decidedAt || Date.now() - Number(activeDecision.decidedAt) > ACTIVE_DECISION_WINDOW_MS)
+        return null
     return activeDecision
 }
 
-async function captureTaskPriorityTaskUpdateFeedback({ db = admin.firestore(), projectId, taskId, oldTask = {}, newTask = {} }) {
+async function captureTaskPriorityTaskUpdateFeedback({
+    db = admin.firestore(),
+    projectId,
+    taskId,
+    oldTask = {},
+    newTask = {},
+}) {
     const actorId = newTask.lastEditorId || ''
     if (!actorId || !projectId || !taskId) return
 
@@ -301,7 +314,17 @@ function classifyComment(commentText = '') {
     const text = String(commentText || '').trim()
     const lower = text.toLowerCase()
     if (!text) return { classification: 'unrelated' }
-    const priorityTerms = ['priority', 'must', 'should', 'could', 'later', 'urgent', 'important', 'deadline', 'not today']
+    const priorityTerms = [
+        'priority',
+        'must',
+        'should',
+        'could',
+        'later',
+        'urgent',
+        'important',
+        'deadline',
+        'not today',
+    ]
     if (!priorityTerms.some(term => lower.includes(term))) return { classification: 'unrelated' }
     if (lower.includes('not') || lower.includes('instead') || lower.includes('wrong') || lower.includes('lower')) {
         return { classification: 'correction', ruleCandidate: buildCommentRule({ commentText: text }) }

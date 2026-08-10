@@ -41,8 +41,8 @@ export default function AssistantToolsModal({ allowedTools, onApply, closeModal 
     const selectionSummary = noneSelected
         ? translate('No tools enabled')
         : allSelected
-        ? translate('All tools enabled')
-        : selectedArray.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
+          ? translate('All tools enabled')
+          : selectedArray.map(key => translate(TOOL_LABEL_BY_KEY[key] || key)).join(', ')
 
     return (
         <View style={localStyles.wrapper}>

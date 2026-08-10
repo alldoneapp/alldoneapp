@@ -212,11 +212,10 @@ export default function AssistantProgress({
     appearance = 'light',
 }) {
     const sequence = useMemo(() => getAssistantProgressSequence(activity), [activity?.phase, activity?.toolName])
-    const detail = useMemo(() => getAssistantProgressDetail(activity), [
-        activity?.phase,
-        activity?.actionKey,
-        activity?.subject,
-    ])
+    const detail = useMemo(
+        () => getAssistantProgressDetail(activity),
+        [activity?.phase, activity?.actionKey, activity?.subject]
+    )
     const activityKey = `${activity?.phase || 'preparing'}:${activity?.toolName || ''}:${activity?.actionKey || ''}:${
         activity?.subject || ''
     }:${activity?.startedAt || ''}`

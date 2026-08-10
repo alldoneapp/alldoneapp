@@ -38,8 +38,8 @@ function mapContactData(contactId, contact) {
         extendedDescription: contact.extendedDescription
             ? contact.extendedDescription
             : contact.description
-            ? contact.description
-            : '',
+              ? contact.description
+              : '',
         hasStar: contact.hasStar ? contact.hasStar : '#FFFFFF',
         isPrivate: contact.isPrivate ? contact.isPrivate : false,
         isPublicFor: contact.isPublicFor ? contact.isPublicFor : [FEED_PUBLIC_FOR_ALL, contact.recorderUserId],

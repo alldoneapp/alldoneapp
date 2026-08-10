@@ -107,14 +107,8 @@ const updateCreditCardNumber = async (userPayingId, urlOrigin) => {
 
 const addedUsersToSubscription = async (userPayingId, newAddedUserIds, urlOrigin, newSelectedUserIds) => {
     const subscription = await getUserSubscription(userPayingId)
-    const {
-        nextPaymentDate,
-        companyData,
-        subscriptionIdInMollie,
-        customerId,
-        activePaidUsersIds,
-        paidUsersIds,
-    } = subscription
+    const { nextPaymentDate, companyData, subscriptionIdInMollie, customerId, activePaidUsersIds, paidUsersIds } =
+        subscription
     const paymentInitialDate = moment().format('YYYY-MM-DD')
     const paymentExpiredDate = moment().add(15, 'm').format('YYYY-MM-DD')
     if (paymentInitialDate === nextPaymentDate || paymentExpiredDate === nextPaymentDate) {

@@ -56,8 +56,8 @@ export default function AssistantSkills() {
         filteredSkills.length === 0
             ? translate('No skills yet')
             : filteredSkills.length === 1
-            ? `1 ${translate('Skill')}`
-            : `${filteredSkills.length} ${translate('Skills')}`
+              ? `1 ${translate('Skill')}`
+              : `${filteredSkills.length} ${translate('Skills')}`
 
     return (
         <View style={localStyles.container}>

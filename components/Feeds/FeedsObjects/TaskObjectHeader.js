@@ -101,10 +101,10 @@ const TaskObjectHeader = ({ projectId, feed, isLocked }) => {
             return isDeleted
                 ? 'trash-2-Sub'
                 : isDone
-                ? 'square-checked-gray-Sub'
-                : inWorkflow
-                ? 'clock-Sub'
-                : 'check-square-Sub'
+                  ? 'square-checked-gray-Sub'
+                  : inWorkflow
+                    ? 'clock-Sub'
+                    : 'check-square-Sub'
         } else {
             return isDeleted ? 'trash-2' : isDone ? 'square-checked-gray' : inWorkflow ? 'clock' : 'check-square'
         }

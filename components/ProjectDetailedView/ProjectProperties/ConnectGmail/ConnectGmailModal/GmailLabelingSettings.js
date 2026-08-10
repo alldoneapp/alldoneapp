@@ -88,20 +88,20 @@ function SyncSummary({ state, result }) {
         typeof result?.labeled === 'number'
             ? result.labeled
             : typeof state?.lastLabeledCount === 'number'
-            ? state.lastLabeledCount
-            : 0
+              ? state.lastLabeledCount
+              : 0
     const lastArchivedCount =
         typeof result?.archived === 'number'
             ? result.archived
             : typeof state?.lastArchivedCount === 'number'
-            ? state.lastArchivedCount
-            : 0
+              ? state.lastArchivedCount
+              : 0
     const lastProcessedCount =
         typeof result?.scanned === 'number'
             ? result.scanned
             : typeof state?.lastProcessedCount === 'number'
-            ? state.lastProcessedCount
-            : 0
+              ? state.lastProcessedCount
+              : 0
     const goldSpent = typeof result?.goldSpent === 'number' ? result.goldSpent : 0
     const estimatedNormalGoldSpent =
         typeof result?.estimatedNormalGoldSpent === 'number' ? result.estimatedNormalGoldSpent : 0

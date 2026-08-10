@@ -58,8 +58,8 @@ export default function TasksMultiToggleSwitchAllProjects() {
                                   earlierDoneTasksAmount > 0
                                       ? earlierDoneTasksAmount
                                       : doneTasksAmount
-                                      ? doneTasksAmount
-                                      : 0,
+                                        ? doneTasksAmount
+                                        : 0,
                           },
                       ]
                     : [
@@ -76,8 +76,8 @@ export default function TasksMultiToggleSwitchAllProjects() {
                                   earlierDoneTasksAmount > 0
                                       ? earlierDoneTasksAmount
                                       : doneTasksAmount
-                                      ? doneTasksAmount
-                                      : 0,
+                                        ? doneTasksAmount
+                                        : 0,
                           },
                       ]
             }

@@ -82,8 +82,8 @@ export const protectModalDismissFromClickThrough = event => {
         eventType === 'touchend'
             ? ['mousedown', 'mouseup', 'click']
             : eventType === 'pointerup'
-            ? ['mouseup', 'click']
-            : ['click']
+              ? ['mouseup', 'click']
+              : ['click']
     const blockTrailingEvent = trailingEvent => {
         consumeEvent(trailingEvent)
         if (trailingEvent.type === 'click') clearClickThroughGuard()

@@ -797,8 +797,8 @@ export default function LinkTag({
         const baseStyle = inTaskDV
             ? { height: 32, paddingRight: 12, paddingLeft: 7 }
             : useCommentTagStyle
-            ? { minHeight: 20, height: 20, paddingRight: 6 }
-            : { height: 24 }
+              ? { minHeight: 20, height: 20, paddingRight: 6 }
+              : { height: 24 }
         return { ...customStyle, ...baseStyle, ...overwriteStyle }
     }
 
@@ -889,8 +889,8 @@ export default function LinkTag({
                         {expandTitle
                             ? handleNestedLinks(title)
                             : tagIcon === 'link'
-                            ? getShortExternalUrlText(title || '', textLimit)
-                            : getShrinkTagText(title, textLimit)}
+                              ? getShortExternalUrlText(title || '', textLimit)
+                              : getShrinkTagText(title, textLimit)}
                     </Text>
                 </View>
             </a>

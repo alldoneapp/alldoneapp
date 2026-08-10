@@ -58,15 +58,15 @@ ReactQuill (note)  +  mentionsHelper.onChangeSelection
 
 Three details are load-bearing and were the difference between "reproduces" and "doesn't":
 
--   **`ManageTaskModal` must be in the tree.** Its `CustomScrollView` performs a layout
-    measurement that forces a synchronous re-render; that is the re-render that interleaves
-    with the pending state update and lets react-quill wipe the pre-filled editor. A harness
-    that renders `TaskEditionMode` directly passes even on broken code.
--   **The popup text must be sampled over time** (`SAMPLES_MS`), not once. The bug fills the
-    editor correctly and empties it a tick later.
--   **Assert on every create-task input on the page**, not `querySelector`'s first match. The
-    visible popup is the last one mounted; asserting on the first one passes while the visible
-    one is empty.
+- **`ManageTaskModal` must be in the tree.** Its `CustomScrollView` performs a layout
+  measurement that forces a synchronous re-render; that is the re-render that interleaves
+  with the pending state update and lets react-quill wipe the pre-filled editor. A harness
+  that renders `TaskEditionMode` directly passes even on broken code.
+- **The popup text must be sampled over time** (`SAMPLES_MS`), not once. The bug fills the
+  editor correctly and empties it a tick later.
+- **Assert on every create-task input on the page**, not `querySelector`'s first match. The
+  visible popup is the last one mounted; asserting on the first one passes while the visible
+  one is empty.
 
 Harness modes (query string): `?modal` (production-shaped tree), `?modal&churn` (same, with
 redux dispatching throughout), plus `?popover`, `?full`, `?textinput`, `?nopopup`, `?yjs`
@@ -87,13 +87,13 @@ which is what pulled the send button off the shared axis in the first place.
 `run.js` renders the real `AssistantInputLine` against the real Redux store and asserts on
 `getBoundingClientRect()`:
 
--   collapsed: the two controls sit side by side on one row;
--   expanded: same centre axis (≤ 1px) and the call button fully above the send button;
--   expanded: the field is **wider** than it was collapsed;
--   expanded: field and control column are the same height (no overhang);
--   stability: reporting a single-line content height again (what happens once the field is
-    wider and the text re-wraps) must not flip the layout back — that feedback loop is the
-    "wiggle" this composer was fixed for once already.
+- collapsed: the two controls sit side by side on one row;
+- expanded: same centre axis (≤ 1px) and the call button fully above the send button;
+- expanded: the field is **wider** than it was collapsed;
+- expanded: field and control column are the same height (no overhang);
+- stability: reporting a single-line content height again (what happens once the field is
+  wider and the text re-wraps) must not flip the layout back — that feedback loop is the
+  "wiggle" this composer was fixed for once already.
 
 Both the desktop and the `smallScreenNavigation` states run.
 

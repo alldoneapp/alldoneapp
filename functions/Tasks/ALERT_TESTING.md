@@ -34,11 +34,11 @@ This reduces the scan scope by ~90-95% compared to checking all tasks.
 
 **Expected Result:**
 
--   Scheduled function should find the task
--   Generate a feed notification with type `FEED_TASK_ALERT_CHANGED` (579)
--   Mark task as `alertTriggered: true`
--   Red notification bubble appears if user follows the task
--   Grey notification bubble appears if user doesn't follow the task
+- Scheduled function should find the task
+- Generate a feed notification with type `FEED_TASK_ALERT_CHANGED` (579)
+- Mark task as `alertTriggered: true`
+- Red notification bubble appears if user follows the task
+- Grey notification bubble appears if user doesn't follow the task
 
 ### Scenario 2: Already Triggered Alert
 
@@ -48,8 +48,8 @@ This reduces the scan scope by ~90-95% compared to checking all tasks.
 
 **Expected Result:**
 
--   Scheduled function should skip this task
--   No new notification generated
+- Scheduled function should skip this task
+- No new notification generated
 
 ### Scenario 3: Completed Task with Alert
 
@@ -59,8 +59,8 @@ This reduces the scan scope by ~90-95% compared to checking all tasks.
 
 **Expected Result:**
 
--   Scheduled function should skip this task
--   No notification generated
+- Scheduled function should skip this task
+- No notification generated
 
 ### Scenario 4: Future Alert
 
@@ -70,8 +70,8 @@ This reduces the scan scope by ~90-95% compared to checking all tasks.
 
 **Expected Result:**
 
--   Scheduled function should skip this task
--   No notification generated (yet)
+- Scheduled function should skip this task
+- No notification generated (yet)
 
 ### Scenario 5: Alert Disabled
 
@@ -81,8 +81,8 @@ This reduces the scan scope by ~90-95% compared to checking all tasks.
 
 **Expected Result:**
 
--   Scheduled function should skip this task
--   No notification generated
+- Scheduled function should skip this task
+- No notification generated
 
 ### Scenario 6: Inactive User (Optimization Test)
 
@@ -93,9 +93,9 @@ This reduces the scan scope by ~90-95% compared to checking all tasks.
 
 **Expected Result:**
 
--   Scheduled function should skip this task (user not active)
--   No notification generated
--   Logged as "skippedInactiveUser" in metrics
+- Scheduled function should skip this task (user not active)
+- No notification generated
+- Logged as "skippedInactiveUser" in metrics
 
 ### Scenario 7: Archived Project (Optimization Test)
 
@@ -106,9 +106,9 @@ This reduces the scan scope by ~90-95% compared to checking all tasks.
 
 **Expected Result:**
 
--   Scheduled function should skip this entire project
--   No notification generated
--   Project not included in activeProjects count
+- Scheduled function should skip this entire project
+- No notification generated
+- Project not included in activeProjects count
 
 ### Scenario 8: Template Project (Optimization Test)
 
@@ -119,9 +119,9 @@ This reduces the scan scope by ~90-95% compared to checking all tasks.
 
 **Expected Result:**
 
--   Scheduled function should skip this entire project
--   No notification generated
--   Project not included in activeProjects count
+- Scheduled function should skip this entire project
+- No notification generated
+- Project not included in activeProjects count
 
 ## Manual Testing Steps
 
@@ -187,9 +187,9 @@ firebase functions:shell
 
 Check Firestore collections:
 
--   `feedsCount/{projectId}/{userId}/followed` or `all` - should have new entry
--   Task document should have `alertTriggered: true`
--   Check console logs for execution details
+- `feedsCount/{projectId}/{userId}/followed` or `all` - should have new entry
+- Task document should have `alertTriggered: true`
+- Check console logs for execution details
 
 ## Checking Logs
 
@@ -233,12 +233,12 @@ firebase functions:log --only checkTaskAlertsSecondGen
 
 **Key Metrics:**
 
--   `activeUsers`: Users who logged in within 30 days
--   `activeProjects`: Non-archived, non-template projects with active users
--   `totalTasksChecked`: Tasks queried in active projects
--   `processed`: Alerts successfully generated
--   `skippedAlreadyTriggered`: Tasks with alerts already triggered
--   `skippedInactiveUser`: Tasks for users not active in 30 days
+- `activeUsers`: Users who logged in within 30 days
+- `activeProjects`: Non-archived, non-template projects with active users
+- `totalTasksChecked`: Tasks queried in active projects
+- `processed`: Alerts successfully generated
+- `skippedAlreadyTriggered`: Tasks with alerts already triggered
+- `skippedInactiveUser`: Tasks for users not active in 30 days
 
 ## Troubleshooting
 
@@ -246,64 +246,64 @@ firebase functions:log --only checkTaskAlertsSecondGen
 
 If logs show `activeUsers: 0`:
 
--   Verify `users.lastLogin` index is deployed
--   Check that test user has `lastLogin` field set to recent timestamp
--   Ensure `lastLogin >= (now - 30 days)`
+- Verify `users.lastLogin` index is deployed
+- Check that test user has `lastLogin` field set to recent timestamp
+- Ensure `lastLogin >= (now - 30 days)`
 
 ### No Active Projects Found
 
 If logs show `activeProjects: 0`:
 
--   Verify test user is member of at least one project (`userIds` array)
--   Check that project is not archived (`active !== false`)
--   Ensure project is not a template (`isTemplate !== true`)
--   Verify project doesn't have `parentTemplateId` set
+- Verify test user is member of at least one project (`userIds` array)
+- Check that project is not archived (`active !== false`)
+- Ensure project is not a template (`isTemplate !== true`)
+- Verify project doesn't have `parentTemplateId` set
 
 ### No Tasks Found
 
 If logs show `totalTasksChecked: 0`:
 
--   Verify task exists in active project
--   Check that tasks meet all criteria (alertEnabled, dueDate in past, not done, not triggered)
--   Ensure task owner (userId/creatorId) is in active users map
--   Verify Firestore index is created for tasks collection
+- Verify task exists in active project
+- Check that tasks meet all criteria (alertEnabled, dueDate in past, not done, not triggered)
+- Ensure task owner (userId/creatorId) is in active users map
+- Verify Firestore index is created for tasks collection
 
 ### Tasks Skipped (Inactive User)
 
 If logs show high `skippedInactiveUser`:
 
--   This is expected behavior - task owners haven't logged in within 30 days
--   To test, ensure test user has recent `lastLogin` timestamp
--   Verify `userId` or `creatorId` matches an active user
+- This is expected behavior - task owners haven't logged in within 30 days
+- To test, ensure test user has recent `lastLogin` timestamp
+- Verify `userId` or `creatorId` matches an active user
 
 ### Notifications Not Appearing
 
--   Check that user follows the task (in `/followers/{projectId}/tasks/{taskId}`)
--   Verify feed was created in `feedsCount` collection
--   Check that `needGenerateNotification` is `true` in the code
--   Verify Redux state is updated in the UI
+- Check that user follows the task (in `/followers/{projectId}/tasks/{taskId}`)
+- Verify feed was created in `feedsCount` collection
+- Check that `needGenerateNotification` is `true` in the code
+- Verify Redux state is updated in the UI
 
 ### Function Timeout
 
--   Increase timeout in index.js (currently 300 seconds)
--   Should be rare with optimizations (only checks active projects)
+- Increase timeout in index.js (currently 300 seconds)
+- Should be rare with optimizations (only checks active projects)
 
 ## Production Deployment Checklist
 
--   [ ] Firestore indexes deployed (both `users.lastLogin` and `tasks` composite index)
--   [ ] Function deployed and scheduled (every 5 minutes)
--   [ ] Tested with sample data including:
-    -   Active users with recent lastLogin
-    -   Active projects (non-archived, non-template)
-    -   Tasks with alerts in past
--   [ ] Verified notifications appear in UI
--   [ ] Checked that `alertTriggered` flag prevents duplicates
--   [ ] Monitored logs for optimization metrics:
-    -   `activeUsers` count is reasonable
-    -   `activeProjects` count excludes archived/template projects
-    -   `totalTasksChecked` is significantly reduced vs all tasks
--   [ ] Verified red/grey bubble logic works based on followers
--   [ ] Confirmed inactive user tasks are skipped (check `skippedInactiveUser` metric)
+- [ ] Firestore indexes deployed (both `users.lastLogin` and `tasks` composite index)
+- [ ] Function deployed and scheduled (every 5 minutes)
+- [ ] Tested with sample data including:
+    - Active users with recent lastLogin
+    - Active projects (non-archived, non-template)
+    - Tasks with alerts in past
+- [ ] Verified notifications appear in UI
+- [ ] Checked that `alertTriggered` flag prevents duplicates
+- [ ] Monitored logs for optimization metrics:
+    - `activeUsers` count is reasonable
+    - `activeProjects` count excludes archived/template projects
+    - `totalTasksChecked` is significantly reduced vs all tasks
+- [ ] Verified red/grey bubble logic works based on followers
+- [ ] Confirmed inactive user tasks are skipped (check `skippedInactiveUser` metric)
 
 ## Timezone Handling
 
@@ -313,10 +313,10 @@ If logs show high `skippedInactiveUser`:
 
 **Example of the Bug:**
 
--   User in GMT+2 wants alert at 14:00 local time
--   Should store: 12:00 UTC (fires at 14:00 GMT+2)
--   **Actually stored:** 14:00 UTC (fires at 16:00 GMT+2) ❌
--   **Result:** Alert fires 2 hours late
+- User in GMT+2 wants alert at 14:00 local time
+- Should store: 12:00 UTC (fires at 14:00 GMT+2)
+- **Actually stored:** 14:00 UTC (fires at 16:00 GMT+2) ❌
+- **Result:** Alert fires 2 hours late
 
 **Root Cause:**
 
@@ -355,14 +355,14 @@ const newDueDate = baseDate
 
 **✅ Fixed for:**
 
--   Alerts set via Assistant (functions/Assistant/assistantHelper.js)
--   Alerts set via MCP server (functions/MCP/mcpServerSimple.js)
--   Alerts set via TaskUpdateService (functions/shared/TaskUpdateService.js)
+- Alerts set via Assistant (functions/Assistant/assistantHelper.js)
+- Alerts set via MCP server (functions/MCP/mcpServerSimple.js)
+- Alerts set via TaskUpdateService (functions/shared/TaskUpdateService.js)
 
 **✅ Backward Compatible:**
 
--   Alerts set via UI (AlertTimeModal) continue to work as before
--   No impact on existing alert data
+- Alerts set via UI (AlertTimeModal) continue to work as before
+- No impact on existing alert data
 
 ### Testing Timezone Handling
 

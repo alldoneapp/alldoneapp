@@ -67,8 +67,8 @@ const processTasks = (projectId, docs) => {
         const date = taskIsTodayOrOverdue
             ? moment().format('YYYYMMDD')
             : taskInBacklog
-            ? BACKLOG_DATE_STRING
-            : moment(dueDate).format('YYYYMMDD')
+              ? BACKLOG_DATE_STRING
+              : moment(dueDate).format('YYYYMMDD')
 
         const estimation = estimations[OPEN_STEP] ? estimations[OPEN_STEP] : 0
 

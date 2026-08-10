@@ -28,15 +28,16 @@ export default function OpenTasksViewAllProjects() {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
     const [projectsHaveTasksInFirstDay, setProjectsHaveTasksInFirstDay] = useState({})
 
-    const sortedLoggedUserProjectIds = ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
-        projectIds,
-        guideProjectIds,
-        archivedProjectIds,
-        templateProjectIds,
-        loggedUserProjectsMap,
-        loggedUserId,
-        inFocusTaskProjectId
-    )
+    const sortedLoggedUserProjectIds =
+        ProjectHelper.getNormalAndGuideProjectsSortedBySortedAndWithProjectInFocusAtTheTop(
+            projectIds,
+            guideProjectIds,
+            archivedProjectIds,
+            templateProjectIds,
+            loggedUserProjectsMap,
+            loggedUserId,
+            inFocusTaskProjectId
+        )
 
     useEffect(() => {
         dispatch(resetLoadingData())

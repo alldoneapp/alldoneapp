@@ -29,13 +29,13 @@ export default function CustomSideMenu({ navigation }) {
     const floatingContainerStl = smallScreenNavigation
         ? [styles.floatingContainer, { width: floatingWidth }, theme.floatingContainer]
         : overlay
-        ? [
-              styles.overlayContainer,
-              expanded && styles.overlayExpanded,
-              { width: floatingWidth },
-              theme.overlayContainer,
-          ]
-        : [styles.container, theme.container, { width: floatingWidth }]
+          ? [
+                styles.overlayContainer,
+                expanded && styles.overlayExpanded,
+                { width: floatingWidth },
+                theme.overlayContainer,
+            ]
+          : [styles.container, theme.container, { width: floatingWidth }]
 
     useEffect(() => {
         const targetWidth = expanded ? SIDEBAR_MENU_WIDTH : SIDEBAR_MENU_COLLAPSED_WIDTH

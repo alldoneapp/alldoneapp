@@ -77,10 +77,10 @@ export default function DueDateButton({
         return inEditTask && smallScreen
             ? null
             : inBacklog
-            ? translate('Someday')
-            : dueDate.isSame(today, 'day')
-            ? translate('Today')
-            : dueDate.format(getDateFormat(false, true))
+              ? translate('Someday')
+              : dueDate.isSame(today, 'day')
+                ? translate('Today')
+                : dueDate.format(getDateFormat(false, true))
     }
 
     return visiblePopover ? (

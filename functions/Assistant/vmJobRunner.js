@@ -117,8 +117,7 @@ const TASK_TYPE_PROFILES = {
         'You are an autonomous agent that produces polished documents. Generate the requested deliverable (document, spreadsheet, or slides) and summarize what you produced.',
     prototype:
         'You are an autonomous coding agent. Write working code / a small prototype to satisfy the objective, then explain what you built and how to run it.',
-    data:
-        'You are an autonomous data agent. Acquire, clean and analyze the relevant data, then report the findings with any key figures.',
+    data: 'You are an autonomous data agent. Acquire, clean and analyze the relevant data, then report the findings with any key figures.',
 }
 
 // --- Git repository integration (optional, per-project; GitLab or GitHub) ---
@@ -3661,8 +3660,8 @@ async function chargeVmTopup(
             credentialMode === 'byok'
                 ? 'personal API key, provider-billed, 0 Gold'
                 : subscriptionUsed
-                ? 'personal subscription, 0 Gold'
-                : `${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining`
+                  ? 'personal subscription, 0 Gold'
+                  : `${proxyTokenGoldCharged} proxy token Gold already charged, ${tokenGold} token Gold remaining`
         })` +
         (typeof costUsd === 'number' ? ` (~$${costUsd.toFixed(2)})` : '')
     const ctx = {
@@ -3968,8 +3967,8 @@ async function runVmJobByCorrelationId(correlationId) {
         const message = wantsSubscription
             ? `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
             : wantsByok
-            ? `VM task could not run: your personal ${agentLabel} API key is missing. Add or replace it in Settings → Integrations.`
-            : `VM task could not run: ${config.label} sandbox credentials are not configured.`
+              ? `VM task could not run: your personal ${agentLabel} API key is missing. Add or replace it in Settings → Integrations.`
+              : `VM task could not run: ${config.label} sandbox credentials are not configured.`
         const failureText = `❌ ${message}`
         await writeStatusComment(pendingWebhook, failureText, { assistantRunStatus: 'failed' })
         await notifyVmResultChannels(pendingWebhook, failureText, {
@@ -4191,20 +4190,14 @@ async function runVmJobByCorrelationId(correlationId) {
         const latestPendingData = latestPendingSnap && latestPendingSnap.exists ? latestPendingSnap.data() || {} : {}
         const runtimeMs = activeRuntimeMs || (Number(latestPendingData.vmActiveRuntimeMs) || 0) + attemptRuntimeMs
         const proxyTokenGoldCharged = Number(latestPendingData.proxyTokenGoldCharged) || 0
-        const {
-            minutes,
-            totalTokens,
-            runtimeGoldRemaining,
-            tokenGold,
-            tokenGoldTotal,
-            topup,
-        } = calculateCompletionGoldCharges({
-            runtimeMs,
-            usage,
-            runtimeGoldCharged,
-            proxyTokenGoldCharged,
-            subscriptionUsed: tokenBillingExempt,
-        })
+        const { minutes, totalTokens, runtimeGoldRemaining, tokenGold, tokenGoldTotal, topup } =
+            calculateCompletionGoldCharges({
+                runtimeMs,
+                usage,
+                runtimeGoldCharged,
+                proxyTokenGoldCharged,
+                subscriptionUsed: tokenBillingExempt,
+            })
         await chargeVmTopup(pendingWebhook, vmJob, {
             topup,
             minutes,

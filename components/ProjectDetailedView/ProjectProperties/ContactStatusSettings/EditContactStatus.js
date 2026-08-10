@@ -262,8 +262,8 @@ class EditContactStatus extends Component {
                                           formType === 'new'
                                               ? 'Add status'
                                               : name.length === 0
-                                              ? 'Delete status'
-                                              : 'Save status'
+                                                ? 'Delete status'
+                                                : 'Save status'
                                       )
                             }
                             type={formType === 'edit' && name === '' ? 'danger' : 'primary'}
@@ -272,8 +272,8 @@ class EditContactStatus extends Component {
                                     ? formType === 'edit' && name === ''
                                         ? 'trash-2'
                                         : formType === 'new'
-                                        ? 'plus'
-                                        : 'save'
+                                          ? 'plus'
+                                          : 'save'
                                     : null
                             }
                             onPress={this.saveStatus}

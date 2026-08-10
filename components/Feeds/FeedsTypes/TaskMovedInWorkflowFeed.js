@@ -19,15 +19,8 @@ export default function TaskMovedInWorkflowFeed({
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const [width, setWidth] = useState(0)
-    const {
-        fromStepDescription,
-        toStepDescription,
-        isForward,
-        isSubtask,
-        creatorId,
-        fromStepUserId,
-        toStepUserId,
-    } = feed
+    const { fromStepDescription, toStepDescription, isForward, isSubtask, creatorId, fromStepUserId, toStepUserId } =
+        feed
 
     const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
     const { photoURL: fromStepAvatarURL } = getUserPresentationDataInProject(projectId, fromStepUserId)

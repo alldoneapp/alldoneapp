@@ -225,8 +225,8 @@ function parseMicrosoftEventDateTime(value = {}) {
     const parsed = hasOffset
         ? moment.parseZone(dateTime)
         : safeTrim(value.timeZone).toUpperCase() === 'UTC'
-        ? moment.utc(dateTime)
-        : moment(dateTime)
+          ? moment.utc(dateTime)
+          : moment(dateTime)
     return parsed.isValid() ? parsed.valueOf() : null
 }
 
@@ -419,8 +419,8 @@ async function searchMicrosoftCalendarEventsForAssistantRequest({
             searchedAccounts.length === 0
                 ? 'Microsoft Calendar search failed for all connected accounts. Please reconnect Calendar and try again.'
                 : mergedResults.length > 0
-                ? null
-                : 'No matching calendar events were found in the connected Microsoft accounts.',
+                  ? null
+                  : 'No matching calendar events were found in the connected Microsoft accounts.',
     }
 }
 

@@ -11,8 +11,10 @@ const ALWAYS_CONFIRM_TOOLS = new Set([
     'talk_to_assistant',
 ])
 
-const EXPLICIT_APPROVAL_PATTERN = /\b(yes|approve|approved|confirm|confirmed|go ahead|proceed|do it|please do|okay|ok|sure|sounds good|ja|bestätige|mach das|weiter|sí|si|confirmo|adelante|hazlo)\b/i
-const EXPLICIT_REJECTION_PATTERN = /\b(no|not|don't|do not|cancel|cancelled|stop|nein|nicht|abbrechen|stopp|no lo hagas|cancelar|detener)\b/i
+const EXPLICIT_APPROVAL_PATTERN =
+    /\b(yes|approve|approved|confirm|confirmed|go ahead|proceed|do it|please do|okay|ok|sure|sounds good|ja|bestätige|mach das|weiter|sí|si|confirmo|adelante|hazlo)\b/i
+const EXPLICIT_REJECTION_PATTERN =
+    /\b(no|not|don't|do not|cancel|cancelled|stop|nein|nicht|abbrechen|stopp|no lo hagas|cancelar|detener)\b/i
 
 function convertChatToolSchemaToRealtime(schema) {
     const fn = schema?.function

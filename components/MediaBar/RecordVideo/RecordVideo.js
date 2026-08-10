@@ -100,9 +100,12 @@ const RecordVideo = ({ projectId, setVideoToExternalParent, closeModal }) => {
                     recorder.reset()
                 })
             }
-            timeout = setTimeout(() => {
-                window.stopCallback(true)
-            }, 1000 * 60 * 3)
+            timeout = setTimeout(
+                () => {
+                    window.stopCallback(true)
+                },
+                1000 * 60 * 3
+            )
         })
     }
 

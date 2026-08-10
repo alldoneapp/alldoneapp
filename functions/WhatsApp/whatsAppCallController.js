@@ -703,15 +703,18 @@ async function runAssistantRealtimeCall(sessionId) {
             socket.once('close', code => resolve({ code }))
         })
 
-    const timeout = setTimeout(() => {
-        processing = processing.then(() =>
-            closeCall(
-                'max_duration',
-                'completed',
-                'Briefly tell the caller the maximum call duration has been reached and the call is ending.'
+    const timeout = setTimeout(
+        () => {
+            processing = processing.then(() =>
+                closeCall(
+                    'max_duration',
+                    'completed',
+                    'Briefly tell the caller the maximum call duration has been reached and the call is ending.'
+                )
             )
-        )
-    }, Math.max(1000, deadline - Date.now()))
+        },
+        Math.max(1000, deadline - Date.now())
+    )
 
     try {
         for (let attempt = 1; attempt <= MAX_SIDEBAND_RECONNECTS && !ending && Date.now() < deadline; attempt++) {

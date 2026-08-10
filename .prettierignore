@@ -18,3 +18,22 @@ web-bundler/package-lock.json
 cloudflare/email-worker/package-lock.json
 *.snap
 .firebase
+
+# svgr-generated index with syntactically invalid export names (unimported
+# dead output of the `npm run svg` script) — prettier hard-errors on it.
+assets/svg/LandingPage/exp/index.js
+
+# Production email/invoice templates: email-client rendering is whitespace-
+# sensitive and nothing covers them with tests — formatting is pure risk.
+functions/EmailTemplates
+functions/Emails
+functions/Payment/Invoices
+
+# Build-injected HTML templates (expo-era injections + ci/replace-envs.sh
+# placeholder contract) — keep byte-stable.
+web/index.html
+web-bundler/index.html
+
+# CSS ported wholesale from quill dists (Stage 4) — keep comparable to origin.
+components/NotesView/NotesDV/EditorView/toolbar-styles.css
+components/Feeds/CommentsTextInput/styles.css

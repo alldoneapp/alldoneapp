@@ -55,8 +55,8 @@ jest.mock('./vmJob', () => ({
                 model === 'opus'
                     ? 'Opus latest; resolving version…'
                     : opusVersion
-                    ? `Opus ${opusVersion[1]}.${opusVersion[2] || '0'}`
-                    : model
+                      ? `Opus ${opusVersion[1]}.${opusVersion[2] || '0'}`
+                      : model
             )
         }
         if (effort) parts.push(`${effort} effort`)
@@ -1896,9 +1896,10 @@ describe('VM completion chat metadata', () => {
             { isFinal: true, output: 'Finished legacy VM result' }
         )
 
-        expect(
-            refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set
-        ).toHaveBeenCalledWith(expect.not.objectContaining({ creatorId: expect.anything() }), { merge: true })
+        expect(refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set).toHaveBeenCalledWith(
+            expect.not.objectContaining({ creatorId: expect.anything() }),
+            { merge: true }
+        )
         expect(transaction.set).not.toHaveBeenCalled()
         expect(transaction.update).not.toHaveBeenCalled()
     })
@@ -2515,16 +2516,8 @@ describe('VM runner origin-conversation completion note', () => {
 
         expect(result).toBe(true)
         expect(mockCreateInitialStatusMessage).toHaveBeenCalledTimes(1)
-        const [
-            projectId,
-            objectType,
-            objectId,
-            assistantId,
-            note,
-            userIdsToNotify,
-            ,
-            followerIds,
-        ] = mockCreateInitialStatusMessage.mock.calls[0]
+        const [projectId, objectType, objectId, assistantId, note, userIdsToNotify, , followerIds] =
+            mockCreateInitialStatusMessage.mock.calls[0]
         expect(projectId).toBe('project-anna')
         expect(objectType).toBe('topics')
         expect(objectId).toBe('whatsapp-topic-1')

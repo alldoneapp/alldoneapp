@@ -7,8 +7,9 @@ import { translate } from '../../i18n/TranslationService'
 export default function Switch({ active, activeSwitch, deactiveSwitch, disabled }) {
     const SWITCH_ACTIVE_POSTION = 18
     const SWITCH_INACTIVE_POSTION = 0
-    const switchMarginLeft = useRef(new Animated.Value(active ? SWITCH_ACTIVE_POSTION : SWITCH_INACTIVE_POSTION))
-        .current
+    const switchMarginLeft = useRef(
+        new Animated.Value(active ? SWITCH_ACTIVE_POSTION : SWITCH_INACTIVE_POSTION)
+    ).current
 
     const onPresSwitch = () => {
         if (active) {

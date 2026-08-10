@@ -35,8 +35,8 @@ export default function LastCommentArea({
     const projectKey = useGlobalLatestComment
         ? ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
         : useAssistantProjectContext
-        ? assistantProjectId || project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
-        : project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
+          ? assistantProjectId || project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
+          : project?.id || ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY
     const lastAssistantCommentData = useSelector(state =>
         scopeToAssistant
             ? state.loggedUser.lastAssistantCommentDataByAssistant?.[assistantId]?.[projectKey]

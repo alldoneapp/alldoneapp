@@ -15,12 +15,7 @@ jest.mock('../GoogleCalendar/assistantCalendarTools', () => ({
     },
 }))
 
-const {
-    buildDefaultSlug,
-    normalizeBookingSettings,
-    slugify,
-    validateBookingSettings,
-} = require('./bookingSettings')
+const { buildDefaultSlug, normalizeBookingSettings, slugify, validateBookingSettings } = require('./bookingSettings')
 
 describe('bookingSettings helpers', () => {
     test('slugifies display names for public booking links', () => {
@@ -61,8 +56,6 @@ describe('bookingSettings helpers', () => {
     })
 
     test('rejects malformed slugs', () => {
-        expect(() => validateBookingSettings({ ...normalizeBookingSettings({ slug: 'ab' }) })).toThrow(
-            /Booking link/
-        )
+        expect(() => validateBookingSettings({ ...normalizeBookingSettings({ slug: 'ab' }) })).toThrow(/Booking link/)
     })
 })

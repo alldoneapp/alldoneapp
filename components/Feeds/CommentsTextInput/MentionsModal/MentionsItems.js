@@ -123,8 +123,8 @@ export default function MentionsItems({
             ? items[activeItemIndex].id
                 ? items[activeItemIndex].id
                 : activeTab === MENTION_MODAL_TOPICS_TAB
-                ? items[activeItemIndex].id
-                : ''
+                  ? items[activeItemIndex].id
+                  : ''
             : ''
     }
 
@@ -152,15 +152,8 @@ export default function MentionsItems({
     return (
         <View style={externalContainerStyle}>
             {items.map(item => {
-                const {
-                    id,
-                    extendedName,
-                    photoURL,
-                    assigneesIds,
-                    progress,
-                    dynamicProgress,
-                    userIsWorkstream,
-                } = getItemData(item)
+                const { id, extendedName, photoURL, assigneesIds, progress, dynamicProgress, userIsWorkstream } =
+                    getItemData(item)
 
                 const isAssigned = isCurrentlyAssignedGoal(id)
                 const isHighlighted = isKeyboardHighlighted(id)
@@ -193,8 +186,8 @@ export default function MentionsItems({
                                 backgroundColor: isAssigned
                                     ? colors.Primary200
                                     : isHighlighted
-                                    ? colors.Primary300
-                                    : colors.Secondary400,
+                                      ? colors.Primary300
+                                      : colors.Secondary400,
                             }}
                             disebledTags={true}
                             maxHeight={48}

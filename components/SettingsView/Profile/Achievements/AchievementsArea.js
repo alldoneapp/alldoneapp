@@ -32,17 +32,17 @@ const Metric = ({ label, value }) => (
 export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateNewDay = false }) {
     const [contentWidth, setContentWidth] = useState(0)
     const CardContainer = onOpenAchievements ? TouchableOpacity : View
-    const emptyInboxDays = useMemo(() => getEmptyInboxDaysWithLegacyFallback(user), [
-        user.emptyInboxDays,
-        user.lastDayEmptyInbox,
-    ])
+    const emptyInboxDays = useMemo(
+        () => getEmptyInboxDaysWithLegacyFallback(user),
+        [user.emptyInboxDays, user.lastDayEmptyInbox]
+    )
     const stats = useMemo(() => getEmptyInboxAchievementStats(emptyInboxDays), [emptyInboxDays])
     const celebrationRunId = useTodayEmptyInboxCelebration(emptyInboxDays, celebrateNewDay)
     const numberOfWeeks = contentWidth ? getNumberOfWeeks(contentWidth) : MIN_WEEKS
-    const weeks = useMemo(() => buildEmptyInboxActivityWeeks(emptyInboxDays, numberOfWeeks), [
-        emptyInboxDays,
-        numberOfWeeks,
-    ])
+    const weeks = useMemo(
+        () => buildEmptyInboxActivityWeeks(emptyInboxDays, numberOfWeeks),
+        [emptyInboxDays, numberOfWeeks]
+    )
     const monthSegments = useMemo(() => buildEmptyInboxMonthSegments(weeks), [weeks])
     const dayLabels = [
         translate('Monday short'),

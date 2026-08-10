@@ -225,10 +225,10 @@ function TaskPresentation(
     const highlightColor = inCommentPopup
         ? backColor
         : lastTaskAddedId === task.id
-        ? lastAddedTaskBackgroundColor
-        : hasStar.toLowerCase() !== '#ffffff'
-        ? backColorHighlight
-        : backColor
+          ? lastAddedTaskBackgroundColor
+          : hasStar.toLowerCase() !== '#ffffff'
+            ? backColorHighlight
+            : backColor
 
     const showVerticalEllipsis = inMyDayAndNotSubtask
         ? TasksHelper.showWrappedTaskEllipsisInByTime(

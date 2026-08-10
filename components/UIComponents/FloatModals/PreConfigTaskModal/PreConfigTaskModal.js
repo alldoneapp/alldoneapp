@@ -297,37 +297,37 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       sendWhatsApp,
                   }
                 : taskType === TASK_TYPE_WEBHOOK
-                ? {
-                      name,
-                      type: taskType,
-                      prompt: '',
-                      variables: [],
-                      link: '',
-                      recurrence,
-                      executionMode,
-                      sendWhatsApp,
-                      taskMetadata: {
-                          isWebhookTask: true,
-                          webhookUrl: webhookUrl.trim(),
-                          ...(webhookAuthHeaderName && webhookAuthHeaderName.trim()
-                              ? { webhookAuthHeaderName: webhookAuthHeaderName.trim() }
-                              : { webhookAuthHeaderName: 'Authorization' }),
-                          ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
-                      },
-                  }
-                : taskType === TASK_TYPE_IFRAME
-                ? {
-                      name,
-                      type: taskType,
-                      prompt: '',
-                      variables: [],
-                      link,
-                      taskMetadata: iframeTaskMetadata || {},
-                      recurrence,
-                      executionMode,
-                      sendWhatsApp,
-                  }
-                : { name, type: taskType, prompt: '', variables: [], link, recurrence, executionMode, sendWhatsApp }
+                  ? {
+                        name,
+                        type: taskType,
+                        prompt: '',
+                        variables: [],
+                        link: '',
+                        recurrence,
+                        executionMode,
+                        sendWhatsApp,
+                        taskMetadata: {
+                            isWebhookTask: true,
+                            webhookUrl: webhookUrl.trim(),
+                            ...(webhookAuthHeaderName && webhookAuthHeaderName.trim()
+                                ? { webhookAuthHeaderName: webhookAuthHeaderName.trim() }
+                                : { webhookAuthHeaderName: 'Authorization' }),
+                            ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
+                        },
+                    }
+                  : taskType === TASK_TYPE_IFRAME
+                    ? {
+                          name,
+                          type: taskType,
+                          prompt: '',
+                          variables: [],
+                          link,
+                          taskMetadata: iframeTaskMetadata || {},
+                          recurrence,
+                          executionMode,
+                          sendWhatsApp,
+                      }
+                    : { name, type: taskType, prompt: '', variables: [], link, recurrence, executionMode, sendWhatsApp }
         setTimeout(() => {
             uploadNewPreConfigTask(projectId, assistantId, applyCurrentUserRecurrenceConfig(newTask))
         }, 1000)
@@ -379,49 +379,49 @@ export default function PreConfigTaskModal({ disabled, projectId, closeModal, ad
                       sendWhatsApp,
                   }
                 : taskType === TASK_TYPE_WEBHOOK
-                ? {
-                      ...task,
-                      name,
-                      type: taskType,
-                      prompt: '',
-                      variables: [],
-                      link: '',
-                      recurrence: recurrence ?? null,
-                      executionMode,
-                      sendWhatsApp,
-                      taskMetadata: {
-                          isWebhookTask: true,
-                          webhookUrl: webhookUrl.trim(),
-                          ...(webhookAuthHeaderName && webhookAuthHeaderName.trim()
-                              ? { webhookAuthHeaderName: webhookAuthHeaderName.trim() }
-                              : { webhookAuthHeaderName: 'Authorization' }),
-                          ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
-                      },
-                  }
-                : taskType === TASK_TYPE_IFRAME
-                ? {
-                      ...task,
-                      name,
-                      type: taskType,
-                      prompt: '',
-                      variables: [],
-                      link,
-                      taskMetadata: iframeTaskMetadata || {},
-                      recurrence: recurrence ?? null,
-                      executionMode,
-                      sendWhatsApp,
-                  }
-                : {
-                      ...task,
-                      name,
-                      type: taskType,
-                      prompt: '',
-                      variables: [],
-                      link,
-                      recurrence: recurrence ?? null,
-                      executionMode,
-                      sendWhatsApp,
-                  }
+                  ? {
+                        ...task,
+                        name,
+                        type: taskType,
+                        prompt: '',
+                        variables: [],
+                        link: '',
+                        recurrence: recurrence ?? null,
+                        executionMode,
+                        sendWhatsApp,
+                        taskMetadata: {
+                            isWebhookTask: true,
+                            webhookUrl: webhookUrl.trim(),
+                            ...(webhookAuthHeaderName && webhookAuthHeaderName.trim()
+                                ? { webhookAuthHeaderName: webhookAuthHeaderName.trim() }
+                                : { webhookAuthHeaderName: 'Authorization' }),
+                            ...(webhookAuth && webhookAuth.trim() ? { webhookAuth: webhookAuth.trim() } : {}),
+                        },
+                    }
+                  : taskType === TASK_TYPE_IFRAME
+                    ? {
+                          ...task,
+                          name,
+                          type: taskType,
+                          prompt: '',
+                          variables: [],
+                          link,
+                          taskMetadata: iframeTaskMetadata || {},
+                          recurrence: recurrence ?? null,
+                          executionMode,
+                          sendWhatsApp,
+                      }
+                    : {
+                          ...task,
+                          name,
+                          type: taskType,
+                          prompt: '',
+                          variables: [],
+                          link,
+                          recurrence: recurrence ?? null,
+                          executionMode,
+                          sendWhatsApp,
+                      }
         console.log('PreConfigTaskModal - updatedTask to save:', {
             taskId: updatedTask.id,
             taskName: updatedTask.name,

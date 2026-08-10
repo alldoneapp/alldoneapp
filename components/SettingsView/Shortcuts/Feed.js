@@ -24,9 +24,7 @@ export default function Feed() {
             </View>
 
             <SectionInfo
-                text={translate(
-                    'The following shortcuts are available only when an object is in edit mode'
-                )}
+                text={translate('The following shortcuts are available only when an object is in edit mode')}
             />
 
             <View style={{ flexDirection: isMiddleScreen ? 'column' : 'row' }}>
@@ -49,9 +47,7 @@ export default function Feed() {
             </View>
 
             <SectionInfo
-                text={translate(
-                    'The following shortcuts are available only when an update is in edit mode'
-                )}
+                text={translate('The following shortcuts are available only when an update is in edit mode')}
             />
 
             <View style={{ flexDirection: isMiddleScreen ? 'column' : 'row' }}>

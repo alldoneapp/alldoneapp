@@ -72,8 +72,8 @@ export const getCommentPopupWorkflowTargets = (task, workflow) => {
         forwardStepId: isOpenWorkflowTask
             ? stepIds[0]
             : currentStep + 1 < stepIds.length
-            ? stepIds[currentStep + 1]
-            : DONE_STEP,
+              ? stepIds[currentStep + 1]
+              : DONE_STEP,
     }
 }
 

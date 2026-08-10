@@ -17,11 +17,8 @@ export default function PaymentPreviewModalWrapper({
 }) {
     const [showModal, setShowModal] = useState(false)
 
-    const {
-        isPendingSubscription,
-        isEditingUsersPendingSubscription,
-        isActivationPendingSubscription,
-    } = getSubscriptionStatus(subscription)
+    const { isPendingSubscription, isEditingUsersPendingSubscription, isActivationPendingSubscription } =
+        getSubscriptionStatus(subscription)
 
     const openModal = () => {
         setShowModal(true)

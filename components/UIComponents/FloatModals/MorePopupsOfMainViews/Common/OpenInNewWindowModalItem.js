@@ -7,12 +7,5 @@ export default function OpenInNewWindowModalItem({ onPress, shortcut }) {
         onPress?.()
     }
 
-    return (
-        <ModalItem
-            icon={'new-window'}
-            text={'Open view in new window'}
-            shortcut={shortcut}
-            onPress={openUrl}
-        />
-    )
+    return <ModalItem icon={'new-window'} text={'Open view in new window'} shortcut={shortcut} onPress={openUrl} />
 }

@@ -912,7 +912,8 @@ export async function removeInvitedUserFromProject(user, projectId) {
 export async function getUserDataByUidOrEmail(uidOrEmail) {
     let user = null
 
-    const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/ // RegExp for email validation when getting the user data
+    const emailRegex =
+        /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/ // RegExp for email validation when getting the user data
     if (emailRegex.test(String(uidOrEmail).toLowerCase())) {
         const userObj = (await getUsersByEmail(uidOrEmail, true))[0]
 
@@ -1364,7 +1365,8 @@ export async function unlinkDeletedProjectFromMembers(projectId, batch, userIds)
         if (user?.lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]?.projectId === projectId) {
             updateData = {
                 ...updateData,
-                [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: firebase.firestore.FieldValue.delete(),
+                [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]:
+                    firebase.firestore.FieldValue.delete(),
             }
         }
         batch.update(db.doc(`users/${uid}`), updateData)
@@ -3583,8 +3585,8 @@ export function mapUserData(userId, user) {
         extendedDescription: user.extendedDescription
             ? user.extendedDescription
             : user.description
-            ? user.description
-            : '',
+              ? user.description
+              : '',
         hasStar: user.hasStar ? user.hasStar : '#FFFFFF',
         fcmToken: user.fcmToken ? user.fcmToken : [],
         xp: user.xp ? user.xp : 0,
@@ -3688,8 +3690,8 @@ export function mapContactData(contactId, contact) {
         extendedDescription: contact.extendedDescription
             ? contact.extendedDescription
             : contact.description
-            ? contact.description
-            : '',
+              ? contact.description
+              : '',
         hasStar: contact.hasStar ? contact.hasStar : '#FFFFFF',
         isPrivate: contact.isPrivate ? contact.isPrivate : false,
         isPublicFor: contact.isPublicFor ? contact.isPublicFor : [FEED_PUBLIC_FOR_ALL, contact.recorderUserId],
@@ -4139,14 +4141,8 @@ async function registerFeedEmail(projectId, userId, objectsType, objectId, feed,
 }
 
 async function sendPushNotifications(projectId, userId, objectsType, objectId, feed, feedObject, notificationData) {
-    const {
-        creatorName,
-        kickedUserName,
-        oldAssigneeName,
-        newAssigneeName,
-        assigneeName,
-        ratedFeedOwnerName,
-    } = notificationData
+    const { creatorName, kickedUserName, oldAssigneeName, newAssigneeName, assigneeName, ratedFeedOwnerName } =
+        notificationData
 
     const followers = (await db.doc(`followers/${projectId}/${objectsType}/${objectId}`).get()).data()
     const project = mapProjectData(projectId, (await db.doc(`projects/${projectId}`).get()).data())
@@ -5976,12 +5972,12 @@ export async function increaseFeedCount(
         feed.isPublicFor && !feed.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
             ? feed.isPublicFor
             : projectUsersIdsForSpecialFeeds.length > 0
-            ? projectUsersIdsForSpecialFeeds
-            : batch.projectUsersIdsForSpecialFeeds &&
-              batch.projectUsersIdsForSpecialFeeds[objectId] &&
-              batch.projectUsersIdsForSpecialFeeds[objectId].length > 0
-            ? batch.projectUsersIdsForSpecialFeeds[objectId]
-            : getProjectUsersIds(projectId)
+              ? projectUsersIdsForSpecialFeeds
+              : batch.projectUsersIdsForSpecialFeeds &&
+                  batch.projectUsersIdsForSpecialFeeds[objectId] &&
+                  batch.projectUsersIdsForSpecialFeeds[objectId].length > 0
+                ? batch.projectUsersIdsForSpecialFeeds[objectId]
+                : getProjectUsersIds(projectId)
 
     const usersToNotifyIds = usersWithAccessIds.filter(userId => userId !== loggedUserId)
     const entryObjectsCounter = generateFeedCounterEntry(currentDateFormated, objectsType, objectId, feedId, feed)

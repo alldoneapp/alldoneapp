@@ -44,9 +44,9 @@ firebase use staging-project-id
 
 Add your project IDs here for reference:
 
--   Production: `YOUR-PRODUCTION-PROJECT-ID`
--   Staging: `YOUR-STAGING-PROJECT-ID`
--   Development: `YOUR-DEV-PROJECT-ID`
+- Production: `YOUR-PRODUCTION-PROJECT-ID`
+- Staging: `YOUR-STAGING-PROJECT-ID`
+- Development: `YOUR-DEV-PROJECT-ID`
 
 ## ⚠️ Important Notes
 
@@ -87,9 +87,9 @@ firebase deploy --only functions:askToBotSecondGen,functions:generatePreConfigTa
 
 ### What's Included in This Deployment:
 
--   ✅ Tiktoken optimization (800ms faster)
--   ✅ Parallel data fetching
--   ✅ **Removed getEnvFunctions timing logs**
--   ✅ Cached environment variables
--   ✅ 2GB memory allocation
--   ✅ minInstances: 1 (reduced cold starts)
+- ✅ Tiktoken optimization (800ms faster)
+- ✅ Parallel data fetching
+- ✅ **Removed getEnvFunctions timing logs**
+- ✅ Cached environment variables
+- ✅ 2GB memory allocation
+- ✅ minInstances: 1 (reduced cold starts)

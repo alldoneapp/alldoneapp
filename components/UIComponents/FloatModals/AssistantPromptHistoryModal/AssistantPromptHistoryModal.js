@@ -30,8 +30,8 @@ function PromptVersionItem({ item, isSelected, onSelect }) {
     const metaText = item.isCurrent
         ? translate('Current version')
         : item.editorName
-        ? translate(`Name was last editor • Date Time`, { name: item.editorName, date: dateText, time: timeText })
-        : translate(`Version from Date`, { date: dateText })
+          ? translate(`Name was last editor • Date Time`, { name: item.editorName, date: dateText, time: timeText })
+          : translate(`Version from Date`, { date: dateText })
 
     return (
         <View style={localStyles.itemContainer}>

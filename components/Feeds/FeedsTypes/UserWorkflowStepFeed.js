@@ -36,8 +36,8 @@ export default function UserWorkflowStepFeed({ feed, projectId, showNewFeedDot, 
         feedType === FEED_USER_WORKFLOW_ADDED
             ? 'added'
             : feedType === FEED_USER_WORKFLOW_REMOVE
-            ? 'removed'
-            : `edited ${description} • Changed reviewer from`
+              ? 'removed'
+              : `edited ${description} • Changed reviewer from`
     const firstEntryText = `${shortName} ${action}`
     const secondEntryText = `${HelperFunctions.getFirstName(reviewerName)} ${
         feedType === FEED_USER_WORKFLOW_CHANGED ? 'to' : 'in'

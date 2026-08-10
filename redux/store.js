@@ -2425,14 +2425,8 @@ export const theReducer = (state = initialState, action) => {
         }
 
         case 'Set projects initial data': {
-            const {
-                projectsArray,
-                projectsMap,
-                projectUsers,
-                projectWorkstreams,
-                projectContacts,
-                projectAssistants,
-            } = action
+            const { projectsArray, projectsMap, projectUsers, projectWorkstreams, projectContacts, projectAssistants } =
+                action
 
             const projectsMeetings = {}
             const projectInvitations = {}

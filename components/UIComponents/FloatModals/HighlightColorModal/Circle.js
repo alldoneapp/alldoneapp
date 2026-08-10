@@ -12,10 +12,10 @@ export default function Circle({ color, selectedColor, inButton, icoForcedColor 
                 icoForcedColor
                     ? icoForcedColor
                     : inButton
-                    ? colors.Text03
-                    : color === selectedColor
-                    ? colors.Primary100
-                    : '#ffffff'
+                      ? colors.Text03
+                      : color === selectedColor
+                        ? colors.Primary100
+                        : '#ffffff'
             }
         />
     ) : (

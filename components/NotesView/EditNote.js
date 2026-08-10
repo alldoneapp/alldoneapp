@@ -715,10 +715,10 @@ class EditNote extends Component {
                                           !noteChanged
                                               ? 'Ok'
                                               : formType === 'new'
-                                              ? `Add`
-                                              : formType === 'edit' && tmpNote.title === ''
-                                              ? `Delete`
-                                              : `Save`
+                                                ? `Add`
+                                                : formType === 'edit' && tmpNote.title === ''
+                                                  ? `Delete`
+                                                  : `Save`
                                       )
                             }
                             type={formType === 'edit' && tmpNote.title === '' ? 'danger' : 'primary'}
@@ -727,10 +727,10 @@ class EditNote extends Component {
                                     ? formType === 'edit' && tmpNote.title === ''
                                         ? 'trash-2'
                                         : !noteChanged
-                                        ? 'x'
-                                        : formType === 'new'
-                                        ? 'plus'
-                                        : 'save'
+                                          ? 'x'
+                                          : formType === 'new'
+                                            ? 'plus'
+                                            : 'save'
                                     : null
                             }
                             onPress={this.updateNote}

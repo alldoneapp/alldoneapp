@@ -435,8 +435,8 @@ const resolvePreConfigAiSettings = (projectId, assistantId, aiSettings) => {
         allowedTools: Array.isArray(overrides.allowedTools)
             ? overrides.allowedTools
             : Array.isArray(assistantDetails?.allowedTools)
-            ? assistantDetails.allowedTools
-            : [],
+              ? assistantDetails.allowedTools
+              : [],
     }
 }
 

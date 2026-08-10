@@ -1,4 +1,3 @@
-
 /**
  * Replace all characters with diacritics with simple characters
  * @param text

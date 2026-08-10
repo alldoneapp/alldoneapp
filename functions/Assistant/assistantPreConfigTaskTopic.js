@@ -189,8 +189,8 @@ async function generatePreConfigTaskResult(
         const allowedTools = Array.isArray(aiSettings.allowedTools)
             ? aiSettings.allowedTools
             : Array.isArray(assistant.allowedTools)
-            ? assistant.allowedTools
-            : []
+              ? assistant.allowedTools
+              : []
         settings = {
             model: normalizeModelKey(aiSettings.model || assistant.model || 'MODEL_GPT5_6_SOL'),
             temperature: aiSettings.temperature || assistant.temperature || 'TEMPERATURE_NORMAL',

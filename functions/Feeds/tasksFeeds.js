@@ -259,8 +259,8 @@ async function createTaskDueDateChangedFeed(
         entryText += newInBacklog
             ? `${oldDueDateFormated} to Someday`
             : oldInBacklog
-            ? `Someday to ${newDueDateFormated}`
-            : `${oldDueDateFormated} to ${newDueDateFormated}`
+              ? `Someday to ${newDueDateFormated}`
+              : `${oldDueDateFormated} to ${newDueDateFormated}`
     }
 
     const { feed, feedId } = generateFeedModel({

@@ -21,8 +21,8 @@ const TaskSubTasks = ({ amountOfSubTasks, style, onPress, isMobile, disabled, ou
                     outline || smallScreenNavigation || isMobile
                         ? ''
                         : amountOfSubTasks <= 1
-                        ? ` ${translate('Subtask')}`
-                        : ` ${translate('Subtasks')}`
+                          ? ` ${translate('Subtask')}`
+                          : ` ${translate('Subtasks')}`
                 }`}</Text>
             </View>
         </TouchableOpacity>

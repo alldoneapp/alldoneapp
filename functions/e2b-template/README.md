@@ -38,9 +38,9 @@ On success it prints the template name/ID. Edit the image steps in
 
 Set the template name so the worker uses it:
 
--   **Local:** `E2B_CLAUDE_TEMPLATE=alldone-claude` in `functions/.env`
-    (or `"E2B_CLAUDE_TEMPLATE": "alldone-claude"` in `functions/env_functions.json`).
--   **Staging/prod:** add `E2B_CLAUDE_TEMPLATE` as a GitLab CI variable.
+- **Local:** `E2B_CLAUDE_TEMPLATE=alldone-claude` in `functions/.env`
+  (or `"E2B_CLAUDE_TEMPLATE": "alldone-claude"` in `functions/env_functions.json`).
+- **Staging/prod:** add `E2B_CLAUDE_TEMPLATE` as a GitLab CI variable.
 
 Also set the real `E2B_API_KEY` in the functions env — the worker uses it at runtime to spawn
 sandboxes (the same key builds the template here).

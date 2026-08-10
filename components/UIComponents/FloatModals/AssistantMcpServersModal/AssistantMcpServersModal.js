@@ -57,9 +57,10 @@ export default function AssistantMcpServersModal({ projectId, assistant, closeMo
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [windowDimensions, setWindowDimensions] = useState(Dimensions.get('window'))
 
-    const servers = useMemo(() => (Array.isArray(assistant.mcpServers) ? assistant.mcpServers : []), [
-        assistant.mcpServers,
-    ])
+    const servers = useMemo(
+        () => (Array.isArray(assistant.mcpServers) ? assistant.mcpServers : []),
+        [assistant.mcpServers]
+    )
 
     // New-server form state.
     const [label, setLabel] = useState('')

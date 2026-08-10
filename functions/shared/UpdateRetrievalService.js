@@ -466,8 +466,8 @@ class UpdateRetrievalService {
         const targetProjects = targetProject
             ? [targetProject]
             : allProjects
-            ? projects
-            : projects.filter(p => p.id === params.currentProjectId)
+              ? projects
+              : projects.filter(p => p.id === params.currentProjectId)
 
         if (targetProjects.length === 0) {
             return {

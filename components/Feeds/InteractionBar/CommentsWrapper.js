@@ -81,16 +81,16 @@ export default function CommentsWrapper({
                 objectType: taskId
                     ? 'tasks'
                     : noteId
-                    ? 'notes'
-                    : goalId
-                    ? 'goals'
-                    : skillId
-                    ? 'skills'
-                    : userId || contactId
-                    ? 'contacts'
-                    : assistantId
-                    ? 'assistants'
-                    : 'unknown',
+                      ? 'notes'
+                      : goalId
+                        ? 'goals'
+                        : skillId
+                          ? 'skills'
+                          : userId || contactId
+                            ? 'contacts'
+                            : assistantId
+                              ? 'assistants'
+                              : 'unknown',
                 objectId: taskId || noteId || goalId || skillId || userId || contactId || assistantId,
                 assistantId,
                 commentLength: comment?.length,

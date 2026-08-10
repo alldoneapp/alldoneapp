@@ -59,16 +59,8 @@ class Autoformat extends Module {
                 const projectId = store.getState().quillEditorProjectId
                 const { attributes } = delta.ops[0]
                 const isFomatedLink = attributes && attributes.link && REGEX_URL.test(attributes.link)
-                const {
-                    hashtag,
-                    email,
-                    mention,
-                    image,
-                    url,
-                    customImageFormat,
-                    attachment,
-                    karma,
-                } = delta.ops[0].insert
+                const { hashtag, email, mention, image, url, customImageFormat, attachment, karma } =
+                    delta.ops[0].insert
                 if (hashtag) {
                     hashtag.id = v4()
                 } else if (email) {

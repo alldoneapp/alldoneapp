@@ -120,8 +120,8 @@ export default function AutoPostpone({
     const date = goal
         ? getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
         : bulkTasks
-        ? null
-        : getDateToMoveTaskInAutoPostpone(singleTaskToPostpone?.timesPostponed, isObservedTabActive)
+          ? null
+          : getDateToMoveTaskInAutoPostpone(singleTaskToPostpone?.timesPostponed, isObservedTabActive)
 
     return (
         <TouchableOpacity

@@ -127,8 +127,8 @@ async function routeCalendarEventsToProjects({
                 projectName: classifierResult.projectName
                     ? classifierResult.projectName
                     : classifierResult.projectId
-                    ? projectDefinitionById.get(classifierResult.projectId)?.name || ''
-                    : '',
+                      ? projectDefinitionById.get(classifierResult.projectId)?.name || ''
+                      : '',
                 goldSpent: goldToCharge,
                 tokenUsage,
             }

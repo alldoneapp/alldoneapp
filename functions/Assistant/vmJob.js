@@ -596,14 +596,14 @@ async function startVmJob({
             subscriptionUsed
                 ? 'your subscription'
                 : personalApiKeyUsed
-                ? 'your personal API key'
-                : 'Alldone API billing'
+                  ? 'your personal API key'
+                  : 'Alldone API billing'
         }. ${
             executionMode === 'plan_first'
                 ? 'It will prepare a plan in the host thread and wait for approval before making changes.'
                 : executionMode === 'interactive'
-                ? 'It will approve routine in-VM work automatically and pause in the host thread only for questions or risky operations.'
-                : 'It will work autonomously and post the finished result into the host thread when ready.'
+                  ? 'It will approve routine in-VM work automatically and pause in the host thread only for questions or risky operations.'
+                  : 'It will work autonomously and post the finished result into the host thread when ready.'
         } ${hostThreadHint}`,
     }
 }

@@ -137,8 +137,8 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
                             activeMode === 'byok'
                                 ? 'Using your personal API key'
                                 : activeMode === 'subscription'
-                                ? 'Using your subscription'
-                                : 'Using Alldone API billing'
+                                  ? 'Using your subscription'
+                                  : 'Using Alldone API billing'
                         )}
                     </Text>
                 </View>

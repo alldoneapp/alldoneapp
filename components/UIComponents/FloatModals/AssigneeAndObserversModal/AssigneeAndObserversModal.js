@@ -74,15 +74,15 @@ export default function AssigneeAndObserversModal({
         (isSubtask
             ? translate('Choose assignee')
             : isGuide
-            ? translate('Choose observers')
-            : translate('Choose assignee and observers'))
+              ? translate('Choose observers')
+              : translate('Choose assignee and observers'))
     const subheader =
         subheaderText ||
         (isSubtask
             ? translate('Select here the assignee subheader')
             : isGuide
-            ? translate('Select here the observer subheader')
-            : translate('Select here the assignee and observers subheader'))
+              ? translate('Select here the observer subheader')
+              : translate('Select here the assignee and observers subheader'))
 
     const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548

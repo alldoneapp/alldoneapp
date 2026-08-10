@@ -36,8 +36,8 @@ export function getEmailTaskArchiveData(taskOrGmailData) {
     const connectionProjectId = storedConnectionId
         ? storedConnectionId.trim()
         : emailAddress
-        ? buildConnectionId(CONNECTION_SERVICE_EMAIL, provider, emailAddress)
-        : ''
+          ? buildConnectionId(CONNECTION_SERVICE_EMAIL, provider, emailAddress)
+          : ''
 
     return connectionProjectId ? { connectionProjectId, messageIds } : null
 }

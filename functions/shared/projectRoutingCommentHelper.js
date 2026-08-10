@@ -44,8 +44,8 @@ function buildProjectRoutingReasonComment({
         typeof secondPassUsed !== 'boolean'
             ? ''
             : secondPassUsed
-            ? ` Second pass: used${normalizedSecondPassModel ? ` (${normalizedSecondPassModel})` : ''}.`
-            : ' Second pass: not used.'
+              ? ` Second pass: used${normalizedSecondPassModel ? ` (${normalizedSecondPassModel})` : ''}.`
+              : ' Second pass: not used.'
 
     if (!matched) {
         const reason = normalizeReasonClause(reasoning, 'it did not match any of your other projects')

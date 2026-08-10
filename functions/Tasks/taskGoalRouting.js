@@ -500,17 +500,14 @@ async function routeNewTaskToGoal({
                 projectId,
                 project.parentTemplateId ? userId : ALL_USERS
             )
-            const [
-                snapshot,
-                currentProjectSnapshot,
-                currentGoalSnapshot,
-                currentMilestoneSnapshot,
-            ] = await Promise.all([
-                transaction.get(taskRef),
-                transaction.get(projectRef),
-                selectedGoalRef ? transaction.get(selectedGoalRef) : Promise.resolve(null),
-                selectedGoalRef ? transaction.get(currentMilestoneQuery) : Promise.resolve(null),
-            ])
+            const [snapshot, currentProjectSnapshot, currentGoalSnapshot, currentMilestoneSnapshot] = await Promise.all(
+                [
+                    transaction.get(taskRef),
+                    transaction.get(projectRef),
+                    selectedGoalRef ? transaction.get(selectedGoalRef) : Promise.resolve(null),
+                    selectedGoalRef ? transaction.get(currentMilestoneQuery) : Promise.resolve(null),
+                ]
+            )
             const currentTask = snapshot.data()
             if (!snapshot.exists || currentTask.goalSuggestion?.claimId !== claimId) return false
 

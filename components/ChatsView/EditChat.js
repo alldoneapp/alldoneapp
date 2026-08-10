@@ -288,14 +288,14 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
                             smallScreen
                                 ? null
                                 : !chatChanged
-                                ? 'Ok'
-                                : translate(
-                                      formType === 'new'
-                                          ? `Start Chat`
-                                          : formType === 'edit' && inputText === ''
-                                          ? `Delete`
-                                          : `Save`
-                                  )
+                                  ? 'Ok'
+                                  : translate(
+                                        formType === 'new'
+                                            ? `Start Chat`
+                                            : formType === 'edit' && inputText === ''
+                                              ? `Delete`
+                                              : `Save`
+                                    )
                         }
                         type={formType === 'edit' && inputText === '' ? 'danger' : 'primary'}
                         icon={
@@ -303,10 +303,10 @@ const EditChat = ({ formType, projectId, onCancelAction, chat }) => {
                                 ? formType === 'edit' && inputText === ''
                                     ? 'trash-2'
                                     : !chatChanged
-                                    ? 'x'
-                                    : formType === 'new'
-                                    ? 'plus'
-                                    : 'save'
+                                      ? 'x'
+                                      : formType === 'new'
+                                        ? 'plus'
+                                        : 'save'
                                 : null
                         }
                         onPress={onSubmit}

@@ -41,9 +41,9 @@ firebase functions:config:set twilio.whatsapp_from="whatsapp:+14155238886"
 
 Set the following environment variables in your CI/CD pipeline:
 
--   `TWILIO_ACCOUNT_SID`
--   `TWILIO_AUTH_TOKEN`
--   `TWILIO_WHATSAPP_FROM`
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_WHATSAPP_FROM`
 
 ### 3. WhatsApp Business API (Production)
 
@@ -69,11 +69,11 @@ console.log(result)
 
 ## Security Considerations
 
--   **Never commit** Twilio credentials to your repository
--   Use environment variables or secure secret management
--   **Auth Token** should be treated as a password
--   Consider using Twilio's IP allowlisting for additional security
--   Monitor your Twilio usage to detect unusual activity
+- **Never commit** Twilio credentials to your repository
+- Use environment variables or secure secret management
+- **Auth Token** should be treated as a password
+- Consider using Twilio's IP allowlisting for additional security
+- Monitor your Twilio usage to detect unusual activity
 
 ## WhatsApp Sandbox Setup (Development)
 
@@ -95,31 +95,31 @@ For development and testing:
 
 ### Error Codes:
 
--   `21211`: Invalid 'To' phone number
--   `21408`: Permission to send an SMS/WhatsApp has not been enabled
--   `21610`: Attempt to send to unsubscribed recipient
+- `21211`: Invalid 'To' phone number
+- `21408`: Permission to send an SMS/WhatsApp has not been enabled
+- `21610`: Attempt to send to unsubscribed recipient
 
 ## Message Limits
 
 ### Twilio WhatsApp Limits:
 
--   **Sandbox**: Limited to pre-approved phone numbers
--   **Production**: Based on your Twilio plan
--   **Message Length**: 1600 characters max
--   **Media**: Images, documents supported (additional charges apply)
+- **Sandbox**: Limited to pre-approved phone numbers
+- **Production**: Based on your Twilio plan
+- **Message Length**: 1600 characters max
+- **Media**: Images, documents supported (additional charges apply)
 
 ## Cost Considerations
 
 WhatsApp messaging through Twilio has the following costs:
 
--   **Outbound Messages**: ~\$0.005 per message (varies by country)
--   **Template Messages**: May have different pricing
--   **Media Messages**: Additional charges for images/documents
+- **Outbound Messages**: ~\$0.005 per message (varies by country)
+- **Template Messages**: May have different pricing
+- **Media Messages**: Additional charges for images/documents
 
 Monitor your Twilio usage dashboard to track costs.
 
 ## Support
 
--   **Twilio Documentation**: https://www.twilio.com/docs/whatsapp
--   **Twilio Support**: Available through Twilio Console
--   **WhatsApp Business API**: https://developers.facebook.com/docs/whatsapp
+- **Twilio Documentation**: https://www.twilio.com/docs/whatsapp
+- **Twilio Support**: Available through Twilio Console
+- **WhatsApp Business API**: https://developers.facebook.com/docs/whatsapp

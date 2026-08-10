@@ -51,7 +51,8 @@ module.exports = (env, argv) => {
      * react-native-web 0.11 is included too — its dist still carries Flow
      * annotations (e.g. `class TextInput extends Component<*>`).
      */
-    const transpiledNodeModules = /node_modules[\\/](react-native|@react-native|expo|@expo|unimodules|@unimodules|react-navigation|sentry-expo|@sentry)/
+    const transpiledNodeModules =
+        /node_modules[\\/](react-native|@react-native|expo|@expo|unimodules|@unimodules|react-navigation|sentry-expo|@sentry)/
     const babelInclude = file => {
         if (!file.includes('node_modules')) {
             return file.startsWith(rootDir)

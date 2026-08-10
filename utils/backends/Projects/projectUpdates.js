@@ -514,8 +514,8 @@ export async function createChangeProjectStatusFeed(projectId, project, projectS
         projectStatus === PROJECT_TYPE_ACTIVE
             ? 'normal'
             : projectStatus === PROJECT_TYPE_ARCHIVED
-            ? 'archived'
-            : 'template'
+              ? 'archived'
+              : 'template'
 
     const { feed, feedId } = generateFeedModel({
         feedType: FEED_PROJECT_ARCHIVED_UNARCHIVED,

@@ -543,13 +543,13 @@ async function updateMicrosoftEmailForAssistantRequest({
     const addCategories = Array.isArray(addLabelIds)
         ? addLabelIds
         : typeof addLabelIds === 'string'
-        ? addLabelIds.split(',')
-        : []
+          ? addLabelIds.split(',')
+          : []
     const removeCategories = Array.isArray(removeLabelIds)
         ? removeLabelIds
         : typeof removeLabelIds === 'string'
-        ? removeLabelIds.split(',')
-        : []
+          ? removeLabelIds.split(',')
+          : []
 
     for (const account of candidateAccounts) {
         try {

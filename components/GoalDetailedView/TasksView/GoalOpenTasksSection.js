@@ -88,8 +88,8 @@ export default function GoalOpenTasksSection({ projectId, goal }) {
             ? goalOpenTasksExpandState === GOAL_OPEN_TASKS_EXPANDED_FIRST_DAY
                 ? [goalOpenTasksData[0]]
                 : goalOpenTasksExpandState === GOAL_OPEN_TASKS_EXPANDED_LATER_DAYS
-                ? goalOpenTasksData.filter(tasksData => tasksData[DATE_TASK_INDEX] !== BACKLOG_DATE_STRING)
-                : goalOpenTasksData
+                  ? goalOpenTasksData.filter(tasksData => tasksData[DATE_TASK_INDEX] !== BACKLOG_DATE_STRING)
+                  : goalOpenTasksData
             : []
 
     return (

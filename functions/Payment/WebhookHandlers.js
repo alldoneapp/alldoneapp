@@ -273,14 +273,8 @@ const processPaymentStatusWhenEditSubscription = async (
     subscription,
     res
 ) => {
-    const {
-        selectedUserIds,
-        companyData,
-        subscriptionIdInMollie,
-        paidUsersIds,
-        activePaidUsersIds,
-        nextPaymentDate,
-    } = subscription
+    const { selectedUserIds, companyData, subscriptionIdInMollie, paidUsersIds, activePaidUsersIds, nextPaymentDate } =
+        subscription
     if (status === 'paid') {
         await processPaymentPaidStatusWhenEditSubscription(
             userPayingId,
@@ -379,14 +373,8 @@ const processPaymentStatusWhenActivateSubscription = async (
     subscription,
     res
 ) => {
-    const {
-        selectedUserIds,
-        companyData,
-        subscriptionIdInMollie,
-        paidUsersIds,
-        activePaidUsersIds,
-        nextPaymentDate,
-    } = subscription
+    const { selectedUserIds, companyData, subscriptionIdInMollie, paidUsersIds, activePaidUsersIds, nextPaymentDate } =
+        subscription
     if (status === 'paid') {
         await processPaymentPaidStatusWhenActivateSubscription(
             userPayingId,
