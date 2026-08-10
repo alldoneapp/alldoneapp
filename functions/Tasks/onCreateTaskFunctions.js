@@ -104,6 +104,10 @@ const generateHumanReadableIdAsync = async (task, projectId, retryCount = 0) => 
 }
 
 const onCreateTask = async (task, projectId) => {
+    console.log(`🚨🚨🚨 CLOUD FUNCTION TRIGGERED: onCreateTask for task ${task.id} 🚨🚨🚨`)
+    console.log(`[HumanReadableID] onCreateTask triggered for task ${task.id}`)
+    console.log(`[HumanReadableID] Task humanReadableId at creation: ${task.humanReadableId}`)
+
     const promises = []
     if (!task.parentId && task.parentGoalId) {
         promises.push(updateGoalDynamicProgress(projectId, task.parentGoalId))
