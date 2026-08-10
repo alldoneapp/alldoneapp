@@ -228,6 +228,7 @@ describe('User memory assistant tool schemas', () => {
             'MODEL_GPT5_6_SOL',
             'MODEL_GPT5_6_TERRA',
             'MODEL_GPT5_6_LUNA',
+            'MODEL_DEEPSEEK_V4_FLASH',
         ])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.reasoningEffort.enum).toEqual([
             'model_default',

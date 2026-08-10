@@ -357,7 +357,47 @@ const {
     OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
     convertResponsesStream,
     interactWithChatStream,
+    modelSupportsNativeTools,
+    modelSupportsToolSearch,
+    modelSupportsAssistantReasoningEffort,
+    modelSupportsExplicitPromptCaching,
 } = require('./assistantHelper')
+const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
+
+describe('DeepSeek V4 Flash assistant model (AT-2238)', () => {
+    const MODEL_DEEPSEEK_V4_FLASH = 'MODEL_DEEPSEEK_V4_FLASH'
+
+    test('is offered in the shared model list every picker renders from', () => {
+        // One list feeds the assistant model, heartbeat model, per-task override, Gmail labeling
+        // and calendar routing pickers, so membership here is what makes it selectable everywhere.
+        expect(SELECTABLE_ASSISTANT_MODELS.map(option => option.model)).toContain(MODEL_DEEPSEEK_V4_FLASH)
+    })
+
+    test('bills at its own Gold rate rather than falling through to free', () => {
+        // getTokensPerGold returns undefined for an unlisted key, and calculateGoldCostFromTokens
+        // turns that into 0 — an unlisted model is billed nothing at all, silently. That is the
+        // failure mode this assertion exists to catch.
+        expect(calculateGoldCostFromTokens(2000, MODEL_DEEPSEEK_V4_FLASH)).toBe(1)
+        expect(calculateGoldCostFromTokens(20000, MODEL_DEEPSEEK_V4_FLASH)).toBe(10)
+        expect(calculateGoldCostFromTokens(20000, MODEL_DEEPSEEK_V4_FLASH)).toBeLessThan(
+            calculateGoldCostFromTokens(20000, 'MODEL_GPT5_6_LUNA')
+        )
+    })
+
+    test('advertises the 1M context window it actually has', () => {
+        expect(getMaxTokensForModel(MODEL_DEEPSEEK_V4_FLASH)).toBe(1000000)
+    })
+
+    test('is excluded from the OpenAI-only Responses capabilities', () => {
+        // Tool search, reasoning effort and explicit prompt caching are Responses-API features with
+        // no Chat Completions equivalent; sending them to OpenRouter is at best ignored, at worst a
+        // 400. Tool calling, which OpenRouter does support, stays on.
+        expect(modelSupportsNativeTools(MODEL_DEEPSEEK_V4_FLASH)).toBe(true)
+        expect(modelSupportsToolSearch(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
+        expect(modelSupportsAssistantReasoningEffort(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
+        expect(modelSupportsExplicitPromptCaching(MODEL_DEEPSEEK_V4_FLASH)).toBe(false)
+    })
+})
 
 describe('Current task context', () => {
     test('includes task identity, project, title, description, and relevant metadata', () => {

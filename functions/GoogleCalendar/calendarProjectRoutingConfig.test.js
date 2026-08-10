@@ -17,6 +17,7 @@ const {
     validateCalendarProjectRoutingConfig,
 } = require('./calendarProjectRoutingConfig')
 const { DEFAULT_GMAIL_LABELING_MODEL } = require('../Gmail/gmailLabelingConfig')
+const { SELECTABLE_ASSISTANT_MODELS } = require('../Assistant/selectableAssistantModels')
 
 describe('calendarProjectRoutingConfig', () => {
     test('defaults routing to disabled and the shared Gmail labeling model', () => {
@@ -36,6 +37,33 @@ describe('calendarProjectRoutingConfig', () => {
         })
 
         expect(config.model).toBe(DEFAULT_GMAIL_LABELING_MODEL)
+    })
+
+    test('keeps any model the user can actually select, including the OpenRouter-served one', () => {
+        SELECTABLE_ASSISTANT_MODELS.forEach(option => {
+            expect(normalizeCalendarProjectRoutingConfigInput('project-1', { model: option.model }).model).toBe(
+                option.model
+            )
+        })
+        expect(
+            normalizeCalendarProjectRoutingConfigInput('project-1', { model: 'MODEL_DEEPSEEK_V4_FLASH' }).model
+        ).toBe('MODEL_DEEPSEEK_V4_FLASH')
+    })
+
+    test('coerces an unselectable model to the default instead of passing it through', () => {
+        // This field used to accept any string. An unknown key then missed every branch of the
+        // classifier's key→model mapper and silently resolved to `gpt-5.2`, so calendar routing ran
+        // on a model that was neither stored nor chosen. Gmail labeling has always validated here;
+        // calendar now matches it.
+        expect(normalizeCalendarProjectRoutingConfigInput('project-1', { model: 'MODEL_GPT5_4_NANO' }).model).toBe(
+            DEFAULT_GMAIL_LABELING_MODEL
+        )
+        expect(normalizeCalendarProjectRoutingConfigInput('project-1', { model: 'gpt-4o' }).model).toBe(
+            DEFAULT_GMAIL_LABELING_MODEL
+        )
+        expect(normalizeCalendarProjectRoutingConfigInput('project-1', { model: '   ' }).model).toBe(
+            DEFAULT_GMAIL_LABELING_MODEL
+        )
     })
 
     test('normalizes confidence threshold and trims prompt', () => {

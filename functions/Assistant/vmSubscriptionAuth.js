@@ -4,9 +4,6 @@ const { HttpsError } = require('firebase-functions/v2/https')
 const { FieldValue } = require('firebase-admin/firestore')
 
 const VM_SUBSCRIPTION_DOC = 'vmAgentSubscriptions'
-// Providers that actually have a connectable consumer subscription. OpenRouter is deliberately NOT
-// here (it sells no plan the CLI can log into) even though it IS a credential provider for BYOK —
-// see CREDENTIAL_PROVIDERS in vmModelRouting.js for the wider set.
 const VALID_PROVIDERS = ['claude', 'codex']
 
 function getSubscriptionRef(userId) {
@@ -84,15 +81,6 @@ function sanitizeStatus(data, apiKeyStatus = {}) {
             apiKey: apiKeyStatus.codex || { connected: false },
             activeMode: data?.credentialModes?.codex || null,
         },
-        // BYOK-or-Gold only: `connected` (subscription) is structurally false and stays false.
-        openrouter: {
-            connected: false,
-            supportsSubscription: false,
-            connectedAt: null,
-            lastUsedAt: null,
-            apiKey: apiKeyStatus.openrouter || { connected: false },
-            activeMode: data?.credentialModes?.openrouter || null,
-        },
     }
 }
 
@@ -105,11 +93,8 @@ async function getVmSubscriptionStatus({ userId }) {
     const data = snap.exists ? snap.data() || {} : {}
     const status = sanitizeStatus(data, apiKeyStatus)
     const apiKeyData = {}
-    // Every *credential* provider gets a resolved mode, including the BYOK-only OpenRouter slot —
-    // the Settings card reads `activeMode` to decide which route is highlighted.
-    require('./vmApiKeyAuth').VALID_PROVIDERS.forEach(provider => {
+    VALID_PROVIDERS.forEach(provider => {
         if (apiKeyStatus[provider]?.connected) apiKeyData[provider] = { apiKey: true }
-        if (!status[provider]) return
         status[provider].activeMode = require('./vmApiKeyAuth').resolveModeFromData(provider, data, apiKeyData)
     })
     return status

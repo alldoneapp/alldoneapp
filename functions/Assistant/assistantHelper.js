@@ -107,6 +107,13 @@ const {
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
 } = require('./selectableAssistantReasoningEfforts')
+const {
+    MODEL_DEEPSEEK_V4_FLASH,
+    PROVIDER_OPENROUTER,
+    resolveAssistantModelProvider,
+    getOpenRouterAssistantModelId,
+} = require('./assistantModelRouting')
+const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
 
 const MODEL_GPT3_5 = 'MODEL_GPT3_5'
 const MODEL_GPT4 = 'MODEL_GPT4'
@@ -175,8 +182,13 @@ const ASSISTANT_PROMPT_FIELD_INSTRUCTIONS = 'instructions'
 const ASSISTANT_PROMPT_FIELD_HEARTBEAT = 'heartbeatPrompt'
 const ASSISTANT_PROMPT_HISTORY_FIELD_INSTRUCTIONS = 'instructionsHistory'
 const ASSISTANT_PROMPT_HISTORY_FIELD_HEARTBEAT = 'heartbeatPromptHistory'
+// What an assistant may set *itself* to via `update_assistant_settings`. Every model a user can
+// already pick in the UI belongs here, so the list is derived from the shared selector rather than
+// hand-copied — the hand-copied version had silently missed Terra and Luna since they shipped,
+// which made the tool refuse settings the user could set by hand two clicks away. Legacy keys stay
+// listed explicitly because assistants configured on them must still be able to keep them.
 const ALLOWED_ASSISTANT_SETTINGS_MODELS = [
-    'MODEL_GPT5_6_SOL',
+    ...SELECTABLE_ASSISTANT_MODELS.map(option => option.model),
     'MODEL_GPT5_5',
     'MODEL_GPT5_1',
     'MODEL_GPT5_2',
@@ -1001,7 +1013,10 @@ const modelSupportsNativeTools = modelKey => {
         modelKey === MODEL_GPT5_6_LUNA ||
         modelKey === MODEL_GPT5_4_MINI ||
         modelKey === MODEL_GPT5_4_NANO ||
-        modelKey === MODEL_GPT5_2
+        modelKey === MODEL_GPT5_2 ||
+        // DeepSeek V4 Flash lists `tools` in its OpenRouter `supported_parameters`, and OpenRouter
+        // serves them over the same Chat Completions tool-calling shape `getToolSchemas` produces.
+        modelKey === MODEL_DEEPSEEK_V4_FLASH
     )
 }
 
@@ -1084,6 +1099,11 @@ const getTokensPerGold = modelKey => {
     if (modelKey === MODEL_SONAR_REASONING) return 20
     if (modelKey === MODEL_SONAR_REASONING_PRO) return 15
     if (modelKey === MODEL_SONAR_DEEP_RESEARCH) return 10
+    // DeepSeek V4 Flash 0731 costs $0.08/$0.18 per 1M input/output upstream against Sol's $5/$30 —
+    // roughly 80x cheaper at a chat-shaped token mix. The rate passes a deliberate fraction of that
+    // through rather than all of it, matching how Luna (25x cheaper upstream) is priced at 5x. That
+    // keeps margin on a model whose whole appeal is high-volume labeling and heartbeat work.
+    if (modelKey === MODEL_DEEPSEEK_V4_FLASH) return 2000
 }
 
 const getMaxTokensForModel = modelKey => {
@@ -1101,6 +1121,9 @@ const getMaxTokensForModel = modelKey => {
     if (modelKey === MODEL_GPT5_4_MINI) return 128000
     if (modelKey === MODEL_GPT5_4_NANO) return 128000
     if (modelKey === MODEL_GPT5_2) return 128000
+    // DeepSeek V4 Flash advertises a 1,048,576-token window on OpenRouter. Held slightly under that
+    // so the assistant's own context budgeting never builds a prompt the provider will reject.
+    if (modelKey === MODEL_DEEPSEEK_V4_FLASH) return 1000000
 
     // Perplexity/Sonar models (generally high context)
     if (modelKey && modelKey.startsWith('MODEL_SONAR')) return 128000
@@ -1135,6 +1158,9 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_GPT5_4_MINI) return 'gpt-5.4-mini'
     if (normalizedKey === MODEL_GPT5_4_NANO) return 'gpt-5.4-nano'
     if (normalizedKey === MODEL_GPT5_2) return 'gpt-5.2'
+    // Served through OpenRouter, so the id comes from the shared routing table rather than being
+    // spelled out again here — one place to bump when DeepSeek ships the next Flash release.
+    if (normalizedKey === MODEL_DEEPSEEK_V4_FLASH) return getOpenRouterAssistantModelId(normalizedKey)
     if (normalizedKey === MODEL_SONAR) return 'sonar'
     if (normalizedKey === MODEL_SONAR_PRO) return 'sonar-pro'
     if (normalizedKey === MODEL_SONAR_REASONING) return 'sonar-reasoning'
@@ -2667,7 +2693,55 @@ async function interactWithChatStream(
         hasOpenAIKey: !!envFunctions.OPEN_AI_KEY,
     })
 
-    const { OPEN_AI_KEY, PERPLEXITY_API_KEY } = envFunctions
+    const { OPEN_AI_KEY, PERPLEXITY_API_KEY, OPENROUTER_API_KEY } = envFunctions
+
+    // OpenRouter models (DeepSeek V4 Flash) speak Chat Completions, not the Responses API the
+    // OpenAI branch below is built on, so they take their own transport. It terminates at the same
+    // stream contract, so everything downstream — the tool loop, Gold metering, progress status —
+    // is unchanged. Checked before Perplexity only because both are "not the default path"; the two
+    // families are disjoint.
+    if (resolveAssistantModelProvider(modelKey).provider === PROVIDER_OPENROUTER) {
+        const { streamOpenRouterChat } = require('./openRouterChatClient')
+
+        let openRouterTools = null
+        if (modelSupportsNativeTools(modelKey) && runtimeAllowedTools.length > 0) {
+            const { getToolSchemas } = require('./toolSchemas')
+            const staticAllowedTools = runtimeAllowedTools.filter(
+                toolName =>
+                    toolName !== TALK_TO_ASSISTANT_TOOL_KEY &&
+                    toolName !== EXTERNAL_TOOLS_KEY &&
+                    toolName !== MCP_SERVERS_TOOL_KEY
+            )
+            const {
+                delegationToolSchemas,
+                externalToolSchemas,
+                mcpToolSchemas = [],
+            } = await getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
+            // Full schemas, always: hosted tool-search is a Responses-API feature and has no
+            // Chat Completions equivalent. Flash's 1M-token window absorbs the extra context.
+            openRouterTools = [
+                ...getToolSchemas(staticAllowedTools),
+                ...delegationToolSchemas,
+                ...externalToolSchemas,
+                ...mcpToolSchemas,
+            ]
+        }
+
+        return await streamOpenRouterChat({
+            apiKey: OPENROUTER_API_KEY,
+            model,
+            messages: formattedPrompt,
+            tools: openRouterTools,
+            temperature: modelSupportsCustomTemperature(modelKey) ? temperature : null,
+            usageContext: {
+                route:
+                    toolRuntimeContext?.promptCacheScope ||
+                    toolRuntimeContext?.sourceChannel ||
+                    toolRuntimeContext?.objectType ||
+                    'assistant',
+            },
+        })
+    }
 
     // Check if it's a Perplexity model
     if (modelKey.startsWith('MODEL_SONAR')) {
@@ -13508,6 +13582,7 @@ module.exports = {
     logOpenAiCacheUsage,
     OPENAI_INPUT_TOKEN_ALERT_THRESHOLD,
     OPENAI_INPUT_TOKEN_TARGET_CEILING,
+    modelSupportsNativeTools,
     modelSupportsToolSearch,
     modelSupportsAssistantReasoningEffort,
     modelSupportsExplicitPromptCaching,

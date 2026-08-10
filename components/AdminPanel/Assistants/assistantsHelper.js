@@ -22,6 +22,9 @@ export const MODEL_SONAR_PRO = 'MODEL_SONAR_PRO'
 export const MODEL_SONAR_REASONING = 'MODEL_SONAR_REASONING'
 export const MODEL_SONAR_REASONING_PRO = 'MODEL_SONAR_REASONING_PRO'
 export const MODEL_SONAR_DEEP_RESEARCH = 'MODEL_SONAR_DEEP_RESEARCH'
+// Served through OpenRouter rather than OpenAI. The client never needs to know that — provider
+// routing is resolved server-side in `functions/Assistant/assistantModelRouting.js`.
+export const MODEL_DEEPSEEK_V4_FLASH = 'MODEL_DEEPSEEK_V4_FLASH'
 
 export const TEMPERATURE_VERY_LOW = 'TEMPERATURE_VERY_LOW'
 export const TEMPERATURE_LOW = 'TEMPERATURE_LOW'
