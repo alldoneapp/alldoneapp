@@ -71,14 +71,17 @@ async function getTopicConversationHistory(
             const data = doc.data()
             if (data.commentText) {
                 const role = data.fromAssistant ? 'assistant' : 'user'
-                messages.push([
-                    role,
-                    addTimestampToContextContent(
-                        data.commentText,
-                        Number(data.created || data.lastChangeDate || 0),
-                        userTimezoneOffset
-                    ),
-                ])
+                // Only user turns get the "[Sent at ...]" framing. Assistant turns are the
+                // assistant's own prior output; timestamping them invites the model to mimic
+                // the tag verbatim (AT-2241).
+                const content = data.fromAssistant
+                    ? data.commentText
+                    : addTimestampToContextContent(
+                          data.commentText,
+                          Number(data.created || data.lastChangeDate || 0),
+                          userTimezoneOffset
+                      )
+                messages.push([role, content])
             }
         }
         return messages

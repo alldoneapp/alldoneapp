@@ -346,7 +346,14 @@ async function getConversationHistory(
                 ])
                 continue
             }
-            messages.push([role, addTimestampToContextContent(data.commentText, messageTimestamp, userTimezoneOffset)])
+            // Assistant turns are the assistant's own prior output; timestamping them
+            // invites the model to copy the bracket tag into the reply (AT-2241).
+            messages.push([
+                role,
+                data.fromAssistant
+                    ? data.commentText
+                    : addTimestampToContextContent(data.commentText, messageTimestamp, userTimezoneOffset),
+            ])
         }
     }
 

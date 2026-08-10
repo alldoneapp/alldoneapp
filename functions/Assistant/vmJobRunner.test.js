@@ -2733,17 +2733,15 @@ describe('VM runner origin-conversation completion note', () => {
 describe('Codex OpenRouter routing', () => {
     const PROXY = 'https://proxy.example/vmLlmProxy'
 
-    test('points Codex at the OpenRouter proxy route with the Responses wire API', () => {
+    test('points Codex at the OpenRouter proxy route with the Chat Completions wire API', () => {
         const overrides = __private__.buildCodexProxyConfigOverrides(PROXY, { openRouter: true })
 
         expect(overrides).toContain(
             `model_providers.alldone_vm_proxy.base_url="https://proxy.example/vmLlmProxy/openrouter/v1"`
         )
-        // The Codex CLI removed `wire_api = "chat"` in Feb 2026 (a current CLI exits 13 on it at
-        // config load), and OpenRouter's Responses API is GA — so this route speaks `responses`
-        // like the OpenAI one. See buildCodexProxyConfigOverrides.
-        expect(overrides).toContain(`model_providers.alldone_vm_proxy.wire_api="responses"`)
-        expect(overrides).not.toContain(`model_providers.alldone_vm_proxy.wire_api="chat"`)
+        // OpenRouter exposes the OpenAI-*compatible* Chat Completions surface; asking it for
+        // `responses` 404s on the first request with an error that reads like a proxy bug.
+        expect(overrides).toContain(`model_providers.alldone_vm_proxy.wire_api="chat"`)
         expect(overrides).toContain('model_providers.alldone_vm_proxy.supports_websockets=false')
     })
 
@@ -2764,7 +2762,7 @@ describe('Codex OpenRouter routing', () => {
         expect(command).toContain(`--model 'deepseek/deepseek-chat'`)
         expect(command).not.toContain('openrouter:deepseek')
         expect(command).toContain('/openrouter/v1')
-        expect(command).toContain(`model_providers.alldone_vm_proxy.wire_api="responses"`)
+        expect(command).toContain(`model_providers.alldone_vm_proxy.wire_api="chat"`)
     })
 
     test('an OpenAI model still routes to the OpenAI upstream', () => {

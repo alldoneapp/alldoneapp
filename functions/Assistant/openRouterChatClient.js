@@ -14,12 +14,10 @@
  *
  * `assistantHelper.interactWithChatStream` drives OpenAI through the **Responses** API
  * (`openai.responses.create`: `input`, `store`, `prompt_cache_key`, hosted tool-search, typed
- * `response.*` events). When this module was written OpenRouter exposed only the
- * OpenAI-*compatible* **Chat Completions** surface, which is why it speaks that protocol.
- * OpenRouter's own Responses API (`POST /api/v1/responses`) has since gone GA (July 2026) —
- * `vmJobRunner`'s Codex route now uses it, after the Codex CLI dropped `wire_api = "chat"` —
- * so this module *could* be migrated to the Responses path, but Chat Completions remains fully
- * supported by OpenRouter and this working client has no reason to move.
+ * `response.*` events). Responses is OpenAI's own API — OpenRouter exposes the OpenAI-*compatible*
+ * **Chat Completions** surface and nothing else. This is the same lesson `vmJobRunner` already
+ * learned for Codex (`wire_api = "chat"` for OpenRouter vs `"responses"` for OpenAI); asking
+ * OpenRouter for Responses fails at the first request with an error that reads like a proxy bug.
  *
  * So an OpenRouter model cannot reuse the Responses request path, and this module is the second
  * path. It deliberately terminates at the **same stream contract** the rest of the assistant runtime
@@ -232,6 +230,20 @@ async function* convertChatCompletionsStream(stream, usageContext = {}) {
 
     if (completedToolCalls.length > 0) {
         yield { content: '', additional_kwargs: { tool_calls: completedToolCalls } }
+    }
+
+    // A stream can end because the provider hit its max-token ceiling for this call. That is a
+    // different outcome from "the model finished its sentence": the user-facing message would be
+    // silently truncated right at this point (AT-2241). The downstream consumer can only tell the
+    // two apart if the finish reason travels with the stream, so surface it as a final control
+    // chunk. It carries no content, so existing consumers that only read `content`/`tool_calls`
+    // are unaffected.
+    if (finishReason === 'length' && (totalContentLength > 0 || completedToolCalls.length > 0)) {
+        yield {
+            content: '',
+            finishReason: 'length',
+            additional_kwargs: {},
+        }
     }
 
     if (usage) {
