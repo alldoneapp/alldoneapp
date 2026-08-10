@@ -1,15 +1,15 @@
-# Node 14.21.3 is the version CLAUDE.md pins for the app tree and the one the
-# lockfile is maintained under locally; this image had drifted to node:12.
-# firebase 12 forced the alignment: @firebase/util's postinstall script uses
-# optional chaining, which node 12 cannot parse, so `npm ci` died with
-# "SyntaxError: Unexpected token '.'". npm stays on 6.x, so lockfile v1 is safe.
-FROM node:14.21.3-alpine
+# Node 22 / npm 10 since migration Stage 5: the root lockfile is v3 and is
+# maintained under Node 22 (see .nvmrc). .npmrc must be baked in — it carries
+# legacy-peer-deps, without which npm 10 refuses the RN-era peer graph that
+# npm 6 silently accepted. The expo-cli install is gone with the Node 14 pin:
+# the legacy expo pipeline cannot run on this image and was local-only since
+# Stage 0 flipped the deploys to web-bundler.
+FROM node:22-alpine
 
 WORKDIR /app
 
 RUN apk --no-cache add git
 
-ADD package.json package-lock.json ./
+ADD package.json package-lock.json .npmrc ./
 
 RUN npm ci
-RUN npm install -g expo-cli@6.1.x
