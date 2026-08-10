@@ -106,14 +106,31 @@ async function admitVmJobToThread(sessionRef, correlationId, nowFn = Date.now) {
 }
 
 /**
+ * Read the thread's session document, or null when there is none. Kept separate from the occupancy
+ * peek so a dispatch can answer several questions (occupied? which agent was it running? — see
+ * vmThreadAgentContinuity) from a single read.
+ */
+async function readVmThreadSession(sessionRef) {
+    const snapshot = await sessionRef.get()
+    if (!snapshot.exists) return null
+    return snapshot.data() || {}
+}
+
+/**
  * Read-only peek: is the thread currently occupied (running or with jobs queued)? Used to decide
  * whether to skip the cross-thread concurrency cap for a same-thread follow-up. Best-effort — the
  * authoritative decision is the `admitVmJobToThread` transaction.
  */
 async function isVmThreadOccupied(sessionRef, correlationId = null, nowFn = Date.now) {
-    const snapshot = await sessionRef.get()
-    if (!snapshot.exists) return false
-    const session = snapshot.data() || {}
+    const session = await readVmThreadSession(sessionRef)
+    return isVmThreadSessionOccupied(session, correlationId, nowFn)
+}
+
+/**
+ * The occupancy decision itself, over an already-read session document.
+ */
+function isVmThreadSessionOccupied(session, correlationId = null, nowFn = Date.now) {
+    if (!session) return false
     const now = nowFn()
     const activeLeaseOwner = session.activeLeaseOwner || null
     const activeCorrelationId = session.activeCorrelationId || null
@@ -317,7 +334,9 @@ module.exports = {
     dispatchLeaseOwner,
     isDispatchLeaseOwner,
     admitVmJobToThread,
+    readVmThreadSession,
     isVmThreadOccupied,
+    isVmThreadSessionOccupied,
     advanceVmThreadQueue,
     removeQueuedVmJobFromThread,
     requeueVmJobToThreadFront,

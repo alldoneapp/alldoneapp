@@ -1,20 +1,3 @@
-const { SELECTABLE_ASSISTANT_MODELS } = require('../../../../../functions/Assistant/selectableAssistantModels')
-
-/**
- * Mirrors the server-side allowlist in `functions/GoogleCalendar/calendarProjectRoutingConfig.js`.
- *
- * This used to default to `'MODEL_GPT5_4_NANO'`, a key that is not in the selectable set and that
- * the server's key→model mapper does not know — so it fell through to `gpt-5.2`. Calendar routing
- * therefore ran on a model nobody had chosen, and the stored value never matched what was used.
- * Coercing to the shared default keeps the saved config and the model actually invoked in step.
- */
-const CALENDAR_ROUTING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
-const DEFAULT_CALENDAR_ROUTING_MODEL = 'MODEL_GPT5_6_LUNA'
-
-function normalizeCalendarRoutingModel(value) {
-    return CALENDAR_ROUTING_MODEL_KEYS.has(value) ? value : DEFAULT_CALENDAR_ROUTING_MODEL
-}
-
 const DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT =
     'Choose exactly one active Alldone project for each Google Calendar event when the event clearly belongs to that project. Use the project descriptions as the primary context. Prefer precision over recall: if the event could belong to multiple projects, pick the strongest clear match only when the evidence is specific; otherwise return no match. Consider the event title, description, participants, organizer, location, meeting links, timing, project names, client names, stakeholders, goals, tasks, decisions, updates, and deliverables.'
 
@@ -66,7 +49,7 @@ function normalizeCalendarProjectRoutingConfig(projectId, config = {}, calendarE
         projectId,
         calendarEmail: config.calendarEmail || calendarEmail || '',
         prompt: config.prompt || DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT,
-        model: normalizeCalendarRoutingModel(config.model),
+        model: config.model || 'MODEL_GPT5_4_NANO',
         confidenceThreshold: Number.isFinite(config.confidenceThreshold) ? String(config.confidenceThreshold) : '0.7',
     }
 }
@@ -78,7 +61,7 @@ function sanitizeCalendarProjectRoutingConfigForSave(config = {}) {
         enabled: !!config.enabled,
         calendarEmail: config.calendarEmail || '',
         prompt: config.prompt || DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT,
-        model: normalizeCalendarRoutingModel(config.model),
+        model: config.model || 'MODEL_GPT5_4_NANO',
         confidenceThreshold: Number.isFinite(parsedConfidenceThreshold)
             ? Math.min(Math.max(parsedConfidenceThreshold, 0), 1)
             : 0.7,
@@ -86,10 +69,7 @@ function sanitizeCalendarProjectRoutingConfigForSave(config = {}) {
 }
 
 module.exports = {
-    CALENDAR_ROUTING_MODEL_KEYS,
-    DEFAULT_CALENDAR_ROUTING_MODEL,
     DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT,
-    normalizeCalendarRoutingModel,
     buildProjectDefinitionsFromProjects,
     buildProjectRoutingDescription,
     cleanProjectDescription,

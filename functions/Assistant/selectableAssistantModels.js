@@ -17,16 +17,6 @@ const SELECTABLE_ASSISTANT_MODELS = [
         name: 'Luna',
         descriptionKey: 'Efficient for high-volume work',
     },
-    {
-        // Served through OpenRouter rather than OpenAI — see `assistantModelRouting.js`. The
-        // difference is invisible here on purpose: this list is the product menu, and every
-        // consumer of it (assistant model, heartbeat model, per-task override, Gmail labeling,
-        // calendar routing) treats an entry the same way whichever upstream serves it.
-        model: 'MODEL_DEEPSEEK_V4_FLASH',
-        labelKey: 'DeepSeek V4 Flash',
-        name: 'DeepSeek Flash',
-        descriptionKey: 'Lowest cost, 1M context',
-    },
 ]
 
 module.exports = { SELECTABLE_ASSISTANT_MODELS }

@@ -56,7 +56,6 @@ import {
     MODEL_SONAR_REASONING,
     MODEL_SONAR_REASONING_PRO,
     MODEL_SONAR_DEEP_RESEARCH,
-    MODEL_DEEPSEEK_V4_FLASH,
 } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 import { shrinkTagText } from '../../../functions/Utils/parseTextUtils'
 
@@ -485,7 +484,6 @@ const getModelText = modelKey => {
     if (modelKey === MODEL_SONAR_REASONING) return 'Sonar Reasoning'
     if (modelKey === MODEL_SONAR_REASONING_PRO) return 'Sonar Reasoning Pro'
     if (modelKey === MODEL_SONAR_DEEP_RESEARCH) return 'Sonar Deep Research'
-    if (modelKey === MODEL_DEEPSEEK_V4_FLASH) return 'DeepSeek V4 Flash'
 
     return modelKey || ''
 }
