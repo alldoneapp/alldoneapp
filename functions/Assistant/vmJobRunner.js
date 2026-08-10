@@ -1652,11 +1652,15 @@ function buildCodexProxyRouteUrl(proxyBaseUrl, route) {
 /**
  * Codex provider config for a run.
  *
- * The OpenRouter route (AT-2230) differs in exactly two ways, and both are load-bearing:
- *  - path: `/openrouter/v1` instead of `/openai/v1`, so the proxy swaps in the OpenRouter key;
- *  - wire_api: `chat`, because the Responses API is OpenAI's own — OpenRouter exposes the
- *    OpenAI-*compatible* Chat Completions surface, and asking it for `responses` 404s at the
- *    first request with an error that reads like a proxy bug.
+ * The OpenRouter route (AT-2230) differs from the OpenAI one only in its path: `/openrouter/v1`
+ * instead of `/openai/v1`, so the proxy swaps in the OpenRouter key. Both routes speak
+ * `wire_api = "responses"`. OpenRouter originally forced `chat` here (its Responses API did not
+ * exist yet), but the Codex CLI removed the `chat` wire API entirely in February 2026 — a current
+ * CLI refuses to boot on it ("`wire_api = \"chat\"` is no longer supported", exit 13,
+ * https://github.com/openai/codex/discussions/7782) — and OpenRouter's Responses API
+ * (`POST /api/v1/responses`) is GA since July 2026, so the proxy forwards it unchanged.
+ * Do not reintroduce `chat`: the runner always installs the latest Codex CLI at run start, so
+ * there is no CLI version left that accepts it.
  */
 function buildCodexProxyConfigOverrides(proxyBaseUrl, { openRouter = false } = {}) {
     const routeUrl = buildCodexProxyRouteUrl(proxyBaseUrl, openRouter ? '/openrouter/v1' : '/openai/v1')
@@ -1671,7 +1675,7 @@ function buildCodexProxyConfigOverrides(proxyBaseUrl, { openRouter = false } = {
         )}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.base_url=${JSON.stringify(routeUrl)}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.env_key=${JSON.stringify('OPENAI_API_KEY')}`,
-        `model_providers.${CODEX_VM_PROXY_PROVIDER}.wire_api=${JSON.stringify(openRouter ? 'chat' : 'responses')}`,
+        `model_providers.${CODEX_VM_PROXY_PROVIDER}.wire_api=${JSON.stringify('responses')}`,
         `model_providers.${CODEX_VM_PROXY_PROVIDER}.supports_websockets=false`,
     ]
 }
