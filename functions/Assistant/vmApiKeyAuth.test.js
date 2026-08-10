@@ -35,13 +35,16 @@ jest.mock(
 
 const {
     getVmApiKeyStatus,
+    loadVmApiKey,
     normalizeApiKey,
     removeVmApiKey,
     resolveModeFromData,
+    resolveVmCredentialMode,
     saveVmApiKey,
     setVmCredentialMode,
     testVmApiKey,
     validateProviderApiKey,
+    VALID_PROVIDERS,
 } = require('./vmApiKeyAuth')
 
 describe('VM personal API keys', () => {
@@ -176,5 +179,146 @@ describe('VM personal API keys', () => {
             { merge: true }
         )
         expect(JSON.stringify(secretRef.set.mock.calls)).not.toContain('OpenAI rejected')
+    })
+})
+
+// AT-2230 BYOK: OpenRouter is a credential provider in its own right — same storage, same secrecy
+// guarantees, but no subscription route and its own validation endpoint.
+describe('OpenRouter as a BYOK credential provider', () => {
+    const key = 'sk-or-v1-0123456789abcdef0123456789abcdef'
+
+    beforeEach(() => {
+        Object.keys(mockDocs).forEach(path => delete mockDocs[path])
+        jest.clearAllMocks()
+        global.fetch = jest.fn(async () => ({ ok: true, status: 200 }))
+    })
+
+    afterAll(() => {
+        delete global.fetch
+    })
+
+    test('is an accepted provider alongside claude and codex', () => {
+        expect(VALID_PROVIDERS).toEqual(['claude', 'codex', 'openrouter'])
+    })
+
+    // The models endpoint is PUBLIC: it answers 200 for any string, so validating against it would
+    // "accept" every typo and only fail later, mid-run, inside the sandbox. /key needs the credential.
+    test('validates against the authenticated /key endpoint, not the public /models one', async () => {
+        const fetchImpl = jest.fn(async () => ({ ok: true, status: 200 }))
+        await validateProviderApiKey('openrouter', key, { fetchImpl })
+
+        expect(fetchImpl).toHaveBeenCalledWith(
+            'https://openrouter.ai/api/v1/key',
+            expect.objectContaining({ headers: { Authorization: `Bearer ${key}` } })
+        )
+        expect(fetchImpl.mock.calls[0][0]).not.toContain('/models')
+    })
+
+    test('rejects a bad key without echoing the secret', async () => {
+        const fetchImpl = jest.fn(async () => ({ ok: false, status: 401 }))
+        let error
+        try {
+            await validateProviderApiKey('openrouter', key, { fetchImpl })
+        } catch (caught) {
+            error = caught
+        }
+        expect(error.code).toBe('invalid-argument')
+        expect(error.message).toContain('OpenRouter rejected this API key')
+        expect(error.message).not.toContain(key)
+    })
+
+    test('stores the key server-side only and opts that provider into BYOK', async () => {
+        await saveVmApiKey({ userId: 'user-1', provider: 'openrouter', apiKey: key })
+
+        expect(mockBatchSet).toHaveBeenCalledWith(
+            docFor('userSecrets/user-1/providers/vmAgentApiKeys'),
+            expect.objectContaining({ openrouter: expect.objectContaining({ apiKey: key }) }),
+            { merge: true }
+        )
+        // Saving one provider must never move another's route.
+        expect(mockBatchSet).toHaveBeenCalledWith(
+            docFor('users/user-1/private/vmAgentSubscriptions'),
+            expect.objectContaining({ credentialModes: { openrouter: 'byok' } }),
+            { merge: true }
+        )
+    })
+
+    test('never returns the saved key in status', async () => {
+        docFor('userSecrets/user-1/providers/vmAgentApiKeys').get.mockResolvedValue({
+            exists: true,
+            data: () => ({ openrouter: { apiKey: key, validationStatus: 'valid' } }),
+        })
+
+        const status = await getVmApiKeyStatus('user-1')
+        expect(status.openrouter).toEqual(expect.objectContaining({ connected: true }))
+        expect(JSON.stringify(status)).not.toContain(key)
+    })
+
+    test('has no subscription route: selecting one is refused with an actionable message', async () => {
+        await expect(
+            setVmCredentialMode({ userId: 'user-1', provider: 'openrouter', mode: 'subscription' })
+        ).rejects.toMatchObject({ code: 'invalid-argument' })
+    })
+
+    // The heart of the separation. A connected ChatGPT subscription authenticates against OpenAI and
+    // cannot serve DeepSeek, so it must not leak into the OpenRouter slot's resolved mode.
+    test('a connected codex subscription does not make OpenRouter subscription-billed', () => {
+        const subscription = { codex: { authJson: '{}' }, claude: { oauthToken: 'oauth' } }
+        expect(resolveModeFromData('openrouter', subscription, {})).toBe('api')
+        expect(resolveModeFromData('openrouter', subscription, { openrouter: { apiKey: key } })).toBe('api')
+        expect(
+            resolveModeFromData(
+                'openrouter',
+                { ...subscription, credentialModes: { openrouter: 'byok' } },
+                { openrouter: { apiKey: key } }
+            )
+        ).toBe('byok')
+        // 'subscription' is unreachable for this provider even if the field were somehow written.
+        expect(
+            resolveModeFromData('openrouter', { ...subscription, credentialModes: { openrouter: 'subscription' } }, {})
+        ).toBe('api')
+    })
+
+    test('resolveVmCredentialMode reads the openrouter slot independently of codex', async () => {
+        docFor('users/user-1/private/vmAgentSubscriptions').get.mockResolvedValue({
+            exists: true,
+            data: () => ({ codex: { authJson: '{}' }, credentialModes: { codex: 'subscription' } }),
+        })
+        docFor('userSecrets/user-1/providers/vmAgentApiKeys').get.mockResolvedValue({
+            exists: true,
+            data: () => ({ codex: { apiKey: 'sk-openai-key-1234567890abcdef' } }),
+        })
+
+        expect(await resolveVmCredentialMode('user-1', 'codex')).toBe('subscription')
+        expect(await resolveVmCredentialMode('user-1', 'openrouter')).toBe('api')
+    })
+
+    test('loadVmApiKey returns the OpenRouter key for the openrouter slot only', async () => {
+        docFor('userSecrets/user-1/providers/vmAgentApiKeys').get.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                openrouter: { apiKey: key },
+                codex: { apiKey: 'sk-openai-key-1234567890abcdef' },
+            }),
+        })
+
+        expect(await loadVmApiKey('user-1', 'openrouter')).toBe(key)
+        expect(await loadVmApiKey('user-1', 'codex')).toBe('sk-openai-key-1234567890abcdef')
+        expect(await loadVmApiKey('user-1', 'nonsense')).toBeNull()
+    })
+
+    test('removing the key falls back to Alldone Gold, never to another provider\u2019s subscription', async () => {
+        docFor('users/user-1/private/vmAgentSubscriptions').get.mockResolvedValue({
+            exists: true,
+            data: () => ({ codex: { authJson: '{}' } }),
+        })
+
+        const result = await removeVmApiKey({ userId: 'user-1', provider: 'openrouter' })
+        expect(result.activeMode).toBe('api')
+        expect(mockBatchSet).toHaveBeenCalledWith(
+            docFor('users/user-1/private/vmAgentSubscriptions'),
+            expect.objectContaining({ credentialModes: { openrouter: 'api' } }),
+            { merge: true }
+        )
     })
 })

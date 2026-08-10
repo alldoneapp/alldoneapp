@@ -17,6 +17,7 @@ const {
     isOpenRouterSelection,
     parseOpenRouterSelection,
     formatOpenRouterModelLabel,
+    resolveCredentialProvider,
     OPENROUTER_LABEL,
 } = require('./vmModelRouting')
 const {
@@ -132,13 +133,17 @@ function formatAgentRunSuffix(model, effort) {
 // compare Gold history entries after the fact. Passing the resolved rate (rather than letting the
 // note re-derive one) is what keeps the quoted number identical to the billed one. Subscription/BYOK
 // runs charge no token Gold at all, so the note would be meaningless there and is omitted.
-function formatVmBillingStatus(agentLabel, credentialMode, agentModel = '', tokensPerGold = 0) {
+function formatVmBillingStatus(agentLabel, credentialMode, agentModel = '', tokensPerGold = 0, credentialLabel = '') {
     const mode = typeof credentialMode === 'boolean' ? (credentialMode ? 'subscription' : 'api') : credentialMode
     if (mode === 'subscription') {
         return `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
     }
     if (mode === 'byok') {
-        return `🔐 Using your personal ${agentLabel} API key. Provider token costs are billed directly to you; Alldone charges no token Gold.`
+        // The key is named after the *upstream*, not the harness: an OpenRouter run drives the Codex
+        // agent but authenticates with the user's OpenRouter key, and saying "your personal Codex
+        // API key" there would point them at the wrong Settings card when something goes wrong.
+        const keyLabel = credentialLabel || (isOpenRouterSelection(agentModel) ? OPENROUTER_LABEL : agentLabel)
+        return `🔐 Using your personal ${keyLabel} API key. Provider token costs are billed directly to you; Alldone charges no token Gold.`
     }
     return `🔑 Using Alldone API billing. VM tokens will cost Gold.${formatTokenDiscountNote(agentModel, {
         tokensPerGold,
@@ -463,14 +468,40 @@ async function startVmJob({
         return { success: false, message: effortResult.error }
     }
 
-    // Fail before any Gold is charged. Without the platform key the proxy rejects the very first
-    // request, which would otherwise surface as a mid-run 503 after the base reserve and per-minute
-    // Gold had already been taken — and the Settings toggle is hidden in that case anyway, so this
-    // is only reachable via an explicit tool argument or a preference saved before the key was pulled.
-    if (isOpenRouterSelection(modelResult.value) && !isOpenRouterConfigured()) {
+    // Which credential slot this run authenticates with. NOT the agent: an OpenRouter run drives the
+    // Codex harness but authenticates against OpenRouter, so it reads the user's OpenRouter route
+    // rather than their OpenAI/ChatGPT one (AT-2230 BYOK).
+    const openRouterRun = isOpenRouterSelection(modelResult.value)
+    const credentialProvider = resolveCredentialProvider(selectedAgent, modelResult.value)
+
+    // Resolve the user's explicit provider route. Legacy users keep the old behavior:
+    // connected subscription first, otherwise Alldone API billing. For OpenRouter the only routes
+    // that exist are the user's own key and Alldone Gold — there is no OpenRouter subscription.
+    const credentialMode = await require('./vmApiKeyAuth').resolveVmCredentialMode(requestUserId, credentialProvider)
+
+    // Fail before any Gold is charged, with the message naming the fix. Deferring either of these to
+    // the proxy would surface as a mid-run 503 *after* the base reserve and per-minute Gold had
+    // already been taken, which reads as a crash rather than a configuration problem.
+    if (openRouterRun && credentialMode === 'api' && !isOpenRouterConfigured()) {
         return {
             success: false,
-            message: 'OpenRouter models are not available in this environment. Choose an OpenAI model instead.',
+            message:
+                'OpenRouter is not available on Alldone Gold in this environment because the platform OpenRouter key is not configured. Add your own OpenRouter API key in Settings → Integrations, or choose an OpenAI model instead.',
+        }
+    }
+    if (openRouterRun && credentialMode === 'byok') {
+        // resolveVmCredentialMode only answers 'byok' when a key is present, so this is the
+        // narrow race where the key was removed between that read and here. Checked anyway: a
+        // BYOK run with no key would otherwise start, burn compute Gold and die on first request.
+        const hasOpenRouterKey = !!(await require('./vmApiKeyAuth')
+            .loadVmApiKey(requestUserId, 'openrouter')
+            .catch(() => null))
+        if (!hasOpenRouterKey) {
+            return {
+                success: false,
+                message:
+                    'No OpenRouter API key is saved for your account. Add one in Settings → Integrations, or switch OpenRouter to Alldone Gold.',
+            }
         }
     }
 
@@ -495,18 +526,6 @@ async function startVmJob({
         }
     }
 
-    // Resolve the user's explicit provider route. Legacy users keep the old behavior:
-    // connected subscription first, otherwise Alldone API billing.
-    //
-    // An OpenRouter model is the one case where the user's saved credential route cannot apply: a
-    // ChatGPT subscription and a personal OpenAI key both authenticate against OpenAI, and neither
-    // can serve DeepSeek. Such a run goes through the platform OpenRouter key on normal Gold token
-    // billing, and the status text says so — silently charging Gold to someone who believes they
-    // are on their own subscription would be the worse failure.
-    const openRouterRun = isOpenRouterSelection(modelResult.value)
-    const credentialMode = openRouterRun
-        ? 'api'
-        : await require('./vmApiKeyAuth').resolveVmCredentialMode(requestUserId, selectedAgent)
     const subscriptionUsed = credentialMode === 'subscription'
     const personalApiKeyUsed = credentialMode === 'byok'
     const tokenBillingExempt = subscriptionUsed || personalApiKeyUsed
@@ -648,6 +667,11 @@ async function startVmJob({
         // the runner will settle it — without either of them doing an async catalog read mid-charge.
         tokensPerGold,
         credentialMode,
+        // Which key slot the run authenticates with. Derivable from agent+agentModel, but persisted
+        // explicitly so the proxy can check the route a request arrives on against the job's own
+        // state without re-deriving it — and so a job doc always answers the billing question
+        // ("who pays for these tokens?") in one field pair that the sandbox cannot influence.
+        credentialProvider,
         subscriptionUsed,
         personalApiKeyUsed,
         tokenBillingExempt,
@@ -702,6 +726,7 @@ async function startVmJob({
             tokensPerGold,
             agentReasoningEffort: effortResult.value,
             credentialMode,
+            credentialProvider,
             subscriptionUsed,
             personalApiKeyUsed,
             tokenBillingExempt,

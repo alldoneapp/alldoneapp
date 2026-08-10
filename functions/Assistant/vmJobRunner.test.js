@@ -62,10 +62,12 @@ jest.mock('./vmJob', () => ({
         if (effort) parts.push(`${effort} effort`)
         return parts.length ? ` (${parts.join(' · ')})` : ''
     },
-    formatVmBillingStatus: (agentLabel, credentialMode) => {
+    // Mirrors the real signature, including the credentialLabel override the OpenRouter BYOK route
+    // depends on (AT-2230) — a stub that silently drops it would make this file's header tests lie.
+    formatVmBillingStatus: (agentLabel, credentialMode, _agentModel = '', _tokensPerGold = 0, credentialLabel = '') => {
         const mode = typeof credentialMode === 'boolean' ? (credentialMode ? 'subscription' : 'api') : credentialMode
         if (mode === 'subscription') return `🔐 Using your ${agentLabel} subscription. VM tokens will not cost Gold.`
-        if (mode === 'byok') return `🔐 Using your personal ${agentLabel} API key.`
+        if (mode === 'byok') return `🔐 Using your personal ${credentialLabel || agentLabel} API key.`
         return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
     },
     DEFAULT_CLAUDE_MODEL: 'opus',
@@ -221,6 +223,33 @@ describe('VM runner prompt', () => {
         expect(__private__.renderActivityLog(['💻 npm run lint'], 'Claude')).toContain(
             '🖥️ Working with Claude in a VM…'
         )
+    })
+
+    // AT-2230 BYOK: the live header names the KEY SLOT, not the harness. An OpenRouter run is driven
+    // by the Codex agent, so "your personal Codex API key" would point the user at the wrong
+    // Settings card the moment the key stops working.
+    test('the live header names the OpenRouter key slot for an OpenRouter run', () => {
+        expect(
+            __private__.renderVmWorkingHeader('Codex', { model: 'openrouter:deepseek/deepseek-chat' }, 'byok')
+        ).toContain('your personal Codex API key')
+        expect(
+            __private__.renderVmWorkingHeader(
+                'Codex',
+                { model: 'openrouter:deepseek/deepseek-chat' },
+                'byok',
+                'OpenRouter'
+            )
+        ).toContain('your personal OpenRouter API key')
+        expect(
+            __private__.renderActivityLog(['💻 npm run lint'], 'Codex', { model: '' }, 'byok', 'OpenRouter')
+        ).toContain('your personal OpenRouter API key')
+    })
+
+    test('an Alldone Gold header is unchanged and quotes no rate (the launch comment owns that)', () => {
+        const header = __private__.renderVmWorkingHeader('Codex', { model: 'gpt-5.6-sol' }, 'api')
+        expect(header).toContain('Using Alldone API billing')
+        // Re-deriving a rate here could print a number different from the one frozen on the job.
+        expect(header).not.toContain('Sol rate')
     })
 
     test('preserves complete multiline Claude progress updates', () => {
