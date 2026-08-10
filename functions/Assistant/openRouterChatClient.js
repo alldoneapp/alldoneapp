@@ -234,6 +234,20 @@ async function* convertChatCompletionsStream(stream, usageContext = {}) {
         yield { content: '', additional_kwargs: { tool_calls: completedToolCalls } }
     }
 
+    // A stream can end because the provider hit its max-token ceiling for this call. That is a
+    // different outcome from "the model finished its sentence": the user-facing message would be
+    // silently truncated right at this point (AT-2241). The downstream consumer can only tell the
+    // two apart if the finish reason travels with the stream, so surface it as a final control
+    // chunk. It carries no content, so existing consumers that only read `content`/`tool_calls`
+    // are unaffected.
+    if (finishReason === 'length' && (totalContentLength > 0 || completedToolCalls.length > 0)) {
+        yield {
+            content: '',
+            finishReason: 'length',
+            additional_kwargs: {},
+        }
+    }
+
     if (usage) {
         console.log('📊 OPENROUTER USAGE: Chat completion finished', {
             route: usageContext.route || 'assistant',
