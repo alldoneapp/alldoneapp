@@ -13,6 +13,12 @@ const {
 } = require('./vmAgentSettings')
 const { resolveVmRunOverrides } = require('./vmRunOverrideGuard')
 const { resolveFamilyToModel } = require('./vmAgentModelCatalog')
+const {
+    isOpenRouterSelection,
+    parseOpenRouterSelection,
+    formatOpenRouterModelLabel,
+    OPENROUTER_LABEL,
+} = require('./vmModelRouting')
 const { vmThreadSessionRef, admitVmJobToThread, isVmThreadOccupied, advanceVmThreadQueue } = require('./vmThreadQueue')
 const { buildVmChatPath } = require('./vmHostTaskHelper')
 const { applyVmFailureWorkflowHold } = require('./vmWorkflowHold')
@@ -78,6 +84,12 @@ function formatAgentModelLabel(model) {
 
     const capitalize = value => value.charAt(0).toUpperCase() + value.slice(1)
 
+    // 'openrouter:deepseek/deepseek-chat' → 'DeepSeek Chat via OpenRouter'. Naming the source
+    // matters here in a way it does not for the native providers: the same run costs different
+    // money and hits a different upstream depending on it.
+    const openRouterModel = parseOpenRouterSelection(model)
+    if (openRouterModel) return `${formatOpenRouterModelLabel(openRouterModel)} via ${OPENROUTER_LABEL}`
+
     // A bare family name is one of Claude Code's moving aliases — the concrete version is only
     // known once the CLI reports it, which vmJobRunner captures into `resolvedAgentModel`.
     if (/^[a-z]+$/.test(model)) return `${capitalize(model)} latest; resolving version…`
@@ -132,6 +144,18 @@ function normalizeAgentModel(agent, agentModel) {
     const trimmed = typeof agentModel === 'string' ? agentModel.trim() : ''
     const fallback = agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL
     if (!trimmed) return { value: fallback }
+
+    // OpenRouter selections (AT-2230) carry a `/` and possibly a `:` and therefore fail the
+    // OpenAI/Anthropic id pattern by design — they get their own, equally strict validation.
+    if (isOpenRouterSelection(trimmed)) {
+        if (agent !== 'codex') {
+            return { error: 'OpenRouter models can only be used with agent="codex".' }
+        }
+        return parseOpenRouterSelection(trimmed)
+            ? { value: trimmed }
+            : { error: 'agentModel is not a valid OpenRouter model id (expected "openrouter:vendor/model").' }
+    }
+
     if (!MODEL_SAFE_PATTERN.test(trimmed)) {
         return { error: 'agentModel contains invalid characters.' }
     }
@@ -416,7 +440,16 @@ async function startVmJob({
 
     // Resolve the user's explicit provider route. Legacy users keep the old behavior:
     // connected subscription first, otherwise Alldone API billing.
-    const credentialMode = await require('./vmApiKeyAuth').resolveVmCredentialMode(requestUserId, selectedAgent)
+    //
+    // An OpenRouter model is the one case where the user's saved credential route cannot apply: a
+    // ChatGPT subscription and a personal OpenAI key both authenticate against OpenAI, and neither
+    // can serve DeepSeek. Such a run goes through the platform OpenRouter key on normal Gold token
+    // billing, and the status text says so — silently charging Gold to someone who believes they
+    // are on their own subscription would be the worse failure.
+    const openRouterRun = isOpenRouterSelection(modelResult.value)
+    const credentialMode = openRouterRun
+        ? 'api'
+        : await require('./vmApiKeyAuth').resolveVmCredentialMode(requestUserId, selectedAgent)
     const subscriptionUsed = credentialMode === 'subscription'
     const personalApiKeyUsed = credentialMode === 'byok'
     const tokenBillingExempt = subscriptionUsed || personalApiKeyUsed

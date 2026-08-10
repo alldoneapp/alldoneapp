@@ -58,6 +58,32 @@ const PROVIDERS = {
             headers['authorization'] = `Bearer ${realKey}`
         },
     },
+    // OpenRouter models for the Codex harness (AT-2230). Same agent, same token, different
+    // upstream: the per-job token is minted for `codex`, so a leaked token is no more useful here
+    // than on the OpenAI route, and the platform OpenRouter key stays server-side exactly as the
+    // other two do. `supportsByok: false` because BYOK stores per-*agent* keys (an OpenAI key
+    // cannot authenticate against OpenRouter) — an OpenRouter run is always platform-billed, which
+    // startVmJob enforces by pinning credentialMode to 'api'.
+    openrouter: {
+        routePrefix: '/openrouter',
+        upstreamBase: 'https://openrouter.ai/api',
+        expectedAgent: 'codex',
+        realKeyField: 'OPENROUTER_API_KEY',
+        authHeader: 'authorization',
+        supportsByok: false,
+        readToken: req => (req.get('authorization') || '').replace(/^Bearer\s+/i, ''),
+        applyRealKey: (headers, realKey) => {
+            headers['authorization'] = `Bearer ${realKey}`
+        },
+        // OpenRouter attributes traffic to an app via these; harmless and useful for support.
+        extraHeaders: {
+            'http-referer': 'https://alldone.app',
+            'x-title': 'Alldone VM',
+        },
+        // Chat Completions only reports usage on a streamed response when the caller asks for it.
+        // Without this, a streaming Codex run bills zero Gold — see ensureStreamUsageRequested.
+        requestsStreamUsage: true,
+    },
 }
 
 // Headers we must never forward upstream (hop-by-hop, routing, or the inbound auth we replace).
@@ -229,17 +255,19 @@ async function handleProxyRequest(req, res) {
         }
 
         const credentialMode = verdict.payload.cm === 'byok' ? 'byok' : 'api'
-        const realKey =
-            credentialMode === 'byok'
-                ? await require('./vmApiKeyAuth').loadVmApiKey(verdict.payload.uid, config.expectedAgent)
-                : env[config.realKeyField]
+        // A route that does not support BYOK is always platform-billed; the personal key stored for
+        // this agent belongs to a different provider and would simply be rejected upstream.
+        const usePersonalKey = credentialMode === 'byok' && config.supportsByok !== false
+        const realKey = usePersonalKey
+            ? await require('./vmApiKeyAuth').loadVmApiKey(verdict.payload.uid, config.expectedAgent)
+            : env[config.realKeyField]
         if (!realKey) {
             console.error('🔐 VM PROXY: upstream key missing', {
                 provider: matched.provider,
                 credentialMode,
             })
             res.status(503).send(
-                credentialMode === 'byok'
+                usePersonalKey
                     ? 'Personal API key is missing. Add or replace it in Settings → Integrations.'
                     : 'Upstream key not configured'
             )
@@ -255,6 +283,7 @@ async function handleProxyRequest(req, res) {
             else if (Array.isArray(value)) headers[key] = value.join(', ')
         }
         config.applyRealKey(headers, realKey)
+        for (const [key, value] of Object.entries(config.extraHeaders || {})) headers[key] = value
 
         const queryIndex = (req.originalUrl || '').indexOf('?')
         const queryString = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : ''
@@ -262,11 +291,15 @@ async function handleProxyRequest(req, res) {
 
         const method = (req.method || 'GET').toUpperCase()
         const hasBody = method !== 'GET' && method !== 'HEAD'
-        const body = hasBody ? req.rawBody || undefined : undefined
+        const rawBody = hasBody ? req.rawBody || undefined : undefined
+        const body = config.requestsStreamUsage ? ensureStreamUsageRequested(rawBody) : rawBody
+        // The rewrite changes the byte length, but `content-length` is already stripped above so
+        // fetch recomputes it. Only the content type needs asserting, for a caller that omitted it.
+        if (body !== rawBody && body) headers['content-type'] = headers['content-type'] || 'application/json'
 
         const upstream = await fetch(upstreamUrl, { method, headers, body })
 
-        if (credentialMode === 'byok' && (upstream.status === 401 || upstream.status === 403)) {
+        if (usePersonalKey && (upstream.status === 401 || upstream.status === 403)) {
             require('./vmApiKeyAuth')
                 .markVmApiKeyRejected(verdict.payload.uid, config.expectedAgent)
                 .catch(() => {})
@@ -300,6 +333,33 @@ async function handleProxyRequest(req, res) {
                 res.end()
             } catch (_) {}
         }
+    }
+}
+
+/**
+ * Ask the upstream to report token usage on a streamed Chat Completions response.
+ *
+ * The OpenAI-compatible Chat Completions API omits `usage` from a stream unless the request sets
+ * `stream_options.include_usage`. Codex does not set it, so without this rewrite every streamed
+ * OpenRouter run would report zero tokens and cost zero Gold — a silent revenue hole rather than a
+ * visible failure, which is exactly the kind of bug that survives review.
+ *
+ * Fails open: anything unparseable is forwarded byte-for-byte. Losing metering on one odd request
+ * is strictly better than breaking it.
+ */
+function ensureStreamUsageRequested(rawBody) {
+    if (!rawBody) return rawBody
+    try {
+        const text = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : String(rawBody)
+        const payload = JSON.parse(text)
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return rawBody
+        if (payload.stream !== true) return rawBody
+        const current =
+            payload.stream_options && typeof payload.stream_options === 'object' ? payload.stream_options : {}
+        if (current.include_usage === true) return rawBody
+        return Buffer.from(JSON.stringify({ ...payload, stream_options: { ...current, include_usage: true } }), 'utf8')
+    } catch (_) {
+        return rawBody
     }
 }
 
@@ -387,7 +447,9 @@ function extractUsageFromJsonPayload(provider, payload) {
         if (payload.type === 'message_delta' && payload.usage) return normalizeUsage(payload.usage)
         return null
     }
-    if (provider === 'openai') {
+    // OpenRouter speaks the same OpenAI-compatible shapes: `usage` on a Chat Completions chunk
+    // (final chunk when include_usage is on) or on a non-streamed response body.
+    if (provider === 'openai' || provider === 'openrouter') {
         if (payload.usage) return normalizeUsage(payload.usage)
         if (payload.response?.usage) return normalizeUsage(payload.response.usage)
         if (payload.type === 'response.completed' && payload.response?.usage)
@@ -632,6 +694,7 @@ module.exports = {
     captureUsageFromTextChunk,
     finalizeCapturedUsage,
     chargeProxyTokenGold,
+    ensureStreamUsageRequested,
     mintProxyToken,
     verifyProxyToken,
     isProxyEnabled,

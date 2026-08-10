@@ -210,3 +210,106 @@ describe('DefaultVmAgentSection model family picker', () => {
         expect(optionLabels(tree)).not.toEqual(expect.arrayContaining(['Sol']))
     })
 })
+
+// AT-2230: Codex can also run tool-calling OpenRouter models (DeepSeek and friends). The source
+// toggle only changes what the list shows — it never saves on its own.
+const OPENROUTER_CATALOG = {
+    families: [
+        {
+            id: 'openrouter:deepseek/deepseek-chat',
+            label: 'DeepSeek Chat',
+            vendor: 'deepseek',
+            modelId: 'deepseek/deepseek-chat',
+            resolvedModel: 'openrouter:deepseek/deepseek-chat',
+        },
+        {
+            id: 'openrouter:qwen/qwen3-max',
+            label: 'Qwen3 Max',
+            vendor: 'qwen',
+            modelId: 'qwen/qwen3-max',
+            resolvedModel: 'openrouter:qwen/qwen3-max',
+        },
+    ],
+    source: 'live',
+    available: true,
+}
+
+const withOpenRouter = (overrides = {}) =>
+    settingsPayload({ modelCatalogs: { ...CATALOGS, openrouter: OPENROUTER_CATALOG }, ...overrides })
+
+describe('DefaultVmAgentSection OpenRouter source (AT-2230)', () => {
+    it('offers the source toggle for Codex and shows OpenAI models first', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter())
+        const tree = await renderSection()
+        const labels = optionLabels(tree)
+
+        expect(labels).toEqual(expect.arrayContaining(['OpenAI', 'OpenRouter']))
+        expect(labels).toEqual(expect.arrayContaining(['Sol', 'Terra', 'Luna']))
+        expect(labels).not.toEqual(expect.arrayContaining(['DeepSeek Chat']))
+    })
+
+    it('swaps the model list to OpenRouter without saving anything', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter())
+        const tree = await renderSection()
+
+        await act(async () => {
+            await pressOption(tree, 'OpenRouter')()
+        })
+
+        const labels = optionLabels(tree)
+        expect(labels).toEqual(expect.arrayContaining(['DeepSeek Chat', 'Qwen3 Max']))
+        expect(labels).not.toEqual(expect.arrayContaining(['Sol']))
+        expect(setDefaultVmAgentModel).not.toHaveBeenCalled()
+    })
+
+    it('saves the prefixed selection so the run knows which upstream to use', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter())
+        const tree = await renderSection()
+
+        await act(async () => {
+            await pressOption(tree, 'OpenRouter')()
+        })
+        await act(async () => {
+            await pressOption(tree, 'DeepSeek Chat')()
+        })
+
+        expect(setDefaultVmAgentModel).toHaveBeenCalledWith('codex', 'openrouter:deepseek/deepseek-chat')
+    })
+
+    // Returning to an OpenAI list would make a saved DeepSeek default look lost.
+    it('opens on the OpenRouter list when that is what the user saved', async () => {
+        getVmAgentSettings.mockResolvedValue(
+            withOpenRouter({ defaultModelFamilies: { claude: null, codex: 'openrouter:deepseek/deepseek-chat' } })
+        )
+        const tree = await renderSection()
+
+        expect(optionLabels(tree)).toEqual(expect.arrayContaining(['DeepSeek Chat']))
+    })
+
+    it('hides the toggle for Claude, which cannot run an OpenRouter model', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter({ effectiveDefaultAgent: 'claude' }))
+        const tree = await renderSection()
+
+        expect(optionLabels(tree)).not.toEqual(expect.arrayContaining(['OpenRouter']))
+    })
+
+    // Offering a model whose run would fail closed is worse than not offering it at all.
+    it('hides the toggle when the environment cannot reach OpenRouter', async () => {
+        getVmAgentSettings.mockResolvedValue(
+            withOpenRouter({
+                modelCatalogs: { ...CATALOGS, openrouter: { ...OPENROUTER_CATALOG, available: false } },
+            })
+        )
+        const tree = await renderSection()
+
+        expect(optionLabels(tree)).not.toEqual(expect.arrayContaining(['OpenRouter']))
+    })
+
+    it('is completely absent for a backend that returns no OpenRouter catalog at all', async () => {
+        getVmAgentSettings.mockResolvedValue(settingsPayload())
+        const tree = await renderSection()
+
+        expect(optionLabels(tree)).not.toEqual(expect.arrayContaining(['OpenRouter']))
+        expect(optionLabels(tree)).toEqual(expect.arrayContaining(['Sol']))
+    })
+})

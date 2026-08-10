@@ -193,3 +193,68 @@ describe('resolveVmRunOverrides', () => {
         expect(result.approvalPolicy).toBeUndefined()
     })
 })
+
+// AT-2230: OpenRouter models run through the Codex harness, so naming one is both a model request
+// and an agent request. Nobody types the encoded id — they type "use deepseek".
+describe('OpenRouter model overrides', () => {
+    test('a vendor mention corroborates the model and the Codex harness', () => {
+        const resolved = resolveVmRunOverrides({
+            requestText: 'run this one with deepseek please',
+            agent: 'codex',
+            agentModel: 'openrouter:deepseek/deepseek-chat',
+        })
+
+        expect(resolved.agent).toBe('codex')
+        expect(resolved.agentModel).toBe('openrouter:deepseek/deepseek-chat')
+        expect(resolved.ignored).toEqual([])
+    })
+
+    test('naming the source alone is enough', () => {
+        expect(
+            resolveVmRunOverrides({
+                requestText: 'use an openrouter model for this',
+                agentModel: 'openrouter:qwen/qwen3-max',
+            }).agentModel
+        ).toBe('openrouter:qwen/qwen3-max')
+    })
+
+    // The whole point of the guard: the assistant picks a model on its own and the user's saved
+    // default silently loses. An uncorroborated OpenRouter model must be dropped like any other.
+    test('drops an OpenRouter model the user never asked for', () => {
+        const resolved = resolveVmRunOverrides({
+            requestText: 'please fix the failing login test',
+            agentModel: 'openrouter:deepseek/deepseek-chat',
+        })
+
+        expect(resolved.agentModel).toBeUndefined()
+        expect(resolved.ignored).toEqual([{ field: 'agentModel', requested: 'openrouter:deepseek/deepseek-chat' }])
+    })
+
+    // Matching generic tokens would make almost any sentence corroborate almost any model.
+    test('a generic word inside the id is not evidence', () => {
+        expect(
+            resolveVmRunOverrides({
+                requestText: 'summarize the chat and write it up',
+                agentModel: 'openrouter:deepseek/deepseek-chat',
+            }).agentModel
+        ).toBeUndefined()
+
+        expect(
+            resolveVmRunOverrides({
+                requestText: 'give me the free version of the report',
+                agentModel: 'openrouter:deepseek/deepseek-r1:free',
+            }).agentModel
+        ).toBeUndefined()
+    })
+
+    test('an OpenRouter model still cannot survive a dropped agent override', () => {
+        const resolved = resolveVmRunOverrides({
+            requestText: 'just get it done',
+            agent: 'codex',
+            agentModel: 'openrouter:deepseek/deepseek-chat',
+        })
+
+        expect(resolved.agent).toBeUndefined()
+        expect(resolved.agentModel).toBeUndefined()
+    })
+})
