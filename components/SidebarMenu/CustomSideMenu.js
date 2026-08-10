@@ -50,6 +50,8 @@ export default function CustomSideMenu({ navigation }) {
         Animated.timing(floatingWidth, {
             toValue: targetWidth,
             duration: 100,
+            // width is a layout prop, so the native driver cannot drive it.
+            useNativeDriver: false,
         }).start()
     }, [expanded])
 

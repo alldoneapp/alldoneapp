@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 
 import { LogOut, setInitialUrl, setResolvingSharedResource } from './redux/actions'
@@ -14,8 +14,7 @@ import { initIpRegistry } from './utils/Geolocation/GeolocationHelper'
 import InitLoadView from './components/InitLoadView/InitLoadView'
 import InFocusTaskWatcher from './components/InitLoadView/InFocusTaskWatcher'
 import { processNewUser } from './utils/InitialLoad/newUserHelper'
-import { loadGlobalDataAndGetUserResult, loadInitialDataForLoggedUser } from './utils/InitialLoad/loggedUserHelper'
-import { LOGIN_FAILURE_ACTIONS, describeLoginError, resolveLoginFailureAction } from './utils/Auth/authErrorHelper'
+import { loadGlobalDataAndGetUser, loadInitialDataForLoggedUser } from './utils/InitialLoad/loggedUserHelper'
 import { AppContainer } from './AppNavigator'
 import { unwatch } from './utils/backends/firestore'
 import Shortcuts from './components/UIComponents/ShortcutCheatSheet/Shortcuts'
@@ -24,11 +23,6 @@ import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoa
 import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
 import UndoActionBar from './components/Undo/UndoActionBar'
-
-// A failing initial data load is retried a few times before the user is told about it - and the
-// session is kept in every case (see handleLoginFailure).
-const MAX_LOGIN_ATTEMPTS = 3
-const LOGIN_RETRY_DELAY_MS = 3000
 
 export default function AppContent() {
     const loggedIn = useSelector(state => state.loggedIn)
@@ -41,10 +35,6 @@ export default function AppContent() {
     const loadingMessage = useSelector(state => state.loadingMessage)
     const [heavyComponentsLoaded, setHeavyComponentsLoaded] = useState(false)
     const [connectingMessage] = useState(() => getConnectingMessage())
-    // onAuthStateChanged can fire again while an initial load (incl. its retries) is still
-    // running. Two concurrent loads race on the same watchers and redux state, so the second one
-    // for the same user is ignored.
-    const loginInProgressUid = useRef(null)
 
     const logoutUser = async () => {
         const currentUrl = window.location.pathname + window.location.search
@@ -137,55 +127,7 @@ export default function AppContent() {
         }
     }
 
-    const signOut = async () => {
-        try {
-            await new Promise(resolve => Backend.logout(resolve))
-        } catch (e) {
-            console.error('Logout failed:', e)
-        }
-    }
-
-    /**
-     * A failure while loading the initial data must NOT end a valid session. Only an explicitly
-     * invalid/revoked authentication signs the user out; everything else is retried and, if it
-     * keeps failing, reported while the user stays signed in.
-     */
-    const handleLoginFailure = async (firebaseUser, error, attempt) => {
-        const details = describeLoginError(error)
-        console.error('Error during login:', error, { attempt, ...details })
-
-        if (resolveLoginFailureAction(error) === LOGIN_FAILURE_ACTIONS.SIGN_OUT) {
-            console.warn(`Authentication is no longer valid (${details.code}) - signing out`)
-            alert(
-                `Your session is no longer valid: ${details.message}\n\n` +
-                    'You will be logged out. Please sign in again.'
-            )
-            await signOut()
-            return
-        }
-
-        if (attempt < MAX_LOGIN_ATTEMPTS - 1) {
-            const delay = LOGIN_RETRY_DELAY_MS * (attempt + 1)
-            console.warn(
-                `Initial data load failed (${details.code || details.name}) - keeping the session and retrying in ` +
-                    `${delay}ms (attempt ${attempt + 2}/${MAX_LOGIN_ATTEMPTS})`
-            )
-            await new Promise(resolve => setTimeout(resolve, delay))
-            await tryLogIn(firebaseUser, 0, attempt + 1)
-            return
-        }
-
-        console.error('Initial data could not be loaded after several attempts. The user stays signed in.', details)
-        const shouldReload = confirm(
-            `The app could not finish loading your data: ${details.message}\n\n` +
-                'You are still signed in.\n\n' +
-                '• Click OK to reload the app\n' +
-                '• Click Cancel to stay on this screen'
-        )
-        if (shouldReload) window.location.reload()
-    }
-
-    const tryLogIn = async (firebaseUser, wait, attempt = 0) => {
+    const tryLogIn = async (firebaseUser, wait) => {
         const { registeredNewUser } = store.getState()
         const { uid: userId } = firebaseUser
 
@@ -193,44 +135,37 @@ export default function AppContent() {
             await processNewUser(firebaseUser)
         } else {
             try {
-                const { user, missing, error } = await loadGlobalDataAndGetUserResult(userId)
+                const user = await loadGlobalDataAndGetUser(userId)
 
                 if (user) {
                     await loadInitialDataForLoggedUser(user)
-                } else if (error) {
-                    // The read failed (offline, transient permission error). This is NOT a missing
-                    // account, so never run the account-recovery/delete path for it.
-                    throw error
                 } else if (wait > 0) {
                     setTimeout(() => {
-                        tryLogIn(firebaseUser, 0, attempt)
+                        tryLogIn(firebaseUser, 0)
                     }, wait)
-                } else if (missing) {
-                    // User document really doesn't exist in Firestore - try to recover
-                    await handleMissingUserDocument(firebaseUser)
                 } else {
-                    throw new Error('User data could not be loaded')
+                    // User document doesn't exist in Firestore - try to recover
+                    await handleMissingUserDocument(firebaseUser)
                 }
             } catch (error) {
-                await handleLoginFailure(firebaseUser, error, attempt)
+                console.error('Error during login:', error)
+                alert(
+                    `An error occurred during login: ${error.message || 'Unknown error'}\n\n` +
+                        'You will be logged out. Please try again or contact support.'
+                )
+                try {
+                    await new Promise(resolve => Backend.logout(resolve))
+                } catch (e) {
+                    console.error('Logout failed:', e)
+                }
             }
         }
     }
 
     const onInitFirabase = async firebaseUser => {
         if (firebaseUser && !firebaseUser.isAnonymous) {
-            if (loginInProgressUid.current === firebaseUser.uid) {
-                console.log('Login already in progress for this user, ignoring the repeated auth event')
-                return
-            }
-            loginInProgressUid.current = firebaseUser.uid
-            try {
-                await tryLogIn(firebaseUser, 0)
-            } finally {
-                loginInProgressUid.current = null
-            }
+            await tryLogIn(firebaseUser, 0)
         } else {
-            loginInProgressUid.current = null
             await logoutUser()
         }
     }

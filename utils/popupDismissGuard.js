@@ -139,7 +139,13 @@ export const installPopupOutsideDismissGuard = (popupElement, onDismiss) => {
 
     const startEventTypes = ['pointerdown', 'mousedown', 'touchstart']
     const releaseEventTypes = ['pointerup', 'mouseup', 'touchend']
-    startEventTypes.forEach(type => window.addEventListener(type, captureGestureStart, true))
+    // touchstart is scroll-blocking, so a non-passive listener makes Chrome wait
+    // on it before it can scroll (and it logs a violation). consumeDismissGestureEvent
+    // deliberately never calls preventDefault for touch events, so this listener can
+    // be passive; the mouse/pointer ones still need to be able to preventDefault.
+    const listenerOptions = type => (type === 'touchstart' ? { capture: true, passive: true } : true)
+
+    startEventTypes.forEach(type => window.addEventListener(type, captureGestureStart, listenerOptions(type)))
     releaseEventTypes.forEach(type => window.addEventListener(type, captureGestureRelease, true))
 
     return () => {

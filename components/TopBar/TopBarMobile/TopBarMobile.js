@@ -41,6 +41,8 @@ export default function TopBarMobile() {
                 {
                     toValue: 0, // Animate to final value
                     duration: 200,
+                    // height is a layout prop, so the native driver cannot drive it.
+                    useNativeDriver: false,
                 }
             ).start(toggleNavPickerOff) // Start the animation
         } else {
@@ -50,6 +52,8 @@ export default function TopBarMobile() {
                 {
                     toValue: SECONDARY_BAR_MOBILE, // Animate to final value
                     duration: 200,
+                    // height is a layout prop, so the native driver cannot drive it.
+                    useNativeDriver: false,
                 }
             ).start(toggleNavPickerOn) // Start the animation
         }

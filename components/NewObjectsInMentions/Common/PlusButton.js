@@ -14,9 +14,6 @@ export default function PlusButton({ onPress, disabled, modalId, processing }) {
 
     const onPressEnter = e => {
         if (disabled || processing) return
-        // Holding Return down repeats the keydown event, and an IME commit
-        // reports its own Enter. Neither is a second intended submission.
-        if (e.repeat || e.isComposing || e.keyCode === 229) return
 
         if (
             e.key === 'Enter' &&

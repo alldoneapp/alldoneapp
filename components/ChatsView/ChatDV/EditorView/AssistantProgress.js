@@ -65,77 +65,6 @@ const ACTIVITY_SEQUENCES = {
     ],
 }
 
-/**
- * Emoji per activity key. The key itself and its already-sanitized subject are produced
- * server-side (functions/Assistant/assistantToolActivity.js) and travel on
- * `assistantRun.activity`; an unmapped key simply falls back to the kind's emoji, so
- * adding a key on the server can never break rendering here.
- */
-export const ACTION_EMOJI = {
-    assistant_activity_search_notes: '🔍',
-    assistant_activity_search_tasks: '🔍',
-    assistant_activity_search_goals: '🔍',
-    assistant_activity_search_contacts: '🔍',
-    assistant_activity_search_chats: '🔍',
-    assistant_activity_search_assistants: '🔍',
-    assistant_activity_search_workspace: '🔍',
-    assistant_activity_search_workspace_plain: '🗂️',
-    assistant_activity_search_web: '🔎',
-    assistant_activity_search_web_plain: '🔎',
-    assistant_activity_search_email: '📬',
-    assistant_activity_search_email_plain: '📬',
-    assistant_activity_search_calendar: '📅',
-    assistant_activity_search_calendar_plain: '📅',
-    assistant_activity_read_notes: '🗂️',
-    assistant_activity_read_tasks: '✅',
-    assistant_activity_read_goals: '🎯',
-    assistant_activity_read_contacts: '👥',
-    assistant_activity_read_chats: '💬',
-    assistant_activity_read_updates: '📰',
-    assistant_activity_read_focus: '🎯',
-    assistant_activity_read_projects: '🗂️',
-    assistant_activity_read_okrs: '🎯',
-    assistant_activity_read_happiness: '😊',
-    assistant_activity_create_task: '✅',
-    assistant_activity_create_task_plain: '✅',
-    assistant_activity_update_task: '✏️',
-    assistant_activity_update_task_plain: '✏️',
-    assistant_activity_create_note: '📝',
-    assistant_activity_create_note_plain: '📝',
-    assistant_activity_update_note: '✏️',
-    assistant_activity_update_note_plain: '✏️',
-    assistant_activity_update_contact: '👤',
-    assistant_activity_update_contact_plain: '👤',
-    assistant_activity_add_comment: '💬',
-    assistant_activity_update_memory: '🧠',
-    assistant_activity_compact_context: '🧹',
-    assistant_activity_create_event: '📅',
-    assistant_activity_create_event_plain: '📅',
-    assistant_activity_update_event: '📅',
-    assistant_activity_update_event_plain: '📅',
-    assistant_activity_delete_event: '🗑️',
-    assistant_activity_find_availability: '📅',
-    assistant_activity_draft_email: '✉️',
-    assistant_activity_update_draft: '✉️',
-    assistant_activity_organize_email: '📬',
-    assistant_activity_check_weather: '🌦️',
-    assistant_activity_check_weather_plain: '🌦️',
-    assistant_activity_plan_route: '🗺️',
-    assistant_activity_plan_route_plain: '🗺️',
-    assistant_activity_find_places: '📍',
-    assistant_activity_find_places_plain: '📍',
-    assistant_activity_load_skill: '📚',
-    assistant_activity_load_skill_plain: '📚',
-    assistant_activity_vm_task: '🤝',
-    assistant_activity_vm_task_plain: '🤝',
-    assistant_activity_ask_assistant: '🤝',
-    assistant_activity_ask_assistant_plain: '🤝',
-}
-
-// Defensive cap: the server truncates to 48 characters, but a subject that predates the
-// current sanitizer (or an unexpectedly long one) must not blow up the single-line row.
-const MAX_RENDERED_SUBJECT_LENGTH = 60
-
 const normalizeToolName = toolName =>
     String(toolName || '')
         .trim()
@@ -178,48 +107,13 @@ export const getAssistantProgressKind = activity => {
 
 export const getAssistantProgressSequence = activity => ACTIVITY_SEQUENCES[getAssistantProgressKind(activity)]
 
-/**
- * The specific, human-readable line for a running tool call — "Searching notes for
- * “Pricing”". Returns null when the run carries no safe detail (no whitelist rule for
- * the tool, an unrecognised key, or a subject the server refused to expose), in which
- * case the caller keeps the generic rotating story.
- */
-export const getAssistantProgressDetail = activity => {
-    if (normalizeToolName(activity?.phase) !== 'tool') return null
-
-    const actionKey = String(activity?.actionKey || '').trim()
-    const emoji = ACTION_EMOJI[actionKey]
-    if (!emoji) return null
-
-    const rawSubject = typeof activity?.subject === 'string' ? activity.subject.replace(/\s+/g, ' ').trim() : ''
-    const subject =
-        rawSubject.length > MAX_RENDERED_SUBJECT_LENGTH
-            ? `${rawSubject.slice(0, MAX_RENDERED_SUBJECT_LENGTH).trim()}…`
-            : rawSubject
-
-    const text = translate(actionKey, subject ? { subject } : {})
-
-    // A subject-taking phrase rendered without a subject leaves an unresolved
-    // placeholder; fall back rather than show it.
-    if (!text || text.includes('%{') || /\bmissing\b/i.test(text)) return null
-
-    return { emoji, text }
-}
-
 export default function AssistantProgress({
     activity = { phase: 'preparing' },
     compact = false,
     appearance = 'light',
 }) {
     const sequence = useMemo(() => getAssistantProgressSequence(activity), [activity?.phase, activity?.toolName])
-    const detail = useMemo(() => getAssistantProgressDetail(activity), [
-        activity?.phase,
-        activity?.actionKey,
-        activity?.subject,
-    ])
-    const activityKey = `${activity?.phase || 'preparing'}:${activity?.toolName || ''}:${activity?.actionKey || ''}:${
-        activity?.subject || ''
-    }:${activity?.startedAt || ''}`
+    const activityKey = `${activity?.phase || 'preparing'}:${activity?.toolName || ''}:${activity?.startedAt || ''}`
     const [stepIndex, setStepIndex] = useState(0)
     const darkAppearance = appearance === 'dark'
 
@@ -231,22 +125,13 @@ export default function AssistantProgress({
         return () => clearInterval(interval)
     }, [activityKey, sequence.length])
 
-    // With a specific detail there is nothing to rotate: the one line that says what is
-    // actually happening stays pinned for the whole tool call, and the footer goes back
-    // to plain reassurance instead of naming the tool.
-    const visibleSteps = detail
-        ? [[detail.emoji, detail.text, true]]
-        : sequence.slice(Math.max(0, stepIndex - 2), stepIndex + 1).map(([emoji, textKey]) => [emoji, textKey, false])
-
+    const visibleSteps = sequence.slice(Math.max(0, stepIndex - 2), stepIndex + 1)
     const footerKey = stepIndex >= 3 ? 'assistant_progress_reassurance_slow' : 'assistant_progress_reassurance'
     const activeToolLabel =
-        !detail && normalizeToolName(activity?.phase) === 'tool'
-            ? getAssistantProgressToolLabel(activity?.toolName)
-            : ''
+        normalizeToolName(activity?.phase) === 'tool' ? getAssistantProgressToolLabel(activity?.toolName) : ''
     const footerText = activeToolLabel
         ? `${translate('assistant_progress_using_tool')}: ${activeToolLabel}`
         : translate(footerKey)
-    const currentStepText = detail ? detail.text : translate(sequence[stepIndex][1])
 
     return (
         <View
@@ -257,10 +142,10 @@ export default function AssistantProgress({
             ]}
             testID="assistant-progress"
             accessibilityLiveRegion="polite"
-            accessibilityLabel={`${currentStepText}. ${footerText}`}
+            accessibilityLabel={`${translate(sequence[stepIndex][1])}. ${footerText}`}
         >
             <View style={localStyles.trail} testID="assistant-progress-trail">
-                {visibleSteps.map(([emoji, textKey, isLiteralText], index) => {
+                {visibleSteps.map(([emoji, textKey], index) => {
                     const isCurrent = index === visibleSteps.length - 1
                     return (
                         <View key={textKey} style={[localStyles.stepRow, !isCurrent && localStyles.previousStep]}>
@@ -278,7 +163,7 @@ export default function AssistantProgress({
                                 ellipsizeMode="tail"
                                 testID="assistant-progress-step-text"
                             >
-                                {isLiteralText ? textKey : translate(textKey)}
+                                {translate(textKey)}
                             </Text>
                             {isCurrent && (
                                 <ActivityIndicator

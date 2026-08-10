@@ -11,7 +11,6 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { objectIsLockedForUser } from '../../Guides/guidesHelper'
 import LockedGoalModal from '../../UIComponents/FloatModals/LockedGoalModal/LockedGoalModal'
 import GoalIndicator from '../GoalIndicator'
-import useOptimisticGoalPostponeHidden from '../../GoalsView/useOptimisticGoalPostponeHidden'
 
 export default function ParentGoalSection({
     projectId,
@@ -46,8 +45,6 @@ export default function ParentGoalSection({
     const [editing, setEditing] = useState(false)
     const [showingTasks, setShowingTasks] = useState(true)
     const dismissibleRef = useRef(null)
-    // AT-2160: keep this above the early return — hooks must run on every render.
-    const hiddenByOptimisticPostpone = useOptimisticGoalPostponeHidden(projectId, goalId)
 
     const setDismissibleRefs = ref => {
         dismissibleRef.current = ref
@@ -89,10 +86,6 @@ export default function ParentGoalSection({
     const toggleTasksList = () => {
         setShowingTasks(state => !state)
     }
-
-    // AT-2160: hides the goal row *and* the tasks under it, which is what the cascade will do
-    // once the server transaction lands.
-    if (hiddenByOptimisticPostpone) return null
 
     return (
         <View

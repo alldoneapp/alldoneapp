@@ -7,18 +7,11 @@ import {
     getVmAgentSettings,
     setDefaultVmAgent,
     setDefaultVmAgentReasoningEffort,
-    setDefaultVmApprovalPolicy,
 } from '../../../utils/backends/firestore'
 
 const AGENTS = [
     { id: 'claude', label: 'Claude' },
     { id: 'codex', label: 'Codex' },
-]
-
-const APPROVAL_POLICIES = [
-    { id: 'strict', label: 'Strict' },
-    { id: 'balanced', label: 'Balanced' },
-    { id: 'permissive', label: 'Permissive' },
 ]
 
 const EFFORTS = [
@@ -32,10 +25,8 @@ const EFFORTS = [
 export default function DefaultVmAgentSection() {
     const [selectedAgent, setSelectedAgent] = useState(null)
     const [selectedEffort, setSelectedEffort] = useState(null)
-    const [selectedPolicy, setSelectedPolicy] = useState(null)
     const [savingAgent, setSavingAgent] = useState(null)
     const [savingEffort, setSavingEffort] = useState('')
-    const [savingPolicy, setSavingPolicy] = useState('')
     const [loaded, setLoaded] = useState(false)
     const [error, setError] = useState('')
 
@@ -50,7 +41,6 @@ export default function DefaultVmAgentSection() {
                             ? settings.effectiveDefaultReasoningEffort
                             : settings.defaultReasoningEffort || 'medium'
                     )
-                    setSelectedPolicy(settings.effectiveDefaultApprovalPolicy || 'balanced')
                     setLoaded(true)
                 }
             })
@@ -76,23 +66,6 @@ export default function DefaultVmAgentSection() {
             setError(saveError?.message || translate('Could not save the default VM agent.'))
         } finally {
             setSavingAgent(null)
-        }
-    }
-
-    const selectPolicy = async policy => {
-        if (savingAgent || savingEffort || savingPolicy || policy === selectedPolicy) return
-
-        const previousPolicy = selectedPolicy
-        setSelectedPolicy(policy)
-        setSavingPolicy(policy)
-        setError('')
-        try {
-            await setDefaultVmApprovalPolicy(policy)
-        } catch (saveError) {
-            setSelectedPolicy(previousPolicy)
-            setError(saveError?.message || translate('Could not save the default VM approval policy.'))
-        } finally {
-            setSavingPolicy('')
         }
     }
 
@@ -170,39 +143,6 @@ export default function DefaultVmAgentSection() {
                                 {translate(effort.label)}
                             </Text>
                             {savingEffort === effort.key && (
-                                <ActivityIndicator size="small" color={colors.Primary100} style={localStyles.spinner} />
-                            )}
-                        </TouchableOpacity>
-                    )
-                })}
-            </View>
-            <Text style={[styles.title6, localStyles.effortTitle]}>{translate('VM approval policy')}</Text>
-            <Text style={[styles.body2, localStyles.sectionDescription]}>
-                {translate(
-                    'Controls which operations an interactive VM task can run without asking you first. Balanced auto-approves read-only internet access and pushing a feature branch or opening a merge request, and still asks before merging, pushing to the base branch, deployments and anything touching secrets.'
-                )}
-            </Text>
-            <View style={[localStyles.options, localStyles.effortOptions]}>
-                {APPROVAL_POLICIES.map(policy => {
-                    const selected = selectedPolicy === policy.id
-                    const disabled = !!savingAgent || !!savingEffort || !!savingPolicy || !loaded
-                    return (
-                        <TouchableOpacity
-                            key={policy.id}
-                            style={[
-                                localStyles.option,
-                                localStyles.effortOption,
-                                selected && localStyles.selectedOption,
-                            ]}
-                            onPress={() => selectPolicy(policy.id)}
-                            disabled={disabled}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected, disabled }}
-                        >
-                            <Text style={[styles.subtitle2, selected && localStyles.selectedLabel]}>
-                                {translate(policy.label)}
-                            </Text>
-                            {savingPolicy === policy.id && (
                                 <ActivityIndicator size="small" color={colors.Primary100} style={localStyles.spinner} />
                             )}
                         </TouchableOpacity>

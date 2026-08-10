@@ -28,7 +28,6 @@ import NavigationService from '../../utils/NavigationService'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import SharedHelper from '../../utils/SharedHelper'
 import { updateWorkstream, uploadNewWorkstream } from '../../utils/backends/Workstreams/workstreamsFirestore'
-import { createSingleFlightSubmit } from '../../hooks/useSingleFlightSubmit'
 
 export default class EditWorkstream extends Component {
     constructor(props) {
@@ -106,15 +105,11 @@ export default class EditWorkstream extends Component {
         }
     }
 
-    // Enter reaches this editor through the document listener, Quill's newline
-    // callback and the done button at once, and each run mints a new workstream,
-    // so creation is guarded against duplicated in flight submissions.
-    createWorkstream = createSingleFlightSubmit((tmpStream, needToCancelAction) => {
+    createWorkstream = (tmpStream, needToCancelAction) => {
         const { projectId, onCancelAction } = this.props
-        const creation = uploadNewWorkstream(projectId, tmpStream)
+        uploadNewWorkstream(projectId, tmpStream)
         if (needToCancelAction) onCancelAction()
-        return creation
-    })
+    }
 
     needBeUpdated = () => {
         const { adding, stream } = this.props
