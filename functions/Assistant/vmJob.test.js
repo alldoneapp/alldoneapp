@@ -61,6 +61,8 @@ jest.mock('./vmAgentModelCatalog', () => ({
     // Keep the real helpers (vmAgentSettings imports isValidFamilyId from here); stub only the
     // network-backed resolver.
     ...jest.requireActual('./vmAgentModelCatalog'),
+    // The platform OpenRouter key is an environment fact; the tests that care set it explicitly.
+    isOpenRouterConfigured: jest.fn(() => true),
     resolveFamilyToModel: jest.fn(async (provider, family) => {
         // An OpenRouter selection resolves to itself, prefix intact — see vmAgentModelCatalog.
         if (typeof family === 'string' && family.startsWith('openrouter:')) {
@@ -852,6 +854,23 @@ describe('startVmJob', () => {
                     requestText: 'use codex with openrouter deepseek',
                 })
             ).resolves.toMatchObject({ success: false })
+        })
+
+        // The proxy would reject the very first request; failing here means the base reserve and
+        // per-minute Gold are never taken for a run that cannot work.
+        test('refuses before charging any Gold when the platform key is not configured', async () => {
+            require('./vmAgentModelCatalog').isOpenRouterConfigured.mockReturnValueOnce(false)
+
+            await expect(
+                startVmJob({
+                    ...baseArgs,
+                    agent: 'codex',
+                    agentModel: 'openrouter:deepseek/deepseek-chat',
+                    requestText: 'use deepseek for this',
+                })
+            ).resolves.toMatchObject({ success: false, message: expect.stringContaining('not available') })
+
+            expect(deductGold).not.toHaveBeenCalled()
         })
 
         test('falls back to the agent default when the saved OpenRouter model no longer exists', async () => {

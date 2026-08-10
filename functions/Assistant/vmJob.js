@@ -12,7 +12,7 @@ const {
     resolveVmApprovalPolicy,
 } = require('./vmAgentSettings')
 const { resolveVmRunOverrides } = require('./vmRunOverrideGuard')
-const { resolveFamilyToModel } = require('./vmAgentModelCatalog')
+const { resolveFamilyToModel, isOpenRouterConfigured } = require('./vmAgentModelCatalog')
 const {
     isOpenRouterSelection,
     parseOpenRouterSelection,
@@ -420,6 +420,17 @@ async function startVmJob({
     const effortResult = normalizeAgentReasoningEffort(selectedAgent, resolvedAgentSettings.reasoningEffort)
     if (effortResult.error) {
         return { success: false, message: effortResult.error }
+    }
+
+    // Fail before any Gold is charged. Without the platform key the proxy rejects the very first
+    // request, which would otherwise surface as a mid-run 503 after the base reserve and per-minute
+    // Gold had already been taken — and the Settings toggle is hidden in that case anyway, so this
+    // is only reachable via an explicit tool argument or a preference saved before the key was pulled.
+    if (isOpenRouterSelection(modelResult.value) && !isOpenRouterConfigured()) {
+        return {
+            success: false,
+            message: 'OpenRouter models are not available in this environment. Choose an OpenAI model instead.',
+        }
     }
 
     // Enforce the per-user concurrency cap — but only for a job that will actually start a sandbox
