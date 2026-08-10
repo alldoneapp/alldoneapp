@@ -345,55 +345,79 @@ export const updateNewAttachmentsData = async (projectId, text) => {
     store.dispatch(startLoadingData())
     const words = text.split(' ')
 
-    for (let i = 0; i < words.length; i++) {
-        const word = words[i]
-        if (REGEX_ATTACHMENT.test(word)) {
-            const { attachmentText, uri, isNew } = getAttachmentData(word)
-            if (isNew === NEW_ATTACHMENT) {
-                const file = await fetch(uri)
-                    .then(r => r.blob())
-                    .then(blobFile => new File([blobFile], attachmentText))
-                const attachmentUri = await Backend.storeAttachment(projectId, file, false)
-                words[i] =
-                    `${ATTACHMENT_TRIGGER}${attachmentUri}${ATTACHMENT_TRIGGER}${attachmentText}${ATTACHMENT_TRIGGER}${false}`
-            }
-        } else if (REGEX_IMAGE.test(word)) {
-            const { imageText, uri, isNew } = getImageData(word)
-            if (isNew === NEW_ATTACHMENT) {
-                const IMAGE_HEIGHT = 200
+    // AT-2227: `startLoadingData` bumps a refcount that drives the global
+    // `showLoadingDataSpinner`, and every caller of this helper chains a bare `.then(...)`
+    // with no `.catch`. A single rejected upload therefore used to leave that spinner on
+    // screen forever AND silently drop the comment. Each attachment is now isolated so one
+    // failure cannot abort the submit, and the refcount is released in `finally`.
+    try {
+        for (let i = 0; i < words.length; i++) {
+            const word = words[i]
+            if (REGEX_ATTACHMENT.test(word)) {
+                const { attachmentText, uri, isNew } = getAttachmentData(word)
+                if (isNew === NEW_ATTACHMENT) {
+                    try {
+                        const file = await fetch(uri)
+                            .then(r => r.blob())
+                            .then(blobFile => new File([blobFile], attachmentText))
+                        const attachmentUri = await Backend.storeAttachment(projectId, file, false)
+                        words[i] =
+                            `${ATTACHMENT_TRIGGER}${attachmentUri}${ATTACHMENT_TRIGGER}${attachmentText}${ATTACHMENT_TRIGGER}${false}`
+                    } catch (error) {
+                        // Leave the word untouched: the comment still posts.
+                    }
+                }
+            } else if (REGEX_IMAGE.test(word)) {
+                const { imageText, uri, isNew } = getImageData(word)
+                if (isNew === NEW_ATTACHMENT) {
+                    const IMAGE_HEIGHT = 200
 
-                let imageResizedUri = uri
-                let imageUri = uri
-                try {
-                    const resizedImage = await HelperFunctions.resizeImage(uri, IMAGE_HEIGHT)
-                    const resizedFile = await HelperFunctions.convertURItoBlob(resizedImage.uri)
-                    imageResizedUri = await Backend.storeAttachment(projectId, resizedFile, false)
-                    const file = await HelperFunctions.convertURItoBlob(uri, imageText)
-                    imageUri = await Backend.storeAttachment(projectId, file, false)
-                } catch (error) {}
+                    let imageResizedUri = uri
+                    let imageUri = uri
+                    let uploaded = false
+                    try {
+                        const resizedImage = await HelperFunctions.resizeImage(uri, IMAGE_HEIGHT)
+                        const resizedFile = await HelperFunctions.convertURItoBlob(resizedImage.uri)
+                        imageResizedUri = await Backend.storeAttachment(projectId, resizedFile, false)
+                        const file = await HelperFunctions.convertURItoBlob(uri, imageText)
+                        imageUri = await Backend.storeAttachment(projectId, file, false)
+                        uploaded = true
+                    } catch (error) {}
 
-                words[i] =
-                    `${IMAGE_TRIGGER}${imageUri}${IMAGE_TRIGGER}${imageResizedUri}${IMAGE_TRIGGER}${imageText}${IMAGE_TRIGGER}${OLD_ATTACHMENT}`
-            }
-        } else if (REGEX_VIDEO.test(word)) {
-            const { videoText, uri, isNew } = getVideoData(word)
-            if (isNew === NEW_ATTACHMENT) {
-                const file = await fetch(uri)
-                    .then(r => r.blob())
-                    .then(blobFile => new File([blobFile], videoText))
-                store.dispatch(startLoadingData())
-                const videoUri = /(Apple)/i.test(navigator.vendor)
-                    ? await Backend.storeAttachment(projectId, file, false)
-                    : searchRecordings(videoText)
-                      ? await Backend.storeConvertedVideos(projectId, file)
-                      : await Backend.storeAttachment(projectId, file, false)
-                store.dispatch(stopLoadingData())
-                words[i] = `${VIDEO_TRIGGER}${videoUri}${VIDEO_TRIGGER}${videoText}${VIDEO_TRIGGER}${false}`
+                    // Only mark it as stored when it really was. Stamping OLD_ATTACHMENT on
+                    // a failed upload persisted the local `blob:` uri as if it were a
+                    // remote one, which renders as a permanently broken image.
+                    if (uploaded) {
+                        words[i] =
+                            `${IMAGE_TRIGGER}${imageUri}${IMAGE_TRIGGER}${imageResizedUri}${IMAGE_TRIGGER}${imageText}${IMAGE_TRIGGER}${OLD_ATTACHMENT}`
+                    }
+                }
+            } else if (REGEX_VIDEO.test(word)) {
+                const { videoText, uri, isNew } = getVideoData(word)
+                if (isNew === NEW_ATTACHMENT) {
+                    store.dispatch(startLoadingData())
+                    try {
+                        const file = await fetch(uri)
+                            .then(r => r.blob())
+                            .then(blobFile => new File([blobFile], videoText))
+                        const videoUri = /(Apple)/i.test(navigator.vendor)
+                            ? await Backend.storeAttachment(projectId, file, false)
+                            : searchRecordings(videoText)
+                              ? await Backend.storeConvertedVideos(projectId, file)
+                              : await Backend.storeAttachment(projectId, file, false)
+                        words[i] = `${VIDEO_TRIGGER}${videoUri}${VIDEO_TRIGGER}${videoText}${VIDEO_TRIGGER}${false}`
+                    } catch (error) {
+                        // Leave the word untouched: the comment still posts.
+                    } finally {
+                        store.dispatch(stopLoadingData())
+                    }
+                }
             }
         }
+    } finally {
+        store.dispatch(stopLoadingData())
     }
 
-    store.dispatch(stopLoadingData())
     return words.join(' ')
 }
 

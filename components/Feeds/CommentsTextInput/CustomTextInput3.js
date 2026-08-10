@@ -157,9 +157,6 @@ function CustomTextInput3(
         userIdAllowedToEditTags ? userIdAllowedToEditTags : loggedUserId
     )
     const [editorId, setEditorId] = useState(externalEditorId ? externalEditorId : v4())
-    // Marks this input's own scroll view: Quill may scroll inside it to follow
-    // the caret, but never anything above it. See quill2Setup.js (AT-2220).
-    const scrollBoundaryId = `ql-scroll-boundary-${editorId}`
     const [editorElement, setEditorElement] = useState(null)
     const [containerElement, setContainerElement] = useState(null)
     const [selectionBounds, setSelectionBounds] = useState({ top: 0, left: 0 })
@@ -1114,14 +1111,6 @@ function CustomTextInput3(
         const containerElement = document.getElementsByClassName(`ql-container-${editorId}`)[0]
         containerElement.classList.add('ql-textInputContainer')
 
-        // Confine Quill's scroll-into-view to this input's own scroll view.
-        // Without it, `focus()` / `setSelection()` scroll every scroll container
-        // above the editor as well — the task list, a detailed view, the page —
-        // which is what makes the app jump when a task line turns into an input
-        // (AT-2220, see quill2Setup.js). The boundary is the CustomScrollView
-        // wrapper below, so the editor still scrolls itself to follow the caret.
-        quillRef.current.scrollBoundaryElement = document.getElementById(scrollBoundaryId)
-
         const editorElement = document.getElementsByClassName(`ql-editor-${editorId}`)[0]
         editorElement.classList.add('ql-textInputEditor')
         if (styleTheme === TASK_THEME) {
@@ -1256,7 +1245,6 @@ function CustomTextInput3(
 
     return (
         <CustomScrollView
-            nativeID={scrollBoundaryId}
             style={[
                 containerStyle,
                 {

@@ -21,8 +21,9 @@ export default class VideoFormat extends Embed {
         node.setAttribute('uri', uri)
         node.setAttribute('contenteditable', false)
         node.setAttribute('isNew', isNew)
-        node.setAttribute('isLoading', isLoading)
-        node.setAttribute('editorId', editorId)
+        // See customImageFormat: never stamp the literal string 'undefined' (AT-2227).
+        if (isLoading != null) node.setAttribute('isLoading', isLoading)
+        if (editorId != null) node.setAttribute('editorId', editorId)
 
         VideoFormat.data = text
         VideoFormat.refs = {

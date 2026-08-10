@@ -22,8 +22,9 @@ export default class Attachment extends Embed {
         node.setAttribute('uri', uri)
         node.setAttribute('isNew', isNew)
         node.setAttribute('contenteditable', false)
-        node.setAttribute('isLoading', isLoading)
-        node.setAttribute('editorId', editorId)
+        // See customImageFormat: never stamp the literal string 'undefined' (AT-2227).
+        if (isLoading != null) node.setAttribute('isLoading', isLoading)
+        if (editorId != null) node.setAttribute('editorId', editorId)
 
         Attachment.data = text
         Attachment.refs = {

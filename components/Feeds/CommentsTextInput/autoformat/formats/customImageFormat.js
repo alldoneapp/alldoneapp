@@ -23,8 +23,11 @@ export default class CustomImageFormat extends Embed {
         node.setAttribute('resizedUri', resizedUri)
         node.setAttribute('contenteditable', false)
         node.setAttribute('isNew', isNew)
-        node.setAttribute('isLoading', isLoading)
-        node.setAttribute('editorId', editorId)
+        // setAttribute stringifies, so an absent value would round-trip through
+        // static value() as the literal string 'undefined' and key the per-editor project
+        // map with it (AT-2227). Leave the attribute off instead.
+        if (isLoading != null) node.setAttribute('isLoading', isLoading)
+        if (editorId != null) node.setAttribute('editorId', editorId)
 
         CustomImageFormat.data = text
         CustomImageFormat.refs = {

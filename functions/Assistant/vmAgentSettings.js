@@ -6,6 +6,8 @@ const {
     isValidApprovalPolicyLevel,
 } = require('./vmAgentApprovalPolicy')
 
+const { isValidFamilyId } = require('./vmAgentModelCatalog')
+
 const VALID_VM_AGENTS = ['claude', 'codex']
 const VALID_VM_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh']
 const SYSTEM_DEFAULT_VM_AGENT = 'codex'
@@ -25,6 +27,22 @@ function isValidVmApprovalPolicy(policy) {
     return isValidApprovalPolicyLevel(policy)
 }
 
+/**
+ * Per-agent default model families (AT-2221), stored as a map so switching the agent toggle
+ * in Settings does not discard the other agent's choice:
+ *   users/{uid}.defaultVmAgentModel = { claude: 'sonnet', codex: 'terra' }
+ * A family id is stored, never a concrete version — see vmAgentModelCatalog.js for why.
+ */
+function readStoredModelFamilies(data) {
+    const stored = data && typeof data.defaultVmAgentModel === 'object' ? data.defaultVmAgentModel : null
+    const families = {}
+    for (const agent of VALID_VM_AGENTS) {
+        const value = stored ? stored[agent] : null
+        families[agent] = isValidFamilyId(value) ? value : null
+    }
+    return families
+}
+
 async function readStoredVmAgentSettings(userId) {
     if (!userId)
         return {
@@ -32,6 +50,7 @@ async function readStoredVmAgentSettings(userId) {
             defaultReasoningEffort: null,
             hasStoredReasoningEffort: false,
             defaultApprovalPolicy: null,
+            defaultModelFamilies: readStoredModelFamilies(null),
         }
 
     const snapshot = await admin.firestore().doc(`users/${userId}`).get()
@@ -41,6 +60,7 @@ async function readStoredVmAgentSettings(userId) {
             defaultReasoningEffort: null,
             hasStoredReasoningEffort: false,
             defaultApprovalPolicy: null,
+            defaultModelFamilies: readStoredModelFamilies(null),
         }
     }
 
@@ -61,6 +81,7 @@ async function readStoredVmAgentSettings(userId) {
         defaultApprovalPolicy: isValidVmApprovalPolicy(data.defaultVmApprovalPolicy)
             ? data.defaultVmApprovalPolicy
             : null,
+        defaultModelFamilies: readStoredModelFamilies(data),
     }
 }
 
@@ -74,10 +95,33 @@ async function getVmAgentSettings({ userId }) {
         throw new HttpsError('unauthenticated', 'Authentication required.')
     }
 
-    const { defaultAgent, defaultReasoningEffort, hasStoredReasoningEffort, defaultApprovalPolicy } =
-        await readStoredVmAgentSettings(userId)
+    const {
+        defaultAgent,
+        defaultReasoningEffort,
+        hasStoredReasoningEffort,
+        defaultApprovalPolicy,
+        defaultModelFamilies,
+    } = await readStoredVmAgentSettings(userId)
+
+    // Model families ride along on the same call so the Settings screen loads in one round trip.
+    // getAllModelCatalogs never throws (it degrades to cached/static), but belt-and-braces here:
+    // a catalog problem must not take down the agent/effort/policy settings the UI also needs.
+    let modelCatalogs
+    try {
+        modelCatalogs = await require('./vmAgentModelCatalog').getAllModelCatalogs()
+    } catch (error) {
+        console.warn('🖥️ VM MODELS: Falling back to static catalogs for settings', { error: error.message })
+        const { FALLBACK_CATALOGS } = require('./vmAgentModelCatalog')
+        modelCatalogs = {
+            claude: { ...FALLBACK_CATALOGS.claude, fetchedAt: 0, source: 'fallback' },
+            codex: { ...FALLBACK_CATALOGS.codex, fetchedAt: 0, source: 'fallback' },
+        }
+    }
+
     return {
         defaultAgent,
+        defaultModelFamilies,
+        modelCatalogs,
         effectiveDefaultAgent: defaultAgent || SYSTEM_DEFAULT_VM_AGENT,
         defaultReasoningEffort,
         effectiveDefaultReasoningEffort: hasStoredReasoningEffort
@@ -164,6 +208,69 @@ async function setDefaultVmAgent({ userId, agent }) {
     return { success: true, defaultAgent: agent, effectiveDefaultAgent: agent, updatedAt }
 }
 
+/**
+ * Persist (or clear) the default model family for ONE agent, leaving the other agent's choice
+ * untouched — the whole point of storing a per-agent map. `family: null` means "no default",
+ * which falls back to the agent's built-in default model at run time.
+ *
+ * The family is validated against the live catalog so a typo or a stale client cannot pin a
+ * user to a family the provider does not offer. If the catalog is degraded we accept any
+ * well-formed id rather than blocking the save on a provider outage.
+ */
+async function setDefaultVmAgentModel({ userId, agent, family }) {
+    const { HttpsError } = require('firebase-functions/v2/https')
+    if (!userId) throw new HttpsError('unauthenticated', 'Authentication required.')
+    if (!isValidVmAgent(agent)) {
+        throw new HttpsError('invalid-argument', 'agent must be "claude" or "codex".')
+    }
+    if (family !== null && !isValidFamilyId(family)) {
+        throw new HttpsError('invalid-argument', 'family must be null or a valid model family id.')
+    }
+
+    if (family !== null) {
+        const { getModelCatalog } = require('./vmAgentModelCatalog')
+        let catalog = null
+        try {
+            catalog = await getModelCatalog(agent)
+        } catch (error) {
+            console.warn('🖥️ VM MODELS: Could not verify family on save', { agent, family, error: error.message })
+        }
+        if (catalog && catalog.source !== 'fallback' && !catalog.families.some(entry => entry.id === family)) {
+            throw new HttpsError('invalid-argument', `"${family}" is not an available ${agent} model family.`)
+        }
+    }
+
+    const updatedAt = Date.now()
+    await admin
+        .firestore()
+        .doc(`users/${userId}`)
+        .update({
+            // Dotted path so the other agent's saved family is preserved.
+            [`defaultVmAgentModel.${agent}`]: family,
+            defaultVmAgentModelUpdatedAt: updatedAt,
+        })
+
+    return { success: true, agent, family, updatedAt }
+}
+
+/**
+ * The saved family for one agent, or null. Read failures degrade to "no preference" so a
+ * Firestore hiccup can never make a VM run unavailable.
+ */
+async function resolveVmAgentModelFamily(userId, agent) {
+    if (!isValidVmAgent(agent) || !userId) return null
+    try {
+        const stored = await readStoredVmAgentSettings(userId)
+        return stored.defaultModelFamilies[agent] || null
+    } catch (error) {
+        console.warn('🖥️ VM JOB: Failed reading user default VM model, using agent default', {
+            userId,
+            error: error.message,
+        })
+        return null
+    }
+}
+
 async function resolveVmAgent(userId, explicitAgent) {
     if (isValidVmAgent(explicitAgent)) return explicitAgent
 
@@ -229,8 +336,10 @@ module.exports = {
     getVmAgentSettings,
     setDefaultVmAgent,
     setDefaultVmAgentReasoningEffort,
+    setDefaultVmAgentModel,
     setDefaultVmApprovalPolicy,
     resolveVmAgent,
+    resolveVmAgentModelFamily,
     resolveVmAgentSettings,
     resolveVmApprovalPolicy,
 }

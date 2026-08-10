@@ -7,7 +7,11 @@ import LoadingImageVideo from './LoadingImageVideo'
 import { LOADING_MODE } from '../../textInputHelper'
 
 export default function CustomVideoContainer({ uri, isLoading, editorId }) {
-    const projectId = useSelector(state => state.quillTextInputProjectIdsByEditorId[editorId])
+    // Same fallback as CustomImageContainer (AT-2227): a missing per-editor entry must not
+    // strand the embed on the loading placeholder.
+    const projectId = useSelector(
+        state => state.quillTextInputProjectIdsByEditorId[editorId] || state.quillEditorProjectId
+    )
 
     return (
         <View>
