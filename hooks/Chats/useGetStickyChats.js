@@ -15,6 +15,17 @@ export default function useGetStickyChats(projectId, toRender, chatsActiveTab) {
     const isLoadingStartedRef = useRef(false)
 
     useEffect(() => {
+        console.log(
+            '🔄 useGetStickyChats: Starting loading data for project:',
+            projectId,
+            'tab:',
+            chatsActiveTab,
+            'toRender:',
+            toRender,
+            'filters:',
+            filtersArray.length
+        )
+
         // Guard clause: Don't proceed if projectId is invalid
         if (!projectId || projectId === 'undefined' || projectId === 'null') {
             console.error('❌ useGetStickyChats: Invalid projectId, skipping Firebase query:', projectId)
@@ -38,7 +49,9 @@ export default function useGetStickyChats(projectId, toRender, chatsActiveTab) {
         })
 
         return () => {
+            console.log('🧹 useGetStickyChats: Cleaning up listener for project:', projectId)
             if (isLoadingStartedRef.current) {
+                console.log('🔧 useGetStickyChats: Stopping loading data on cleanup for project:', projectId)
                 dispatch(stopLoadingData())
                 isLoadingStartedRef.current = false
             }
@@ -47,6 +60,7 @@ export default function useGetStickyChats(projectId, toRender, chatsActiveTab) {
     }, [projectId, toRender, chatsActiveTab, JSON.stringify(filtersArray)])
 
     async function handleSnapshot(docs) {
+        console.log('✅ useGetStickyChats: Received snapshot for project:', projectId, 'docs count:', docs.size)
         const chats = []
         docs.forEach(doc => {
             chats.push({ id: doc.id, ...doc.data() })
@@ -54,8 +68,11 @@ export default function useGetStickyChats(projectId, toRender, chatsActiveTab) {
 
         setChats(filtersArray.length > 0 ? filterStickyChats(chats) : chats)
         if (isLoadingStartedRef.current) {
+            console.log('🛑 useGetStickyChats: Stopping loading data for project:', projectId)
             dispatch(stopLoadingData())
             isLoadingStartedRef.current = false
+        } else {
+            console.warn('⚠️ useGetStickyChats: Tried to stop loading when not started for project:', projectId)
         }
     }
 

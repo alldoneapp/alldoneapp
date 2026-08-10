@@ -67,6 +67,7 @@ export const CONFIRM_POPUP_TRIGGER_INFO = 'CONFIRM POPUP TRIGGER INFO'
 
 export default function ConfirmPopup() {
     const dispatch = useDispatch()
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const showConfirmPopupData = useSelector(state => state.showConfirmPopupData)
     const [processing, setProcessing] = useState(false)
 
@@ -324,7 +325,7 @@ export default function ConfirmPopup() {
             ) : trigger === CONFIRM_POPUP_TRIGGER_PUSH_NOTIFICATIONS ? (
                 <PushNotificationsModalMandatory />
             ) : trigger === CONFIRM_POPUP_TRIGGER_INFO ? (
-                <View style={localStyles.infoPopup}>
+                <View style={[localStyles.infoPopup, smallScreenNavigation && { marginLeft: 300 }]}>
                     <View style={{ marginBottom: 16 }}>
                         <Text style={[styles.title7, { color: '#ffffff' }]}>
                             {translate(headerTextKey, object.headerTextParams)}
@@ -338,7 +339,7 @@ export default function ConfirmPopup() {
                     </View>
                 </View>
             ) : (
-                <View style={[localStyles.popup, customStyles.popup]}>
+                <View style={[localStyles.popup, smallScreenNavigation && { marginLeft: 300 }, customStyles.popup]}>
                     <View style={[{ marginBottom: 20 }, customStyles.popupTexts]}>
                         <Text style={[styles.title7, { color: '#ffffff' }]}>
                             {translate(headerTextKey, object.headerTextParams)}
@@ -375,12 +376,6 @@ export default function ConfirmPopup() {
 }
 
 const localStyles = StyleSheet.create({
-    // The overlay covers the whole viewport and centers its child, so the dialog needs no extra
-    // horizontal offset. It used to carry `smallScreenNavigation && { marginLeft: 300 }`, which was
-    // inverted: `smallScreenNavigation` is the *narrow* layout, where the 300px sidebar is hidden —
-    // so the offset only ever applied on mobile and pushed the dialog off-center there (AT-2210).
-    // Dialogs that do want to be centered next to an expanded sidebar (KickUserConfirmPopup,
-    // ProjectInvitationPopup) apply that offset themselves, on desktop only.
     container: {
         position: 'absolute',
         zIndex: 10000,

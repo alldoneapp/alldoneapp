@@ -2387,20 +2387,6 @@ export function dismissTaskGoalSuggestion(projectId, task) {
     })
 }
 
-/**
- * AT-2160: read a task doc from Firestore's local cache, falling back to the server when it is not
- * cached. Used on paths where the read is only needed to build an undo record and must not delay
- * the write that the user is waiting to see.
- */
-export async function getTaskSnapshotCacheFirst(projectId, taskId) {
-    const ref = getDb().doc(`items/${projectId}/tasks/${taskId}`)
-    try {
-        return await ref.get({ source: 'cache' })
-    } catch (error) {
-        return ref.get()
-    }
-}
-
 export async function setTaskDueDate(
     projectId,
     taskId,
@@ -2459,14 +2445,8 @@ export async function setTaskDueDate(
 
         const operations = [buildTaskUpdateOperation(projectId, taskId, before, after)]
         if (task.subtaskIds?.length > 0) {
-            // AT-2160: these reads only exist to record undo's "before" values, but they used to be
-            // plain server gets sitting in front of every write below — so postponing a task that
-            // has subtasks moved nothing on screen until a full round trip came back, while the
-            // same task without subtasks moved in the same frame. Subtasks of a task you are
-            // looking at are already in the local cache (the task-list listener keeps them there),
-            // so read from it and only fall back to the server on a genuine miss.
             const subtaskSnapshots = await Promise.all(
-                task.subtaskIds.map(subtaskId => getTaskSnapshotCacheFirst(projectId, subtaskId))
+                task.subtaskIds.map(subtaskId => getDb().doc(`items/${projectId}/tasks/${subtaskId}`).get())
             )
             subtaskSnapshots.forEach(snapshot => {
                 if (!snapshot.exists) return
