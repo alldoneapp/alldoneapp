@@ -33,7 +33,6 @@ import {
 import ConnectionSettingsModal from './ConnectionSettingsModal'
 import AgentSubscriptionsSection from './AgentSubscriptionsSection'
 import DefaultVmAgentSection from './DefaultVmAgentSection'
-import IntegrationsLoadingRegion from './IntegrationsLoadingRegion'
 
 const POPOVER_CONTAINER_STYLE = { zIndex: 10000 }
 
@@ -382,12 +381,8 @@ export default function IntegrationsSettings() {
     return (
         <View style={localStyles.container}>
             <Text style={[styles.body1, localStyles.description]}>{translate('IntegrationsSettingsDescription')}</Text>
-            {/* One spinner for both server-fetched sections; the account lists below come from
-                already-loaded Redux state and stay interactive. */}
-            <IntegrationsLoadingRegion>
-                <DefaultVmAgentSection />
-                <AgentSubscriptionsSection />
-            </IntegrationsLoadingRegion>
+            <DefaultVmAgentSection />
+            <AgentSubscriptionsSection />
             <ConnectionsSection
                 service={CONNECTION_SERVICE_EMAIL}
                 title="Email accounts"

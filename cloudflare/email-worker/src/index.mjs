@@ -24,6 +24,14 @@ export default {
     },
 }
 
+export function parseDateHeader(value) {
+    const normalized = String(value || '').trim()
+    if (!normalized) return null
+
+    const parsed = Date.parse(normalized)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
 export async function buildNormalizedPayload(message, env = {}) {
     const rawHeaders = objectFromHeaders(message.headers)
     // Use only the SMTP envelope sender for authorization. Header From can be spoofed independently.
@@ -44,6 +52,9 @@ export async function buildNormalizedPayload(message, env = {}) {
         textBody,
         htmlBody,
         receivedAt: Date.now(),
+        // When the sender actually sent the mail, as opposed to when we received it. Kept as
+        // an explicit field so downstream consumers do not have to dig through rawHeaders.
+        sentAt: parseDateHeader(rawHeaders.date || rawHeaders.Date || ''),
         headers: rawHeaders,
         threadHeaders: {
             replyTo: parsedReplyTo,
