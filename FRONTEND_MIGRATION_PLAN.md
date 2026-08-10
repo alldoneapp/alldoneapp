@@ -174,6 +174,15 @@ Isolated last because it touches production collaborative documents:
 
 ## Status log
 
+- 2026-08-10 — **STAGE 5 ACCEPTED after staging QA — merged to master.** Branch CI was
+  green end to end on the branch-scoped Node 22 images (`build_web_webpack_check` pass;
+  `test:web:changed` honest selection: 168 files → 265 suites / 1317 tests);
+  `deploy:web-staging-live` shipped the artifact and the anonymous boot check passed
+  every marker (zero console errors, GSI origin accepted, deferred Firebase modules,
+  service worker registered), followed by the user's logged-in QA. With this, stages
+  0–5 are all complete — the migration's planned scope is done; only the optional
+  Stage 6 items remain.
+
 - 2026-08-10 — **Stage 5 executed on `frontend-migration-stage-5`** — the toolchain
   finish line. The Node 14 / npm 6 era is over: the whole repo now installs, tests, and
   builds under **Node 22 / npm 10** (`.nvmrc` = 22, `engines.node >=22`,
